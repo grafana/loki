@@ -199,6 +199,7 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
+
 func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
 	it := NewTimestampFirstSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
@@ -221,6 +222,45 @@ func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
 	require.NoError(t, it.Close())
 }
 
+func TestNewStreamFirstSampleQueryClientIterator(t *testing.T) {
+	// A stream-first source: four complete streams, ascending in stream hash.
+	newSource := func() SampleIterator {
+		return NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4), mkSample(2, 5))),
+			// One stream whose labels alternate, so the encoding splits it into runs.
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 30, mkSample(1, 6))),
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="warn"}`, 30, mkSample(2, 7))),
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 30, mkSample(3, 8), mkSample(4, 9))),
+			// A grouping query's shape: same labels as the stream above, different hash.
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 40, mkSample(1, 10), mkSample(2, 11))),
+		})
+	}
+
+	want := collectSamplesWithLabels(t, newSource())
+	require.Len(t, want, 11)
+
+	// Every batch size, including ones that cut a stream and a run in half, must round-trip to
+	// the exact same samples in the exact same order.
+	for _, batchSize := range []uint32{1, 2, 3, 4, 8, 128} {
+		t.Run(fmt.Sprintf("batch size %d", batchSize), func(t *testing.T) {
+			var batches [][]logproto.Series
+			enc := newSource()
+			for {
+				res, size, err := ReadStreamFirstSampleBatch(enc, batchSize)
+				require.NoError(t, err)
+				if size == 0 {
+					break
+				}
+				batches = append(batches, res.Series)
+			}
+
+			it := NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches})
+			require.Equal(t, want, collectSamplesWithLabels(t, it))
+		})
+	}
+}
+
 func TestNewNonOverlappingSampleIterator(t *testing.T) {
 	it := NewNonOverlappingSampleIterator([]SampleIterator{
 		NewSeriesIterator(varSeries),
@@ -240,16 +280,148 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 	require.NoError(t, it.Close())
 }
 
-func TestReadSampleBatch(t *testing.T) {
-	res, size, err := ReadSampleBatch(NewSeriesIterator(carSeries), 1)
+func TestReadTimestampFirstSampleBatch(t *testing.T) {
+	res, size, err := ReadTimestampFirstSampleBatch(NewSeriesIterator(carSeries), 1)
 	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, StreamHash: carSeries.StreamHash, Samples: []logproto.Sample{sample(1)}}}}, res)
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 
-	res, size, err = ReadSampleBatch(NewMultiSeriesIterator([]logproto.Series{carSeries, varSeries}), 100)
+	res, size, err = ReadTimestampFirstSampleBatch(NewTimestampFirstMultiSeriesIterator([]logproto.Series{carSeries, varSeries}), 100)
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+func TestReadStreamFirstSampleBatch(t *testing.T) {
+	t.Run("should emit one Series per stream, in the input order", func(t *testing.T) {
+		// The streams are fed in descending hash order on purpose: the encoding must keep the
+		// input order, not impose one of its own.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 1))),
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 2), mkSample(2, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(4), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="c"}`, StreamHash: 30, Samples: []logproto.Sample{mkSample(1, 1)}},
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 2), mkSample(2, 3)}},
+			{Labels: `{s="b"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 4)}},
+		}, res.Series)
+	})
+
+	t.Run("should start a new Series when the labels change but the stream hash does not", func(t *testing.T) {
+		// One stream whose output labels alternate, as structured metadata makes them. Each run
+		// becomes its own Series, so concatenating them replays the samples in timestamp order.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(1, 1))),
+			NewSeriesIterator(mkStreamSeries(`{level="warn"}`, 10, mkSample(2, 2))),
+			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(3, 3))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(3), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{level="info"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1)}},
+			{Labels: `{level="warn"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(2, 2)}},
+			{Labels: `{level="info"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(3, 3)}},
+		}, res.Series)
+	})
+
+	t.Run("should start a new Series when the stream hash changes but the labels do not", func(t *testing.T) {
+		// A grouping query collapses two streams onto one output label set. Fusing them into one
+		// Series would hand the second stream's samples the first stream's hash, and the merge
+		// dedups on the hash, so a matching sample would silently disappear.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 10, mkSample(1, 1), mkSample(2, 2))),
+			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 20, mkSample(1, 3), mkSample(2, 4))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(4), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{job="3"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1), mkSample(2, 2)}},
+			{Labels: `{job="3"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 3), mkSample(2, 4)}},
+		}, res.Series)
+	})
+
+	t.Run("should stop at size, splitting a stream", func(t *testing.T) {
+		src := NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3)))
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 2)
+		require.NoError(t, err)
+		require.Equal(t, uint32(2), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1), mkSample(2, 2)}},
+		}, res.Series)
+
+		res, size, err = ReadStreamFirstSampleBatch(src, 2)
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(3, 3)}},
+		}, res.Series)
+	})
+
+	t.Run("should return no Series once the source is drained", func(t *testing.T) {
+		res, size, err := ReadStreamFirstSampleBatch(NoopSampleIterator, 100)
+		require.NoError(t, err)
+		require.Zero(t, size)
+		require.Empty(t, res.Series)
+
+		// The accessors must be safe before the first Next, which is what the empty case buys:
+		// a concatenation over no Series dereferences a nil current iterator instead.
+		it := NewStreamFirstSampleQueryResponseIterator(res)
+		require.Zero(t, it.At())
+		require.Empty(t, it.Labels())
+		require.Zero(t, it.StreamHash())
+		require.False(t, it.Next())
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+	})
+
+	t.Run("should surface the source's read error", func(t *testing.T) {
+		src := &erroringSampleIterator{err: errors.New("boom")}
+
+		_, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.ErrorContains(t, err, "boom")
+		require.Zero(t, size)
+	})
+}
+
+func TestSampleQueryClientIterator_Close(t *testing.T) {
+	batches := [][]logproto.Series{
+		{mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1))},
+		{mkStreamSeries(`{s="b"}`, 20, mkSample(1, 2))},
+	}
+
+	t.Run("should collect a close error from every batch, not only the last", func(t *testing.T) {
+		var closed int
+		failing := func(resp *logproto.SampleQueryResponse) SampleIterator {
+			closed++
+			return SampleIteratorWithClose(NewStreamFirstMultiSeriesIterator(resp.Series), func() error {
+				return fmt.Errorf("batch %d close", closed)
+			})
+		}
+
+		it := &sampleQueryClientIterator{client: &fakeSampleClient{series: batches}, newBatchIterator: failing}
+		for it.Next() {
+		}
+		require.NoError(t, it.Err())
+
+		err := it.Close()
+		require.ErrorContains(t, err, "batch 1 close", "the drained batch's close error must survive")
+		require.ErrorContains(t, err, "batch 2 close")
+	})
+
+	t.Run("should close cleanly when no batch fails", func(t *testing.T) {
+		it := NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches})
+		require.Equal(t, 2, len(collectSamplesWithLabels(t, it)))
+	})
 }
 
 type CloseTestingSmplIterator struct {

@@ -228,7 +228,7 @@ outer:
 	}
 
 	return iter.NewTimeRangedSampleIterator(
-		iter.NewMultiSeriesIterator(filtered),
+		iter.NewTimestampFirstMultiSeriesIterator(filtered),
 		req.Start.UnixNano(),
 		req.End.UnixNano()+1,
 	), nil
