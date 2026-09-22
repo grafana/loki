@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -12,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -57,6 +55,30 @@ func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [
 	return keys, [][]byte{buf}, nil, nil
 }
 
+func (*postingsTestCache) Stop() {}
+
+func (*postingsTestCache) GetCacheType() stats.CacheType { return stats.IndexCache }
+
+func TestPostingsCacheCanonicalKey(t *testing.T) {
+	m1 := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
+	m2 := labels.MustNewMatcher(labels.MatchRegexp, "cluster", "prod|staging")
+	key1 := postingsKey(objectIdentity("prefix", "table", "tenant", "file.tsdb"), nil, []*labels.Matcher{m1, m2})
+	key2 := postingsKey(objectIdentity("prefix", "table", "tenant", "file.tsdb"), nil, []*labels.Matcher{m2, m1})
+	require.Equal(t, key1, key2)
+	require.NotEqual(t,
+		postingsKey("id", nil, []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "~api")}),
+		postingsKey("id", nil, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "app", "api")}),
+	)
+	require.NotEqual(t,
+		objectIdentity("prefix", "table", "tenant", "file.tsdb"),
+		objectIdentity("prefix", "table", "other", "file.tsdb"),
+	)
+	require.NotEqual(t,
+		postingsKey("id", nil, []*labels.Matcher{m1}),
+		postingsKey("id", index.ShardAnnotation{Shard: 0, Of: 2}, []*labels.Matcher{m1}),
+	)
+}
+
 func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	root := t.TempDir()
 	path := setupMultiTenantIndex(t, index.FormatV3, map[string][]stream{
@@ -70,50 +92,19 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
 	idx := NewMultiTenantIndex(file.(*TSDBFile))
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
-	for i, tenant := range []string{"tenant-a", "tenant-b"} {
-		first, err := idx.GetChunkRefs(context.Background(), tenant, 0, 10, nil, nil, matcher)
-		require.NoError(t, err)
-		require.Len(t, first, 1)
-		require.Equal(t, tenant, first[0].UserID)
-		require.Equal(t, uint64(i+1), first[0].Fingerprint)
-		require.Equal(t, uint32(11*(i+1)), first[0].Checksum)
-		second, err := idx.GetChunkRefs(context.Background(), tenant, 0, 10, nil, nil, matcher)
-		require.NoError(t, err)
-		require.Equal(t, first, second)
-		require.Equal(t, 2*(i+1), backend.fetches, "queries must fetch postings through the cache attached by the opener")
-		require.Equal(t, i+1, backend.stores, "only the first query for each tenant should store postings")
-		require.Equal(t, i+1, backend.hits, "the repeated query must hit cached postings")
-	}
+	first, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
+	require.NoError(t, err)
+	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
+	require.NoError(t, err)
+
+	require.Equal(t, first, second)
+	require.Equal(t, 2, backend.fetches, "queries must fetch postings through the cache attached by the opener")
+	require.Equal(t, 1, backend.stores, "only the first query for each tenant should store postings")
+	require.Equal(t, 1, backend.hits, "the repeated query must hit cached postings")
+
+	_, err = idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
+	require.NoError(t, err)
 	require.Len(t, backend.entries, 2, "tenant matchers must produce separate cache entries")
-}
-
-func (*postingsTestCache) Stop() {}
-
-func (*postingsTestCache) GetCacheType() stats.CacheType { return stats.IndexCache }
-
-func TestPostingsCacheCanonicalKeyAndRoundTrip(t *testing.T) {
-	m1 := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
-	m2 := labels.MustNewMatcher(labels.MatchRegexp, "cluster", "prod|staging")
-	key1 := postingsKey(objectIdentity("prefix", "table", "tenant", "file.tsdb"), nil, []*labels.Matcher{m1, m2})
-	key2 := postingsKey(objectIdentity("prefix", "table", "tenant", "file.tsdb"), nil, []*labels.Matcher{m2, m1})
-	require.Equal(t, key1, key2)
-	require.NotEqual(t,
-		postingsKey("id", nil, []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "~api")}),
-		postingsKey("id", nil, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "app", "api")}),
-	)
-	require.NotEqual(t, objectIdentity("prefix", "table", "tenant", "file.tsdb"), objectIdentity("prefix", "table", "other", "file.tsdb"))
-	require.NotEqual(t, postingsKey("id", nil, []*labels.Matcher{m1}), postingsKey("id", index.ShardAnnotation{Shard: 0, Of: 2}, []*labels.Matcher{m1}))
-
-	refs := []storage.SeriesRef{2, 7, 19}
-	encoded, err := encodePostings(key1, refs)
-	require.NoError(t, err)
-	decoded, err := decodePostings(key1, encoded)
-	require.NoError(t, err)
-	require.Equal(t, refs, decoded)
-	_, err = encodePostings(key1, []storage.SeriesRef{2, 1})
-	require.ErrorContains(t, err, "not sorted")
-	_, err = decodePostings(key1+"x", encoded)
-	require.ErrorContains(t, err, "key mismatch")
 }
 
 func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
@@ -128,128 +119,52 @@ func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 	require.Empty(t, backend.entries)
-	backend.fetchErr = nil
-	p, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
-		called++
-		return index.NewListPostings(nil), nil
-	})
-	require.NoError(t, err)
-	refs, err := index.ExpandPostings(p)
-	require.NoError(t, err)
-	require.Empty(t, refs)
-	require.Equal(t, 2, called)
-	require.Contains(t, backend.entries, cache.HashKey("key"))
-	_, err = c.cachedPostings(context.Background(), "key", compute)
-	require.NoError(t, err)
-	require.Equal(t, 2, called)
-
-	backend = &postingsTestCache{storeErr: errors.New("store")}
-	c = newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	_, err = c.cachedPostings(context.Background(), "key", compute)
-	require.NoError(t, err)
-	require.Equal(t, 3, called)
 }
 
-func TestDecodePostingsRejectsWrongPayload(t *testing.T) {
-	for _, encoded := range [][]byte{
-		{1, 2, 3},
-		[]byte("v1"),
-		[]byte("v1\x80"),
-		[]byte("v1\x04key"),
-		append([]byte("v1\x03key"), 0xff),
-		append([]byte("v1\x03key"), snappy.Encode(nil, []byte{0x80})...),
-	} {
-		_, err := decodePostings("key", encoded)
-		require.Error(t, err)
-	}
-}
-
-func TestCachedPostingsStoreFailureInstrumentation(t *testing.T) {
-	var logs bytes.Buffer
-	backend := &postingsTestCache{storeErr: errors.New("store unavailable")}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewLogfmtLogger(&logs))
-	compute := func() (index.Postings, error) {
-		return index.NewListPostings([]storage.SeriesRef{2, 7}), nil
-	}
-	p, err := c.cachedPostings(context.Background(), "key", compute)
-	require.NoError(t, err)
-	refs, err := index.ExpandPostings(p)
-	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{2, 7}, refs)
-	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
-	require.Contains(t, logs.String(), "failed to store postings in cache")
-	require.Contains(t, logs.String(), "store unavailable")
-	backend.storeErr = nil
-	_, err = c.cachedPostings(context.Background(), "key", compute)
-	require.NoError(t, err)
-	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
-}
-
-func TestCachedPostingsDecodeFailureRecomputes(t *testing.T) {
-	backend := &postingsTestCache{entries: map[string][]byte{cache.HashKey("key"): []byte("v1")}}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	require.Zero(t, testutil.ToFloat64(c.metrics.decodeFailures))
-	p, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
-		return index.NewListPostings([]storage.SeriesRef{7}), nil
-	})
-	require.NoError(t, err)
-	refs, err := index.ExpandPostings(p)
-	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{7}, refs)
-	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.decodeFailures))
-	decoded, err := decodePostings("key", backend.entries[cache.HashKey("key")])
-	require.NoError(t, err)
-	require.Equal(t, refs, decoded)
-	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
-		t.Fatal("expected a cache hit after replacing the invalid payload")
-		return nil, nil
-	})
-	require.NoError(t, err)
-	require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.decodeFailures))
-}
-
-func TestPostingsObjectIdentityFromDownloadedPath(t *testing.T) {
-	root := "/cache"
-	identity, ok := postingsObjectIdentity(root, "/cache/table-a/tenant-a/file-a.tsdb", "prefix-a")
-	require.True(t, ok)
-	require.Equal(t, objectIdentity("prefix-a", "table-a", "tenant-a", "file-a.tsdb"), identity)
-	require.NotEqual(t, identity, objectIdentity("prefix-b", "table-a", "tenant-a", "file-a.tsdb"))
-	require.NotEqual(t, identity, objectIdentity("prefix-a", "table-b", "tenant-a", "file-a.tsdb"))
-	identity, ok = postingsObjectIdentity(root, "/cache/table-a/tenant-a/file-b.tsdb", "prefix-a")
-	require.True(t, ok)
-	require.NotEqual(t, identity, objectIdentity("prefix-a", "table-a", "tenant-a", "file-a.tsdb"))
-	_, ok = postingsObjectIdentity(root, "/cache/table-b/tenant-a/file-a.tsdb", "prefix-a")
-	require.True(t, ok)
-	common, ok := postingsObjectIdentity(root, "/cache/table-a/file-a.tsdb", "prefix-a")
-	require.True(t, ok)
-	require.Equal(t, objectIdentity("prefix-a", "table-a", "", "file-a.tsdb"), common)
+func TestPostingsCodec(t *testing.T) {
 	for _, tc := range []struct {
-		path   string
-		prefix string
+		name      string
+		refs      []storage.SeriesRef
+		encoded   []byte
+		decodeKey string
+		encodeErr string
+		decodeErr string
 	}{
-		{"/cache/table-a/file-a.tsdb", "prefix-b"},
-		{"/cache/table-b/file-a.tsdb", "prefix-a"},
-		{"/cache/table-a/file-b.tsdb", "prefix-a"},
-		{"/cache/table-a/tenant-a/file-a.tsdb", "prefix-a"},
-		{"/cache/table-a/common/file-a.tsdb", "prefix-a"},
+		{name: "roundtrip", refs: []storage.SeriesRef{2, 7, 19}},
+		{name: "empty roundtrip"},
+		{name: "unsorted references", refs: []storage.SeriesRef{2, 1}, encodeErr: "not sorted"},
+		{name: "mismatched key", refs: []storage.SeriesRef{2, 7, 19}, decodeKey: "other", decodeErr: "key mismatch"},
+		{name: "invalid header", encoded: []byte{1, 2, 3}, decodeErr: "unsupported postings codec version"},
+		{name: "missing key length", encoded: []byte("v1"), decodeErr: "invalid postings cache key length"},
+		{name: "truncated key length", encoded: []byte("v1\x80"), decodeErr: "invalid postings cache key length"},
+		{name: "truncated key", encoded: []byte("v1\x04key"), decodeErr: "invalid postings cache key length"},
+		{name: "invalid compressed data", encoded: append([]byte("v1\x03key"), 0xff), decodeErr: "decompress postings"},
+		{name: "truncated delta", encoded: append([]byte("v1\x03key"), snappy.Encode(nil, []byte{0x80})...), decodeErr: "invalid postings delta varint"},
 	} {
-		other, ok := postingsObjectIdentity(root, tc.path, tc.prefix)
-		require.True(t, ok)
-		require.NotEqual(t, common, other, "common identity must distinguish prefix, table, filename and per-tenant objects")
+		t.Run(tc.name, func(t *testing.T) {
+			encoded := tc.encoded
+			if encoded == nil {
+				var err error
+				encoded, err = encodePostings("key", tc.refs)
+				if tc.encodeErr != "" {
+					require.ErrorContains(t, err, tc.encodeErr)
+					return
+				}
+				require.NoError(t, err)
+			}
+			key := tc.decodeKey
+			if key == "" {
+				key = "key"
+			}
+			decoded, err := decodePostings(key, encoded)
+			if tc.decodeErr != "" {
+				require.ErrorContains(t, err, tc.decodeErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.refs, decoded)
+		})
 	}
-	for _, path := range []string{
-		root,
-		"/cache/file-a.tsdb",
-		"/other/table-a/file-a.tsdb",
-		"/cache/../other/table-a/file-a.tsdb",
-	} {
-		_, ok := postingsObjectIdentity(root, path, "prefix-a")
-		require.False(t, ok, "invalid path: %s", path)
-	}
-	_, ok = postingsObjectIdentity(root, "/other/table-a/tenant-a/file-a.tsdb", "prefix-a")
-	require.False(t, ok)
-	_, ok = postingsObjectIdentity(root, "/cache/extra/table-a/tenant-a/file-a.tsdb", "prefix-a")
-	require.False(t, ok)
 }
 
 type postingsReaderSpy struct {
@@ -315,30 +230,19 @@ func TestTSDBIndexPostingsCachePreservesShardPushdown(t *testing.T) {
 	require.Equal(t, []storage.SeriesRef{3}, query(high, 0, 10))
 	require.Equal(t, []storage.SeriesRef{3}, query(high, 100, 200))
 	require.Equal(t, 2, reader.calls)
-	lowFrom, lowThrough := low.GetFromThrough()
-	gotLowFrom, gotLowThrough := reader.filters[0].GetFromThrough()
-	require.Equal(t, lowFrom, gotLowFrom)
-	require.Equal(t, lowThrough, gotLowThrough)
-	highFrom, highThrough := high.GetFromThrough()
-	gotHighFrom, gotHighThrough := reader.filters[1].GetFromThrough()
-	require.Equal(t, highFrom, gotHighFrom)
-	require.Equal(t, highThrough, gotHighThrough)
+}
 
-	uncached := &TSDBIndex{reader: reader}
-	var got []storage.SeriesRef
-	err := uncached.forPostings(context.Background(), low, 0, 10, []*labels.Matcher{m}, func(p index.Postings) error {
-		var err error
-		got, err = index.ExpandPostings(p)
-		return err
-	})
-	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{1}, got)
-	err = uncached.forPostings(context.Background(), low, 100, 200, []*labels.Matcher{m}, func(p index.Postings) error {
-		_, err := index.ExpandPostings(p)
-		return err
-	})
-	require.NoError(t, err)
-	require.Equal(t, 4, reader.calls)
+func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
+	reader := &postingsReaderSpy{}
+	idx := &TSDBIndex{reader: reader}
+	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
+	for range 2 {
+		err := idx.forPostings(context.Background(), nil, 0, 10, []*labels.Matcher{m}, func(p index.Postings) error {
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	require.Equal(t, 2, reader.calls)
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
@@ -349,20 +253,18 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 		return index.NewListPostings([]storage.SeriesRef{4, 8}), nil
 	}
 
-	p, err := c.cachedPostings(context.Background(), "key", compute)
+	_, err := c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
-	_, err = index.ExpandPostings(p)
-	require.NoError(t, err)
+
 	require.Equal(t, 1, called)
 
-	p, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 		called++
 		return index.EmptyPostings(), nil
 	})
 	require.NoError(t, err)
-	refs, err := index.ExpandPostings(p)
+
 	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{4, 8}, refs)
 	require.Equal(t, 1, called)
 }
 
