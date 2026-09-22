@@ -422,56 +422,34 @@ message HintRequest {
   ];
   string expr = 3;
   string tenant = 4;
-  repeated Meta indexes = 5 [(gogoproto.nullable) = false];
+  repeated HintIndex indexes = 5 [(gogoproto.nullable) = false];
   int64 ngram_length = 6;
   int64 max_parallel = 7;
 }
 
-// Meta is the catalog and wire type for a logline index.
-message Meta {
-  string date = 1 [(gogoproto.jsontag) = "date"];
-  string storage_id = 2 [
-    (gogoproto.customname) = "StorageID",
+// HintIndex is the slim index descriptor on HintRequest. Catalog identity is
+// a single id ("date/object_id"); the index object is "{id}/index".
+message HintIndex {
+  string id = 1 [
+    (gogoproto.customname) = "ID",
     (gogoproto.jsontag) = "id"
   ];
-  string hash = 3 [(gogoproto.jsontag) = "hash"];
-  string version = 4 [(gogoproto.jsontag) = "version"];
-  google.protobuf.Timestamp min_log_ts = 5 [
+  string version = 2 [(gogoproto.jsontag) = "version"];
+  int64 size_bytes = 3 [(gogoproto.jsontag) = "size_bytes"];
+  google.protobuf.Timestamp min_log_ts = 4 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "min_log_ts"
   ];
-  google.protobuf.Timestamp max_log_ts = 6 [
+  google.protobuf.Timestamp max_log_ts = 5 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "max_log_ts"
   ];
-  google.protobuf.Timestamp min_record_ts = 7 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "min_rec_ts"
-  ];
-  google.protobuf.Timestamp max_record_ts = 8 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "max_rec_ts"
-  ];
-  repeated string compacted_from = 9 [(gogoproto.jsontag) = "compacted_from,omitempty"];
-  google.protobuf.Timestamp created_at = 10 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "created_at"
-  ];
-  HeaderInfo index_header = 11 [(gogoproto.jsontag) = "index_header"];
-  int64 shard_count = 12 [(gogoproto.jsontag) = "shard_count"];
-  string shard_algorithm = 13 [(gogoproto.jsontag) = "shard_algorithm"];
-  int64 shard_value = 14 [(gogoproto.jsontag) = "shard_value"];
-  google.protobuf.Duration document_interval = 15 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "document_interval,omitempty"
-  ];
-  int64 size_bytes = 16 [(gogoproto.jsontag) = "size_bytes,omitempty"];
+  int64 shard_count = 6 [(gogoproto.jsontag) = "shard_count"];
+  string shard_algorithm = 7 [(gogoproto.jsontag) = "shard_algorithm"];
+  int64 shard_value = 8 [(gogoproto.jsontag) = "shard_value"];
+  HeaderInfo index_header = 9 [(gogoproto.jsontag) = "index_header"];
 }
 
 message HeaderInfo {

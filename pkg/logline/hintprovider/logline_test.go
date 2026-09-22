@@ -157,7 +157,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	stats := NewQueryStats()
-	active := indexStore.Snapshot().Active()
+	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
@@ -187,7 +187,7 @@ func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
 
 	metas := indexStore.IndexesForRange(docMin, docMax)
 	require.Len(t, metas, 1)
-	reader, err := provider.openIndexReader(context.Background(), metas[0], NewQueryStats())
+	reader, err := provider.openIndexReader(context.Background(), hintIndexFromMeta(metas[0]), NewQueryStats())
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 	require.NoError(t, reader.Close())
@@ -679,9 +679,9 @@ func writeShardedTestIndex(t *testing.T, indexStore *store.Store, hash, needle s
 		MaxRecordTs:    docMax.UTC(),
 		IndexHeader:    headerInfo,
 		SizeBytes:      int64(len(indexBytes)),
-		ShardCount:     int64(shardCount),
+		ShardCount:     shardCount,
 		ShardAlgorithm: shardAlgorithm,
-		ShardValue:     int64(shardValue),
+		ShardValue:     shardValue,
 	}
 
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
@@ -775,12 +775,12 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 
 	byShard := make(map[int][]string)
 	for shardValue := range 10 {
-		meta := store.Meta{
+		idx := logproto.HintIndex{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
 			ShardValue:     int64(shardValue),
 		}
-		if terms := filterNgramsForShard(ngrams, meta); len(terms) > 0 {
+		if terms := filterNgramsForShard(ngrams, idx); len(terms) > 0 {
 			byShard[shardValue] = terms
 		}
 	}
@@ -915,7 +915,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
-	active := indexStore.Snapshot().Active()
+	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
@@ -927,15 +927,36 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
-// minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.
-// Only Version and ID-related fields are set; ShardCount=0 so filterNgramsForShard
-// passes all ngrams through unchanged.
-func minimalMeta(hash, date, indexVersion string) store.Meta {
-	return store.Meta{
-		Date:    date,
-		Hash:    hash,
+// minimalHintIndex returns a HintIndex suitable for buildTermJobs tests that
+// don't need real index data. Only Version and ID are set; ShardCount=0 so
+// filterNgramsForShard passes all ngrams through unchanged.
+func minimalHintIndex(hash, date, indexVersion string) logproto.HintIndex {
+	return logproto.HintIndex{
+		ID:      date + "/" + hash,
 		Version: indexVersion,
 	}
+}
+
+func hintIndexFromMeta(m store.Meta) logproto.HintIndex {
+	return logproto.HintIndex{
+		ID:             m.ID(),
+		Version:        m.Version,
+		SizeBytes:      m.SizeBytes,
+		MinLogTs:       m.MinLogTs,
+		MaxLogTs:       m.MaxLogTs,
+		ShardCount:     int64(m.ShardCount),
+		ShardAlgorithm: m.ShardAlgorithm,
+		ShardValue:     int64(m.ShardValue),
+		IndexHeader:    m.IndexHeader,
+	}
+}
+
+func hintIndexesFromMetas(metas []store.Meta) []logproto.HintIndex {
+	out := make([]logproto.HintIndex, len(metas))
+	for i, m := range metas {
+		out[i] = hintIndexFromMeta(m)
+	}
+	return out
 }
 
 // TestBuildTermJobs_SingleVersionCache verifies that two blocks sharing the same
@@ -943,18 +964,18 @@ func minimalMeta(hash, date, indexVersion string) store.Meta {
 // doesn't accidentally drop the second block.
 func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in metasByID (each produced at least one job).
-	require.Contains(t, metasByID, metas[0].ID())
-	require.Contains(t, metasByID, metas[1].ID())
+	// Both blocks should appear in indexesByID (each produced at least one job).
+	require.Contains(t, indexesByID, indexes[0].ID)
+	require.Contains(t, indexesByID, indexes[1].ID)
 }
 
 // TestBuildTermJobs_MixedVersions verifies that blocks with different index
@@ -970,31 +991,31 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 	}
 
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in metasByID even though they carry different
+	// Both blocks should appear in indexesByID even though they carry different
 	// index versions.
-	require.Contains(t, metasByID, metas[0].ID())
-	require.Contains(t, metasByID, metas[1].ID())
+	require.Contains(t, indexesByID, indexes[0].ID)
+	require.Contains(t, indexesByID, indexes[1].ID)
 }
 
 // TestBuildTermJobs_UnknownVersionReturnsError verifies that a block with an
 // unrecognised index version causes the query to fail with an error.
 func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	filter := "abcdefg"
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.Error(t, err)
 }
 
@@ -1003,11 +1024,11 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 // known index version.
 func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	filter := "ab" // too short for n=6
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
@@ -1095,7 +1116,7 @@ func writeShardedTermTestIndex(
 		SizeBytes:      int64(len(indexBytes)),
 		ShardCount:     10,
 		ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-		ShardValue:     int64(shardValue),
+		ShardValue:     shardValue,
 	}
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
 	require.NoError(t, indexStore.Poll(context.Background()))

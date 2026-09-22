@@ -65,7 +65,7 @@ func NewLoglineHintProvider(
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
-	overlapping []store.Meta,
+	overlapping []logproto.HintIndex,
 ) (*logproto.HintResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
@@ -117,12 +117,27 @@ func (p *LoglineHintProvider) ProvideHints(
 		return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
 	}
 
+	indexes := make([]logproto.HintIndex, len(overlapping))
+	for i, m := range overlapping {
+		indexes[i] = logproto.HintIndex{
+			ID:             m.ID(),
+			Version:        m.Version,
+			SizeBytes:      m.SizeBytes,
+			MinLogTs:       m.MinLogTs,
+			MaxLogTs:       m.MaxLogTs,
+			ShardCount:     int64(m.ShardCount),
+			ShardAlgorithm: m.ShardAlgorithm,
+			ShardValue:     int64(m.ShardValue),
+			IndexHeader:    m.IndexHeader,
+		}
+	}
+
 	resp, err := next.Do(ctx, &logproto.HintRequest{
 		From:        from,
 		Through:     through,
 		Expr:        expr.String(),
 		Tenant:      tenant,
-		Indexes:     overlapping,
+		Indexes:     indexes,
 		NgramLength: int64(p.ngramLength),
 		MaxParallel: int64(p.maxParallel),
 	})
@@ -152,14 +167,17 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 
 func (p *LoglineHintProvider) openIndexReader(
 	ctx context.Context,
-	meta store.Meta,
+	idx logproto.HintIndex,
 	stats *QueryStats,
 ) (logline.Reader, error) {
-	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())
+	if idx.IndexHeader == nil {
+		return nil, fmt.Errorf("index %s is missing required index_header", idx.ID)
+	}
+	storeReader := p.store.GetIndexReaderAt(ctx, idx.IndexPath())
 	trackedReader := newTrackingReaderAt(storeReader, stats)
-	reader, _, _, err := logline.OpenReaderAt(trackedReader, 0, meta.SizeBytes)
+	reader, _, err := logline.OpenReader(idx.Version, trackedReader, 0, idx.SizeBytes, *idx.IndexHeader)
 	if err != nil {
-		return nil, fmt.Errorf("open reader from footer: %w", err)
+		return nil, fmt.Errorf("open reader: %w", err)
 	}
 	trackedReader.SetClassifier(reader)
 	return reader, nil
