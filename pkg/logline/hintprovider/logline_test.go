@@ -185,12 +185,9 @@ func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
-	meta := store.Meta{
-		Date:    docMin.UTC().Format("2006-01-02"),
-		Hash:    "aaaaaaaaaaaaaaaa",
-		Version: logline.CurrentVersion,
-	}
-	reader, err := provider.openIndexReader(context.Background(), meta, NewQueryStats())
+	metas := indexStore.IndexesForRange(docMin, docMax)
+	require.Len(t, metas, 1)
+	reader, err := provider.openIndexReader(context.Background(), metas[0], NewQueryStats())
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 	require.NoError(t, reader.Close())

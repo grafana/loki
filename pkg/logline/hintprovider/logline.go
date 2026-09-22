@@ -157,16 +157,7 @@ func (p *LoglineHintProvider) openIndexReader(
 ) (logline.Reader, error) {
 	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())
 	trackedReader := newTrackingReaderAt(storeReader, stats)
-
-	size := meta.SizeBytes
-	if size <= 0 {
-		var sizeErr error
-		size, sizeErr = p.store.IndexObjectSize(ctx, meta.IndexPath())
-		if sizeErr != nil {
-			return nil, sizeErr
-		}
-	}
-	reader, _, _, err := logline.OpenReaderAt(trackedReader, 0, size)
+	reader, _, _, err := logline.OpenReaderAt(trackedReader, 0, meta.SizeBytes)
 	if err != nil {
 		return nil, fmt.Errorf("open reader from footer: %w", err)
 	}
