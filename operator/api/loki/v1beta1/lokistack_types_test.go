@@ -43,11 +43,11 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 						Schemas: []v1beta1.ObjectStorageSchema{
 							{
 								EffectiveDate: v1beta1.StorageSchemaEffectiveDate("2020-11-20"),
-								Version:       v1beta1.ObjectStorageSchemaV11,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 							},
 							{
 								EffectiveDate: v1beta1.StorageSchemaEffectiveDate("2021-11-20"),
-								Version:       v1beta1.ObjectStorageSchemaV12,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 							},
 						},
 						Secret: v1beta1.ObjectStorageSecretSpec{
@@ -314,7 +314,7 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 					Storage: v1beta1.LokiStackStorageStatus{
 						Schemas: []v1beta1.ObjectStorageSchema{
 							{
-								Version:       v1beta1.ObjectStorageSchemaV11,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 								EffectiveDate: "2020-06-01",
 							},
 						},
@@ -340,11 +340,11 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 						Schemas: []v1.ObjectStorageSchema{
 							{
 								EffectiveDate: v1.StorageSchemaEffectiveDate("2020-11-20"),
-								Version:       v1.ObjectStorageSchemaV11,
+								Version:       v1.ObjectStorageSchemaV13,
 							},
 							{
 								EffectiveDate: v1.StorageSchemaEffectiveDate("2021-11-20"),
-								Version:       v1.ObjectStorageSchemaV12,
+								Version:       v1.ObjectStorageSchemaV13,
 							},
 						},
 						Secret: v1.ObjectStorageSecretSpec{
@@ -617,7 +617,7 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 					Storage: v1.LokiStackStorageStatus{
 						Schemas: []v1.ObjectStorageSchema{
 							{
-								Version:       v1.ObjectStorageSchemaV11,
+								Version:       v1.ObjectStorageSchemaV13,
 								EffectiveDate: "2020-06-01",
 							},
 						},
@@ -670,11 +670,11 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 						Schemas: []v1.ObjectStorageSchema{
 							{
 								EffectiveDate: v1.StorageSchemaEffectiveDate("2020-11-20"),
-								Version:       v1.ObjectStorageSchemaV11,
+								Version:       v1.ObjectStorageSchemaV13,
 							},
 							{
 								EffectiveDate: v1.StorageSchemaEffectiveDate("2021-11-20"),
-								Version:       v1.ObjectStorageSchemaV12,
+								Version:       v1.ObjectStorageSchemaV13,
 							},
 						},
 						Secret: v1.ObjectStorageSecretSpec{
@@ -947,7 +947,7 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 					Storage: v1.LokiStackStorageStatus{
 						Schemas: []v1.ObjectStorageSchema{
 							{
-								Version:       v1.ObjectStorageSchemaV11,
+								Version:       v1.ObjectStorageSchemaV13,
 								EffectiveDate: "2020-06-01",
 							},
 						},
@@ -973,11 +973,11 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 						Schemas: []v1beta1.ObjectStorageSchema{
 							{
 								EffectiveDate: v1beta1.StorageSchemaEffectiveDate("2020-11-20"),
-								Version:       v1beta1.ObjectStorageSchemaV11,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 							},
 							{
 								EffectiveDate: v1beta1.StorageSchemaEffectiveDate("2021-11-20"),
-								Version:       v1beta1.ObjectStorageSchemaV12,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 							},
 						},
 						Secret: v1beta1.ObjectStorageSecretSpec{
@@ -1244,7 +1244,7 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 					Storage: v1beta1.LokiStackStorageStatus{
 						Schemas: []v1beta1.ObjectStorageSchema{
 							{
-								Version:       v1beta1.ObjectStorageSchemaV11,
+								Version:       v1beta1.ObjectStorageSchemaV13,
 								EffectiveDate: "2020-06-01",
 							},
 						},

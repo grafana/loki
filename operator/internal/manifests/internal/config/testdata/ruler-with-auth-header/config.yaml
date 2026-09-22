@@ -138,8 +138,8 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: s3
-      schema: v11
-      store: boltdb-shipper
+      schema: v13
+      store: tsdb
 ruler:
   enable_api: true
   enable_sharding: true
