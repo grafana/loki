@@ -801,7 +801,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			if err != nil {
 				return nil, err
 			}
-			params["hintRanges"] = hintRanges
+			params["hintRanges"] = []string{string(hintRanges)}
 		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
@@ -2401,32 +2401,23 @@ func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
 	return nil, nil
 }
 
-func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]string, error) {
-	encoded := make([]string, 0, len(ranges))
-	for i := range ranges {
-		data, err := ranges[i].Marshal()
-		if err != nil {
-			return nil, errors.Wrap(err, "marshaling hint time range")
-		}
-		encoded = append(encoded, string(data))
+func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]byte, error) {
+	data, err := (&HintTimeRanges{Ranges: ranges}).Marshal()
+	if err != nil {
+		return nil, errors.Wrap(err, "marshaling hint time ranges")
 	}
-	return encoded, nil
+	return data, nil
 }
 
 func parseHintTimeRanges(r *http.Request) ([]logproto.HintTimeRange, error) {
-	values := r.Form["hintRanges"]
-	if len(values) == 0 {
-		return nil, nil
-	}
-	ranges := make([]logproto.HintTimeRange, 0, len(values))
-	for _, value := range values {
-		var hint logproto.HintTimeRange
-		if err := hint.Unmarshal([]byte(value)); err != nil {
-			return nil, errors.Wrap(err, "unmarshaling hint time range")
+	if value := r.Form.Get("hintRanges"); value != "" {
+		hintRanges := &HintTimeRanges{}
+		if err := hintRanges.Unmarshal([]byte(value)); err != nil {
+			return nil, errors.Wrap(err, "unmarshaling hint time ranges")
 		}
-		ranges = append(ranges, hint)
+		return hintRanges.Ranges, nil
 	}
-	return ranges, nil
+	return nil, nil
 }
 
 type DetectedFieldsRequest struct {

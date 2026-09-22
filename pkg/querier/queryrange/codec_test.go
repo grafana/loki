@@ -997,7 +997,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, `FORWARD`, got.URL.Query().Get("direction"))
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
-	require.Len(t, got.URL.Query()["hintRanges"], 2)
+	require.Len(t, got.URL.Query()["hintRanges"], 1)
 
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
