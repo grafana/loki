@@ -429,6 +429,9 @@ require (
 
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 
+// Pin until the 2026-12-06 API version is available in every region.
+replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
+
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
