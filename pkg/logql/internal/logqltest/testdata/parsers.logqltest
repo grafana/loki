@@ -148,6 +148,23 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
 eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
   {app="a", ok="1"} 2
 
+# json() error that an __error__ filter keeps in the result: the series carries the whole label set,
+# not the grouped one.
+clear
+load
+  {app="a", pod="p1"} `{"ok":1}` @ 20s [metadata n="5"]
+  {app="a", pod="p2"} `{`        @ 40s [metadata n="7"] # malformed
+  {app="noise", pod="p3"} `{"ok":1}` @ 20s [metadata n="9"]
+
+eval instant at 60s first_over_time({app="a"} | json | unwrap n [1m]) by (pod)
+  expect fail msg: JSONParserErr
+eval instant at 60s first_over_time({app="a"} | json | __error__="" | unwrap n [1m]) by (pod)
+  {pod="p1"} 5
+eval instant at 60s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", app="a", n="7", pod="p2"} 7
+eval range from 20s to 60s step 20s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by (pod) # overlapping
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", app="a", n="7", pod="p2"} _ 7 7
+
 # json() with label expressions:
 # - `user.id` reads a nested field.
 # - `tags[0]` indexes an array.

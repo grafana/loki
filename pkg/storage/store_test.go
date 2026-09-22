@@ -708,7 +708,7 @@ func Test_LokiStore_SelectSample(t *testing.T) {
 				return
 			}
 
-			series, _, err := iter.ReadSampleBatch(it, uint32(100000))
+			series, _, err := iter.ReadTimestampFirstSampleBatch(it, uint32(100000))
 			_ = it.Close()
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)

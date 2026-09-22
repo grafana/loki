@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -1273,6 +1274,325 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		require.False(t, it.Next())
 		require.NoError(t, it.Err())
 	})
+}
+
+// Test_DedupeIngester_StreamFirst covers the stream-first path end to end over gRPC: the ingester
+// orders and encodes stream-first batches, the querier-side client iterator decodes them keeping
+// that order, and the stream-first merge deduplicates the replicas.
+func Test_DedupeIngester_StreamFirst(t *testing.T) {
+	var (
+		requests      = int64(110)
+		streamCount   = int64(5)
+		streams       []labels.Labels
+		streamHashes  = map[uint64]struct{}{}
+		ingesterCount = 3
+
+		ingesterConfig = defaultIngesterTestConfig(t)
+		ctx, _         = user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "foo"))
+	)
+	require.Greater(t, requests*streamCount, int64(queryBatchSampleSize),
+		"the fixture must emit more than one batch, so a stream really is split across the wire")
+	// Make sure we cut blocks and chunks, and use head chunks too.
+	ingesterConfig.TargetChunkSize = 800
+	ingesterConfig.BlockSize = 300
+
+	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
+	defer closer()
+
+	for i := int64(0); i < streamCount; i++ {
+		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
+		streams = append(streams, s)
+		streamHashes[labels.StableHash(s)] = struct{}{}
+	}
+
+	// Every ingester holds every stream, so each one answers with the same samples.
+	for i := int64(0); i < requests; i++ {
+		for _, ing := range ingesterSet {
+			_, err := ing.Push(ctx, buildPushRequest(i, streams))
+			require.NoError(t, err)
+		}
+	}
+
+	// `by (foo)` keeps only the label every stream shares, so all of them collapse onto the same
+	// output labels. Only the stable stream hash still tells them apart.
+	const query = `sum(rate({foo="bar"}[1m])) by (foo)`
+	collect := func(t *testing.T, order logproto.SampleOrder) []receivedSample {
+		t.Helper()
+
+		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
+		for _, client := range ingesterSet {
+			stream, err := client.QuerySample(ctx, &logproto.SampleQueryRequest{
+				Selector: query,
+				Start:    time.Unix(0, 0),
+				End:      time.Unix(0, requests+1),
+				Plan:     testutil.MustPlan(query),
+				Order:    order,
+			})
+			require.NoError(t, err)
+
+			switch order {
+			case logproto.SAMPLE_ORDER_BY_STREAM:
+				iterators = append(iterators, iter.NewStreamFirstSampleQueryClientIterator(stream))
+			default:
+				iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
+			}
+		}
+
+		var it iter.SampleIterator
+		switch order {
+		case logproto.SAMPLE_ORDER_BY_STREAM:
+			it = iter.NewStreamFirstMergeSampleIterator(ctx, iterators)
+		default:
+			it = iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
+		}
+
+		var got []receivedSample
+		for it.Next() {
+			got = append(got, receivedSample{labels: it.Labels(), streamHash: it.StreamHash(), tsNanos: it.At().Timestamp})
+		}
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+
+		return got
+	}
+
+	byTimestamp := collect(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
+	byStream := collect(t, logproto.SAMPLE_ORDER_BY_STREAM)
+
+	t.Run("the replicas are deduplicated, and both orders return the same samples", func(t *testing.T) {
+		require.Len(t, byTimestamp, int(requests*streamCount), "every replica beyond the first must be deduplicated")
+		require.ElementsMatch(t, byTimestamp, byStream)
+	})
+
+	t.Run("the grouping collapses every stream onto the same output labels", func(t *testing.T) {
+		labelSets := map[string]struct{}{}
+		for _, s := range byStream {
+			labelSets[s.labels] = struct{}{}
+		}
+		require.Len(t, labelSets, 1, "only the stream hash may distinguish the streams here")
+	})
+
+	t.Run("stream-first order survives the round trip", func(t *testing.T) {
+		require.Equal(t, streamHashes, assertStreamFirstOrder(t, byStream))
+	})
+}
+
+// TestIngester_QuerySample_ShoudHonorSampleOrderWhenQueryingStore checks the ingester asks its
+// store for the order the query requested, so the store's samples can merge with the in-memory ones.
+func TestIngester_QuerySample_ShoudHonorSampleOrderWhenQueryingStore(t *testing.T) {
+	const query = `count_over_time({job="3"}[5m])`
+
+	newIngester := func(t *testing.T, store Store) *Ingester {
+		t.Helper()
+
+		ingesterConfig := defaultIngesterTestConfig(t)
+		// QueryStore is what makes the ingester read its store alongside its own memory.
+		ingesterConfig.QueryStore = true
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockReadRingWithOneActiveIngester(), nil)
+		require.NoError(t, err)
+		i.instances["test"] = defaultInstance(t)
+
+		return i
+	}
+
+	newRequest := func(order logproto.SampleOrder) *logproto.SampleQueryRequest {
+		return &logproto.SampleQueryRequest{
+			Selector: query,
+			Start:    time.Unix(0, 0),
+			End:      time.Unix(0, 10*1e6),
+			Plan:     testutil.MustPlan(query),
+			Order:    order,
+		}
+	}
+
+	// defaultInstance holds the worker and dispatcher streams, with a sample every millisecond
+	// from 0 to 9. The store serves one more stream, whose samples interleave with those, so a
+	// timestamp-first merge of the two sources is visibly not stream-first.
+	storeHash := labels.StableHash(labels.FromStrings("job", "3", "source", "store"))
+	newStoreIterator := func() *closeTrackingSampleIterator {
+		var samples []logproto.Sample
+		for ts := int64(0); ts < 10; ts++ {
+			samples = append(samples, logproto.Sample{Timestamp: ts * 1e6, Hash: uint64(ts) + 1000, Value: 1})
+		}
+		return &closeTrackingSampleIterator{
+			SampleIterator: iter.NewSeriesIterator(logproto.Series{Labels: `{job="3"}`, StreamHash: storeHash, Samples: samples}),
+		}
+	}
+
+	for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+		t.Run(order.String(), func(t *testing.T) {
+			storeIterator := newStoreIterator()
+			store := &orderRecordingStore{mockStore: &mockStore{}, iterator: storeIterator}
+			sink := &sampleSink{ctx: user.InjectOrgID(context.Background(), "test")}
+			require.NoError(t, newIngester(t, store).QuerySample(newRequest(order), sink))
+
+			require.Equal(t, []logproto.SampleOrder{order}, store.orders, "the store must be read once, with the requested order")
+			require.Len(t, sink.samples, 20, "the in-memory and store samples must both come back")
+			require.Equal(t, 1, storeIterator.closes, "the store iterator must be closed exactly once")
+
+			// The expected hashes come from the fixtures, not from the result, so the comparison
+			// can fail.
+			expectedHashes := map[uint64]struct{}{
+				defaultInstanceWorkerHash:     {},
+				defaultInstanceDispatcherHash: {},
+				storeHash:                     {},
+			}
+			hashes := map[uint64]struct{}{}
+			for _, s := range sink.samples {
+				hashes[s.streamHash] = struct{}{}
+			}
+			require.Equal(t, expectedHashes, hashes, "the store's stream must survive the merge")
+
+			// Only stream-first order survives the wire. The timestamp-first encoding groups
+			// samples into a map and emits the Series in an unspecified order, so the querier
+			// re-sorts them; there is nothing to assert about the batch itself.
+			if order == logproto.SAMPLE_ORDER_BY_STREAM {
+				require.Equal(t, expectedHashes, assertStreamFirstOrder(t, sink.samples))
+			}
+		})
+	}
+
+	for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+		t.Run("the store's copy of an in-memory stream is deduplicated/"+order.String(), func(t *testing.T) {
+			// One in-memory stream already flushed: the store returns the same stream hash and
+			// the same (timestamp, sample hash) pairs the memchunk produced for it, plus one
+			// sample memory does not hold. The extra sample must come back, which is what tells
+			// a deduplicated store read apart from a store that was never read.
+			memorySamples := querySampleAt(t, defaultInstance(t), query, order, time.Unix(0, 0), time.Unix(0, 10*1e6))
+			require.Len(t, memorySamples, 10)
+
+			it, err := defaultInstance(t).QuerySample(t.Context(), logql.SelectSampleParams{SampleQueryRequest: newRequest(logproto.SAMPLE_ORDER_BY_STREAM)})
+			require.NoError(t, err)
+			var flushed logproto.Series
+			for it.Next() {
+				if flushed.Samples == nil {
+					flushed.Labels, flushed.StreamHash = it.Labels(), it.StreamHash()
+				}
+				if it.StreamHash() == flushed.StreamHash {
+					flushed.Samples = append(flushed.Samples, it.At())
+				}
+			}
+			require.NoError(t, it.Err())
+			require.NoError(t, it.Close())
+			require.NotEmpty(t, flushed.Samples)
+
+			extra := logproto.Sample{Timestamp: 9 * 1e6, Hash: 999, Value: 1}
+			flushed.Samples = append(flushed.Samples, extra)
+
+			store := &orderRecordingStore{
+				mockStore: &mockStore{},
+				iterator:  &closeTrackingSampleIterator{SampleIterator: iter.NewSeriesIterator(flushed)},
+			}
+			sink := &sampleSink{ctx: user.InjectOrgID(context.Background(), "test")}
+			require.NoError(t, newIngester(t, store).QuerySample(newRequest(order), sink))
+
+			want := append([]receivedSample{}, memorySamples...)
+			want = append(want, receivedSample{labels: flushed.Labels, streamHash: flushed.StreamHash, tsNanos: extra.Timestamp})
+			require.ElementsMatch(t, want, sink.samples, "the flushed copy must deduplicate, and only the extra sample may be added")
+		})
+	}
+
+	t.Run("a store failure fails the query", func(t *testing.T) {
+		store := &orderRecordingStore{mockStore: &mockStore{}, err: errors.New("object storage unavailable")}
+		sink := &sampleSink{ctx: user.InjectOrgID(context.Background(), "test")}
+
+		err := newIngester(t, store).QuerySample(newRequest(logproto.SAMPLE_ORDER_BY_STREAM), sink)
+		require.ErrorContains(t, err, "object storage unavailable")
+		require.Empty(t, sink.samples, "a partial result must not be reported as a complete one")
+	})
+
+	t.Run("a failure while streaming still closes the store iterator", func(t *testing.T) {
+		for _, order := range []logproto.SampleOrder{logproto.SAMPLE_ORDER_BY_TIMESTAMP, logproto.SAMPLE_ORDER_BY_STREAM} {
+			t.Run(order.String(), func(t *testing.T) {
+				// The store iterator is reachable only through the merge, so it is closed only
+				// if the merge itself is. It has to outlive the first batch, or the merge closes
+				// it while draining and the test passes even with the leak.
+				samples := make([]logproto.Sample, 0, queryBatchSampleSize+1)
+				for i := range cap(samples) {
+					samples = append(samples, logproto.Sample{Timestamp: int64(i), Hash: uint64(i), Value: 1})
+				}
+				storeIterator := &closeTrackingSampleIterator{
+					SampleIterator: iter.NewSeriesIterator(logproto.Series{Labels: `{job="3"}`, StreamHash: storeHash, Samples: samples}),
+				}
+
+				store := &orderRecordingStore{mockStore: &mockStore{}, iterator: storeIterator}
+				sink := &sampleSink{
+					ctx:     user.InjectOrgID(context.Background(), "test"),
+					sendErr: errors.New("connection reset"),
+				}
+
+				err := newIngester(t, store).QuerySample(newRequest(order), sink)
+				require.ErrorContains(t, err, "connection reset")
+				require.Equal(t, 1, storeIterator.closes, "the store iterator must be closed exactly once, even when streaming fails")
+			})
+		}
+	})
+}
+
+// orderRecordingStore records the sample order every SelectSamples call asked for. It returns the
+// given iterator, or an empty one when there is none.
+type orderRecordingStore struct {
+	*mockStore
+
+	orders   []logproto.SampleOrder
+	iterator iter.SampleIterator
+
+	// err, when set, fails every SelectSamples, modeling an unreachable object store.
+	err error
+}
+
+func (s *orderRecordingStore) SelectSamples(_ context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	s.orders = append(s.orders, req.Order)
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.iterator == nil {
+		return iter.NoopSampleIterator, nil
+	}
+	return s.iterator, nil
+}
+
+// closeTrackingSampleIterator counts its Close calls. The merge closes a sub-iterator either while
+// draining it or from its own Close, never both, so the count is what proves it.
+type closeTrackingSampleIterator struct {
+	iter.SampleIterator
+
+	closes int
+}
+
+func (i *closeTrackingSampleIterator) Close() error {
+	i.closes++
+	return i.SampleIterator.Close()
+}
+
+// sampleSink collects everything QuerySample streams. QuerySample is a streaming gRPC handler, so
+// a server stream stand-in is unavoidable.
+type sampleSink struct {
+	grpc.ServerStream
+
+	ctx     context.Context
+	samples []receivedSample
+
+	// sendErr, when set, fails every Send, modeling a client that went away mid-stream.
+	sendErr error
+}
+
+func (s *sampleSink) Context() context.Context { return s.ctx }
+
+func (s *sampleSink) Send(resp *logproto.SampleQueryResponse) error {
+	if s.sendErr != nil {
+		return s.sendErr
+	}
+	for _, series := range resp.Series {
+		for _, smp := range series.Samples {
+			s.samples = append(s.samples, receivedSample{labels: series.Labels, streamHash: series.StreamHash, tsNanos: smp.Timestamp})
+		}
+	}
+	return nil
 }
 
 func TestStats(t *testing.T) {

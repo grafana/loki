@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -34,6 +35,32 @@ const (
 	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
+type metrics struct {
+	streamEvictionsTotal            *prometheus.CounterVec
+	streamShardEvictionsTotal       *prometheus.CounterVec
+	streamShardStreamsNotOwnedTotal *prometheus.CounterVec
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
+		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_evictions_total",
+			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		streamShardEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_shard_evictions_total",
+			Help:      "The total number of streams tracked for stream sharding that were evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		streamShardStreamsNotOwnedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_shard_streams_not_owned_total",
+			Help:      "The total number of streams CheckLimitsAndShard could not decide a shard count for because their partition is not assigned to this instance. A sustained non-zero rate means frontends are routing streams to the wrong instance.",
+		}, []string{"partition"}),
+	}
+}
+
 // Service is a service that manages stream metadata limits.
 type Service struct {
 	services.Service
@@ -49,10 +76,10 @@ type Service struct {
 	consumer            *consumer
 	producer            *producer
 	usage               *usageStore
+	streamShards        *streamShardStore
 	logger              log.Logger
 
-	// Metrics.
-	streamEvictionsTotal *prometheus.CounterVec
+	metrics *metrics
 
 	// Readiness check, see [Service.CheckReady].
 	partitionReadinessPassed          bool
@@ -68,15 +95,11 @@ type Service struct {
 func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
 	s := &Service{
-		cfg:    cfg,
-		limits: limits,
-		logger: logger,
-		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_evictions_total",
-			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-		clock: quartz.NewReal(),
+		cfg:     cfg,
+		limits:  limits,
+		logger:  logger,
+		metrics: newMetrics(reg),
+		clock:   quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
@@ -85,6 +108,10 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
+	}
+	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
 	}
 	// Initialize lifecycler
 	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
@@ -112,6 +139,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		s.partitionManager,
 		offsetManager,
 		s.usage,
+		s.streamShards,
 		cfg.ActiveWindow,
 		logger,
 	)
@@ -189,13 +217,32 @@ func (s *Service) ExceedsLimits(
 }
 
 // CheckLimitsAndShard implements the [proto.IngestLimitsServer] interface.
-// The shard-count decision logic is added in a follow-up PR; for now this
-// returns no results, which the frontend treats as "don't shard this push".
 func (s *Service) CheckLimitsAndShard(
-	_ context.Context,
-	_ *proto.CheckLimitsAndShardRequest,
+	ctx context.Context,
+	req *proto.CheckLimitsAndShardRequest,
 ) (*proto.CheckLimitsAndShardResponse, error) {
-	return &proto.CheckLimitsAndShardResponse{}, nil
+	// A stream whose partition this instance does not consume is answered with
+	// an explicit ReasonNotOwned result. The frontend treats that the same as
+	// a missing result, one shard, but reporting it tells the two apart: a
+	// stream that reached the wrong instance looks identical to an unreachable
+	// instance otherwise.
+	owned := make([]*proto.StreamMetadata, 0, len(req.Streams))
+	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
+	for _, stream := range req.Streams {
+		partition := s.streamShards.getPartitionForHash(stream.StreamHash)
+		if !s.partitionManager.Has(partition) {
+			s.metrics.streamShardStreamsNotOwnedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+			results = append(results, &proto.StreamShardResult{
+				StreamHash: stream.StreamHash,
+				Shards:     1,
+				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(ReasonNotOwned)},
+			})
+			continue
+		}
+		owned = append(owned, stream)
+	}
+	results = append(results, s.streamShards.checkAndShard(ctx, req.Tenant, owned, s.clock.Now())...)
+	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 }
 
 // UpdateRates implements the [proto.IngestLimitsServer] interface.
@@ -338,7 +385,10 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ticker.C:
 			evicted := s.usage.Evict()
 			for tenant, numEvicted := range evicted {
-				s.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+				s.metrics.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+			}
+			for tenant, numEvicted := range s.streamShards.Evict() {
+				s.metrics.streamShardEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 		}
 	}

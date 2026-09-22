@@ -121,6 +121,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
+		applyLoglineKafkaConfig(r)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -802,4 +803,10 @@ func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
+}
+
+// applyLoglineKafkaConfig fills the logline index builder's unset Kafka fields
+// from the root kafka_config.
+func applyLoglineKafkaConfig(r *ConfigWrapper) {
+	r.Logline.IndexBuilder.Kafka.ApplyDefaultsFrom(r.KafkaConfig)
 }
