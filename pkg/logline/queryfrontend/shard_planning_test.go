@@ -366,7 +366,7 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 			name: "passthrough range falls back",
 			cfg:  baseCfg,
 			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
-				{Start: time.Time{}, End: now.Add(-30 * time.Minute)},
+				{Start: time.Time{}, End: now.Add(-30 * time.Minute), Source: hintprovider.HintSourcePreMinDate},
 			}}},
 			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
 		},
