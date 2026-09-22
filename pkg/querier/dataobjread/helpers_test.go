@@ -39,7 +39,7 @@ type objectsFixture struct {
 // tenant into the same object, and resolves every section they produced.
 //
 // It builds a real index, so the descriptors carry the section indexes and stream IDs a query
-// would resolve. Use [newStoredObject] for a test that only needs an object in a bucket.
+// would resolve. Use [createTestStoredObject] for a test that only needs an object in a bucket.
 func newObjectsFixture(t *testing.T, otherTenant string, tenantStreams ...logproto.Stream) objectsFixture {
 	t.Helper()
 
@@ -49,7 +49,7 @@ func newObjectsFixture(t *testing.T, otherTenant string, tenantStreams ...logpro
 	if otherTenant != "" {
 		builder.AppendFor(ctx, otherTenant, logproto.Stream{
 			Labels:  `{app="other"}`,
-			Entries: []push.Entry{entry(1, "theirs")},
+			Entries: []push.Entry{entry(t, 1, "theirs")},
 		})
 	}
 	builder.Append(ctx, tenantStreams...)
@@ -85,7 +85,10 @@ func at(second int) time.Time { return epoch.Add(time.Duration(second) * time.Se
 
 // entry returns one log line at [at](second), with the given structured metadata as alternating
 // name and value arguments.
-func entry(second int, line string, metadata ...string) push.Entry {
+func entry(t *testing.T, second int, line string, metadata ...string) push.Entry {
+	t.Helper()
+	require.Zero(t, len(metadata)%2, "metadata must be name and value pairs")
+
 	e := push.Entry{Timestamp: at(second), Line: line}
 	for i := 0; i+1 < len(metadata); i += 2 {
 		e.StructuredMetadata = append(e.StructuredMetadata, push.LabelAdapter{Name: metadata[i], Value: metadata[i+1]})

@@ -170,7 +170,7 @@ func createTestStoredObject(t *testing.T, tenant string, streamLabels ...string)
 	return bucket, path, ids
 }
 
-// createAndOpenTestStoredObject writes the object [newTestStoredObject] does and opens it for tenant.
+// createAndOpenTestStoredObject writes the object [createTestStoredObject] does and opens it for tenant.
 func createAndOpenTestStoredObject(t *testing.T, tenant string, streamLabels ...string) (*openObject, []int64) {
 	t.Helper()
 

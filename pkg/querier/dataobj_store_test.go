@@ -27,7 +27,7 @@ import (
 
 func TestNewDataObjStore(t *testing.T) {
 	builder := objtest.NewBuilder(t)
-	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 	builder.Close()
 
 	t.Run("it fails without a chunk store, which every delegated method needs", func(t *testing.T) {
@@ -49,18 +49,18 @@ func TestNewDataObjStore(t *testing.T) {
 func TestDataObjStore_SelectSamples(t *testing.T) {
 	appStream := logproto.Stream{
 		Labels:  `{app="a", env="prod"}`,
-		Entries: []push.Entry{entry(1, "one"), entry(2, "two"), entry(3, "three")},
+		Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three")},
 	}
 	otherStream := logproto.Stream{
 		Labels:  `{app="b", env="prod"}`,
-		Entries: []push.Entry{entry(1, "beta")},
+		Entries: []push.Entry{entry(t, 1, "beta")},
 	}
 	metadataStream := logproto.Stream{
 		Labels: `{app="c"}`,
 		Entries: []push.Entry{
-			entry(1, "err", "level", "error"),
-			entry(2, "warn", "level", "warn"),
-			entry(3, "blank", "level", ""),
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+			entry(t, 3, "blank", "level", ""),
 		},
 	}
 
@@ -198,7 +198,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		for i := 0; i < 8; i++ {
 			manyStreams = append(manyStreams, logproto.Stream{
 				Labels:  fmt.Sprintf(`{app="many", idx="%d"}`, i),
-				Entries: []push.Entry{entry(1, "line")},
+				Entries: []push.Entry{entry(t, 1, "line")},
 			})
 		}
 		// A tiny section forces the builder to split these streams across sections.
@@ -212,7 +212,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		for i := 0; i < 4; i++ {
 			manyStreams = append(manyStreams, logproto.Stream{
 				Labels:  fmt.Sprintf(`{app="split", idx="%d"}`, i),
-				Entries: []push.Entry{entry(1, "line")},
+				Entries: []push.Entry{entry(t, 1, "line")},
 			})
 		}
 		store := newTestDataObjStore(t, manyStreams, withObjectPerStream())
@@ -224,7 +224,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream},
 			withOtherTenantStream("other-tenant", logproto.Stream{
 				Labels:  `{app="a", env="prod"}`,
-				Entries: []push.Entry{entry(1, "not mine"), entry(2, "not mine either")},
+				Entries: []push.Entry{entry(t, 1, "not mine"), entry(t, 2, "not mine either")},
 			}))
 		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
@@ -251,7 +251,7 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		for i := 0; i < 40; i++ {
 			manyStreams = append(manyStreams, logproto.Stream{
 				Labels:  fmt.Sprintf(`{app="early", idx="%d"}`, i),
-				Entries: []push.Entry{entry(1, "line"), entry(2, "line")},
+				Entries: []push.Entry{entry(t, 1, "line"), entry(t, 2, "line")},
 			})
 		}
 		// One object per stream, so the planner is still resolving when the read stops.
@@ -279,6 +279,79 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{appStream})
 		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="nothing"}[1m]))`, at(0), at(10))
 		require.Empty(t, got)
+	})
+}
+
+// TestDataObjStore_Sharding asserts that the shards of one query partition its samples: every
+// shard's samples together equal the unsharded result, and no series is served by two shards.
+func TestDataObjStore_Sharding(t *testing.T) {
+	var corpusStreams []logproto.Stream
+	for _, app := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		corpusStreams = append(corpusStreams, logproto.Stream{
+			Labels:  `{app="` + app + `", env="prod"}`,
+			Entries: []push.Entry{entry(t, 1, "line", "level", "info")},
+		})
+	}
+
+	const query = `sum by (app) (count_over_time({env="prod"}[1m]))`
+
+	for _, of := range []uint32{2, 3, 4, 8, 64} {
+		t.Run(fmt.Sprintf("%d shards together return every sample exactly once", of), func(t *testing.T) {
+			store := newTestDataObjStore(t, corpusStreams)
+
+			want := store.selectSamples(testCtx(t), query, at(0), at(10))
+			require.Len(t, want, len(corpusStreams), "the unsharded query must return one sample per stream")
+
+			var got []sampleRow
+			shardsPerSeries := map[string]int{}
+			for shard := uint32(0); shard < of; shard++ {
+				rows := store.selectSamples(testCtx(t), query, at(0), at(10), func(req *logproto.SampleQueryRequest) {
+					req.Shards = []string{powerOfTwoShard(shard, of).String()}
+				})
+				got = append(got, rows...)
+				for _, row := range rows {
+					shardsPerSeries[row.Labels]++
+				}
+			}
+			sortSamples(got)
+
+			require.Equal(t, want, got, "the shards together must return the unsharded result")
+			for labels, shards := range shardsPerSeries {
+				require.Equal(t, 1, shards, "series %s was served by %d shards", labels, shards)
+			}
+		})
+	}
+}
+
+// TestDataObjStore_Unwrap reads the number a metric query unwraps out of a metadata column.
+func TestDataObjStore_Unwrap(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="u"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "first", "duration", "2"),
+			entry(t, 2, "second", "duration", "3"),
+			entry(t, 3, "third", "duration", "not-a-number"),
+		},
+	}
+
+	t.Run("it sums the unwrapped values of the lines that convert", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		// The failed conversion has to be dropped, or it would fail the whole query.
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration | __error__="" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got, "the line whose value does not convert must be dropped, not counted as zero")
+	})
+
+	t.Run("a filter on the unwrapped label reads the column it names", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration | __error__="" | duration > 2 [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
 	})
 }
 
@@ -323,7 +396,7 @@ type sampleRow struct {
 	StreamHash   uint64
 }
 
-// testDataObjStore builds a bucket of data objects from streams and returns a store over them.
+// testDataObjStore is a store over a bucket of data objects, with the chunk store it delegates to.
 type testDataObjStore struct {
 	t     *testing.T
 	store Store
@@ -480,7 +553,10 @@ func at(second int) time.Time { return epoch.Add(time.Duration(second) * time.Se
 
 // entry returns one log line at [at](second), with the given structured metadata as alternating
 // name and value arguments.
-func entry(second int, line string, metadata ...string) push.Entry {
+func entry(t *testing.T, second int, line string, metadata ...string) push.Entry {
+	t.Helper()
+	require.Zero(t, len(metadata)%2, "metadata must be name and value pairs")
+
 	e := push.Entry{Timestamp: at(second), Line: line}
 	for i := 0; i+1 < len(metadata); i += 2 {
 		e.StructuredMetadata = append(e.StructuredMetadata, push.LabelAdapter{Name: metadata[i], Value: metadata[i+1]})

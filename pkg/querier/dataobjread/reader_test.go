@@ -20,8 +20,8 @@ func TestLogReader(t *testing.T) {
 
 	t.Run("it yields every record of every planned section", func(t *testing.T) {
 		fixture := newReaderFixture(t,
-			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one"), entry(2, "two")}},
-			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(1, "three")}},
+			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")}},
+			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "three")}},
 		)
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 
@@ -39,7 +39,7 @@ func TestLogReader(t *testing.T) {
 		want := make([]string, 0, 10)
 		for i := range 10 {
 			line := fmt.Sprintf("line-%d", i)
-			entries = append(entries, entry(i+1, line))
+			entries = append(entries, entry(t, i+1, line))
 			want = append(want, line)
 		}
 		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
@@ -52,7 +52,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a task naming a section the object does not hold fails the read", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		task := fixture.tasks[0]
 		task.sectionIdx = 999
@@ -64,7 +64,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a task naming an object the bucket does not hold fails the read", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		task := fixture.tasks[0]
 		task.objectPath = "objects/does-not-exist"
@@ -77,8 +77,8 @@ func TestLogReader(t *testing.T) {
 
 	t.Run("one failing scan does not stop the reader reporting the failure", func(t *testing.T) {
 		fixture := newReaderFixture(t,
-			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}},
-			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(1, "two")}},
+			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}},
+			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "two")}},
 		)
 
 		broken := fixture.tasks[0]
@@ -92,7 +92,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a cancelled context is reported rather than looking like a clean end", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -103,7 +103,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a planning error surfaces even when no task was planned", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		tasks := queuedTasks()
 		wantErr := errors.New("resolution failed")
@@ -117,7 +117,7 @@ func TestLogReader(t *testing.T) {
 	t.Run("closing before the records are drained reports no error", func(t *testing.T) {
 		fixture := newReaderFixture(t, logproto.Stream{
 			Labels:  `{app="a"}`,
-			Entries: []push.Entry{entry(1, "one"), entry(2, "two"), entry(3, "three")},
+			Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three")},
 		})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
@@ -131,7 +131,7 @@ func TestLogReader(t *testing.T) {
 		// truncated result would otherwise look authoritative.
 		fixture := newReaderFixture(t, logproto.Stream{
 			Labels:  `{app="a"}`,
-			Entries: []push.Entry{entry(1, "one"), entry(2, "two")},
+			Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")},
 		})
 
 		ctx, cancel := context.WithCancel(t.Context())
@@ -143,7 +143,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("closing twice reports no error the second time", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		drainReader(reader)
@@ -152,7 +152,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a plan with no task yields nothing and reports no error", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}})
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		require.Empty(t, drainReader(reader))
@@ -167,7 +167,7 @@ func TestLogReader(t *testing.T) {
 func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
 	fixture := newObjectsFixture(t, "", logproto.Stream{
 		Labels:  `{app="a"}`,
-		Entries: []push.Entry{entry(1, "one")},
+		Entries: []push.Entry{entry(t, 1, "one")},
 	})
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)

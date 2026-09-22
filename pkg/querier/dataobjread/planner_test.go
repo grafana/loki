@@ -17,8 +17,8 @@ import (
 
 func TestPlanner_Plan(t *testing.T) {
 	fixtureStreams := []logproto.Stream{
-		{Labels: `{app="a"}`, Entries: []push.Entry{entry(1, "one")}},
-		{Labels: `{app="b"}`, Entries: []push.Entry{entry(1, "two")}},
+		{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}},
+		{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "two")}},
 	}
 
 	// newTestPlanner returns a planner over the fixture's objects, together with the descriptors
@@ -173,7 +173,7 @@ func TestPlanner_Plan(t *testing.T) {
 func TestPlanner_RecoversPanics(t *testing.T) {
 	fixture := newObjectsFixture(t, "", logproto.Stream{
 		Labels:  `{app="a"}`,
-		Entries: []push.Entry{entry(1, "one")},
+		Entries: []push.Entry{entry(t, 1, "one")},
 	})
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)

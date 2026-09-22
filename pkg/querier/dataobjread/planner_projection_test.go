@@ -90,10 +90,21 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata: []string{"app", "latency"},
 		},
-		"an unwrap whose failures are dropped narrows the metadata": {
-			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" [1m]))`,
+		"an unwrap's own filters name metadata the read must project": {
+			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" | level="error" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "duration"},
+			wantMetadata: []string{"app", "duration", "level"},
+		},
+		"a delete whose filter can fail keeps the metadata wide": {
+			query:       `sum by (app) (count_over_time({app="x"}[1m]))`,
+			deletes:     []string{`{app="x"} | latency > 1s`},
+			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		},
+		"a binary filter with a converting child keeps the metadata wide, and still pushes the string half": {
+			query:                 `sum by (app) (count_over_time({app="x"} | level="error" and latency > 1s [1m]))`,
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+			wantPredicates:        []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
+			wantSectionPredicates: []string{`level="error"`},
 		},
 		"a drop filter before the unwrap does not stop the unwrap failing": {
 			query:       `sum by (app) (sum_over_time({app="x"} | __error__="" | unwrap duration [1m]))`,
