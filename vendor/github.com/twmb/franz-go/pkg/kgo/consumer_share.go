@@ -2539,14 +2539,17 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 	sessionStale := s.share.sessionEpoch != epoch
 	if !sessionStale {
 		s.share.sessionEpoch++
-		// Only add cursors that were in the WANT set (usable) to
-		// sessionParts. req.Topics may also contain piggyback-only
-		// partitions for cursors that got revoked after we drained
-		// their acks: adding those to sessionParts would force us
-		// to forget them on the next request, generating an extra
-		// round trip of ForgottenTopicsData.
-		for _, c := range usable {
-			s.share.sessionParts[tidp{c.topicID, c.partition}] = struct{}{}
+		// Mirror the broker's session bookkeeping exactly: the broker
+		// adds EVERY partition we list in the request topics to its
+		// share session, whether the partition carries a fetch or only
+		// piggybacked acks (a cursor that was revoked, paused, or
+		// migrated after we drained its acks). It removes a partition
+		// from the session only when we forget it.
+		for i := range req.Topics {
+			t := &req.Topics[i]
+			for j := range t.Partitions {
+				s.share.sessionParts[tidp{t.TopicID, t.Partitions[j].Partition}] = struct{}{}
+			}
 		}
 		for _, ft := range req.ForgottenTopicsData {
 			for _, p := range ft.Partitions {

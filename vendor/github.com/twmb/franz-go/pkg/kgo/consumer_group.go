@@ -1927,7 +1927,9 @@ start:
 		}
 		reqTopic := kmsg.NewOffsetFetchRequestGroupTopic()
 		reqTopic.Topic = topic
-		reqTopic.TopicID = groupTopics.loadTopic(topic).id
+		if td := groupTopics.loadTopic(topic); td != nil {
+			reqTopic.TopicID = td.id
+		}
 		if reqTopic.TopicID == ([16]byte{}) {
 			pinV9 = true
 		}
