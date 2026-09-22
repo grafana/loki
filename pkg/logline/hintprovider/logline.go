@@ -65,7 +65,7 @@ func NewLoglineHintProvider(
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
-	overlapping []logproto.Meta,
+	overlapping []store.Meta,
 ) (*logproto.HintResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
@@ -152,7 +152,7 @@ func (p *LoglineHintProvider) MinDate() time.Time {
 
 func (p *LoglineHintProvider) openIndexReader(
 	ctx context.Context,
-	meta logproto.Meta,
+	meta store.Meta,
 	stats *QueryStats,
 ) (logline.Reader, error) {
 	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())

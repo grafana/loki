@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 type termJob struct {
@@ -20,7 +20,7 @@ type termJob struct {
 
 type readerResult struct {
 	reader logline.Reader
-	meta   logproto.Meta
+	meta   store.Meta
 
 	result               format.Bitmap
 	done                 bool
@@ -109,7 +109,7 @@ func (s *queryExecutionState) applyBitmap(readerID string, readerRes format.Bitm
 func (p *LoglineHintProvider) executeQuery(
 	ctx context.Context,
 	filters []string,
-	overlapping []logproto.Meta,
+	overlapping []store.Meta,
 	stats *QueryStats,
 ) (map[shardKey][]HintTimeRange, error) {
 	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
@@ -216,11 +216,11 @@ func (p *LoglineHintProvider) executeQuery(
 
 func buildTermJobs(
 	filters []string,
-	overlapping []logproto.Meta,
+	overlapping []store.Meta,
 	ngramLength int,
-) ([]termJob, map[string]logproto.Meta, error) {
+) ([]termJob, map[string]store.Meta, error) {
 	jobs := make([]termJob, 0, len(filters)*len(overlapping))
-	metasByID := make(map[string]logproto.Meta, len(overlapping))
+	metasByID := make(map[string]store.Meta, len(overlapping))
 
 	for _, filter := range filters {
 		// Per-version cache: each unique index version is extracted at most once
@@ -262,7 +262,7 @@ func buildTermJobs(
 
 func (p *LoglineHintProvider) openReadersForMetas(
 	ctx context.Context,
-	metasByID map[string]logproto.Meta,
+	metasByID map[string]store.Meta,
 	stats *QueryStats,
 ) (map[string]*readerResult, error) {
 	readersByID := make(map[string]*readerResult, len(metasByID))
@@ -326,7 +326,7 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 // hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func hintTimeRangeForMeta(meta logproto.Meta) HintTimeRange {
+func hintTimeRangeForMeta(meta store.Meta) HintTimeRange {
 	return HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
@@ -339,7 +339,7 @@ func hintTimeRangeForMeta(meta logproto.Meta) HintTimeRange {
 	}
 }
 
-func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
+func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}

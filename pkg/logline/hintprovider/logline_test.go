@@ -185,7 +185,7 @@ func TestLoglineHintProvider_OpenIndexReader_ReadsFooter(t *testing.T) {
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
-	meta := logproto.Meta{
+	meta := store.Meta{
 		Date:    docMin.UTC().Format("2006-01-02"),
 		Hash:    "aaaaaaaaaaaaaaaa",
 		Version: logline.CurrentVersion,
@@ -778,7 +778,7 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 
 	byShard := make(map[int][]string)
 	for shardValue := range 10 {
-		meta := logproto.Meta{
+		meta := store.Meta{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
 			ShardValue:     int64(shardValue),
@@ -930,11 +930,11 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
-// minimalMeta returns a logproto.Meta suitable for buildTermJobs tests that don't need real index data.
+// minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.
 // Only Version and ID-related fields are set; ShardCount=0 so filterNgramsForShard
 // passes all ngrams through unchanged.
-func minimalMeta(hash, date, indexVersion string) logproto.Meta {
-	return logproto.Meta{
+func minimalMeta(hash, date, indexVersion string) store.Meta {
+	return store.Meta{
 		Date:    date,
 		Hash:    hash,
 		Version: indexVersion,
@@ -946,7 +946,7 @@ func minimalMeta(hash, date, indexVersion string) logproto.Meta {
 // doesn't accidentally drop the second block.
 func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []logproto.Meta{
+	metas := []store.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
@@ -973,7 +973,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 	}
 
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []logproto.Meta{
+	metas := []store.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
@@ -992,7 +992,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 // unrecognised index version causes the query to fail with an error.
 func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	filter := "abcdefg"
-	metas := []logproto.Meta{
+	metas := []store.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
@@ -1006,7 +1006,7 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 // known index version.
 func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	filter := "ab" // too short for n=6
-	metas := []logproto.Meta{
+	metas := []store.Meta{
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 

@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 // shardGroup identifies a partitioning scheme. Indexes in the same group
@@ -23,7 +23,7 @@ type shardKey struct {
 	ShardValue int
 }
 
-func shardKeyOf(m logproto.Meta) shardKey {
+func shardKeyOf(m store.Meta) shardKey {
 	return shardKey{
 		shardGroup: shardGroup{
 			ShardCount:     int(m.ShardCount),
@@ -88,7 +88,7 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 // filterNgramsForShard returns only the ngrams that map to meta's shard.
 // For unsharded indexes (ShardCount <= 1) or unknown algorithms, returns
 // the full list unchanged.
-func filterNgramsForShard(ngrams []string, meta logproto.Meta) []string {
+func filterNgramsForShard(ngrams []string, meta store.Meta) []string {
 	if meta.ShardCount <= 1 {
 		return ngrams
 	}
