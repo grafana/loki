@@ -819,10 +819,6 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
 }
 
-// Compatibility with Cortex interface, this method is set to be removed in 1.12,
-// so nooping in Loki until then.
-func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
-
 // MaxQuerySeries returns the limit of the series of metric queries.
 func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
