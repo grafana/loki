@@ -45,8 +45,7 @@ func newTestSimpleIndexer(t *testing.T, bucket objstore.Bucket) (*SimpleIndexer,
 
 func newTestSimpleIndexerWithMetrics(t *testing.T, bucket objstore.Bucket, reg prometheus.Registerer) (*SimpleIndexer, error) {
 	t.Helper()
-	metrics, err := NewIndexerMetrics(reg)
-	require.NoError(t, err)
+	metrics := NewIndexerMetrics(reg)
 
 	return NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
 		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
@@ -135,6 +134,43 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, uint64(1), indexAttempts(t, reg, resultOK))
 		require.Equal(t, uint64(2), indexAttempts(t, reg, resultError))
 	})
+
+	t.Run("should count a cancelled attempt apart from failures", func(t *testing.T) {
+		idx, reg := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		_, err := idx.Index(ctx, createTestLogObject(t, 1), "objects/test")
+		require.ErrorIs(t, err, context.Canceled)
+
+		require.Equal(t, uint64(1), indexAttempts(t, reg, resultCancelled))
+		require.Equal(t, uint64(0), indexAttempts(t, reg, resultError))
+		require.Equal(t, uint64(0), indexAttempts(t, reg, resultOK))
+	})
+}
+
+func TestIndexerMetrics_ObserveIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "success", err: nil, want: resultOK},
+		{name: "failure", err: errors.New("boom"), want: resultError},
+		{name: "cancelled", err: context.Canceled, want: resultCancelled},
+		{name: "wrapped cancellation", err: fmt.Errorf("upload: %w", context.Canceled), want: resultCancelled},
+		{name: "deadline exceeded", err: context.DeadlineExceeded, want: resultError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			metrics := NewIndexerMetrics(reg)
+
+			metrics.observeIndex(time.Second, tc.err)
+
+			require.Equal(t, uint64(1), indexAttempts(t, reg, tc.want))
+		})
+	}
 }
 
 // indexAttempts reports the number of index attempts recorded for an outcome,
@@ -233,8 +269,7 @@ func TestSimpleIndexer_MultipleInstances(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	bucket := objstore.NewInMemBucket()
 
-	metrics, err := NewIndexerMetrics(reg)
-	require.NoError(t, err)
+	metrics := NewIndexerMetrics(reg)
 	builderMetrics := indexobj.NewBuilderMetrics(reg)
 	calculatorMetrics := NewCalculatorMetrics(reg)
 
@@ -256,10 +291,9 @@ func TestSimpleIndexer_MultipleInstances(t *testing.T) {
 // front rather than on the first data object.
 func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	metrics, err := NewIndexerMetrics(reg)
-	require.NoError(t, err)
+	metrics := NewIndexerMetrics(reg)
 
-	_, err = NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
+	_, err := NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
 		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
 	require.Error(t, err)
 }

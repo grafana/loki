@@ -126,7 +126,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 		}),
 	}
 
-	// TODO(ivkalita): refactor section builder metrics to accept reg in constructor and use promauto
 	if reg != nil {
 		if err := errors.Join(
 			m.indexPointers.Register(reg),

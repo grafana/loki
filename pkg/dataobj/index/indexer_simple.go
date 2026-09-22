@@ -70,9 +70,7 @@ func (s *SimpleIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath 
 	return s.index(ctx, obj, objPath, objLogger)
 }
 
-// release closes a resource the index build no longer needs. Failures are
-// counted and logged rather than returned: by the time anything is released
-// the index has been uploaded, so a cleanup failure must not fail it.
+// release closes a closer, logs an error and increases releaseFailures if close fails.
 func (s *SimpleIndexer) release(closer io.Closer, logger log.Logger, what string) {
 	if err := closer.Close(); err != nil {
 		s.metrics.releaseFailures.Inc()

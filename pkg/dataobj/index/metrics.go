@@ -1,6 +1,8 @@
 package index
 
 import (
+	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -225,8 +227,9 @@ func (m *CalculatorMetrics) observeStepDuration(step string, duration time.Durat
 
 // Outcomes reported by the result label of the index duration metric.
 const (
-	resultOK    = "ok"
-	resultError = "error"
+	resultOK        = "ok"
+	resultError     = "error"
+	resultCancelled = "cancelled"
 )
 
 // IndexerMetrics holds every metric a [SimpleIndexer] reports.
@@ -237,7 +240,7 @@ type IndexerMetrics struct {
 
 // NewIndexerMetrics creates the metrics for a [SimpleIndexer] and registers
 // them with reg.
-func NewIndexerMetrics(reg prometheus.Registerer) (*IndexerMetrics, error) {
+func NewIndexerMetrics(reg prometheus.Registerer) *IndexerMetrics {
 	factory := promauto.With(reg)
 
 	duration := factory.NewHistogramVec(prometheus.HistogramOpts{
@@ -254,6 +257,7 @@ func NewIndexerMetrics(reg prometheus.Registerer) (*IndexerMetrics, error) {
 	// as zero rather than going missing until the first one happens.
 	duration.WithLabelValues(resultOK)
 	duration.WithLabelValues(resultError)
+	duration.WithLabelValues(resultCancelled)
 
 	return &IndexerMetrics{
 		duration: duration,
@@ -261,15 +265,21 @@ func NewIndexerMetrics(reg prometheus.Registerer) (*IndexerMetrics, error) {
 			Name: "loki_dataobj_builder_index_release_failures_total",
 			Help: "Total number of failures to release an index object's scratch storage.",
 		}),
-	}, nil
+	}
 }
 
 // observeIndex records how long an attempt to index a data object took, and
 // whether it succeeded.
 func (m *IndexerMetrics) observeIndex(duration time.Duration, err error) {
-	result := resultOK
-	if err != nil {
+	var result string
+	switch {
+	case err == nil:
+		result = resultOK
+	case errors.Is(err, context.Canceled):
+		result = resultCancelled
+	default:
 		result = resultError
 	}
+
 	m.duration.WithLabelValues(result).Observe(duration.Seconds())
 }
