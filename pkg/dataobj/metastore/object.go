@@ -103,8 +103,18 @@ func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescripto
 // data object's builder assigns its own stream IDs, so the same ID names a different stream in
 // another object.
 func (d DataobjSectionDescriptors) StreamIDs() []int64 {
-	seen := make(map[int64]struct{})
-	out := make([]int64, 0, len(d))
+	// One object holds far more streams than sections, so size by the stream IDs rather than by
+	// the descriptors that carry them.
+	var total int
+	for _, descriptor := range d {
+		total += len(descriptor.StreamIDs)
+	}
+
+	var (
+		out  = make([]int64, 0, total)
+		seen = make(map[int64]struct{})
+	)
+
 	for _, descriptor := range d {
 		for _, id := range descriptor.StreamIDs {
 			if _, duplicate := seen[id]; duplicate {

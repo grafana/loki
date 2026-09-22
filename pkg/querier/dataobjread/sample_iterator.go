@@ -27,8 +27,8 @@ type SampleIterator struct {
 	reader    recordReader
 	extractor syntax.SampleExtractor
 
-	// lastStreamHash, lastLabels and lastExtractor are the extractor of the stream the previous
-	// record belonged to, and hasLastExtractor reports whether there was one.
+	// lastStreamHash and lastLabels identify the stream the previous record belonged to, and
+	// lastExtractor is that stream's extractor. hasLastExtractor reports whether there was one.
 	lastStreamHash   uint64
 	lastLabels       labels.Labels
 	lastExtractor    logqllog.StreamSampleExtractor
@@ -74,9 +74,6 @@ func (it *SampleIterator) Next() bool {
 // labelsString renders a Process result's labels, reusing the cached string while the same
 // labels recur. That saves one interface call per line of a constant-label stream, or per
 // repeated grouping value.
-//
-// LabelsResult is an interface, and comparing two compares their dynamic values. Its only
-// implementation is a pointer, so this is an identity check.
 func (it *SampleIterator) labelsString(resultLabels logqllog.LabelsResult) string {
 	if resultLabels != it.lastResultLabels {
 		it.lastResultLabels = resultLabels

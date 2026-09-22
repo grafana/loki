@@ -44,16 +44,18 @@ type LogRecord struct {
 
 // LogReader runs a read plan and yields decoded log lines in batches.
 //
-// Each section is scanned exactly once by one row reader, with all its streams matched together
-// and only the planned columns read, and up to maxConcurrency sections are scanned at once to
-// hide object-storage latency.
+// One row reader scans each planned section, matching all of its streams together and reading
+// only the planned columns. The planner rejects a section it was given twice, so no section is
+// scanned twice.
+//
+// Up to maxConcurrency sections are scanned at once, to hide object-storage latency.
 //
 // Records are forwarded one batch at a time, so a read costs one channel send per batch rather
 // than one per record.
 //
 // The output carries no order. Batches from different sections interleave as their reads
 // complete, so a consumer must not depend on the order. The sample iterator does not, and the
-// data-object band is never deduplicated against another source.
+// data-object tier is never deduplicated against another source.
 //
 // The records in flight do not grow with the sample count. The plan does grow with the stream
 // count: every queued task references its object's decoded streams, one label set each.
@@ -201,7 +203,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 	r.metrics.taskScanSeconds.Add(time.Duration(scannedNanos.Load()).Seconds())
 }
 
-func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) error {
+func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (returnErr error) {
 	object, err := r.objects.get(ctx, task.objectPath)
 	if err != nil {
 		return err
@@ -212,7 +214,12 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) e
 	}
 
 	reader := logs.NewRowReader(section)
-	defer reader.Close()
+	defer func() {
+		// Report a close failure only when nothing else failed, so the first error wins.
+		if closeErr := reader.Close(); returnErr == nil {
+			returnErr = closeErr
+		}
+	}()
 
 	if err := reader.SetProjectedColumns(task.columns, task.metadataNames); err != nil {
 		return err
@@ -276,6 +283,7 @@ func (r *LogReader) Next() bool {
 	}
 }
 
+// At returns the record the last Next fetched, so it panics unless Next returned true.
 func (r *LogReader) At() LogRecord { return r.currBatch[r.currPos] }
 
 func (r *LogReader) Err() error {

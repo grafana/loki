@@ -112,15 +112,20 @@ type openObject struct {
 
 // streamLabels decodes the labels of the wanted stream IDs, reading only those streams.
 //
-// The returned label sets may be retained. The streams reader allocates a fresh one per row
-// because it decodes with label-buffer reuse off; reading with streams.WithReuseLabelsBuffer
-// would make them alias one buffer and corrupt this map.
+// The returned label sets may be retained: [streams.NewRowReader] allocates a fresh one per row
+// and never hands out a shared buffer.
 //
-// The read fails when the streams section carries no shard-bucket column.
+// The read fails when the streams section carries no shard-bucket column, and when the object
+// holds no streams section for the tenant at all.
 func (o *openObject) streamLabels(ctx context.Context, want []int64, shardBuckets *shardBucketRange) (byID map[int64]labels.Labels, returnErr error) {
 	byID = make(map[int64]labels.Labels, len(want))
-	if o.tenant.Streams == nil || len(want) == 0 {
+	if len(want) == 0 {
 		return byID, nil
+	}
+	if o.tenant.Streams == nil {
+		// The metastore listed streams of this object, so the object must hold the section they
+		// came from.
+		return nil, fmt.Errorf("data object %q holds no streams section for the tenant, though %d of its streams were listed", o.path, len(want))
 	}
 
 	section, err := o.openStreamsSection(ctx)
@@ -130,7 +135,7 @@ func (o *openObject) streamLabels(ctx context.Context, want []int64, shardBucket
 
 	// A section written before the shard-bucket column existed matches no row under the bucket
 	// predicate, so reading one would return no stream at all. Failing says so instead of
-	// reporting an empty result. The section already holds its columns, so this reads nothing.
+	// reporting an empty result.
 	if !section.HasColumn(streams.ColumnTypeShardBucket) {
 		return nil, fmt.Errorf("data object %q has no %s column in its streams section, which this read path requires", o.path, streams.ColumnTypeShardBucket)
 	}
@@ -183,10 +188,6 @@ func (o *openObject) openStreamsSection(ctx context.Context) (*streams.Section, 
 	}
 	descriptor := o.tenant.Streams
 	o.mu.Unlock()
-
-	if descriptor == nil {
-		return nil, nil
-	}
 
 	// Open outside the lock so it does not block a concurrent logs-section read of this object.
 	section, err := streams.Open(ctx, descriptor)

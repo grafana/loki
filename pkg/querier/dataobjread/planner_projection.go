@@ -24,10 +24,11 @@ type ProjectionPlan struct {
 	// needAllMetadata reports whether every metadata column must be read.
 	needAllMetadata bool
 
-	// metadataNames are the metadata columns to read when needAllMetadata is false, sorted.
+	// metadataNames name the metadata columns to read when needAllMetadata is false, sorted.
 	metadataNames []string
 
-	// pushdownCandidates are the query's metadata matchers a read may push down.
+	// pushdownCandidates are the query's label-filter matchers a read may push down. A name one
+	// of them carries can turn out to be a stream label rather than metadata.
 	pushdownCandidates []*labels.Matcher
 }
 
@@ -234,7 +235,11 @@ func metadataPredicate(matcher *labels.Matcher) logs.RowPredicate {
 	}
 }
 
-// canErrorInOrder reports whether a failure of the given pipeline survives to the output labels.
+// canErrorInOrder reports whether a failure of the pipeline's label filters, or of its unwrap,
+// survives to the output labels.
+//
+// A parser or a formatter can fail too. Those are not considered here, because the caller reads
+// every metadata column for them anyway.
 //
 // It follows the order the stages run in, which is not the order a plan walks the expression: the
 // pipeline stages first, then the unwrap, then the unwrap's own filters. That order decides the
@@ -294,13 +299,13 @@ func dropsErroredLines(filter logqllog.LabelFilterer) bool {
 // reducesOutputLabels reports whether the top-level aggregation of expr reduces the output to a
 // label set that can be listed ahead of time, so unreferenced metadata cannot surface.
 func reducesOutputLabels(expr syntax.SampleExpr) bool {
-	// Only an aggregation whose grouping the extractor injects does. Injection replaces the whole
-	// label set with the grouped one at extraction time, which is what stops an unread metadata
-	// column from surfacing. Without it the extractor emits every label, and dropping a column
-	// would merge the series that differ only in it.
+	// Only an aggregation whose grouping the extractor injects does. Injection replaces the label
+	// set with the grouping at extraction time, which is what stops an unread metadata column
+	// from surfacing. Without injection the extractor keeps the labels the pipeline produced, so
+	// dropping a column would merge the series that differ only in it.
 	//
-	// [syntax.CanInjectVectorGrouping] decides it. Asking it rather than restating its rule keeps
-	// this from drifting when LogQL changes which operations qualify.
+	// [syntax.CanInjectVectorGrouping] decides which operation pairs qualify. Asking it rather
+	// than restating its rule keeps this from drifting when LogQL changes them.
 	aggr, ok := expr.(*syntax.VectorAggregationExpr)
 	if !ok {
 		return false
@@ -353,7 +358,7 @@ func nonNilMatcher(matcher *labels.Matcher) []*labels.Matcher {
 // isPipelineErrorLabel reports whether a name is one of the labels the pipeline sets when a
 // stage fails.
 //
-// A filter on either reads the error the builder holds, never a stored column, so neither is a
+// A filter on one of them reads the error the builder holds, never a stored column, so none is a
 // metadata matcher in any direction: pushing one down would filter rows against a column no
 // object has, and handing one to the metastore would drop every section.
 func isPipelineErrorLabel(name string) bool {

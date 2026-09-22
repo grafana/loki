@@ -101,6 +101,7 @@ func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastor
 	return s, nil
 }
 
+// String names the store in a trace.
 func (s *dataObjStore) String() string { return "dataobj" }
 
 // SelectSamples returns the samples of a metric query.
@@ -246,7 +247,9 @@ func dataObjRequestShard(shards []string) (*logql.Shard, error) {
 		return nil, err
 	}
 	if len(parsed) == 0 {
-		return nil, nil
+		// Reporting no shard would make every shard of the request read every stream, and the
+		// frontend would then sum one whole result per shard.
+		return nil, fmt.Errorf("data object metric queries could not read a shard from %v", shards)
 	}
 	if len(parsed) > 1 {
 		return nil, fmt.Errorf("data object metric queries support one shard per request, got %d", len(parsed))

@@ -21,7 +21,7 @@ const (
 	maxParallelObjectResolves = 128
 )
 
-// planner turns a metric query into the section-read tasks the reader runs. It
+// Planner turns a metric query into the section-read tasks the reader runs. It
 // resolves the sections, reads each object's streams to compute stream hashes, and applies the
 // per-stream filters.
 type Planner struct {
@@ -36,7 +36,7 @@ func NewPlanner(ms metastore.Metastore, objects *OpenObjects, filterer chunk.Fil
 	return &Planner{metastore: ms, objects: objects, filterer: filterer}
 }
 
-// plan resolves the query's sections and streams the resulting tasks through the returned
+// Plan resolves the query's sections and streams the resulting tasks through the returned
 // iterator.
 //
 // Resolution and the per-object streams reads run in a background goroutine, so the reader can
@@ -153,7 +153,19 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 	})
 
 	tasks := make([]ReadTask, 0, len(descriptors))
+	planned := make(map[int64]struct{}, len(descriptors))
 	for _, descriptor := range descriptors {
+		// One task per section. The metastore concatenates the descriptors of every index object
+		// without merging across them, so two index objects describing one section would plan it
+		// twice and emit every one of its rows twice.
+		if _, repeated := planned[descriptor.SectionIdx]; repeated {
+			return nil, fmt.Errorf(
+				"data object %q logs section %d was listed twice, so reading it would count its rows twice",
+				path, descriptor.SectionIdx,
+			)
+		}
+		planned[descriptor.SectionIdx] = struct{}{}
+
 		task, ok, err := p.planSection(descriptor, streams, query)
 		if err != nil {
 			return nil, err

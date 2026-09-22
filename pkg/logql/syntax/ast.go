@@ -1872,9 +1872,9 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 
 // CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
 //
-// Injecting it makes the extractor emit the grouped label set instead of the whole one, so a
-// caller that decides what to read has to ask this too: without the injection every label
-// reaches the output.
+// An injected grouping replaces the extractor's label set at extraction time. It reaches the
+// extractor only when the range aggregation carries no grouping of its own, because that one
+// wins.
 func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
 	if vecOp != OpTypeSum {
 		return false
