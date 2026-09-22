@@ -76,6 +76,37 @@ func TestChunkFlushingShutdown(t *testing.T) {
 	store.checkData(t, testData)
 }
 
+func TestFlushHandlerRejectsRequestsAfterShutdown(t *testing.T) {
+	_, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/flush", nil)
+
+	ing.FlushHandler(w, r)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest(http.MethodPost, "/flush/tenant", nil)
+
+	ing.FlushTenantHandler(w, r)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestSweepUsersAfterFlushQueuesClosed(t *testing.T) {
+	_, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+	_ = pushTestSamples(t, ing)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	var swept bool
+	require.NotPanics(t, func() {
+		swept = ing.sweepUsers(true, true)
+	})
+	require.False(t, swept)
+}
+
 type fullWAL struct{}
 
 func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
