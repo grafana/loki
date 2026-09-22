@@ -39,6 +39,8 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
+
 	defer svc.client.Close()
 
 	now := time.Now()

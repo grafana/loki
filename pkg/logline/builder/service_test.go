@@ -183,7 +183,7 @@ func TestService_New(t *testing.T) {
 	require.NotNil(t, svc)
 
 	// New calls cfg.Validate which mutates the local copy to apply defaults
-	// (ring fields, KafkaSessionTimeout, etc). Apply the same defaults to
+	// (ring fields, kafka session timeout, etc). Apply the same defaults to
 	// the test's cfg before comparing so we assert "svc stored what we
 	// passed, modulo defaults" rather than "svc kept the raw input".
 	require.NoError(t, cfg.Validate())
@@ -191,6 +191,13 @@ func TestService_New(t *testing.T) {
 	require.NotNil(t, svc.logger)
 	require.NotNil(t, svc.metrics)
 	require.NotNil(t, svc.activeBuilder)
+
+	// New must not create the Kafka client: that joins the consumer group,
+	// and the partition ring is not readable until services start. The
+	// balancer would assign nothing and strand the group.
+	require.Nil(t, svc.client, "New must not join the consumer group")
+
+	require.NoError(t, svc.initKafkaClient())
 	require.NotNil(t, svc.client)
 
 	// Clean up
@@ -326,6 +333,7 @@ func TestService_FlushSwap(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	svc.builderMtx.Lock()
@@ -398,6 +406,7 @@ func TestService_WaitForFlushBackpressure(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	ctx := context.Background()
@@ -546,6 +555,7 @@ func TestService_PreMinDateOffsetCommit(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, tomorrow, newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	// Produce a record with an old log-line timestamp.
@@ -640,6 +650,7 @@ func TestMultiPartitionOffsetTracking(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	require.Empty(t, snapshotLastConsumedOffsets(svc))
@@ -672,6 +683,7 @@ func TestProcessRecordBatch_DecodeErrorFailsFast(t *testing.T) {
 
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, reg)
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	now := time.Now()
@@ -960,4 +972,63 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	debug.SetMemoryLimit(0)
 	ok, _ = svc.shouldFlush()
 	require.False(t, ok, "unset GOMEMLIMIT disables the trigger")
+}
+
+// TestService_NoConsumerGroupJoinBeforeRingPopulated pins the startup
+// ordering between the partition ring and the Kafka consumer group.
+//
+// The balancer takes its sticky set from the ring's whole partition list, so
+// an empty ring gives it a sticky count of zero and it refuses to balance,
+// returning an empty plan and leaving the group idle until some unrelated
+// membership change forces another rebalance.
+// franz-go starts the group manager off the first metadata response rather
+// than the first PollFetches, so a client built in New would join the group
+// during module init, before any service (including the ring watcher) has
+// started. The client must therefore not exist until starting() has cleared
+// the ring gate.
+func TestService_NoConsumerGroupJoinBeforeRingPopulated(t *testing.T) {
+	cluster, cfg := setupKafkaTest(t)
+	defer cluster.Close()
+
+	// Fail the gate quickly instead of waiting out the 60s default.
+	cfg.WaitRingPopulatedTimeout = 200 * time.Millisecond
+
+	logger := log.NewNopLogger()
+	_, indexStore := newTestStore(t)
+
+	emptyRing := newFakePartitionRing()
+	svc, err := New(indexStore, cfg, "2026-01-01", emptyRing, logger, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.Nil(t, svc.client, "New must not join the consumer group")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = svc.starting(ctx)
+	require.ErrorContains(t, err, "partition ring not ready")
+	require.Nil(t, svc.client, "an empty ring must not produce a Kafka client")
+
+	// stopping() must survive a starting() that never built the client.
+	require.NoError(t, svc.stopping(err))
+}
+
+// TestService_StartingCreatesClientOnceRingIsPopulated is the positive half of
+// the ordering contract: a populated ring lets starting() build the client.
+func TestService_StartingCreatesClientOnceRingIsPopulated(t *testing.T) {
+	cluster, cfg := setupKafkaTest(t)
+	defer cluster.Close()
+
+	logger := log.NewNopLogger()
+	_, indexStore := newTestStore(t)
+
+	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), logger, prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.Nil(t, svc.client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	require.NoError(t, svc.starting(ctx))
+	require.NotNil(t, svc.client)
+	svc.client.Close()
 }

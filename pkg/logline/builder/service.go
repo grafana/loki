@@ -167,12 +167,6 @@ func New(
 	empty := []kafka.PartitionID{}
 	svc.ownedPartitions.Store(&empty)
 
-	kafkaClient, err := svc.createKafkaClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Kafka client: %w", err)
-	}
-	svc.client = kafkaClient
-
 	svc.Service = services.NewBasicService(svc.starting, svc.running, svc.stopping)
 
 	return svc, nil
@@ -359,6 +353,19 @@ func (s *Service) starting(ctx context.Context) error {
 	if err := waitForPartitions(ctx, s.partitionRing, s.cfg.WaitRingPopulatedTimeout, s.logger); err != nil {
 		return fmt.Errorf("partition ring not ready: %w", err)
 	}
+
+	// Ring is not empty, we can start consuming now.
+	return s.initKafkaClient()
+}
+
+// initKafkaClient builds the Kafka client.
+// Callers must not invoke it before the partition ring is populated.
+func (s *Service) initKafkaClient() error {
+	client, err := s.createKafkaClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Kafka client: %w", err)
+	}
+	s.client = client
 	return nil
 }
 
@@ -368,8 +375,10 @@ func waitForPartitions(ctx context.Context, r ring.PartitionRingReader, timeout 
 	if r.PartitionRing().PartitionsCount() > 0 {
 		return nil
 	}
+
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
+
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 
@@ -546,6 +555,12 @@ func (s *Service) reconcileActiveSetLoop(ctx context.Context, interval time.Dura
 
 func (s *Service) stopping(stoppingErr error) error {
 	level.Info(s.logger).Log("msg", "service stopping", "err", stoppingErr)
+	if s.client == nil {
+		// starting() failed before it built the client, so there is no
+		// consumer group to leave and nothing buffered to flush.
+		level.Info(s.logger).Log("msg", "no Kafka client to close, stopping early")
+		return nil
+	}
 	defer s.client.Close()
 	// The partition ring service is owned by the caller — see Service.starting.
 

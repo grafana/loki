@@ -258,6 +258,7 @@ func TestService_ExtractThreadsFlushCommit(t *testing.T) {
 	bucket, indexStore := newTestStore(t)
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
+	require.NoError(t, svc.initKafkaClient())
 	defer svc.client.Close()
 
 	// The commit path filters to owned partitions. The kgo group client joins
