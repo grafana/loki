@@ -8,11 +8,11 @@ import (
 	"runtime/debug"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
