@@ -1,5 +1,4 @@
-// Package config holds the top-level logline configuration, the single
-// "logline" section of Loki's config file.
+// Package config holds the top-level logline configuration.
 package config
 
 import (
@@ -9,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
-// Config is the "logline" section of Loki's config.
+// Config is the logline section of Loki's config.
 type Config struct {
 	// Store is shared by every logline component, so it lives here rather
 	// than under any one of them.
