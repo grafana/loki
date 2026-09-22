@@ -470,6 +470,7 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 	if err := m.truncateWAL(head.start); err != nil {
 		level.Error(m.log).Log(
 			"msg", "failed truncating wal file",
+			"head_start", head.start,
 			"period", m.period.PeriodFor(head.start),
 			"err", err,
 		)
@@ -492,7 +493,7 @@ func (m *HeadManager) truncateWAL(ts time.Time) (err error) {
 	if err := os.RemoveAll(path); err != nil {
 		return errors.Wrapf(err, "removing tsdb wal: %s", path)
 	}
-	level.Debug(m.log).Log("msg", "removed wal", "path", path)
+	level.Debug(m.log).Log("msg", "removed wal", "ts", ts, "path", path)
 
 	return nil
 }
