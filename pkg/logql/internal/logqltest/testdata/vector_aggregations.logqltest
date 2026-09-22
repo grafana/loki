@@ -60,6 +60,36 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
   {app="foo"} 18
   {app="bar"} 6
 
+# sum() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "v={{.i}}" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "v={{.i}}" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "v={{.i}}" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "v={{.i}}" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "v={{.i}}" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s sum by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 8   # 3 + 5
+  {zone="us"} 30  # 10 + 20
+eval range from 20s to 60s step 20s sum by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 3 6 8
+  {zone="us"} 9 19 30
+eval instant at 60s sum without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 8
+  {app="foo", zone="us"} 30
+eval instant at 60s sum by (zone) (max_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {zone="eu"} 6   # 2 + 4, not max(2, 4)
+  {zone="us"} 28  # 9 + 19, not max(9, 19)
+eval instant at 60s sum without (extra) (max_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {app="foo", zone="eu"} 6
+  {app="foo", zone="us"} 28
+
 # A __error__ set directly as structured metadata is an extraction error too. It still fails the
 # query, and a __error__ filter still drops it.
 clear
@@ -158,6 +188,30 @@ eval instant at 60s avg without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", zone="eu"} 9
   {app="bar", zone="us"} 21
 
+# avg() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s avg by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 4   # (3 + 5) / 2
+  {zone="us"} 15  # (10 + 20) / 2
+eval range from 20s to 60s step 20s avg by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1.5 3 4
+  {zone="us"} 4.5 9.5 15
+eval instant at 60s avg without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 4
+  {app="foo", zone="us"} 15
+
 # avg() with special inputs.
 clear
 load
@@ -237,6 +291,30 @@ eval range from 20s to 60s step 20s min by (zone) (count_over_time({app=~"foo|ba
 eval instant at 60s min without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 6
   {app="bar", zone="us"} 12
+
+# min() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s min by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 3   # min(3, 5)
+  {zone="us"} 10  # min(10, 20)
+eval range from 20s to 60s step 20s min by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1 2 3
+  {zone="us"} 3 6 10
+eval instant at 60s min without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 3
+  {app="foo", zone="us"} 10
 
 # min() with special inputs.
 clear
@@ -318,6 +396,30 @@ eval instant at 60s max without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
   {app="foo", zone="eu"} 12
   {app="bar", zone="us"} 30
 
+# max() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s max by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 5   # max(3, 5)
+  {zone="us"} 20  # max(10, 20)
+eval range from 20s to 60s step 20s max by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 2 4 5
+  {zone="us"} 6 13 20
+eval instant at 60s max without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 5
+  {app="foo", zone="us"} 20
+
 # max() with special inputs.
 clear
 load
@@ -393,6 +495,28 @@ eval range from 20s to 60s step 20s count by (zone) (count_over_time({app=~"foo|
 eval instant at 60s count without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 2
   {app="bar", zone="us"} 1
+
+# count() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 10s [repeat every 10s for 18] [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 50s [repeat every 10s for 14] [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 30s [repeat every 10s for 16] [metadata zone="us" extra="1"]
+  {app="noise"} "x" @ 10s [repeat every 10s for 18] [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 6
+  {app="foo", zone="eu", extra="2"} 2
+  {app="foo", zone="us", extra="1"} 4
+eval instant at 60s count by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 2
+  {zone="us"} 1
+eval range from 20s to 60s step 20s count by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1 1 2
+  {zone="us"} _ 1 1
+eval instant at 60s count without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 2
+  {app="foo", zone="us"} 1
 
 # count() with special inputs.
 clear
@@ -472,6 +596,30 @@ eval range from 20s to 60s step 20s stddev by (zone) (count_over_time({app=~"foo
 eval instant at 60s stddev without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 3
   {app="bar", zone="us"} 9
+
+# stddev() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s stddev by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1   # mean 4, so both of {3, 5} deviate 1
+  {zone="us"} 5   # mean 15, so both of {10, 20} deviate 5
+eval range from 20s to 60s step 20s stddev by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 0.5 1 1
+  {zone="us"} 1.5 3.5 5
+eval instant at 60s stddev without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 1
+  {app="foo", zone="us"} 5
 
 # stddev() with special inputs.
 clear
@@ -553,6 +701,30 @@ eval range from 20s to 60s step 20s stdvar by (zone) (count_over_time({app=~"foo
 eval instant at 60s stdvar without (pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", zone="eu"} 9
   {app="bar", zone="us"} 81
+
+# stdvar() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s stdvar by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 1   # mean 4, deviation 1, variance 1 x 1
+  {zone="us"} 25  # mean 15, deviation 5, variance 5 x 5
+eval range from 20s to 60s step 20s stdvar by (zone) (count_over_time({app="foo"}[1m]))
+  {zone="eu"} 0.25 1 1
+  {zone="us"} 2.25 12.25 25
+eval instant at 60s stdvar without (extra) (count_over_time({app="foo"}[1m]))
+  {app="foo", zone="eu"} 1
+  {app="foo", zone="us"} 25
 
 # stdvar() with special inputs.
 clear
@@ -639,6 +811,35 @@ eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) wi
   {app="bar", pod="a"} 15
   {app="bar", pod="b"} 30
 
+# topk() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s topk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="2"} 20
+eval range from 20s to 60s step 20s topk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="2"} 2 4 5
+  {app="foo", zone="us", extra="2"} 6 13 20
+eval instant at 60s topk(2, count_over_time({app="foo"}[1m])) by (zone)  # k=2 takes both series
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s topk(1, count_over_time({app="foo"}[1m])) without (extra)
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="2"} 20
+
 # topk() with special inputs.
 clear
 load
@@ -719,6 +920,35 @@ eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo", pod="a"} 6
   {app="foo", pod="b"} 12
 
+# bottomk() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s bottomk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="us", extra="1"} 10
+eval range from 20s to 60s step 20s bottomk(1, count_over_time({app="foo"}[1m])) by (zone)
+  {app="foo", zone="eu", extra="1"} 1 2 3
+  {app="foo", zone="us", extra="1"} 3 6 10
+eval instant at 60s bottomk(2, count_over_time({app="foo"}[1m])) by (zone)  # k=2 takes both series
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s bottomk(1, count_over_time({app="foo"}[1m])) without (extra)
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="us", extra="1"} 10
+
 # bottomk() with special inputs.
 clear
 load
@@ -764,6 +994,28 @@ eval instant at 60s sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1
   {app="foo", pod="b"} 1.2
   {app="foo", pod="a"} 1.1
   {app="bar", pod="a"} 1.05
+
+# sort() / sort_desc() over series that differ only by a non-grouped structured metadata pair.
+clear
+load
+  {app="foo"}   "x" @ 20s [repeat every 20s for 3]  [metadata zone="eu" extra="1"]
+  {app="foo"}   "x" @ 10s [repeat every 10s for 5]  [metadata zone="eu" extra="2"]
+  {app="foo"}   "x" @ 6s  [repeat every 6s  for 10] [metadata zone="us" extra="1"]
+  {app="foo"}   "x" @ 3s  [repeat every 3s  for 20] [metadata zone="us" extra="2"]
+  {app="noise"} "x" @ 30s [repeat every 10s for 3]  [metadata zone="eu" extra="1"]
+
+eval instant at 60s sort(count_over_time({app="foo"}[1m]))
+  expect ordered
+  {app="foo", zone="eu", extra="1"} 3
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="us", extra="2"} 20
+eval instant at 60s sort_desc(count_over_time({app="foo"}[1m]))
+  expect ordered
+  {app="foo", zone="us", extra="2"} 20
+  {app="foo", zone="us", extra="1"} 10
+  {app="foo", zone="eu", extra="2"} 5
+  {app="foo", zone="eu", extra="1"} 3
 
 # sort() / sort_desc() with special inputs.
 #
