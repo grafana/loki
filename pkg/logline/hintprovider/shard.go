@@ -69,8 +69,9 @@ func intersectRanges(a, b []logproto.HintTimeRange) []logproto.HintTimeRange {
 		// Half-open: start == end is empty, not an instant match.
 		if start.Before(end) {
 			out = append(out, logproto.HintTimeRange{
-				Start: start,
-				End:   end,
+				Start:  start,
+				End:    end,
+				Source: mergeSources(a[i].Source, b[j].Source),
 			})
 		}
 

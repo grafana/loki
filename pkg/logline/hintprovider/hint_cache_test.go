@@ -456,8 +456,9 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 func TestCachedHints_JSONRoundTrip(t *testing.T) {
 	input := []logproto.HintTimeRange{
 		{
-			Start: time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
-			End:   time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
+			Start:  time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
+			End:    time.Date(2026, 3, 10, 2, 5, 0, 0, time.UTC),
+			Source: "debug-source",
 		},
 	}
 

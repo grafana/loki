@@ -22,6 +22,11 @@ const maxLoggedHintRanges = 10
 // hintRangeTimeFormat is RFC3339 with millisecond precision for compact log output.
 const hintRangeTimeFormat = "2006-01-02T15:04:05.000Z07:00"
 
+// HintSourcePreMinDate marks synthetic diagnostic provenance for ranges
+// representing query windows before store min_date. This must not be used for
+// required behavior because Source is intentionally omitted from cache payloads.
+const HintSourcePreMinDate = "pre_min_date"
+
 // QueryHintProvider inspects a query and returns narrowed scan hints.
 type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)

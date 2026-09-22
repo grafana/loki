@@ -330,6 +330,12 @@ func hintTimeRangeForMeta(meta logproto.Meta) logproto.HintTimeRange {
 	return logproto.HintTimeRange{
 		Start: meta.MinLogTs,
 		End:   meta.MaxLogTs.Add(time.Millisecond),
+		Source: fmt.Sprintf(
+			"index=%s,matches_all,min=%s,max=%s",
+			meta.ID(),
+			meta.MinLogTs.Format(time.RFC3339Nano),
+			meta.MaxLogTs.Format(time.RFC3339Nano),
+		),
 	}
 }
 
@@ -355,6 +361,13 @@ func rangesForDocIDs(meta logproto.Meta, docIDs []uint32, docs []format.Document
 		ranges = append(ranges, logproto.HintTimeRange{
 			Start: minTS,
 			End:   maxTS,
+			Source: fmt.Sprintf(
+				"index=%s,doc=%d,min=%s,max=%s",
+				meta.ID(),
+				doc.ID,
+				minTS.Format(time.RFC3339Nano),
+				maxTS.Format(time.RFC3339Nano),
+			),
 		})
 	}
 
