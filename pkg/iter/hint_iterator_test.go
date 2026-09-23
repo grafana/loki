@@ -37,6 +37,21 @@ func TestNewHintTimeRanges(t *testing.T) {
 	require.Equal(t, base.Add(6*time.Millisecond), through)
 }
 
+func TestNewHintTimeRangesClipsBeforeUnixNanoConversion(t *testing.T) {
+	from := time.Unix(100, 0)
+	through := from.Add(time.Hour)
+
+	ranges := NewHintTimeRanges([]logproto.HintTimeRange{{
+		Start: time.Time{},
+		End:   time.Date(3000, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}}, from, through)
+
+	gotFrom, gotThrough, ok := ranges.Bounds()
+	require.True(t, ok)
+	require.Equal(t, from, gotFrom)
+	require.Equal(t, through, gotThrough)
+}
+
 func TestHintTimeRangesOverlapSemantics(t *testing.T) {
 	base := time.Unix(100, 0)
 	ranges := NewHintTimeRanges(

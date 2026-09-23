@@ -28,10 +28,18 @@ func NewHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) 
 
 	result.ranges = make([]hintTimeRange, 0, len(hints))
 	for _, hint := range hints {
-		start := max(hint.Start.UnixNano(), from.UnixNano())
-		end := min(hint.End.UnixNano(), through.UnixNano())
-		if start < end {
-			result.ranges = append(result.ranges, hintTimeRange{start: start, end: end})
+		start, end := hint.Start, hint.End
+		if start.Before(from) {
+			start = from
+		}
+		if end.After(through) {
+			end = through
+		}
+		if start.Before(end) {
+			result.ranges = append(result.ranges, hintTimeRange{
+				start: start.UnixNano(),
+				end:   end.UnixNano(),
+			})
 		}
 	}
 
