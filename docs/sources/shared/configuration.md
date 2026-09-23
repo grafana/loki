@@ -4963,6 +4963,23 @@ shard_streams:
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
 
+  # Experimental. Whether the ingest-limits service is asked for a shard count
+  # for this tenant. One of 'disabled' (default, unchanged behavior) or 'shadow'
+  # (ask the limits service and compare its answer against the local rate
+  # store's; the local rate store still decides how streams are sharded).
+  # CLI flag: -shard-streams.limits-service-stream-sharding-mode
+  [limits_service_stream_sharding_mode: <string> | default = "disabled"]
+
+  # Experimental. The window the ingest-limits service averages this tenant's
+  # stream rates over when deciding shard counts. A shorter window reacts to
+  # shorter bursts, closer to the distributor's local rate store, which measures
+  # a one second window. 0 (default) uses the ingest-limits service's own
+  # rate_window. Clamped to the service's [bucket_size, rate_window], so raise
+  # the service-wide rate_window to allow a longer window here. The local rate
+  # store ignores this.
+  # CLI flag: -shard-streams.limits-service-stream-sharding-rate-window
+  [limits_service_stream_sharding_rate_window: <duration> | default = 0s]
+
 [blocked_queries: <blocked_query...>]
 
 # Define a list of required selector labels.

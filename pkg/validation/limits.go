@@ -642,6 +642,10 @@ func (l *Limits) Validate() error {
 		}
 	}
 
+	if err := l.ShardStreams.Validate(); err != nil {
+		return err
+	}
+
 	for policy, pl := range l.PolicyOverrideLimits {
 		if err := pl.Validate(); err != nil {
 			return fmt.Errorf("policy_override_limits[%q]: %w", policy, err)
