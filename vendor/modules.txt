@@ -1709,8 +1709,6 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.3.2
 ## explicit; go 1.21
 github.com/ugorji/go/codec
-# github.com/x448/float16 v0.8.4
-## explicit; go 1.11
 # github.com/xhit/go-str2duration/v2 v2.2.0
 ## explicit; go 1.13
 github.com/xhit/go-str2duration/v2
@@ -2398,8 +2396,6 @@ google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/structpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
-# gopkg.in/inf.v0 v0.9.1
-## explicit
 # gopkg.in/ini.v1 v1.67.3
 ## explicit; go 1.13
 gopkg.in/ini.v1
@@ -2479,10 +2475,6 @@ modernc.org/memory
 ## explicit; go 1.25.0
 modernc.org/sqlite/lib
 # sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5
-## explicit; go 1.23
-# sigs.k8s.io/randfill v1.0.0
-## explicit; go 1.18
-# sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 ## explicit; go 1.23
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
