@@ -209,7 +209,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 		},
@@ -223,7 +222,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 		},
@@ -247,7 +245,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "time: invalid duration \"not_a_number\"",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 			line:   "foo=not_a_number",
@@ -830,10 +827,12 @@ func TestLineSampleExtractor_ForStream_FilteredConstantIsolatesFromSiblingStream
 // whose structured metadata carries __error__ still surfaces the __error__ as series labels.
 func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadataError(t *testing.T) {
 	var (
-		// cluster is a stream label outside the grouping, so the cached grouped labels (namespace
-		// only) and the error fallback's full label set (both) are never accidentally equal.
+		// cluster is a stream label outside the grouping, so its absence from the fallback's result
+		// is what proves the grouping was applied and not bypassed.
 		streamLabels = labels.FromStrings("namespace", "dev", "cluster", "us-central1")
 		errLabel     = labels.FromStrings(logqlmodel.ErrorLabel, "SampleExtractionErr")
+		// The fallback groups like any other line and carries the error labels on top.
+		groupedWithErr = appendLabels(labels.FromStrings("namespace", "dev"), errLabel)
 	)
 
 	t.Run("noop constant path", func(t *testing.T) {
@@ -847,16 +846,16 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		require.True(t, ok)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 
-		// A line whose structured metadata carries __error__ must surface it, bypassing the cached
-		// grouped labels, exactly like the per-line builder path does.
+		// A line whose structured metadata carries __error__ must surface it, so it leaves the
+		// cached constant labels for the per-line builder, exactly like the normal path.
 		s, ok = sse.Process(0, []byte("line"), errLabel)
 		require.True(t, ok)
-		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// ProcessString takes the same fallback as Process.
 		s, ok = sse.ProcessString(0, "line", errLabel)
 		require.True(t, ok)
-		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// The cached constant path still serves the next normal line unaffected by the error line.
 		s, ok = sse.Process(0, []byte("line"), labels.EmptyLabels())
@@ -874,12 +873,12 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 
 		s, ok := sse.Process(0, []byte("keep me"), errLabel)
 		require.True(t, ok)
-		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// ProcessString takes the same fallback as Process.
 		s, ok = sse.ProcessString(0, "keep me", errLabel)
 		require.True(t, ok)
-		assertLabelResult(t, appendLabels(streamLabels, errLabel), s.Labels)
+		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// The stage still drops a line it rejects, even one whose structured metadata carries __error__.
 		_, ok = sse.Process(0, []byte("drop me"), errLabel)
