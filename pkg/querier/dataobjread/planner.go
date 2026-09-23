@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_server "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 const (
@@ -57,6 +58,8 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 		// and abort every other in-flight query.
 		defer func() {
 			if panicked := recover(); panicked != nil {
+				util_server.RecordPanic()
+
 				level.Error(util_log.Logger).Log(
 					"msg", "panic planning data object reads",
 					"panic", panicked,
@@ -98,6 +101,8 @@ func (p *Planner) planObjects(ctx context.Context, descriptors metastore.Dataobj
 			// this the panic takes the querier process down instead of one query.
 			defer func() {
 				if panicked := recover(); panicked != nil {
+					util_server.RecordPanic()
+
 					level.Error(util_log.Logger).Log(
 						"msg", "panic planning reads of a data object",
 						"object", path,

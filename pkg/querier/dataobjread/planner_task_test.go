@@ -260,7 +260,7 @@ func TestTaskIterator(t *testing.T) {
 		require.ErrorIs(t, it.Err(), context.Canceled, "an error Abort is given is the caller reporting a failure")
 	})
 
-	t.Run("Abort with no error drops the cancellation it causes", func(t *testing.T) {
+	t.Run("Abort with no error still reports the cancellation it causes", func(t *testing.T) {
 		ch := make(chan ReadTask)
 		cancelled := make(chan struct{})
 		it := newTaskIterator(ch, func() { close(cancelled) })
@@ -274,7 +274,10 @@ func TestTaskIterator(t *testing.T) {
 		}()
 
 		it.Abort(nil)
-		require.NoError(t, it.Err(), "stopping early is not a query failure")
+
+		// The iterator cannot tell a stop it was told to make from one the caller's context
+		// caused, so it reports both and lets the reader discount its own.
+		require.ErrorIs(t, it.Err(), context.Canceled)
 	})
 
 	t.Run("Abort is safe to call again after a normal drain", func(t *testing.T) {

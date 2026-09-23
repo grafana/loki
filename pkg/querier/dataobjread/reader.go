@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	util_server "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -79,14 +80,17 @@ type LogReader struct {
 	// stopped closes once the scan goroutine has fully exited.
 	stopped chan struct{}
 
-	cancel context.CancelFunc
+	// runCtx is the context the run lives under, and cancelRunCtx ends it. Once it is over, a
+	// cancellation the run reports is the reader's own stop rather than a query failure.
+	runCtx       context.Context
+	cancelRunCtx context.CancelFunc
 
-	errClosingMu sync.Mutex
-	err          error
-	closing      bool // Close cancelled the scans, rather than the caller
-
-	// parentCtx is the caller's context, as opposed to the cancellable one the scans run under.
+	// parentCtx is the caller's context, which is the only thing that says whether the caller
+	// ended the query. See [LogReader.Err].
 	parentCtx context.Context
+
+	errMu sync.Mutex
+	err   error
 
 	currBatch []LogRecord
 	currPos   int
@@ -98,21 +102,21 @@ func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator
 	maxConcurrency = max(maxConcurrency, 1)
 	batchSize = max(batchSize, 1)
 
-	parentCtx := ctx
-	ctx, cancel := context.WithCancel(ctx)
+	runCtx, cancelRunCtx := context.WithCancel(ctx)
 	r := &LogReader{
-		objects:   objects,
-		metrics:   metrics,
-		tasks:     tasks,
-		parentCtx: parentCtx,
-		capture:   xcap.CaptureFromContext(ctx),
-		statsCtx:  stats.FromContext(ctx),
-		batches:   make(chan []LogRecord, maxConcurrency),
-		stopped:   make(chan struct{}),
-		cancel:    cancel,
+		objects:      objects,
+		metrics:      metrics,
+		tasks:        tasks,
+		runCtx:       runCtx,
+		cancelRunCtx: cancelRunCtx,
+		parentCtx:    ctx,
+		capture:      xcap.CaptureFromContext(runCtx),
+		statsCtx:     stats.FromContext(runCtx),
+		batches:      make(chan []LogRecord, maxConcurrency),
+		stopped:      make(chan struct{}),
 	}
 
-	go r.runTasks(ctx, tasks, maxConcurrency, batchSize)
+	go r.runTasks(runCtx, tasks, maxConcurrency, batchSize)
 	return r
 }
 
@@ -126,6 +130,8 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 	// run, so the consumer sees the failure instead of blocking.
 	defer func() {
 		if panicked := recover(); panicked != nil {
+			util_server.RecordPanic()
+
 			// Log the stack: reducing the panic to an error is what keeps the process up, and it
 			// is also what throws away the only trace of where it came from.
 			level.Error(util_log.Logger).Log(
@@ -133,7 +139,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 				"panic", panicked,
 				"stack", string(debug.Stack()),
 			)
-			r.setErr(fmt.Errorf("reading data object logs: %v", panicked))
+			r.setRunErr(fmt.Errorf("reading data object logs: %v", panicked))
 		}
 	}()
 
@@ -148,17 +154,16 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 	// is released, and a scan still blocked on the batch channel would find it closed. Cancel
 	// first, or Wait blocks on a send nobody will drain.
 	defer func() {
-		r.cancel()
+		r.cancelRunCtx()
 		_ = group.Wait()
 	}()
 
 	for tasks.Next() {
 		if err := ctx.Err(); err != nil {
-			// Stop pulling tasks the planner may still be queueing. Record the cause: without
-			// it a cancelled query looks like a clean end of results and returns a truncated
-			// count with no error. A scan error recorded earlier wins, and setErr drops the
-			// cancellation Close itself caused.
-			r.setErr(context.Cause(ctx))
+			// Stop pulling tasks the planner may still be queueing. Record the cause, which is
+			// a sibling scan's failure once the group has cancelled the run. A plain
+			// cancellation is the reader's own stop, and setRunErr drops it.
+			r.setRunErr(context.Cause(ctx))
 			break
 		}
 		task := tasks.At()
@@ -167,6 +172,8 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 			// scan's error, which stops the siblings the same way a read failure does.
 			defer func() {
 				if panicked := recover(); panicked != nil {
+					util_server.RecordPanic()
+
 					level.Error(util_log.Logger).Log(
 						"msg", "panic scanning a data object logs section",
 						"object", task.objectPath,
@@ -175,7 +182,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 						"stack", string(debug.Stack()),
 					)
 					err = fmt.Errorf("scanning data object %q logs section %d: %v", task.objectPath, task.sectionIdx, panicked)
-					r.setErr(err)
+					r.setRunErr(err)
 				}
 			}()
 
@@ -185,7 +192,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 			if err != nil {
 				// Record the error as soon as a scan fails, so Next stops without draining the
 				// batches queued before it. The group then cancels the sibling scans.
-				r.setErr(err)
+				r.setRunErr(err)
 			}
 			return err
 		})
@@ -196,7 +203,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 	// A planning failure surfaces the same way a scan error does, so the query fails instead of
 	// quietly returning the tasks planned before it.
 	if err := tasks.Err(); err != nil {
-		r.setErr(err)
+		r.setRunErr(err)
 	}
 
 	r.metrics.taskWaitSeconds.Add(tasks.Waited().Seconds())
@@ -286,22 +293,42 @@ func (r *LogReader) Next() bool {
 // At returns the record the last Next fetched, so it panics unless Next returned true.
 func (r *LogReader) At() LogRecord { return r.currBatch[r.currPos] }
 
+// Err returns the query's failure (if any).
 func (r *LogReader) Err() error {
-	r.errClosingMu.Lock()
-	defer r.errClosingMu.Unlock()
-	return r.err
+	r.errMu.Lock()
+	defer r.errMu.Unlock()
+
+	// A read failure takes precedence over a cancellation, because it says why the query failed.
+	if r.err != nil {
+		return r.err
+	}
+
+	// A dead caller context is a failure in itself, whatever the run managed to report: the reader
+	// discounts the cancellations it causes, and neither a scan that never started nor a planner
+	// the reader aborted reports one. Asking the caller's context is also the only answer that does
+	// not depend on which cancellation landed first.
+	return context.Cause(r.parentCtx)
 }
 
-func (r *LogReader) setErr(err error) {
-	r.errClosingMu.Lock()
-	defer r.errClosingMu.Unlock()
-
-	if r.closing && errors.Is(err, context.Canceled) {
-		// Close cancelled the scans, so this is the cancellation they were given rather than a
-		// query failure. Close only sets closing once it has established that the caller's own
-		// context is still alive, so this cannot drop a cancellation the caller caused.
+// setRunErr records a failure reported from inside the run, which may be the cancellation the
+// reader caused itself.
+func (r *LogReader) setRunErr(err error) {
+	// Once the run is over, a cancellation is the reader stopping its own scans and the planner,
+	// not a query failure. Err answers whether the caller ended the query, so nothing here has
+	// to work out who cancelled.
+	if errors.Is(err, context.Canceled) && r.runCtx.Err() != nil {
 		return
 	}
+
+	r.setErr(err)
+}
+
+// setErr keeps err as the query's failure, unless an earlier one already is. The first error
+// wins because it is the one that explains the rest.
+func (r *LogReader) setErr(err error) {
+	r.errMu.Lock()
+	defer r.errMu.Unlock()
+
 	if r.err == nil {
 		r.err = err
 	}
@@ -312,29 +339,18 @@ func (r *LogReader) setErr(err error) {
 // released.
 //
 // Closing before the results are drained is not a failure, so Close reports no error for the
-// cancellation it causes.
+// cancellation it causes. It does report one the caller caused.
+//
+// Close returns the query's failure, not only a close-time error, so a caller that reads no
+// further than Close still learns the read failed.
 func (r *LogReader) Close() error {
-	// Decide, before anything is cancelled, whether a later cancellation is the caller's or
-	// this reader's own. Asking the caller's context is the whole question, and it does not
-	// depend on whether a scan goroutine recorded the cancellation first.
-	r.errClosingMu.Lock()
-	if cause := context.Cause(r.parentCtx); cause != nil {
-		// The caller's context died on its own, so the query failed whatever happens next. A
-		// scan may not have reported it yet, and the guard in setErr would then drop it.
-		if r.err == nil {
-			r.err = cause
-		}
-	} else {
-		r.closing = true
-	}
-	r.errClosingMu.Unlock()
-
 	// Stop the planner first and wait for it, so it has let go of the objects before the scans
 	// are cancelled and the objects released.
 	r.tasks.Abort(nil)
 
-	r.cancel()
+	r.cancelRunCtx()
 	<-r.stopped
+
 	r.recordStats()
 	r.objects.release()
 	return r.Err()
