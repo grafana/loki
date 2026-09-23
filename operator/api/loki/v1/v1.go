@@ -114,6 +114,7 @@ var (
 		"You can add the schema back to the spec up until the next compactor cycle."
 
 	// WarnRetentionUpdate warns users that changing retention affects schema removal validation
-	WarnRetentionUpdate = "Retention configuration has changed. Please be aware that schema removal validation uses current retention settings. " +
-		"Existing schemas can only be removed after: (next schema effective date) + (current retention period)."
+	WarnRetentionUpdate = "Retention configuration has changed. Retention is enforced by the compactor " +
+		"asynchronously and can take several hours to fully apply (defaults, ~6h before expired " +
+		"data is deleted). If you intend to remove a schema, wait for the new retention to take effect first."
 )
