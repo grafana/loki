@@ -758,8 +758,8 @@ func histogramRate(
 
 // isStartTimestampReset tells whether there was a counter reset by checking the start timestamp value.
 func isStartTimestampReset(prevStartTimestamp, prevTimestamp, currStartTimestamp, currTimestamp int64) bool {
-	if currStartTimestamp == 0 || currStartTimestamp >= currTimestamp {
-		// No reset if start timestamp is not set (value is 0), if it is clearly invalid
+	if prevStartTimestamp == currStartTimestamp || currStartTimestamp == 0 || currStartTimestamp >= currTimestamp {
+		// No reset if start timestamp hasn't changed, if it is not set (value is 0), if it is clearly invalid
 		// (ST > T), or if it is OTel's unknown start time (ST == T).
 		return false
 	}
@@ -1648,6 +1648,148 @@ func funcSumOverTime(_ []Vector, matrixVal Matrix, args parser.Expressions, enh 
 	}), nil
 }
 
+const (
+	integralLeftPoint = iota
+	integralRightPoint
+	integralTrapezoidal
+)
+
+// === integral(Matrix parser.ValueTypeMatrix, strategy=2 Scalar) (Vector, Annotations) ===
+func funcIntegral(vectorVals []Vector, matrixVal Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
+	if len(matrixVal) == 0 {
+		return enh.Out, nil
+	}
+	samples := matrixVal[0]
+	var annos annotations.Annotations
+	if len(samples.Floats) == 0 {
+		return enh.Out, nil
+	}
+	if len(samples.Histograms) > 0 {
+		annos.Add(annotations.NewHistogramIgnoredInMixedRangeInfo(getMetricName(samples.Metric), args[0].PositionRange()))
+	}
+
+	strategy := integralTrapezoidal
+	if len(vectorVals) > 0 && len(vectorVals[0]) > 0 {
+		strategyArg := vectorVals[0][0].F
+		if math.IsNaN(strategyArg) || math.IsInf(strategyArg, 0) || math.Trunc(strategyArg) != strategyArg || strategyArg < integralLeftPoint || strategyArg > integralTrapezoidal {
+			annos.Add(annotations.NewInvalidIntegralStrategyWarning(strategyArg, args[1].PositionRange()))
+		} else {
+			strategy = int(strategyArg)
+		}
+	}
+
+	nanAsZero := func(v float64) float64 {
+		if math.IsNaN(v) {
+			return 0
+		}
+		return v
+	}
+
+	return aggrOverTime(matrixVal, enh, func(s Series) float64 {
+		var sum, c float64
+		var prev FPoint
+		for i, f := range s.Floats {
+			var value, cValue float64
+			// Treat NaN as zero, to let "neighboring" non-zero values handle it
+			currVal := nanAsZero(f.F)
+			prevVal := nanAsZero(prev.F)
+
+			// Discrete integral using the selected quadrature strategy.
+			switch strategy {
+			case integralLeftPoint:
+				// Left-point rectangle rule.
+				//
+				//   metric
+				//     ^
+				//     |
+				//     |         v1
+				//     |         *........>.                  v4
+				//     |         |#########:                   *........>.
+				//     |         |######## v2                  |         :
+				//     |         |######## *........>.         |         :
+				//     |         |#########|#########:         |         :
+				//     |         |#########|#########:         |         :
+				//     |         |#########|###### (NaN)......>|       (NaN)
+				//     +---------+---------+---------+---------+---------+-------> t
+				//               t1        t2        t3        t4        t5
+				//               [<--------------------------->)
+				//
+				// integral(metric)[] @t4: +         +         +
+				//                         v1        v2        0
+				//                         *         *
+				//                      (t2-t1)   (t3-t2)
+				value = prevVal
+			case integralRightPoint:
+				// Right-point rectangle rule.
+				//
+				//   metric
+				//     ^
+				//     |
+				//     |         v1
+				//     |:<.......*                            v4
+				//     |:        |                   .<........*
+				//     |:        |         v2        :#########|
+				//     |:        |<........*         :#########|
+				//     |:        |#########|         :#########|
+				//     |:        |#########|         :#########|
+				//     |:        |#########|<......(NaN) ######|<......(NaN)
+				//     +---------+---------+---------+---------+---------+-------> t
+				//               t1        t2        t3        t4        t5
+				//               (<--------------------------->]
+				//
+				// integral(metric)[] @t4: +         +         +
+				//                         v2        0         v4
+				//                         *                   *
+				//                      (t2-t1)             (t4-t3)
+				value = currVal
+			case integralTrapezoidal:
+				// Trapezoidal rule (default).
+				// With NaN as zero, "neighboring" non-zero values are
+				// aggregated (halved at each interval eval).
+				//
+				//   metric
+				//     ^
+				//     |
+				//     |         v1
+				//     |    ....>*<....                       v4
+				//     |    :    |####:                   ....>*<....
+				//     |    :    |####:    v2             :####|    :
+				//     |    :    |####:...>*<....         :####|    :
+				//     |    :    |####:####|####:         :####|    :
+				//     |    :    |####:####|####:         :####|    :
+				//     |    :    |####:####|####:.>(NaN)<.:####|    :.>(NaN)
+				//     +---------+---------+---------+---------+---------+-------> t
+				//               t1        t2        t3        t4        t5
+				//               [<--------------------------->]
+				//
+				// integral(metric)[] @t4: +         +         +
+				//                      (v1+v2)/2 (v2+0)/2   (0+v4)/2
+				//                         *         *         *
+				//                      (t2-t1)   (t3-t2)   (t4-t3)
+				//
+
+				// Use kahansum.Inc() here also for big vs small number precision
+				// to implement (currVal+prevVal)/2.
+				if prevVal != 0 || currVal != 0 {
+					value, cValue = kahansum.Inc(currVal, prevVal, 0)
+					value /= 2
+					cValue /= 2
+				}
+			}
+			// Skip the first sample, aggregate non-zero values.
+			if i > 0 && (value != 0 || cValue != 0) {
+				deltaT := float64(f.T-prev.T) / 1000
+				sum, c = kahansum.Inc(value*deltaT, sum, c+cValue*deltaT)
+			}
+			prev = f
+		}
+		if math.IsInf(sum, 0) {
+			return sum
+		}
+		return sum + c
+	}), annos
+}
+
 // === quantile_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcQuantileOverTime(vectorVals []Vector, matrixVal Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	if len(vectorVals) == 0 || len(vectorVals[0]) == 0 || len(matrixVal) == 0 {
@@ -2145,7 +2287,7 @@ func funcHistogramFraction(vectorVals []Vector, _ Matrix, args parser.Expression
 		if !enh.enableDelayedNameRemoval {
 			sample.Metric = sample.Metric.DropReserved(schema.IsMetadataLabel)
 		}
-		hf, hfAnnos := HistogramFraction(lower, upper, sample.H, getMetricName(sample.Metric), args[0].PositionRange())
+		hf, hfAnnos := HistogramFraction(lower, upper, sample.H, getMetricName(sample.Metric), args[2].PositionRange())
 		annos.Merge(hfAnnos)
 		enh.Out = append(enh.Out, Sample{
 			Metric:   sample.Metric,
@@ -2196,7 +2338,7 @@ func funcHistogramQuantile(vectorVals []Vector, _ Matrix, args parser.Expression
 		if !enh.enableDelayedNameRemoval {
 			sample.Metric = sample.Metric.DropReserved(schema.IsMetadataLabel)
 		}
-		hq, hqAnnos := HistogramQuantile(q, sample.H, getMetricName(sample.Metric), args[0].PositionRange())
+		hq, hqAnnos := HistogramQuantile(q, sample.H, getMetricName(sample.Metric), args[1].PositionRange())
 		annos.Merge(hqAnnos)
 		enh.Out = append(enh.Out, Sample{
 			Metric:   sample.Metric,
@@ -2698,6 +2840,7 @@ var FunctionCalls = map[string]FunctionCall{
 	"idelta":                       funcIdelta,
 	"increase":                     funcIncrease,
 	"info":                         nil,
+	"integral":                     funcIntegral,
 	"irate":                        funcIrate,
 	"max_of":                       funcMaxOf,
 	"label_replace":                nil, // evalLabelReplace not called via this map.
@@ -2802,7 +2945,7 @@ func (s vectorByValueHeap) Swap(i, j int) {
 }
 
 func (s *vectorByValueHeap) Push(x any) {
-	*s = append(*s, *(x.(*Sample)))
+	*s = append(*s, *x.(*Sample))
 }
 
 func (s *vectorByValueHeap) Pop() any {
@@ -2832,7 +2975,7 @@ func (s vectorByReverseValueHeap) Swap(i, j int) {
 }
 
 func (s *vectorByReverseValueHeap) Push(x any) {
-	*s = append(*s, *(x.(*Sample)))
+	*s = append(*s, *x.(*Sample))
 }
 
 func (s *vectorByReverseValueHeap) Pop() any {

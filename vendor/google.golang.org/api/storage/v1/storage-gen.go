@@ -2724,6 +2724,8 @@ type ObjectCustomContextPayload struct {
 	// CreateTime: The time at which the object context was created in RFC 3339
 	// format.
 	CreateTime string `json:"createTime,omitempty"`
+	// ExtendedDataTypeUrl: The type URL of the object context's extended data.
+	ExtendedDataTypeUrl string `json:"extendedDataTypeUrl,omitempty"`
 	// UpdateTime: The time at which the object context was last updated in RFC
 	// 3339 format.
 	UpdateTime string `json:"updateTime,omitempty"`
