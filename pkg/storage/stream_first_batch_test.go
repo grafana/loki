@@ -284,7 +284,7 @@ func TestLazyStreamFirstSampleIterator(t *testing.T) {
 
 	// streamFirst builds a stream-first iterator with the given batching and fetch.
 	streamFirst := func(ctx context.Context, chunks []*LazyChunk, batchSize, maxConcurrent int, fetch chunkFetchFunc) (iter.SampleIterator, error) {
-		return newStreamFirstSampleBatchIterator(ctx, schemaConfig, NilMetrics, chunks, batchSize, matchers, start, end, nil, maxConcurrent, fetch, newEx())
+		return newStreamFirstSampleBatchIterator(ctx, schemaConfig, NilMetrics, chunks, batchSize, matchers, start, end, nil, maxConcurrent, fetch, newEx(), iter.HintTimeRanges{})
 	}
 
 	// drainTimestamps drains it and returns each sample's timestamp, asserting a clean close.
@@ -334,7 +334,7 @@ func TestLazyStreamFirstSampleIterator(t *testing.T) {
 			return out
 		}
 
-		timestampFirstIterator, err := newTimestampFirstSampleBatchIterator(context.Background(), schemaConfig, NilMetrics, buildChunks(), 10, matchers, start, end, nil, newEx())
+		timestampFirstIterator, err := newTimestampFirstSampleBatchIterator(context.Background(), schemaConfig, NilMetrics, buildChunks(), 10, matchers, start, end, nil, newEx(), iter.HintTimeRanges{})
 		require.NoError(t, err)
 		streamFirstIterator, err := streamFirst(context.Background(), buildChunks(), 10, 0, fetchLazyChunks)
 		require.NoError(t, err)
@@ -369,6 +369,28 @@ func TestLazyStreamFirstSampleIterator(t *testing.T) {
 		}
 	})
 
+	t.Run("applies hint ranges to every stream", func(t *testing.T) {
+		chunks := []*LazyChunk{
+			newLazyChunk(chunkfmt, headfmt, mkStream("a", 1, 2, 3, 4, 5)),
+			newLazyChunk(chunkfmt, headfmt, mkStream("b", 1, 2, 3, 4, 5)),
+		}
+		hintRanges := iter.NewHintTimeRanges(
+			[]logproto.HintTimeRange{{
+				Start: start.Add(2 * time.Millisecond),
+				End:   start.Add(4 * time.Millisecond),
+			}},
+			start,
+			end,
+		)
+
+		it, err := newStreamFirstSampleBatchIterator(
+			context.Background(), schemaConfig, NilMetrics, chunks, 2, matchers,
+			start, end, nil, 2, fetchLazyChunks, newEx(), hintRanges,
+		)
+		require.NoError(t, err)
+		require.ElementsMatch(t, millisToNanos(2, 3, 2, 3), drainTimestamps(t, it))
+	})
+
 	t.Run("tracks decompressed bytes and lines like the timestamp-first iterator", func(t *testing.T) {
 		// Both paths must decompress the same, non-zero bytes and lines, since stream-first
 		// delegates per-stream decoding to the timestamp-first iterator. Head-chunk bytes stay
@@ -392,7 +414,7 @@ func TestLazyStreamFirstSampleIterator(t *testing.T) {
 		}
 
 		timestampFirstStats := drainStoreStats(t, func(ctx context.Context) (iter.SampleIterator, error) {
-			return newTimestampFirstSampleBatchIterator(ctx, schemaConfig, NilMetrics, buildChunks(), 10, matchers, start, end, nil, newEx())
+			return newTimestampFirstSampleBatchIterator(ctx, schemaConfig, NilMetrics, buildChunks(), 10, matchers, start, end, nil, newEx(), iter.HintTimeRanges{})
 		}).Querier.Store.Chunk
 		streamFirstStats := drainStoreStats(t, func(ctx context.Context) (iter.SampleIterator, error) {
 			return streamFirst(ctx, buildChunks(), 10, 0, fetchLazyChunks)
@@ -728,7 +750,7 @@ func TestLazyStreamFirstSampleIterator_ConsumerWaitMetricExcludesCanceledWaits(t
 	chunks := []*LazyChunk{newLazyChunk(chunkfmt, headfmt, mkStream("a", 1, 2, 3))}
 	it, err := newStreamFirstSampleBatchIterator(
 		ctx, schemaConfig, metrics, chunks, 2, newMatchers(`{foo=~".+"}`),
-		time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, 1, fetch, ex)
+		time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, 1, fetch, ex, iter.HintTimeRanges{})
 	require.NoError(t, err)
 
 	go func() {
@@ -770,7 +792,7 @@ func TestLazyStreamFirstSampleIterator_ReleasesConsumedStreams(t *testing.T) {
 	// batchSize 2 forces several batches so streams split across batch boundaries.
 	rawIt, err := newStreamFirstSampleBatchIterator(
 		context.Background(), fx.schema, NilMetrics, fx.chunks, 2,
-		fx.matchers, fx.start, fx.end, nil, 0, fetch, fx.newEx())
+		fx.matchers, fx.start, fx.end, nil, 0, fetch, fx.newEx(), iter.HintTimeRanges{})
 	require.NoError(t, err)
 	it, ok := rawIt.(*lazyStreamFirstSampleIterator)
 	require.True(t, ok, "test relies on the concrete type to inspect per-stream release timing")
