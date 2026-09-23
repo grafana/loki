@@ -44,10 +44,25 @@ func NewQueryShard(assignment *logql.Shard) *QueryShard {
 	return shard
 }
 
-// prunes reports whether the shard narrows a streams read to a bucket range. A nil shard, and a
-// shard that restricts no stream, prune nothing.
+// bucketRange returns the bucket range to push into a streams read. It is nil for a nil shard,
+// and for a shard that restricts no stream.
+func (q *QueryShard) bucketRange() *shardBucketRange {
+	if q == nil {
+		return nil
+	}
+	return q.buckets
+}
+
+// prunes reports whether the shard narrows a streams read to a bucket range.
 func (q *QueryShard) prunes() bool {
-	return q != nil && q.buckets != nil
+	return q.bucketRange() != nil
+}
+
+// resolvesExactly reports whether the bucket range is the shard and nothing more, so the
+// per-stream stream-hash check would drop no further stream.
+func (q *QueryShard) resolvesExactly() bool {
+	bucketRange := q.bucketRange()
+	return bucketRange != nil && bucketRange.exact
 }
 
 // shardBucketRange is the inclusive range of streams-section shard buckets a query shard can

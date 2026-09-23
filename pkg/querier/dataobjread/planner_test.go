@@ -136,6 +136,24 @@ func TestPlanner_Plan(t *testing.T) {
 		require.ErrorContains(t, err, "listed no stream")
 	})
 
+	t.Run("a section the metastore lists twice fails the query rather than counting it twice", func(t *testing.T) {
+		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
+		t.Cleanup(objects.release)
+
+		// Two index objects describing one section resolve to two descriptors, because Sections
+		// concatenates their results without merging across them.
+		repeated := *fixture.descriptors[0]
+		ms := &fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{
+			fixture.descriptors[0],
+			&repeated,
+		}}
+		readPlanner := NewPlanner(ms, objects, nil)
+
+		_, err := drainTasks(readPlanner.Plan(t.Context(), plainQuery(t)))
+		require.ErrorContains(t, err, "was listed twice")
+	})
+
 	t.Run("a resolution error surfaces through the iterator", func(t *testing.T) {
 		wantErr := errors.New("metastore is down")
 		readPlanner, _ := newTestPlanner(t, &fixedMetastore{err: wantErr})

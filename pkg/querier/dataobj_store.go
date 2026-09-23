@@ -27,35 +27,35 @@ import (
 )
 
 // DataObjStoreOption customizes the store returned by [NewDataObjStore].
-type DataObjStoreOption func(*dataObjStore)
+type DataObjStoreOption func(*DataObjStore)
 
 // WithDataObjMetadataCache serves each object's metadata region through cache, so opening an
 // object does not read that region from object storage. A nil cache disables it.
 func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjStoreOption {
-	return func(s *dataObjStore) { s.metadataCache = cache }
+	return func(s *DataObjStore) { s.metadataCache = cache }
 }
 
 // WithDataObjHeadPrefetchBytes sets how many bytes an object open reads up front.
 func WithDataObjHeadPrefetchBytes(bytes int64) DataObjStoreOption {
-	return func(s *dataObjStore) { s.prefetchBytes = bytes }
+	return func(s *DataObjStore) { s.prefetchBytes = bytes }
 }
 
 // WithDataObjRangeConfig sets how byte-range reads under the dataset layer are parallelised and
 // coalesced.
 func WithDataObjRangeConfig(cfg rangeio.Config) DataObjStoreOption {
-	return func(s *dataObjStore) { s.rangeConfig = cfg }
+	return func(s *DataObjStore) { s.rangeConfig = cfg }
 }
 
 // WithDataObjStreamFilterer drops streams a request may not read.
 func WithDataObjStreamFilterer(filterer chunk.RequestChunkFilterer) DataObjStoreOption {
-	return func(s *dataObjStore) { s.filterer = filterer }
+	return func(s *DataObjStore) { s.filterer = filterer }
 }
 
-var _ Store = &dataObjStore{}
+var _ Store = &DataObjStore{}
 
-// dataObjStore serves stream-first metric queries from data objects and delegates every other
+// DataObjStore serves stream-first metric queries from data objects and delegates every other
 // [Store] method to the embedded chunk store, so it changes only how samples are read.
-type dataObjStore struct {
+type DataObjStore struct {
 	// Store is the chunk store.
 	Store
 
@@ -76,7 +76,7 @@ type dataObjStore struct {
 //
 // chunkStore, bucket and ms are required. Without them a query would dereference nil inside the
 // planner's goroutine, taking the process down instead of failing the one query.
-func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastore.Metastore, reg prometheus.Registerer, opts ...DataObjStoreOption) (Store, error) {
+func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastore.Metastore, reg prometheus.Registerer, opts ...DataObjStoreOption) (*DataObjStore, error) {
 	if chunkStore == nil {
 		return nil, errors.New("data object store: chunk store must not be nil")
 	}
@@ -87,7 +87,7 @@ func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastor
 		return nil, errors.New("data object store: metastore must not be nil")
 	}
 
-	s := &dataObjStore{
+	s := &DataObjStore{
 		Store:         chunkStore,
 		bucket:        bucket,
 		metastore:     ms,
@@ -102,17 +102,16 @@ func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastor
 }
 
 // String names the store in a trace.
-func (s *dataObjStore) String() string { return "dataobj" }
+func (s *DataObjStore) String() string { return "dataobj" }
 
-// SelectSamples returns the samples of a metric query.
+// SelectSamples returns the samples of a metric query. It serves a stream-first request from the
+// data objects and hands every other one to the chunk store.
 //
-// A timestamp-first sample query goes to the chunk store too, because the samples read here
-// carry no order at all.
-//
-// It decides nothing else about whether a query belongs here. Nothing in it verifies that the
-// query's time range is one data objects cover, or that the tier is disjoint in time from the
-// ingester's, which is what lets the samples go undeduplicated.
-func (s *dataObjStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+// A timestamp-first request goes to the chunk store because the samples read here carry no order.
+// Each logs section is sorted, but up to [dataobjread.DefaultMaxConcurrency] of them are scanned
+// at once and whichever batch finishes first is forwarded, so the samples of one query interleave
+// across sections and objects.
+func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	if req.Order != logproto.SAMPLE_ORDER_BY_STREAM {
 		return s.Store.SelectSamples(ctx, req)
 	}

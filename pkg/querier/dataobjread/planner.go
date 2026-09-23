@@ -137,13 +137,22 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 		return nil, err
 	}
 
-	wanted := descriptors.StreamIDs()
-
-	var buckets *shardBucketRange
-	if query.Shard != nil {
-		buckets = query.Shard.buckets
+	// One task per section. The metastore concatenates the descriptors of every index object
+	// without merging across them, so two index objects describing one section would plan it
+	// twice and emit every one of its rows twice. Check before the streams read below, which
+	// costs a round trip to object storage.
+	planned := make(map[int64]struct{}, len(descriptors))
+	for _, descriptor := range descriptors {
+		if _, repeated := planned[descriptor.SectionIdx]; repeated {
+			return nil, fmt.Errorf(
+				"data object %q logs section %d was listed twice, so reading it would count its rows twice",
+				path, descriptor.SectionIdx,
+			)
+		}
+		planned[descriptor.SectionIdx] = struct{}{}
 	}
-	decoded, err := object.streamLabels(ctx, wanted, buckets)
+
+	decoded, err := object.streamLabels(ctx, descriptors.StreamIDs(), query.Shard.bucketRange())
 	if err != nil {
 		return nil, err
 	}
@@ -153,19 +162,7 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 	})
 
 	tasks := make([]ReadTask, 0, len(descriptors))
-	planned := make(map[int64]struct{}, len(descriptors))
 	for _, descriptor := range descriptors {
-		// One task per section. The metastore concatenates the descriptors of every index object
-		// without merging across them, so two index objects describing one section would plan it
-		// twice and emit every one of its rows twice.
-		if _, repeated := planned[descriptor.SectionIdx]; repeated {
-			return nil, fmt.Errorf(
-				"data object %q logs section %d was listed twice, so reading it would count its rows twice",
-				path, descriptor.SectionIdx,
-			)
-		}
-		planned[descriptor.SectionIdx] = struct{}{}
-
 		task, ok, err := p.planSection(descriptor, streams, query)
 		if err != nil {
 			return nil, err
@@ -191,18 +188,18 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 // pruned read cannot tell that from a genuinely missing stream, and the extra read it would take
 // to find out costs more than the invariant is worth here.
 func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, streams *objectStreams, query QueryParams) (ReadTask, bool, error) {
-	var (
-		streamIDs  = make([]int64, 0, len(descriptor.StreamIDs))
-		labelNames = map[string]struct{}{}
-		seen       = map[int64]struct{}{}
-	)
-
 	if len(descriptor.StreamIDs) == 0 {
 		return ReadTask{}, false, fmt.Errorf(
 			"data object %q logs section %d: the resolver listed no stream for the section",
 			descriptor.ObjectPath, descriptor.SectionIdx,
 		)
 	}
+
+	var (
+		streamIDs  = make([]int64, 0, len(descriptor.StreamIDs))
+		labelNames = map[string]struct{}{}
+		seen       = map[int64]struct{}{}
+	)
 
 	for _, id := range descriptor.StreamIDs {
 		if !streams.decoded(id) {
@@ -258,7 +255,7 @@ func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *Q
 	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
 	// streams.ShardFactor. Any other shard maps to a range that covers streams outside it, so
 	// the stream hash still has to be checked.
-	if shard != nil && !(shard.prunes() && shard.buckets.exact) {
+	if shard != nil && !shard.resolvesExactly() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {
 			return false
 		}

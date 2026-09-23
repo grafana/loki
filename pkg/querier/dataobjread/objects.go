@@ -177,8 +177,8 @@ func (o *openObject) streamLabels(ctx context.Context, want []int64, shardBucket
 	}
 }
 
-// openStreamsSection opens the tenant's streams section, or returns nil when the object holds
-// none for it.
+// openStreamsSection opens the tenant's streams section once, and returns that same section to
+// every later caller. The caller must have checked that the tenant holds one.
 func (o *openObject) openStreamsSection(ctx context.Context) (*streams.Section, error) {
 	o.mu.Lock()
 	if o.streamsSection != nil {

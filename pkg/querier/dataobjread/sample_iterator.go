@@ -60,6 +60,7 @@ func (it *SampleIterator) Next() bool {
 			continue // dropped by the pipeline, for instance by a line filter
 		}
 
+		// Sample.Hash stays zero, which turns off the merge's deduplication. See [SampleIterator].
 		it.currSample = logproto.Sample{Timestamp: record.timestamp, Value: sample.Value}
 		it.currLabels = it.labelsString(sample.Labels)
 		it.currStreamHash = record.streamHash
@@ -96,7 +97,10 @@ func (it *SampleIterator) extractorFor(streamHash uint64, streamLabels labels.La
 	}
 
 	extractor := it.extractor.ForStream(labels.NewBuilder(streamLabels).Del(model.MetricNameLabel).Labels())
-	it.lastStreamHash, it.lastLabels, it.lastExtractor, it.hasLastExtractor = streamHash, streamLabels, extractor, true
+	it.lastStreamHash = streamHash
+	it.lastLabels = streamLabels
+	it.lastExtractor = extractor
+	it.hasLastExtractor = true
 	return extractor
 }
 

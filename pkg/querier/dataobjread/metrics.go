@@ -5,7 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// metrics are the read path's metrics. One set is shared by every query a store serves.
+// Metrics are the read path's metrics. One set is shared by every query a store serves.
 type Metrics struct {
 	taskWaitSeconds prometheus.Counter
 	taskScanSeconds prometheus.Counter

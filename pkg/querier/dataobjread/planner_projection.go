@@ -337,9 +337,9 @@ func reducesOutputLabels(expr syntax.SampleExpr) bool {
 func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher {
 	switch typed := filter.(type) {
 	case *logqllog.LineFilterLabelFilter:
-		return nonNilMatcher(typed.Matcher)
+		return pushdownCandidate(typed.Matcher)
 	case *logqllog.StringLabelFilter:
-		return nonNilMatcher(typed.Matcher)
+		return pushdownCandidate(typed.Matcher)
 	case *logqllog.BinaryLabelFilter:
 		if typed.And {
 			return append(metadataMatcherCandidates(typed.Left), metadataMatcherCandidates(typed.Right)...)
@@ -348,7 +348,7 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 	return nil
 }
 
-func nonNilMatcher(matcher *labels.Matcher) []*labels.Matcher {
+func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
 	if matcher == nil || isPipelineErrorLabel(matcher.Name) {
 		return nil
 	}

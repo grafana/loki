@@ -316,8 +316,8 @@ func TestDataObjStore_Sharding(t *testing.T) {
 			sortSamples(got)
 
 			require.Equal(t, want, got, "the shards together must return the unsharded result")
-			for labels, shards := range shardsPerSeries {
-				require.Equal(t, 1, shards, "series %s was served by %d shards", labels, shards)
+			for series, shards := range shardsPerSeries {
+				require.Equal(t, 1, shards, "series %s was served by %d shards", series, shards)
 			}
 		})
 	}
@@ -334,15 +334,16 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 		},
 	}
 
-	t.Run("it sums the unwrapped values of the lines that convert", func(t *testing.T) {
+	t.Run("it reads the unwrapped value of each line that converts", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{stream})
 
-		// The failed conversion has to be dropped, or it would fail the whole query.
+		// The error filter drops the line whose value does not convert. Without it the engine
+		// would fail the whole query on that line's __error__ label.
 		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration | __error__="" [1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
 			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
-		}, got, "the line whose value does not convert must be dropped, not counted as zero")
+		}, got, "the line that does not convert must be dropped, not read as zero")
 	})
 
 	t.Run("a filter on the unwrapped label reads the column it names", func(t *testing.T) {

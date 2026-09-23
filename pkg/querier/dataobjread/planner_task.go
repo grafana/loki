@@ -77,7 +77,7 @@ func (s *objectStreams) admits(id int64) bool {
 
 // decoded reports whether the streams read returned the stream at all, admitted or not.
 func (s *objectStreams) decoded(id int64) bool {
-	if _, ok := s.admittedByID[id]; ok {
+	if s.admits(id) {
 		return true
 	}
 	_, ok := s.notAdmittedByID[id]
