@@ -237,7 +237,7 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 	idx := &TSDBIndex{reader: reader}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	for range 2 {
-		err := idx.forPostings(context.Background(), nil, 0, 10, []*labels.Matcher{m}, func(p index.Postings) error {
+		err := idx.forPostings(context.Background(), nil, 0, 10, []*labels.Matcher{m}, func(_ index.Postings) error {
 			return nil
 		})
 		require.NoError(t, err)

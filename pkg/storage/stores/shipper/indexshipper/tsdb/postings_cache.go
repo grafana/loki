@@ -90,20 +90,18 @@ func postingsKey(identity string, fpFilter index.FingerprintFilter, matchers []*
 		return strings.Compare(a.Value, b.Value)
 	})
 
-	const (
-		matcherTypeLen   = 2
-		matcherSeparator = 1
-	)
+	const matcherTypeLen = 2
 	size := 0
 	for _, matcher := range canonical {
-		size += len(matcher.Name) + matcherTypeLen + binary.MaxVarintLen64 + len(matcher.Value) + matcherSeparator
+		size += len(matcher.Name) + matcherTypeLen + binary.Size(uint64(len(matcher.Value))) + len(matcher.Value)
 	}
 	canonicalMatchers := make([]byte, 0, size)
 	for _, matcher := range canonical {
 		canonicalMatchers = append(canonicalMatchers, matcher.Name...)
 		canonicalMatchers = append(canonicalMatchers, matcher.Type.String()...)
-		canonicalMatchers = append(canonicalMatchers, 0)
-		canonicalMatchers = binary.AppendUvarint(canonicalMatchers, uint64(len(matcher.Value)))
+		// A fixed-width value length prevents ambiguity with matcher operators.
+		// Appending a uint64 cannot fail.
+		canonicalMatchers, _ = binary.Append(canonicalMatchers, binary.BigEndian, uint64(len(matcher.Value)))
 		canonicalMatchers = append(canonicalMatchers, matcher.Value...)
 	}
 
