@@ -293,25 +293,15 @@ func (acc *AccumulatedStreams) Push(x any) {
 
 	if room := acc.limit - acc.count; room >= len(s.Entries) {
 		if i, ok := acc.Find(s.Labels); ok {
-			// stream already exists, append entries
-
-			// these are already guaranteed to be sorted
-			// Reasoning: we shard subrequests so each stream exists on only one
-			// shard. Therefore, the only time a stream should already exist
-			// is in successive splits, which are already guaranteed to be ordered
-			// and we can just append.
 			acc.appendTo(acc.streams[i], s)
-
 			return
 		}
 
-		// new stream
 		acc.addStream(s)
 		return
 	}
 
-	// there's not enough room for all the entries,
-	// so we need to
+	// there's not enough room for all the entries, so only the best ones are kept
 	acc.push(s)
 }
 
@@ -345,9 +335,14 @@ func (acc *AccumulatedStreams) push(s *logproto.Stream) {
 		}
 		return acc.less(s.Entries[i].Timestamp, worst)
 	})
+	// The first `room` entries are needed while the accumulator is not full,
+	// regardless of how they compare to the current worst entry: entries arrive
+	// best-first, so once they have been inserted, any later entry of this
+	// stream is worse than the new worst entry of the accumulator.
+	cutoff = max(cutoff, room)
 	s.Entries = s.Entries[:cutoff]
 
-	for i := 0; i < len(s.Entries) && acc.less(worst, s.Entries[i].Timestamp); i++ {
+	for i := 0; i < len(s.Entries) && (acc.count < acc.limit || acc.less(worst, s.Entries[i].Timestamp)); i++ {
 
 		// push one entry at a time
 		room = acc.limit - acc.count
@@ -381,14 +376,10 @@ func (acc *AccumulatedStreams) addStream(s *logproto.Stream) {
 	heap.Fix(acc, i)
 }
 
-// dst must already exist in acc
+// appendTo appends the entries of src to dst, which must already exist in acc.
+// Entries usually arrive in order, so they are appended as-is and dst is only
+// re-sorted when an out-of-order entry is seen.
 func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
-	// these are already guaranteed to be sorted
-	// Reasoning: we shard subrequests so each stream exists on only one
-	// shard. Therefore, the only time a stream should already exist
-	// is in successive splits, which are already guaranteed to be ordered
-	// and we can just append.
-
 	var needsSort bool
 	for _, e := range src.Entries {
 		// sort if order has broken
