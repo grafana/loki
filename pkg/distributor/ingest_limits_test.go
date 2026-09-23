@@ -26,6 +26,22 @@ type mockIngestLimitsFrontendClient struct {
 	expectedUpdateRatesRequest   *proto.UpdateRatesRequest
 	updateRatesResponse          *proto.UpdateRatesResponse
 	updateRatesResponseErr       error
+
+	expectedCheckLimitsAndShardRequest *proto.CheckLimitsAndShardRequest
+	checkLimitsAndShardResponse        *proto.CheckLimitsAndShardResponse
+	checkLimitsAndShardResponseErr     error
+}
+
+// Implements the ingestLimitsFrontendClient interface.
+func (c *mockIngestLimitsFrontendClient) CheckLimitsAndShard(_ context.Context, r *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	c.calls.Add(1)
+	if c.expectedCheckLimitsAndShardRequest != nil {
+		require.Equal(c.t, c.expectedCheckLimitsAndShardRequest, r)
+	}
+	if c.checkLimitsAndShardResponseErr != nil {
+		return nil, c.checkLimitsAndShardResponseErr
+	}
+	return c.checkLimitsAndShardResponse, nil
 }
 
 // Implements the ingestLimitsFrontendClient interface.
