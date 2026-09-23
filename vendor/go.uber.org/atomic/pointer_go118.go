@@ -23,9 +23,27 @@
 
 package atomic
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // String returns a human readable representation of a Pointer's underlying value.
 func (p *Pointer[T]) String() string {
 	return fmt.Sprint(p.Load())
+}
+
+// MarshalJSON encodes the wrapped pointer into JSON.
+func (p *Pointer[T]) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.Load())
+}
+
+// UnmarshalJSON decodes JSON into the wrapped pointer.
+func (p *Pointer[T]) UnmarshalJSON(b []byte) error {
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	p.Store(&v)
+	return nil
 }
