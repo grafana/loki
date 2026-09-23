@@ -133,12 +133,12 @@ func (b *Builder) Close() {
 func (b *Builder) buildIndex(ctx context.Context) error {
 	var builderConfig logsobj.BuilderConfig
 	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire defaults
-	indexBuilder, err := indexobj.NewBuilder(builderConfig.BuilderBaseConfig, nil)
+	indexBuilder, err := indexobj.NewBuilder(builderConfig.BuilderBaseConfig, nil, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}
 
-	calculator := index.NewCalculator(indexBuilder)
+	calculator := index.NewCalculator(indexBuilder, index.NewCalculatorMetrics(nil))
 
 	var (
 		count           int

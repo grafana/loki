@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
@@ -73,26 +72,17 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 type Calculator struct {
 	indexobjBuilder      *indexobj.Builder
 	builderMtx           sync.Mutex
-	metrics              *calculatorMetrics
+	metrics              *CalculatorMetrics
 	uncompressedByTenant map[string]uint64
 }
 
-func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
+// NewCalculator returns a [Calculator].
+func NewCalculator(indexobjBuilder *indexobj.Builder, metrics *CalculatorMetrics) *Calculator {
 	return &Calculator{
 		indexobjBuilder:      indexobjBuilder,
-		metrics:              newCalculatorMetrics(),
+		metrics:              metrics,
 		uncompressedByTenant: make(map[string]uint64),
 	}
-}
-
-// RegisterMetrics registers the calculator's prometheus metrics with the given registerer.
-func (c *Calculator) RegisterMetrics(reg prometheus.Registerer) error {
-	return c.metrics.register(reg)
-}
-
-// UnregisterMetrics unregisters the calculator's prometheus metrics.
-func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
-	c.metrics.unregister(reg)
 }
 
 func (c *Calculator) Reset() {

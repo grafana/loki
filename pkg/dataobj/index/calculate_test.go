@@ -125,9 +125,9 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logCloser.Close() })
 
-	indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+	indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
-	calculator := NewCalculator(indexBuilder)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), logObj, "test/path/obj1"))
 
 	indexObj, indexCloser, _, err := calculator.Flush()
@@ -153,10 +153,10 @@ func TestCalculator_Calculate(t *testing.T) {
 	objects := 10
 
 	t.Run("successful calculation from readerAt", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		calculator := NewCalculator(indexBuilder)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
 			obj := createTestLogObject(t, tenants)
 
@@ -186,13 +186,13 @@ func TestCalculator_Calculate(t *testing.T) {
 	})
 
 	t.Run("successful calculation from FS bucket", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		bucket, err := filesystem.NewBucket(t.TempDir())
 		require.NoError(t, err)
 
-		calculator := NewCalculator(indexBuilder)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
 			obj := createTestLogObject(t, tenants)
 
@@ -264,9 +264,9 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testin
 		require.True(t, logs.CheckSection(source.Sections()[i]))
 	}
 
-	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
-	calculator := NewCalculator(builder)
+	calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), source, path))
 	obj, closer, _, err := calculator.Flush()
 	require.NoError(t, err)

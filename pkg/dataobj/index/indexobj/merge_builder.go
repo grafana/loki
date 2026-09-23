@@ -24,7 +24,7 @@ import (
 // synchronization.
 type MergeBuilder struct {
 	cfg     logsobj.BuilderBaseConfig
-	metrics *builderMetrics
+	metrics *BuilderMetrics
 
 	currentSizeEstimate int
 	builderFull         bool
@@ -47,7 +47,7 @@ func NewMergeBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store) 
 		return nil, err
 	}
 
-	metrics := newBuilderMetrics()
+	metrics := NewBuilderMetrics(nil)
 	metrics.ObserveConfig(cfg)
 
 	return &MergeBuilder{
@@ -268,18 +268,4 @@ func (b *MergeBuilder) Reset() {
 	b.unflushedSizeEstimate = 0
 	b.builderFull = false
 	b.state = builderStateEmpty
-}
-
-// RegisterMetrics registers metrics about builder to report to reg. All
-// metrics will have a tenant label set to the tenant ID of the Builder.
-//
-// If multiple Builders for the same tenant are running in the same process,
-// reg must contain additional labels to differentiate between them.
-func (b *MergeBuilder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
-}
-
-// UnregisterMetrics unregisters metrics about builder from reg.
-func (b *MergeBuilder) UnregisterMetrics(reg prometheus.Registerer) {
-	b.metrics.Unregister(reg)
 }
