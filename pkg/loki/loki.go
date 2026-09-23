@@ -55,6 +55,7 @@ import (
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -95,35 +96,36 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Server              server.Config              `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
-	UI                  ui.Config                  `yaml:"ui,omitempty"`
-	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
-	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
-	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
-	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
-	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
-	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
-	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
-	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
-	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
-	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
-	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
-	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
-	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
-	LimitsConfig        validation.Limits          `yaml:"limits_config"`
-	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
-	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
-	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
-	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
-	Logline             logline.Config             `yaml:"logline,omitempty"`
+	Server               server.Config                  `yaml:"server,omitempty"`
+	InternalServer       internalserver.Config          `yaml:"internal_server,omitempty" doc:"hidden"`
+	UI                   ui.Config                      `yaml:"ui,omitempty"`
+	Distributor          distributor.Config             `yaml:"distributor,omitempty"`
+	Querier              querier.Config                 `yaml:"querier,omitempty"`
+	QueryEngine          engine.Config                  `yaml:"query_engine,omitempty" category:"experimental"`
+	QueryScheduler       scheduler.Config               `yaml:"query_scheduler"`
+	Frontend             lokifrontend.Config            `yaml:"frontend,omitempty"`
+	QueryRange           queryrange.Config              `yaml:"query_range,omitempty"`
+	Ruler                ruler.Config                   `yaml:"ruler,omitempty"`
+	RulerStorage         rulestore.Config               `yaml:"ruler_storage,omitempty"`
+	IngesterClient       ingester_client.Config         `yaml:"ingester_client,omitempty"`
+	Ingester             ingester.Config                `yaml:"ingester,omitempty"`
+	Pattern              pattern.Config                 `yaml:"pattern_ingester,omitempty"`
+	IndexGateway         indexgateway.Config            `yaml:"index_gateway"`
+	BloomBuild           bloombuild.Config              `yaml:"bloom_build,omitempty" category:"experimental"`
+	BloomGateway         bloomgateway.Config            `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	StorageConfig        storage.Config                 `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig     config.ChunkStoreConfig        `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig         config.SchemaConfig            `yaml:"schema_config,omitempty"`
+	CompactorConfig      compactor.Config               `yaml:"compactor,omitempty"`
+	CompactorHTTPClient  compactorclient.HTTPConfig     `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient  compactorclient.GRPCConfig     `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig         validation.Limits              `yaml:"limits_config"`
+	Worker               worker.Config                  `yaml:"frontend_worker,omitempty"`
+	MemberlistKV         memberlist.KVConfig            `yaml:"memberlist"`
+	KafkaConfig          kafka.Config                   `yaml:"kafka_config,omitempty" category:"experimental"`
+	DataObj              dataobjconfig.Config           `yaml:"dataobj,omitempty" category:"experimental"`
+	Logline              logline.Config                 `yaml:"logline,omitempty"`
+	LoglineQueryFrontend queryfrontend.MiddlewareConfig `yaml:"logline_query_frontend,omitempty"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -242,6 +244,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
+	c.LoglineQueryFrontend.RegisterFlagsWithPrefix("logline-query-frontend", f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -365,6 +368,11 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Logline.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+	}
+	if c.Logline.Enabled {
+		if err := c.LoglineQueryFrontend.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline query frontend config"))
+		}
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))

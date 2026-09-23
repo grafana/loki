@@ -560,7 +560,17 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, loglineStore, 6, 0)
+	t.Querier, err = querier.New(
+		t.Cfg.Querier,
+		t.Store,
+		t.ingesterQuerier,
+		t.Overrides,
+		deleteStore,
+		logger,
+		loglineStore,
+		t.Cfg.LoglineQueryFrontend.NgramLength,
+		t.Cfg.LoglineQueryFrontend.MaxHintParallel,
+	)
 	if err != nil {
 		return nil, err
 	}
