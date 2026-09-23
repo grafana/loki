@@ -2225,13 +2225,35 @@ func (cl *Client) deleteStaleCoordinatorsByNode(node int32) {
 	cl.coordinatorsMu.Lock()
 	defer cl.coordinatorsMu.Unlock()
 	for k, v := range cl.coordinators {
-		if v == nil || v.node != node {
+		if v == nil {
 			continue
 		}
+		// v.node is written by doLoadCoordinators outside of
+		// coordinatorsMu; that write is published only by the
+		// close(loadWait) ending the load. We must observe the close
+		// before reading v.node, so the v.node check lives inside the
+		// loadWait arm -- not in the range filter above.
+		//
+		// Race walkthrough if we checked v.node before the select:
+		//   1) doLoadCoordinators inserts v with an open loadWait, then
+		//      releases coordinatorsMu and issues FindCoordinator.
+		//   2) The response arrives and the loader writes v.node =
+		//      rc.NodeID, lock-free (doLoadCoordinators, above).
+		//   3) Concurrently a broker disconnect calls us here. We hold
+		//      coordinatorsMu, but the writer in step 2 never takes it,
+		//      so the mutex does not order us against that write --
+		//      reading v.node now is a data race (go test -race flags
+		//      it). close(loadWait) in step 2 has not happened yet, so
+		//      the default arm is what we would take anyway.
+		// Reading inside the loadWait arm makes the read happen-after
+		// the publishing close, so v.node is safe to observe.
 		select {
 		case <-v.loadWait:
-			delete(cl.coordinators, k)
+			if v.node == node {
+				delete(cl.coordinators, k)
+			}
 		default:
+			// Still loading: v.node is not yet published; skip.
 		}
 	}
 }
