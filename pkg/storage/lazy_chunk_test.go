@@ -159,8 +159,8 @@ func TestFilterChunksByHintRanges(t *testing.T) {
 	base := time.Unix(100, 0)
 	chunks := []chunk.Chunk{
 		{ChunkRef: logproto.ChunkRef{From: model.Time(base.UnixMilli()), Through: model.Time(base.UnixMilli())}},
-		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(time.Millisecond).UnixMilli()), Through: model.Time(base.Add(time.Millisecond).UnixMilli())}},
-		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(2 * time.Millisecond).UnixMilli()), Through: model.Time(base.Add(3 * time.Millisecond).UnixMilli())}},
+		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(time.Millisecond).UnixMilli()), Through: model.Time(base.Add(2 * time.Millisecond).UnixMilli())}},
+		{ChunkRef: logproto.ChunkRef{From: model.Time(base.Add(3 * time.Millisecond).UnixMilli()), Through: model.Time(base.Add(4 * time.Millisecond).UnixMilli())}},
 	}
 	ranges := iter.NewHintTimeRanges(
 		[]logproto.HintTimeRange{{
@@ -168,7 +168,7 @@ func TestFilterChunksByHintRanges(t *testing.T) {
 			End:   base.Add(time.Millisecond + 750*time.Microsecond),
 		}},
 		base,
-		base.Add(3*time.Millisecond),
+		base.Add(4*time.Millisecond),
 	)
 
 	filtered := filterChunksByHintRanges(chunks, ranges)

@@ -721,9 +721,7 @@ func filterChunksByHintRanges(chunks []chunk.Chunk, hintRanges iter.HintTimeRang
 
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chk := range chunks {
-		// Chunk refs retain millisecond precision, so Through identifies the
-		// entire final millisecond rather than its first nanosecond.
-		if hintRanges.Overlaps(chk.From.Time(), chk.Through.Time().Add(time.Millisecond)) {
+		if hintRanges.OverlapsClosed(chk.From.Time(), chk.Through.Time()) {
 			filtered = append(filtered, chk)
 		}
 	}
