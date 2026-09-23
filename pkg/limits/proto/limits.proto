@@ -4,14 +4,12 @@ package proto;
 
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
-  rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
   rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 service IngestLimits {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
-  rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
   rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
@@ -46,20 +44,6 @@ message StreamMetadataRecord {
   string zone = 1;
   string tenant = 2;
   StreamMetadata metadata = 3;
-}
-
-message UpdateRatesRequest {
-  string tenant = 1;
-  repeated StreamMetadata streams = 2;
-}
-
-message UpdateRatesResponse {
-  repeated UpdateRatesResult results = 1;
-}
-
-message UpdateRatesResult {
-  uint64 streamHash = 1;
-  uint64 rate = 2;
 }
 
 message CheckLimitsAndShardRequest {
