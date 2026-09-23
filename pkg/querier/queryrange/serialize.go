@@ -32,6 +32,9 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
+	if request, ok := request.(*LokiRequest); ok {
+		request.HintRanges = nil
+	}
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {
