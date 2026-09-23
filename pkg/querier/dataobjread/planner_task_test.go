@@ -3,6 +3,7 @@ package dataobjread
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -260,7 +261,16 @@ func TestTaskIterator(t *testing.T) {
 		require.ErrorIs(t, it.Err(), context.Canceled, "an error Abort is given is the caller reporting a failure")
 	})
 
-	t.Run("Abort with no error still reports the cancellation it causes", func(t *testing.T) {
+	t.Run("Abort reports the error it is given over the cancellation it causes", func(t *testing.T) {
+		it := livePlannerTasks(ReadTask{sectionIdx: 1})
+
+		// Recording before stopping is what keeps the reason: the guard in setErr would otherwise
+		// have nothing to beat, and the planner's own cancellation would arrive first.
+		it.Abort(errors.New("reader failed"))
+		require.EqualError(t, it.Err(), "reader failed")
+	})
+
+	t.Run("Abort with no error drops the cancellation it causes", func(t *testing.T) {
 		ch := make(chan ReadTask)
 		cancelled := make(chan struct{})
 		it := newTaskIterator(ch, func() { close(cancelled) })
@@ -274,10 +284,7 @@ func TestTaskIterator(t *testing.T) {
 		}()
 
 		it.Abort(nil)
-
-		// The iterator cannot tell a stop it was told to make from one the caller's context
-		// caused, so it reports both and lets the reader discount its own.
-		require.ErrorIs(t, it.Err(), context.Canceled)
+		require.NoError(t, it.Err(), "stopping early is not a query failure")
 	})
 
 	t.Run("Abort is safe to call again after a normal drain", func(t *testing.T) {
@@ -310,6 +317,24 @@ func TestTaskIterator(t *testing.T) {
 	t.Run("it panics on a nil channel, which would otherwise deadlock", func(t *testing.T) {
 		require.Panics(t, func() { newTaskIterator(nil, func() {}) })
 	})
+}
+
+// livePlannerTasks returns an iterator over the given tasks whose planner is still running, and
+// which reports a cancellation of its own once stopped. That is what the real planner does, and
+// what [queuedTasks] cannot show, its Err being nil whatever the reader does.
+func livePlannerTasks(tasks ...ReadTask) *TaskIterator {
+	ch := make(chan ReadTask, len(tasks))
+	for _, task := range tasks {
+		ch <- task
+	}
+
+	var it *TaskIterator
+	it = newTaskIterator(ch, func() {
+		it.setErr(fmt.Errorf("resolving data object sections: %w", context.Canceled))
+		close(ch)
+		close(it.done)
+	})
+	return it
 }
 
 // queuedTasks returns an iterator over the given tasks whose planner has already finished.

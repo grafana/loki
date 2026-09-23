@@ -85,6 +85,8 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		//
 		// Read both, because either may be the column: a key can also genuinely end with the
 		// suffix. LogQL's own parser hints resolve the ambiguity the same way.
+		//
+		// A name of exactly the suffix trims to nothing, which names no column.
 		if base := strings.TrimSuffix(name, logqllog.DuplicateSuffix); base != name && base != "" {
 			metadataNames[base] = struct{}{}
 		}
@@ -205,9 +207,9 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 			continue
 		}
 
-		// A renamed name may mean the column without the suffix, once this section's streams
-		// carry that label. A predicate reads one column by name, so pushing it would drop rows
-		// the extractor keeps.
+		// A renamed name may mean the column without the suffix, when this section's streams
+		// carry the unsuffixed name. A predicate reads one column by name, so pushing it would
+		// drop rows the extractor keeps.
 		if base := strings.TrimSuffix(matcher.Name, logqllog.DuplicateSuffix); base != matcher.Name {
 			if _, isStreamLabel := streamLabelNames[base]; isStreamLabel {
 				continue

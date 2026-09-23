@@ -2,6 +2,7 @@ package dataobjread
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -171,8 +172,9 @@ type TaskIterator struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 
-	errMu sync.Mutex
-	err   error
+	errStoppedMu sync.Mutex
+	err          error
+	stopped      bool // the planner was cancelled deliberately, rather than failing
 }
 
 // newTaskIterator returns an iterator over tasks whose background planner cancel stops.
@@ -212,17 +214,20 @@ func (it *TaskIterator) At() ReadTask { return it.curr }
 func (it *TaskIterator) Waited() time.Duration { return it.waited }
 
 func (it *TaskIterator) Err() error {
-	it.errMu.Lock()
-	defer it.errMu.Unlock()
+	it.errStoppedMu.Lock()
+	defer it.errStoppedMu.Unlock()
 	return it.err
 }
 
-// setErr keeps err as the planning failure, unless an earlier one already is. A cancellation
-// counts: only the reader knows whether it caused one, so only the reader can discount it.
 func (it *TaskIterator) setErr(err error) {
-	it.errMu.Lock()
-	defer it.errMu.Unlock()
-
+	it.errStoppedMu.Lock()
+	defer it.errStoppedMu.Unlock()
+	if it.stopped && errors.Is(err, context.Canceled) {
+		// Abort cancelled the planner, so this is the cancellation it was given rather than a
+		// query failure. A cancellation recorded before Abort is kept: the caller's context
+		// died on its own and the query did fail.
+		return
+	}
 	if it.err == nil {
 		it.err = err
 	}
@@ -233,13 +238,18 @@ func (it *TaskIterator) setErr(err error) {
 // them. Abort is idempotent and safe to call after a normal drain, where cancel does nothing
 // and done is already closed.
 //
-// Cancelling the planner makes it report a cancellation of its own, which Err then returns.
-// Only the caller knows it aborted, so only the caller can tell that apart from a query the
-// caller's own context ended.
+// A nil err means reading finished or stopped early rather than failed, so the cancellation
+// this triggers in the planner is not reported. See [TaskIterator.Err].
 func (it *TaskIterator) Abort(err error) {
+	// Record before stopping. setErr drops a cancellation once stopped is set, and an explicit
+	// argument is the caller reporting a failure, so it has to win over that guard.
 	if err != nil {
 		it.setErr(err)
 	}
+
+	it.errStoppedMu.Lock()
+	it.stopped = true
+	it.errStoppedMu.Unlock()
 
 	it.cancel()
 	<-it.done

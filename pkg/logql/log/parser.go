@@ -23,11 +23,12 @@ import (
 const (
 	jsonSpacer = '_'
 
-	// DuplicateSuffix renames a label whose name is already taken, so both reach the output. A
-	// structured-metadata label takes it when a stream label holds the name; a parsed label
-	// takes it when a stream label or a structured-metadata label does.
+	// DuplicateSuffix is appended to a label whose name is already taken, so both reach the
+	// output. A stream label always takes its name. The parsers also count a structured-metadata
+	// key as taking its name, for the labels they extract.
 	//
-	// It is appended at most once, so trimming it once recovers the original name.
+	// A rename appends the suffix once, so one trim recovers the original name. A key that
+	// genuinely ends with it is indistinguishable, so a reader must consider both names.
 	DuplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
@@ -245,7 +246,6 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
 		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
-		// Trim _extracted suffix if the extracted field was a duplicate field
 		partStr = strings.TrimSuffix(partStr, DuplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}

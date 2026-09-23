@@ -122,15 +122,15 @@ func TestLogReader(t *testing.T) {
 		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
 		// One batch per record and a batch channel of one, so the scan is certainly blocked on a
-		// send when Close cancels it. At the default batch size the scan finishes first, reports
-		// nothing, and the suppression this asserts is never reached.
+		// send when Close cancels it. At the default batch size the scan finishes first and
+		// reports nothing, so the suppression this asserts is never reached.
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
 		require.True(t, reader.Next())
 
 		require.NoError(t, reader.Close(), "the cancellation Close causes is not a query failure")
 
-		// The read really was cut short, so Close did suppress a cancellation rather than find
-		// none to suppress. Counting is all this does with the records: Close released the
+		// The read really was cut short, so a cancellation was reported and suppressed rather
+		// than never raised. Counting is all this does with the records: Close released the
 		// objects they were decoded from.
 		forwarded := 1
 		for reader.Next() {
@@ -139,57 +139,98 @@ func TestLogReader(t *testing.T) {
 		require.Less(t, forwarded, len(entries), "the scan finished, so nothing was suppressed")
 	})
 
-	t.Run("a cancellation the run never reported is still reported", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+	t.Run("a cancellation the caller caused is still reported after Close", func(t *testing.T) {
+		// Close suppresses the cancellation it causes itself. It must not suppress one the
+		// caller caused, even when no scan has reported it yet: the query did fail, and a
+		// truncated result would otherwise look authoritative.
+		fixture := newReaderFixture(t, logproto.Stream{
+			Labels:  `{app="a"}`,
+			Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")},
+		})
 
-		// An empty plan ends the scan loop before it can check the context, and no scan runs, so
-		// nothing in the run reports the cancellation. Reporting nothing would make an empty
-		// result look authoritative.
 		ctx, cancel := context.WithCancel(t.Context())
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		cancel()
-
-		reader := NewLogReader(ctx, fixture.objects, queuedTasks(), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
-		require.Empty(t, drainReader(reader))
 
 		require.ErrorIs(t, reader.Close(), context.Canceled)
 		require.ErrorIs(t, reader.Err(), context.Canceled)
 	})
 
-	t.Run("a read cut short by the caller is reported before Close", func(t *testing.T) {
-		entries := []push.Entry{
-			entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three"),
-			entry(t, 4, "four"), entry(t, 5, "five"),
+	t.Run("a planning cancellation the reader did not cause still fails the read", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		// The caller's context is alive and the reader has stopped nothing, so a cancellation
+		// arriving from the planner is somebody else's, and a real failure.
+		tasks := queuedTasks()
+		tasks.setErr(context.Canceled)
+
+		reader := NewLogReader(t.Context(), fixture.objects, tasks, DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		require.Empty(t, drainReader(reader))
+
+		require.ErrorIs(t, reader.Err(), context.Canceled)
+		require.ErrorIs(t, reader.Close(), context.Canceled)
+	})
+
+	t.Run("the caller's own cause is reported, not a bare cancellation", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		ctx, cancel := context.WithCancelCause(t.Context())
+		cancel(errors.New("query timed out upstream"))
+
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		drainReader(reader)
+
+		require.ErrorContains(t, reader.Err(), "query timed out upstream", "the cause says why, where the bare cancellation does not")
+	})
+
+	t.Run("the first failure reported is the one kept", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		require.Empty(t, drainReader(reader))
+
+		// A scan cut short by a sibling's failure reports its own cancellation afterwards. The
+		// first error is the one that explains the rest.
+		reader.setErr(errors.New("first"))
+		reader.setErr(errors.New("second"))
+		require.EqualError(t, reader.Err(), "first")
+	})
+
+	t.Run("a panic scanning a section fails the read rather than the process", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		// A task with no decoded streams makes the scan dereference a nil pointer as it turns
+		// rows into records, which is a panic on the scan's own goroutine.
+		task := fixture.tasks[0]
+		task.streams = nil
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(task), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		require.Empty(t, drainReader(reader))
+
+		require.ErrorContains(t, reader.Err(), "runtime error")
+		require.Error(t, reader.Close())
+	})
+
+	t.Run("a read that exhausted its plan keeps every record a later cancellation finds queued", func(t *testing.T) {
+		var entries []push.Entry
+		want := make([]string, 0, 20)
+		for i := range 20 {
+			line := fmt.Sprintf("line-%d", i)
+			entries = append(entries, entry(t, i+1, line))
+			want = append(want, line)
 		}
 		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
-		// One batch per record, so the scan is still running when the caller cancels.
 		ctx, cancel := context.WithCancel(t.Context())
-		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
-		require.True(t, reader.Next())
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+
+		// Wait for the scan to finish, so every record is decoded and queued, then cancel.
+		// Dropping the queued records would under-count a query that read all it planned to.
+		<-reader.stopped
 		cancel()
 
-		// A consumer that stops at Next and reads Err, without ever calling Close, must still
-		// learn the read was cut short.
-		for reader.Next() { //revive:disable-line:empty-block
-		}
-		require.ErrorIs(t, reader.Err(), context.Canceled)
-		require.ErrorIs(t, reader.Close(), context.Canceled)
-	})
-
-	t.Run("a read error outranks a cancellation that arrives later", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
-
-		task := fixture.tasks[0]
-		task.sectionIdx = 999
-
-		ctx, cancel := context.WithCancel(t.Context())
-		reader := NewLogReader(ctx, fixture.objects, queuedTasks(task), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
-		require.Empty(t, drainReader(reader))
-		cancel()
-
-		// The read failed first, so that is the failure to report. A cancellation arriving while
-		// the caller tidies up says nothing about why the query failed.
-		require.ErrorContains(t, reader.Close(), "holds no logs section 999")
+		require.ElementsMatch(t, want, drainReader(reader))
+		require.NoError(t, reader.Err())
 	})
 
 	t.Run("closing twice reports no error the second time", func(t *testing.T) {
