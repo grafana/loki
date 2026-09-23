@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -408,65 +410,96 @@ func corruptShardPayload(t *testing.T, runPaths []string, shardVal int) (path st
 // TestBuilder_PrepareIndexesRetryAfterMidMergeFailure strengthens the
 // failure-retry coverage above: corrupting a run's magic fails at open, before
 // any shard writes a .lidx, so that test's no-stray-.lidx assertion is
-// vacuously true. Here shard 0 merges to completion (writing its .lidx files)
-// before shard 1 hits a corrupted s2 payload — asserting that
-// mergeShard/mergeRuns remove the files of already-completed shards on
-// failure, the runs survive, and a healed retry matches a never-failed
-// control.
+// vacuously true. Here shard 1 hits a corrupted s2 payload after at least one
+// sibling shard can complete (serial: shard 0 finishes first; merge_threads=2:
+// shards 0 and 1 race) — asserting that mergeShard/mergeRuns remove the files
+// of already-completed shards on failure, the runs survive, and a healed retry
+// matches a never-failed control.
 func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
-	entries := retryTestEntries()
+	for _, threads := range []int{1, 2} {
+		t.Run(fmt.Sprintf("merge_threads=%d", threads), func(t *testing.T) {
+			entries := retryTestEntries()
 
-	// Control: identical input, never failed.
-	ctl, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
-	require.NoError(t, err)
-	defer ctl.clear()
-	require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
-	ctlFiles, err := ctl.prepareIndexes()
-	require.NoError(t, err)
-	// Shard 0 must produce files, or "completed shards leave strays" is
-	// untestable with this dataset.
-	require.Contains(t, fileKeys(ctlFiles), "2026-03-22_s0")
-	want := termRangesByFile(t, ctlFiles)
+			ctlCfg := roundTripConfig(t, 4, 64)
+			ctlCfg.MergeThreads = threads
+			ctl, err := newIndexBuilder(ctlCfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+			require.NoError(t, err)
+			defer ctl.clear()
+			require.NoError(t, ctl.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+			ctlFiles, err := ctl.prepareIndexes()
+			require.NoError(t, err)
+			// At least one non-victim shard must produce files, or "completed
+			// shards leave strays" is untestable with this dataset.
+			require.Contains(t, fileKeys(ctlFiles), "2026-03-22_s0")
+			want := termRangesByFile(t, ctlFiles)
 
-	b, err := newIndexBuilder(roundTripConfig(t, 4, 64), "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+			cfg := roundTripConfig(t, 4, 64)
+			cfg.MergeThreads = threads
+			b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+			require.NoError(t, err)
+			defer b.clear()
+			require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
+
+			// Spill the remaining head now so the run set is final before corrupting
+			// (finish is idempotent — prepareIndexes below won't create new runs).
+			require.NoError(t, b.ing.postings.finish())
+			require.NotEmpty(t, b.ing.postings.runPaths)
+
+			victim, off, orig := corruptShardPayload(t, b.ing.postings.runPaths, 1)
+
+			_, err = b.prepareIndexes()
+			require.Error(t, err)
+
+			// Completed siblings' .lidx were never returned to the builder —
+			// only the merge itself can clean them, and must.
+			strays, err := filepath.Glob(filepath.Join(b.runDir, "*.lidx"))
+			require.NoError(t, err)
+			require.Empty(t, strays, "completed shards must not leave .lidx files after a failed merge")
+			require.Empty(t, b.openFiles)
+			require.Empty(t, b.lidxPaths)
+
+			// Runs survive the failure (invariant #6) so a retry can rebuild.
+			for _, p := range b.ing.postings.runPaths {
+				_, err := os.Stat(p)
+				require.NoError(t, err, "run %s must survive a failed prepareIndexes", p)
+			}
+
+			// Heal the corruption and retry: output must match the never-failed builder.
+			fh, err := os.OpenFile(victim, os.O_RDWR, 0)
+			require.NoError(t, err)
+			_, err = fh.WriteAt(orig, off)
+			require.NoError(t, err)
+			require.NoError(t, fh.Close())
+
+			files, err := b.prepareIndexes()
+			require.NoError(t, err)
+			require.Equal(t, want, termRangesByFile(t, files), "healed retry must match a never-failed builder")
+		})
+	}
+}
+
+// TestMergeRuns_StopsSchedulingAfterShardFailure pins the serial-merge
+// failure path: with merge_threads=1, a corrupt shard 0 must not launch
+// shards 1..N. ForEachJob checks the canceled context before taking the
+// next index, so the single worker stops instead of continuing the loop.
+func TestMergeRuns_StopsSchedulingAfterShardFailure(t *testing.T) {
+	cfg := roundTripConfig(t, 4, 64)
+	cfg.MergeThreads = 1
+	b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
 	defer b.clear()
-	require.NoError(t, b.processStream(&logproto.Stream{Entries: entries}, nil, time.Now(), recordRef{}))
-
-	// Spill the remaining head now so the run set is final before corrupting
-	// (finish is idempotent — prepareIndexes below won't create new runs).
+	require.NoError(t, b.processStream(&logproto.Stream{Entries: retryTestEntries()}, nil, time.Now(), recordRef{}))
 	require.NoError(t, b.ing.postings.finish())
 	require.NotEmpty(t, b.ing.postings.runPaths)
+	corruptShardPayload(t, b.ing.postings.runPaths, 0)
 
-	victim, off, orig := corruptShardPayload(t, b.ing.postings.runPaths, 1)
+	var started atomic.Int32
+	mergeShardStarted = func(int) { started.Add(1) }
+	t.Cleanup(func() { mergeShardStarted = nil })
 
 	_, err = b.prepareIndexes()
 	require.Error(t, err)
-
-	// Shard 0 completed before the failure, but its .lidx were never returned
-	// to the builder — only the merge itself can clean them, and must.
-	strays, err := filepath.Glob(filepath.Join(b.runDir, "*.lidx"))
-	require.NoError(t, err)
-	require.Empty(t, strays, "completed shards must not leave .lidx files after a failed merge")
-	require.Empty(t, b.openFiles)
-	require.Empty(t, b.lidxPaths)
-
-	// Runs survive the failure (invariant #6) so a retry can rebuild.
-	for _, p := range b.ing.postings.runPaths {
-		_, err := os.Stat(p)
-		require.NoError(t, err, "run %s must survive a failed prepareIndexes", p)
-	}
-
-	// Heal the corruption and retry: output must match the never-failed builder.
-	fh, err := os.OpenFile(victim, os.O_RDWR, 0)
-	require.NoError(t, err)
-	_, err = fh.WriteAt(orig, off)
-	require.NoError(t, err)
-	require.NoError(t, fh.Close())
-
-	files, err := b.prepareIndexes()
-	require.NoError(t, err)
-	require.Equal(t, want, termRangesByFile(t, files), "healed retry must match a never-failed builder")
+	require.Equal(t, int32(1), started.Load(), "a failed serial merge must not start later shards")
 }
 
 // TestBuilder_SpillAndMergeMetrics verifies the run/merge instrumentation: a

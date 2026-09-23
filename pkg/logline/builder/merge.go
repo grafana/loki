@@ -2,16 +2,26 @@ package builder
 
 import (
 	"container/heap"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math/bits"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
+
+	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
+
+// mergeShardStarted, when non-nil, runs at the start of each scheduled
+// mergeShard. Tests use it to assert a failed merge does not start shards
+// that have not yet been launched. Production leaves it nil. Tests that set
+// it must not run in parallel with other merge tests.
+var mergeShardStarted func(shard int)
 
 // mergedFile identifies one .lidx produced by the merge and the (date, shard)
 // it covers, so the builder can wrap it in a fileInfo for upload. terms/docs
@@ -72,14 +82,20 @@ func (dm *dateMapper) docMeta(docID uint32, id uint32) format.DocumentMetadata {
 	}
 }
 
-// mergeRuns k-way merges the given runs into per-(date,shard) .lidx files, one
-// shard at a time. Runs are shard-contiguous and each shard is an independently
-// seekable s2 stream, so each iteration seeks straight to its shard's byte
-// range in every run and merges only that shard — a single pass over the data,
-// no re-reads — producing a disjoint set of .lidx files. mergeShard is
-// self-contained (own readers, writers, dateMapper; refTicks is read-only), so
-// merging shards in parallel would be a small, local change if flush wall time
-// ever warrants it.
+// mergeRuns k-way merges the given runs into per-(date,shard) .lidx files.
+// Runs are shard-contiguous and each shard is an independently seekable s2
+// stream, so each mergeShard seeks straight to its shard's byte range in every
+// run and merges only that shard — a single pass over the data, no re-reads —
+// producing a disjoint set of .lidx files. mergeShard is self-contained (own
+// readers, writers, dateMapper; refTicks is read-only), so up to mergeThreads
+// shards run concurrently (capped at nShards). Default mergeThreads=1 is the
+// serial path.
+//
+// A shard error cancels shards that have not started. Shards already running
+// finish, then every .lidx from the attempt is removed. That keeps a corrupt
+// run from paying for a full merge on every retry when merge_threads is 1.
+// ForEachJob checks the context before taking the next index, and errgroup
+// cancels that context before a worker is free to loop again.
 //
 // runPaths is a parameter (not b.runPaths) because in extract-pipeline mode the
 // merge host receives the UNION of every worker buffer's runs; its refTicks
@@ -90,22 +106,34 @@ func (b *postingsBuffer) mergeRuns(outDir, version string, cfg format.WriterConf
 	b.releaseSortBuffers()
 
 	nShards := max(b.shardCount, 1)
-	var files []mergedFile
-	for s := range nShards {
-		mf, err := b.mergeShard(outDir, version, cfg, s, runPaths)
-		if err != nil {
-			// Shards completed before the failure already produced .lidx files
-			// that the caller never learns about (only the returned slice is
-			// registered for discardIndexes); remove them here so a failed
-			// merge leaves nothing on disk that retry accounting can't see.
-			for _, f := range files {
+	// Each shard writes only its own slot. ForEachJob waits for every worker
+	// before returning, so the slice needs no lock.
+	perShard := make([][]mergedFile, nShards)
+	err := concurrency.ForEachJob(context.Background(), nShards, max(b.mergeThreads, 1), func(_ context.Context, s int) error {
+		if mergeShardStarted != nil {
+			mergeShardStarted(s)
+		}
+		mf, merr := b.mergeShard(outDir, version, cfg, s, runPaths)
+		if merr != nil {
+			return merr
+		}
+		perShard[s] = mf
+		return nil
+	})
+	if err != nil {
+		// Shards that finished before the failure already produced .lidx files
+		// that the caller never learns about (only the returned slice is
+		// registered for discardIndexes). mergeShard already removed its own
+		// files on its error path; remove the successful siblings here so a
+		// failed merge leaves nothing on disk that retry accounting can't see.
+		for _, mf := range perShard {
+			for _, f := range mf {
 				os.Remove(f.path)
 			}
-			return nil, err
 		}
-		files = append(files, mf...)
+		return nil, err
 	}
-	return files, nil
+	return slices.Concat(perShard...), nil
 }
 
 // mergeShard merges a single shard's records from every run into that shard's
