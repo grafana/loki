@@ -11,6 +11,7 @@ import (
 const (
 	defaultNgramLength                    = 6
 	defaultMaxHintParallel                = 64
+	defaultMaxHintDaysParallel            = 7
 	defaultHintTimeout                    = 15 * time.Second
 	defaultMinQueryBytes                  = int64(500 * 1024 * 1024 * 1024) // 500 GB
 	defaultShardPlanningEnabled           = true
@@ -55,6 +56,9 @@ type MiddlewareConfig struct {
 	// MaxHintParallel is the maximum number of concurrent hint index workers
 	// dispatched per query. Defaults to 64 when zero.
 	MaxHintParallel int `yaml:"max_hint_parallel"`
+	// MaxHintDaysParallel is the max concurrent cache-miss day fetches
+	// in CachingHintProvider. Defaults to 7 when zero.
+	MaxHintDaysParallel int `yaml:"max_hint_days_parallel"`
 	// QueryIngestersWithin is the window of recent data that lives only in
 	// ingesters (not yet flushed to object storage). The logline index cannot
 	// cover this window, so it is always passed through to the Loki pipeline.
@@ -108,6 +112,8 @@ func (c *MiddlewareConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 		"Require X-Logline-Index header to activate hint narrowing")
 	f.IntVar(&c.MaxHintParallel, prefix+".max-hint-parallel", 0,
 		"Maximum concurrent hint index workers per query (default 64)")
+	f.IntVar(&c.MaxHintDaysParallel, prefix+".max-hint-days-parallel", 0,
+		"Maximum concurrent hint-cache day fetches (default 7)")
 	f.DurationVar(&c.HintTimeout, prefix+".hint-timeout", 0,
 		"Maximum time to wait for logline index hint lookup (default 15s)")
 	f.DurationVar(&c.HintCacheTTL, prefix+".hint-cache-ttl", 2*time.Minute,
@@ -129,6 +135,9 @@ func (c *MiddlewareConfig) Validate() error {
 	}
 	if c.MaxHintParallel <= 0 {
 		c.MaxHintParallel = defaultMaxHintParallel
+	}
+	if c.MaxHintDaysParallel <= 0 {
+		c.MaxHintDaysParallel = defaultMaxHintDaysParallel
 	}
 	if c.HintTimeout <= 0 {
 		c.HintTimeout = defaultHintTimeout

@@ -174,7 +174,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -246,7 +246,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -304,7 +304,7 @@ func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 		hints: &Hints{TimeRanges: []HintTimeRange{spanning}},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+	provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	from := model.TimeFromUnixNano(midnight.Add(-2 * time.Hour).UnixNano())
@@ -426,7 +426,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -501,7 +501,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("cache hit", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 		days := buildDayWindows(tenant, expr.String(), "", from, through)
 		require.Len(t, days, 1)
 
@@ -525,7 +525,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("cache miss", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
@@ -542,7 +542,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 	t.Run("nil cache", func(t *testing.T) {
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, nil, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
@@ -560,7 +560,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("skip cache", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			WithSkipCache(context.Background()),
@@ -589,7 +589,7 @@ func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+	provider := NewCachingHintProvider(delegate, nil, 0, prometheus.NewRegistry())
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 
 	_, _, err := provider.ProvideHints(
@@ -608,7 +608,7 @@ func TestCachingHintProvider_ErrUnsupportedNotCached(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{err: ErrUnsupported}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
 	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
@@ -642,7 +642,7 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 		},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	from := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
@@ -674,7 +674,7 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 
 	ctx := WithSkipCache(context.Background())
@@ -707,7 +707,7 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
 	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
@@ -751,7 +751,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
 	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
@@ -840,7 +840,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	delegate := &mutableWindowHintProvider{
 		indexRanges: []HintTimeRange{oldRange, newRange},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "needle"`)
 	tenant := "tenant-a"

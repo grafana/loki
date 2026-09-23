@@ -21,10 +21,10 @@ const (
 	hintCacheKeyPrefix  = "logline:"
 	hintCacheGeneration = 1
 	hintCacheDayLayout  = "2006-01-02"
-	// maxHintCacheDayParallel is how many missed days ProvideHints may
+	// defaultHintsDayParallel is how many missed days ProvideHints may
 	// fetch at once. All missing days still run; only in-flight count is
 	// capped. This is not MaxHintParallel (index workers per HintRequest).
-	maxHintCacheDayParallel = 7
+	defaultHintsDayParallel = 7
 )
 
 const (
@@ -82,6 +82,7 @@ type minDateProvider interface {
 type CachingHintProvider struct {
 	delegate QueryHintProvider
 	cache    cache.Cache
+	max      int
 
 	flight singleflight.Group
 
@@ -90,10 +91,14 @@ type CachingHintProvider struct {
 }
 
 // NewCachingHintProvider constructs a caching decorator for QueryHintProvider.
-func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, reg prometheus.Registerer) *CachingHintProvider {
+func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, max int, reg prometheus.Registerer) *CachingHintProvider {
+	if max <= 0 {
+		max = defaultHintsDayParallel
+	}
 	return &CachingHintProvider{
 		delegate: delegate,
 		cache:    c,
+		max:      max,
 		requestsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_hint_cache_requests_total",
 			Help: "Total hint cache lookup requests by result.",
@@ -156,7 +161,7 @@ func (p *CachingHintProvider) ProvideHints(
 
 	results := make([]provideHintsResult, len(missingDays))
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(maxHintCacheDayParallel)
+	g.SetLimit(p.max)
 
 	for i, day := range missingDays {
 		g.Go(func() error {
