@@ -19,6 +19,7 @@ type partitionLifecycler struct {
 	partitionManager *partitionManager
 	offsetManager    kafka_partition.OffsetManager
 	usage            *usageStore
+	streamShards     *streamShardStore
 	activeWindow     time.Duration
 	logger           log.Logger
 
@@ -26,11 +27,13 @@ type partitionLifecycler struct {
 	clock quartz.Clock
 }
 
-// newPartitionLifecycler returns a new partitionLifecycler.
+// newPartitionLifecycler returns a new partitionLifecycler. streamShards may
+// be nil, in which case revoked partitions are not evicted from it.
 func newPartitionLifecycler(
 	partitionManager *partitionManager,
 	offsetManager kafka_partition.OffsetManager,
 	usage *usageStore,
+	streamShards *streamShardStore,
 	activeWindow time.Duration,
 	logger log.Logger,
 ) *partitionLifecycler {
@@ -38,6 +41,7 @@ func newPartitionLifecycler(
 		partitionManager: partitionManager,
 		offsetManager:    offsetManager,
 		usage:            usage,
+		streamShards:     streamShards,
 		activeWindow:     activeWindow,
 		logger:           logger,
 		clock:            quartz.NewReal(),
@@ -94,6 +98,9 @@ func (l *partitionLifecycler) revoke(_ context.Context, _ *kgo.Client, topics ma
 	for _, partitions := range topics {
 		l.partitionManager.Revoke(partitions)
 		l.usage.EvictPartitions(partitions)
+		if l.streamShards != nil {
+			l.streamShards.EvictPartitions(partitions)
+		}
 	}
 }
 
