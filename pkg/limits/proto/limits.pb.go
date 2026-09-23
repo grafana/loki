@@ -371,151 +371,6 @@ func (m *StreamMetadataRecord) GetMetadata() *StreamMetadata {
 	return nil
 }
 
-type UpdateRatesRequest struct {
-	Tenant  string            `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	Streams []*StreamMetadata `protobuf:"bytes,2,rep,name=streams,proto3" json:"streams,omitempty"`
-}
-
-func (m *UpdateRatesRequest) Reset()      { *m = UpdateRatesRequest{} }
-func (*UpdateRatesRequest) ProtoMessage() {}
-func (*UpdateRatesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{7}
-}
-func (m *UpdateRatesRequest) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *UpdateRatesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_UpdateRatesRequest.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *UpdateRatesRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateRatesRequest.Merge(m, src)
-}
-func (m *UpdateRatesRequest) XXX_Size() int {
-	return m.Size()
-}
-func (m *UpdateRatesRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateRatesRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_UpdateRatesRequest proto.InternalMessageInfo
-
-func (m *UpdateRatesRequest) GetTenant() string {
-	if m != nil {
-		return m.Tenant
-	}
-	return ""
-}
-
-func (m *UpdateRatesRequest) GetStreams() []*StreamMetadata {
-	if m != nil {
-		return m.Streams
-	}
-	return nil
-}
-
-type UpdateRatesResponse struct {
-	Results []*UpdateRatesResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
-}
-
-func (m *UpdateRatesResponse) Reset()      { *m = UpdateRatesResponse{} }
-func (*UpdateRatesResponse) ProtoMessage() {}
-func (*UpdateRatesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{8}
-}
-func (m *UpdateRatesResponse) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *UpdateRatesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_UpdateRatesResponse.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *UpdateRatesResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateRatesResponse.Merge(m, src)
-}
-func (m *UpdateRatesResponse) XXX_Size() int {
-	return m.Size()
-}
-func (m *UpdateRatesResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateRatesResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_UpdateRatesResponse proto.InternalMessageInfo
-
-func (m *UpdateRatesResponse) GetResults() []*UpdateRatesResult {
-	if m != nil {
-		return m.Results
-	}
-	return nil
-}
-
-type UpdateRatesResult struct {
-	StreamHash uint64 `protobuf:"varint,1,opt,name=streamHash,proto3" json:"streamHash,omitempty"`
-	Rate       uint64 `protobuf:"varint,2,opt,name=rate,proto3" json:"rate,omitempty"`
-}
-
-func (m *UpdateRatesResult) Reset()      { *m = UpdateRatesResult{} }
-func (*UpdateRatesResult) ProtoMessage() {}
-func (*UpdateRatesResult) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{9}
-}
-func (m *UpdateRatesResult) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *UpdateRatesResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_UpdateRatesResult.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *UpdateRatesResult) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateRatesResult.Merge(m, src)
-}
-func (m *UpdateRatesResult) XXX_Size() int {
-	return m.Size()
-}
-func (m *UpdateRatesResult) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateRatesResult.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_UpdateRatesResult proto.InternalMessageInfo
-
-func (m *UpdateRatesResult) GetStreamHash() uint64 {
-	if m != nil {
-		return m.StreamHash
-	}
-	return 0
-}
-
-func (m *UpdateRatesResult) GetRate() uint64 {
-	if m != nil {
-		return m.Rate
-	}
-	return 0
-}
-
 type CheckLimitsAndShardRequest struct {
 	Tenant  string            `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Streams []*StreamMetadata `protobuf:"bytes,2,rep,name=streams,proto3" json:"streams,omitempty"`
@@ -524,7 +379,7 @@ type CheckLimitsAndShardRequest struct {
 func (m *CheckLimitsAndShardRequest) Reset()      { *m = CheckLimitsAndShardRequest{} }
 func (*CheckLimitsAndShardRequest) ProtoMessage() {}
 func (*CheckLimitsAndShardRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{10}
+	return fileDescriptor_aaed9e7d5298ac0f, []int{7}
 }
 func (m *CheckLimitsAndShardRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -574,7 +429,7 @@ type CheckLimitsAndShardResponse struct {
 func (m *CheckLimitsAndShardResponse) Reset()      { *m = CheckLimitsAndShardResponse{} }
 func (*CheckLimitsAndShardResponse) ProtoMessage() {}
 func (*CheckLimitsAndShardResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{11}
+	return fileDescriptor_aaed9e7d5298ac0f, []int{8}
 }
 func (m *CheckLimitsAndShardResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -632,7 +487,7 @@ type StreamShardResult struct {
 func (m *StreamShardResult) Reset()      { *m = StreamShardResult{} }
 func (*StreamShardResult) ProtoMessage() {}
 func (*StreamShardResult) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{12}
+	return fileDescriptor_aaed9e7d5298ac0f, []int{9}
 }
 func (m *StreamShardResult) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -703,7 +558,7 @@ type ShardStats struct {
 func (m *ShardStats) Reset()      { *m = ShardStats{} }
 func (*ShardStats) ProtoMessage() {}
 func (*ShardStats) Descriptor() ([]byte, []int) {
-	return fileDescriptor_aaed9e7d5298ac0f, []int{13}
+	return fileDescriptor_aaed9e7d5298ac0f, []int{10}
 }
 func (m *ShardStats) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -755,9 +610,6 @@ func init() {
 	proto.RegisterMapType((map[int32]int64)(nil), "proto.GetAssignedPartitionsResponse.AssignedPartitionsEntry")
 	proto.RegisterType((*StreamMetadata)(nil), "proto.StreamMetadata")
 	proto.RegisterType((*StreamMetadataRecord)(nil), "proto.StreamMetadataRecord")
-	proto.RegisterType((*UpdateRatesRequest)(nil), "proto.UpdateRatesRequest")
-	proto.RegisterType((*UpdateRatesResponse)(nil), "proto.UpdateRatesResponse")
-	proto.RegisterType((*UpdateRatesResult)(nil), "proto.UpdateRatesResult")
 	proto.RegisterType((*CheckLimitsAndShardRequest)(nil), "proto.CheckLimitsAndShardRequest")
 	proto.RegisterType((*CheckLimitsAndShardResponse)(nil), "proto.CheckLimitsAndShardResponse")
 	proto.RegisterType((*StreamShardResult)(nil), "proto.StreamShardResult")
@@ -767,52 +619,48 @@ func init() {
 func init() { proto.RegisterFile("pkg/limits/proto/limits.proto", fileDescriptor_aaed9e7d5298ac0f) }
 
 var fileDescriptor_aaed9e7d5298ac0f = []byte{
-	// 714 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x54, 0xbf, 0x52, 0x14, 0x4f,
-	0x10, 0xbe, 0xb9, 0x3f, 0xf0, 0xa3, 0xe1, 0x7e, 0xca, 0x70, 0xe8, 0x79, 0xc0, 0x14, 0xae, 0x54,
-	0x79, 0x11, 0x94, 0x27, 0x81, 0x65, 0x99, 0x20, 0x02, 0x52, 0x05, 0x55, 0x38, 0x57, 0x86, 0x6a,
-	0x8d, 0xb7, 0x2d, 0xac, 0x2c, 0xbb, 0xe7, 0xce, 0x9c, 0x05, 0x44, 0x3e, 0x80, 0x81, 0xa1, 0x8f,
-	0xe0, 0xa3, 0x18, 0x12, 0x18, 0x10, 0xca, 0x92, 0x58, 0x46, 0x3c, 0x82, 0xb5, 0x33, 0xbb, 0x72,
-	0x7b, 0xb7, 0x07, 0x04, 0x24, 0x46, 0xbb, 0xdd, 0xfd, 0xcd, 0x37, 0xd3, 0xdd, 0x5f, 0x37, 0xcc,
-	0xb4, 0x77, 0xb7, 0x17, 0x5c, 0x67, 0xcf, 0x51, 0x72, 0xa1, 0x1d, 0xf8, 0xca, 0x8f, 0x8d, 0x79,
-	0x6d, 0xd0, 0x92, 0xfe, 0x58, 0x6f, 0xa0, 0xb2, 0xb2, 0xdf, 0x42, 0xb4, 0xe5, 0x86, 0x8e, 0x72,
-	0xfc, 0xd0, 0x41, 0xa9, 0xe8, 0x2d, 0x18, 0x52, 0xe8, 0x09, 0x4f, 0x55, 0xc9, 0x2c, 0xa9, 0x8f,
-	0xf0, 0xd8, 0xa2, 0x0b, 0x30, 0x2c, 0x55, 0x80, 0x62, 0x4f, 0x56, 0xf3, 0xb3, 0x85, 0xfa, 0x68,
-	0x63, 0xd2, 0xf0, 0xcd, 0x37, 0xb5, 0x77, 0x13, 0x95, 0xb0, 0x85, 0x12, 0x3c, 0x41, 0x59, 0x9b,
-	0x30, 0xd9, 0x73, 0x81, 0x6c, 0xfb, 0x9e, 0x44, 0xba, 0x08, 0xc3, 0x01, 0xca, 0x8e, 0xab, 0x64,
-	0x95, 0x68, 0xa6, 0x5a, 0xcc, 0xd4, 0x0b, 0xef, 0xb8, 0x8a, 0x27, 0x50, 0x6b, 0x13, 0x26, 0x32,
-	0xe2, 0x94, 0x01, 0x98, 0x0b, 0x9f, 0x0b, 0xb9, 0xa3, 0x9f, 0x5c, 0xe4, 0x5d, 0x9e, 0x28, 0x9d,
-	0x00, 0x85, 0xf4, 0xbd, 0x6a, 0x7e, 0x96, 0xd4, 0xcb, 0x3c, 0xb6, 0x2c, 0x06, 0xd3, 0x6b, 0xa8,
-	0x96, 0xa4, 0x74, 0xb6, 0x3d, 0xb4, 0xb7, 0x44, 0xa0, 0x1c, 0xe5, 0xf8, 0x5e, 0x52, 0x06, 0xeb,
-	0x07, 0x81, 0x99, 0x01, 0x80, 0x38, 0x0d, 0x17, 0xa8, 0xe8, 0x8b, 0xc6, 0x19, 0x3d, 0x89, 0x33,
-	0xba, 0x90, 0x61, 0xbe, 0x3f, 0xb4, 0xe2, 0xa9, 0xe0, 0x80, 0x67, 0xf0, 0xd6, 0x56, 0xe0, 0xf6,
-	0x00, 0x38, 0xbd, 0x09, 0x85, 0x5d, 0x3c, 0xd0, 0xb9, 0x97, 0x78, 0xf4, 0x4b, 0x2b, 0x50, 0xfa,
-	0x28, 0xdc, 0x0e, 0xea, 0x9c, 0x0b, 0xdc, 0x18, 0x8f, 0xf3, 0x8f, 0x88, 0xb5, 0x0f, 0xff, 0xa7,
-	0xfb, 0x75, 0x69, 0x01, 0xa7, 0x61, 0x44, 0xf9, 0x4a, 0xb8, 0x4d, 0xe7, 0xd0, 0xf0, 0x15, 0xf9,
-	0xb9, 0x83, 0xd6, 0xe1, 0x86, 0xe3, 0x6d, 0xa3, 0x8c, 0x9e, 0xb3, 0xe5, 0xbb, 0x4e, 0xeb, 0xa0,
-	0x5a, 0xd0, 0xb2, 0xe9, 0x75, 0x5b, 0x1d, 0xa8, 0xf4, 0x28, 0x05, 0x5b, 0x7e, 0x60, 0x53, 0x0a,
-	0xc5, 0x43, 0xdf, 0xc3, 0x58, 0x6d, 0xfa, 0xbf, 0x4b, 0x83, 0xf9, 0x94, 0x06, 0x1f, 0xc0, 0x7f,
-	0x7b, 0xf1, 0x69, 0x7d, 0xcd, 0x40, 0x11, 0xfe, 0x85, 0x59, 0xaf, 0x80, 0xbe, 0x6c, 0xdb, 0x42,
-	0x21, 0x17, 0x0a, 0xaf, 0x5f, 0xe4, 0xeb, 0x30, 0x91, 0xa2, 0x8f, 0xb5, 0xd1, 0xe8, 0x95, 0x78,
-	0x35, 0xe6, 0x49, 0x83, 0x53, 0x02, 0x5f, 0x83, 0xf1, 0xbe, 0xe8, 0xa5, 0xdd, 0xa1, 0x50, 0x0c,
-	0x84, 0x4a, 0x1a, 0xa3, 0xff, 0x2d, 0x84, 0xda, 0xf2, 0x0e, 0xb6, 0x76, 0xcd, 0x9c, 0x2c, 0x79,
-	0x76, 0x73, 0x47, 0x04, 0xf6, 0xb5, 0xa7, 0xfe, 0x02, 0xa6, 0x32, 0xaf, 0xb9, 0xac, 0x04, 0x86,
-	0x2f, 0x01, 0xa7, 0x4a, 0xf0, 0x95, 0xc0, 0x78, 0x5f, 0xf8, 0x2a, 0x23, 0x2e, 0x23, 0xb8, 0x4c,
-	0x46, 0xdc, 0x58, 0xd4, 0x82, 0xb1, 0x00, 0xdf, 0x63, 0x4b, 0x71, 0xb3, 0x00, 0x8c, 0x30, 0x53,
-	0x3e, 0x7a, 0x1f, 0x4a, 0x52, 0x09, 0x25, 0xab, 0x45, 0x2d, 0xa7, 0xf1, 0xe4, 0x8d, 0x11, 0x43,
-	0x33, 0x0a, 0x70, 0x13, 0xb7, 0xde, 0x01, 0x9c, 0x3b, 0x69, 0x03, 0x2a, 0xfa, 0x92, 0x67, 0xd8,
-	0x72, 0xa4, 0xe3, 0x7b, 0xcb, 0xbe, 0xa7, 0x70, 0xdf, 0x94, 0xb4, 0xcc, 0x33, 0x63, 0x74, 0x0e,
-	0xca, 0x18, 0x0d, 0xa2, 0x50, 0x68, 0xf3, 0xf3, 0x9e, 0xa5, 0x9d, 0x8d, 0xcf, 0x79, 0xa8, 0xac,
-	0xeb, 0xd1, 0x31, 0x75, 0x5d, 0x0d, 0xa2, 0xe3, 0x9e, 0x4d, 0x37, 0xa0, 0x9c, 0xda, 0x7f, 0x74,
-	0x2a, 0x7b, 0x6b, 0xea, 0x2e, 0xd7, 0xa6, 0x07, 0xac, 0x54, 0xdd, 0x1b, 0x2b, 0x47, 0x57, 0x61,
-	0xb4, 0x4b, 0x6c, 0xf4, 0x4e, 0x96, 0x3c, 0x0d, 0x53, 0x2d, 0x53, 0xb9, 0x09, 0xcf, 0x6b, 0x98,
-	0xc8, 0x10, 0x01, 0xbd, 0x1b, 0x1f, 0x1a, 0xac, 0xc3, 0x9a, 0x75, 0x11, 0x24, 0xe1, 0x6f, 0xfc,
-	0xce, 0xc3, 0x58, 0x77, 0x39, 0xae, 0xb9, 0x0c, 0x36, 0x4c, 0x66, 0xae, 0x68, 0x7a, 0xef, 0xe2,
-	0x05, 0x6e, 0xd8, 0xe7, 0xae, 0xb2, 0xe5, 0xff, 0x9d, 0x62, 0x3f, 0x5d, 0x3c, 0x3a, 0x61, 0xb9,
-	0xe3, 0x13, 0x96, 0x3b, 0x3b, 0x61, 0xe4, 0x53, 0xc8, 0xc8, 0xb7, 0x90, 0x91, 0xef, 0x21, 0x23,
-	0x47, 0x21, 0x23, 0x3f, 0x43, 0x46, 0x7e, 0x85, 0x2c, 0x77, 0x16, 0x32, 0xf2, 0xe5, 0x94, 0xe5,
-	0x8e, 0x4e, 0x59, 0xee, 0xf8, 0x94, 0xe5, 0xde, 0x0e, 0x69, 0xea, 0x87, 0x7f, 0x02, 0x00, 0x00,
-	0xff, 0xff, 0xdc, 0x7a, 0xec, 0xc6, 0x77, 0x08, 0x00, 0x00,
+	// 653 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x54, 0x3d, 0x53, 0xd4, 0x5c,
+	0x14, 0xce, 0xdd, 0x0f, 0x78, 0x39, 0x2f, 0xab, 0x72, 0x59, 0x34, 0xb3, 0xc0, 0x1d, 0x8c, 0xcc,
+	0xb8, 0x15, 0x8c, 0x2b, 0x85, 0xe3, 0xd8, 0x20, 0xe2, 0xc7, 0x0c, 0xcc, 0xe0, 0xdd, 0x5e, 0xe7,
+	0x9a, 0x1c, 0x21, 0x12, 0x6e, 0x30, 0xf7, 0xae, 0x03, 0x54, 0xfe, 0x04, 0x4b, 0x6b, 0x2b, 0x7f,
+	0x88, 0x85, 0x25, 0x85, 0x05, 0xa5, 0x84, 0xc6, 0x92, 0x9f, 0xe0, 0xe4, 0x26, 0x11, 0xb2, 0x64,
+	0x57, 0x0a, 0xac, 0x36, 0xe7, 0x9c, 0xe7, 0x3e, 0xe7, 0xeb, 0xd9, 0x03, 0xb3, 0xbb, 0xdb, 0x9b,
+	0x8b, 0x81, 0xbf, 0xe3, 0x6b, 0xb5, 0xb8, 0x1b, 0x85, 0x3a, 0xcc, 0x8c, 0x05, 0x63, 0xd0, 0xba,
+	0xf9, 0x71, 0x5e, 0x43, 0x73, 0x75, 0xcf, 0x45, 0xf4, 0xd4, 0x9a, 0x89, 0x72, 0x7c, 0xdf, 0x43,
+	0xa5, 0xe9, 0x4d, 0x18, 0xd1, 0x28, 0x85, 0xd4, 0x36, 0x99, 0x23, 0xed, 0x31, 0x9e, 0x59, 0x74,
+	0x11, 0x46, 0x95, 0x8e, 0x50, 0xec, 0x28, 0xbb, 0x32, 0x57, 0x6d, 0xff, 0xdf, 0x99, 0x4a, 0xf9,
+	0x16, 0xba, 0xc6, 0xbb, 0x8e, 0x5a, 0x78, 0x42, 0x0b, 0x9e, 0xa3, 0x9c, 0x75, 0x98, 0xea, 0x4b,
+	0xa0, 0x76, 0x43, 0xa9, 0x90, 0x2e, 0xc1, 0x68, 0x84, 0xaa, 0x17, 0x68, 0x65, 0x13, 0xc3, 0xd4,
+	0xca, 0x98, 0xfa, 0xe1, 0xbd, 0x40, 0xf3, 0x1c, 0xea, 0xac, 0xc3, 0x64, 0x49, 0x9c, 0x32, 0x80,
+	0x34, 0xe1, 0x73, 0xa1, 0xb6, 0x4c, 0xc9, 0x35, 0x7e, 0xce, 0x93, 0xb4, 0x13, 0xa1, 0x50, 0xa1,
+	0xb4, 0x2b, 0x73, 0xa4, 0xdd, 0xe0, 0x99, 0xe5, 0x30, 0x98, 0x79, 0x86, 0x7a, 0x59, 0x29, 0x7f,
+	0x53, 0xa2, 0xb7, 0x21, 0x22, 0xed, 0x6b, 0x3f, 0x94, 0xf9, 0x18, 0x9c, 0x1f, 0x04, 0x66, 0x07,
+	0x00, 0xb2, 0x36, 0x02, 0xa0, 0xe2, 0x42, 0x34, 0xeb, 0xe8, 0x51, 0xd6, 0xd1, 0x50, 0x86, 0x85,
+	0x8b, 0xa1, 0x55, 0xa9, 0xa3, 0x7d, 0x5e, 0xc2, 0xdb, 0x5a, 0x85, 0x5b, 0x03, 0xe0, 0xf4, 0x06,
+	0x54, 0xb7, 0x71, 0xdf, 0xf4, 0x5e, 0xe7, 0xc9, 0x27, 0x6d, 0x42, 0xfd, 0x83, 0x08, 0x7a, 0x68,
+	0x7a, 0xae, 0xf2, 0xd4, 0x78, 0x58, 0x79, 0x40, 0x9c, 0x3d, 0xb8, 0x56, 0xdc, 0xd7, 0x5f, 0x07,
+	0x38, 0x03, 0x63, 0x3a, 0xd4, 0x22, 0xe8, 0xfa, 0x07, 0x29, 0x5f, 0x8d, 0x9f, 0x39, 0x68, 0x1b,
+	0xae, 0xfb, 0x72, 0x13, 0x55, 0x52, 0xce, 0x46, 0x18, 0xf8, 0xee, 0xbe, 0x5d, 0x35, 0xb2, 0xe9,
+	0x77, 0x3b, 0x3d, 0x68, 0xf6, 0x29, 0x05, 0xdd, 0x30, 0xf2, 0x28, 0x85, 0xda, 0x41, 0x28, 0x31,
+	0x53, 0x9b, 0xf9, 0x3e, 0xa7, 0xc1, 0x4a, 0x41, 0x83, 0xf7, 0xe0, 0xbf, 0x9d, 0xec, 0xb5, 0x49,
+	0x33, 0x50, 0x84, 0x7f, 0x60, 0x0e, 0x42, 0x6b, 0x65, 0x0b, 0xdd, 0xed, 0x54, 0x34, 0xcb, 0xd2,
+	0xeb, 0x6e, 0x89, 0xc8, 0xbb, 0x72, 0xb1, 0xbf, 0x84, 0xe9, 0xd2, 0x34, 0x99, 0x56, 0x3a, 0xfd,
+	0x92, 0xb7, 0x0b, 0x7c, 0x39, 0xb8, 0x20, 0xf8, 0xcf, 0x04, 0x26, 0x2e, 0x84, 0x2f, 0xa3, 0x77,
+	0x95, 0xc0, 0x55, 0xae, 0xf7, 0xd4, 0xa2, 0x0e, 0x8c, 0x47, 0xf8, 0x0e, 0x5d, 0xcd, 0xd3, 0x7f,
+	0x43, 0xba, 0xa5, 0x82, 0x8f, 0xde, 0x85, 0xba, 0xd2, 0x42, 0x2b, 0xbb, 0x66, 0x66, 0x3b, 0x91,
+	0xd7, 0x98, 0x30, 0x74, 0x93, 0x00, 0x4f, 0xe3, 0xce, 0x5b, 0x80, 0x33, 0x27, 0xed, 0x40, 0xd3,
+	0x24, 0x79, 0x82, 0xae, 0xaf, 0xfc, 0x50, 0xae, 0x84, 0x52, 0xe3, 0x5e, 0x3a, 0xd2, 0x06, 0x2f,
+	0x8d, 0xd1, 0x79, 0x68, 0x60, 0xa2, 0x4a, 0xa1, 0xd1, 0xe3, 0x42, 0xe7, 0xca, 0x2a, 0x3a, 0x3b,
+	0xdf, 0x08, 0x34, 0x5f, 0x18, 0x1d, 0xa5, 0x73, 0x7d, 0x1a, 0x25, 0xcf, 0xa5, 0x47, 0xd7, 0xa0,
+	0x51, 0x38, 0x06, 0x74, 0xba, 0xfc, 0x84, 0x98, 0x2d, 0xb7, 0x66, 0x06, 0xdc, 0x17, 0xb3, 0x1b,
+	0xc7, 0xa2, 0xaf, 0x60, 0xb2, 0x64, 0x79, 0xf4, 0x76, 0xf6, 0x6c, 0xb0, 0x7e, 0x5a, 0xce, 0x30,
+	0x48, 0xce, 0xdf, 0xf9, 0x52, 0x81, 0xf1, 0xf3, 0x6d, 0x5c, 0x71, 0xf9, 0x1e, 0x4c, 0x95, 0xde,
+	0x19, 0x7a, 0x67, 0xf8, 0x15, 0x4a, 0xd9, 0xe7, 0x2f, 0x73, 0xaa, 0xfe, 0xfd, 0x90, 0x1e, 0x2f,
+	0x1d, 0x1e, 0x33, 0xeb, 0xe8, 0x98, 0x59, 0xa7, 0xc7, 0x8c, 0x7c, 0x8c, 0x19, 0xf9, 0x1a, 0x33,
+	0xf2, 0x3d, 0x66, 0xe4, 0x30, 0x66, 0xe4, 0x67, 0xcc, 0xc8, 0xaf, 0x98, 0x59, 0xa7, 0x31, 0x23,
+	0x9f, 0x4e, 0x98, 0x75, 0x78, 0xc2, 0xac, 0xa3, 0x13, 0x66, 0xbd, 0x19, 0x31, 0xd4, 0xf7, 0x7f,
+	0x07, 0x00, 0x00, 0xff, 0xff, 0x4c, 0x64, 0x57, 0x99, 0xf4, 0x06, 0x00, 0x00,
 }
 
 func (this *ExceedsLimitsRequest) Equal(that interface{}) bool {
@@ -1009,94 +857,6 @@ func (this *StreamMetadataRecord) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.Metadata.Equal(that1.Metadata) {
-		return false
-	}
-	return true
-}
-func (this *UpdateRatesRequest) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*UpdateRatesRequest)
-	if !ok {
-		that2, ok := that.(UpdateRatesRequest)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.Tenant != that1.Tenant {
-		return false
-	}
-	if len(this.Streams) != len(that1.Streams) {
-		return false
-	}
-	for i := range this.Streams {
-		if !this.Streams[i].Equal(that1.Streams[i]) {
-			return false
-		}
-	}
-	return true
-}
-func (this *UpdateRatesResponse) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*UpdateRatesResponse)
-	if !ok {
-		that2, ok := that.(UpdateRatesResponse)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if len(this.Results) != len(that1.Results) {
-		return false
-	}
-	for i := range this.Results {
-		if !this.Results[i].Equal(that1.Results[i]) {
-			return false
-		}
-	}
-	return true
-}
-func (this *UpdateRatesResult) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*UpdateRatesResult)
-	if !ok {
-		that2, ok := that.(UpdateRatesResult)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.StreamHash != that1.StreamHash {
-		return false
-	}
-	if this.Rate != that1.Rate {
 		return false
 	}
 	return true
@@ -1315,42 +1075,6 @@ func (this *StreamMetadataRecord) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *UpdateRatesRequest) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 6)
-	s = append(s, "&proto.UpdateRatesRequest{")
-	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
-	if this.Streams != nil {
-		s = append(s, "Streams: "+fmt.Sprintf("%#v", this.Streams)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *UpdateRatesResponse) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 5)
-	s = append(s, "&proto.UpdateRatesResponse{")
-	if this.Results != nil {
-		s = append(s, "Results: "+fmt.Sprintf("%#v", this.Results)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *UpdateRatesResult) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 6)
-	s = append(s, "&proto.UpdateRatesResult{")
-	s = append(s, "StreamHash: "+fmt.Sprintf("%#v", this.StreamHash)+",\n")
-	s = append(s, "Rate: "+fmt.Sprintf("%#v", this.Rate)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
 func (this *CheckLimitsAndShardRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -1424,7 +1148,6 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type IngestLimitsFrontendClient interface {
 	ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error)
-	UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error)
 	CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error)
 }
 
@@ -1445,15 +1168,6 @@ func (c *ingestLimitsFrontendClient) ExceedsLimits(ctx context.Context, in *Exce
 	return out, nil
 }
 
-func (c *ingestLimitsFrontendClient) UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error) {
-	out := new(UpdateRatesResponse)
-	err := c.cc.Invoke(ctx, "/proto.IngestLimitsFrontend/UpdateRates", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *ingestLimitsFrontendClient) CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error) {
 	out := new(CheckLimitsAndShardResponse)
 	err := c.cc.Invoke(ctx, "/proto.IngestLimitsFrontend/CheckLimitsAndShard", in, out, opts...)
@@ -1466,7 +1180,6 @@ func (c *ingestLimitsFrontendClient) CheckLimitsAndShard(ctx context.Context, in
 // IngestLimitsFrontendServer is the server API for IngestLimitsFrontend service.
 type IngestLimitsFrontendServer interface {
 	ExceedsLimits(context.Context, *ExceedsLimitsRequest) (*ExceedsLimitsResponse, error)
-	UpdateRates(context.Context, *UpdateRatesRequest) (*UpdateRatesResponse, error)
 	CheckLimitsAndShard(context.Context, *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error)
 }
 
@@ -1476,9 +1189,6 @@ type UnimplementedIngestLimitsFrontendServer struct {
 
 func (*UnimplementedIngestLimitsFrontendServer) ExceedsLimits(ctx context.Context, req *ExceedsLimitsRequest) (*ExceedsLimitsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExceedsLimits not implemented")
-}
-func (*UnimplementedIngestLimitsFrontendServer) UpdateRates(ctx context.Context, req *UpdateRatesRequest) (*UpdateRatesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRates not implemented")
 }
 func (*UnimplementedIngestLimitsFrontendServer) CheckLimitsAndShard(ctx context.Context, req *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckLimitsAndShard not implemented")
@@ -1502,24 +1212,6 @@ func _IngestLimitsFrontend_ExceedsLimits_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(IngestLimitsFrontendServer).ExceedsLimits(ctx, req.(*ExceedsLimitsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _IngestLimitsFrontend_UpdateRates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRatesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IngestLimitsFrontendServer).UpdateRates(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.IngestLimitsFrontend/UpdateRates",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IngestLimitsFrontendServer).UpdateRates(ctx, req.(*UpdateRatesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1551,10 +1243,6 @@ var _IngestLimitsFrontend_serviceDesc = grpc.ServiceDesc{
 			Handler:    _IngestLimitsFrontend_ExceedsLimits_Handler,
 		},
 		{
-			MethodName: "UpdateRates",
-			Handler:    _IngestLimitsFrontend_UpdateRates_Handler,
-		},
-		{
 			MethodName: "CheckLimitsAndShard",
 			Handler:    _IngestLimitsFrontend_CheckLimitsAndShard_Handler,
 		},
@@ -1569,7 +1257,6 @@ var _IngestLimitsFrontend_serviceDesc = grpc.ServiceDesc{
 type IngestLimitsClient interface {
 	ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error)
 	GetAssignedPartitions(ctx context.Context, in *GetAssignedPartitionsRequest, opts ...grpc.CallOption) (*GetAssignedPartitionsResponse, error)
-	UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error)
 	CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error)
 }
 
@@ -1599,15 +1286,6 @@ func (c *ingestLimitsClient) GetAssignedPartitions(ctx context.Context, in *GetA
 	return out, nil
 }
 
-func (c *ingestLimitsClient) UpdateRates(ctx context.Context, in *UpdateRatesRequest, opts ...grpc.CallOption) (*UpdateRatesResponse, error) {
-	out := new(UpdateRatesResponse)
-	err := c.cc.Invoke(ctx, "/proto.IngestLimits/UpdateRates", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *ingestLimitsClient) CheckLimitsAndShard(ctx context.Context, in *CheckLimitsAndShardRequest, opts ...grpc.CallOption) (*CheckLimitsAndShardResponse, error) {
 	out := new(CheckLimitsAndShardResponse)
 	err := c.cc.Invoke(ctx, "/proto.IngestLimits/CheckLimitsAndShard", in, out, opts...)
@@ -1621,7 +1299,6 @@ func (c *ingestLimitsClient) CheckLimitsAndShard(ctx context.Context, in *CheckL
 type IngestLimitsServer interface {
 	ExceedsLimits(context.Context, *ExceedsLimitsRequest) (*ExceedsLimitsResponse, error)
 	GetAssignedPartitions(context.Context, *GetAssignedPartitionsRequest) (*GetAssignedPartitionsResponse, error)
-	UpdateRates(context.Context, *UpdateRatesRequest) (*UpdateRatesResponse, error)
 	CheckLimitsAndShard(context.Context, *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error)
 }
 
@@ -1634,9 +1311,6 @@ func (*UnimplementedIngestLimitsServer) ExceedsLimits(ctx context.Context, req *
 }
 func (*UnimplementedIngestLimitsServer) GetAssignedPartitions(ctx context.Context, req *GetAssignedPartitionsRequest) (*GetAssignedPartitionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAssignedPartitions not implemented")
-}
-func (*UnimplementedIngestLimitsServer) UpdateRates(ctx context.Context, req *UpdateRatesRequest) (*UpdateRatesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRates not implemented")
 }
 func (*UnimplementedIngestLimitsServer) CheckLimitsAndShard(ctx context.Context, req *CheckLimitsAndShardRequest) (*CheckLimitsAndShardResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckLimitsAndShard not implemented")
@@ -1682,24 +1356,6 @@ func _IngestLimits_GetAssignedPartitions_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _IngestLimits_UpdateRates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRatesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(IngestLimitsServer).UpdateRates(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.IngestLimits/UpdateRates",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(IngestLimitsServer).UpdateRates(ctx, req.(*UpdateRatesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _IngestLimits_CheckLimitsAndShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CheckLimitsAndShardRequest)
 	if err := dec(in); err != nil {
@@ -1729,10 +1385,6 @@ var _IngestLimits_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAssignedPartitions",
 			Handler:    _IngestLimits_GetAssignedPartitions_Handler,
-		},
-		{
-			MethodName: "UpdateRates",
-			Handler:    _IngestLimits_UpdateRates_Handler,
 		},
 		{
 			MethodName: "CheckLimitsAndShard",
@@ -2003,120 +1655,6 @@ func (m *StreamMetadataRecord) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintLimits(dAtA, i, uint64(len(m.Zone)))
 		i--
 		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *UpdateRatesRequest) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdateRatesRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *UpdateRatesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.Streams) > 0 {
-		for iNdEx := len(m.Streams) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Streams[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintLimits(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x12
-		}
-	}
-	if len(m.Tenant) > 0 {
-		i -= len(m.Tenant)
-		copy(dAtA[i:], m.Tenant)
-		i = encodeVarintLimits(dAtA, i, uint64(len(m.Tenant)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *UpdateRatesResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdateRatesResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *UpdateRatesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.Results) > 0 {
-		for iNdEx := len(m.Results) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Results[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintLimits(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *UpdateRatesResult) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdateRatesResult) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *UpdateRatesResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Rate != 0 {
-		i = encodeVarintLimits(dAtA, i, uint64(m.Rate))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.StreamHash != 0 {
-		i = encodeVarintLimits(dAtA, i, uint64(m.StreamHash))
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -2413,55 +1951,6 @@ func (m *StreamMetadataRecord) Size() (n int) {
 	return n
 }
 
-func (m *UpdateRatesRequest) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Tenant)
-	if l > 0 {
-		n += 1 + l + sovLimits(uint64(l))
-	}
-	if len(m.Streams) > 0 {
-		for _, e := range m.Streams {
-			l = e.Size()
-			n += 1 + l + sovLimits(uint64(l))
-		}
-	}
-	return n
-}
-
-func (m *UpdateRatesResponse) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if len(m.Results) > 0 {
-		for _, e := range m.Results {
-			l = e.Size()
-			n += 1 + l + sovLimits(uint64(l))
-		}
-	}
-	return n
-}
-
-func (m *UpdateRatesResult) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.StreamHash != 0 {
-		n += 1 + sovLimits(uint64(m.StreamHash))
-	}
-	if m.Rate != 0 {
-		n += 1 + sovLimits(uint64(m.Rate))
-	}
-	return n
-}
-
 func (m *CheckLimitsAndShardRequest) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2631,48 +2120,6 @@ func (this *StreamMetadataRecord) String() string {
 		`Zone:` + fmt.Sprintf("%v", this.Zone) + `,`,
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`Metadata:` + strings.Replace(this.Metadata.String(), "StreamMetadata", "StreamMetadata", 1) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *UpdateRatesRequest) String() string {
-	if this == nil {
-		return "nil"
-	}
-	repeatedStringForStreams := "[]*StreamMetadata{"
-	for _, f := range this.Streams {
-		repeatedStringForStreams += strings.Replace(f.String(), "StreamMetadata", "StreamMetadata", 1) + ","
-	}
-	repeatedStringForStreams += "}"
-	s := strings.Join([]string{`&UpdateRatesRequest{`,
-		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
-		`Streams:` + repeatedStringForStreams + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *UpdateRatesResponse) String() string {
-	if this == nil {
-		return "nil"
-	}
-	repeatedStringForResults := "[]*UpdateRatesResult{"
-	for _, f := range this.Results {
-		repeatedStringForResults += strings.Replace(f.String(), "UpdateRatesResult", "UpdateRatesResult", 1) + ","
-	}
-	repeatedStringForResults += "}"
-	s := strings.Join([]string{`&UpdateRatesResponse{`,
-		`Results:` + repeatedStringForResults + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *UpdateRatesResult) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&UpdateRatesResult{`,
-		`StreamHash:` + fmt.Sprintf("%v", this.StreamHash) + `,`,
-		`Rate:` + fmt.Sprintf("%v", this.Rate) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -3494,303 +2941,6 @@ func (m *StreamMetadataRecord) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipLimits(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *UpdateRatesRequest) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowLimits
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateRatesRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateRatesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Tenant", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowLimits
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthLimits
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Tenant = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Streams", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowLimits
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthLimits
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Streams = append(m.Streams, &StreamMetadata{})
-			if err := m.Streams[len(m.Streams)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipLimits(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *UpdateRatesResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowLimits
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateRatesResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateRatesResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Results", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowLimits
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthLimits
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Results = append(m.Results, &UpdateRatesResult{})
-			if err := m.Results[len(m.Results)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipLimits(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthLimits
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *UpdateRatesResult) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowLimits
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateRatesResult: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateRatesResult: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StreamHash", wireType)
-			}
-			m.StreamHash = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowLimits
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.StreamHash |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Rate", wireType)
-			}
-			m.Rate = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowLimits
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Rate |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipLimits(dAtA[iNdEx:])

@@ -242,23 +242,6 @@ func failedShardResult(streamHash uint64) *proto.StreamShardResult {
 	}
 }
 
-func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	resp, err := f.limitsClient.UpdateRates(ctx, req)
-	if err != nil {
-		// If the entire call failed, then all streams failed.
-		resp = &proto.UpdateRatesResponse{
-			Results: make([]*proto.UpdateRatesResult, 0, len(req.Streams)),
-		}
-		for _, stream := range req.Streams {
-			resp.Results = append(resp.Results, &proto.UpdateRatesResult{
-				StreamHash: stream.StreamHash,
-				Rate:       0,
-			})
-		}
-	}
-	return resp, nil
-}
-
 func (f *Frontend) CheckReady(ctx context.Context) error {
 	if f.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", f.State())

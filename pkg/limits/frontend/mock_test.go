@@ -37,11 +37,6 @@ func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLi
 	return m.exceedsLimitsResponse, m.err
 }
 
-func (m *mockLimitsClient) UpdateRates(_ context.Context, _ *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	// TODO(grobinson): Implement this method.
-	return nil, nil
-}
-
 func (m *mockLimitsClient) CheckLimitsAndShard(_ context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	m.checkLimitsAndShardCalls++
 	if expected := m.expectedCheckLimitsAndShardRequest; expected != nil {
