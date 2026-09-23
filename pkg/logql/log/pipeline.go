@@ -44,6 +44,31 @@ type Stage interface {
 	Hints() StageHints
 }
 
+// Stages is the ordered sequence of stages a pipeline runs on a line.
+type Stages []Stage
+
+// RequiredLabelNames returns the label names every stage reads, in stage order and with duplicates.
+func (s Stages) RequiredLabelNames() []string {
+	var names []string
+	for _, stage := range s {
+		names = append(names, stage.RequiredLabelNames()...)
+	}
+	return names
+}
+
+// Hints returns the hints of the stages as one.
+//
+// The result answers for the whole pipeline rather than per stage. KeepsErroredLines therefore
+// reports true when any stage asks to keep the errored lines, so a filter on __error__ also
+// keep errored lines raised after it.
+func (s Stages) Hints() StageHints {
+	var hints StageHints
+	for _, stage := range s {
+		hints = hints.Merge(stage.Hints())
+	}
+	return hints
+}
+
 // StageHints holds static properties of a Stage, or of a reduced pipeline of stages.
 //
 // Every field must be mergeable between two hints.
@@ -51,12 +76,20 @@ type StageHints struct {
 	// CanModifyLabels reports whether the stage can change a line's output labels: add, remove, or
 	// replace a label, or set __error__.
 	CanModifyLabels bool
+
+	// ReadsErrorLabel reports whether the stage compares __error__, whatever it does with the value.
+	ReadsErrorLabel bool
+
+	// KeepsErroredLines reports whether the stage asks to keep the lines that carry __error__.
+	KeepsErroredLines bool
 }
 
-// Merge combines two StageHints into one.
+// Merge combines the hints of two stages that both run on a line.
 func (h StageHints) Merge(other StageHints) StageHints {
 	return StageHints{
-		CanModifyLabels: h.CanModifyLabels || other.CanModifyLabels,
+		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
+		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
+		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
 	}
 }
 
@@ -207,6 +240,10 @@ func NewPipeline(stages []Stage) Pipeline {
 	}
 
 	hints := NewParserHint(nil, nil, false, false, "", stages)
+
+	// A log query never fails on __error__, so it never marks an errored line.
+	hints.shouldPreserveError = false
+
 	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)
 	return &pipeline{
 		stages:          stages,
@@ -374,17 +411,11 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structur
 }
 
 // ReduceStages reduces multiple stages into one.
-func ReduceStages(stages []Stage) Stage {
+func ReduceStages(stages Stages) Stage {
 	if len(stages) == 0 {
 		return NoopStage
 	}
-	var requiredLabelNames []string
-	var hints StageHints
-	for _, s := range stages {
-		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
-		hints = hints.Merge(s.Hints())
-	}
-	return NewStageFunc(requiredLabelNames, hints, func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(stages.RequiredLabelNames(), stages.Hints(), func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 		var ok bool
 		for _, p := range stages {
 			line, ok = p.Process(ts, line, lbs)

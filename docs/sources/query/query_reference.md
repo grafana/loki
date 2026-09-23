@@ -293,7 +293,15 @@ For example to remove json errors:
 
 Alternatively you can remove all error using a catch all matcher such as `__error__ = ""` or even show only errors using `__error__ != ""`.
 
-The filter should be placed after the stage that generated this error. This means if you need to remove errors from an unwrap expression it needs to be placed after the unwrap.
+### Pipeline Errors in Metric Queries
+
+A metric query fails when a sample carries `__error__`, and returns an error with the appropriate status code. This stops an aggregation from silently miscounting the lines that failed. A label filter on `__error__` says what to do with those lines instead:
+
+- `| __error__=""` drops them, so the aggregation covers only the lines that succeeded.
+- `| __error__!=""` keeps only them, which is how you count or alert on parse failures.
+- `| __error__=~".*"` keeps every line, errored or not.
+
+The `__error__` filter should be placed after the stage that generated this error. This means if you need to remove errors from an unwrap expression it needs to be placed after the unwrap. For example:
 
 ```logql
 quantile_over_time(
@@ -305,7 +313,15 @@ quantile_over_time(
 	) by (cluster)
 ```
 
->Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+The grouping removes the special error labels like any other label, so a `by (...)` clause reports only the labels it names.
+
+In a `__error__` filter joined by `and` or `or`, only a part that asks to keep the errored lines keeps them:
+
+- `| __error__="" or pod="p2"` asks to drop them, so an errored line that the `pod="p2"` part re-admits fails the query rather than being counted
+- `| __error__="" and pod="p2"` asks to drop them too, and `and` applies both parts, so the errored lines never reach the aggregation and the query runs
+
+The `__error__` filter applies to every error a pipeline can raise, not only a parser error. A line whose `| unwrap` conversion failed has no number to report, so its sample reports `0` next to the error labels; an outer aggregation reads that `0` like any other value, so check the `__error__` label before aggregating further.
+
 
 ## Functions
 
