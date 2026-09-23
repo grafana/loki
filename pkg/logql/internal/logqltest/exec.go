@@ -48,7 +48,22 @@ func isQueryShardingSupported(query string) bool {
 	if err != nil {
 		return false
 	}
-	return expr.Shardable(true)
+	if !expr.Shardable(true) {
+		return false
+	}
+
+	// Shardable reports the operation, but the shard mapper declines an avg_over_time() whose
+	// unwrap post filter reads __error__: it decomposes the average into a sum and a count, and the
+	// count leg cannot reproduce that filter.
+	shardable := true
+	expr.Walk(func(e syntax.Expr) bool {
+		r, ok := e.(*syntax.RangeAggregationExpr)
+		if ok && r.Operation == syntax.OpRangeTypeAvg && r.Left.HasUnwrapPostFilterOnErrorLabel() {
+			shardable = false
+		}
+		return shardable
+	})
+	return shardable
 }
 
 // newScriptStore builds a chunk store from streams and registers its close.

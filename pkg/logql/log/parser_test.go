@@ -203,7 +203,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"__preserve_error__", "true",
 			),
 			map[string][]string{},
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
 		},
 		{
@@ -680,7 +680,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				logqlmodel.ErrorLabel, errJSON,
 				logqlmodel.PreserveErrorLabel, "true",
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
 		},
 		{
@@ -1212,7 +1212,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
 				"__preserve_error__", "true",
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
 		},
 		{
@@ -1832,7 +1832,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"__preserve_error__", "true",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
 		},
 		{
@@ -2048,4 +2048,10 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 			}
 		})
 	}
+}
+
+// keepErroredLinesFilter is the `| __error__!=""` stage, which asks the pipeline to keep the
+// errored lines instead of failing the query.
+func keepErroredLinesFilter() Stage {
+	return NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, ""))
 }
