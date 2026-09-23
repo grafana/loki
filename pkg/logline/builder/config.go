@@ -47,6 +47,10 @@ const (
 	// ceiling downstream.
 	MaxExtractThreads = 4
 
+	// DefaultMergeThreads is serial shard merge (one mergeShard at a time).
+	// Parallel merge is an incident/catchup knob, never the default.
+	DefaultMergeThreads = 1
+
 	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
 	// when KafkaConfig.SessionTimeout is unset. It must be long enough that a
 	// normal pod restart completes before the broker considers the member
@@ -234,6 +238,14 @@ type Config struct {
 	// pkg/logline/builder/AGENTS.md.
 	ExtractThreads int `yaml:"extract_threads"`
 
+	// MergeThreads is the maximum number of shards merged concurrently during
+	// flush. 1 (the default) is serial mergeShard. Values above 1 run that
+	// many mergeShard calls at once and must not exceed the number of shards
+	// (shard_count 0 or 1 is one shard). Each concurrent shard holds its own
+	// rank maps and opens every run (1 MiB read buffer each), so the
+	// merge-phase memory and file-descriptor peak stacks with this value.
+	MergeThreads int `yaml:"merge_threads"`
+
 	ScratchDir string `yaml:"scratch_dir"`
 
 	// WaitRingPopulatedTimeout bounds how long the builder will wait at
@@ -297,6 +309,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.ExtractThreads, "logline-index-builder.extract-threads", DefaultExtractThreads,
 		"Number of parallel n-gram extract goroutines (1-4). Incident/catchup mode only: values above 1 multiply the resident sort-buffer floor "+
 			"(~480 MiB per goroutine at the default postings_buffer_pairs) and CPU demand for higher ingest throughput. Default 1 is the serial production path.")
+	f.IntVar(&c.MergeThreads, "logline-index-builder.merge-threads", DefaultMergeThreads,
+		"Maximum number of shards merged concurrently during flush (default 1 = serial). "+
+			"Must be between 1 and the shard count (unsharded indexes have one shard). "+
+			"Each concurrent shard holds its own rank maps and a 1 MiB read buffer per run, so memory and file descriptors scale with this value.")
 	c.Kafka.RegisterFlagsWithPrefix("logline-index-builder.kafka", f)
 	f.StringVar(&c.ScratchDir, "logline-index-builder.scratch-dir", "./data/partial-indexes",
 		"Directory where intermediate .lidx files are written")
@@ -390,6 +406,21 @@ func (c *Config) Validate() error {
 	// in one place only, after the defaults above have been applied.
 	if err := validateIndexSettings(c.Index); err != nil {
 		return err
+	}
+
+	if c.MergeThreads == 0 {
+		c.MergeThreads = DefaultMergeThreads
+	}
+	// Unsharded configs (shard_count 0 or 1) have one mergeShard to run.
+	// More threads than shards cannot overlap work; they only multiply
+	// rank-map memory and per-run read buffers.
+	maxMerge := c.Index.ShardCount
+	if maxMerge < 1 {
+		maxMerge = 1
+	}
+	if c.MergeThreads < 1 || c.MergeThreads > maxMerge {
+		return fmt.Errorf("merge_threads must be between 1 and shard_count (%d), got %d",
+			maxMerge, c.MergeThreads)
 	}
 
 	if c.FlushOnIdle == 0 {

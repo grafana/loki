@@ -343,6 +343,56 @@ func TestConfigValidation(t *testing.T) {
 			wantError: true,
 			errorMsg:  "extract_threads must be between 1 and 4",
 		},
+		{
+			name: "merge_threads zero defaults to 1 (serial merge)",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 0,
+			},
+			wantError: false,
+		},
+		{
+			name: "merge_threads equal to shard_count is valid",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 10,
+				Index:        IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
+			},
+			wantError: false,
+		},
+		{
+			name: "merge_threads above shard_count rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 2,
+				Index:        IndexConfig{ShardCount: 1},
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
+		},
+		{
+			name: "merge_threads above unsharded default rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 2,
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
+		},
+		{
+			name: "merge_threads negative rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: -1,
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
+		},
 	}
 
 	for _, tt := range tests {
@@ -501,6 +551,40 @@ func TestConfig_ExtractThreads_ValidRangeAndDefault(t *testing.T) {
 		require.NoError(t, cfg.Validate(), "extract_threads=%d must be valid", w)
 		require.Equal(t, w, cfg.ExtractThreads)
 	}
+}
+
+// TestConfig_MergeThreads_ValidRangeAndDefault pins the merge_threads
+// contract: omitted (0) defaults to serial merge, the default constant
+// stays 1, and the accepted range is 1..shard_count (unsharded = 1).
+func TestConfig_MergeThreads_ValidRangeAndDefault(t *testing.T) {
+	base := func() Config {
+		return Config{
+			Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+			ScratchDir: "/tmp/test",
+		}
+	}
+
+	require.Equal(t, 1, DefaultMergeThreads, "parallel merge must never be the default")
+
+	cfg := base()
+	require.NoError(t, cfg.Validate())
+	require.Equal(t, 1, cfg.MergeThreads, "omitted merge_threads must default to serial merge")
+
+	const shardCount = 10
+	for w := 1; w <= shardCount; w++ {
+		cfg := base()
+		cfg.Index.ShardCount = shardCount
+		cfg.Index.ShardAlgorithm = "murmur3_mix"
+		cfg.MergeThreads = w
+		require.NoError(t, cfg.Validate(), "merge_threads=%d must be valid with shard_count=%d", w, shardCount)
+		require.Equal(t, w, cfg.MergeThreads)
+	}
+
+	over := base()
+	over.Index.ShardCount = shardCount
+	over.Index.ShardAlgorithm = "murmur3_mix"
+	over.MergeThreads = shardCount + 1
+	require.Error(t, over.Validate(), "merge_threads above shard_count must be rejected")
 }
 
 // TestConfig_RegisterFlags_AppliesRingWaitDefault ensures the partition-ring
