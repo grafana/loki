@@ -72,6 +72,26 @@ var ltt = []struct {
 		},
 	},
 	{
+		desc: "missing schemas - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Required(
+					field.NewPath("spec").Child("storage").Child("schemas"),
+					lokiv1.ErrSchemasNotDefined.Error(),
+				),
+			},
+		),
+	},
+	{
 		desc: "not unique schema effective dates",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{

@@ -5,6 +5,9 @@ metadata:
 spec:
   size: 1x.small
   storage:
+    schemas:
+    - version: v13
+      effectiveDate: "2024-01-01"
     secret:
       name: test
   storageClassName: standard

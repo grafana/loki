@@ -37,6 +37,28 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Loki Operator `schemas` field is now required
+
+The `schemas` field in the `LokiStack` custom resource storage specification is now required. Previously this field was optional, but omitting it could lead to misconfiguration.
+
+Before upgrading the Loki Operator, ensure all `LokiStack` resources have at least one schema defined in `spec.storage.schemas`. For example:
+
+```yaml
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: my-lokistack
+spec:
+  storage:
+    schemas:
+      - effectiveDate: "2024-01-01"
+        version: v13
+    secret:
+      name: my-storage-secret
+```
+
+Attempting to create or update a `LokiStack` without the `schemas` field will fail validation after upgrading. Existing resources without schemas must be updated before the operator upgrade.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.

@@ -65,6 +65,8 @@ var (
 	ErrEffectiveDatesNotUnique = errors.New("Effective dates are not unique")
 	// ErrParseEffectiveDates when effective dates cannot be parsed.
 	ErrParseEffectiveDates = errors.New("Failed to parse effective date")
+	// ErrSchemasNotDefined when schemas field is not provided or is empty
+	ErrSchemasNotDefined = errors.New("Schemas must be defined and contain a valid effective date")
 	// ErrMissingValidStartDate when a schema list is created without a valid effective date
 	ErrMissingValidStartDate = errors.New("Schema does not contain a valid starting effective date")
 	// ErrSchemaRetroactivelyAdded when a schema has been retroactively added
