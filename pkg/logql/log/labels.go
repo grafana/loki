@@ -395,7 +395,7 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 	lbs.Range(func(l labels.Label) {
 		name := l.Name
 		if b.BaseHas(name) {
-			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
+			name = fmt.Sprintf("%s%s", name, DuplicateSuffix)
 		}
 
 		if name == logqlmodel.ErrorLabel {
