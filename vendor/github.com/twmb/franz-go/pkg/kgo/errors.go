@@ -55,7 +55,7 @@ func isRetryableBrokerErr(err error) bool {
 	// We favor testing os.SyscallError first, because net.OpError _always_
 	// implements Temporary, so if we test that first, it'll return false
 	// in many cases when we want to return true from os.SyscallError.
-	if se := (*os.SyscallError)(nil); errors.As(err, &se) {
+	if _, ok := errors.AsType[*os.SyscallError](err); ok {
 		// Non-timeout dial errors are deliberately *not* retryable here.
 		// The carve-out forces every caller that wants dial-error retry
 		// behavior to opt in explicitly, because the right recovery
@@ -80,18 +80,29 @@ func isRetryableBrokerErr(err error) bool {
 	}
 	// EOF can be returned if a broker kills a connection unexpectedly, and
 	// we can retry that. Same for ErrClosed.
-	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+	//
+	// ErrUnexpectedEOF is EOF's mid-frame sibling and does NOT satisfy
+	// errors.Is(err, io.EOF): a graceful FIN landing inside a
+	// length-prefixed frame (broker shutting down mid-write, an LB or
+	// proxy draining) makes io.ReadFull return it. Without matching it
+	// here, this one disconnect shape -- alone among all of them (RST is
+	// a SyscallError, boundary FIN is io.EOF, refused is a dial error) --
+	// surfaced after zero retries: group sessions tore down, and a
+	// metadata request dying mid-read reached bumpRepeatedLoadErr with
+	// netErr=false, insta-failing buffered records on a transient
+	// network event.
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		// If the FIRST read is EOF, that is usually not a good sign,
 		// often it's from bad SASL. We err on the side of pessimism
 		// and do not retry.
-		if ee := (*ErrFirstReadEOF)(nil); errors.As(err, &ee) && !ee.retry {
+		if ee, ok := errors.AsType[*ErrFirstReadEOF](err); ok && !ee.retry {
 			return false
 		}
 		return true
 	}
 	// We could have a retryable producer ID failure, which then bubbled up
 	// as errProducerIDLoadFail so as to be retried later.
-	if pe := (*errProducerIDLoadFail)(nil); errors.As(err, &pe) {
+	if _, ok := errors.AsType[*errProducerIDLoadFail](err); ok {
 		return true
 	}
 	// We could have chosen a broker, and then a concurrent metadata update
@@ -107,28 +118,30 @@ func isRetryableBrokerErr(err error) bool {
 	// We sometimes load the controller before issuing requests, and the
 	// cluster may not yet be ready and will return -1 for the controller.
 	// We can backoff and retry and hope the cluster has stabilized.
-	if ce := (*errUnknownController)(nil); errors.As(err, &ce) {
+	if _, ok := errors.AsType[*errUnknownController](err); ok {
 		return true
 	}
 	// Same thought for a non-existing coordinator.
-	if ce := (*errUnknownCoordinator)(nil); errors.As(err, &ce) {
+	if _, ok := errors.AsType[*errUnknownCoordinator](err); ok {
 		return true
 	}
-	var tempErr interface{ Temporary() bool }
-	if errors.As(err, &tempErr) {
+	if tempErr, ok := errors.AsType[interface {
+		error
+		Temporary() bool
+	}](err); ok {
 		return tempErr.Temporary()
 	}
 	return false
 }
 
 func isDialNonTimeoutErr(err error) bool {
-	var ne *net.OpError
-	return errors.As(err, &ne) && ne.Op == "dial" && !ne.Timeout()
+	ne, ok := errors.AsType[*net.OpError](err)
+	return ok && ne.Op == "dial" && !ne.Timeout()
 }
 
 func isAnyDialErr(err error) bool {
-	var ne *net.OpError
-	return errors.As(err, &ne) && ne.Op == "dial"
+	ne, ok := errors.AsType[*net.OpError](err)
+	return ok && ne.Op == "dial"
 }
 
 // isPermanentDialErr reports whether a dial error is a hard configuration
@@ -147,8 +160,7 @@ func isPermanentDialErr(err error) bool {
 	if !isAnyDialErr(err) {
 		return false
 	}
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 		return true
 	}
 	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
@@ -173,8 +185,7 @@ func isSkippableBrokerErr(err error) bool {
 	if errors.Is(err, errUnknownBroker) {
 		return true
 	}
-	var ne *net.OpError
-	if errors.As(err, &ne) && !isContextErr(err) {
+	if _, ok := errors.AsType[*net.OpError](err); ok && !isContextErr(err) {
 		return true
 	}
 	return false
@@ -224,6 +235,8 @@ var (
 	// Returned for all buffered produce records when a user purges topics.
 	errPurged = errors.New("topic purged while buffered")
 
+	errMergedBatchUnsupported = errors.New("merged batch cannot be sent: the partition moved to a broker that does not support the batch's compression or record format")
+
 	errMissingMetadataPartition = errors.New("metadata update is missing a partition that we were previously using")
 
 	errNoCommittedOffset = errors.New("partition has no prior committed offset")
@@ -232,6 +245,12 @@ var (
 	// offset, which no legitimate listing produces. Non-retryable so the
 	// broker misbehavior surfaces in polls; the load is still retried.
 	errNegativeListedOffset = errors.New("broker replied to a ListOffsets request with an invalid negative offset")
+
+	// errResetAfterUndefinedEpoch is our own signal to reset a cursor by
+	// time after an epoch validation could not answer.
+	errResetAfterUndefinedEpoch = errors.New("resetting by time after an undefined epoch offset")
+
+	errFetchNoProgress = errors.New("fetch response contained record batches but none contained or exceeded the requested offset")
 
 	// Injected as a fake errored fetch when an OffsetFetch response
 	// repeatedly omits a partition we requested; the group coordinator
@@ -343,14 +362,22 @@ type ErrDataLoss struct {
 	// ConsumedToEpoch is the epoch for the offset the client was currently
 	// consuming.
 	ConsumedToEpoch int32
-	// ResetTo is what the client reset the partition to; everything from
-	// ResetTo to ConsumedTo was lost.
+	// ResetTo is what the client reset the partition to. If the client
+	// located where the log diverged, everything from ResetTo to ConsumedTo
+	// was lost. If it could not, [ConsumeResetOffset] chose ResetTo and
+	// records below ResetTo may also have been replaced.
 	ResetTo int64
 	// ResetToEpoch is the epoch the client was reset to.
 	ResetToEpoch int32
 }
 
 func (e *ErrDataLoss) Error() string {
+	if e.ResetTo == e.ConsumedTo {
+		return fmt.Sprintf("topic %s partition %d lost records;"+
+			" the client consumed to offset %d epoch %d and resumed there,"+
+			" but records below that offset may have been replaced and were not re-read",
+			e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch)
+	}
 	return fmt.Sprintf("topic %s partition %d lost records;"+
 		" the client consumed to offset %d epoch %d but was reset to offset %d epoch %d",
 		e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch, e.ResetTo, e.ResetToEpoch)
@@ -402,6 +429,34 @@ func (e *ErrGroupSession) Error() string {
 
 func (e *ErrGroupSession) Unwrap() error { return e.Err }
 
+// ErrDecompressTooLarge is returned from PollFetches when a batch would
+// decompress to more than [MaxDecompressBatchBytes]. The client stops
+// consuming the partition: it is not fetched again until you [SetOffsets]
+// it past the batch, to NextOffset. Alternatively, create a new client with
+// a larger bound.
+type ErrDecompressTooLarge struct {
+	// Topic is the topic the batch is in.
+	Topic string
+	// Partition is the partition the batch is in.
+	Partition int32
+	// Offset is the batch's first offset.
+	Offset int64
+	// Epoch is the leader epoch of the batch. Use SetOffsets with {Epoch,
+	// NextOffset} to skip this batch.
+	Epoch int32
+	// NextOffset is the offset after the batch's last record, i.e., where
+	// to SetOffsets to skip the batch.
+	NextOffset int64
+}
+
+func (e *ErrDecompressTooLarge) Error() string {
+	return fmt.Sprintf("topic %s partition %d: the batch at offset %d decompresses to more than MaxDecompressBatchBytes;"+
+		" consuming stopped, use SetOffsets to skip to offset %d",
+		e.Topic, e.Partition, e.Offset, e.NextOffset)
+}
+
+func (*ErrDecompressTooLarge) Unwrap() error { return ErrMaxDecompress }
+
 type errDecompress struct {
 	err error
 }
@@ -413,8 +468,11 @@ func (e *errDecompress) Error() string {
 func (e *errDecompress) Unwrap() error { return e.err }
 
 func isDecompressErr(err error) bool {
-	var ed *errDecompress
-	return errors.As(err, &ed)
+	if err == nil {
+		return false
+	}
+	_, ok := errors.AsType[*errDecompress](err)
+	return ok
 }
 
 func errCodeMessage(code int16, errMessage *string) error {
@@ -447,10 +505,6 @@ var errShareConsumerLeft = errors.New("share consumer has left the group; ack wi
 // errShareConsumerLeft, there is no importable sentinel for users to
 // errors.Is against. The condition is non-actionable per-record;
 // the right user response is to log and treat the ack as failed.
-//
-// We previously surfaced this as kerr.UnknownServerError, which was
-// misleading because no error code was returned by the broker. The
-// dedicated sentinel makes the actual situation explicit.
 var errBrokerOmittedAckPartition = errors.New("broker omitted partition from share fetch response that we sent acks for")
 
 func (e *errApiVersionsReset) Error() string { return e.err.Error() }
