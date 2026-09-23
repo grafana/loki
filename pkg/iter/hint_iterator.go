@@ -12,7 +12,9 @@ type hintTimeRange struct {
 	end   int64
 }
 
-// HintTimeRanges is a normalized set of half-open query hint ranges.
+// HintTimeRanges distinguishes an absent hint list from a supplied list whose
+// ranges do not overlap the query. An absent or empty list is passthrough; a
+// supplied list with no effective ranges matches nothing.
 type HintTimeRanges struct {
 	enabled bool
 	ranges  []hintTimeRange
