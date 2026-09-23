@@ -7,9 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -479,8 +480,8 @@ func TestBuilder_PrepareIndexesRetryAfterMidMergeFailure(t *testing.T) {
 
 // TestMergeRuns_StopsSchedulingAfterShardFailure pins the serial-merge
 // failure path: with merge_threads=1, a corrupt shard 0 must not launch
-// shards 1..N. errgroup.SetLimit would, because it starts the next shard
-// as soon as the failed one returns its slot.
+// shards 1..N. ForEachJob checks the canceled context before taking the
+// next index, so the single worker stops instead of continuing the loop.
 func TestMergeRuns_StopsSchedulingAfterShardFailure(t *testing.T) {
 	cfg := roundTripConfig(t, 4, 64)
 	cfg.MergeThreads = 1
