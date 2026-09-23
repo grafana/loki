@@ -3,6 +3,7 @@ package dataobjread
 import (
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -73,8 +74,19 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	)
 
 	addMetadataName := func(name string) {
-		if name != "" && !isPipelineErrorLabel(name) {
-			metadataNames[name] = struct{}{}
+		if name == "" || isPipelineErrorLabel(name) {
+			return
+		}
+		metadataNames[name] = struct{}{}
+
+		// A metadata key whose name collides with a stream label reaches the output renamed,
+		// under [logqllog.DuplicateSuffix], while its column keeps the original name. A query
+		// can only name the renamed form.
+		//
+		// Read both, because either may be the column: a key can also genuinely end with the
+		// suffix. LogQL's own parser hints resolve the ambiguity the same way.
+		if base := strings.TrimSuffix(name, logqllog.DuplicateSuffix); base != name && base != "" {
+			metadataNames[base] = struct{}{}
 		}
 	}
 	addGrouping := func(grouping *syntax.Grouping) {
@@ -192,6 +204,16 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 		if _, isStreamLabel := streamLabelNames[matcher.Name]; isStreamLabel {
 			continue
 		}
+
+		// A renamed name may mean the column without the suffix, once this section's streams
+		// carry that label. A predicate reads one column by name, so pushing it would drop rows
+		// the extractor keeps.
+		if base := strings.TrimSuffix(matcher.Name, logqllog.DuplicateSuffix); base != matcher.Name {
+			if _, isStreamLabel := streamLabelNames[base]; isStreamLabel {
+				continue
+			}
+		}
+
 		predicates = append(predicates, metadataPredicate(matcher))
 	}
 
@@ -202,7 +224,10 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 // bloom filters show it holds none of them. The metastore uses the equalities and ignores the
 // rest, and it decides per section whether a name is a stream label there.
 func (p ProjectionPlan) sectionPredicates() []*labels.Matcher {
-	out := make([]*labels.Matcher, 0, len(p.pushdownCandidates))
+	var (
+		out        = make([]*labels.Matcher, 0, len(p.pushdownCandidates))
+		equalNames = make(map[string]struct{}, len(p.pushdownCandidates))
+	)
 
 	for _, matcher := range p.pushdownCandidates {
 		// An equality against an empty value is held back. LogQL keeps every row that has no value for
@@ -210,6 +235,24 @@ func (p ProjectionPlan) sectionPredicates() []*labels.Matcher {
 		// would drop exactly the sections the query must read.
 		if matcher.Type == labels.MatchEqual && matcher.Value == "" {
 			continue
+		}
+
+		// A name ending in [logqllog.DuplicateSuffix] may be the column it spells, or the column
+		// without the suffix. The blooms are keyed by the column's name, so the wrong guess drops
+		// sections the query needs. Only the section's stream labels tell the two apart, and this
+		// plan is built before any section is known.
+		if strings.TrimSuffix(matcher.Name, logqllog.DuplicateSuffix) != matcher.Name {
+			continue
+		}
+
+		// One equality per name. The metastore reads one bloom per name and rejects a request
+		// that names a column twice, which would fail the whole query. `| level="a" | level="b"`
+		// reaches here as two, so keep the first: the second only adds pruning.
+		if matcher.Type == labels.MatchEqual {
+			if _, seen := equalNames[matcher.Name]; seen {
+				continue
+			}
+			equalNames[matcher.Name] = struct{}{}
 		}
 		out = append(out, matcher)
 	}

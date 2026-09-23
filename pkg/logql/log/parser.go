@@ -21,8 +21,14 @@ import (
 )
 
 const (
-	jsonSpacer      = '_'
-	duplicateSuffix = "_extracted"
+	jsonSpacer = '_'
+
+	// DuplicateSuffix renames a label whose name is already taken, so both reach the output. A
+	// structured-metadata label takes it when a stream label holds the name; a parsed label
+	// takes it when a stream label or a structured-metadata label does.
+	//
+	// It is appended at most once, so trimming it once recovers the original name.
+	DuplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
 	// How much stack space to allocate for unescaping JSON strings; if a string longer
@@ -150,7 +156,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		}
 
 		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
-			sanitizedKey = sanitizedKey + duplicateSuffix
+			sanitizedKey = sanitizedKey + DuplicateSuffix
 		}
 
 		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
@@ -180,9 +186,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	})
 
 	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
-		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(DuplicateSuffix))
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
-		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
+		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], DuplicateSuffix...)
 
 		keyString = string(j.buildSanitizedPrefixFromBuffer())
 	}
@@ -240,7 +246,7 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	for _, part := range j.prefixBuffer {
 		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 		// Trim _extracted suffix if the extracted field was a duplicate field
-		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
+		partStr = strings.TrimSuffix(partStr, DuplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}
 
@@ -345,7 +351,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = fmt.Sprintf("%s%s", key, duplicateSuffix)
+				key = fmt.Sprintf("%s%s", key, DuplicateSuffix)
 			}
 
 			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -417,7 +423,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-			key = key + duplicateSuffix
+			key = key + DuplicateSuffix
 		}
 
 		if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -494,7 +500,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	for i, m := range matches {
 		name := names[i]
 		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
-			name = name + duplicateSuffix
+			name = name + DuplicateSuffix
 		}
 
 		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
@@ -620,7 +626,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = key + duplicateSuffix
+				key = key + DuplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
@@ -719,7 +725,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		})
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-			key = key + duplicateSuffix
+			key = key + DuplicateSuffix
 		}
 
 		switch typ {
@@ -844,7 +850,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			})
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = key + duplicateSuffix
+				key = key + DuplicateSuffix
 			}
 
 			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {

@@ -579,3 +579,100 @@ func streamHashOf(streamLabels string) uint64 {
 func powerOfTwoShard(shard, of uint32) *logql.Shard {
 	return logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: shard, Of: of}).Ptr()
 }
+
+// TestDataObjStore_MetadataNameCollision reads a metadata key whose name its own stream already
+// carries as a label.
+//
+// LogQL renames the metadata label to <name>_extracted so both reach the output, while the
+// column keeps the original name. A query can only name the renamed form, so the projection has
+// to read the column behind it.
+func TestDataObjStore_MetadataNameCollision(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="d", level="info"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+		},
+	}
+
+	t.Run("a grouping on the renamed key resolves to the metadata values", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="d"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{level_extracted="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got, "grouping on the renamed key must not collapse to empty labels")
+	})
+
+	t.Run("a filter on the renamed key keeps the rows it matches", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		// The matcher names the renamed form, so it must not be pushed as a predicate on a
+		// column of that name: no such column exists and every row would be dropped.
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="d"} | level_extracted="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("the stream label of the same name still reaches the output", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="d"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="info"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{level="info"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("a key that genuinely ends with the suffix is read under its own name", func(t *testing.T) {
+		// No stream label collides here, so nothing is renamed and level_extracted names its own
+		// column. This is why the plan reads both names rather than only the trimmed one.
+		genuine := logproto.Stream{
+			Labels: `{app="e"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "err", "level_extracted", "error"),
+				entry(t, 2, "warn", "level_extracted", "warn"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{genuine})
+
+		got := store.selectSamples(testCtx(t), `sum by (level_extracted) (count_over_time({app="e"}[1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level_extracted="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(genuine.Labels)},
+			{Labels: `{level_extracted="warn"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(genuine.Labels)},
+		}, got)
+	})
+}
+
+// TestDataObjStore_RepeatedMetadataFilter filters twice on one metadata key.
+//
+// Each filter is a pushdown candidate, and the metastore rejects a request that names one column
+// twice. Two candidates of the same name must therefore reach it as one, or the query fails
+// instead of answering.
+func TestDataObjStore_RepeatedMetadataFilter(t *testing.T) {
+	stream := logproto.Stream{
+		Labels: `{app="r"}`,
+		Entries: []push.Entry{
+			entry(t, 1, "err", "level", "error"),
+			entry(t, 2, "warn", "level", "warn"),
+		},
+	}
+
+	t.Run("the same equality twice keeps the rows it matches", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="r"} | level="error" | level="error" [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{Labels: `{level="error"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
+
+	t.Run("two equalities that no row satisfies yield nothing rather than failing", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (level) (count_over_time({app="r"} | level="error" | level="warn" [1m]))`, at(0), at(10))
+		require.Empty(t, got)
+	})
+}
