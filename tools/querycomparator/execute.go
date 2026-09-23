@@ -215,7 +215,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 
 	quer, err := querier.New(querier.Config{
 		QueryStoreOnly: true,
-	}, store, nil, overrides, deletion.NewNoOpDeleteRequestsClient(), glog.NewLogfmtLogger(os.Stderr), nil)
+	}, store, nil, overrides, deletion.NewNoOpDeleteRequestsClient(), glog.NewLogfmtLogger(os.Stderr), nil, 0, 0)
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}

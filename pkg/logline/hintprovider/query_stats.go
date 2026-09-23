@@ -40,6 +40,9 @@ type QueryStats struct {
 	termDictReads atomic.Int64
 	bitmapReads   atomic.Int64
 
+	headerCacheMisses   atomic.Int64
+	metadataCacheMisses atomic.Int64
+
 	totalIOWaitNanos atomic.Int64
 	totalIOBytes     atomic.Int64
 
@@ -64,6 +67,20 @@ type QueryStats struct {
 
 func NewQueryStats() *QueryStats {
 	return &QueryStats{}
+}
+
+func (s *QueryStats) ObserveHeaderCacheMiss() {
+	if s == nil {
+		return
+	}
+	s.headerCacheMisses.Add(1)
+}
+
+func (s *QueryStats) ObserveMetadataCacheMiss() {
+	if s == nil {
+		return
+	}
+	s.metadataCacheMisses.Add(1)
 }
 
 // ObserveHintCache records the per-query hint cache outcome.
@@ -153,6 +170,8 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.metadataReads.Add(other.metadataReads.Load())
 	s.termDictReads.Add(other.termDictReads.Load())
 	s.bitmapReads.Add(other.bitmapReads.Load())
+	s.headerCacheMisses.Add(other.headerCacheMisses.Load())
+	s.metadataCacheMisses.Add(other.metadataCacheMisses.Load())
 
 	s.totalIOWaitNanos.Add(other.totalIOWaitNanos.Load())
 	s.totalIOBytes.Add(other.totalIOBytes.Load())

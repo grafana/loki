@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -31,6 +32,7 @@ type LoglineHintProvider struct {
 	// QueryMultiple call with termination reason and term batches processed.
 	queryMultipleObserver func(reason string, termBatchesProcessed int)
 	logger                log.Logger
+	cache                 *metadataCache
 }
 
 func NewLoglineHintProvider(
@@ -38,6 +40,7 @@ func NewLoglineHintProvider(
 	ngramLength, maxParallel int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
+	cacheReg prometheus.Registerer,
 ) (*LoglineHintProvider, error) {
 	if indexStore == nil {
 		return nil, fmt.Errorf("indexStore cannot be nil")
@@ -58,6 +61,11 @@ func NewLoglineHintProvider(
 		maxParallel:           maxParallel,
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
+	}
+	// Only create a metadata cache on queriers
+	if cacheReg != nil {
+		p.cache = newMetadataCache(defaultMetadataCacheEntries, cacheReg)
+		p.startCacheInvalidationLoop()
 	}
 	return p, nil
 }
@@ -133,12 +141,10 @@ func (p *LoglineHintProvider) ProvideHints(
 	}
 
 	resp, err := next.Do(ctx, &logproto.HintRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     indexes,
-		NgramLength: int64(p.ngramLength),
-		MaxParallel: int64(p.maxParallel),
+		From:    from,
+		Through: through,
+		Expr:    expr.String(),
+		Indexes: indexes,
 	})
 
 	if err != nil {
@@ -173,13 +179,46 @@ func (p *LoglineHintProvider) openIndexReader(
 		return nil, fmt.Errorf("index %s is missing required index_header", idx.ID)
 	}
 	storeReader := p.store.GetIndexReaderAt(ctx, idx.IndexPath())
+
+	if p.cache != nil {
+		if cached, ok := p.cache.get(idx.ID); ok {
+			trackedReader := newTrackingReaderAt(storeReader, stats)
+			reader, err := logline.OpenReaderCached(idx.Version, trackedReader, 0, idx.SizeBytes, cached.state)
+			if err == nil {
+				trackedReader.SetClassifier(reader)
+				return reader, nil
+			}
+			// Cache entry may be stale/corrupt; evict it before uncached reopen.
+			p.cache.delete(idx.ID)
+		}
+		stats.ObserveMetadataCacheMiss()
+	}
+
 	trackedReader := newTrackingReaderAt(storeReader, stats)
-	reader, _, err := logline.OpenReader(idx.Version, trackedReader, 0, idx.SizeBytes, *idx.IndexHeader)
+	reader, cachedState, err := logline.OpenReader(idx.Version, trackedReader, 0, idx.SizeBytes, *idx.IndexHeader)
 	if err != nil {
 		return nil, fmt.Errorf("open reader: %w", err)
 	}
 	trackedReader.SetClassifier(reader)
+	if p.cache != nil && cachedState != nil {
+		p.cache.put(idx.ID, cachedMetadata{
+			headerInfo: *idx.IndexHeader,
+			state:      cachedState,
+		})
+	}
 	return reader, nil
+}
+
+func (p *LoglineHintProvider) startCacheInvalidationLoop() {
+	ch := p.store.PollNotify()
+	if ch == nil {
+		return
+	}
+	go func() {
+		for snap := range ch {
+			p.cache.evictStale(snap)
+		}
+	}()
 }
 
 // aggregateShardRanges combines per-shard results with the correct semantics:

@@ -421,10 +421,7 @@ message HintRequest {
     (gogoproto.nullable) = false
   ];
   string expr = 3;
-  reserved 4;
-  repeated HintIndex indexes = 5 [(gogoproto.nullable) = false];
-  int64 ngram_length = 6;
-  int64 max_parallel = 7;
+  repeated HintIndex indexes = 4 [(gogoproto.nullable) = false];
 }
 
 // HintIndex is the slim index descriptor on HintRequest. Catalog identity is

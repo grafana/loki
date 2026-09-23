@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
@@ -129,18 +130,18 @@ type Store interface {
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
-	cfg             Config
-	store           Store
-	limits          querier_limits.Limits
-	ingesterQuerier *IngesterQuerier
-	patternQuerier  pattern.PatterQuerier
-	deleteGetter    deletion.DeleteGetter
-	logger          log.Logger
-	loglineStore    *loglinestore.Store
+	cfg             	Config
+	store           	Store
+	limits          	querier_limits.Limits
+	ingesterQuerier 	*IngesterQuerier
+	patternQuerier  	pattern.PatterQuerier
+	deleteGetter    	deletion.DeleteGetter
+	logger          	log.Logger
+	loglineHintProvider	*hintprovider.LoglineHintProvider
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -148,7 +149,21 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
-		loglineStore:    loglineStore,
+	}
+
+	if loglineStore != nil {
+		p, err := hintprovider.NewLoglineHintProvider(
+			loglineStore,
+			ngramLength,
+			maxHintParallel,
+			nil,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, err
+		}
+		q.loglineHintProvider = p
 	}
 
 	return q, nil
@@ -562,20 +577,14 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 }
 
 func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
-	if q.loglineStore == nil {
-		return nil, errors.New("logline store is not configured")
-	}
-	ngramLength := int(req.NgramLength)
-	maxParallel := int(req.MaxParallel)
-	provider, err := hintprovider.NewLoglineHintProvider(q.loglineStore, ngramLength, maxParallel, nil, q.logger)
-	if err != nil {
-		return nil, err
+	if q.loglineHintProvider == nil {
+		return nil, errors.New("logline hint provider is not configured")
 	}
 	expr, err := syntax.ParseExpr(req.Expr)
 	if err != nil {
 		return nil, err
 	}
-	return provider.QueryHints(ctx, expr, req.Indexes)
+	return q.loglineHintProvider.QueryHints(ctx, expr, req.Indexes)
 }
 
 func (q *SingleTenantQuerier) IndexShards(

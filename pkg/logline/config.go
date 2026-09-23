@@ -8,7 +8,9 @@ import (
 )
 
 // Config is the Loki-level logline configuration shared by querier (object
-// reads) and query-frontend (catalog + middleware).
+// reads) and query-frontend (catalog). Query-frontend middleware flags live
+// on loki.Config so this package does not import queryfrontend (that package
+// already depends on hintprovider, which imports logline).
 type Config struct {
 	Enabled bool         `yaml:"enabled"`
 	Store   store.Config `yaml:"store"`
@@ -19,7 +21,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	if f == nil {
 		f = flag.CommandLine
 	}
-	f.BoolVar(&c.Enabled, "logline.enabled", false, "Enable logline index reads on queriers")
+	f.BoolVar(&c.Enabled, "logline.enabled", false, "Enable logline index reads on queriers and query-frontend hint middleware")
 	c.Store.RegisterFlags(f)
 }
 

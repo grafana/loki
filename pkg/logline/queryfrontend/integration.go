@@ -12,13 +12,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
+
+// HostConfig is the Loki-owned settings WrapMiddleware needs. It is not
+// loki.Config so this package can be imported from pkg/loki without a cycle.
+type HostConfig struct {
+	SchemaConfig         config.SchemaConfig
+	ObjectStore          bucket.ConfigWithNamedStores
+	QueryIngestersWithin time.Duration
+	ResultsCache         cache.Config
+	QuerySplitDuration   time.Duration
+}
 
 // lenientRegisterer wraps a prometheus.Registerer to swallow duplicate
 // registration errors instead of panicking. Loki's middleware stack creates
@@ -62,7 +73,7 @@ func (identityMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handl
 //   - store polling service (start/stop managed by caller)
 //   - cleanup function (idempotent; stops hint cache)
 func WrapMiddleware(
-	lokiCfg loki.ConfigWrapper,
+	host HostConfig,
 	cfg Config,
 	tenantSettings TenantSettings,
 	existing queryrangebase.Middleware,
@@ -79,15 +90,15 @@ func WrapMiddleware(
 		return nil, nil, nil, fmt.Errorf("invalid logline config: %w", err)
 	}
 
-	lokiQIW := lokiCfg.Querier.QueryIngestersWithin
+	lokiQIW := host.QueryIngestersWithin
 	if lokiQIW == 0 {
 		lokiQIW = store.DefaultQueryIngestersWithin
 	}
 	cfg.Store.QueryIngestersWithin = lokiQIW
 	indexStore, err := store.New(
 		context.Background(),
-		lokiCfg.SchemaConfig,
-		lokiCfg.StorageConfig.ObjectStore,
+		host.SchemaConfig,
+		host.ObjectStore,
 		cfg.Store,
 		logger,
 		reg,
@@ -97,7 +108,7 @@ func WrapMiddleware(
 	}
 
 	wrapped, hintCache, err := WrapMiddlewareWithStore(
-		lokiCfg,
+		host,
 		cfg.QueryFrontend,
 		tenantSettings,
 		indexStore,
@@ -138,7 +149,7 @@ func WrapMiddleware(
 // WrapMiddlewareWithStore injects logline middlewares around an existing
 // middleware stack using a caller-provided index store.
 func WrapMiddlewareWithStore(
-	lokiCfg loki.ConfigWrapper,
+	host HostConfig,
 	cfg MiddlewareConfig,
 	tenantSettings TenantSettings,
 	indexStore *store.Store,
@@ -168,6 +179,8 @@ func WrapMiddlewareWithStore(
 		cfg.MaxHintParallel,
 		metrics.ObserveQueryMultipleTermBatches,
 		logger,
+		// QF should not have a metadata cache
+		nil,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)
@@ -175,7 +188,7 @@ func WrapMiddlewareWithStore(
 
 	var hintCache cache.Cache
 	if cfg.HintCacheTTL > 0 {
-		hintCacheCfg := lokiCfg.QueryRange.ResultsCacheConfig.CacheConfig
+		hintCacheCfg := host.ResultsCache
 		hintCacheCfg.Prefix = "logline-hint-cache."
 		hintCacheCfg.DefaultValidity = cfg.HintCacheTTL
 		hintCacheCfg.Memcache.Expiration = cfg.HintCacheTTL
@@ -199,10 +212,10 @@ func WrapMiddlewareWithStore(
 
 	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
-		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
+		cfg.QueryIngestersWithin = host.QueryIngestersWithin
 	}
 	if cfg.QuerySplitDuration == 0 {
-		cfg.QuerySplitDuration = time.Duration(lokiCfg.LimitsConfig.QuerySplitDuration)
+		cfg.QuerySplitDuration = host.QuerySplitDuration
 	}
 
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
