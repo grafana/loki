@@ -19,7 +19,6 @@ import (
 // The ingestLimitsFrontendClient interface is used to mock calls in tests.
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
-	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
 	CheckLimitsAndShard(context.Context, *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error)
 }
 
@@ -78,17 +77,6 @@ func (c *ingestLimitsFrontendRingClient) CheckLimitsAndShard(ctx context.Context
 	} else {
 		err = c.withRandomShuffle(ctx, doCheckLimitsAndShardFn)
 	}
-	return resp, err
-}
-
-// Implements the [ingestLimitsFrontendClient] interface.
-func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	var resp *proto.UpdateRatesResponse
-	err := c.withRandomShuffle(ctx, func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
-		var clientErr error
-		resp, clientErr = client.UpdateRates(ctx, req)
-		return clientErr
-	})
 	return resp, err
 }
 
@@ -287,52 +275,6 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 		})
 	}
 	return &proto.ExceedsLimitsRequest{
-		Tenant:  tenant,
-		Streams: streamMetadata,
-	}, nil
-}
-
-// UpdateRates updates the rates for the streams and returns a slice of the
-// updated rates for all streams. Any streams that could not have rates updated
-// have a rate of zero.
-func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []segmentedStream) ([]*proto.UpdateRatesResult, error) {
-	req, err := newUpdateRatesRequest(tenant, streams)
-	if err != nil {
-		// We update `UpdateRates` here because we have clients directly calling `UpdateRatesRaw`.
-		l.requests.WithLabelValues("UpdateRates").Inc()
-		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
-		return nil, err
-	}
-	return l.UpdateRatesRaw(ctx, req)
-}
-
-// UpdateRatesRaw sends a pre-built UpdateRatesRequest to the frontend.
-// This is used by the rate batcher which accumulates stream data over time.
-func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
-	l.requests.WithLabelValues("UpdateRates").Inc()
-	resp, err := l.client.UpdateRates(ctx, req)
-	if err != nil {
-		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
-		return nil, err
-	}
-	return resp.Results, nil
-}
-
-func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.UpdateRatesRequest, error) {
-	// The distributor sends the hashes of all streams in the request to the
-	// limits-frontend. The limits-frontend is responsible for deciding if
-	// the request would exceed the tenants limits, and if so, which streams
-	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
-	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.SegmentationKeyHash,
-			TotalSize:       entriesSize + structuredMetadataSize,
-			IngestionPolicy: stream.Policy,
-		})
-	}
-	return &proto.UpdateRatesRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

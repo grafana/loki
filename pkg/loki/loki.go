@@ -853,7 +853,7 @@ func (t *Loki) setupModuleManager() error {
 		TenantConfigs:                {RuntimeConfig},
 		UI:                           {UIRing},
 		UIRing:                       {Server, MemberlistKV},
-		Distributor:                  {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, DataObjConsumerRing, DataObjConsumerPartitionRing, IngestLimitsFrontendRing, UIRing},
+		Distributor:                  {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UIRing},
 		IngestLimitsRing:             {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:                 {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:         {IngestLimitsRing, Overrides, Server, MemberlistKV},

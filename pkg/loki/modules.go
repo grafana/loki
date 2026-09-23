@@ -384,9 +384,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontendClient,
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
-		t.dataObjConsumerPartitionRing,
-		t.dataObjConsumerPartitionKVClient,
-		consumer.PartitionRingKey,
 		logger,
 	)
 	if err != nil {
