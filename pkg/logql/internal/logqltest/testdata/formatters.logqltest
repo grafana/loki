@@ -75,9 +75,9 @@ eval instant at 60s count_over_time({app="a"} | label_format x="{{" [1m])
 # label_format after parsing errors
 clear
 load
-  {app="a", pod="p1"} `{`        @ 40s [metadata n="7"] # malformed
-  {app="a", pod="p2"} `{"ok":1}` @ 20s [metadata n="5"]
-  {app="noise", pod="p3"} `{`    @ 20s [metadata n="9"]
+  {app="a", pod="p1"} `{`            @ 40s [metadata n="7"] # malformed
+  {app="a", pod="p2"} `{"ok":1}`     @ 20s [metadata n="5"]
+  {app="noise", pod="p3"} `{"ok":1}` @ 20s [metadata n="9"]
 
 # label_format cannot target __error__.
 eval instant at 60s count_over_time({app="a"} | label_format __error__="mine" [1m])
@@ -88,6 +88,10 @@ eval select from 0 to 60s forward {app="a"} | label_format __error_details__="mi
   {app="a", pod="p2"} `{"ok":1}` @ 20s [metadata n="5"] [parsed __error_details__="mine"]
 # A parsing error replaces __error_details__, so both __error__ and __error_details__ are related to the same error.
 eval instant at 60s first_over_time({app="a"} | label_format __error_details__="mine" | json | __error__!="" | unwrap n [1m]) by (__error_details__)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
+# A label_format after the parser cannot overwrite the details either, so the stage order does not
+# change the result.
+eval instant at 60s first_over_time({app="a"} | json | label_format __error_details__="mine" | __error__!="" | unwrap n [1m]) by (__error_details__)
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
 
 # decolorize removes ANSI color codes from the line.
