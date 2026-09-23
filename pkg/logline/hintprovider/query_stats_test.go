@@ -133,13 +133,18 @@ func TestQueryStats_SnapshotIncludesConcurrencyAndPrefetch(t *testing.T) {
 	stats.WorkerFinished(time.Now().Add(-40 * time.Millisecond))
 	stats.ObservePrefetchCall(false)
 	stats.ObservePrefetchCall(true)
+	stats.ObserveHeaderCacheMiss()
+	stats.ObserveMetadataCacheMiss()
 
 	snap := stats.Snapshot()
 	require.Equal(t, int32(2), snap.PeakConcurrency)
 	require.Greater(t, snap.EffectiveConcurrency, 1.0)
 	require.Equal(t, int32(2), snap.PrefetchCalls)
 	require.Equal(t, int32(1), snap.PrefetchTimeouts)
+	require.Equal(t, int64(1), snap.HeaderCacheMisses)
+	require.Equal(t, int64(1), snap.MetadataCacheMisses)
 	require.Contains(t, stats.String(), "prefetch_calls=2")
+	require.Contains(t, stats.String(), "metadata_cache_misses=1")
 }
 
 func TestQueryStats_ObserveQueryMultiple(t *testing.T) {
@@ -159,12 +164,14 @@ func TestQueryStats_ObserveQueryMultiple(t *testing.T) {
 
 func TestQueryStats_Merge(t *testing.T) {
 	left := NewQueryStats()
+	left.ObserveHeaderCacheMiss()
 	left.ObservePrefetchCall(true)
 	left.SetWallTime(40 * time.Millisecond)
 	left.WorkerStarted()
 	left.WorkerFinished(time.Now().Add(-20 * time.Millisecond))
 
 	right := NewQueryStats()
+	right.ObserveMetadataCacheMiss()
 	right.ObservePrefetchCall(false)
 	right.ObservePrefetchCall(true)
 	right.observeRead(trackedReadHeader, 8, 1*time.Millisecond)
@@ -189,6 +196,8 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(4), snap.ObjectStorageRequests)
 	require.Equal(t, int64(64), snap.TotalIOBytes)
 	require.Equal(t, 15*time.Millisecond, snap.TotalIOWait)
+	require.Equal(t, int64(1), snap.HeaderCacheMisses)
+	require.Equal(t, int64(1), snap.MetadataCacheMisses)
 	require.Equal(t, int32(3), snap.PrefetchCalls)
 	require.Equal(t, int32(2), snap.PrefetchTimeouts)
 	require.Equal(t, int32(2), snap.PeakConcurrency)
@@ -204,6 +213,9 @@ func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
 	stats.metadataReads.Add(2)
 	stats.termDictReads.Add(3)
 	stats.bitmapReads.Add(4)
+	stats.ObserveHeaderCacheMiss()
+	stats.ObserveMetadataCacheMiss()
+	stats.ObserveMetadataCacheMiss()
 	stats.totalIOWaitNanos.Add(1500)
 	stats.totalIOBytes.Add(99)
 	stats.peakConcurrency.Store(7)
@@ -221,6 +233,8 @@ func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
 	require.Equal(t, snap.MetadataReads, got.MetadataReads)
 	require.Equal(t, snap.TermDictReads, got.TermDictReads)
 	require.Equal(t, snap.BitmapReads, got.BitmapReads)
+	require.Equal(t, snap.HeaderCacheMisses, got.HeaderCacheMisses)
+	require.Equal(t, snap.MetadataCacheMisses, got.MetadataCacheMisses)
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)

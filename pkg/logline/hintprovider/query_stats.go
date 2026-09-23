@@ -267,6 +267,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 		MetadataReads:             metadataReads,
 		TermDictReads:             termDictReads,
 		BitmapReads:               bitmapReads,
+		HeaderCacheMisses:         s.headerCacheMisses.Load(),
+		MetadataCacheMisses:       s.metadataCacheMisses.Load(),
 		ObjectStorageRequests:     objectStorageRequests,
 		TotalIOWait:               time.Duration(s.totalIOWaitNanos.Load()),
 		TotalIOBytes:              s.totalIOBytes.Load(),
@@ -295,6 +297,8 @@ func QueryStatsFromProto(p *logproto.HintQueryStats) *QueryStats {
 	s.metadataReads.Store(p.MetadataReads)
 	s.termDictReads.Store(p.TermDictReads)
 	s.bitmapReads.Store(p.BitmapReads)
+	s.headerCacheMisses.Store(p.HeaderCacheMisses)
+	s.metadataCacheMisses.Store(p.MetadataCacheMisses)
 	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
 	s.totalIOBytes.Store(p.TotalIOBytes)
 	s.peakConcurrency.Store(p.PeakConcurrency)
@@ -316,12 +320,14 @@ func QueryStatsFromProto(p *logproto.HintQueryStats) *QueryStats {
 func (s *QueryStats) String() string {
 	snap := s.Snapshot()
 	return fmt.Sprintf(
-		"requests=%d header=%d metadata=%d term_dict=%d bitmap=%d io_wait=%s io_bytes=%d peak=%d effective=%.2f prefetch_calls=%d prefetch_timeouts=%d index_queries_total=%d index_queries_term_miss=%d index_queries_empty_and=%d index_queries_positive=%d term_batches_processed_total=%d",
+		"requests=%d header=%d metadata=%d term_dict=%d bitmap=%d header_cache_misses=%d metadata_cache_misses=%d io_wait=%s io_bytes=%d peak=%d effective=%.2f prefetch_calls=%d prefetch_timeouts=%d index_queries_total=%d index_queries_term_miss=%d index_queries_empty_and=%d index_queries_positive=%d term_batches_processed_total=%d",
 		snap.ObjectStorageRequests,
 		snap.HeaderReads,
 		snap.MetadataReads,
 		snap.TermDictReads,
 		snap.BitmapReads,
+		snap.HeaderCacheMisses,
+		snap.MetadataCacheMisses,
 		snap.TotalIOWait,
 		snap.TotalIOBytes,
 		snap.PeakConcurrency,

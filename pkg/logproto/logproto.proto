@@ -481,25 +481,27 @@ message HintQueryStats {
   int64 metadata_reads = 2;
   int64 term_dict_reads = 3;
   int64 bitmap_reads = 4;
-  int64 object_storage_requests = 5;
-  google.protobuf.Duration total_io_wait = 6 [
+  int64 header_cache_misses = 5;
+  int64 metadata_cache_misses = 6;
+  int64 object_storage_requests = 7;
+  google.protobuf.Duration total_io_wait = 8 [
     (gogoproto.stdduration) = true,
     (gogoproto.nullable) = false,
     (gogoproto.customname) = "TotalIOWait"
   ];
-  int64 total_io_bytes = 7 [(gogoproto.customname) = "TotalIOBytes"];
-  int32 peak_concurrency = 8;
-  double effective_concurrency = 9;
-  int32 prefetch_calls = 10;
-  int32 prefetch_timeouts = 11;
-  int64 index_queries_total = 12;
-  int64 index_queries_term_miss = 13;
-  int64 index_queries_empty_and = 14;
-  int64 index_queries_positive = 15;
-  int64 total_term_batches_processed = 16;
-  string hint_cache_result = 17;
-  int64 hint_cache_days_fetched = 18;
-  int64 hint_cache_days_hit = 19;
+  int64 total_io_bytes = 9 [(gogoproto.customname) = "TotalIOBytes"];
+  int32 peak_concurrency = 10;
+  double effective_concurrency = 11;
+  int32 prefetch_calls = 12;
+  int32 prefetch_timeouts = 13;
+  int64 index_queries_total = 14;
+  int64 index_queries_term_miss = 15;
+  int64 index_queries_empty_and = 16;
+  int64 index_queries_positive = 17;
+  int64 total_term_batches_processed = 18;
+  string hint_cache_result = 19;
+  int64 hint_cache_days_fetched = 20;
+  int64 hint_cache_days_hit = 21;
 }
 
 message HintResponse {
