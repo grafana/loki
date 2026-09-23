@@ -432,9 +432,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 	lbs := labels.FromStrings("namespace", "loki", "pod", "p1")
 
-	t.Run("error details alone take the normal grouping path", func(t *testing.T) {
-		// `| drop __error__` resets the error and leaves the details, so the sample succeeded and
-		// must not gain an __error_details__ label.
+	t.Run("details set without an error keep the grouped labels and report no error label", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.SetErrorDetails("Malformed JSON error")
@@ -454,9 +452,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("by() aggregation carries __preserve_error__ even though it is not a group key", func(t *testing.T) {
-		// __preserve_error__ is an ordinary parsed label, so the grouping drops it. Losing it makes
-		// the evaluator fail the query on a sample the filter asked to keep.
+	t.Run("by() reports a parsed __preserve_error__ that is not a group key", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
@@ -469,7 +465,45 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("without() aggregation keeps each error label once", func(t *testing.T) {
+	t.Run("by() reports __preserve_error__ that arrives as structured metadata", func(t *testing.T) {
+		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+		b.Reset()
+		b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.PreserveErrorLabel, "true"))
+		b.SetErr("JSONParserErr")
+
+		assertLabelResult(t, labels.FromStrings(
+			"pod", "p1",
+			logqlmodel.ErrorLabel, "JSONParserErr",
+			logqlmodel.PreserveErrorLabel, "true",
+		), b.GroupedLabels())
+	})
+
+	t.Run("noLabels reports __preserve_error__ that arrives as structured metadata", func(t *testing.T) {
+		b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, true).ForLabels(lbs, labels.StableHash(lbs))
+		b.Reset()
+		b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.PreserveErrorLabel, "true"))
+		b.SetErr("JSONParserErr")
+
+		assertLabelResult(t, labels.FromStrings(
+			logqlmodel.ErrorLabel, "JSONParserErr",
+			logqlmodel.PreserveErrorLabel, "true",
+		), b.GroupedLabels())
+	})
+
+	t.Run("by() reports __preserve_error__ that arrives as a stream label", func(t *testing.T) {
+		base := labels.FromStrings(logqlmodel.PreserveErrorLabel, "true", "pod", "p1")
+		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(base, labels.StableHash(base))
+		b.Reset()
+		b.SetErr("JSONParserErr")
+
+		assertLabelResult(t, labels.FromStrings(
+			"pod", "p1",
+			logqlmodel.ErrorLabel, "JSONParserErr",
+			logqlmodel.PreserveErrorLabel, "true",
+		), b.GroupedLabels())
+	})
+
+	t.Run("without() reports each error label once", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
@@ -482,9 +516,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("the builder's error details replace a stale pair", func(t *testing.T) {
-		// A log line or a `label_format` can set __error_details__. Keeping that value next to the
-		// builder's __error__ would report two different errors.
+	t.Run("the builder's details replace a parsed __error_details__", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
@@ -498,7 +530,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("an error with no details drops a stale details label", func(t *testing.T) {
+	t.Run("an error with no details drops a parsed __error_details__", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
@@ -510,7 +542,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("grouping by the error label keeps it once", func(t *testing.T) {
+	t.Run("grouping by __error__ reports the builder's value once", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.SetErr("JSONParserErr")
@@ -518,9 +550,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		assertLabelResult(t, labels.FromStrings(logqlmodel.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
 	})
 
-	t.Run("the builder's error replaces a base label named __error__", func(t *testing.T) {
-		// Ingestion cannot produce a stream label with this name, but a base label must not mask
-		// the real error, and labels.New does not deduplicate names.
+	t.Run("the builder's error replaces a stream label named __error__", func(t *testing.T) {
 		base := labels.FromStrings(logqlmodel.ErrorLabel, "frombase", "pod", "p1")
 		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(base, labels.StableHash(base))
 		b.Reset()

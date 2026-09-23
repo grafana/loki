@@ -242,8 +242,8 @@ eval select from 0 to 60s forward {app="a"} | json | keep __error_details__
 eval select from 0 to 60s forward {app="a"} | json | keep __error__="JSONParserErr"
   {} `{"ok":1}` @ 20s
   {} `{`        @ 40s [parsed __error__="JSONParserErr" __error_details__="Malformed JSON error"]
-# keep never drops the error labels, so query with an __error__ filter keeps erroring samples in the result,
-# and a query with an __error__ filter fails.
+# keep never drops the error labels, so a query with an __error__ filter keeps erroring samples in the result,
+# and a query without an __error__ filter fails.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
 eval range from 40s to 80s step 20s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)   # overlapping

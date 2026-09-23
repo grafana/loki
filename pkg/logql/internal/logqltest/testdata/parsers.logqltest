@@ -152,10 +152,11 @@ eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
 # plus the labels that report the error.
 clear
 load
-  {app="a", pod="p1"} `{"ok":1}` @ 20s [metadata n="5" unrelated="u1"]
+  {app="a", pod="p1"} `{"ok":1}` @ 20s [metadata n="5" unrelated="u1"] # "unrelated" metadata is never named by a query
   {app="a", pod="p2"} `{`        @ 40s [metadata n="7" unrelated="u2"] # malformed
   {app="a", pod="p2"} `{`        @ 50s [metadata n="9" unrelated="u9"] # malformed, other metadata
-  {app="noise", pod="p3"} `{"ok":1}` @ 20s [metadata n="9" unrelated="u3"]
+  {app="c", pod="p3"} `{`        @ 40s [metadata n="9" __preserve_error__="true"] # malformed
+  {app="noise", pod="p4"} `{"ok":1}` @ 20s [metadata n="9" unrelated="u3"]
 
 eval instant at 60s first_over_time({app="a"} | json | unwrap n [1m]) by (pod)
   expect fail msg: JSONParserErr
@@ -165,6 +166,9 @@ eval instant at 60s first_over_time({app="a"} | json | __error__="JSONParserErr"
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 7
 eval range from 20s to 60s step 20s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by (pod) # overlapping
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} _ 7 7
+# by() keeps no label of its own, so the kept sample reports only the error labels.
+eval instant at 60s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by ()
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
 # A clean line and an errored line in one result.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="zzz" | unwrap n [1m]) by (pod)
   {pod="p1"} 5
@@ -172,6 +176,11 @@ eval instant at 60s first_over_time({app="a"} | json | __error__!="zzz" | unwrap
 # pod="p2" errored lines (2) differ only in metadata, which the grouping drops, so they form one series.
 eval instant at 60s sum by (pod) (first_over_time({app="a"} | json | __error__!="" | unwrap n [1m]) by (pod))
   {pod="p2"} 7
+# Structured metadata can supply __preserve_error__, so the sample survives with no filter.
+eval instant at 60s first_over_time({app="c"} | json | unwrap n [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p3"} 9
+eval range from 40s to 80s step 20s first_over_time({app="c"} | json | unwrap n [1m]) by (pod) # overlapping
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p3"} 9 9 9
 # by() and without() on the vector aggregation without __error__ filter report the error.
 eval instant at 60s sum by () (count_over_time({app="a"} | json | n!="9" [1m]))
   expect fail msg: JSONParserErr

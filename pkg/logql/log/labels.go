@@ -12,6 +12,10 @@ import (
 
 const MaxInternedStrings = 1024
 
+// errorLabelsCount is how many labels appendErrorLabels can add: __error__, __error_details__ and
+// __preserve_error__.
+const errorLabelsCount = 3
+
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.StableHash(labels.EmptyLabels()), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
@@ -670,8 +674,8 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	if b.noLabels {
 		return b.toNoLabelsGroup()
 	}
-	// Fast path if the labels haven't changed. It cannot report an error, so an error takes the
-	// slow path.
+	// Fast path when no stage changed a label. Both results it returns are memoized for the whole
+	// stream, so an errored line takes the slow path below instead of polluting the cached value.
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if len(b.groups) == 0 {
 			return b.currentResult
@@ -689,15 +693,15 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	return b.toByGroup()
 }
 
-// toNoLabelsGroup returns the GroupedLabels result for a grouping that names no output label.
+// toNoLabelsGroup returns the GroupedLabels result for a `by ()` grouping, which emits one
+// unlabeled series.
 func (b *LabelsBuilder) toNoLabelsGroup() LabelsResult {
 	if !b.HasErr() {
 		return EmptyLabelsResult
 	}
 
 	if b.buf == nil {
-		// At most 3: __error__, __error_details__ and __preserve_error__.
-		b.buf = make([]labels.Label, 0, 3)
+		b.buf = make([]labels.Label, 0, errorLabelsCount)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -710,7 +714,7 @@ func (b *LabelsBuilder) toNoLabelsGroup() LabelsResult {
 // toByGroup returns the GroupedLabels result for a `by (...)` grouping.
 func (b *LabelsBuilder) toByGroup() LabelsResult {
 	if b.buf == nil {
-		b.buf = make([]labels.Label, 0, len(b.groups))
+		b.buf = make([]labels.Label, 0, len(b.groups)+errorLabelsCount)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -749,7 +753,7 @@ func (b *LabelsBuilder) toWithoutGroup() LabelsResult {
 		if size < 0 {
 			size = 0
 		}
-		b.buf = make([]labels.Label, 0, size)
+		b.buf = make([]labels.Label, 0, size+errorLabelsCount)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -811,16 +815,18 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	return res
 }
 
-// appendErrorLabels manipulate the input labels slice to replace or append the labels that carry
-// the pipeline error, which grouping does not keep. It does not change when no error is set.
+// appendErrorLabels returns buf with the labels that report the pipeline error, which grouping does
+// not keep. It returns buf unchanged when the builder holds no error.
+//
+// appendErrorLabels compacts buf in place, so the caller must use the returned slice.
 func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 	if !b.HasErr() {
 		return buf
 	}
 
-	// __error__ and __error_details__ always come from the builder, so the function first drops
-	// whatever buf holds under those names. If a log line has __error_details__, keeping it and
-	// setting __error__ would cause the two labels describing two different things.
+	// The builder owns the error, so its values win. The input buf can already hold __error__ or
+	// __error_details__: keeping them, instead of the builder's error, would make the two labels
+	// report different errors.
 	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
 		return l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel
 	})
@@ -830,10 +836,14 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
-	// Unlike the other two, __preserve_error__ is an ordinary parsed label, so grouping drops it
-	// unless it happens to be a group key. Losing it turns a preserved sample back into a failure.
-	if v, ok := findLabelValue(b.add[ParsedLabel], logqlmodel.PreserveErrorLabel); ok && !labelsContain(buf, logqlmodel.PreserveErrorLabel) {
-		buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: v})
+	// Unlike the other two special error labels, __preserve_error__ is an ordinary label rather,
+	// so grouping drops it unless it is a group key. Losing it makes the evaluator fail the query
+	// on a sample the filter asked to keep.
+	if !labelsContain(buf, logqlmodel.PreserveErrorLabel) {
+		// The __preserve_error__ label can reach the builder in any category.
+		if v, _, ok := b.getWithCategory(logqlmodel.PreserveErrorLabel); ok {
+			buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: v})
+		}
 	}
 
 	return buf
