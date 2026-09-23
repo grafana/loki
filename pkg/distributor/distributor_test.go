@@ -3293,7 +3293,6 @@ func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
 				expect  bool
 			}{
 				{"divergence", d.m.limitsServiceShardShadowDivergence, test.expectDivergence},
-				{"unimplemented", d.m.limitsServiceShardShadowUnimplemented, test.expectUnimplemented},
 				{"failed", d.m.limitsServiceShardShadowFailed, test.expectFailed},
 				{"rejected", d.m.limitsServiceShardShadowRejected, test.expectRejected},
 				{"compared", d.m.limitsServiceShardShadowCompared, test.expectCompared},

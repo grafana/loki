@@ -212,7 +212,6 @@ type metrics struct {
 	limitsServiceShardShadowDivergence          *prometheus.CounterVec
 	limitsServiceShardShadowDivergenceMagnitude *prometheus.HistogramVec
 	limitsServiceShardShadowStreamRate          *prometheus.HistogramVec
-	limitsServiceShardShadowUnimplemented       *prometheus.CounterVec
 	limitsServiceShardShadowFailed              *prometheus.CounterVec
 	limitsServiceShardShadowRejected            *prometheus.CounterVec
 	limitsServiceShardShadowCompared            *prometheus.CounterVec
@@ -296,12 +295,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
 		}, []string{"tenant", "source"}),
-
-		limitsServiceShardShadowUnimplemented: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_limits_service_shard_shadow_unimplemented_total",
-			Help:      "For tenants in shadow mode, the total number of times the ingest-limits service answered Unimplemented, which means shadow mode is enabled here but the service does not support the RPC, so the setting has no effect.",
-		}, []string{"tenant"}),
 
 		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -1495,13 +1488,10 @@ func (d *Distributor) observeLimitsServiceShardShadow(ctx context.Context, tenan
 		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID).Add(float64(len(candidates)))
 		if status.Code(err) == codes.Unimplemented {
 			// The service predates the RPC, for instance during a rollout.
-			// Report it separately from a transient error, as shadow mode is
-			// doing nothing at all in this state.
-			d.m.limitsServiceShardShadowUnimplemented.WithLabelValues(tenantID).Inc()
-			level.Warn(d.logger).Log("msg", "shadow mode check-limits-and-shard call returned Unimplemented; the ingest-limits service may predate this RPC", "tenant", tenantID)
+			level.Warn(d.logger).Log("msg", "shadow mode CheckLimitsAndShard call returned Unimplemented; the limits service may predate this RPC", "tenant", tenantID)
 			return
 		}
-		level.Debug(d.logger).Log("msg", "failed shadow mode check-limits-and-shard call", "tenant", tenantID, "err", err)
+		level.Debug(d.logger).Log("msg", "failed shadow mode CheckLimitsAndShard call", "tenant", tenantID, "err", err)
 		return
 	}
 	for _, c := range candidates {
