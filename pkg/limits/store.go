@@ -370,51 +370,6 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
 
-// Duplicate of update but also updates the rate buckets. This allows us to
-// isolate the changes needed to support UpdateRates RPC without affecting
-// the ExceedsLimits RPCs.
-func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
-	s.checkInitMap(i, tenant, partition, policyBucket)
-	streamHash := metadata.StreamHash
-	// Get the stats for the stream.
-	stream, ok := s.stripes[i][tenant][partition][policyBucket][streamHash]
-	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
-	// If the stream does not exist, or it has expired, reset it.
-	if !ok || stream.lastSeenAt < cutoff {
-		stream.hash = streamHash
-		stream.totalSize = 0
-		stream.policy = policyBucket
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
-	} else if len(stream.rateBuckets) == 0 {
-		// If the stream exists but rateBuckets is not initialized (e.g., created via Update()),
-		// initialize it now. This can happen when ExceedsLimits creates a stream, then
-		// UpdateRates is called for the same stream.
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
-	}
-
-	seenAtUnixNano := seenAt.UnixNano()
-	if stream.lastSeenAt <= seenAtUnixNano {
-		stream.lastSeenAt = seenAtUnixNano
-	}
-	stream.totalSize += metadata.TotalSize
-	// rate buckets are implemented as a circular list. To update a rate
-	// bucket we must first calculate the bucket index.
-	bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	bucketIdx := int(bucketNum % int64(s.numBuckets))
-	bucket := stream.rateBuckets[bucketIdx]
-	// Once we have found the bucket, we then need to check if it is an old
-	// bucket outside the rate window. If it is, we must reset it before we
-	// can re-use it.
-	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	if bucket.timestamp < bucketStart {
-		bucket.timestamp = bucketStart
-		bucket.size = 0
-	}
-	bucket.size += metadata.TotalSize
-	stream.rateBuckets[bucketIdx] = bucket
-	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
-}
-
 func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, streamHash uint64, policy string, now time.Time) {
 	stream := s.stripes[i][tenant][partition][policy][streamHash]
 	stream.lastProducedAt = now.UnixNano()
@@ -482,9 +437,9 @@ func (s *usageStore) newActiveWindowFunc(now time.Time) func(t int64) bool {
 }
 
 // withinRateWindow returns true if t is within the rate window.
-func (s *usageStore) withinRateWindow(t int64) bool {
-	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
-}
+// func (s *usageStore) withinRateWindow(t int64) bool {
+// 	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
+// }
 
 // newRateWindowFunc returns a func that returns true if t is within
 // the rate window. It memoizes the start of the rate time window.
@@ -528,21 +483,4 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
-}
-
-func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
-	partitions, ok := s.stripes[i][tenant]
-	if !ok {
-		return
-	}
-	policies, ok := partitions[partition]
-	if !ok {
-		return
-	}
-	streams, ok := policies[noPolicy]
-	if !ok {
-		return
-	}
-	stream, ok = streams[streamHash]
-	return
 }
