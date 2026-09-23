@@ -836,9 +836,9 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
-	// Unlike the other two special error labels, __preserve_error__ is an ordinary label rather,
-	// so grouping drops it unless it is a group key. Losing it makes the evaluator fail the query
-	// on a sample the filter asked to keep.
+	// Unlike the other two special error labels, __preserve_error__ is an ordinary label rather than
+	// a builder field, so grouping drops it unless it is a group key. Losing it makes the evaluator
+	// fail the query on a sample the filter asked to keep.
 	if !labelsContain(buf, logqlmodel.PreserveErrorLabel) {
 		// The __preserve_error__ label can reach the builder in any category.
 		if v, _, ok := b.getWithCategory(logqlmodel.PreserveErrorLabel); ok {
