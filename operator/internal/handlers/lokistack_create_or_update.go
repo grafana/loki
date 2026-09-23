@@ -174,7 +174,7 @@ func CreateOrUpdateLokiStack(
 		conflictList := strings.Join(conflicts, "; ")
 		return nil, &status.DegradedError{
 			Message: fmt.Sprintf(
-				"Resource ownership conflict detected: %s. Delete the conflicting resource or rename to resolve.",
+				"Resource ownership conflict detected, this instance reconciliation is blocked until the conflict is resolved, conflicting resources: %s",
 				conflictList,
 			),
 			Reason:  lokiv1.ReasonResourceOwnershipConflict,
@@ -271,19 +271,16 @@ func checkResourceOwnership(
 		existing := obj.DeepCopyObject().(client.Object)
 		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
 		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				// Return non-NotFound errors (network, permissions, etc.)
-				// NotFound is expected when resource doesn't exist yet
-				return conflicts, err
+			if apierrors.IsNotFound(err) {
+				continue
 			}
-			// Resource doesn't exist, no conflict possible
-			continue
+			return conflicts, err
 		}
 
 		// Resource exists - check if it's owned by a different controller
 		existingOwner := metav1.GetControllerOf(existing)
 		if existingOwner != nil && existingOwner.UID != stack.UID {
-			resourceName := fmt.Sprintf("%s/%s", kind, obj.GetName())
+			resourceName := fmt.Sprintf("%s/%s (owned by %s/%s)", kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
 			ll.Error(nil, "resource exists and is owned by a different controller",
 				"resource", resourceName,
 				"namespace", req.Namespace,
