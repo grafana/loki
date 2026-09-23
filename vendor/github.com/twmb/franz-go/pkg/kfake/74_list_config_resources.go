@@ -14,7 +14,7 @@ import (
 // cover topics, brokers, broker loggers, client metrics, and groups.
 //
 // Behavior:
-// * v0: only supports CLIENT_METRICS (kfake has none, so returns empty)
+// * v0: only supports CLIENT_METRICS
 // * v1: supports TOPIC, BROKER, BROKER_LOGGER, CLIENT_METRICS, GROUP
 // * Empty ResourceTypes in v1 returns all supported types
 // * Unsupported resource types return UNSUPPORTED_VERSION
@@ -32,8 +32,8 @@ func (c *Cluster) handleListConfigResources(creq *clientReq) (kmsg.Response, err
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationDescribeConfigs) {
-		resp.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+	if e := c.denyCluster(creq, kmsg.ACLOperationDescribeConfigs); e != nil {
+		resp.ErrorCode = e.Code
 		return resp, nil
 	}
 
@@ -93,7 +93,11 @@ func (c *Cluster) handleListConfigResources(creq *clientReq) (kmsg.Response, err
 			add(group, kmsg.ConfigResourceTypeGroupConfig)
 		}
 	}
-	// ClientMetrics: kfake has no client-metrics resources.
+	if wanted[int8(kmsg.ConfigResourceTypeClientMetrics)] {
+		for name := range c.clientMetrics {
+			add(name, kmsg.ConfigResourceTypeClientMetrics)
+		}
+	}
 
 	return resp, nil
 }

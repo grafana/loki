@@ -1,7 +1,6 @@
 package kfake
 
 import (
-	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -26,16 +25,16 @@ func (c *Cluster) handleAddOffsetsToTxn(creq *clientReq) (kmsg.Response, error) 
 	}
 
 	// ACL check: WRITE on TxnID
-	if !c.allowedACL(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite) {
+	if e := c.deny(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite, faultKey{txnID: req.TransactionalID}); e != nil {
 		resp := req.ResponseKind().(*kmsg.AddOffsetsToTxnResponse)
-		resp.ErrorCode = kerr.TransactionalIDAuthorizationFailed.Code
+		resp.ErrorCode = e.Code
 		return resp, nil
 	}
 
 	// ACL check: READ on Group
-	if !c.allowedACL(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead) {
+	if e := c.deny(creq, req.Group, kmsg.ACLResourceTypeGroup, kmsg.ACLOperationRead, faultKey{group: req.Group}); e != nil {
 		resp := req.ResponseKind().(*kmsg.AddOffsetsToTxnResponse)
-		resp.ErrorCode = kerr.GroupAuthorizationFailed.Code
+		resp.ErrorCode = e.Code
 		return resp, nil
 	}
 

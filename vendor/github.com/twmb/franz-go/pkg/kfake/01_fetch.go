@@ -74,6 +74,9 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 				topic = c.data.id2t[ft.TopicID]
 			}
 			for _, p := range ft.Partitions {
+				if req.Version >= 13 {
+					session.forgetUnknownID(ft.TopicID, p)
+				}
 				session.forgetPartition(topic, p)
 			}
 		}
@@ -94,6 +97,12 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 		fetchOffset  int64
 		maxBytes     int32
 		currentEpoch int32
+		// staleID marks a session entry whose topic ID no longer
+		// resolves while its cached name still does: the topic was
+		// recreated under that name. Kafka resolves a session entry's
+		// name once, at insertion, so the entry reaches the log by
+		// name and fails the ID check there.
+		staleID bool
 	}
 	var toFetch []fetchPartition
 
@@ -104,16 +113,32 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 			req.Topics[i].Topic = rt.Topic
 		}
 		for _, rp := range rt.Partitions {
-			toFetch = append(toFetch, fetchPartition{
+			fp := fetchPartition{
 				topic:        rt.Topic,
 				topicID:      rt.TopicID,
 				partition:    rp.Partition,
 				fetchOffset:  rp.FetchOffset,
 				maxBytes:     rp.PartitionMaxBytes,
 				currentEpoch: rp.CurrentLeaderEpoch,
-			})
-			// Update session with this partition's state
-			session.updatePartition(rt.Topic, rp.Partition, rp.FetchOffset, rp.PartitionMaxBytes, rp.CurrentLeaderEpoch)
+			}
+			// Update session with this partition's state. Kafka
+			// matches a v13 request partition to a session entry
+			// by topic ID and keeps the name the entry was added
+			// under, so an ID that stopped resolving still reaches
+			// the log by that name. An unresolvable ID with no
+			// entry is tracked by ID: Kafka caches it with no name
+			// and answers UNKNOWN_TOPIC_ID for it on every fetch of
+			// the session.
+			if fp.topic == "" && req.Version >= 13 {
+				fp.topic = session.nameOfID(rt.TopicID, rp.Partition)
+				fp.staleID = fp.topic != ""
+			}
+			if fp.topic != "" || req.Version < 13 {
+				session.updatePartition(fp.topic, rt.TopicID, rp.Partition, rp.FetchOffset, rp.PartitionMaxBytes, rp.CurrentLeaderEpoch)
+			} else {
+				session.updateUnknownID(rt.TopicID, rp.Partition, rp.FetchOffset, rp.PartitionMaxBytes, rp.CurrentLeaderEpoch)
+			}
+			toFetch = append(toFetch, fp)
 		}
 	}
 
@@ -121,18 +146,58 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 	// that weren't in the request
 	if session != nil && !newSession {
 		inRequest := make(map[tp]bool)
+		inRequestUnknown := make(map[idp]bool)
 		for _, fp := range toFetch {
+			if fp.topic == "" {
+				inRequestUnknown[idp{fp.topicID, fp.partition}] = true
+				continue
+			}
 			inRequest[tp{fp.topic, fp.partition}] = true
+		}
+		for key, sp := range session.unknownIDs {
+			if inRequestUnknown[key] {
+				continue
+			}
+			// An ID that resolves now was created after the entry was
+			// added; it becomes a normal entry under its name, which
+			// the loop below picks up.
+			if topic := c.data.id2t[key.id]; topic != "" {
+				delete(session.unknownIDs, key)
+				session.partitions[tp{topic, key.p}] = sp
+				continue
+			}
+			toFetch = append(toFetch, fetchPartition{
+				topicID:      key.id,
+				partition:    key.p,
+				fetchOffset:  sp.fetchOffset,
+				maxBytes:     sp.maxBytes,
+				currentEpoch: sp.currentEpoch,
+			})
 		}
 		for key, sp := range session.partitions {
 			if !inRequest[key] {
+				topic := key.t
+				var staleID bool
+				if sp.topicID != (uuid{}) {
+					// v13+ entries are addressed by the ID they
+					// were added with. If it no longer resolves,
+					// the entry keeps the name it was inserted
+					// under, like a real broker: a deleted topic
+					// answers UNKNOWN_TOPIC_ID, a recreated one
+					// INCONSISTENT_TOPIC_ID from a broker hosting
+					// the new incarnation.
+					if _, ok := c.data.id2t[sp.topicID]; !ok {
+						staleID = true
+					}
+				}
 				toFetch = append(toFetch, fetchPartition{
-					topic:        key.t,
-					topicID:      c.data.t2id[key.t],
+					topic:        topic,
+					topicID:      sp.topicID,
 					partition:    key.p,
 					fetchOffset:  sp.fetchOffset,
 					maxBytes:     sp.maxBytes,
 					currentEpoch: sp.currentEpoch,
+					staleID:      staleID,
 				})
 			}
 		}
@@ -143,20 +208,43 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 		nbytes        int
 		returnEarly   bool
 		needp         tps[int]
+		fc            = creq.faults
+		syn           = c.cfg.synthetic
 	)
-	if w == nil {
+	if syn != nil {
+		// A synthetic cluster serves its canned batch from any offset,
+		// so there is always data: we answer now rather than waiting.
+		returnEarly = true
+	} else if w == nil {
+		// Any partition that errors completes the fetch at once, as a
+		// real broker's fetch purgatory does; only partitions waiting
+		// on data hold the request for MaxWait.
 	out:
 		for _, fp := range toFetch {
+			if e := fc.check(faultKey{topic: fp.topic, topicID: fp.topicID}.part(fp.partition)); e != nil {
+				returnEarly = true // the fault's error
+				break out
+			}
+			if fp.staleID {
+				returnEarly = true // InconsistentTopicID or UnknownTopicID
+				break out
+			}
 			t, ok := c.data.tps.gett(fp.topic)
 			if !ok {
-				continue
+				returnEarly = true // UnknownTopicID or UnknownTopicOrPartition
+				break out
 			}
 			pd, ok := t[fp.partition]
 			if !ok {
-				continue
+				returnEarly = true // UnknownTopicID or UnknownTopicOrPartition
+				break out
 			}
 			if pd.leader != creq.cc.b && !slices.Contains(pd.followers, creq.cc.b.node) {
 				returnEarly = true // NotLeaderForPartition
+				break out
+			}
+			if le := fp.currentEpoch; le != -1 && le != pd.epoch {
+				returnEarly = true // FencedLeaderEpoch or UnknownLeaderEpoch
 				break out
 			}
 			segIdx, metaIdx, ok, atEnd := pd.searchOffset(fp.fetchOffset)
@@ -199,7 +287,6 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 		w := &watchFetch{
 			need:          int(req.MinBytes) - nbytes,
 			needp:         needp,
-			deadline:      deadline,
 			readCommitted: readCommitted,
 			creq:          creq,
 		}
@@ -229,11 +316,15 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 	tidx := make(map[string]int)
 
 	donet := func(t string, id uuid) *kmsg.FetchResponseTopic {
-		if i, ok := tidx[t]; ok {
+		key := t
+		if t == "" {
+			key = string(id[:]) // unresolvable v13 IDs each get their own entry
+		}
+		if i, ok := tidx[key]; ok {
 			return &resp.Topics[i]
 		}
 		id2t[id] = t
-		tidx[t] = len(resp.Topics)
+		tidx[key] = len(resp.Topics)
 		st := kmsg.NewFetchResponseTopic()
 		st.Topic = t
 		st.TopicID = id
@@ -271,16 +362,31 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 	nbytes = 0
 full:
 	for _, fp := range toFetch {
-		if !c.allowedACL(creq, fp.topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead) {
-			donep(fp.topic, fp.topicID, fp.partition, kerr.TopicAuthorizationFailed.Code)
+		if e := c.deny(creq, fp.topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationRead, faultKey{topic: fp.topic, topicID: fp.topicID}.part(fp.partition)); e != nil {
+			donep(fp.topic, fp.topicID, fp.partition, e.Code)
 			continue
 		}
 		pd, ok := c.data.tps.getp(fp.topic, fp.partition)
 		if !ok {
-			if req.Version >= 13 {
+			// A v13 partition with a name got it from its session
+			// entry; the entry reaches the log by that name, as on
+			// a real broker, and fails as a missing partition.
+			if req.Version >= 13 && fp.topic == "" {
 				donep(fp.topic, fp.topicID, fp.partition, kerr.UnknownTopicID.Code)
 			} else {
 				donep(fp.topic, fp.topicID, fp.partition, kerr.UnknownTopicOrPartition.Code)
+			}
+			continue
+		}
+		if fp.staleID {
+			// The session entry's name now belongs to a new
+			// incarnation. A broker hosting it rejects the stale ID
+			// as inconsistent; one that does not is simply not the
+			// leader.
+			if pd.leader != creq.cc.b && !slices.Contains(pd.followers, creq.cc.b.node) {
+				donep(fp.topic, fp.topicID, fp.partition, kerr.NotLeaderForPartition.Code)
+			} else {
+				donep(fp.topic, fp.topicID, fp.partition, kerr.InconsistentTopicID.Code)
 			}
 			continue
 		}
@@ -302,6 +408,15 @@ full:
 			}
 		}
 		sp := donep(fp.topic, fp.topicID, fp.partition, 0)
+		if syn != nil {
+			sp.HighWatermark = syntheticEnd
+			sp.LastStableOffset = syntheticEnd
+			sp.LogStartOffset = 0
+			room := min(int(fp.maxBytes), int(req.MaxBytes)-nbytes)
+			sp.RecordBatches = syn.appendBatches(sp.RecordBatches, fp.fetchOffset, pd.epoch, room)
+			nbytes += len(sp.RecordBatches)
+			continue
+		}
 		sp.HighWatermark = pd.highWatermark
 		sp.LastStableOffset = pd.lastStableOffset
 		sp.LogStartOffset = pd.logStartOffset
@@ -385,10 +500,9 @@ full:
 }
 
 type watchFetch struct {
-	need     int
-	needp    tps[int]
-	deadline time.Time
-	creq     *clientReq
+	need  int
+	needp tps[int]
+	creq  *clientReq
 
 	in []*partData
 	cb func()
@@ -454,11 +568,28 @@ type fetchSession struct {
 	id         int32
 	epoch      int32
 	partitions map[tp]fetchSessionPartition
+	// unknownIDs holds v13+ entries whose topic ID did not resolve when
+	// they were added. Kafka caches these with no name and answers
+	// UNKNOWN_TOPIC_ID for them on every fetch of the session; a client
+	// that keeps such an entry in its session sees the error on every
+	// fetch rather than once.
+	unknownIDs map[idp]fetchSessionPartition
 	lastUsed   time.Time
+}
+
+// idp keys a session entry by topic ID and partition.
+type idp struct {
+	id uuid
+	p  int32
 }
 
 // fetchSessionPartition tracks per-partition state within a session.
 type fetchSessionPartition struct {
+	// topicID is what the requester addressed this partition by (zero
+	// below fetch v13). v13+ sessions are topic-ID addressed: if this ID
+	// stops resolving (topic deleted, or recreated under a new ID), the
+	// entry answers UNKNOWN_TOPIC_ID rather than re-addressing by name.
+	topicID      uuid
 	fetchOffset  int64
 	maxBytes     int32
 	currentEpoch int32
@@ -524,6 +655,7 @@ func (fs *fetchSessions) getOrCreate(brokerNode, sessionID, sessionEpoch int32, 
 			id:         id,
 			epoch:      1,
 			partitions: make(map[tp]fetchSessionPartition),
+			unknownIDs: make(map[idp]fetchSessionPartition),
 			lastUsed:   now,
 		}
 		fs.sessions[brokerNode][id] = session
@@ -542,18 +674,20 @@ func (fs *fetchSessions) getOrCreate(brokerNode, sessionID, sessionEpoch int32, 
 	return session, false, 0
 }
 
-func (s *fetchSession) updatePartition(topic string, partition int32, fetchOffset int64, maxBytes, currentEpoch int32) {
+func (s *fetchSession) updatePartition(topic string, topicID uuid, partition int32, fetchOffset int64, maxBytes, currentEpoch int32) {
 	if s == nil {
 		return
 	}
 	key := tp{topic, partition}
 	if existing, ok := s.partitions[key]; ok {
+		existing.topicID = topicID
 		existing.fetchOffset = fetchOffset
 		existing.maxBytes = maxBytes
 		existing.currentEpoch = currentEpoch
 		s.partitions[key] = existing
 	} else {
 		s.partitions[key] = fetchSessionPartition{
+			topicID:            topicID,
 			fetchOffset:        fetchOffset,
 			maxBytes:           maxBytes,
 			currentEpoch:       currentEpoch,
@@ -568,6 +702,41 @@ func (s *fetchSession) forgetPartition(topic string, partition int32) {
 		return
 	}
 	delete(s.partitions, tp{topic, partition})
+}
+
+// nameOfID returns the name of the session entry added under topicID for
+// partition, if any.
+func (s *fetchSession) nameOfID(topicID uuid, partition int32) string {
+	if s == nil {
+		return ""
+	}
+	for key, sp := range s.partitions {
+		if sp.topicID == topicID && key.p == partition {
+			return key.t
+		}
+	}
+	return ""
+}
+
+func (s *fetchSession) updateUnknownID(topicID uuid, partition int32, fetchOffset int64, maxBytes, currentEpoch int32) {
+	if s == nil {
+		return
+	}
+	s.unknownIDs[idp{topicID, partition}] = fetchSessionPartition{
+		topicID:            topicID,
+		fetchOffset:        fetchOffset,
+		maxBytes:           maxBytes,
+		currentEpoch:       currentEpoch,
+		lastHighWatermark:  -1,
+		lastLogStartOffset: -1,
+	}
+}
+
+func (s *fetchSession) forgetUnknownID(topicID uuid, partition int32) {
+	if s == nil {
+		return
+	}
+	delete(s.unknownIDs, idp{topicID, partition})
 }
 
 func (s *fetchSession) bumpEpoch() {

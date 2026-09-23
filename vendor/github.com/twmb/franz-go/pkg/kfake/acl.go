@@ -143,6 +143,17 @@ func (a *clusterACLs) describe(filter aclFilter) []acl {
 	return result
 }
 
+// A real broker rejects describe/delete filters containing UNKNOWN
+// elements when parsing the request (normalizeAndValidate); model that so
+// clients sending zero-value filter fields fail here like they would in
+// production rather than silently matching.
+func (f aclFilter) validate() bool {
+	return f.pattern != kmsg.ACLResourcePatternTypeUnknown &&
+		f.resourceType != kmsg.ACLResourceTypeUnknown &&
+		f.operation != kmsg.ACLOperationUnknown &&
+		f.permission != kmsg.ACLPermissionTypeUnknown
+}
+
 type aclFilter struct {
 	resourceType kmsg.ACLResourceType
 	resourceName *string

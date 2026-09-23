@@ -24,6 +24,5 @@ func (c *Cluster) handleJoinGroup(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
-	c.groups.handleJoin(creq)
-	return nil, nil
+	return c.groups.handleJoin(creq), nil
 }

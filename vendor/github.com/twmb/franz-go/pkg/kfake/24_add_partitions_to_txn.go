@@ -1,7 +1,6 @@
 package kfake
 
 import (
-	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -43,14 +42,14 @@ func (c *Cluster) handleAddPartitionsToTxn(creq *clientReq) (kmsg.Response, erro
 	}
 
 	// ACL check: WRITE on TxnID
-	if !c.allowedACL(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite) {
-		return errResp(kerr.TransactionalIDAuthorizationFailed.Code), nil
+	if e := c.deny(creq, req.TransactionalID, kmsg.ACLResourceTypeTransactionalId, kmsg.ACLOperationWrite, faultKey{txnID: req.TransactionalID}); e != nil {
+		return errResp(e.Code), nil
 	}
 
 	// ACL check: WRITE on each Topic
 	for _, rt := range req.Topics {
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite) {
-			return errResp(kerr.TopicAuthorizationFailed.Code), nil
+		if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite, faultKey{txnID: req.TransactionalID, topic: rt.Topic}); e != nil {
+			return errResp(e.Code), nil
 		}
 	}
 

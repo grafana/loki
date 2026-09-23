@@ -22,16 +22,23 @@ type (
 		saslStage saslStage
 		s0        *scramServer0
 		user      string // authenticated user, set after SASL completes
+
+		// hasSessionExpiry is set at authenticate time when
+		// connections.max.reauth.ms is positive. Re-authentication is
+		// gated on the connection's stored session expiration, not the
+		// live config (KafkaChannel.maybeBeginServerReauthentication
+		// checks the authenticator's session expiration time), so a
+		// config change affects only sessions established after it.
+		hasSessionExpiry bool
 	}
 
 	clientReq struct {
-		cc        *clientConn
-		kreq      kmsg.Request
-		at        time.Time
-		cid       string
-		corr      int32
-		seq       uint32
-		topicMeta topicMetaSnap // snapshot for group assignment (consumer/share)
+		cc     *clientConn
+		kreq   kmsg.Request
+		at     time.Time
+		cid    string
+		corr   int32
+		faults *faultCheck // faults that can match this request, see Fault
 
 		// Pre-validated error topics to merge into the response,
 		// used when TopicID resolution fails for some topics while
@@ -43,7 +50,7 @@ type (
 		kresp kmsg.Response
 		corr  int32
 		err   error
-		seq   uint32
+		skip  bool // acks=0 produce: nothing to write, just unmute
 	}
 )
 
@@ -61,14 +68,17 @@ func (cc *clientConn) unmute(ok bool) {
 }
 
 // reply sends a response back to the client, respecting connection close
-// and cluster shutdown. Used by manage goroutines (groups, share groups)
-// that handle requests asynchronously.
-func (creq *clientReq) reply(kresp kmsg.Response) {
+// and cluster shutdown. It returns false if the client will never see the
+// response, either because the connection died or because the cluster is
+// shutting down.
+func (creq *clientReq) reply(kresp kmsg.Response) bool {
 	select {
-	case creq.cc.respCh <- clientResp{kresp: kresp, corr: creq.corr, seq: creq.seq}:
+	case creq.cc.respCh <- clientResp{kresp: kresp, corr: creq.corr}:
+		return true
 	case <-creq.cc.done:
 	case <-creq.cc.c.die:
 	}
+	return false
 }
 
 func (cc *clientConn) read() {
@@ -83,7 +93,6 @@ func (cc *clientConn) read() {
 		who    = cc.conn.RemoteAddr()
 		size   = make([]byte, 4)
 		readCh = make(chan read, 1)
-		seq    uint32
 	)
 	for {
 		go func() {
@@ -146,8 +155,7 @@ func (cc *clientConn) read() {
 			return
 		}
 		select {
-		case cc.c.reqCh <- &clientReq{cc: cc, kreq: kreq, at: time.Now(), cid: cid, corr: corr, seq: seq}:
-			seq++
+		case cc.c.reqCh <- &clientReq{cc: cc, kreq: kreq, at: time.Now(), cid: cid, corr: corr}:
 		case <-cc.c.die:
 			return
 		}
@@ -161,36 +169,21 @@ func (cc *clientConn) write() {
 		who     = cc.conn.RemoteAddr()
 		writeCh = make(chan error, 1)
 		buf     []byte
-		seq     uint32
-
-		// If a request is by necessity slow (join&sync), and the
-		// client sends another request down the same conn, we can
-		// actually handle them out of order because group state is
-		// managed independently in its own loop. To ensure
-		// serialization, we capture out of order responses and only
-		// send them once the prior requests are replied to.
-		//
-		// (this is also why there is a seq in the clientReq)
-		oooresp = make(map[uint32]clientResp)
 	)
 	for {
-		resp, ok := oooresp[seq]
-		if !ok {
-			select {
-			case resp = <-cc.respCh:
-				if resp.seq != seq {
-					oooresp[resp.seq] = resp
-					continue
-				}
-				seq = resp.seq + 1
-			case <-cc.done:
-				return
-			case <-cc.c.die:
-				return
-			}
-		} else {
-			delete(oooresp, seq)
-			seq++
+		var resp clientResp
+		select {
+		case resp = <-cc.respCh:
+		case <-cc.done:
+			return
+		case <-cc.c.die:
+			return
+		}
+		// acks=0 produce: no response bytes exist, we only unmute so
+		// that read() can submit the next request.
+		if resp.skip {
+			cc.unmute(true)
+			continue
 		}
 		if err := resp.err; err != nil {
 			cc.c.cfg.logger.Logf(LogLevelInfo, "client %s request unable to be handled: %v", who, err)

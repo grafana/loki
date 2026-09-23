@@ -121,7 +121,9 @@ func (s *sink) createReq(id int64, epoch int16) (*produceRequest, *kmsg.AddParti
 		recBufsIdx = (recBufsIdx + 1) % len(s.recBufs)
 
 		recBuf.mu.Lock()
-		if recBuf.failing || len(recBuf.batches) == recBuf.batchDrainIdx || recBuf.inflightOnSink != nil && recBuf.inflightOnSink != s || recBuf.inflight != 0 && !recBuf.okOnSink {
+		// A pending seq reset applies only to the first batch: stage
+		// nothing more until everything inflight finishes.
+		if recBuf.failing || len(recBuf.batches) == recBuf.batchDrainIdx || recBuf.needSeqReset && recBuf.inflight != 0 || recBuf.inflightOnSink != nil && recBuf.inflightOnSink != s || recBuf.inflight != 0 && !recBuf.okOnSink {
 			recBuf.mu.Unlock()
 			continue
 		}
@@ -268,8 +270,6 @@ func (s *sink) clearBackoff() {
 func (s *sink) drain() {
 	again := true
 	for again {
-		s.maybeBackoff()
-
 		sem := s.inflightSem.Load().(chan struct{})
 		select {
 		case sem <- struct{}{}:
@@ -277,6 +277,13 @@ func (s *sink) drain() {
 			s.drainState.hardFinish()
 			return
 		}
+
+		// We back off after taking our inflight slot, not before. A
+		// response arrives, triggers a backoff, and only then frees the
+		// slot we are waiting on, so a backoff checked before the wait
+		// is always one request out of date. Only one goroutine is ever
+		// in this loop, so holding the slot while we wait costs nothing.
+		s.maybeBackoff()
 
 		again = s.drainState.maybeFinish(s.produce(sem))
 	}
@@ -432,68 +439,32 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 	// sequence numbers using our new producer ID, which will then again
 	// fail with OOOSN.
 	req, txnReq, moreToDrain := s.createReq(id, epoch)
-	if len(req.batches.bs) == 0 { // everything was failing or lingering, or what is buffered is in flight already
+	if len(req.batches.bs) == 0 { // every recBuf is failing, has nothing new buffered, or is waiting on what is in flight
 		return moreToDrain
 	}
 
-	// With KIP-890 (EndTxn v5+), the epoch is bumped on every EndTxn.
-	// There is a possible TOCTOU race between producerID() and
-	// createReq() above:
+	// With KIP-890 (EndTxn v5+), the epoch bumps on every EndTxn,
+	// which opens a race between producerID() and createReq() above:
+	// we read epoch N, and before createReq runs, the last produce
+	// response lands on another sink, Flush returns, EndTxn bumps the
+	// epoch to N+1, and the user produces records for the next
+	// transaction. Our createReq then picks those records up stamped
+	// with the stale epoch N, and the broker rejects them with
+	// INVALID_PRODUCER_EPOCH, failing the records permanently. We
+	// recheck after building the request: if anything changed, we
+	// undo the staged batches and return true so the drain loop
+	// retries with the new epoch.
 	//
-	//   - Sink A's drain loop calls producerID(), gets epoch N.
-	//   - Sink A is preempted or otherwise delayed before calling
-	//     createReq().
-	//   - Meanwhile, the last produce response arrives on another
-	//     sink. bufferedRecords hits 0, Flush returns.
-	//   - EndTxn round-trips, the epoch bumps to N+1.
-	//   - The user produces records for the next transaction.
-	//   - Sink A resumes, calls createReq(epoch=N), and picks up
-	//     those new records stamped with the stale epoch N.
-	//   - The broker rejects with INVALID_PRODUCER_EPOCH, failing
-	//     the records permanently.
-	//
-	// We check the epoch after building the request. If it changed,
-	// we undo the drain state (resetBatchDrainIdx + decInflight) and
-	// return true so the drain loop retries with the new epoch.
-	//
-	// If the epoch has NOT changed, then EndTxn has not completed,
-	// Flush has not returned, and the user has not produced any
-	// records for a new transaction. Any records in the request are
-	// from the current transaction at epoch N, which is correct.
-	//
-	// This undo is safe: undoStagedBatches rewinds each recBuf to its
-	// pre-drain state -- drain index, inflight, and (for any partition
-	// this createReq newly added to the transaction) the addedToTxn flag,
-	// so the next drain re-issues its AddPartitionsToTxn instead of
-	// producing to a partition the broker never learned is in the txn (see
-	// undoStagedBatches). The existing defer releases the semaphore
-	// (produced is still false), and returning true retries produce() with
-	// the correct epoch.
-	//
-	// We use a raw atomic load rather than producerID() to avoid
-	// side effects (blocking on idMu, triggering InitProducerID
-	// reloads). We bail on ANY change to the producer ID - whether
-	// from an epoch bump, a reload, or an error - so we do not need
-	// to interpret the stored value beyond id/epoch comparison. The
-	// next produce() call handles errors through producerID()'s
-	// normal error paths.
-	//
-	// We also bail on cur.err != nil. A parallel sink handling an
-	// OOOSN response can call failProducerID, which sets err on the
-	// stored producerID *without* changing id/epoch. The next
-	// producerID() call on that sink then reloads, and its
-	// resetAllProducerSequences pass walks every recBuf flipping
-	// needSeqReset=true BEFORE storing the new (id, epoch). There is
-	// a narrow window where a concurrent createReq on THIS sink has
-	// already picked up (id, epoch) from a pre-fail producerID() and
-	// now observes needSeqReset=true on some recBuf while the stored
-	// id/epoch still match. Without the err check, that createReq
-	// would send a request stamped with the old (id, epoch) but a
-	// freshly-reset seq=0; the broker would reject with OOOSN and we
-	// would retry. Checking err catches the window: after
-	// failProducerID, cur.err is non-nil even though id/epoch are
-	// unchanged, so we bail and the next drain pulls the reloaded
-	// (id, epoch) with seq=0 consistently.
+	// We use a raw atomic load rather than producerID() to avoid its
+	// side effects (blocking on idMu, triggering InitProducerID), and
+	// we bail on any change: id, epoch, or err. The err check matters
+	// because a parallel sink handling OOOSN calls failProducerID,
+	// which sets err without changing the id/epoch; the reload that
+	// follows flips needSeqReset on every recBuf before storing the
+	// new id, so a createReq in that window could ship the old id
+	// with a freshly reset seq of 0 and hit another OOOSN. After
+	// failProducerID, err is non-nil, so we bail and the next drain
+	// pulls the reloaded id with seq 0 consistently.
 	if cur := s.cl.producer.id.Load().(*producerID); cur.id != id || cur.epoch != epoch || cur.err != nil {
 		req.undoStagedBatches(txnReq)
 		return true
@@ -517,24 +488,14 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 				s.cl.triggerUpdateMetadata(false, "attempting to refresh broker list due to failed AddPartitionsToTxn requests")
 				return moreToDrain || len(req.batches.bs) > 0 // nothing stripped if request-issuing error
 			default:
-				// This includes TransactionAbortable. We used to
-				// continue into producing on TransactionAbortable so
-				// the produce failure would carry the error to the
-				// user, but doTxnReq's error path has already
-				// requeued every batch in the request (reset drain
-				// indexes, decremented inflight, and un-marked
-				// addedToTxn for the partitions whose add actually
-				// failed): producing those batches anyway would
-				// decrement inflight a second time (wrapping the
-				// counter and permanently wedging the recBuf's
-				// drain gate) and could re-drain batches that are
-				// already in flight. Failing the producer ID delivers
-				// the same error to all buffered records on the next
-				// drain, and TransactionAbortable remains recoverable
-				// via EndTransaction.
-				//
-				// Note that err can also be InvalidProducerEpoch,
-				// which is potentially recoverable in EndTransaction.
+				// doTxnReq's error path already requeued every batch
+				// in this request; producing them anyway would
+				// decrement inflight twice and could re-drain batches
+				// that are already in flight. Failing the producer ID
+				// delivers this error to all buffered records on the
+				// next drain. The error can be TransactionAbortable
+				// or InvalidProducerEpoch, both potentially
+				// recoverable in EndTransaction.
 				//
 				// We do not fail all buffered records here,
 				// because that can lead to undesirable behavior
@@ -636,9 +597,8 @@ func (s *sink) doTxnReq(
 	// be requeued and any partition this request newly added to the
 	// transaction must be un-marked, since we will not issue the produce
 	// request. undoStagedBatches scopes the un-marking to txnReq so a
-	// partition added by an EARLIER AddPartitionsToTxn of this transaction
-	// (a broker-acked fact, deliberately absent here) keeps its membership;
-	// clearing it would make EndTransaction's anyAdded walk skip EndTxn and
+	// partition an earlier request added keeps its broker-acked
+	// membership; clearing it would make EndTransaction skip EndTxn and
 	// strand the broker-side transaction until its timeout abort.
 	//
 	// These batches must be the first in their recBuf, because we would
@@ -685,31 +645,30 @@ func txnReqContains(txnReq *kmsg.AddPartitionsToTxnRequest, topic string, partit
 	return false
 }
 
-// undoStagedBatches rewinds every batch that createReq staged into this request
-// back to its pre-drain state, for the early-return arms that decide not to
-// issue the request after staging it: the producer-ID/epoch recheck in
-// produce() and doTxnReq's failure defer. It resets each recBuf's drain index
-// and decrements inflight, and -- for the partitions THIS request newly added
-// to the transaction -- clears addedToTxn so the next drain re-issues their
-// AddPartitionsToTxn.
+// undoStagedBatches rewinds every batch that createReq staged into this
+// request, for when we decide not to issue the request after building it.
+// txnReq holds exactly the partitions this request newly added to the
+// transaction; we clear addedToTxn for those (and only those) so the next
+// drain re-adds them.
 //
-// txnReq holds exactly the partitions createReq newly added: txnReqBuilder.add
-// only records a partition whose addedToTxn flipped false->true, so partitions
-// added to the transaction by an EARLIER request are deliberately absent and
-// keep their broker-acked membership. Leaving a newly-added partition's
-// addedToTxn set after rewinding would suppress its AddPartitionsToTxn on the
-// next drain (txnReqBuilder.add skips already-added partitions); the broker
-// then rejects the produce to that unverified partition with INVALID_TXN_STATE
-// (or, on a non-verifying broker, the records hang in a transaction the
-// coordinator never learned the partition belongs to). txnReq is nil for
-// non-transactional and pv12+ (KIP-890p2) producers, which never stage
-// addedToTxn in createReq, so the clear is correctly skipped for them.
+// We do not reset the drain index to zero: earlier batches can still be
+// inflight from prior requests, and finishBatch decrements the index as they
+// finish, pushing a zeroed index negative (#1385). Our batch is always the
+// last one staged, so we rewind to just before it. If the batch is gone, the
+// buffer was failed and fully rewound already.
 func (p *produceRequest) undoStagedBatches(txnReq *kmsg.AddPartitionsToTxnRequest) {
 	p.batches.eachOwnerLocked(func(batch seqRecBatch) {
-		if txnReq != nil && txnReqContains(txnReq, batch.owner.topic, batch.owner.partition) {
-			batch.owner.addedToTxn.Store(false)
+		recBuf := batch.owner
+		if txnReq != nil && txnReqContains(txnReq, recBuf.topic, recBuf.partition) {
+			recBuf.addedToTxn.Store(false)
 		}
-		batch.owner.resetBatchDrainIdx()
+		for i, b := range recBuf.batches {
+			if b == batch.recBatch {
+				recBuf.batchDrainIdx = i
+				recBuf.seq = batch.seq
+				break
+			}
+		}
 		batch.decInflight()
 	})
 }
@@ -905,7 +864,8 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 	}
 
 	var kmove kip951move
-	var reqRetry seqRecBatches // handled at the end
+	var reqRetry seqRecBatches   // handled at the end
+	var reqBackoff seqRecBatches // retried after the produce backoff, no metadata update
 
 	kresp := resp.(*kmsg.ProduceResponse)
 	for i := range kresp.Topics {
@@ -962,7 +922,15 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 				tmetrics[partition],
 			)
 			if retry {
-				reqRetry.addSeqBatch(topic, tid, partition, batch)
+				// A timed-out append, or one short of replicas,
+				// comes from a leader that is still the leader:
+				// metadata has nothing to say, so we retry after
+				// the produce backoff.
+				if rp.ErrorCode == kerr.RequestTimedOut.Code || rp.ErrorCode == kerr.NotEnoughReplicasAfterAppend.Code {
+					reqBackoff.addSeqBatch(topic, tid, partition, batch)
+				} else {
+					reqRetry.addSeqBatch(topic, tid, partition, batch)
+				}
 			}
 			if !didProduce {
 				delete(tmetrics, partition)
@@ -983,10 +951,13 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 
 	if len(req.batches.bs) > 0 {
 		s.cl.cfg.logger.Log(LogLevelError, "broker did not reply to all topics / partitions in the produce request! reenqueuing missing partitions", "broker", logID(s.nodeID))
-		s.handleRetryBatches(req.batches, nil, 0, true, false, "broker did not reply to all topics in produce request")
+		s.handleRetryBatches(req.batches, nil, req.backoffSeq, true, false, "broker did not reply to all topics in produce request")
 	}
 	if len(reqRetry.bs) > 0 {
-		s.handleRetryBatches(reqRetry, &kmove, 0, true, true, "produce request had retry batches")
+		s.handleRetryBatches(reqRetry, &kmove, req.backoffSeq, true, true, "produce request had retry batches")
+	}
+	if len(reqBackoff.bs) > 0 {
+		s.handleRetryBatches(reqBackoff, nil, req.backoffSeq, false, true, "produce request had timed out batches")
 	}
 }
 
@@ -1172,7 +1143,15 @@ func (s *sink) handleReqRespBatch(
 			return false, false
 		}
 		if s.cl.cfg.onDataLoss != nil {
-			s.cl.cfg.onDataLoss(topic, rp.Partition)
+			// Dispatch on a fresh goroutine: we hold this partition's
+			// recBuf.mu here, and the natural reaction to "data loss
+			// on (topic, partition)" is to produce to that partition
+			// -- which re-enters recBuf.mu on this goroutine and
+			// deadlocks it forever, wedging the partition and this
+			// sink's response processing. The callback is an
+			// informational notification with no ordering contract
+			// (same dispatch style as HookProduceBatchWritten).
+			go s.cl.cfg.onDataLoss(topic, rp.Partition)
 		}
 
 		// For OOOSN, and UnknownProducerID
@@ -1370,6 +1349,14 @@ func (s *sink) handleRetryBatches(
 		// to backoff nor do we need to trigger a metadata update.
 		if kmove.hasRecBuf(batch.owner) {
 			numMoveBatches++
+			return
+		}
+
+		// The broker hinted a leader we are already using. We retry on
+		// the same sink, but we wait first: without this we resend as
+		// fast as the broker can reject us.
+		if kmove.hasStaleRecBuf(batch.owner) {
+			shouldBackoff = true
 			return
 		}
 
@@ -1612,19 +1599,13 @@ func (recBuf *recBuf) bufferRecord(pr promisedRec, abortOnNewBatch bool) bool {
 	}
 
 	// If the client is closing, fail the record rather than buffering it
-	// into a recBuf whose sink drain loop has already exited. close() cancels
-	// cl.ctx and then sweeps every recBuf exactly once via
-	// failBufferedRecords; a record buffered after that sweep would never be
-	// failed - its promise would never fire, BufferedProduceRecords would
-	// never return to zero, and a later Flush would hang - contradicting the
-	// documented ErrClientClosed contract ("for producing, records are failed
-	// with this error"). Checking cl.ctx under recBuf.mu (held here and by
-	// failAllRecords) is race-free given the close ordering (ctxCancel then
-	// sweep): we either observe the cancel and fail here, or we buffer before
-	// the sweep and the sweep fails us. The unknown-topic sibling path already
-	// honors this via waitUnknownTopic's cl.ctx.Done arm; this is the missing
-	// guard on the known-topic sibling. We select on Done rather than calling
-	// Err to keep this per-record hot path free of the context's per-call mutex.
+	// into a recBuf whose drain loop has already exited. close() cancels
+	// cl.ctx and then sweeps every recBuf once via failBufferedRecords: a
+	// record buffered after that sweep would never be failed and a later
+	// Flush would hang. Both this check and the sweep run under recBuf.mu,
+	// so we either see the cancel and fail here, or we buffer before the
+	// sweep and the sweep fails us. We select on Done rather than calling
+	// Err to keep this hot path off the context's internal mutex.
 	select {
 	case <-recBuf.cl.ctx.Done():
 		recBuf.cl.producer.promiseRecord(pr, ErrClientClosed)
@@ -2443,7 +2424,10 @@ func (p *produceRequest) IsFlexible() bool   { return p.version >= 9 }
 func (p *produceRequest) AppendTo(dst []byte) []byte {
 	flexible := p.IsFlexible()
 
-	p.metrics = make(map[string]map[int32]ProduceBatchMetrics)
+	// The metrics maps are rebuilt on every AppendTo and take one entry
+	// per topic and one per partition we actually write, so size them up
+	// front rather than growing our way there.
+	p.metrics = make(map[string]map[int32]ProduceBatchMetrics, len(p.batches.bs))
 
 	if p.version >= 3 {
 		if flexible {
@@ -2474,7 +2458,7 @@ func (p *produceRequest) AppendTo(dst []byte) []byte {
 			dst = kbin.AppendArrayLen(dst, len(partitions))
 		}
 
-		tmetrics := make(map[int32]ProduceBatchMetrics)
+		tmetrics := make(map[int32]ProduceBatchMetrics, len(partitions))
 		p.metrics[topic] = tmetrics
 
 		for partition, batch := range partitions {
@@ -2483,6 +2467,14 @@ func (p *produceRequest) AppendTo(dst []byte) []byte {
 			if batch.records == nil || batch.isFailingFromLoadErr { // concurrent failAllRecords OR concurrent bumpRepeatedLoadErr
 				if flexible {
 					dst = kbin.AppendCompactNullableBytes(dst, nil)
+					// Flexible versions terminate every partition
+					// element with a tagged-field count; the healthy
+					// arm appends it after the batch bytes below.
+					// Skipping it here left the request one byte
+					// short per failed batch, desyncing the broker's
+					// parse of every following partition and killing
+					// the connection.
+					dst = append(dst, 0)
 				} else {
 					dst = kbin.AppendNullableBytes(dst, nil)
 				}

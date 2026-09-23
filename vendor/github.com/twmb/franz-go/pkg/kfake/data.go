@@ -7,11 +7,13 @@ import (
 	"hash/crc32"
 	"math/rand"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
@@ -58,13 +60,38 @@ type (
 		size     int64       // file size in bytes
 		index    []batchMeta // per-batch metadata, nil = evicted
 		readFile file        // cached read handle for sealed segments, nil = not yet opened
+
+		// maxTimestamp and maxBatch are a real segment's
+		// maxTimestampSoFar and maxTimestampAndOffsetSoFar: the max
+		// timestamp over every batch in the file, floored at -1, and
+		// the first batch in the file to carry it. Unlike the index,
+		// they keep counting batches deleted from below the log start
+		// offset: their bytes stay in the file until the whole segment
+		// goes, and the broker still answers ListOffsets -3 with them.
+		// A batch whose max timestamp is below -1 never raises
+		// maxTimestamp; when nothing has, maxBatch is the first batch
+		// at exactly -1 (the broker searches for its -1 running max),
+		// or empty (nbytes 0) if there is none.
+		maxTimestamp int64
+		maxBatch     batchMeta
+		// lastModified is the file's modification time in ms, which a
+		// real segment answers as its largest timestamp while no batch
+		// has a timestamp at or above zero, and which ListOffsets v0
+		// lists by.
+		lastModified int64
+		// maxEarlierTimestamp is the max of largestTimestamp over this
+		// and every earlier segment, so ListOffsets can binary search
+		// for the first segment that reaches a timestamp. Set on
+		// append; rebuildMaxTimestampMeta recomputes it when segments
+		// are dropped or loaded.
+		maxEarlierTimestamp int64
 	}
 
 	// batchMeta is the in-memory index entry for a batch stored in a segment file.
 	batchMeta struct {
 		firstOffset         int64 // first record offset
 		segPos              int64 // byte position within segment file
-		maxEarlierTimestamp int64 // for ListOffsets binary search
+		maxEarlierTimestamp int64 // max timestamp of this and all earlier batches, for ListOffsets binary search
 		firstTimestamp      int64
 		maxTimestamp        int64
 		producerID          int64 // needed for isBatchAborted in compaction
@@ -81,22 +108,18 @@ type (
 		p           int32
 		dir         string
 
-		highWatermark     int64
-		lastStableOffset  int64
-		logStartOffset    int64
-		epoch             int32 // current epoch
-		maxFirstTimestamp int64 // max FirstTimestamp seen (for maxEarlierTimestamp optimization)
-		nbytes            int64
+		highWatermark    int64
+		lastStableOffset int64
+		logStartOffset   int64
+		epoch            int32 // current epoch
+		maxTimestampSeen int64 // max MaxTimestamp across all batches (the running max for maxEarlierTimestamp)
+		maxTimestampSeg  int   // index of the segment with the greatest max timestamp, the earliest on a tie
+		nbytes           int64
 
 		// PID-based LSO tracking: maps producer ID to earliest
 		// uncommitted offset on this partition. LSO = min of all
 		// values, or HWM if empty. Replaces per-batch inTx scanning.
 		uncommittedPIDs map[int64]int64
-
-		// For ListOffsets timestamp -3 (KIP-734): track the batch with max timestamp.
-		// Indexes into the flattened batchMeta across all segments.
-		maxTimestampSeg int // segment index, -1 if none
-		maxTimestampIdx int // index within that segment's batchMeta
 
 		leader    *broker
 		followers followers
@@ -105,6 +128,11 @@ type (
 		shareWatch map[*watchShareFetch]struct{}
 
 		createdAt time.Time
+		// rolledAt is when the log last became empty (creation, or the
+		// trim or compaction that removed every segment): a real broker
+		// then rolls an empty segment, whose modification time
+		// ListOffsets v0 lists by while no batch exists.
+		rolledAt time.Time
 
 		// Segment state - used in all modes (memFS for in-memory, osFS for disk).
 		// Segment files (.dat) contain pure RecordBatch wire bytes.
@@ -124,12 +152,13 @@ type (
 		// For list offsets, we may need to return the first offset
 		// after a given requested timestamp. Client provided
 		// timestamps can go forwards and backwards. We answer list
-		// offsets with a binary search: even if this batch has a small
-		// timestamp, this is produced _after_ a potentially higher
-		// timestamp, so it is after it in the list offset response.
+		// offsets with a binary search over the running max of
+		// MaxTimestamp: even if this batch has a small timestamp,
+		// this is produced _after_ a potentially higher timestamp,
+		// so it is after it in the list offset response.
 		//
-		// When we drop the earlier timestamp, we update all following
-		// firstMaxTimestamps that match the dropped timestamp.
+		// When we drop batches, rebuildMaxTimestampMeta recomputes
+		// the running max over the batches that remain.
 		maxEarlierTimestamp int64
 
 		inTx bool
@@ -216,14 +245,13 @@ func (c *Cluster) noLeader() *broker {
 func (c *Cluster) newPartData(p int32) func() *partData {
 	return func() *partData {
 		return &partData{
-			p:               p,
-			dir:             defLogDir,
-			maxTimestampSeg: -1,
-			maxTimestampIdx: -1,
-			leader:          c.bs[rand.Intn(len(c.bs))],
-			watch:           make(map[*watchFetch]struct{}),
-			shareWatch:      make(map[*watchShareFetch]struct{}),
-			createdAt:       time.Now(),
+			p:          p,
+			dir:        defLogDir,
+			leader:     c.bs[rand.Intn(len(c.bs))],
+			watch:      make(map[*watchFetch]struct{}),
+			shareWatch: make(map[*watchShareFetch]struct{}),
+			createdAt:  time.Now(),
+			rolledAt:   time.Now(),
 		}
 	}
 }
@@ -235,40 +263,48 @@ func (c *Cluster) newPartData(p int32) func() *partData {
 // If transactional, the producer's PID is registered in uncommittedPIDs
 // so the LSO stays at the earliest uncommitted offset.
 func (c *Cluster) pushBatch(pd *partData, nbytes int, b kmsg.RecordBatch, inTx bool) int64 {
-	maxEarlierTimestamp := b.FirstTimestamp
-	if maxEarlierTimestamp < pd.maxFirstTimestamp {
-		maxEarlierTimestamp = pd.maxFirstTimestamp
-	} else {
-		pd.maxFirstTimestamp = maxEarlierTimestamp
-	}
 	b.FirstOffset = pd.highWatermark
 	b.PartitionLeaderEpoch = pd.epoch
 
-	// Build the partBatch for segment encoding
-	pb := &partBatch{
-		RecordBatch:         b,
-		nbytes:              nbytes,
-		epoch:               pd.epoch,
-		maxEarlierTimestamp: maxEarlierTimestamp,
-		inTx:                inTx,
-	}
+	// A blackholed cluster skips the segment write and index but keeps
+	// the offset, txn, and lso accounting below, so the producer still
+	// sees a well formed response.
+	if !c.cfg.blackholeProduce {
+		maxEarlierTimestamp := b.MaxTimestamp
+		if pd.hasBatches() && pd.maxTimestampSeen > maxEarlierTimestamp {
+			maxEarlierTimestamp = pd.maxTimestampSeen
+		}
 
-	// Write to segment file and build index entry.
-	// persistBatchToSegment creates the segment if needed.
-	segPos := c.persistBatchToSegment(pd, pb)
-	if segPos < 0 {
-		return -1
-	}
-	active := &pd.segments[len(pd.segments)-1]
-	active.index = append(active.index, pb.meta(segPos))
-	active.updateEpochRange(pd.epoch)
+		// Build the partBatch for segment encoding
+		pb := &partBatch{
+			RecordBatch:         b,
+			nbytes:              nbytes,
+			epoch:               pd.epoch,
+			maxEarlierTimestamp: maxEarlierTimestamp,
+			inTx:                inTx,
+		}
 
-	// Track max timestamp batch for ListOffsets -3 (KIP-734)
-	segIdx := len(pd.segments) - 1
-	metaIdx := len(active.index) - 1
-	if pd.maxTimestampSeg < 0 || b.MaxTimestamp >= pd.maxTimestampBatch().maxTimestamp {
-		pd.maxTimestampSeg = segIdx
-		pd.maxTimestampIdx = metaIdx
+		// Write to segment file and build index entry.
+		// persistBatchToSegment creates the segment if needed.
+		segPos := c.persistBatchToSegment(pd, pb)
+		if segPos < 0 {
+			return -1
+		}
+		active := &pd.segments[len(pd.segments)-1]
+		meta := pb.meta(segPos)
+		active.index = append(active.index, meta)
+		active.updateEpochRange(pd.epoch)
+		active.updateMaxBatch(meta, segPos == 0)
+		active.lastModified = time.Now().UnixMilli()
+		if n := len(pd.segments); n > 1 {
+			active.maxEarlierTimestamp = max(active.largestTimestamp(), pd.segments[n-2].maxEarlierTimestamp)
+		} else {
+			active.maxEarlierTimestamp = active.largestTimestamp()
+		}
+		if active.maxTimestamp > pd.segments[pd.maxTimestampSeg].maxTimestamp {
+			pd.maxTimestampSeg = len(pd.segments) - 1
+		}
+		pd.maxTimestampSeen = maxEarlierTimestamp
 	}
 
 	firstOffset := b.FirstOffset
@@ -294,6 +330,33 @@ func (c *Cluster) pushBatch(pd *partData, nbytes int, b kmsg.RecordBatch, inTx b
 	return firstOffset
 }
 
+// updateMaxBatch folds a batch into the segment's maxTimestamp and
+// maxBatch. first is true for the batch at the start of the file. On a
+// tie the earlier batch keeps maxBatch, as on a real broker.
+func (si *segmentInfo) updateMaxBatch(m batchMeta, first bool) {
+	if first {
+		si.maxTimestamp = -1
+		si.maxBatch = batchMeta{}
+	}
+	switch {
+	case m.maxTimestamp > si.maxTimestamp:
+		si.maxTimestamp = m.maxTimestamp
+		si.maxBatch = m
+	case m.maxTimestamp == -1 && si.maxBatch.nbytes == 0:
+		si.maxBatch = m
+	}
+}
+
+// largestTimestamp is what a real segment's largestTimestamp answers:
+// the max batch timestamp, or the file's modification time while no
+// batch has a timestamp at or above zero.
+func (si *segmentInfo) largestTimestamp() int64 {
+	if si.maxTimestamp >= 0 {
+		return si.maxTimestamp
+	}
+	return si.lastModified
+}
+
 // updateEpochRange updates the segment's min/max epoch from a batch epoch.
 func (si *segmentInfo) updateEpochRange(epoch int32) {
 	if len(si.index) <= 1 {
@@ -309,29 +372,43 @@ func (si *segmentInfo) updateEpochRange(epoch int32) {
 	}
 }
 
-// maxTimestampBatch returns the batchMeta for the max-timestamp batch.
-func (pd *partData) maxTimestampBatch() *batchMeta {
-	if pd.maxTimestampSeg < 0 {
-		return nil
+// maxTimestampSegment returns the index of the segment with the greatest
+// max timestamp, the earliest on a tie, or -1 if there are no segments.
+// This is the segment a real broker answers ListOffsets -3 from.
+func (pd *partData) maxTimestampSegment() int {
+	if len(pd.segments) == 0 {
+		return -1
 	}
-	return &pd.segments[pd.maxTimestampSeg].index[pd.maxTimestampIdx]
+	return pd.maxTimestampSeg
 }
 
-// rebuildMaxTimestampMeta rebuilds maxTimestampSeg/maxTimestampIdx from the
-// batchMeta index. Called after loading segments from disk.
+// rebuildMaxTimestampMeta rebuilds each batch's maxEarlierTimestamp, each
+// segment's maxEarlierTimestamp, maxTimestampSeg, and maxTimestampSeen
+// from the batchMeta index and the segments' max batches. Called after
+// loading segments from disk and after batches are dropped, so the
+// running max only covers batches that still exist.
 func (pd *partData) rebuildMaxTimestampMeta() {
-	pd.maxTimestampSeg = -1
-	pd.maxTimestampIdx = -1
+	pd.maxTimestampSeg = 0
 	for si := range pd.segments {
 		seg := &pd.segments[si]
-		for mi := range seg.index {
-			m := &seg.index[mi]
-			if pd.maxTimestampSeg < 0 || m.maxTimestamp >= pd.maxTimestampBatch().maxTimestamp {
-				pd.maxTimestampSeg = si
-				pd.maxTimestampIdx = mi
-			}
+		seg.maxEarlierTimestamp = seg.largestTimestamp()
+		if si > 0 {
+			seg.maxEarlierTimestamp = max(seg.maxEarlierTimestamp, pd.segments[si-1].maxEarlierTimestamp)
+		}
+		if seg.maxTimestamp > pd.segments[pd.maxTimestampSeg].maxTimestamp {
+			pd.maxTimestampSeg = si
 		}
 	}
+	pd.maxTimestampSeen = 0
+	first := true
+	pd.eachBatchMeta(func(_, _ int, m *batchMeta) bool {
+		if first || m.maxTimestamp > pd.maxTimestampSeen {
+			pd.maxTimestampSeen = m.maxTimestamp
+		}
+		first = false
+		m.maxEarlierTimestamp = pd.maxTimestampSeen
+		return true
+	})
 }
 
 // hasBatches returns true if there is at least one batch in any segment.
@@ -393,8 +470,8 @@ func (pd *partData) eachBatchMeta(fn func(segIdx, metaIdx int, m *batchMeta) boo
 
 // findBatchMeta does a two-level binary search for the first batch where
 // field(batch) >= target. The field must be monotonically non-decreasing
-// across batches (e.g. epoch, maxTimestamp). Returns (-1, -1, nil) if no
-// batch satisfies the condition.
+// across batches (e.g. epoch). Returns (-1, -1, nil) if no batch
+// satisfies the condition.
 func (pd *partData) findBatchMeta(target int64, field func(*batchMeta) int64) (segIdx, metaIdx int, meta *batchMeta) {
 	// Level 1: find first segment whose last batch has field >= target.
 	si := sort.Search(len(pd.segments), func(i int) bool {
@@ -502,9 +579,44 @@ outer:
 	// so the next produce creates fresh files.
 	if len(pd.segments) == 0 {
 		pd.closeActiveFiles(false)
+		pd.rolledAt = time.Now()
 	}
 	pd.rebuildMaxTimestampMeta()
 	pd.trimAbortedTxns()
+}
+
+// legacyOffsetsBefore answers ListOffsets v0 the way a broker that still
+// served it did (UnifiedLog.legacyFetchOffsetsBefore): up to maxNum
+// offsets, descending, from the start offset of each segment last
+// modified at or before ts, plus the log end offset as of now. -1 lists
+// from the end, -2 from the start.
+func (pd *partData) legacyOffsetsBefore(ts int64, maxNum int32) []int64 {
+	type offsetTime struct{ offset, modified int64 }
+	var entries []offsetTime
+	for i := range pd.segments {
+		seg := &pd.segments[i]
+		entries = append(entries, offsetTime{max(seg.base, pd.logStartOffset), seg.lastModified})
+	}
+	if len(pd.segments) == 0 {
+		entries = append(entries, offsetTime{pd.logStartOffset, pd.rolledAt.UnixMilli()})
+	} else {
+		entries = append(entries, offsetTime{pd.highWatermark, time.Now().UnixMilli()})
+	}
+	start := len(entries) - 1
+	switch ts {
+	case -1:
+	case -2:
+		start = 0
+	default:
+		for start >= 0 && entries[start].modified > ts {
+			start--
+		}
+	}
+	var offsets []int64
+	for ; start >= 0 && int32(len(offsets)) < maxNum; start-- {
+		offsets = append(offsets, entries[start].offset)
+	}
+	return offsets
 }
 
 func (pd *partData) closeActiveFiles(doSync bool) {
@@ -590,7 +702,7 @@ func (c *Cluster) brokerConfigs(node int32, fn func(k string, v *string, src kms
 		}
 	}
 
-	for k, v := range c.loadBcfgs() {
+	for k, v := range c.bcfgs {
 		fn(k, v, kmsg.ConfigSourceDynamicBrokerConfig, false)
 	}
 }
@@ -609,7 +721,7 @@ func (d *data) configs(t string, fn func(k string, v *string, src kmsg.ConfigSou
 			fn(k, &v, kmsg.ConfigSourceDefaultConfig, false)
 		}
 	}
-	for k, v := range d.c.loadBcfgs() {
+	for k, v := range d.c.bcfgs {
 		if topicEquiv, ok := validBrokerConfigs[k]; ok && topicEquiv != "" {
 			fn(k, v, kmsg.ConfigSourceDynamicBrokerConfig, false)
 		}
@@ -617,14 +729,6 @@ func (d *data) configs(t string, fn func(k string, v *string, src kmsg.ConfigSou
 	for k, v := range d.tcfgs[t] {
 		fn(k, v, kmsg.ConfigSourceDynamicTopicConfig, false)
 	}
-}
-
-func (c *Cluster) loadBcfgs() map[string]*string {
-	return *c.bcfgs.Load()
-}
-
-func (c *Cluster) storeBcfgs(m map[string]*string) {
-	c.bcfgs.Store(&m)
 }
 
 // configListAppend appends val to a comma-separated list config value.
@@ -708,11 +812,12 @@ var validTopicConfigs = map[string]string{
 // All valid broker configs we support, as well as their equivalent
 // topic config if there is one.
 var validBrokerConfigs = map[string]string{
-	"broker.id":                  "",
-	"broker.rack":                "",
-	"compression.type":           "compression.type",
-	"default.replication.factor": "",
-	"fetch.max.bytes":            "",
+	"broker.id":                                 "",
+	"broker.rack":                               "",
+	"compression.type":                          "compression.type",
+	"connections.max.reauth.ms":                 "",
+	"default.replication.factor":                "",
+	"fetch.max.bytes":                           "",
 	"max.incremental.fetch.session.cache.slots": "",
 	"group.consumer.heartbeat.interval.ms":      "",
 	"group.consumer.session.timeout.ms":         "",
@@ -765,18 +870,82 @@ var validGroupConfigs = map[string]bool{
 	"share.max.size":                   true,
 }
 
+// validClientMetricsConfigs is the set of keys a KIP-714 client metrics
+// subscription accepts, a CLIENT_METRICS config resource, with the default
+// we describe when a key is unset. The metrics and match values are comma
+// separated lists.
+var validClientMetricsConfigs = map[string]string{
+	"metrics":     "",
+	"interval.ms": "300000",
+	"match":       "",
+}
+
+// validClientMetricsMatchKeys are the client properties a subscription's
+// match config can select on, each as key=regex.
+var validClientMetricsMatchKeys = map[string]bool{
+	"client_instance_id":      true,
+	"client_id":               true,
+	"client_software_name":    true,
+	"client_software_version": true,
+	"client_source_address":   true,
+	"client_source_port":      true,
+}
+
+// validateClientMetricsConfig returns the error Kafka answers for setting k
+// to v on a client metrics subscription, or nil if the value is valid. Kafka
+// answers INVALID_REQUEST for an unknown key or an interval outside 100ms to
+// one hour, and INVALID_CONFIG for a value that does not parse: a nil value,
+// a non-integer interval, or a match entry that is not key=regex with a
+// known key.
+func validateClientMetricsConfig(k string, v *string) *kerr.Error {
+	if _, ok := validClientMetricsConfigs[k]; !ok {
+		return kerr.InvalidRequest
+	}
+	if v == nil {
+		return kerr.InvalidConfig
+	}
+	switch k {
+	case "interval.ms":
+		n, err := strconv.Atoi(strings.TrimSpace(*v))
+		if err != nil {
+			return kerr.InvalidConfig
+		}
+		if n < 100 || n > 3600000 {
+			return kerr.InvalidRequest
+		}
+	case "match":
+		if strings.TrimSpace(*v) == "" {
+			return nil
+		}
+		for _, m := range strings.Split(*v, ",") {
+			// Kafka splits on every = and drops trailing empty
+			// pieces, so a=b=c and a= are both illegal.
+			parts := strings.Split(m, "=")
+			for len(parts) > 0 && parts[len(parts)-1] == "" {
+				parts = parts[:len(parts)-1]
+			}
+			if len(parts) != 2 || !validClientMetricsMatchKeys[strings.TrimSpace(parts[0])] {
+				return kerr.InvalidConfig
+			}
+			if _, err := regexp.Compile(strings.TrimSpace(parts[1])); err != nil {
+				return kerr.InvalidConfig
+			}
+		}
+	}
+	return nil
+}
+
 const (
 	defLogDir          = "/mem/kfake"
 	defMaxMessageBytes = 1048588
 )
 
 // defHeartbeatInterval is the default group.consumer.heartbeat.interval.ms.
-// Real Kafka defaults to 5s; in test binaries we use 100ms so that
-// KIP-848 reconciliation completes quickly.
-var defHeartbeatInterval = 5000
+// This is 5s, the same as Kafka; you lower it with the config itself.
+const defHeartbeatInterval = 5000
 
 // defSessionTimeout is the default group.consumer.session.timeout.ms.
-var defSessionTimeout = 45000
+const defSessionTimeout = 45000
 
 // Default topic and broker configs. Topic/broker pairs that share the same
 // underlying setting (e.g. max.message.bytes / message.max.bytes) both
@@ -800,6 +969,7 @@ var configDefaults = map[string]string{
 
 	"state.log.compact.bytes": "10485760",
 
+	"connections.max.reauth.ms":                 "0",
 	"default.replication.factor":                "3",
 	"fetch.max.bytes":                           "57671680",
 	"log.cleaner.backoff.ms":                    "3600000",
@@ -830,15 +1000,19 @@ var configDefaults = map[string]string{
 
 // configTypes maps config names to their data types for DescribeConfigs v3+.
 var configTypes = map[string]kmsg.ConfigType{
-	"broker.id":                  kmsg.ConfigTypeInt,
-	"broker.rack":                kmsg.ConfigTypeString,
-	"cleanup.policy":             kmsg.ConfigTypeList,
-	"compression.type":           kmsg.ConfigTypeString,
-	"default.replication.factor": kmsg.ConfigTypeInt,
-	"delete.retention.ms":        kmsg.ConfigTypeLong,
-	"fetch.max.bytes":            kmsg.ConfigTypeInt,
+	"broker.id":                                 kmsg.ConfigTypeInt,
+	"broker.rack":                               kmsg.ConfigTypeString,
+	"cleanup.policy":                            kmsg.ConfigTypeList,
+	"compression.type":                          kmsg.ConfigTypeString,
+	"connections.max.reauth.ms":                 kmsg.ConfigTypeLong,
+	"default.replication.factor":                kmsg.ConfigTypeInt,
+	"delete.retention.ms":                       kmsg.ConfigTypeLong,
+	"fetch.max.bytes":                           kmsg.ConfigTypeInt,
 	"max.incremental.fetch.session.cache.slots": kmsg.ConfigTypeInt,
 	"group.consumer.heartbeat.interval.ms":      kmsg.ConfigTypeInt,
+	"interval.ms":                               kmsg.ConfigTypeInt,
+	"match":                                     kmsg.ConfigTypeList,
+	"metrics":                                   kmsg.ConfigTypeList,
 	"group.consumer.session.timeout.ms":         kmsg.ConfigTypeInt,
 	"group.max.size":                            kmsg.ConfigTypeInt,
 	"group.min.session.timeout.ms":              kmsg.ConfigTypeInt,
@@ -879,11 +1053,23 @@ var configTypes = map[string]kmsg.ConfigType{
 var brokerRack = "krack"
 
 func (c *Cluster) brokerConfigInt(key string, def int) int32 {
-	if v, ok := c.loadBcfgs()[key]; ok && v != nil {
+	if v, ok := c.bcfgs[key]; ok && v != nil {
 		n, _ := strconv.Atoi(*v)
 		return int32(n)
 	}
 	return int32(def)
+}
+
+// connectionsMaxReauthMs returns connections.max.reauth.ms; a positive value
+// enables SASL re-authentication (KIP-368): SaslAuthenticate responses carry
+// the value as SessionLifetimeMillis, and an authenticated connection may
+// re-handshake. Zero (the default, matching real Kafka) disables it.
+func (c *Cluster) connectionsMaxReauthMs() int64 {
+	if v, ok := c.bcfgs["connections.max.reauth.ms"]; ok && v != nil {
+		n, _ := strconv.ParseInt(*v, 10, 64)
+		return n
+	}
+	return 0
 }
 
 // segmentBytes returns the max segment size for a topic.
@@ -895,7 +1081,7 @@ func (c *Cluster) segmentBytes(topic string) int64 {
 			}
 		}
 	}
-	if v, ok := c.loadBcfgs()["log.segment.bytes"]; ok && v != nil {
+	if v, ok := c.bcfgs["log.segment.bytes"]; ok && v != nil {
 		if n, err := strconv.ParseInt(*v, 10, 64); err == nil {
 			return n
 		}
@@ -952,7 +1138,7 @@ const defOffsetsRetentionMinutes = 10080 // 7 days
 
 func (c *Cluster) offsetsRetentionMs() int64 {
 	// offset.retention.ms takes precedence when present (kfake extension for testing).
-	if v, ok := c.loadBcfgs()["offset.retention.ms"]; ok && v != nil {
+	if v, ok := c.bcfgs["offset.retention.ms"]; ok && v != nil {
 		if n, err := strconv.ParseInt(*v, 10, 64); err == nil {
 			return n
 		}
@@ -1020,7 +1206,7 @@ func (d *data) maxMessageBytes(t string) int {
 			return n
 		}
 	}
-	if v, ok := d.c.loadBcfgs()["message.max.bytes"]; ok && v != nil {
+	if v, ok := d.c.bcfgs["message.max.bytes"]; ok && v != nil {
 		n, _ := strconv.Atoi(*v)
 		return n
 	}
@@ -1036,7 +1222,7 @@ func (d *data) retentionMs(t string) int64 {
 			return n
 		}
 	}
-	if v, ok := d.c.loadBcfgs()["log.retention.ms"]; ok && v != nil {
+	if v, ok := d.c.bcfgs["log.retention.ms"]; ok && v != nil {
 		n, _ := strconv.ParseInt(*v, 10, 64)
 		return n
 	}
@@ -1052,14 +1238,16 @@ func (d *data) retentionBytes(t string) int64 {
 			return n
 		}
 	}
-	if v, ok := d.c.loadBcfgs()["log.retention.bytes"]; ok && v != nil {
+	if v, ok := d.c.bcfgs["log.retention.bytes"]; ok && v != nil {
 		n, _ := strconv.ParseInt(*v, 10, 64)
 		return n
 	}
 	return -1
 }
 
-func forEachBatchRecord(batch kmsg.RecordBatch, cb func(kmsg.Record) error) error {
+// forEachBatchRecord decodes the batch's records one at a time and calls
+// fn for each until fn returns false.
+func forEachBatchRecord(batch kmsg.RecordBatch, fn func(kmsg.Record) bool) error {
 	records, err := kgo.DefaultDecompressor().Decompress(
 		batch.Records,
 		kgo.CompressionCodecType(batch.Attributes&0x0007),
@@ -1073,8 +1261,8 @@ func forEachBatchRecord(batch kmsg.RecordBatch, cb func(kmsg.Record) error) erro
 		if err != nil {
 			return fmt.Errorf("corrupt batch: %w", err)
 		}
-		if err := cb(rec); err != nil {
-			return err
+		if !fn(rec) {
+			return nil
 		}
 		length, amt := binary.Varint(records)
 		records = records[length+int64(amt):]
@@ -1089,9 +1277,9 @@ func forEachBatchRecord(batch kmsg.RecordBatch, cb func(kmsg.Record) error) erro
 // if they could not be processed.
 func BatchRecords(b kmsg.RecordBatch) ([]kmsg.Record, error) {
 	var rs []kmsg.Record
-	err := forEachBatchRecord(b, func(r kmsg.Record) error {
+	err := forEachBatchRecord(b, func(r kmsg.Record) bool {
 		rs = append(rs, r)
-		return nil
+		return true
 	})
 	return rs, err
 }
@@ -1185,16 +1373,16 @@ func (c *Cluster) compact(pd *partData, topic string) {
 		if batch.Attributes&0x0020 != 0 || pd.isBatchAborted(batch) {
 			return true
 		}
-		_ = forEachBatchRecord(batch.RecordBatch, func(rec kmsg.Record) error {
+		_ = forEachBatchRecord(batch.RecordBatch, func(rec kmsg.Record) bool {
 			if rec.Key == nil {
-				return nil
+				return true
 			}
 			absOffset := batch.FirstOffset + int64(rec.OffsetDelta)
 			k := string(rec.Key)
 			if prev, exists := keyOffsets[k]; !exists || absOffset > prev {
 				keyOffsets[k] = absOffset
 			}
-			return nil
+			return true
 		})
 		return true
 	})
@@ -1228,28 +1416,28 @@ func (c *Cluster) compact(pd *partData, topic string) {
 		}
 
 		var surviving []kmsg.Record
-		_ = forEachBatchRecord(batch.RecordBatch, func(rec kmsg.Record) error {
+		_ = forEachBatchRecord(batch.RecordBatch, func(rec kmsg.Record) bool {
 			absOffset := batch.FirstOffset + int64(rec.OffsetDelta)
 
 			if rec.Key == nil {
-				return nil
+				return true
 			}
 
 			// Drop superseded records (a later record has the same key).
 			if keyOffsets[string(rec.Key)] > absOffset {
-				return nil
+				return true
 			}
 
 			// Drop expired tombstones (nil value).
 			if rec.Value == nil {
 				recTs := batch.FirstTimestamp + int64(rec.TimestampDelta)
 				if now-recTs >= deleteRetentionMs {
-					return nil
+					return true
 				}
 			}
 
 			surviving = append(surviving, rec)
-			return nil
+			return true
 		})
 
 		if len(surviving) == 0 {

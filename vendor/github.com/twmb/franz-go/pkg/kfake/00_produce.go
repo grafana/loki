@@ -45,14 +45,21 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
+	// A fault can answer a partition before the work runs. The work's own
+	// answer for that partition must not add an entry or replace the code.
+	answered := make(map[tp]int)
 	donep := func(t kmsg.ProduceRequestTopic, p kmsg.ProduceRequestTopicPartition, errCode int16, errMsg string) *kmsg.ProduceResponseTopicPartition {
+		ps := tdone[id(t)]
+		if i, ok := answered[tp{t.Topic, p.Partition}]; ok {
+			return &ps[i]
+		}
+		answered[tp{t.Topic, p.Partition}] = len(ps)
 		sp := kmsg.NewProduceResponseTopicPartition()
 		sp.Partition = p.Partition
 		sp.ErrorCode = errCode
 		if req.Version >= 8 && errMsg != "" {
 			sp.ErrorMessage = &errMsg
 		}
-		ps := tdone[id(t)]
 		ps = append(ps, sp)
 		tdone[id(t)] = ps
 		return &ps[len(ps)-1]
@@ -105,12 +112,20 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 			}
 			rt.Topic = topic
 		}
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite) {
-			donet(rt, kerr.TopicAuthorizationFailed.Code, kerr.TopicAuthorizationFailed.Message)
+		tk := faultKey{topic: rt.Topic, topicID: rt.TopicID}
+		if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationWrite, tk); e != nil && creq.skipsWork(e) { // a timed-out append falls through to the per-partition checks
+			donet(rt, e.Code, e.Message)
 			continue
 		}
 		maxMessageBytes := c.data.maxMessageBytes(rt.Topic)
 		for _, rp := range rt.Partitions {
+			e := creq.faults.check(tk.part(rp.Partition))
+			if e != nil {
+				donep(rt, rp, e.Code, e.Message)
+				if creq.skipsWork(e) { // a timed-out append still appends
+					continue
+				}
+			}
 			pd, ok := c.data.tps.getp(rt.Topic, rp.Partition)
 			if !ok {
 				donep(rt, rp, kerr.UnknownTopicOrPartition.Code, "Unknown topic or partition.")
@@ -214,6 +229,26 @@ func (c *Cluster) handleProduce(creq *clientReq) (kmsg.Response, error) {
 
 				if txnal && window == nil {
 					errCode = kerr.InvalidTxnState.Code
+				}
+
+				// Brokers below 2.5 (KIP-360) reject an append that
+				// continues its sequence into a log that never saw
+				// the producer, transactional or not. 2.5+ accepts
+				// any first sequence for unknown producer state.
+				if errCode == 0 && window != nil && !window.seen && b.FirstSequence != 0 && c.maxVersion(int16(kmsg.InitProducerID)) < 3 {
+					errCode = kerr.UnknownProducerID.Code
+				}
+
+				// KAFKA-15591: if a partition's log has never held a
+				// record, we accept only a first sequence of zero
+				// from a producer we have no state for. Otherwise a
+				// client can have two produces in flight to a just
+				// created partition. We can handle them out of order,
+				// and the earlier one is then lost with no error. A
+				// partition that once held records accepts any first
+				// sequence, even after the records are gone.
+				if errCode == 0 && c.rejectsNeverWrittenNonzeroSeq() && window != nil && !window.seen && b.FirstSequence != 0 && pd.highWatermark == 0 {
+					errCode = kerr.OutOfOrderSequenceNumber.Code
 				}
 
 				if errCode == 0 {

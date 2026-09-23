@@ -10,7 +10,7 @@ import (
 // * v1: ThrottleMillis
 // * v2: Flexible versions
 
-func init() { regKey(42, 0, 2) }
+func init() { regKey(42, 0, 3) }
 
 func (c *Cluster) handleDeleteGroups(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.DeleteGroupsRequest)

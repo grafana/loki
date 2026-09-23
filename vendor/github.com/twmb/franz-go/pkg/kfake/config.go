@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/kversion"
 )
@@ -57,11 +58,62 @@ type cfg struct {
 	// persistence. This allows tests to share a memFS across
 	// cluster restarts without touching the real disk.
 	injectFS fs
+
+	blackholeProduce bool
+	synthetic        *syntheticFetch
 }
 
 // NumBrokers sets the number of brokers to start in the fake cluster.
 func NumBrokers(n int) Opt {
 	return opt{func(cfg *cfg) { cfg.nbrokers = n }}
+}
+
+// BlackholeProduce makes the cluster accept produce requests and reply
+// success without storing the records: offsets still advance and idempotent
+// and transactional sequences are still validated, but the record bytes are
+// discarded. This keeps broker side storage out of produce throughput
+// benchmarks. There is nothing to consume from a blackholed cluster.
+func BlackholeProduce() Opt {
+	return opt{func(cfg *cfg) { cfg.blackholeProduce = true }}
+}
+
+// SyntheticBatch describes the record batch a [SyntheticFetch] cluster
+// serves. The zero value generates one megabyte of uncompressed 100 byte
+// values.
+type SyntheticBatch struct {
+	// Batch is a complete v2 record batch served as is; every other field
+	// must be zero. We rewrite each copy's first offset and leader epoch,
+	// both of which sit before the CRC.
+	Batch []byte
+
+	// Records is how many records the generated batch carries, overriding
+	// the default of as many as fit in one megabyte uncompressed.
+	Records int
+
+	// RecordBytes is how many bytes each generated value holds, overriding
+	// the default of 100.
+	RecordBytes int
+
+	// RandomFrac is the fraction of each generated value, at its end, that
+	// we fill with random bytes, overriding the default of 0. The rest of
+	// the value repeats the record's index and compresses to almost
+	// nothing, so this chooses how well the batch compresses. The random
+	// bytes come from a fixed seed and differ per record.
+	RandomFrac float64
+
+	// Compression is the codec we compress the generated batch with. The
+	// zero value, like [kgo.NoCompression], compresses nothing.
+	Compression kgo.CompressionCodec
+}
+
+// SyntheticFetch makes every classic fetch of a partition that exists answer
+// from one canned record batch, overriding the default of answering from the
+// log. We serve copies of the batch from whatever offset you fetch, with a
+// log start offset of 0 and a high watermark of 1<<62. Produce still writes
+// the log and share fetches still read it; pair this with [BlackholeProduce]
+// if the cluster should store nothing.
+func SyntheticFetch(b SyntheticBatch) Opt {
+	return opt{func(cfg *cfg) { cfg.synthetic = &syntheticFetch{spec: b} }}
 }
 
 // Ports sets the ports to listen on, overriding randomly choosing NumBrokers

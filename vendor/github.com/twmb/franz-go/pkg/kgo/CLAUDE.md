@@ -120,8 +120,3 @@ Use `Read`, `Grep`, and `Glob` for code exploration; do not reach for
   parallel session may have kfake in a broken state. Verify with
   `go build` / `go vet`; run kfake tests only when the task is inside
   `pkg/kfake/` or explicitly asked.
-
-## Design / concurrency.
-
-- Refer to ../../DESIGN.md for a high level design of all the operations that can happen.
-- Update the design file as necessary / when making significant changes.

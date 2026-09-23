@@ -27,7 +27,7 @@ func (c *Cluster) handleAlterReplicaLogDirs(creq *clientReq) (kmsg.Response, err
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationAlter) {
+	if e := c.denyCluster(creq, kmsg.ACLOperationAlter); e != nil {
 		// Return cluster authorization failed for all partitions
 		for _, rd := range req.Dirs {
 			for _, t := range rd.Topics {
@@ -36,7 +36,7 @@ func (c *Cluster) handleAlterReplicaLogDirs(creq *clientReq) (kmsg.Response, err
 				for _, p := range t.Partitions {
 					sp := kmsg.NewAlterReplicaLogDirsResponseTopicPartition()
 					sp.Partition = p
-					sp.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+					sp.ErrorCode = e.Code
 					st.Partitions = append(st.Partitions, sp)
 				}
 				resp.Topics = append(resp.Topics, st)
@@ -67,6 +67,10 @@ func (c *Cluster) handleAlterReplicaLogDirs(creq *clientReq) (kmsg.Response, err
 	for _, rd := range req.Dirs {
 		for _, t := range rd.Topics {
 			for _, p := range t.Partitions {
+				if e := creq.faults.check(faultKey{topic: t.Topic, resource: rd.Dir}.part(p)); e != nil {
+					donep(t.Topic, p, e.Code)
+					continue
+				}
 				d, ok := c.data.tps.getp(t.Topic, p)
 				if !ok {
 					donep(t.Topic, p, kerr.UnknownTopicOrPartition.Code)
