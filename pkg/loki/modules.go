@@ -57,6 +57,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -101,75 +102,76 @@ import (
 
 // The various modules that make up Loki.
 const (
-	Ring                         = "ring"
-	Overrides                    = "overrides"
-	OverridesExporter            = "overrides-exporter"
-	TenantConfigs                = "tenant-configs"
-	Server                       = "server"
-	InternalServer               = "internal-server"
-	Distributor                  = "distributor"
-	IngestLimits                 = "ingest-limits"
-	IngestLimitsRing             = "ingest-limits-ring"
-	IngestLimitsFrontend         = "ingest-limits-frontend"
-	IngestLimitsFrontendRing     = "ingest-limits-frontend-ring"
-	Ingester                     = "ingester"
-	PatternIngester              = "pattern-ingester"
-	PatternRingClient            = "pattern-ring-client"
-	PatternIngesterTee           = "pattern-ingester-tee"
-	Querier                      = "querier"
-	QueryFrontend                = "query-frontend"
-	QueryFrontendTripperware     = "query-frontend-tripperware"
-	QueryLimiter                 = "query-limiter"
-	QueryLimitsInterceptors      = "query-limits-interceptors"
-	QueryLimitsTripperware       = "query-limits-tripperware"
-	QueryEngine                  = "query-engine"
-	QueryEngineScheduler         = "query-engine-scheduler"
-	QueryEngineWorker            = "query-engine-worker"
-	Store                        = "store"
-	RulerStorage                 = "ruler-storage"
-	Ruler                        = "ruler"
-	RuleEvaluator                = "rule-evaluator"
-	Compactor                    = "compactor"
-	IndexGateway                 = "index-gateway"
-	IndexGatewayRing             = "index-gateway-ring"
-	IndexGatewayInterceptors     = "index-gateway-interceptors"
-	BloomStore                   = "bloom-store"
-	BloomGateway                 = "bloom-gateway"
-	BloomGatewayClient           = "bloom-gateway-client"
-	BloomPlanner                 = "bloom-planner"
-	BloomBuilder                 = "bloom-builder"
-	QueryScheduler               = "query-scheduler"
-	QuerySchedulerRing           = "query-scheduler-ring"
-	IngesterQuerier              = "ingester-querier"
-	IngesterGRPCInterceptors     = "ingester-grpc-interceptors"
-	RuntimeConfig                = "runtime-config"
-	MemberlistKV                 = "memberlist-kv"
-	Analytics                    = "analytics"
-	CacheGenerationLoader        = "cache-generation-loader"
-	PartitionRing                = "partition-ring"
-	DataObjExplorer              = "dataobj-explorer"
-	DataObjConsumer              = "dataobj-consumer"
-	DataObjConsumerRing          = "dataobj-consumer-ring"
-	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
-	DataObjIndexBuilder          = "dataobj-index-builder"
-	DataObjCompactionPlanner     = "dataobj-compaction-planner"
-	DataObjCompactionWorker      = "dataobj-compaction-worker"
-	ScratchStore                 = "scratch-store"
-	LoglineIndexBuilder          = "logline-index-builder"
-	LoglineBuilderPartitionRing  = "logline-index-builder-partition-ring"
-	UIRing                       = "ui-ring"
-	UI                           = "ui"
-	All                          = "all"
-	AuthMiddleware               = "auth-middleware"
-	LabelAccess                  = "label-access"
-	LabelAccessUserIDTransformer = "label-access-user-id-transformer"
-	LabelAccessInterceptors      = "label-access-interceptors"
-	LabelAccessStoreWrapper      = "label-access-store-wrapper"
-	LabelAccessIngesterWrapper   = "label-access-ingester-wrapper"
-	LabelAccessV2Engine          = "label-access-v2-engine"
-	LabelAccessTripperware       = "label-access-tripperware"
-	Filterers                    = "filterers"
-	AuthTripperware              = "auth-tripperware"
+	Ring                            = "ring"
+	Overrides                       = "overrides"
+	OverridesExporter               = "overrides-exporter"
+	TenantConfigs                   = "tenant-configs"
+	Server                          = "server"
+	InternalServer                  = "internal-server"
+	Distributor                     = "distributor"
+	IngestLimits                    = "ingest-limits"
+	IngestLimitsRing                = "ingest-limits-ring"
+	IngestLimitsFrontend            = "ingest-limits-frontend"
+	IngestLimitsFrontendRing        = "ingest-limits-frontend-ring"
+	Ingester                        = "ingester"
+	PatternIngester                 = "pattern-ingester"
+	PatternRingClient               = "pattern-ring-client"
+	PatternIngesterTee              = "pattern-ingester-tee"
+	Querier                         = "querier"
+	QueryFrontend                   = "query-frontend"
+	QueryFrontendTripperware        = "query-frontend-tripperware"
+	QueryLimiter                    = "query-limiter"
+	QueryLimitsInterceptors         = "query-limits-interceptors"
+	QueryLimitsTripperware          = "query-limits-tripperware"
+	QueryEngine                     = "query-engine"
+	QueryEngineScheduler            = "query-engine-scheduler"
+	QueryEngineWorker               = "query-engine-worker"
+	Store                           = "store"
+	RulerStorage                    = "ruler-storage"
+	Ruler                           = "ruler"
+	RuleEvaluator                   = "rule-evaluator"
+	Compactor                       = "compactor"
+	IndexGateway                    = "index-gateway"
+	IndexGatewayRing                = "index-gateway-ring"
+	IndexGatewayInterceptors        = "index-gateway-interceptors"
+	BloomStore                      = "bloom-store"
+	BloomGateway                    = "bloom-gateway"
+	BloomGatewayClient              = "bloom-gateway-client"
+	BloomPlanner                    = "bloom-planner"
+	BloomBuilder                    = "bloom-builder"
+	QueryScheduler                  = "query-scheduler"
+	QuerySchedulerRing              = "query-scheduler-ring"
+	IngesterQuerier                 = "ingester-querier"
+	IngesterGRPCInterceptors        = "ingester-grpc-interceptors"
+	RuntimeConfig                   = "runtime-config"
+	MemberlistKV                    = "memberlist-kv"
+	Analytics                       = "analytics"
+	CacheGenerationLoader           = "cache-generation-loader"
+	PartitionRing                   = "partition-ring"
+	DataObjExplorer                 = "dataobj-explorer"
+	DataObjConsumer                 = "dataobj-consumer"
+	DataObjConsumerRing             = "dataobj-consumer-ring"
+	DataObjConsumerPartitionRing    = "dataobj-consumer-partition-ring"
+	DataObjIndexBuilder             = "dataobj-index-builder"
+	DataObjCompactionPlanner        = "dataobj-compaction-planner"
+	DataObjCompactionWorker         = "dataobj-compaction-worker"
+	ScratchStore                    = "scratch-store"
+	LoglineIndexBuilder             = "logline-index-builder"
+	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
+	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
+	UIRing                          = "ui-ring"
+	UI                              = "ui"
+	All                             = "all"
+	AuthMiddleware                  = "auth-middleware"
+	LabelAccess                     = "label-access"
+	LabelAccessUserIDTransformer    = "label-access-user-id-transformer"
+	LabelAccessInterceptors         = "label-access-interceptors"
+	LabelAccessStoreWrapper         = "label-access-store-wrapper"
+	LabelAccessIngesterWrapper      = "label-access-ingester-wrapper"
+	LabelAccessV2Engine             = "label-access-v2-engine"
+	LabelAccessTripperware          = "label-access-tripperware"
+	Filterers                       = "filterers"
+	AuthTripperware                 = "auth-tripperware"
 )
 
 const (
@@ -2693,6 +2695,48 @@ func (t *Loki) initLoglineBuilderPartitionRing() (services.Service, error) {
 	return t.loglinePartitionRing, nil
 }
 
+// initLoglineQueryFrontendTripperware wraps the query frontend middleware with
+// logline query narrowing: a prefetch layer outside everything already in
+// QueryFrontEndMiddleware, and a filter layer right before the frontend sends
+// each split request downstream.
+func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
+	cfg := t.Cfg.Logline.Query
+	if !cfg.Enabled {
+		return nil, nil
+	}
+	// One n-gram length for the whole index, owned by logline.index. The index
+	// does not record it, so a reader must use the value the builder did.
+	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+
+	wrapped, storeService, cleanup, err := loglinequeryfrontend.WrapMiddleware(
+		cfg,
+		loglinequeryfrontend.Deps{
+			Store:                t.Cfg.Logline.Store,
+			SchemaConfig:         t.Cfg.SchemaConfig,
+			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
+			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
+			QueryIngestersWithin: t.Cfg.Querier.QueryIngestersWithin,
+			QuerySplitDuration:   time.Duration(t.Cfg.LimitsConfig.QuerySplitDuration),
+		},
+		// Per-tenant mode and minimum query bytes are limits_config settings,
+		// so tenants override them in the runtime config like any limit.
+		t.Overrides,
+		t.QueryFrontEndMiddleware,
+		log.With(util_log.Logger, "module", LoglineQueryFrontendTripperware),
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("initialize logline query frontend tripperware: %w", err)
+	}
+	t.QueryFrontEndMiddleware = wrapped
+
+	if storeService == nil {
+		cleanup()
+		return nil, nil
+	}
+	return storeService, nil
+}
+
 func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineIndexBuilder)
 
@@ -2712,7 +2756,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 	// so there is a single kafka section and a single set of -kafka.* flags.
 	svc, err := loglinebuilder.New(
 		indexStore,
-		t.Cfg.Logline.IndexBuilder,
+		t.Cfg.Logline.Builder,
 		t.Cfg.Logline.Store.MinDate,
 		t.loglinePartitionRing,
 		logger,

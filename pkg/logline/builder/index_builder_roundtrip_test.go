@@ -42,7 +42,7 @@ func shardOf(fn shard.Func, term [8]byte, shardCount int) int {
 func roundTripConfig(t *testing.T, shardCount, bufferPairs int) Config {
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			DensityThreshold: -1, // disable the MatchesAll sentinel so every term lists docs

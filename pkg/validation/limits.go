@@ -63,6 +63,11 @@ const (
 	defaultBloomTaskTargetChunkSize   = "20GB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
+
+	// defaultLoglineQueryMinQueryBytesForIndex is the minimum query size, in
+	// index-stats bytes, for logline filtering to kick in. Anyone with serious
+	// amounts of data might want to raise it.
+	defaultLoglineQueryMinQueryBytesForIndex = 10 * 1024 * 1024 * 1024 // 10GiB
 )
 
 var (
@@ -236,6 +241,11 @@ type Limits struct {
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
+
+	// Per-tenant logline filtering in the query path. Hidden from the config
+	// reference while logline is experimental.
+	LoglineQueryMode                  string `yaml:"logline_query_mode" json:"logline_query_mode" doc:"hidden" category:"experimental"`
+	LoglineQueryMinQueryBytesForIndex int64  `yaml:"logline_query_min_query_bytes_for_index" json:"logline_query_min_query_bytes_for_index" doc:"hidden" category:"experimental"`
 
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"description=Default list of JSON fields to tokenize for pattern detection. It is recommend to append to or delete from the defaults rather than replacing them."`
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"description=List of additional JSON fields to tokenize for pattern detection."`
@@ -530,6 +540,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
+	f.StringVar(&l.LoglineQueryMode, "logline-query.mode", "",
+		"Logline filtering mode for the tenant: off, dry_run or live. Empty leaves it to the logline.query settings and the X-Logline-Index request header.")
+	f.Int64Var(&l.LoglineQueryMinQueryBytesForIndex, "logline-query.min-query-bytes-for-index", defaultLoglineQueryMinQueryBytesForIndex,
+		"Minimum index-stats bytes a query must cover before logline looks up hints for it. 0 disables the check. The default is low, so anyone with serious amounts of data might want to raise it.")
+
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsAppend, "limits.pattern-ingester-tokenizable-json-fields-append", "List of JSON fields that should be appended to the default list of tokenizable fields in the pattern ingester.")
@@ -622,6 +637,15 @@ func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 
 // Validate validates that this limits config is valid.
 func (l *Limits) Validate() error {
+	switch l.LoglineQueryMode {
+	case "", "off", "dry_run", "live":
+	default:
+		return fmt.Errorf("invalid logline_query_mode %q: must be one of off, dry_run, live, or empty", l.LoglineQueryMode)
+	}
+	if l.LoglineQueryMinQueryBytesForIndex < 0 {
+		return fmt.Errorf("logline_query_min_query_bytes_for_index must be >= 0, got %d", l.LoglineQueryMinQueryBytesForIndex)
+	}
+
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
 			matchers, err := syntax.ParseMatchers(rule.Selector, true)
@@ -1250,6 +1274,14 @@ func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
 
 func (o *Overrides) ShardAggregations(userID string) []string {
 	return o.getOverridesForUser(userID).ShardAggregations
+}
+
+func (o *Overrides) LoglineQueryMode(userID string) string {
+	return o.getOverridesForUser(userID).LoglineQueryMode
+}
+
+func (o *Overrides) LoglineQueryMinQueryBytesForIndex(userID string) int64 {
+	return o.getOverridesForUser(userID).LoglineQueryMinQueryBytesForIndex
 }
 
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {

@@ -16,7 +16,7 @@ func makeShardedConfig(t *testing.T, shardCount int) Config {
 	t.Helper()
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 			ShardCount:       shardCount,

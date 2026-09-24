@@ -28,9 +28,10 @@ or narrow time intervals that the logline index proves contain no matching log l
 ## Key integration points
 
 - **Wiring**: `WrapMiddleware` / `WrapMiddlewareWithStore` in `integration.go` create the
-  store, hint provider, optional cache, and compose the middleware stack. The caller owns
-  the returned `services.Service` and prepends the wrapped middleware to
-  `Loki.QueryFrontEndMiddleware`.
+  store, hint provider, optional cache, and compose the middleware stack.
+- **Per-tenant settings are limits.** The mode and the minimum query bytes are
+  `limits_config` fields (`logline_query_mode`, `logline_query_min_query_bytes_for_index`),
+  so a tenant overrides them in the runtime config like any other limit.
 - **Hint provider**: `pkg/logline/hintprovider` does the actual index lookups.
 - **Store**: `pkg/logline/store` manages the logline index data (object storage, polling).
 - **Loki codec**: `mergeLokiResponse` in Loki's `pkg/querier/queryrange/codec.go` merges
@@ -57,7 +58,8 @@ filter middleware falls back to passthrough — it does not block or fail the qu
 |------|---------|
 | `middleware.go` | Prefetch + filter middleware handlers, `emptyLokiResponse`, `rangesOverlapping` |
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
-| `config.go` | `MiddlewareConfig` and `Config` — ngram length, parallelism, timeouts, cache settings |
+| `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings |
+| `limits/definitions.go` | The per-tenant `Limits` interface |
 | `metrics.go` | Prometheus metrics for hint provider duration, ranges returned, passthrough/skip/narrow counts |
 
 ## Running tests
