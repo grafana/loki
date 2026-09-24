@@ -40,6 +40,7 @@ func newStreamFirstSampleBatchIterator(
 	maxConcurrentBatches int,
 	fetch chunkFetchFunc,
 	extractor syntax.SampleExtractor,
+	hintRanges iter.HintTimeRanges,
 ) (iter.SampleIterator, error) {
 	byFingerprint := partitionBySeriesChunks(chunks)
 
@@ -98,6 +99,7 @@ func newStreamFirstSampleBatchIterator(
 		end:              end,
 		chunkFilterer:    chunkFilterer,
 		extractor:        extractor,
+		hintRanges:       hintRanges,
 		streamChunks:     streamChunkLists,
 		streamEndIndexes: streamEndIndexes,
 		streamHashes:     streamHashes,
@@ -119,6 +121,7 @@ type lazyStreamFirstSampleIterator struct {
 	start, end    time.Time
 	chunkFilterer chunk.Filterer
 	extractor     syntax.SampleExtractor
+	hintRanges    iter.HintTimeRanges
 
 	// streamChunks, streamEndIndexes and streamHashes are parallel, indexed by stream in stream-first
 	// (streamHash ascending) order. streamChunks[i] is stream i's chunks.
@@ -186,7 +189,7 @@ func (it *lazyStreamFirstSampleIterator) Next() bool {
 
 		cur, err := newTimestampFirstSampleBatchIterator(
 			it.ctx, it.schemas, it.metrics, it.streamChunks[it.idx], it.batchSize,
-			it.matchers, it.start, it.end, it.chunkFilterer, it.extractor)
+			it.matchers, it.start, it.end, it.chunkFilterer, it.extractor, it.hintRanges)
 		if err != nil {
 			it.err = err
 			return false

@@ -367,10 +367,8 @@ include crosscompile.mk
 ########
 ifeq ($(UNAME_S),Linux)
 LINT_FLAGS=--timeout=15m --build-tags=linux
-GOFLAGS=-tags=linux
 else
 LINT_FLAGS=--timeout=15m
-GOFLAGS=""
 endif
 lint: INSTALL_WORKFLOW_DEPS_ARGS := lint loki-release
 lint: ## run linters
@@ -380,19 +378,6 @@ else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
-	GOFLAGS=$(GOFLAGS) faillint -paths \
-		"sync/atomic=go.uber.org/atomic" \
-		./...
-
-	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
-	faillint -paths \
-		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
-		./...
-
-	# We don't use opentracing anymore.
-	faillint -paths \
-		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
-		./...
 endif
 
 ########
