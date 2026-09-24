@@ -72,7 +72,7 @@ func TestPatternTee_Basic(t *testing.T) {
 
 	now := time.Now()
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
+		{HashKey: 123, Stream: *logproto.FromStream(push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
 				{Timestamp: now, Line: "foo1"},
@@ -83,7 +83,7 @@ func TestPatternTee_Basic(t *testing.T) {
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
+		{HashKey: 123, Stream: *logproto.FromStream(push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
 				{Timestamp: now.Add(3 * time.Second), Line: "foo2"},
@@ -94,7 +94,7 @@ func TestPatternTee_Basic(t *testing.T) {
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 456, Stream: logproto.FromStream(push.Stream{
+		{HashKey: 456, Stream: *logproto.FromStream(push.Stream{
 			Labels: `{ping="pong"}`,
 			Entries: []push.Entry{
 				{Timestamp: now.Add(1 * time.Second), Line: "ping"},
@@ -163,14 +163,14 @@ func TestPatternTee_EmptyStream(t *testing.T) {
 	require.NoError(t, tee.Start(ctx))
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
+		{HashKey: 123, Stream: *logproto.FromStream(push.Stream{
 			Labels:  `{foo="bar"}`,
 			Entries: []push.Entry{},
 		})},
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 456, Stream: logproto.FromStream(push.Stream{
+		{HashKey: 456, Stream: *logproto.FromStream(push.Stream{
 			Labels:  `{ping="pong"}`,
 			Entries: []push.Entry{},
 		})},
@@ -191,7 +191,7 @@ func TestPatternTee_EmptyStream(t *testing.T) {
 func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 	// Reserve and release the flat size, including expanded shared metadata.
 	keyed := func(s push.Stream) []distributor.KeyedStream {
-		return []distributor.KeyedStream{{HashKey: 123, Stream: logproto.FromStream(s)}}
+		return []distributor.KeyedStream{{HashKey: 123, Stream: *logproto.FromStream(s)}}
 	}
 	buffered := func(s push.Stream) teedStream {
 		return teedStream{hashKey: 123, stream: s, size: s.Size()}

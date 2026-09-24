@@ -340,7 +340,7 @@ func TestTimeShardNestedBucketsByTimestamp(t *testing.T) {
 
 			nested := tc.stream()
 			source := tc.stream()
-			got, ok := timeShardNested(&nested, lbls, tc.shardLen, tc.ignoreLogsFrom)
+			got, ok := timeShardNested(nested, lbls, tc.shardLen, tc.ignoreLogsFrom)
 			requireTimeShardsAreWellFormed(t, source, got, tc.shardLen, tc.ignoreLogsFrom)
 
 			require.True(t, ok, "there was something to bucket")
@@ -380,22 +380,30 @@ func TestTimeShardNestedBucketsByTimestamp(t *testing.T) {
 // the only thing it must not do is let one bucket's entries be written through to another's.
 func TestTimeShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	lbls := labels.FromStrings("app", "a")
-	// Four buckets' worth in one group, so a bucket holds part of it and another follows.
+	// Two buckets and a recent shard share one group's entries.
 	offsets := []time.Duration{0, 30 * time.Minute, 90 * time.Minute, 2 * time.Hour}
 	source := timeSpreadStream(1, 1, offsets)
 
-	shards, ok := timeShardNested(&source, lbls, timeShardLen, shardBase().Add(6*time.Hour))
+	shards, ok := timeShardNested(source, lbls, timeShardLen, shardBase().Add(2*time.Hour))
 	require.True(t, ok)
-	require.Greater(t, len(shards), 1, "more than one bucket, or an append runs off the end")
+	require.Len(t, shards, 3)
+	require.True(t, shards[2].recent())
 
 	// Entries are the stream's, so rewriting one through a shard rewrites it there.
 	shards[0].stream.ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
 	require.Equal(t, "rewritten", source.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
 		"a shard holds a copy of the entries rather than the stream's own")
 
-	// The name is the shard's own, though.
+	// Each shard owns its labels and hash.
+	nextLabels, nextHash := shards[1].stream.Labels, shards[1].stream.Hash
 	shards[0].stream.Labels = "mangled"
+	shards[0].stream.Hash = 0
 	require.Equal(t, `{app="a"}`, source.Labels, "a shard rewrote the stream's name")
+	require.Equal(t, uint64(7), source.Hash, "a shard rewrote the stream's hash")
+	require.Equal(t, nextLabels, shards[1].stream.Labels)
+	require.Equal(t, nextHash, shards[1].stream.Hash)
+	require.Equal(t, source.Labels, shards[2].stream.Labels)
+	require.Equal(t, source.Hash, shards[2].stream.Hash)
 
 	before := slices.Clone(source.ResourceLogs[0].ScopeLogs[0].Entries)
 	next := shards[1].stream.ResourceLogs[0].ScopeLogs[0].Entries[0].Line
@@ -454,7 +462,7 @@ func TestTimeShardNestedDoesNotShardRecentStreams(t *testing.T) {
 				wantGroups = append(wantGroups, want)
 			})
 
-			shards, ok := timeShardNested(&source, labels.FromStrings("app", "a"), timeShardLen, shardBase().Add(tc.ignore))
+			shards, ok := timeShardNested(source, labels.FromStrings("app", "a"), timeShardLen, shardBase().Add(tc.ignore))
 			require.False(t, ok, "nothing old enough to bucket")
 			require.Nil(t, shards)
 
@@ -474,20 +482,20 @@ func TestTimeShardsCanThemselvesBeRateSharded(t *testing.T) {
 	offsets := []time.Duration{0, 30 * time.Minute, 90 * time.Minute, 2 * time.Hour}
 	nested := timeSpreadStream(3, 2, offsets)
 
-	timeShards, ok := timeShardNested(&nested, labels.FromStrings("app", "a"), timeShardLen, ignoreLogsFrom)
+	timeShards, ok := timeShardNested(nested, labels.FromStrings("app", "a"), timeShardLen, ignoreLogsFrom)
 	require.True(t, ok)
 	require.NotEmpty(t, timeShards)
 
 	lines := map[string]int{}
 	for i := range timeShards {
 		for _, shards := range [][]logproto.InternalStreamAdapter{
-			shardNested(&timeShards[i].stream, shardLabels, 1, 0),
-			shardNested(&timeShards[i].stream, shardLabels, 3, 0),
+			shardNested(timeShards[i].stream, shardLabels, 1, 0),
+			shardNested(timeShards[i].stream, shardLabels, 3, 0),
 		} {
 			require.NotEmpty(t, shards)
 			requireShardsCarryTheStream(t, timeShards[i].stream, shards)
 		}
-		for _, shard := range shardNested(&timeShards[i].stream, shardLabels, 3, 0) {
+		for _, shard := range shardNested(timeShards[i].stream, shardLabels, 3, 0) {
 			for j := range shard.ResourceLogs {
 				for k := range shard.ResourceLogs[j].ScopeLogs {
 					for _, entry := range shard.ResourceLogs[j].ScopeLogs[k].Entries {
@@ -548,7 +556,7 @@ func BenchmarkTimeSharding(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					restore(b, groups, nestedStart)
-					if _, ok := timeShardNested(&nested, lbls, shardLen, ignoreLogsFrom); !ok {
+					if _, ok := timeShardNested(nested, lbls, shardLen, ignoreLogsFrom); !ok {
 						b.Fatal("nothing sharded")
 					}
 				}

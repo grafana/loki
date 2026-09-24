@@ -659,7 +659,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, err
 	}
 	internal := logproto.FromPushRequest(req)
-	return d.pushWithResolver(ctx, &internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
 // pushWithResolver validates and shards req, then forwards accepted streams.
@@ -728,7 +728,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
-		timeShards, sharded := timeShardNested(&stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
+		timeShards, sharded := timeShardNested(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !sharded {
 			maybeShardByRate(stream, labels, pushSize, policy, shardStreamsCfg)
 			return
@@ -752,14 +752,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		sp.AddEvent("start to validate request")
 		defer sp.AddEvent("finished to validate request")
 
-		for streamIdx, stream := range req.Streams {
+		validatedStreams := req.Streams[:0]
+		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
 			if stream.EntryCount() == 0 {
 				continue
 			}
 
 			// Truncate first so subsequent steps have consistent line lengths
-			d.truncateLines(validationContext, &stream)
+			d.truncateLines(validationContext, stream)
 
 			var lbs labels.Labels
 			var retentionHours, policy string
@@ -807,12 +808,11 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			if err != nil {
 				return err
 			}
-			// Keep discard accounting on the request in sync with the compacted stream.
-			req.Streams[streamIdx].ResourceLogs = stream.ResourceLogs
 			if stats.entriesKept == 0 {
 				// Empty stream after validating all the entries
 				continue
 			}
+			validatedStreams = append(validatedStreams, stream)
 
 			// Attribute this stream's bytes/lines to its rate-limit bucket.
 			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
@@ -831,6 +831,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
 			maybeShardStreams(stream, lbs, stats.expandedSize, policy, shardCfg)
 		}
+		// Rate-limit discards must exclude streams already rejected by validation.
+		clear(req.Streams[len(validatedStreams):])
+		req.Streams = validatedStreams
 		return nil
 	}()
 	if err != nil {
@@ -1356,7 +1359,7 @@ func (d *Distributor) trackDiscardedData(
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
-	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
+	shardCount := d.shardCountFor(logger, stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
 		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
@@ -1378,7 +1381,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.La
 
 	// Only nonempty shards advance the shard rotation.
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
-	shards := shardNested(&stream, lbls, totalShards, startShard)
+	shards := shardNested(stream, lbls, totalShards, startShard)
 
 	derivedStreams := make([]KeyedStream, 0, len(shards))
 	for i := range shards {
@@ -1398,7 +1401,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.La
 	return derivedStreams
 }
 
-func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.InternalStreamAdapter) {
+func (d *Distributor) truncateLines(vContext validationContext, stream logproto.InternalStreamAdapter) {
 	if !vContext.maxLineSizeTruncate {
 		return
 	}
@@ -1639,7 +1642,7 @@ func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validation
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.InternalStreamAdapter, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream logproto.InternalStreamAdapter, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())

@@ -137,7 +137,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	// Parsers still return flat requests; wrap them for nested processing.
 	internal := logproto.FromPushRequest(req)
-	_, err = d.pushWithResolver(r.Context(), &internal, streamResolver, format)
+	_, err = d.pushWithResolver(r.Context(), internal, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

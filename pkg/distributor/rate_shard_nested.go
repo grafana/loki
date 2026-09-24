@@ -19,7 +19,7 @@ import (
 // it for both. Contiguous runs are what make that possible, and what hold a group's attributes to
 // R+S-1 resource and G+S-1 scope copies over S shards: repeated only where a boundary falls inside
 // the group.
-func shardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
+func shardNested(stream logproto.InternalStreamAdapter, lbls labels.Labels, shards, startShard int) []logproto.InternalStreamAdapter {
 	total := stream.EntryCount()
 	if total == 0 || shards < 1 {
 		return nil

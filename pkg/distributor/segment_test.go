@@ -66,7 +66,7 @@ func TestGetSegmentationKey(t *testing.T) {
 
 	t.Run("stream with invalid labels", func(t *testing.T) {
 		key, err := getSegmentationKey(KeyedStream{
-			Stream: logproto.FromStream(logproto.Stream{
+			Stream: *logproto.FromStream(logproto.Stream{
 				Labels: "{",
 			}),
 		})
@@ -76,7 +76,7 @@ func TestGetSegmentationKey(t *testing.T) {
 
 	t.Run("stream with service_name", func(t *testing.T) {
 		key, err := getSegmentationKey(KeyedStream{
-			Stream: logproto.FromStream(logproto.Stream{
+			Stream: *logproto.FromStream(logproto.Stream{
 				Labels: "{service_name=\"foo\"}",
 			}),
 		})
@@ -86,7 +86,7 @@ func TestGetSegmentationKey(t *testing.T) {
 
 	t.Run("stream without service_name", func(t *testing.T) {
 		key, err := getSegmentationKey(KeyedStream{
-			Stream: logproto.FromStream(logproto.Stream{
+			Stream: *logproto.FromStream(logproto.Stream{
 				Labels: "{bar=\"baz\"}",
 			}),
 		})

@@ -30,7 +30,7 @@ func TestWrapTee(t *testing.T) {
 	streams := []KeyedStream{
 		{
 			HashKey: 1,
-			Stream:  logproto.FromStream(push.Stream{}),
+			Stream:  *logproto.FromStream(push.Stream{}),
 		},
 	}
 	pushTracker := &PushTracker{

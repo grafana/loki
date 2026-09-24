@@ -59,7 +59,7 @@ func TestRateBatcher_Add_AccumulatesStreams(t *testing.T) {
 	streams := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.FromStream(logproto.Stream{
+				Stream: *logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
 				}),
@@ -69,7 +69,7 @@ func TestRateBatcher_Add_AccumulatesStreams(t *testing.T) {
 		},
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.FromStream(logproto.Stream{
+				Stream: *logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test2"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test2"}},
 				}),
@@ -110,7 +110,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	stream1 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.FromStream(logproto.Stream{
+				Stream: *logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
 				}),
@@ -123,7 +123,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	stream2 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.FromStream(logproto.Stream{
+				Stream: *logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "world!"}},
 				}),

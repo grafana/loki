@@ -483,7 +483,7 @@ func randomAttrs(r *rand.Rand) []push.LabelAdapter {
 }
 
 func TestToStreamOwnsItsEntriesWhereFlatViewSharesThem(t *testing.T) {
-	source := func() InternalStreamAdapter {
+	source := func() *InternalStreamAdapter {
 		return FromStream(Stream{Labels: `{app="a"}`, Entries: []push.Entry{
 			entry(1, "first"), entry(2, "second"),
 		}})

@@ -35,7 +35,7 @@ func (s *nestedTimeShard) recent() bool { return s.start.IsZero() }
 // instead of copying entries. A bucket therefore holds each group in timestamp order and
 // interleaves the groups, which the ingester accepts: a bucket spans MaxChunkAge/2, its window for
 // unordered writes.
-func timeShardNested(stream *logproto.InternalStreamAdapter, lbls labels.Labels, shardLen time.Duration, ignoreLogsFrom time.Time) ([]nestedTimeShard, bool) {
+func timeShardNested(stream logproto.InternalStreamAdapter, lbls labels.Labels, shardLen time.Duration, ignoreLogsFrom time.Time) ([]nestedTimeShard, bool) {
 	if stream.EntryCount() == 0 {
 		return nil, false
 	}

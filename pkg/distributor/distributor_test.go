@@ -584,7 +584,7 @@ func Test_PushInternalRequest(t *testing.T) {
 			want:       []logproto.Entry{{Timestamp: at, Line: "kept", StructuredMetadata: buildNestedAttrs("service_name", "kept")}},
 		},
 		{
-			name: "all entries discarded removes every resource",
+			name: "all entries discarded removes the stream",
 			limits: func(l *validation.Limits) {
 				l.MaxLineSize = 10
 				l.MaxLineSizeTruncate = false
@@ -619,6 +619,13 @@ func Test_PushInternalRequest(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			got := ing.Peek()
+			if len(tc.want) == 0 {
+				require.Empty(t, req.Streams)
+				require.Nil(t, got)
+				return
+			}
+			require.Len(t, req.Streams, 1)
 			require.Len(t, req.Streams[0].ResourceLogs, len(tc.wantScopes))
 			for i, resource := range req.Streams[0].ResourceLogs {
 				require.Len(t, resource.ScopeLogs, tc.wantScopes[i])
@@ -627,11 +634,6 @@ func Test_PushInternalRequest(t *testing.T) {
 				}
 			}
 
-			got := ing.Peek()
-			if len(tc.want) == 0 {
-				require.Nil(t, got)
-				return
-			}
 			require.NotNil(t, got, "the stream still had an entry to send")
 			require.Len(t, got.Streams, 1)
 			require.Equal(t, tc.want, got.Streams[0].Entries)
@@ -985,6 +987,114 @@ func Test_DiscardAccounting(t *testing.T) {
 					require.Equal(t, counts.samples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(reason, "test", "0", tc.policy, constants.Loki)), "%s samples", reason)
 				}
 			})
+		}
+	}
+}
+
+func TestDistributor_PushRateLimitsOnlyValidatedStreams(t *testing.T) {
+	const validLine, rejectedLine = "valid", "rejected"
+	for _, tc := range []struct {
+		name           string
+		rejectedLabels string
+		reason         string
+		policy         string
+		limits         func(*validation.Limits)
+	}{
+		{
+			name:           "malformed labels",
+			rejectedLabels: `{app=`,
+			reason:         validation.InvalidLabels,
+		},
+		{
+			name:           "too many labels",
+			rejectedLabels: `{app="rejected", extra="label"}`,
+			reason:         validation.InvalidLabels,
+			limits:         func(l *validation.Limits) { l.MaxLabelNamesPerSeries = 1 },
+		},
+		{
+			name:           "missing enforced labels",
+			rejectedLabels: `{other="rejected"}`,
+			reason:         validation.MissingEnforcedLabels,
+			limits:         func(l *validation.Limits) { l.EnforcedLabels = []string{"app"} },
+		},
+		{
+			name:           "blocked policy",
+			rejectedLabels: `{app="blocked"}`,
+			reason:         validation.BlockedIngestionPolicy,
+			policy:         "blocked",
+			limits: func(l *validation.Limits) {
+				l.PolicyStreamMapping = validation.PolicyStreamMapping{
+					"blocked": {{Selector: `{app="blocked"}`, Priority: 1}},
+				}
+				l.BlockIngestionPolicyUntil = map[string]flagext.Time{"blocked": flagext.Time(time.Now().Add(time.Hour))}
+				l.BlockIngestionStatusCode = http.StatusBadRequest
+			},
+		},
+	} {
+		for _, rateLimited := range []bool{false, true} {
+			for _, rejectedFirst := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/rateLimited=%t/rejectedFirst=%t", tc.name, rateLimited, rejectedFirst), func(t *testing.T) {
+					validation.DiscardedBytes.Reset()
+					validation.DiscardedSamples.Reset()
+					defer validation.DiscardedBytes.Reset()
+					defer validation.DiscardedSamples.Reset()
+
+					lim := &validation.Limits{}
+					flagext.DefaultValues(lim)
+					lim.DiscoverLogLevels = false
+					lim.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+					lim.IngestionRateMB = datasize.ByteSize(1).MBytes()
+					burst := len(validLine)
+					if rateLimited {
+						burst--
+					}
+					lim.IngestionBurstSizeMB = datasize.ByteSize(burst).MBytes()
+					if tc.limits != nil {
+						tc.limits(lim)
+					}
+					require.NoError(t, lim.Validate())
+					distributors, ingesters := prepare(t, 1, 3, lim, nil)
+					now := time.Now()
+					valid := logproto.Stream{Labels: `{app="valid"}`, Entries: []logproto.Entry{{Timestamp: now, Line: validLine}}}
+					rejected := logproto.Stream{Labels: tc.rejectedLabels, Entries: []logproto.Entry{{Timestamp: now, Line: rejectedLine}}}
+					streams := []logproto.Stream{valid, rejected}
+					if rejectedFirst {
+						slices.Reverse(streams)
+					}
+
+					_, err := distributors[0].Push(ctx, &logproto.PushRequest{Streams: streams})
+					require.Error(t, err)
+					response, ok := httpgrpc.HTTPResponseFromError(err)
+					require.True(t, ok)
+					wantStatus := http.StatusBadRequest
+					var rateLimitedBytes, rateLimitedSamples float64
+					if rateLimited {
+						wantStatus = http.StatusTooManyRequests
+						rateLimitedBytes, rateLimitedSamples = float64(len(validLine)), 1
+					}
+					require.Equal(t, int32(wantStatus), response.Code)
+					require.Equal(t, float64(len(rejectedLine)), testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(tc.reason, "test", "0", tc.policy, constants.Loki)))
+					require.Equal(t, float64(1), testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(tc.reason, "test", "0", tc.policy, constants.Loki)))
+					require.Equal(t, rateLimitedBytes, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.RateLimited, "test", "0", "", constants.Loki)))
+					require.Equal(t, rateLimitedSamples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.RateLimited, "test", "0", "", constants.Loki)))
+					if tc.policy != "" {
+						require.Zero(t, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.RateLimited, "test", "0", tc.policy, constants.Loki)))
+						require.Zero(t, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.RateLimited, "test", "0", tc.policy, constants.Loki)))
+					}
+					for i := range ingesters {
+						ingester := &ingesters[i]
+						if rateLimited {
+							require.Nil(t, ingester.Peek())
+							continue
+						}
+						require.Eventually(t, func() bool { return ingester.Peek() != nil }, time.Second, 10*time.Millisecond)
+						got := ingester.Peek().Streams
+						require.Len(t, got, 1)
+						require.Equal(t, valid.Labels, got[0].Labels)
+						require.Equal(t, valid.Entries, got[0].Entries)
+					}
+				})
+			}
 		}
 	}
 }
@@ -1756,7 +1866,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker: NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
+			derivedStreams := d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			// Each shard must have its own ring token.
@@ -1805,7 +1915,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker: NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams := d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1816,7 +1926,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams = d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1879,7 +1989,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1889,7 +1999,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1899,7 +2009,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1909,7 +2019,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 }
@@ -1925,7 +2035,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, logproto.FromStream(stream), streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1965,7 +2075,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.FromStream(logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
 			}), streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -2204,8 +2314,8 @@ func TestShardCountFor(t *testing.T) {
 			d := &Distributor{
 				rateStore: &fakeRateStore{tc.rate, tc.pushRate},
 			}
-			nested := logproto.FromStream(*tc.stream)
-			got := d.shardCountFor(util_log.Logger, &nested, tc.pushSize, "fake", limits.ShardStreams)
+			nested := *logproto.FromStream(*tc.stream)
+			got := d.shardCountFor(util_log.Logger, nested, tc.pushSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}

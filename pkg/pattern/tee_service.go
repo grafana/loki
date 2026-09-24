@@ -465,17 +465,14 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 	}
 
 	for _, stream := range streams {
-		// Flatten once for buffer accounting and the pattern ingester's flat wire format.
-		flat := stream.Stream.FlatView()
-
 		// Skip streams with no entries.
-		if len(flat.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 
-		lbls, err := syntax.ParseLabels(flat.Labels)
+		lbls, err := syntax.ParseLabels(stream.Stream.Labels)
 		if err != nil {
-			level.Error(ts.logger).Log("msg", "error parsing stream labels", "labels", flat.Labels, "err", err)
+			level.Error(ts.logger).Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
 			continue
 		}
 
@@ -483,6 +480,9 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		if lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel) {
 			continue
 		}
+
+		// Flatten once for buffer accounting and the pattern ingester's flat wire format.
+		flat := stream.Stream.FlatView()
 
 		// Check that the stream is allowed within the current limit.
 		size := flat.Size()

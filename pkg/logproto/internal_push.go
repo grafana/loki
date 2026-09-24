@@ -39,7 +39,7 @@ func (s *InternalStreamAdapter) EntryCount() int {
 
 // FromPushRequest wraps each flat stream in one resource and scope with no shared attributes.
 // Entry slices are shared with req; wrapper storage is allocated once per request.
-func FromPushRequest(req *PushRequest) InternalPushRequest {
+func FromPushRequest(req *PushRequest) *InternalPushRequest {
 	streams := make([]InternalStreamAdapter, len(req.Streams))
 	resources := make([]ResourceLogs, len(req.Streams))
 	scopes := make([]ScopeLogs, len(req.Streams))
@@ -53,13 +53,13 @@ func FromPushRequest(req *PushRequest) InternalPushRequest {
 			ResourceLogs: resources[i : i+1 : i+1],
 		}
 	}
-	return InternalPushRequest{Streams: streams, Format: req.Format}
+	return &InternalPushRequest{Streams: streams, Format: req.Format}
 }
 
 // FromStream wraps a flat stream in one resource and scope with no shared attributes.
 // The entries are shared with s.
-func FromStream(s Stream) InternalStreamAdapter {
-	return InternalStreamAdapter{
+func FromStream(s Stream) *InternalStreamAdapter {
+	return &InternalStreamAdapter{
 		Labels: s.Labels,
 		Hash:   s.Hash,
 		ResourceLogs: []ResourceLogs{{
