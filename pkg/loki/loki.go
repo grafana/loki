@@ -125,10 +125,10 @@ type Config struct {
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
 	// TODO(segflow): restore `yaml:"logline,omitempty"` once the logline
-	// configuration fully lives in Loki. The section is flags-only for now:
-	// the "logline" key is not free in every build that inlines this struct.
-	// Every field below is reachable through -logline-store.* and
-	// -logline-index-builder.*, so nothing is unconfigurable in the meantime.
+	// configuration is settled. Until then the section is flags-only and left
+	// out of the config reference. Every field is reachable through
+	// -logline-index.*, -logline-store.*, -logline-builder.* and
+	// -logline-query.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
@@ -373,9 +373,13 @@ func (c *Config) Validate() error {
 	// fields with no sensible defaults, so validating it unconditionally would
 	// break every deployment that does not run logline.
 	if c.isTarget(LoglineIndexBuilder) {
-		if err := c.Logline.ValidateIndexBuilder(); err != nil {
+		if err := c.Logline.ValidateBuilder(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
+	}
+	// A no-op unless logline query narrowing is enabled.
+	if err := c.Logline.ValidateQuery(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
@@ -836,6 +840,7 @@ func (t *Loki) setupModuleManager() error {
 	// Logline: keep the target invisible while it is experimental.
 	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
@@ -862,7 +867,7 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:                     {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
 		Querier:                      {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs},
-		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
+		QueryFrontend:                {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
 		QueryEngine:                  {QueryEngineScheduler},
 		QueryEngineWorker:            {Server, Overrides, TenantConfigs, Analytics},
@@ -892,8 +897,9 @@ func (t *Loki) setupModuleManager() error {
 		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
 
-		LoglineIndexBuilder:         {LoglineBuilderPartitionRing, Server},
-		LoglineBuilderPartitionRing: {MemberlistKV, Server},
+		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},
+		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
+		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

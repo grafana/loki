@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -41,28 +41,32 @@ type mockHintProvider struct {
 	delay        time.Duration
 }
 
-type mockTenantSettings struct {
+// mockLimits is the limits_config view the middleware reads. A tenant without
+// an entry gets the defaults, like a tenant without runtime overrides.
+type mockLimits struct {
 	modes                 map[string]Mode
 	minQueryBytesForIndex map[string]int64
+	defaultMinQueryBytes  int64
 }
 
-func (m mockTenantSettings) Mode(tenant string) Mode {
-	if m.modes == nil {
-		return ModeUnset
+func (m mockLimits) LoglineQueryMode(tenant string) string {
+	switch m.modes[tenant] {
+	case ModeOff:
+		return "off"
+	case ModeDryRun:
+		return "dry_run"
+	case ModeLive:
+		return "live"
+	default:
+		return ""
 	}
-	mode, ok := m.modes[tenant]
-	if !ok {
-		return ModeUnset
-	}
-	return mode
 }
 
-func (m mockTenantSettings) MinQueryBytesForIndex(tenant string) (int64, bool) {
-	if m.minQueryBytesForIndex == nil {
-		return 0, false
+func (m mockLimits) LoglineQueryMinQueryBytesForIndex(tenant string) int64 {
+	if v, ok := m.minQueryBytesForIndex[tenant]; ok {
+		return v
 	}
-	minQueryBytes, ok := m.minQueryBytesForIndex[tenant]
-	return minQueryBytes, ok
+	return m.defaultMinQueryBytes
 }
 
 func (m *mockHintProvider) ProvideHints(
@@ -156,19 +160,19 @@ func streamResponseWithEntries(entries ...logproto.Entry) *queryrange.LokiRespon
 // This lets us test the two-layer interaction in isolation.
 func buildStack(
 	hp *mockHintProvider,
-	cfg MiddlewareConfig,
+	cfg Config,
 	metrics *Metrics,
 	querier queryrangebase.Handler,
-	tenantSettings ...TenantSettings,
+	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
 	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
 		cfg.ShardPlanning.Enabled = false
 		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
 	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
-	var settings TenantSettings
-	if len(tenantSettings) > 0 {
-		settings = tenantSettings[0]
+	var settings logline_query_limits.Limits = mockLimits{}
+	if len(limits) > 0 {
+		settings = limits[0]
 	}
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, nil)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
@@ -176,20 +180,20 @@ func buildStack(
 
 func buildStackWithLogger(
 	hp *mockHintProvider,
-	cfg MiddlewareConfig,
+	cfg Config,
 	metrics *Metrics,
 	logger log.Logger,
 	querier queryrangebase.Handler,
-	tenantSettings ...TenantSettings,
+	limits ...logline_query_limits.Limits,
 ) queryrangebase.Handler {
 	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
 		cfg.ShardPlanning.Enabled = false
 		cfg.ShardPlanning.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
 	}
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, logger)
-	var settings TenantSettings
-	if len(tenantSettings) > 0 {
-		settings = tenantSettings[0]
+	var settings logline_query_limits.Limits = mockLimits{}
+	if len(limits) > 0 {
+		settings = limits[0]
 	}
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, logger)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
@@ -265,7 +269,7 @@ func TestPrefetchFilter_NonLokiRequest(t *testing.T) {
 		return &queryrange.LokiSeriesResponse{}, nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	_, err := handler.Do(ctx, &queryrange.LokiSeriesRequest{})
 	require.NoError(t, err)
@@ -281,7 +285,7 @@ func TestPrefetchFilter_ParseError(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`not valid logql!!!`, time.Now().Add(-1*time.Hour), time.Now())
 	_, err := handler.Do(ctx, req)
@@ -306,7 +310,7 @@ func TestPrefetchFilter_OptInHeader_Missing(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContext() // header intentionally omitted
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -335,7 +339,7 @@ func TestPrefetchFilter_OptInHeader_Present(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -365,7 +369,7 @@ func TestPrefetchFilter_RequireOptInHeaderFalse_UsesHintsWithoutHeader(t *testin
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{RequireOptInHeader: false}
+	cfg := Config{RequireOptInHeader: false}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContext() // header intentionally omitted
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -397,7 +401,7 @@ func TestDryRun_QueryUnmodified(t *testing.T) {
 		return streamResponseWithEntries(logproto.Entry{Timestamp: hintStart, Line: "failure"}), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -427,7 +431,7 @@ func TestDryRun_VerifiesHintCoverage(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -473,7 +477,7 @@ func TestDryRun_LogsHintSummaryFields(t *testing.T) {
 
 			var logs bytes.Buffer
 			logger := log.NewLogfmtLogger(&logs)
-			cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+			cfg := Config{DryRun: true, NgramLength: 3}
 			handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 
 			req := newTestLokiRequest(`{job="test"} |= "failure"`, queryStart, queryEnd)
@@ -510,7 +514,7 @@ func TestDryRun_EmptyHintRanges_LogsSummaryFields(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, queryStart, queryEnd)
@@ -547,7 +551,7 @@ func TestDryRun_FalseNegative(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -579,7 +583,7 @@ func TestDryRun_EmptyResults_CorrectTrue(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -609,7 +613,7 @@ func TestDryRun_IngesterWindowOnly_SkipsDryRun(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, QueryIngestersWithin: 3 * time.Hour}
+	cfg := Config{DryRun: true, NgramLength: 3, QueryIngestersWithin: 3 * time.Hour}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-30*time.Minute), now)
@@ -641,7 +645,7 @@ func TestDryRun_IngesterWindowEntries_ExcludedFromVerification(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, QueryIngestersWithin: 3 * time.Hour}
+	cfg := Config{DryRun: true, NgramLength: 3, QueryIngestersWithin: 3 * time.Hour}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "covered"`, now.Add(-6*time.Hour), now)
@@ -672,7 +676,7 @@ func TestDryRun_QueryFinishesBeforeHints(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
+	cfg := Config{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -710,7 +714,7 @@ func TestDryRun_ClientTimeout_HintLookupCompleted(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
+	cfg := Config{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
 
@@ -752,7 +756,7 @@ func TestDryRun_ClientTimeout_HintLookupIncomplete(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
+	cfg := Config{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
 
@@ -788,7 +792,7 @@ func TestDryRun_ClientTimeout_HintLookupCancelledByContext(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
+	cfg := Config{DryRun: true, NgramLength: 3, HintTimeout: 5 * time.Second}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
 
@@ -829,7 +833,7 @@ func TestDryRun_RateLimitSkipsSecondDryRun(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContext()
 
@@ -867,7 +871,7 @@ func TestDryRun_UnsupportedQuerySkipped(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3}
+	cfg := Config{DryRun: true, NgramLength: 3}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"}`, now.Add(-1*time.Hour), now)
@@ -905,8 +909,8 @@ func TestDryRun_StatsBelowThresholdSkipped(t *testing.T) {
 		queryHandler,
 	)
 
-	cfg := MiddlewareConfig{DryRun: true, NgramLength: 3, MinQueryBytesForIndex: 500}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier)
+	cfg := Config{DryRun: true, NgramLength: 3}
+	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
 
@@ -938,7 +942,7 @@ func TestDryRun_HeaderGated_WithHeader(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContextWithDryRun()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -967,7 +971,7 @@ func TestDryRun_HeaderGated_WithoutHeader(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContext() // no header
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -980,8 +984,8 @@ func TestDryRun_HeaderGated_WithoutHeader(t *testing.T) {
 
 func TestWrapMiddleware_Disabled(t *testing.T) {
 	wrapped, storeSvc, cleanup, err := WrapMiddleware(
-		loki.ConfigWrapper{},
 		Config{Enabled: false},
+		Deps{},
 		nil,
 		nil,
 		log.NewNopLogger(),
@@ -1033,8 +1037,8 @@ func TestPrefetchFilter_QueryBytesBelowThreshold_SkipsHintPrefetch(t *testing.T)
 		queryHandler,
 	)
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 500}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier)
+	cfg := Config{}
+	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -1077,8 +1081,8 @@ func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
 		queryHandler,
 	)
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 500}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier)
+	cfg := Config{}
+	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -1118,11 +1122,12 @@ func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T
 		&statsCalls,
 		queryHandler,
 	)
-	settings := mockTenantSettings{
+	settings := mockLimits{
+		defaultMinQueryBytes:  5000,
 		minQueryBytesForIndex: map[string]int64{"test": 500},
 	}
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 5000}
+	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, settings)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -1163,8 +1168,8 @@ func TestPrefetchFilter_QueryStatsError_SkipsHintPrefetch(t *testing.T) {
 		queryHandler,
 	)
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 500}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier)
+	cfg := Config{}
+	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 500})
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -1205,8 +1210,8 @@ func TestPrefetchFilter_MinQueryBytesZero_DisablesStatsGating(t *testing.T) {
 		queryHandler,
 	)
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 0}
-	handler := buildStack(hp, cfg, newTestMetrics(), querier)
+	cfg := Config{}
+	handler := buildStack(hp, cfg, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 0})
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -1245,11 +1250,12 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 		&statsCalls,
 		queryHandler,
 	)
-	settings := mockTenantSettings{
+	settings := mockLimits{
+		defaultMinQueryBytes:  500,
 		minQueryBytesForIndex: map[string]int64{"test": 0},
 	}
 
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 500}
+	cfg := Config{}
 	handler := buildStack(hp, cfg, newTestMetrics(), querier, settings)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -1286,8 +1292,8 @@ func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T)
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{MinQueryBytesForIndex: 500}
-	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, querier)
+	cfg := Config{}
+	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, querier, mockLimits{defaultMinQueryBytes: 500})
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -1317,7 +1323,7 @@ func TestPrefetchFilter_SkipCacheHeaderSetsHintContext(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	ctx = httpreq.InjectHeader(ctx, LoglineSkipCacheHeader, "true")
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -1339,7 +1345,7 @@ func TestPrefetchFilter_Unsupported(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -1359,7 +1365,7 @@ func TestPrefetchFilter_ProviderError(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -1380,7 +1386,7 @@ func TestPrefetchFilter_EmptyHints_SkipsQuerier(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	resp, err := handler.Do(ctx, req)
@@ -1413,7 +1419,7 @@ func TestPrefetchFilter_NarrowsToHintRanges(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -1448,7 +1454,7 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, reqStart, reqEnd)
 	_, err := handler.Do(ctx, req)
@@ -1480,7 +1486,7 @@ func TestPrefetchFilter_QueryStatsAttached(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -1502,7 +1508,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	}
 
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, MiddlewareConfig{RequireOptInHeader: true}, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, Config{RequireOptInHeader: true}, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Millisecond, metrics, nil)
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1669,7 +1675,7 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	})
 
 	metrics := newTestMetrics()
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, metrics, next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, metrics, next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
@@ -1707,7 +1713,7 @@ func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
@@ -1739,7 +1745,7 @@ func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
@@ -1763,7 +1769,7 @@ func TestPrefetchFilter_DownstreamErrorPropagated(t *testing.T) {
 		return nil, errors.New("querier boom")
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.EqualError(t, err, "querier boom")
@@ -1787,7 +1793,7 @@ func TestPrefetchFilter_PreservesRequestFields(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	handler := buildStack(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), next)
+	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	req := &queryrange.LokiRequest{
 		Query:       `{job="test"} |= "error"`,
 		Limit:       42,
@@ -1832,7 +1838,7 @@ func TestPrefetchFilter_IngesterWindowOnly(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
+	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	// Query last 2h — entirely within 3h ingester window.
@@ -1861,10 +1867,10 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	// Simulate SplitByInterval dispatching two intervals:
 	// 1. Covered interval: [-6h, -3h]
 	// 2. Ingester interval: [-3h, now]
-	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
+	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
 
 	var mu sync.Mutex
 	type subReqInfo struct {
@@ -1945,10 +1951,10 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 		},
 	}
 
-	cfg := MiddlewareConfig{QueryIngestersWithin: 3 * time.Hour}
+	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
@@ -2013,9 +2019,9 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
 	}
 
-	cfg := MiddlewareConfig{QueryIngestersWithin: 2 * time.Hour}
+	cfg := Config{QueryIngestersWithin: 2 * time.Hour}
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, nil, metrics, nil)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var prefetchResult *hintPrefetchResult
@@ -2087,7 +2093,7 @@ func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	handler := buildStackWithLogger(hp, MiddlewareConfig{RequireOptInHeader: true}, newTestMetrics(), logger, next)
+	handler := buildStackWithLogger(hp, Config{RequireOptInHeader: true}, newTestMetrics(), logger, next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 	_, err := handler.Do(ctx, req)
@@ -2279,7 +2285,7 @@ func TestHeaderOff_OverridesEnabledConfigAndTenantLive(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeLive},
 	}
 
@@ -2293,7 +2299,7 @@ func TestHeaderOff_OverridesEnabledConfigAndTenantLive(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: false, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: false, NgramLength: 3}
 	handler := buildStack(hp, cfg, newTestMetrics(), next, settings)
 	ctx := testTenantContextWithForceDisable()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2342,7 +2348,7 @@ func TestDryRun_ForceLiveHeader_OverridesToLivePath(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: false, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: false, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContextWithForceLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2376,7 +2382,7 @@ func TestDryRun_ForceLiveHeader_WithOptInRequired(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
 	handler := buildStack(hp, cfg, newTestMetrics(), next)
 	ctx := testTenantContextWithForceLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2409,7 +2415,7 @@ func TestDryRun_DryRunHeader_StaysInDryRun(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
+	cfg := Config{DryRun: true, RequireOptInHeader: true, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next)
 	ctx := testTenantContextWithDryRun()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -2431,7 +2437,7 @@ func TestTenantMode_Off_Passthrough(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeOff},
 	}
 
@@ -2443,7 +2449,7 @@ func TestTenantMode_Off_Passthrough(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{RequireOptInHeader: false}
+	cfg := Config{RequireOptInHeader: false}
 	handler := buildStack(hp, cfg, newTestMetrics(), next, settings)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2466,7 +2472,7 @@ func TestTenantMode_Off_HeaderLive_ForcesLive(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeOff},
 	}
 
@@ -2478,7 +2484,7 @@ func TestTenantMode_Off_HeaderLive_ForcesLive(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: false, RequireOptInHeader: false}
+	cfg := Config{DryRun: false, RequireOptInHeader: false}
 	handler := buildStack(hp, cfg, newTestMetrics(), next, settings)
 	ctx := testTenantContextWithForceLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2501,7 +2507,7 @@ func TestTenantMode_Off_HeaderDryRun_ForcesDryRun(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeOff},
 	}
 
@@ -2516,7 +2522,7 @@ func TestTenantMode_Off_HeaderDryRun_ForcesDryRun(t *testing.T) {
 		return streamResponseWithEntries(logproto.Entry{Timestamp: hintStart, Line: "failure"}), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: false, RequireOptInHeader: false, NgramLength: 3}
+	cfg := Config{DryRun: false, RequireOptInHeader: false, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next, settings)
 	ctx := testTenantContextWithDryRun()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -2540,7 +2546,7 @@ func TestTenantMode_Live_OverridesGlobalDryRun(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeLive},
 	}
 
@@ -2554,7 +2560,7 @@ func TestTenantMode_Live_OverridesGlobalDryRun(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: true, RequireOptInHeader: false}
+	cfg := Config{DryRun: true, RequireOptInHeader: false}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next, settings)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -2578,7 +2584,7 @@ func TestTenantMode_DryRun_OverridesGlobalLive(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeDryRun},
 	}
 
@@ -2593,7 +2599,7 @@ func TestTenantMode_DryRun_OverridesGlobalLive(t *testing.T) {
 		return streamResponseWithEntries(logproto.Entry{Timestamp: hintStart, Line: "failure"}), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: false, RequireOptInHeader: false, NgramLength: 3}
+	cfg := Config{DryRun: false, RequireOptInHeader: false, NgramLength: 3}
 	handler := buildStackWithLogger(hp, cfg, newTestMetrics(), logger, next, settings)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "failure"`, now.Add(-1*time.Hour), now)
@@ -2617,7 +2623,7 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 			},
 		},
 	}
-	settings := mockTenantSettings{
+	settings := mockLimits{
 		modes: map[string]Mode{"test": ModeLive},
 	}
 
@@ -2629,7 +2635,7 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	cfg := MiddlewareConfig{DryRun: false, RequireOptInHeader: true}
+	cfg := Config{DryRun: false, RequireOptInHeader: true}
 	handler := buildStack(hp, cfg, newTestMetrics(), next, settings)
 	ctx := testTenantContext()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)

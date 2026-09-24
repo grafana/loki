@@ -48,6 +48,13 @@ func (l *Loki) setupLBAC() error {
 			return err
 		}
 	}
+
+	// Logline wraps the label access middleware rather than the other way
+	// round, so the logline prefetch stays the outermost layer and the
+	// index-stats requests it sends go through label access.
+	if err := l.ModuleManager.AddDependency(LoglineQueryFrontendTripperware, LabelAccessTripperware); err != nil {
+		return err
+	}
 	return nil
 }
 

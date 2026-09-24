@@ -20,7 +20,7 @@ func TestBuilder_Flush_EmptyBuilder(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -50,7 +50,7 @@ func TestBuilder_ProcessStream_WithData(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -88,7 +88,7 @@ func TestBuilder_V3ExtractsLabelValues(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			NgramLength:      6,
@@ -135,7 +135,7 @@ func TestBuilder_FlushIntegration(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			// 200ms: divides 24h, and its docID window (epoch + 2^32 ticks ≈
 			// 27y) ends comfortably past Validate's one-year future runway.
 			DocumentInterval: 200 * time.Millisecond,
@@ -195,7 +195,7 @@ func TestBuilder_ProcessStream_MultipleEntries(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -250,7 +250,7 @@ func TestProcessStream_FutureEntriesGetOwnBucket(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -316,7 +316,7 @@ func BenchmarkProcessStream(b *testing.B) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
 		},
@@ -399,7 +399,7 @@ func BenchmarkProcessStream_NoFlush(b *testing.B) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: DefaultDocumentInterval,
 			NgramLength:      DefaultNgramLength,
 		},
@@ -469,7 +469,7 @@ func BenchmarkProcessStream_ParallelConsumers(b *testing.B) {
 		// Each goroutine gets its own builder (simulating different consumer instances)
 		cfg := Config{
 			Kafka: KafkaConfig{Address: "localhost:9092", Topic: "bench-topic", ConsumerGroupName: "bench-group"},
-			Index: IndexConfig{
+			Index: logline.IndexConfig{
 				DocumentInterval: DefaultDocumentInterval,
 				NgramLength:      DefaultNgramLength,
 			},
@@ -563,7 +563,7 @@ func TestBuilder_TracksDateRanges(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -610,7 +610,7 @@ func TestBuilder_QueueTimestampInObjectKey(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -679,7 +679,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 	// permanently, silently skip replayed Adaptive Logs archive data.
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -741,7 +741,7 @@ func TestBuilder_MinDate_DropsOldEntries(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
@@ -794,7 +794,7 @@ func TestNewIndexBuilder_RejectsPreEpochMinDate(t *testing.T) {
 	// construction instead (CLAUDE.md invariant #7).
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 		FlushOnIdle:   1 * time.Minute,
