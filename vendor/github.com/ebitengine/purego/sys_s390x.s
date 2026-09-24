@@ -131,6 +131,7 @@ TEXT syscallX(SB), NOSPLIT, $0
 	// Store integer results back (R2, R3)
 	MOVD R2, syscallArgs_a1(R9)
 	MOVD R3, syscallArgs_a2(R9)
+	MOVD $0, syscallArgs_a3(R9) // no errno here: clear the input argument
 
 	// Store float return values (F0, F2, F4, F6)
 	FMOVD F0, syscallArgs_f1(R9)

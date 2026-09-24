@@ -127,6 +127,7 @@ TEXT syscallX(SB), NOSPLIT, $0
 	BL   purego_error(SB)
 	MOVD (R0), R0
 	MOVD R0, syscallArgs_a3(R2) // save errno
-
+#else
+	MOVD $0, syscallArgs_a3(R2) // no errno here: clear the input argument
 #endif
 	RET
