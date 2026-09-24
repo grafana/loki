@@ -408,6 +408,14 @@ func TestParseRequest(t *testing.T) {
 				// For non-OTLP (Loki) requests, TotalExpandedEntriesSize should equal the combined size of
 				// log lines and structured metadata bytes, since there are no resource/scope attributes to expand.
 				require.EqualValues(t, totalBytes, stats.TotalExpandedEntriesSize)
+
+				for policy, expectedTotalBytes := range test.expectedBytes {
+					expectedStructuredMetadataBytes := test.expectedStructuredMetadataBytes[policy]
+					require.EqualValuesf(t, expectedStructuredMetadataBytes, stats.StructuredMetadataBytes[policy][time.Hour], "structured metadata bytes for policy %q", policy)
+					require.EqualValuesf(t, expectedTotalBytes-expectedStructuredMetadataBytes, stats.LogLinesBytes[policy][time.Hour], "log lines bytes for policy %q", policy)
+					require.EqualValuesf(t, test.expectedLines[policy], stats.PolicyNumLines[policy], "line count for policy %q", policy)
+				}
+				require.Lenf(t, stats.PolicyNumLines, len(test.expectedLines), "unexpected policies in stats.PolicyNumLines: %v", stats.PolicyNumLines)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
