@@ -52,16 +52,6 @@ type ParserHint interface {
 	PreserveError() bool
 }
 
-// LabelFilterHints let a parser stop parsing a line early once a label it
-// just extracted already fails a label filter positioned later in the
-// pipeline, instead of extracting the rest of the line only to have the
-// filter stage throw it away.
-type LabelFilterHints interface {
-	// ShouldContinueParsingLine returns true when there is no label matcher for the
-	// provided label or the passed label and value match what's in the pipeline
-	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
-}
-
 type Hints struct {
 	noLabels            bool
 	requiredLabels      []string
@@ -185,48 +175,4 @@ func appendLabelHints(dst []string, src ...string) []string {
 		}
 	}
 	return dst
-}
-
-// NoLabelFilterHints returns a LabelFilterHints that never short-circuits.
-func NoLabelFilterHints() LabelFilterHints {
-	return &labelFilterHints{}
-}
-
-type labelFilterHints struct {
-	// Save the names next to the filters to avoid an alloc when f.RequiredLabelNames() is called
-	labelFilters []LabelFilterer
-	labelNames   []string
-}
-
-func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
-	for i := 0; i < len(h.labelNames); i++ {
-		if h.labelNames[i] == labelName {
-			_, matches := h.labelFilters[i].Process(0, nil, lbs)
-			return matches
-		}
-	}
-	return true
-}
-
-// NewLabelFilterHints scans stages for single-label filters so a parser can stop
-// extracting a line as soon as one of them fails to match a label it just extracted.
-func NewLabelFilterHints(stages []Stage) LabelFilterHints {
-	var labelNames []string
-	var labelFilters []LabelFilterer
-	for _, s := range stages {
-		switch f := s.(type) {
-		case *BinaryLabelFilter:
-			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
-			// we should be able to add this to our filters
-			continue
-		case LabelFilterer:
-			if len(f.RequiredLabelNames()) > 1 {
-				// Hints can only operate on one label at a time
-				continue
-			}
-			labelFilters = append(labelFilters, f)
-			labelNames = append(labelNames, f.RequiredLabelNames()...)
-		}
-	}
-	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames}
 }

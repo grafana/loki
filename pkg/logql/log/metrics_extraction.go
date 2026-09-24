@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -330,10 +331,9 @@ func LabelExtractorWithStages(
 		sort.Strings(groups)
 	}
 	preStage := ReduceStages(preStages)
-	allStages := append(preStages, postFilter)
 	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
 	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
-		WithLabelFilterHints(NewLabelFilterHints(allStages))
+		WithLabelFilterHints(NewLabelFilterHints(slices.Concat(preStages, []Stage{unwrapConversion{}, postFilter})))
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
@@ -342,6 +342,22 @@ func LabelExtractorWithStages(
 		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
+}
+
+// unwrapConversion marks the position of the unwrap conversion for NewLabelFilterHints. The
+// conversion runs between the stages and the post filter. It can set __error__, so a post filter
+// on __error__ cannot run early.
+type unwrapConversion struct{}
+
+func (unwrapConversion) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return line, true
+}
+
+func (unwrapConversion) RequiredLabelNames() []string { return nil }
+
+// Hints implements Stage.
+func (unwrapConversion) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 type streamLabelSampleExtractor struct {

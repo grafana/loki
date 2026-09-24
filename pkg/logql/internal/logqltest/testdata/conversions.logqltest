@@ -69,6 +69,17 @@ eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m]) 
 eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) | __error__="" [1m]) by (unit)
   expect empty
 
+# bytes() parse failure after a logfmt() --strict failure: the conversion error replaces the
+# parser error, so a __error__ filter after unwrap reads the conversion error.
+clear
+load
+  {unit="bad"} `b=1XB x="unterminated` @ 10s [repeat every 10s for 6]
+
+eval instant at 60s max_over_time({unit="bad"} | logfmt --strict | unwrap bytes(b) | __error__="LogfmtParserErr" [1m])
+  expect empty
+eval instant at 60s max_over_time({unit="bad"} | logfmt --strict | unwrap bytes(b) | __error__="SampleExtractionErr" [1m])
+  expect fail msg: SampleExtractionErr
+
 # duration() / duration_seconds(): both route to the same conversion and return
 # seconds, so they yield identical values on identical input.
 clear

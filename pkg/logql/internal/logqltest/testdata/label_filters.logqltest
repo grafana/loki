@@ -1059,6 +1059,9 @@ eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!=
 # A filter that runs before the parser cannot drop the line: no stage has failed yet.
 eval instant at 60s count_over_time({app="a"} | __error__="" | logfmt | took > 1s [1m])
   expect fail msg: LabelFilterErr
+# The same is true for a filter between the parser and the failing filter.
+eval instant at 60s count_over_time({app="a"} | logfmt | __error__="" | took > 1s [1m])
+  expect fail msg: LabelFilterErr
 # Only a filter on __error__ itself suppresses the error.
 eval instant at 60s count_over_time({app="a"} | logfmt | __error_details__="" | took > 1s [1m])
   expect fail msg: LabelFilterErr
@@ -1239,3 +1242,103 @@ eval instant at 60s count_over_time({app="s"} | duration > 1m and bytes > 20MB [
   {app="s", duration="90s", bytes="25MB"} 3
 eval instant at 60s count_over_time({app="m"} | duration > 1m and bytes > 20MB [1m])
   {app="m", duration="90s", bytes="25MB"} 3
+
+# string label filter: it reads the label at its own position in the pipeline. A stage between the
+# parser and the filter can set, rename or remove the label.
+clear
+load
+  {app="a"} "foo=nope bar=hello"           @ 20s [repeat every 20s for 3]
+  {app="a"} "foo=yes bar=other"            @ 30s [repeat every 20s for 2] # noise: the filter drops it, unless noted
+  {app="j"} `{"foo":"nope","bar":"hello"}` @ 20s [repeat every 20s for 3]
+  {app="j"} `{"foo":"nope","bar":"other"}` @ 30s [repeat every 20s for 2] # noise: the filter drops it
+
+# label_format sets the label from a template.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m]))
+  {bar="hello"} 3
+eval range from 40s to 80s step 20s sum by (bar) (count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m]))   # overlapping
+  {bar="hello"} 2 3 2
+eval range from 60s to 180s step 120s sum by (bar) (count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m])) # non-overlapping
+  {bar="hello"} 3 _
+eval instant at 60s sum without (app) (count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m]))
+  {foo="hello", bar="hello"} 3
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m]))
+  {} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello" [1m])
+  {app="a", foo="hello", bar="hello"} 3
+# label_format sets the label to a constant, so every line passes.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | label_format foo="bar" | foo="bar" [1m]))
+  {bar="hello"} 3
+  {bar="other"} 2
+# label_format renames another label to the filtered label. The rename removes bar.
+eval instant at 60s sum by (foo) (count_over_time({app="a"} | logfmt | label_format foo=bar | foo="hello" [1m]))
+  {foo="hello"} 3
+# label_format renames the filtered label to another label, so the filtered label is absent.
+eval instant at 60s sum by (baz) (count_over_time({app="a"} | logfmt | label_format baz=foo | foo="" [1m]))
+  {baz="nope"} 3
+  {baz="yes"} 2
+# label_format sets another label, so the filtered label keeps its parsed value.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | label_format baz="{{.bar}}" | foo="nope" [1m]))
+  {bar="hello"} 3
+# drop removes the filtered label.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | drop foo | foo="" [1m]))
+  {bar="hello"} 3
+  {bar="other"} 2
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | drop foo="nope" | foo="" [1m]))
+  {bar="hello"} 3
+eval range from 40s to 80s step 20s sum by (bar) (count_over_time({app="a"} | logfmt | drop foo="nope" | foo="" [1m]))   # overlapping
+  {bar="hello"} 2 3 2
+eval range from 60s to 180s step 120s sum by (bar) (count_over_time({app="a"} | logfmt | drop foo="nope" | foo="" [1m])) # non-overlapping
+  {bar="hello"} 3 _
+# keep removes every label it does not list.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | keep bar | foo="" [1m]))
+  {bar="hello"} 3
+  {bar="other"} 2
+# keep lists the filtered label, so the filtered label keeps its parsed value.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | logfmt | keep foo, bar | foo="nope" [1m]))
+  {bar="hello"} 3
+# A label extraction expression sets the filtered label again.
+eval instant at 60s count_over_time({app="j"} | json | json foo="bar" | foo="hello" [1m])
+  {app="j", foo="hello", bar="hello"} 3
+# A filter before the parser reads the label before the parser sets it.
+eval instant at 60s sum by (bar) (count_over_time({app="a"} | foo="" | logfmt [1m]))
+  {bar="hello"} 3
+  {bar="other"} 2
+# log selection
+eval select from 0 to 60s forward {app="a"} | logfmt | label_format foo="{{.bar}}" | foo="hello"
+  {app="a"} "foo=nope bar=hello" @ 20s [parsed foo="hello" bar="hello"]
+  {app="a"} "foo=nope bar=hello" @ 40s [parsed foo="hello" bar="hello"]
+eval select from 0 to 60s forward {app="a"} | logfmt | drop foo="nope" | foo=""
+  {app="a"} "foo=nope bar=hello" @ 20s [parsed bar="hello"]
+  {app="a"} "foo=nope bar=hello" @ 40s [parsed bar="hello"]
+
+# ip() label filter: it passes a line that has __error__. Only a string filter on __error__ drops
+# the line.
+clear
+load
+  {app="a"} `{"addr":"10.0.0.1","x":"unterminated` @ 20s [repeat every 20s for 3] # json() fails after addr
+  {app="a"} `{"addr":"192.168.1.5"}`                @ 30s [repeat every 20s for 2]
+  {app="a"} `{"addr":"10.0.0.1"}`                   @ 25s [repeat every 20s for 2] # noise: the ip() filter drops it
+
+eval instant at 60s count_over_time({app="a"} | json | addr = ip("192.168.0.0/16") [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s count_over_time({app="a"} | json | addr = ip("192.168.0.0/16") | __error__="" [1m])
+  {app="a", addr="192.168.1.5"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("192.168.0.0/16") | __error__="" [1m])   # overlapping
+  {app="a", addr="192.168.1.5"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("192.168.0.0/16") | __error__="" [1m]) # non-overlapping
+  {app="a", addr="192.168.1.5"} 2 _
+eval select from 0 to 60s forward {app="a"} | json | addr = ip("192.168.0.0/16") | drop __error_details__
+  {app="a"} `{"addr":"10.0.0.1","x":"unterminated` @ 20s [parsed addr="10.0.0.1" __error__="JSONParserErr"]
+  {app="a"} `{"addr":"192.168.1.5"}`                @ 30s [parsed addr="192.168.1.5"]
+  {app="a"} `{"addr":"10.0.0.1","x":"unterminated` @ 40s [parsed addr="10.0.0.1" __error__="JSONParserErr"]
+  {app="a"} `{"addr":"192.168.1.5"}`                @ 50s [parsed addr="192.168.1.5"]
+
+# __error__ label filter: a parsed key named __error__ does not set the error. The filter reads the
+# error that json() sets after the key.
+clear
+load
+  {app="a"} `{"__error__":"x","y":"unterminated` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"y":"z"}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json | __error__!="" [1m])
+  expect fail msg: JSONParserErr
