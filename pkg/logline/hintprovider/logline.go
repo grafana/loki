@@ -82,7 +82,7 @@ func (p *LoglineHintProvider) QueryHints(
 	if err != nil {
 		return &logproto.HintResponse{Stats: &snap}, err
 	}
-	return &logproto.HintResponse{TimeRanges: aggregateShardRanges(shardRanges), Stats: &snap}, nil
+	return &logproto.HintResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
 }
 
 type hintPlan struct {
@@ -175,7 +175,7 @@ func (p *LoglineHintProvider) provideHintsRemote(
 		return nil, plan.stats, fmt.Errorf("unexpected hint response type %T", resp)
 	}
 
-	ranges := append(plan.ranges, hr.Response.TimeRanges...)
+	ranges := append(plan.ranges, fromProtoRanges(hr.Response.TimeRanges)...)
 	return &Hints{TimeRanges: normalizeRanges(ranges)}, QueryStatsFromProto(hr.Response.Stats), nil
 }
 

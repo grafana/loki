@@ -473,7 +473,6 @@ message HintTimeRange {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  string source = 3;
 }
 
 message HintQueryStats {

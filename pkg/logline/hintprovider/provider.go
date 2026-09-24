@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -32,12 +33,44 @@ type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time, next queryrangebase.Handler) (*Hints, *QueryStats, error)
 }
 
-// HintTimeRange is the in-process name for the wire window type.
-type HintTimeRange = logproto.HintTimeRange
+// HintTimeRange is a half-open time window [Start, End) that may contain
+// matching logs. Start is inclusive, End is exclusive. This matches the
+// document bounds written by index builders (MinTimeUnix inclusive,
+// MaxTimeUnix exclusive).
+type HintTimeRange struct {
+	Start time.Time
+	End   time.Time
+	// Source is optional provider-specific provenance for diagnostics.
+	Source string
+}
+
+// IsPassthrough reports whether this range is a synthetic window where the
+// logline index has no coverage (e.g. before store min date). A zero Start
+// is the sentinel; the filter middleware should pass these intervals through
+// to Loki unmodified rather than treating them as narrowed.
+func (h HintTimeRange) IsPassthrough() bool {
+	return h.Start.IsZero()
+}
 
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
 	TimeRanges []HintTimeRange
+}
+
+func toProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
+	out := make([]logproto.HintTimeRange, len(in))
+	for i, r := range in {
+		out[i] = logproto.HintTimeRange{Start: r.Start, End: r.End}
+	}
+	return out
+}
+
+func fromProtoRanges(in []logproto.HintTimeRange) []HintTimeRange {
+	out := make([]HintTimeRange, len(in))
+	for i, r := range in {
+		out[i] = HintTimeRange{Start: r.Start, End: r.End}
+	}
+	return out
 }
 
 // String returns a compact, log-friendly representation of hint ranges.
