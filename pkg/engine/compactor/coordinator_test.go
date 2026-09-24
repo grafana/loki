@@ -1156,6 +1156,22 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 	return c, tenantsWithLiveDispatch
 }
 
+// liveTenantsEqual reports whether one snapshot of the live-tenant set matches want.
+// Callers must not check length and contents across separate liveTenants() calls:
+// the set can change between them.
+func liveTenantsEqual(live func() []string, want ...string) bool {
+	got := live()
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func seededToC(ctx context.Context, t *testing.T, window time.Time, tenants ...string) objstore.Bucket {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
@@ -1192,7 +1208,7 @@ func TestReconcile_FiltersToEnabledTenants(t *testing.T) {
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+		return liveTenantsEqual(liveTenants, "acme")
 	}, 2*time.Second, 5*time.Millisecond, "only the enabled tenant runs a worker")
 	require.Contains(t, workers, "acme")
 	require.NotContains(t, workers, "bravo")
@@ -1216,7 +1232,7 @@ func TestReconcile_EnabledButAbsentFromToC_NoWorker(t *testing.T) {
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+		return liveTenantsEqual(liveTenants, "acme")
 	}, 2*time.Second, 5*time.Millisecond)
 	require.NotContains(t, workers, "bravo", "an enabled tenant not in the ToC gets no worker")
 }
@@ -1245,7 +1261,7 @@ func TestReconcile_RemovedFromToC_CancelsWorker(t *testing.T) {
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+		return liveTenantsEqual(liveTenants, "acme")
 	}, 2*time.Second, 5*time.Millisecond, "tenant removed from ToC has its worker cancelled")
 	require.NotContains(t, workers, "bravo")
 }
@@ -1361,7 +1377,7 @@ func TestReconcile_StartAndCancelSameTick(t *testing.T) {
 
 	c.reconcile(ctx, workers, &wg)
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+		return liveTenantsEqual(liveTenants, "acme")
 	}, 2*time.Second, 5*time.Millisecond)
 
 	// Next tick: ToC now lists bravo only. acme is removed and bravo started in
@@ -1370,7 +1386,7 @@ func TestReconcile_StartAndCancelSameTick(t *testing.T) {
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "bravo"
+		return liveTenantsEqual(liveTenants, "bravo")
 	}, 2*time.Second, 5*time.Millisecond, "one start and one cancel in a single tick")
 	require.Contains(t, workers, "bravo")
 	require.NotContains(t, workers, "acme")
@@ -1489,7 +1505,7 @@ func TestReconcile_PreviousWindowStartsWorker(t *testing.T) {
 	c.reconcile(ctx, workers, &wg)
 
 	require.Eventually(t, func() bool {
-		return len(liveTenants()) == 1 && liveTenants()[0] == "bravo"
+		return liveTenantsEqual(liveTenants, "bravo")
 	}, 2*time.Second, 5*time.Millisecond, "previous-window tenant is compacted while the current window has no ToC")
 	require.Contains(t, workers, "bravo")
 }
