@@ -5,7 +5,7 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // shardGroup identifies a partitioning scheme. Indexes in the same group
@@ -23,13 +23,13 @@ type shardKey struct {
 	ShardValue int
 }
 
-func shardKeyOf(m store.Meta) shardKey {
+func shardKeyOf(idx logproto.HintIndex) shardKey {
 	return shardKey{
 		shardGroup: shardGroup{
-			ShardCount:     m.ShardCount,
-			ShardAlgorithm: m.ShardAlgorithm,
+			ShardCount:     int(idx.ShardCount),
+			ShardAlgorithm: idx.ShardAlgorithm,
 		},
-		ShardValue: m.ShardValue,
+		ShardValue: int(idx.ShardValue),
 	}
 }
 
@@ -85,14 +85,14 @@ func intersectRanges(a, b []HintTimeRange) []HintTimeRange {
 	return out
 }
 
-// filterNgramsForShard returns only the ngrams that map to meta's shard.
+// filterNgramsForShard returns only the ngrams that map to index's shard.
 // For unsharded indexes (ShardCount <= 1) or unknown algorithms, returns
 // the full list unchanged.
-func filterNgramsForShard(ngrams []string, meta store.Meta) []string {
-	if meta.ShardCount <= 1 {
+func filterNgramsForShard(ngrams []string, hintIndex logproto.HintIndex) []string {
+	if hintIndex.ShardCount <= 1 {
 		return ngrams
 	}
-	fn, err := shard.New(meta.ShardAlgorithm)
+	fn, err := shard.New(hintIndex.ShardAlgorithm)
 	if err != nil {
 		// for an unknown alg it feels safe enough to simply return all ngrams. essentially the filter "fails open"
 		// by looking for everything
@@ -102,7 +102,7 @@ func filterNgramsForShard(ngrams []string, meta store.Meta) []string {
 	for _, ng := range ngrams {
 		var key [8]byte
 		copy(key[:], ng)
-		if fn(key, meta.ShardCount) == meta.ShardValue {
+		if fn(key, int(hintIndex.ShardCount)) == int(hintIndex.ShardValue) {
 			filtered = append(filtered, ng)
 		}
 	}

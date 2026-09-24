@@ -190,8 +190,8 @@ func (s *Store) GetIndex(ctx context.Context, id string) (io.ReadCloser, error) 
 // GetIndexReaderAt returns an io.ReaderAt backed by range reads against
 // object storage. Each ReadAt call issues a single GetRange request,
 // avoiding the need to download the full index into memory.
-func (s *Store) GetIndexReaderAt(ctx context.Context, meta Meta) io.ReaderAt {
-	return NewBucketReaderAt(ctx, s.bucket, meta.IndexPath())
+func (s *Store) GetIndexReaderAt(ctx context.Context, indexPath string) io.ReaderAt {
+	return NewBucketReaderAt(ctx, s.bucket, indexPath)
 }
 
 // GetIndexReadAheadReaderAt returns an io.ReaderAt that prefetches chunks

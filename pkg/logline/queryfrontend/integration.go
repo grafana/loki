@@ -198,7 +198,7 @@ func WrapMiddlewareWithStore(
 		}
 	}
 
-	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, 0, reg)
+	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, cfg.MaxHintDaysParallel, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
 	}

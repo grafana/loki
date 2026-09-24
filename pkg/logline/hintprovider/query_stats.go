@@ -237,39 +237,10 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 	}
 }
 
-type QueryStatsSnapshot struct {
-	HeaderReads   int64
-	MetadataReads int64
-	TermDictReads int64
-	BitmapReads   int64
-
-	HeaderCacheMisses   int64
-	MetadataCacheMisses int64
-
-	ObjectStorageRequests int64
-	TotalIOWait           time.Duration
-	TotalIOBytes          int64
-
-	PeakConcurrency      int32
-	EffectiveConcurrency float64
-
-	PrefetchCalls    int32
-	PrefetchTimeouts int32
-
-	IndexQueriesTotal         int64
-	IndexQueriesTermMiss      int64
-	IndexQueriesEmptyAnd      int64
-	IndexQueriesPositive      int64
-	TotalTermBatchesProcessed int64
-
-	HintCacheResult      string
-	HintCacheDaysFetched int64
-	HintCacheDaysHit     int64
-}
-
-func (s *QueryStats) Snapshot() QueryStatsSnapshot {
+// Snapshot returns a frozen copy of the accumulator as the wire stats type.
+func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	if s == nil {
-		return QueryStatsSnapshot{}
+		return logproto.HintQueryStats{}
 	}
 
 	headerReads := s.headerReads.Load()
@@ -292,7 +263,7 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
 
-	return QueryStatsSnapshot{
+	return logproto.HintQueryStats{
 		HeaderReads:               headerReads,
 		MetadataReads:             metadataReads,
 		TermDictReads:             termDictReads,
@@ -314,34 +285,6 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 		HintCacheResult:           hintCacheResult,
 		HintCacheDaysFetched:      s.hintCacheDaysFetched.Load(),
 		HintCacheDaysHit:          s.hintCacheDaysHit.Load(),
-	}
-}
-
-// ToProto returns the wire snapshot used on HintResponse.
-func (s *QueryStats) ToProto() logproto.HintQueryStats {
-	snap := s.Snapshot()
-	return logproto.HintQueryStats{
-		HeaderReads:               snap.HeaderReads,
-		MetadataReads:             snap.MetadataReads,
-		TermDictReads:             snap.TermDictReads,
-		BitmapReads:               snap.BitmapReads,
-		HeaderCacheMisses:         snap.HeaderCacheMisses,
-		MetadataCacheMisses:       snap.MetadataCacheMisses,
-		ObjectStorageRequests:     snap.ObjectStorageRequests,
-		TotalIOWait:               snap.TotalIOWait,
-		TotalIOBytes:              snap.TotalIOBytes,
-		PeakConcurrency:           snap.PeakConcurrency,
-		EffectiveConcurrency:      snap.EffectiveConcurrency,
-		PrefetchCalls:             snap.PrefetchCalls,
-		PrefetchTimeouts:          snap.PrefetchTimeouts,
-		IndexQueriesTotal:         snap.IndexQueriesTotal,
-		IndexQueriesTermMiss:      snap.IndexQueriesTermMiss,
-		IndexQueriesEmptyAnd:      snap.IndexQueriesEmptyAnd,
-		IndexQueriesPositive:      snap.IndexQueriesPositive,
-		TotalTermBatchesProcessed: snap.TotalTermBatchesProcessed,
-		HintCacheResult:           snap.HintCacheResult,
-		HintCacheDaysFetched:      snap.HintCacheDaysFetched,
-		HintCacheDaysHit:          snap.HintCacheDaysHit,
 	}
 }
 
