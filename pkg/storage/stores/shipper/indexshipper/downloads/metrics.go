@@ -27,9 +27,11 @@ type metrics struct {
 func newMetrics(r prometheus.Registerer) *metrics {
 	m := &metrics{
 		fileDownloadDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "index_file_download_duration_seconds",
-			Help:    "Object retrieval and transfer to a temporary file, excluding extraction, fsync and open. Successful observation count is the number of files downloaded, including repeat downloads.",
-			Buckets: []float64{.001, .01, .1, 1, 5, 10, 30, 60, 120, 300, 600},
+			Name:                            "index_file_download_duration_seconds",
+			Help:                            "Object retrieval and transfer to a temporary file, excluding extraction, fsync and open. Successful observation count is the number of files downloaded, including repeat downloads.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"status_code"}),
 		queryTimeTableDownloadDurationSeconds: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "query_time_table_download_duration_seconds",
