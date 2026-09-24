@@ -91,14 +91,14 @@ type CachingHintProvider struct {
 }
 
 // NewCachingHintProvider constructs a caching decorator for QueryHintProvider.
-func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, max int, reg prometheus.Registerer) *CachingHintProvider {
-	if max <= 0 {
-		max = defaultHintsDayParallel
+func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, maxDays int, reg prometheus.Registerer) *CachingHintProvider {
+	if maxDays <= 0 {
+		maxDays = defaultHintsDayParallel
 	}
 	return &CachingHintProvider{
 		delegate: delegate,
 		cache:    c,
-		max:      max,
+		max:      maxDays,
 		requestsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_hint_cache_requests_total",
 			Help: "Total hint cache lookup requests by result.",

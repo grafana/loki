@@ -87,9 +87,9 @@ func (p *LoglineHintProvider) QueryHints(
 
 type hintPlan struct {
 	filters []string
-	ranges 	[]HintTimeRange
+	ranges  []HintTimeRange
 	indexes []logproto.HintIndex
-	stats 	*QueryStats
+	stats   *QueryStats
 }
 
 func (p *LoglineHintProvider) getHintPlan(

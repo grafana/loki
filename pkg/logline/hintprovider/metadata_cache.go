@@ -118,12 +118,6 @@ func (c *metadataCache) evictStale(snap *store.Snapshot) {
 	}
 }
 
-func (c *metadataCache) len() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return len(c.entries)
-}
-
 func estimateBytes(value cachedMetadata) uint64 {
 	info := value.headerInfo
 	return info.DocMetadataSize + info.TermBlockDirSize + info.PostingsBlockDirSize

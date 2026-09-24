@@ -130,14 +130,14 @@ type Store interface {
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
-	cfg             	Config
-	store           	Store
-	limits          	querier_limits.Limits
-	ingesterQuerier 	*IngesterQuerier
-	patternQuerier  	pattern.PatterQuerier
-	deleteGetter    	deletion.DeleteGetter
-	logger          	log.Logger
-	loglineHintProvider	*hintprovider.LoglineHintProvider
+	cfg                 Config
+	store               Store
+	limits              querier_limits.Limits
+	ingesterQuerier     *IngesterQuerier
+	patternQuerier      pattern.PatterQuerier
+	deleteGetter        deletion.DeleteGetter
+	logger              log.Logger
+	loglineHintProvider *hintprovider.LoglineHintProvider
 }
 
 // New makes a new Querier.
