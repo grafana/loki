@@ -85,19 +85,24 @@ func (p *LoglineHintProvider) QueryHints(
 	return &logproto.HintResponse{TimeRanges: aggregateShardRanges(shardRanges), Stats: &snap}, nil
 }
 
-func (p *LoglineHintProvider) ProvideHints(
-	ctx context.Context,
-	next queryrangebase.Handler,
-	tenant string,
+type hintPlan struct {
+	filters []string
+	ranges 	[]HintTimeRange
+	indexes []logproto.HintIndex
+	stats 	*QueryStats
+}
+
+func (p *LoglineHintProvider) getHintPlan(
 	expr syntax.Expr,
 	from, through model.Time,
-) (*Hints, *QueryStats, error) {
+	tenant string,
+) (hintPlan, error) {
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
 
 	filters := SupportedQuery(expr, p.ngramLength)
 	if len(filters) == 0 {
-		return nil, stats, ErrUnsupported
+		return hintPlan{filters, nil, nil, stats}, ErrUnsupported
 	}
 
 	start := from.Time().UTC()
@@ -116,13 +121,13 @@ func (p *LoglineHintProvider) ProvideHints(
 		})
 		// Entire query window is pre-min-date: passthrough hint already fully covers it.
 		if !end.After(minDate) {
-			return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+			return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
 		}
 	}
 
 	overlapping := p.store.IndexesForRange(start, end)
 	if len(overlapping) == 0 {
-		return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+		return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
 	}
 
 	indexes := make([]logproto.HintIndex, len(overlapping))
@@ -140,25 +145,62 @@ func (p *LoglineHintProvider) ProvideHints(
 		}
 	}
 
+	return hintPlan{filters, ranges, indexes, stats}, nil
+}
+
+func (p *LoglineHintProvider) provideHintsRemote(
+	ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+	next queryrangebase.Handler,
+) (*Hints, *QueryStats, error) {
+	plan, err := p.getHintPlan(expr, from, through, tenant)
+	if err != nil || len(plan.indexes) == 0 {
+		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
+	}
+
 	resp, err := next.Do(ctx, &logproto.HintRequest{
 		From:    from,
 		Through: through,
 		Expr:    expr.String(),
-		Indexes: indexes,
+		Indexes: plan.indexes,
 	})
-
 	if err != nil {
-		return nil, stats, err
+		return nil, plan.stats, err
 	}
 
 	hr, ok := resp.(*queryrange.HintResponse)
 	if !ok || hr == nil || hr.Response == nil {
-		return nil, stats, fmt.Errorf("unexpected hint response type %T", resp)
+		return nil, plan.stats, fmt.Errorf("unexpected hint response type %T", resp)
 	}
 
-	hints := hr.Response.TimeRanges
-	ranges = append(ranges, hints...)
+	ranges := append(plan.ranges, hr.Response.TimeRanges...)
 	return &Hints{TimeRanges: normalizeRanges(ranges)}, QueryStatsFromProto(hr.Response.Stats), nil
+}
+
+func (p *LoglineHintProvider) ProvideHints(
+	ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+	next queryrangebase.Handler,
+) (*Hints, *QueryStats, error) {
+	if next != nil {
+		return p.provideHintsRemote(ctx, tenant, expr, from, through, next)
+	}
+	plan, err := p.getHintPlan(expr, from, through, tenant)
+	if err != nil || len(plan.indexes) == 0 {
+		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
+	}
+
+	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats)
+	if err != nil {
+		return nil, plan.stats, err
+	}
+
+	ranges := append(plan.ranges, aggregateShardRanges(shardRanges)...)
+	return &Hints{TimeRanges: normalizeRanges(ranges)}, plan.stats, nil
 }
 
 // MinDate returns the configured minimum trusted date boundary used by the
@@ -351,5 +393,3 @@ func appendTruncationMarker(s string) string {
 	keep := min(max(maxMergedSourceLen-len(truncatedSourceMarker), 0), len(s))
 	return s[:keep] + truncatedSourceMarker
 }
-
-var _ QueryHintProvider = (*LoglineHintProvider)(nil)

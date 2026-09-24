@@ -67,11 +67,11 @@ func (m mockTenantSettings) MinQueryBytesForIndex(tenant string) (int64, bool) {
 
 func (m *mockHintProvider) ProvideHints(
 	ctx context.Context,
-	_ queryrangebase.Handler,
 	_ string,
 	_ syntax.Expr,
 	_,
 	_ model.Time,
+	_ queryrangebase.Handler,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	stats := hintprovider.NewQueryStats()
 

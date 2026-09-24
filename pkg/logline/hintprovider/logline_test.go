@@ -19,36 +19,12 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
-
-// localHintHandler runs QueryHints so ProvideHints unit tests can
-// exercise the HintRequest unpack path without a query-frontend.
-type localHintHandler struct {
-	provider *LoglineHintProvider
-}
-
-func (h localHintHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	hr, ok := req.(*logproto.HintRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected HintRequest, got %T", req)
-	}
-	expr, err := syntax.ParseExpr(hr.Expr)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := h.provider.QueryHints(ctx, expr, hr.Indexes)
-	if err != nil {
-		return nil, err
-	}
-	return &queryrange.HintResponse{Response: resp}, nil
-}
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	indexStore := newTestStore(t)
@@ -63,11 +39,11 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -96,11 +72,11 @@ func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(logTS.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(logTS.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -122,11 +98,11 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	_, stats, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
@@ -201,13 +177,14 @@ func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(time.Now().Add(-time.Hour).UnixNano()),
 		model.TimeFromUnixNano(time.Now().UnixNano()),
+		nil,
 	)
-	require.Nil(t, hints)
+	require.NotNil(t, hints)
+	require.Empty(t, hints.TimeRanges)
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
@@ -224,11 +201,11 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 	expr := mustParseExpr(t, `{job="api"} | json | dashboardUID="grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -250,11 +227,11 @@ func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} | trace_id="9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -276,11 +253,11 @@ func TestLoglineHintProvider_ProvideHints_LabelFilterNoMatches(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} | trace_id="differentneedlevalue"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -307,11 +284,11 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 	))
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -323,11 +300,11 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 
 	hints, _, err = provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -347,11 +324,11 @@ func TestLoglineHintProvider_NoMatches(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |= "differentneedlevalue"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -374,11 +351,11 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 	through := time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -752,11 +729,11 @@ func TestLoglineHintProvider_ProvideHints_CrossShardIntersection(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(31*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -817,11 +794,11 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 	expr := mustParseExpr(t, `{job="api"} |= "1NG8K49T"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -848,11 +825,11 @@ func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
 	hints, _, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(61*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -884,11 +861,11 @@ func TestLoglineHintProvider_ProvideHints_CrossIndexBatchingFillsSharedBatches(t
 	expr := mustParseExpr(t, `{job="api"} |= "ABCDEFGH"`)
 	hints, stats, err := provider.ProvideHints(
 		context.Background(),
-		localHintHandler{provider},
 		"test-tenant",
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(16*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)

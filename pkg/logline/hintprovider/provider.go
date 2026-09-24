@@ -29,7 +29,7 @@ const HintSourcePreMinDate = "pre_min_date"
 
 // QueryHintProvider inspects a query and returns narrowed scan hints.
 type QueryHintProvider interface {
-	ProvideHints(ctx context.Context, next queryrangebase.Handler, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
+	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time, next queryrangebase.Handler) (*Hints, *QueryStats, error)
 }
 
 // HintTimeRange is the in-process name for the wire window type.

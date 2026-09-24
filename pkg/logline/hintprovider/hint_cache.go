@@ -112,10 +112,10 @@ func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, max int, 
 
 func (p *CachingHintProvider) ProvideHints(
 	ctx context.Context,
-	next queryrangebase.Handler,
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
+	next queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	if p.delegate == nil {
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
@@ -123,14 +123,14 @@ func (p *CachingHintProvider) ProvideHints(
 
 	if SkipCache(ctx) {
 		p.requestsTotal.WithLabelValues(hintCacheResultSkip).Inc()
-		hints, stats, err := p.delegate.ProvideHints(ctx, next, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through, next)
 		if stats != nil {
 			stats.ObserveHintCache(hintCacheResultSkip, 0, 0)
 		}
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 	if p.cache == nil {
-		hints, stats, err := p.delegate.ProvideHints(ctx, next, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through, next)
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 
@@ -169,7 +169,7 @@ func (p *CachingHintProvider) ProvideHints(
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 			sfKey := singleflightKey(tenant, queryString, day.day)
 			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-				hints, stats, provideErr := p.delegate.ProvideHints(gCtx, next, tenant, expr, dayFrom, dayThrough)
+				hints, stats, provideErr := p.delegate.ProvideHints(gCtx, tenant, expr, dayFrom, dayThrough, next)
 				if provideErr != nil {
 					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
 				}
