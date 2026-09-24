@@ -1000,6 +1000,13 @@ func (t *Loki) setupModuleManager() error {
 		if err != nil {
 			return err
 		}
+
+		// Logline wraps the label access middleware rather than the other
+		// way round, so the logline prefetch stays the outermost layer and
+		// the index-stats requests it sends go through label access.
+		if err := mm.AddDependency(LoglineQueryFrontendTripperware, LabelAccessTripperware); err != nil {
+			return err
+		}
 	}
 
 	return nil
