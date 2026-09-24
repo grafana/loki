@@ -170,6 +170,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.metadataReads.Add(other.metadataReads.Load())
 	s.termDictReads.Add(other.termDictReads.Load())
 	s.bitmapReads.Add(other.bitmapReads.Load())
+
 	s.headerCacheMisses.Add(other.headerCacheMisses.Load())
 	s.metadataCacheMisses.Add(other.metadataCacheMisses.Load())
 

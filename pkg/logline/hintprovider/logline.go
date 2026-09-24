@@ -393,3 +393,5 @@ func appendTruncationMarker(s string) string {
 	keep := min(max(maxMergedSourceLen-len(truncatedSourceMarker), 0), len(s))
 	return s[:keep] + truncatedSourceMarker
 }
+
+var _ QueryHintProvider = (*LoglineHintProvider)(nil)
