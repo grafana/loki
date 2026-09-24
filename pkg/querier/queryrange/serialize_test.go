@@ -165,3 +165,38 @@ func TestSerializeRoundTripperStripsClientHintRanges(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, response.Body.Close()) })
 	require.Empty(t, got.HintRanges)
 }
+
+func TestSerializeHTTPHandlerStripsClientHintRanges(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	start := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	httpRequest, err := DefaultCodec.EncodeRequest(ctx, &LokiRequest{
+		Query:     `{foo="bar"}`,
+		Limit:     100,
+		Path:      "/loki/api/v1/query_range",
+		StartTs:   start,
+		EndTs:     start.Add(time.Hour),
+		Direction: logproto.BACKWARD,
+		HintRanges: []logproto.HintTimeRange{{
+			Start: start.Add(5 * time.Minute),
+			End:   start.Add(10 * time.Minute),
+		}},
+	})
+	require.NoError(t, err)
+
+	var got *LokiRequest
+	next := queryrangebase.HandlerFunc(func(_ context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+		got = request.(*LokiRequest)
+		return &LokiResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     []logproto.Stream{},
+			},
+		}, nil
+	})
+
+	w := httptest.NewRecorder()
+	NewSerializeHTTPHandler(next, DefaultCodec).ServeHTTP(w, httpRequest)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Empty(t, got.HintRanges)
+}
