@@ -179,14 +179,26 @@ type broker struct {
 	dead atomic.Bool
 }
 
-// brokerVersions is loaded once (and potentially a few times concurrently if
-// multiple connections are opening at once) and then forever stored for a
+// brokerVersions is loaded on every connection (and potentially a few times
+// concurrently if multiple connections are opening at once) and stored for a
 // broker.
 type brokerVersions struct {
 	maxVers  map[int16]int16
 	minVers  map[int16]int16
 	features map[string]int16
+
+	// learnedAt is when we last began ApiVersions at our own max version
+	// and learned this broker's from the reply. A connection that begins
+	// at the cached version instead carries the time over, so that we ask
+	// at our own max again once the cache is relearnVersionsAfter old.
+	learnedAt time.Time
 }
+
+// relearnVersionsAfter is how long a connection begins ApiVersions at the
+// max version a broker previously told us before we ask at our own max
+// again. A broker upgraded in place is asked to check the cluster and node
+// we expect (KIP-1242) within this long.
+const relearnVersionsAfter = time.Hour
 
 func (v *brokerVersions) maxVersion(key int16) int16 {
 	if version, ok := v.maxVers[key]; ok {
@@ -677,6 +689,13 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		return *pcxn, nil
 	}
 
+	// A stopped broker never comes back (stopForever is final): a metadata
+	// update or rebootstrap removed it. Fail fast rather than dial an
+	// address we no longer trust; the request retries on a live broker.
+	if b.dead.Load() {
+		return nil, errChosenBrokerDead
+	}
+
 	var tries int
 doConnect:
 	tries++
@@ -711,12 +730,12 @@ doConnect:
 		// retry twice. On the first and second attempt, we try our max
 		// version possible (as should be allowed). On the third try,
 		// we downgrade to v0 (see requestAPIVersions).
-		if er := (*errApiVersionsReset)(nil); errors.As(err, &er) && tries < 3 {
-			cxn.closeConn()
+		if _, ok := errors.AsType[*errApiVersionsReset](err); ok && tries < 3 {
+			cxn.die()
 			goto doConnect
 		}
 		b.cl.cfg.logger.Log(LogLevelDebug, "connection initialization failed", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
-		cxn.closeConn()
+		cxn.die()
 		return nil, err
 	}
 	b.cl.cfg.logger.Log(LogLevelDebug, "connection initialized successfully", "addr", b.addr, "broker", logID(b.meta.NodeID))
@@ -740,11 +759,16 @@ doConnect:
 	// connection-per-broker ordering guarantee that Kafka requires
 	// for idempotent produce.
 	//
-	// closeConn runs the user's OnBrokerDisconnect hook, so it runs
-	// after the unlock (see stopForever for why).
+	// die runs the user's OnBrokerDisconnect hook, so it runs after the
+	// unlock (see stopForever for why). We die rather than just close the
+	// conn even though the connection was never stored: for an acks=0
+	// produce connection, init above already spawned the discard goroutine,
+	// which owns all reads. Closing the conn wakes its read with an error,
+	// and it dies the connection as it exits -- die's dead swap is what
+	// keeps the two teardowns from both closing deadCh (see #1377).
 	if b.dead.Load() {
 		b.reapMu.Unlock()
-		cxn.closeConn()
+		cxn.die()
 		return nil, errChosenBrokerDead
 	}
 
@@ -876,7 +900,7 @@ type brokerCxn struct {
 	resps ring[promisedResp]
 	// dead is an atomic so that a backed up resps cannot block cxn death.
 	dead atomic.Bool
-	// closed in closeConn; allows throttle waiting to quit
+	// closed in die; allows throttle waiting to quit
 	deadCh chan struct{}
 	// hasDiscard is set during init (before the connection is shared) if
 	// this is an acks=0 produce connection running the discard goroutine.
@@ -984,7 +1008,7 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 }
 
 func (cxn *brokerCxn) requestAPIVersions(tries int) error {
-	maxVersion := int16(4)
+	maxVersion := int16(5)
 	if tries >= 3 { // on the third try, we pin to v0; see above in cxn initialization
 		maxVersion = 0
 	} else if cxn.cl.cfg.maxVersions != nil {
@@ -998,11 +1022,32 @@ func (cxn *brokerCxn) requestAPIVersions(tries int) error {
 		}
 	}
 
+	// A broker we connected to before told us its ApiVersions max. If it
+	// is below ours, begin there: a request above the broker's max is
+	// answered UNSUPPORTED_VERSION and retried, one extra round trip per
+	// connection. Once the cache is old enough, we ask at our own max
+	// again in case the broker was upgraded.
+	learnedAt := time.Now()
+	if v := cxn.b.loadVersions(); v != nil && time.Since(v.learnedAt) < relearnVersionsAfter {
+		if cached := v.maxVersion(18); cached >= 0 && cached < maxVersion {
+			maxVersion = cached
+			learnedAt = v.learnedAt
+		}
+	}
+
 start:
 	req := kmsg.NewPtrApiVersionsRequest()
 	req.Version = maxVersion
 	req.ClientSoftwareName = cxn.cl.cfg.softwareName
 	req.ClientSoftwareVersion = cxn.cl.cfg.softwareVersion
+	// KIP-1242: name the cluster and node we expect to reach. Seeds have
+	// no node ID and get neither.
+	if maxVersion >= 5 && cxn.b.meta.NodeID >= 0 {
+		if clusterID := cxn.cl.clusterID.Load(); clusterID != nil {
+			req.ClusterID = clusterID
+			req.NodeID = cxn.b.meta.NodeID
+		}
+	}
 	cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing api versions request", "broker", logID(cxn.b.meta.NodeID), "version", maxVersion)
 	corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 	if writeErr != nil {
@@ -1014,8 +1059,7 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
-		var errno syscall.Errno
-		if errors.As(err, &errno) && isConnReset(errno) {
+		if errno, ok := errors.AsType[syscall.Errno](err); ok && isConnReset(errno) {
 			return &errApiVersionsReset{err}
 		} else if errors.Is(err, io.EOF) {
 			cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker received EOF during api versions discovery, which often happens when the broker requires TLS and the client is not using it (is TLS misconfigured?)", "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
@@ -1034,7 +1078,9 @@ start:
 	//
 	// Pre Kafka 2.4, we have to retry the request with version 0.
 	// Post, Kafka replies with the version we should retry with (KIP-511).
+	var sawUnsupportedVersion bool
 	if rawResp[1] == 35 {
+		sawUnsupportedVersion = true
 		if maxVersion == 0 {
 			return errors.New("broker replied with UNSUPPORTED_VERSION to an ApiVersions request of version 0")
 		}
@@ -1063,7 +1109,7 @@ start:
 			}
 			return fmt.Errorf("broker replied with UNSUPPORTED_VERSION to our v%d ApiVersions request but advertised non-downgrade version %d", maxVersion, resp.ApiKeys[0].MaxVersion)
 		default:
-			// Should not hit this case, but we hope the broker replied with all keys
+			// The broker replied with all keys; nothing to downgrade to, we use them.
 		}
 		resp = req.ResponseKind().(*kmsg.ApiVersionsResponse)
 		resp.Version = 0
@@ -1072,11 +1118,26 @@ start:
 	if err = resp.ReadFrom(rawResp); err != nil {
 		return fmt.Errorf("unable to read ApiVersions response: %w", err)
 	}
+	// Checked before ApiKeys below: an error can come with an empty key table.
+	if !sawUnsupportedVersion {
+		if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
+			// The broker is not who our metadata says it is. Drop
+			// every discovered broker and rediscover the cluster
+			// from the seeds; the request that opened this
+			// connection retries once metadata has refreshed.
+			if errors.Is(err, kerr.RebootstrapRequired) && req.ClusterID != nil {
+				cxn.cl.rebootstrapMisrouted(cxn.b, *req.ClusterID)
+				return errChosenBrokerDead
+			}
+			return err
+		}
+	}
 	if len(resp.ApiKeys) == 0 {
 		return errors.New("ApiVersions response invalidly contained no ApiKeys")
 	}
 
 	v := newBrokerVersions(len(resp.ApiKeys))
+	v.learnedAt = learnedAt
 	for _, key := range resp.ApiKeys {
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion
@@ -1571,6 +1632,14 @@ func (cxn *brokerCxn) readResponse(
 	}
 
 	if readErr != nil {
+		// A metadata update can retire this broker while a response read is
+		// blocked. stopForever calls die, which marks the connection dead
+		// before closing it; the read then wakes with a platform-specific
+		// socket error. Return the same retryable error as requests queued
+		// behind this read, unless the client or request itself was canceled.
+		if cxn.dead.Load() && cxn.cl.ctx.Err() == nil && !isContextErr(readErr) {
+			return nil, errChosenBrokerDead
+		}
 		return nil, readErr
 	}
 	if len(buf) < 4 {
@@ -1590,12 +1659,17 @@ func (cxn *brokerCxn) readResponse(
 	return buf[4:], nil
 }
 
-// closeConn is the one place we close broker connections. It is reached via
-// die (callable from anywhere once the connection is live: read/write errors,
-// reaping, broker stoppage) or directly when the connection was never shared:
-// init failure, the ApiVersions-reset retry, and loadConnection's dead-broker
-// arm.
-func (cxn *brokerCxn) closeConn() {
+// die is the one place we close broker connections, and it replies to all
+// requests awaiting responses appropriately, including requests parked for a
+// pending reauthentication. It is callable from anywhere and at any point in a
+// connection's life: read/write errors, reaping, broker stoppage, init failure,
+// and loadConnection's ApiVersions-reset retry and dead-broker arm. The dead
+// swap is what makes every one of those safe -- deadCh can only be closed once,
+// no matter how many goroutines race to tear the connection down.
+func (cxn *brokerCxn) die() {
+	if cxn == nil || cxn.dead.Swap(true) {
+		return
+	}
 	cxn.cl.cfg.hooks.each(func(h Hook) {
 		if h, ok := h.(HookBrokerDisconnect); ok {
 			h.OnBrokerDisconnect(cxn.b.meta, cxn.conn)
@@ -1603,16 +1677,6 @@ func (cxn *brokerCxn) closeConn() {
 	})
 	cxn.conn.Close()
 	close(cxn.deadCh)
-}
-
-// die kills a broker connection (which could be dead already) and replies to
-// all requests awaiting responses appropriately, including requests parked
-// for a pending reauthentication.
-func (cxn *brokerCxn) die() {
-	if cxn == nil || cxn.dead.Swap(true) {
-		return
-	}
-	cxn.closeConn()
 	cxn.resps.die()
 	cxn.failParked()
 }
@@ -1850,17 +1914,24 @@ func (cxn *brokerCxn) handleResp(pr promisedResp) {
 		pr.readEnqueue,
 	)
 	if err != nil {
-		if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) {
-			if cxn.successes > 0 || len(cxn.b.cl.cfg.sasls) > 0 {
-				cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker errored, killing connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "successful_reads", cxn.successes, "err", err)
-			} else {
-				cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker errored, killing connection after 0 successful responses (is SASL missing?)", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
-				if err == io.EOF { // specifically avoid checking errors.Is to ensure this is not already wrapped
-					err = &ErrFirstReadEOF{kind: firstReadSASL, err: err, retry: cxn.b.cl.cfg.alwaysRetryEOF}
+		if !errors.Is(err, errChosenBrokerDead) {
+			if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) {
+				if cxn.successes > 0 || len(cxn.b.cl.cfg.sasls) > 0 {
+					cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker errored, killing connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "successful_reads", cxn.successes, "err", err)
+				} else {
+					cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker errored, killing connection after 0 successful responses (is SASL missing?)", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
+					if err == io.EOF || err == io.ErrUnexpectedEOF { // specifically avoid checking errors.Is to ensure this is not already wrapped
+						// ErrUnexpectedEOF gets the same first-read
+						// pessimism: now that it is retryable in
+						// isRetryableBrokerErr, a mid-frame close on
+						// the very first read (bad SASL cutting us off
+						// mid-response) must not retry forever either.
+						err = &ErrFirstReadEOF{kind: firstReadSASL, err: err, retry: cxn.b.cl.cfg.alwaysRetryEOF}
+					}
 				}
+			} else {
+				cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker canceled, closing connection and killing any other in-flight requests on this connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
 			}
-		} else {
-			cxn.b.cl.cfg.logger.Log(LogLevelDebug, "read from broker canceled, closing connection and killing any other in-flight requests on this connection", "req", kmsg.Key(pr.resp.Key()).Name(), "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
 		}
 		pr.promise(nil, err)
 		cxn.die()
