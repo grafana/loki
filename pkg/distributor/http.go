@@ -51,7 +51,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"err", errStr,
 			)
 		}
-		d.writeFailuresManager.Log(tenantID, fmt.Errorf("failed push: %s", errStr))
 		errorWriter(w, errStr, code, logger)
 	}
 
@@ -87,6 +86,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
 	shard, ok, shardErr := loghttppush.ExtractAndValidateBackfillShard(r)
 	if shardErr != nil {
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", shardErr))
 		recordFail(http.StatusBadRequest, shardErr.Error())
 		return
 	}
@@ -117,6 +117,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 					"tenantID", tenantID,
 					"contentLength", r.ContentLength)
 			}
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't decompress push request: %w", err))
 			recordFail(http.StatusRequestEntityTooLarge, err.Error())
 			return
 
@@ -127,6 +128,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 		// all other errors
 		default:
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
 			recordFail(http.StatusBadRequest, err.Error())
 			return
 

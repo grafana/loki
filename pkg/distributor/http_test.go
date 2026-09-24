@@ -279,6 +279,13 @@ func TestPushHandlerRecordsIngestMetrics(t *testing.T) {
 	line := "fizzbuzz"
 	body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q, {"name1": "value1"} ] ] }]}`, time.Now().UnixNano(), line)
 
+	// bytesReceivedStats, structuredMetadataBytesReceivedStats and linesReceivedStats are process-wide
+	// usage-stats counters that other tests in this package may have already incremented; capture the
+	// current values as the baseline so the deltas below are correct regardless of test execution order.
+	previousBytesReceived := bytesReceivedStats.Value()["total"].(int64)
+	previousStructuredMetadataBytesReceived := structuredMetadataBytesReceivedStats.Value()["total"].(int64)
+	previousLinesReceived := linesReceivedStats.Value()["total"].(int64)
+
 	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
 	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
 	req.Header.Set("Content-Type", "application/json")
@@ -294,6 +301,10 @@ func TestPushHandlerRecordsIngestMetrics(t *testing.T) {
 	require.Equal(t, structuredMetadataBytes, testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
 	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
 	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.expandedBytesIngested.WithLabelValues("test", constants.Loki)))
+
+	require.Equal(t, int64(1), linesReceivedStats.Value()["total"].(int64)-previousLinesReceived)
+	require.Equal(t, int64(structuredMetadataBytes), structuredMetadataBytesReceivedStats.Value()["total"].(int64)-previousStructuredMetadataBytesReceived)
+	require.Equal(t, int64(logLineBytes+structuredMetadataBytes), bytesReceivedStats.Value()["total"].(int64)-previousBytesReceived)
 }
 
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {
