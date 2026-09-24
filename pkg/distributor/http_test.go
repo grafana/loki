@@ -231,6 +231,71 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 	}
 }
 
+func TestPushHandlerNegativeSizeHandling(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// A custom parser that reports negative sizes, to exercise the guard clause in recordPush
+	// that prevents a panic when incrementing Prometheus counters.
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.PushRequest, *push.Stats, error) {
+		req := &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels:  `{foo="bar"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test line"}},
+				},
+			},
+		}
+
+		stats := push.NewPushStats()
+		stats.LogLinesBytes[""] = map[time.Duration]int64{time.Hour: -100}
+		stats.StructuredMetadataBytes[""] = map[time.Duration]int64{time.Hour: -200}
+
+		return req, stats, nil
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() {
+		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+	})
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+}
+
+func TestPushHandlerRecordsIngestMetrics(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	line := "fizzbuzz"
+	body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q, {"name1": "value1"} ] ] }]}`, time.Now().UnixNano(), line)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	structuredMetadataBytes := float64(len("name1") + len("value1"))
+	logLineBytes := float64(len(line))
+
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+	require.Equal(t, structuredMetadataBytes, testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.expandedBytesIngested.WithLabelValues("test", constants.Loki)))
+}
+
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

@@ -15,10 +15,8 @@ import (
 	"testing"
 	"time"
 
-	kitlog "github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +26,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -73,12 +70,6 @@ func marshalProto(m proto.Message) []byte {
 }
 
 func TestParseRequest(t *testing.T) {
-	// These are process-wide analytics counters that other tests in this package may have already
-	// incremented; capture the current values as the baseline so the per-iteration deltas below are
-	// correct regardless of test execution order.
-	previousBytesReceived := int(bytesReceivedStats.Value()["total"].(int64))
-	previousStructuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64))
-	previousLinesReceived := int(linesReceivedStats.Value()["total"].(int64))
 	for index, test := range []struct {
 		path                            string
 		body                            string
@@ -361,10 +352,6 @@ func TestParseRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
 			streamResolver := newMockStreamResolver("fake", test.fakeLimits)
 
-			structuredMetadataBytesIngested.Reset()
-			bytesIngested.Reset()
-			expandedBytesIngested.Reset()
-			linesIngested.Reset()
 			if test.fakeLimits == nil {
 				test.fakeLimits = &fakeLimits{enabled: test.enableServiceDiscovery}
 			}
@@ -381,95 +368,30 @@ func TestParseRequest(t *testing.T) {
 			}
 
 			tracker := NewMockTracker()
-			data, stats, err := ParseRequest(
-				util_log.Logger,
+			data, stats, err := ParseLokiRequest(
 				"fake",
-				100<<20,
-				100<<20,
 				request,
 				test.fakeLimits,
 				nil,
-				ParseLokiRequest,
+				100<<20,
+				100<<20,
 				tracker,
 				streamResolver,
-				"",
-				"loki",
+				util_log.Logger,
 			)
-
-			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
-			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
-			bytesReceived := int(bytesReceivedStats.Value()["total"].(int64)) - previousBytesReceived
-			previousBytesReceived += bytesReceived
-			linesReceived := int(linesReceivedStats.Value()["total"].(int64)) - previousLinesReceived
-			previousLinesReceived += linesReceived
-
-			totalStructuredMetadataBytes := 0
-			for _, bytes := range test.expectedStructuredMetadataBytes {
-				totalStructuredMetadataBytes += bytes
-			}
 
 			totalBytes := 0
 			for _, bytes := range test.expectedBytes {
 				totalBytes += bytes
 			}
 
-			totalLines := 0
-			for _, lines := range test.expectedLines {
-				totalLines += lines
-			}
-
 			if test.valid {
 				assert.NoErrorf(t, err, "Should not give error for %d", index)
 				assert.NotNil(t, data, "Should give data for %d", index)
-				require.Equal(t, totalStructuredMetadataBytes, structuredMetadataBytesReceived)
-				require.Equal(t, totalBytes, bytesReceived)
 				if !test.aggregatedMetric {
-					require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
+					require.Equalf(t, tracker.Total(), float64(totalBytes), "tracked usage bytes must equal expected bytes")
 				} else {
 					require.Equal(t, float64(0), tracker.Total(), "aggregated metrics should not be tracked")
-				}
-				require.Equal(t, totalLines, linesReceived)
-
-				for policyName, bytes := range test.expectedStructuredMetadataBytes {
-					require.Equal(
-						t,
-						float64(bytes),
-						testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policyName, "loki")),
-					)
-				}
-
-				for policyName, bytes := range test.expectedBytes {
-					require.Equal(
-						t,
-						float64(bytes),
-						testutil.ToFloat64(
-							bytesIngested.WithLabelValues(
-								"fake",
-								"1", // We use "1" here because fakeLimits.RetentionHoursFor returns "1"
-								fmt.Sprintf("%t", test.aggregatedMetric),
-								policyName,
-								"loki",
-							),
-						),
-					)
-				}
-
-				for policyName, lines := range test.expectedLines {
-					require.Equal(
-						t,
-						float64(lines),
-						testutil.ToFloat64(
-							linesIngested.WithLabelValues(
-								"fake",
-								fmt.Sprintf("%t", test.aggregatedMetric),
-								policyName,
-								"loki",
-							),
-						),
-						"policy %s with %d lines",
-						policyName,
-						lines,
-					)
 				}
 
 				for i := range test.expectedLabels {
@@ -486,22 +408,9 @@ func TestParseRequest(t *testing.T) {
 				// For non-OTLP (Loki) requests, TotalExpandedEntriesSize should equal the combined size of
 				// log lines and structured metadata bytes, since there are no resource/scope attributes to expand.
 				require.EqualValues(t, totalBytes, stats.TotalExpandedEntriesSize)
-				require.Equal(
-					t,
-					float64(totalBytes),
-					testutil.ToFloat64(expandedBytesIngested.WithLabelValues("fake", "loki")),
-				)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
-				require.Equal(t, 0, structuredMetadataBytesReceived)
-				require.Equal(t, 0, bytesReceived)
-				require.Equal(t, 0, linesReceived)
-				policy := ""
-				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
-				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
-				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake", fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
-				require.Equal(t, float64(0), testutil.ToFloat64(expandedBytesIngested.WithLabelValues("fake", "loki")))
 			}
 		})
 	}
@@ -543,7 +452,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseLokiRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseLokiRequest("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -555,7 +464,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseOTLPRequest("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -570,7 +479,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{"special"},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseOTLPRequest("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -585,7 +494,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseOTLPRequest("fake", request, limits, nil, 100<<20, 100<<20, tracker, streamResolver, util_log.Logger)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
@@ -678,83 +587,6 @@ func TestRetentionPeriodToString(t *testing.T) {
 	}
 }
 
-// TestNegativeSizeHandling tests that the code handles negative size values
-// properly without causing a panic when incrementing Prometheus counters.
-func TestNegativeSizeHandling(t *testing.T) {
-	// Reset metrics for accurate testing
-	structuredMetadataBytesIngested.Reset()
-	bytesIngested.Reset()
-	linesIngested.Reset()
-
-	// Create a custom request parser that will generate negative sizes
-	var mockParser RequestParser = func(_ string, _ *http.Request, _ Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ UsageTracker, _ StreamResolver, _ kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
-		// Create a minimal valid request
-		req := &logproto.PushRequest{
-			Streams: []logproto.Stream{
-				{
-					Labels: `{foo="bar"}`,
-					Entries: []logproto.Entry{
-						{
-							Timestamp: time.Now(),
-							Line:      "test line",
-						},
-					},
-				},
-			},
-		}
-
-		// Create stats with negative sizes to test our guard clauses
-		stats := NewPushStats()
-		policy := ""
-		retention := time.Hour
-
-		// Set up negative sizes in both maps
-		stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
-		stats.LogLinesBytes[policy][retention] = -100
-
-		stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
-		stats.StructuredMetadataBytes[policy][retention] = -200
-
-		return req, stats, nil
-	}
-
-	// Create a mock request
-	request := httptest.NewRequest("POST", "/loki/api/v1/push", strings.NewReader("{}"))
-	request.Header.Add("Content-Type", "application/json")
-
-	// Use a mock stream resolver to ensure consistent results
-	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-
-	// This should not panic with our guard clauses in place
-	_, _, err := ParseRequest(
-		util_log.Logger,
-		"fake",
-		100<<20,
-		100<<20,
-		request,
-		&fakeLimits{},
-		nil,
-		mockParser,
-		NewMockTracker(),
-		streamResolver,
-		"",
-		"loki",
-	)
-
-	// No error should be returned
-	require.NoError(t, err)
-
-	// Check that the metrics were not incremented for negative values
-	userID := "fake"
-	isAggregatedMetric := "false"
-	policy := ""
-
-	// Verify no counters were incremented since all sizes were negative
-	// This test passes if no panic occurred and the counters remain at 0
-	require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy, "loki")))
-	require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy, "loki")))
-}
-
 func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
@@ -830,19 +662,16 @@ func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
 				request.Header.Set("Content-Encoding", tc.contentEncoding)
 			}
 
-			_, _, err = ParseRequest(
-				util_log.Logger,
+			_, _, err = ParseLokiRequest(
 				"fake",
-				tc.maxRecvMsgSize,
-				tc.maxDecompressedSize,
 				request,
 				&fakeLimits{},
 				nil,
-				ParseLokiRequest,
+				tc.maxRecvMsgSize,
+				tc.maxDecompressedSize,
 				NewMockTracker(),
 				streamResolver,
-				"",
-				"loki",
+				util_log.Logger,
 			)
 
 			if tc.expectedError {

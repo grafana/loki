@@ -72,7 +72,16 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 
 	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.PushRequest, error) {
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, r, limits, nil, parser, NewMockTracker(), streamResolver, "", "loki")
+
+		// Mirrors the backfill-shard wiring the distributor's pushHandler does before invoking
+		// the format parser: validate the header and, if present, stash it in the request context.
+		if shard, ok, err := ExtractAndValidateBackfillShard(r); err != nil {
+			return nil, err
+		} else if ok {
+			r = r.Clone(InjectBackfillShardContext(r.Context(), shard))
+		}
+
+		data, _, err := parser("fake", r, limits, nil, 100<<20, 100<<20, NewMockTracker(), streamResolver, util_log.Logger)
 		return data, err
 	}
 

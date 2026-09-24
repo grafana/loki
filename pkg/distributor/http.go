@@ -43,6 +43,27 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	recordFail := func(code int, errStr string) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
+			level.Debug(logger).Log(
+				"msg", "push request failed",
+				"code", code,
+				"err", errStr,
+			)
+		}
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("failed push: %s", errStr))
+		errorWriter(w, errStr, code, logger)
+	}
+
+	recordSuccess := func(msg string) {
+		if d.tenantConfigs.LogPushRequest(tenantID) {
+			level.Debug(logger).Log(
+				"msg", msg,
+			)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+
 	// TODO: In future, we want to be able to compose this with the middleware pattern,
 	// but this requires refactor of this file to support next handlers. We will do
 	// this at a later time.
@@ -62,35 +83,33 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
+	// If the X-Loki-Backfill-Shard header is set, validate it and stash the shard in the request
+	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
+	shard, ok, shardErr := loghttppush.ExtractAndValidateBackfillShard(r)
+	if shardErr != nil {
+		recordFail(http.StatusBadRequest, shardErr.Error())
+		return
+	}
+	if ok {
+		r = r.Clone(loghttppush.InjectBackfillShardContext(r.Context(), shard))
+	}
+
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
-
 	presumedAgentIP := extractPresumedAgentIP(r)
 	maxPushSize := d.validator.MaxPushSize(tenantID)
-	req, pushStats, err := loghttppush.ParseRequest(logger, tenantID, maxPushSize, int64(maxPushSize), r, d.validator.Limits, d.tenantConfigs,
-		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
+
+	req, pushStats, err := pushRequestParser(tenantID, r, d.validator.Limits, d.tenantConfigs, maxPushSize, int64(maxPushSize), d.usageTracker, streamResolver, logger)
 	if err != nil {
 		switch {
+		// message too large handling
+		case errors.Is(err, util.ErrMessageSizeTooLarge) || errors.Is(err, util.ErrMessageDecompressedSizeTooLarge):
+			err = fmt.Errorf("%w: %s", loghttppush.ErrRequestBodyTooLarge, err.Error())
+			fallthrough
 		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge):
-			if d.tenantConfigs.LogPushRequest(tenantID) {
-				level.Debug(logger).Log(
-					"msg", "push request failed",
-					"code", http.StatusRequestEntityTooLarge,
-					"err", err,
-				)
-			}
-			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't decompress push request: %w", err))
-
-			// We count the compressed request body size here
-			// because the request body could not be decompressed
-			// and thus we don't know the uncompressed size.
-			// In addition we don't add the metric label values for
-			// `retention_hours` and `policy` because we don't know the labels.
-			// Ensure ContentLength is positive to avoid counter panic
+			// count the compressed bytes received. it's the only info we've got
 			if r.ContentLength > 0 {
-				// Add empty values for retention_hours and policy labels since we don't have
-				// that information for request body too large errors
 				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", format).Add(float64(r.ContentLength))
 			} else {
 				level.Error(logger).Log(
@@ -98,32 +117,175 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 					"tenantID", tenantID,
 					"contentLength", r.ContentLength)
 			}
-			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
+			recordFail(http.StatusRequestEntityTooLarge, err.Error())
 			return
 
-		case !errors.Is(err, loghttppush.ErrAllLogsFiltered):
-			if d.tenantConfigs.LogPushRequest(tenantID) {
-				level.Debug(logger).Log(
-					"msg", "push request failed",
-					"code", http.StatusBadRequest,
-					"err", err,
-				)
-			}
-			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
-
-			errorWriter(w, err.Error(), http.StatusBadRequest, logger)
+		// all logs filtered. a success!
+		case errors.Is(err, loghttppush.ErrAllLogsFiltered):
+			recordSuccess("successful push request filtered all lines")
 			return
 
+		// all other errors
 		default:
-			if d.tenantConfigs.LogPushRequest(tenantID) {
-				level.Debug(logger).Log(
-					"msg", "successful push request filtered all lines",
-				)
-			}
-			w.WriteHeader(http.StatusNoContent)
+			recordFail(http.StatusBadRequest, err.Error())
 			return
+
 		}
 	}
+
+	d.recordPush(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver)
+
+	_, err = d.pushWithResolver(r.Context(), logproto.FromPushRequest(req), streamResolver, format)
+	if err != nil {
+		circuitBreakerErr = err // assigned for the deferred func above
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		if ok {
+			recordFail(int(resp.Code), string(resp.Body))
+		} else {
+			recordFail(http.StatusInternalServerError, err.Error())
+		}
+
+		return
+	}
+
+	// success!
+	recordSuccess("push request successful")
+}
+
+// recordPush emits all metrics and debug logging for a push request that was successfully parsed
+// and is about to be forwarded to ingesters.
+func (d *Distributor) recordPush(
+	r *http.Request,
+	logger log.Logger,
+	tenantID, format, presumedAgentIP string,
+	req *logproto.PushRequest,
+	pushStats *loghttppush.Stats,
+	streamResolver *requestScopedStreamResolver,
+) {
+	var (
+		entriesSize            int64
+		structuredMetadataSize int64
+	)
+
+	hasInternalStreams := fmt.Sprintf("%t", pushStats.HasInternalStreams)
+
+	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := loghttppush.RetentionPeriodToString(retentionPeriod)
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				d.m.bytesIngested.WithLabelValues(tenantID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative log lines bytes received",
+					"userID", tenantID,
+					"retentionHours", retentionHours,
+					"hasInternalStreams", hasInternalStreams,
+					"policyName", policyName,
+					"size", size)
+			}
+			entriesSize += size
+		}
+	}
+
+	for policyName, retentionToSizeMapping := range pushStats.StructuredMetadataBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := loghttppush.RetentionPeriodToString(retentionPeriod)
+
+			// Add guard clause to prevent negative values from being passed to Prometheus counters
+			if size >= 0 {
+				d.m.structuredMetadataBytesIngested.WithLabelValues(tenantID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
+				d.m.bytesIngested.WithLabelValues(tenantID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
+				bytesReceivedStats.Inc(size)
+				structuredMetadataBytesReceivedStats.Inc(size)
+			} else {
+				level.Error(logger).Log(
+					"msg", "negative structured metadata bytes received",
+					"userID", tenantID,
+					"retentionHours", retentionHours,
+					"hasInternalStreams", hasInternalStreams,
+					"policyName", policyName,
+					"size", size)
+			}
+
+			entriesSize += size
+			structuredMetadataSize += size
+		}
+	}
+
+	d.m.expandedBytesIngested.WithLabelValues(tenantID, format).Add(float64(pushStats.TotalExpandedEntriesSize))
+
+	var totalNumLines int64
+	// incrementing tenant metrics if we have a tenant.
+	for policy, numLines := range pushStats.PolicyNumLines {
+		if numLines != 0 && tenantID != "" {
+			d.m.linesIngested.WithLabelValues(tenantID, hasInternalStreams, policy, format).Add(float64(numLines))
+		}
+		totalNumLines += numLines
+	}
+	linesReceivedStats.Inc(totalNumLines)
+	mostRecentLagMs := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
+
+	logValues := []interface{}{
+		"msg", "push request parsed",
+		"path", r.URL.Path,
+		"contentType", pushStats.ContentType,
+		"contentEncoding", pushStats.ContentEncoding,
+		"bodySize", humanize.Bytes(uint64(pushStats.BodySize)),
+		"streams", len(req.Streams),
+		"entries", totalNumLines,
+		"streamLabelsSize", humanize.Bytes(uint64(pushStats.StreamLabelsSize)),
+		"entriesSize", humanize.Bytes(uint64(entriesSize)),
+		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
+		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
+		"totalExpandedSize", humanize.Bytes(uint64(pushStats.TotalExpandedEntriesSize + pushStats.StreamLabelsSize)),
+		"mostRecentLagMs", mostRecentLagMs,
+	}
+
+	if presumedAgentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
+	}
+
+	userAgent := r.Header.Get("User-Agent")
+	// Sanitize the User-Agent to valid UTF-8 to prevent prometheus from panicking
+	// when it's used as a label value in WithLabelValues.
+	userAgent = strings.ToValidUTF8(userAgent, "")
+	if userAgent != "" {
+		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
+	}
+	// Since we're using a counter (so we can do things w/rate, irate, deriv, etc.) on the lag metrics,
+	// dispatch a warning if we ever get a negative value.  This could occur if we start getting logs
+	// whose timestamps are in the future (e.g. agents sending logs w/missing or invalid NTP configs).
+	// Negative values can't give us much insight into whether-or-not a customer's ingestion is falling
+	// behind, so we won't include it in the metrics, and instead will capture the occurrence in the
+	// distributor logs.
+	// We capture this metric even when the user agent is empty; we want insight into the tenant's
+	// ingestion lag no matter what.
+	if mostRecentLagMs >= 0 && mostRecentLagMs < 1_000_000_000 {
+		// we're filtering out anything over 1B -- the OTLP endpoints often really mess with this metric...
+		d.m.distributorLagByUserAgent.WithLabelValues(tenantID, userAgent, format).Add(float64(mostRecentLagMs))
+	}
+
+	if d.tenantConfigs != nil && d.tenantConfigs.LogHashOfLabels(tenantID) {
+		resultHash := uint64(0)
+		for _, stream := range req.Streams {
+			// I don't believe a hash will be set, but if it is, use it.
+			hash := stream.Hash
+			if hash == 0 {
+				// calculate an fnv32 hash of the stream labels
+				// reusing our query hash function for simplicity
+				hash = uint64(util.HashedQuery(stream.Labels))
+			}
+			// xor the hash with the result hash, this will result in the same hash regardless of the order of the streams
+			resultHash ^= hash
+		}
+		logValues = append(logValues, "hashOfLabels", resultHash)
+		pushStats.HashOfAllStreams = resultHash
+	}
+
+	logValues = append(logValues, pushStats.Extra...)
+	level.Debug(logger).Log(logValues...)
 
 	// Gather information about the different types of push formats Loki receives
 	d.m.pushStatsCount.WithLabelValues(tenantID, pushStats.ContentType, pushStats.ContentEncoding, pushStats.ContentVersion, format).Inc()
@@ -133,42 +295,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	if d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
-	}
-
-	// Parsers still return flat requests; wrap them for nested processing.
-	internal := logproto.FromPushRequest(req)
-	_, err = d.pushWithResolver(r.Context(), internal, streamResolver, format)
-	if err == nil {
-		if d.tenantConfigs.LogPushRequest(tenantID) {
-			level.Debug(logger).Log(
-				"msg", "push request successful",
-			)
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	circuitBreakerErr = err
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
-	if ok {
-		body := string(resp.Body)
-		if d.tenantConfigs.LogPushRequest(tenantID) {
-			level.Debug(logger).Log(
-				"msg", "push request failed",
-				"code", resp.Code,
-				"err", body,
-			)
-		}
-		errorWriter(w, body, int(resp.Code), logger)
-	} else {
-		if d.tenantConfigs.LogPushRequest(tenantID) {
-			level.Debug(logger).Log(
-				"msg", "push request failed",
-				"code", http.StatusInternalServerError,
-				"err", err.Error(),
-			)
-		}
-		errorWriter(w, err.Error(), http.StatusInternalServerError, logger)
 	}
 }
 
