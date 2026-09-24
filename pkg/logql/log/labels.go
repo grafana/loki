@@ -558,7 +558,7 @@ func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCa
 	if categoriesContain(categories, ParsedLabel) {
 		buf = append(buf, b.add[ParsedLabel]...)
 	}
-	if (b.HasErr() || b.HasErrorDetails() || b.preserveError) && categoriesContain(categories, ParsedLabel) {
+	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
 		buf = b.appendErrors(buf)
 	}
 
@@ -871,8 +871,8 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
-	// Grouping drops __preserve_error__ unless it is a group key, and losing it makes the evaluator
-	// fail the query on a sample the filter asked to keep.
+	// The builder owns the answer, so a __preserve_error__ the line carries must not reach the
+	// output. Otherwise a stream could switch off the failure a metric query returns.
 	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
 		return l.Name == logqlmodel.PreserveErrorLabel
 	})

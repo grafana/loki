@@ -1228,15 +1228,15 @@ func (r *LogRangeExpr) Accept(v RootVisitor) {
 }
 
 // HasUnwrapPostFilterOnErrorLabel reports whether the unwrap carries a post filter that reads
-// __error__.
+// __error__ or __error_details__.
 func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
 	if r.Unwrap == nil {
 		return false
 	}
 
 	for _, f := range r.Unwrap.PostFilters {
-		// It reads each filter's hints rather than its required label names, because an always-true
-		// comparison reports no required name.
+		// It reads the hints rather than the required label names, because the hints are what the
+		// pipeline reads to decide whether the query keeps the errored lines.
 		if f.Hints().ReadsErrorLabel {
 			return true
 		}

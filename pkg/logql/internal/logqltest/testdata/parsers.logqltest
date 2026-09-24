@@ -233,7 +233,7 @@ eval instant at 60s first_over_time({app="a"} | json | unwrap n | __error__!="" 
 clear
 load
   {app="a", pod="p1"} `{"v":10}` @ 20s [metadata n="10"]
-  {app="a", pod="p1"} `{`        @ 40s [metadata n="abc"] # fails json, then fails the conversion
+  {app="a", pod="p1"} `{`        @ 40s [metadata n="abc"] # fails json(), then fails the conversion
   {app="noise", pod="p2"} `{`    @ 40s [metadata n="abc"]
 
 # A failed unwrap conversion generates a sample value of 0 when errored lines are preserved by using __error__ filter.
@@ -242,8 +242,9 @@ eval instant at 60s first_over_time({app="a"} | json | __error__=~".*" | unwrap 
   {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"abc\": invalid syntax", __preserve_error__="true", pod="p1"} 0
 eval instant at 60s min (avg_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]))
   {} 0
-eval instant at 60s sum by (pod) (sum_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]))
-  {pod="p1"} 10
+# Counting the number of series should match.
+eval instant at 60s count by (pod) (sum_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]))
+  {pod="p1"} 2
 
 # json() with label expressions:
 # - `user.id` reads a nested field.

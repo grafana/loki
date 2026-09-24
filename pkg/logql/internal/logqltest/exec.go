@@ -52,9 +52,11 @@ func isQueryShardingSupported(query string) bool {
 		return false
 	}
 
-	// Shardable reports the operation, but the shard mapper declines an avg_over_time() whose
-	// unwrap post filter reads __error__: it decomposes the average into a sum and a count, and the
-	// count leg cannot reproduce that filter.
+	// Shardable() reads the operations alone. The shard mapper also declines an avg_over_time()
+	// whose unwrap post filter reads an error label, because it decomposes the average into a sum
+	// and a count, and the count leg cannot reproduce that filter.
+	//
+	// This restates that rule by hand, so a new rule in the mapper needs the same line here.
 	shardable := true
 	expr.Walk(func(e syntax.Expr) bool {
 		r, ok := e.(*syntax.RangeAggregationExpr)

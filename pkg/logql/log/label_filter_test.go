@@ -550,6 +550,9 @@ func TestNewStringLabelFilter(t *testing.T) {
 			require.IsType(t, tc.want, got)
 			require.Equal(t, tc.matcher.String(), got.String())
 			require.Equal(t, tc.want.RequiredLabelNames(), got.RequiredLabelNames())
+			if want, ok := tc.want.(*LineFilterLabelFilter); ok {
+				require.Equal(t, want.Filter, got.(*LineFilterLabelFilter).Filter)
+			}
 		})
 	}
 }

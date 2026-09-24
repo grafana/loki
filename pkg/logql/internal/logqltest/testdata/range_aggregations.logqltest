@@ -1190,8 +1190,13 @@ load
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__=~".*" [1m]) by (pod)
   {pod="p1"} 5
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__="" [1m]) by (pod)
+  {pod="p1"} 5
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__!="" [1m]) by (pod)
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+# A post-unwrap filter on __error_details__ doesn't keep errors.
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error_details__="" [1m]) by (pod)
+  expect fail msg: JSONParserErr
 
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
@@ -1600,9 +1605,9 @@ load
   {app="a"}     `{`        @ 40s # malformed
   {app="noise"} `{"ok":1}` @ 40s
 
-# Without an __error__ filter the query does not fail, although the malformed line reaches it:
-# absent_over_time() groups to no labels, so the parser hints name no label to extract and json()
-# skips the line rather than parsing and failing it. The line still counts as present.
+# Without an __error__ filter the query does not fail, although the malformed line reaches it.
+# absent_over_time() groups to no labels, so the parser hints name no label to extract. json() then
+# skips the line, so it never parses it and never fails. The line still counts as present.
 eval instant at 60s absent_over_time({app="a"} | json [1m])
   expect empty
 eval instant at 60s absent_over_time({app="a"} | json | __error__!="" [1m])
@@ -1613,3 +1618,31 @@ eval instant at 60s absent_over_time({app="a"} | json | __error__="" [1m])
   {app="a"} 1
 eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__="" [1m]) # overlapping
   {app="a"} 1 1
+
+# absent_over_time() over a failed unwrap conversion.
+clear
+load
+  {app="a"}     "v=oops" @ 40s # `v` is present but not a number
+  {app="a"}     "v=5"    @ 50s # the same field converts on this line
+  {app="noise"} "v=1"    @ 40s
+
+# The __error__ filter keeps the errored sample, whose default value is 0, so it's a present.
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])
+  expect fail msg: SampleExtractionErr
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__!="" [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m])
+  expect empty
+# A query that reads both lines reports the failed conversion as a 0.
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m])
+  {app="a"} 5
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", __preserve_error__="true", app="a"} 0
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 0
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 5
+# Dropping the errored line leaves the conversion that worked.
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
