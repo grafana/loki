@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -442,10 +443,16 @@ func (g *Gateway) boundedShards(
 	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
 	defer sp.End()
 
+	ctx = timing.WithObservers(ctx,
+		g.metrics.shardPlanningDuration.WithLabelValues("ready_wait"),
+		g.metrics.shardPlanningDuration.WithLabelValues("index_scan"),
+	)
 	start := time.Now()
 
 	// For all bounds, get chunk refs
+	lookupStart := time.Now()
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
+	g.metrics.shardPlanningDuration.WithLabelValues("lookup").Observe(time.Since(lookupStart).Seconds())
 	if err != nil {
 		return err
 	}
@@ -459,7 +466,9 @@ func (g *Gateway) boundedShards(
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 
+	buildStart := time.Now()
 	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
+	g.metrics.shardPlanningDuration.WithLabelValues("build").Observe(time.Since(buildStart).Seconds())
 	if err != nil {
 		return err
 	}

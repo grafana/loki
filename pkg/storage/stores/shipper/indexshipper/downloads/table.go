@@ -114,7 +114,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout)
+			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout, metrics.observeDownload)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +128,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
-		openIndexFileFunc, table.logger, table.downloadTimeout)
+		openIndexFileFunc, table.logger, table.downloadTimeout, metrics.observeDownload)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +345,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout, t.metrics.observeDownload)
 	if err != nil {
 		return nil, err
 	}
