@@ -3,6 +3,7 @@ package pattern
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -464,7 +466,6 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 
 	for _, stream := range streams {
 		// Flatten once for buffer accounting and the pattern ingester's flat wire format.
-		// The buffer retains the view's backing entries, which are read-only after validation.
 		flat := stream.Stream.FlatView()
 
 		// Skip streams with no entries.
@@ -488,6 +489,11 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		if !ts.reserveBufferedBytes(size) {
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
+		}
+
+		// A queued rate shard must not retain the other shards' entry storage.
+		if lbls.Has(ingester.ShardLbName) {
+			flat.Entries = slices.Clone(flat.Entries)
 		}
 
 		ts.bufMtx.Lock()
