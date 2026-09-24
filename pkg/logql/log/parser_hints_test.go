@@ -264,37 +264,6 @@ func TestRecordingExtractedLabels(t *testing.T) {
 	require.False(t, p.NoLabels())
 }
 
-func TestLabelFiltersInParseHints(t *testing.T) {
-	t.Run("it rejects the line when label matchers don't match the label", func(t *testing.T) {
-		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
-		h := log.NewLabelFilterHints(s)
-
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
-		require.False(t, h.ShouldContinueParsingLine("protocol", lb))
-	})
-
-	t.Run("it returns true when the label doesn't have a matcher", func(t *testing.T) {
-		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
-		h := log.NewLabelFilterHints(s)
-
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
-		require.True(t, h.ShouldContinueParsingLine("response", lb))
-	})
-
-	t.Run("it ignores BinaryMatchers", func(t *testing.T) {
-		s := []log.Stage{
-			log.ReduceAndLabelFilter([]log.LabelFilterer{
-				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing")),
-				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "something")),
-			}),
-		}
-
-		h := log.NewLabelFilterHints(s)
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
-		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
-	})
-}
-
 // Regression test: before ParserHint and LabelFilterHints were split apart,
 // NewParserHint computed labelFilters/labelNames from stages on every call, but 2 of
 // its 4 early-return branches silently dropped them before returning, losing the
@@ -307,7 +276,7 @@ func TestLabelFiltersSurviveNoLabelsAndGroupingHints(t *testing.T) {
 		log.NewLogfmtParser(false, false),
 		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 	}
-	labelFilterHints := log.NewLabelFilterHints(stages)
+	labelFilterHints := log.NewLabelFilterHints(stages).ForParser(stages[0])
 	// foo=baz never matches the foo="bar" filter above.
 	lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("app", "foo", "foo", "baz"), 0)
 

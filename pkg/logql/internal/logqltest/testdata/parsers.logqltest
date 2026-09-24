@@ -277,9 +277,12 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | unpack [1m]) #
 # unpack() edge cases:
 # - A clashing name gets `_extracted`.
 # - The promoted `_entry` line feeds a following parser.
+# - A duplicate key keeps the last value, and a label filter reads that value.
 clear
 load
   {app="a", lvl="stream"} `{"lvl":"packed","_entry":"code=42"}` @ 20s [repeat every 20s for 3]
+  {app="d"} `{"k":"first","k":"last","_entry":"x"}` @ 20s [repeat every 20s for 3]
+  {app="d"} `{"k":"first","_entry":"x"}`            @ 30s [repeat every 20s for 2] # noise: the filter drops it
   {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | unpack [1m])
@@ -288,6 +291,15 @@ eval instant at 60s count_over_time({app="a"} | unpack | logfmt [1m])
   {app="a", lvl="stream", lvl_extracted="packed", code="42"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack | logfmt [1m])  # overlapping
   {app="a", lvl="stream", lvl_extracted="packed", code="42"} 2 3
+eval instant at 60s count_over_time({app="d"} | unpack [1m])
+  {app="d", k="last"} 3
+  {app="d", k="first"} 2
+eval instant at 60s count_over_time({app="d"} | unpack | k="last" [1m])
+  {app="d", k="last"} 3
+eval range from 40s to 80s step 20s count_over_time({app="d"} | unpack | k="last" [1m])   # overlapping
+  {app="d", k="last"} 2 3 2
+eval range from 60s to 180s step 120s count_over_time({app="d"} | unpack | k="last" [1m]) # non-overlapping
+  {app="d", k="last"} 3 _
 
 # unpack() clashing labels keep the loser under `<name>_extracted`, following the base-name
 # precedence stream > metadata > parsed (the same for every parser). unpack() only promotes

@@ -282,28 +282,29 @@ func TestKeyShortCircuit(t *testing.T) {
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	hints := newFakeParserHints()
 	hints.extractAll = true
-	hints.keepGoing = false
 
 	lbs.parserKeyHints = hints
-	lbs.labelFilterHints = hints
 
 	for _, tt := range []struct {
 		name                 string
 		line                 []byte
 		p                    Stage
 		LabelFilterParseHint *labels.Matcher
+		wantLabels           int
 	}{
-		{"json", jsonLine, NewJSONParser(false), labels.MustNewMatcher(labels.MatchEqual, "response_latency_seconds", "nope")},
-		{"unpack", packedLike, NewUnpackParser(), labels.MustNewMatcher(labels.MatchEqual, "pod", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(false, false), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
-		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
-		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
+		{"json drops the line at the first key", jsonLine, NewJSONParser(false), labels.MustNewMatcher(labels.MatchEqual, "invalid", "nope"), 1},
+		{"unpack drops the line after it sets every packed key", packedLike, NewUnpackParser(), labels.MustNewMatcher(labels.MatchEqual, "job", "nope"), 3},
+		{"logfmt drops the line at the first key", logfmtLine, NewLogfmtParser(false, false), labels.MustNewMatcher(labels.MatchEqual, "level", "nope"), 1},
+		{"regex drops the line at the first capture", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), labels.MustNewMatcher(labels.MatchEqual, "path", "nope"), 1},
+		{"pattern drops the line at the first capture", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), labels.MustNewMatcher(labels.MatchEqual, "method", "nope"), 1},
 	} {
-		lbs.Reset()
 		t.Run(tt.name, func(t *testing.T) {
+			lbs.Reset()
+			lbs.labelFilterHints = NewLabelFilterHints([]Stage{tt.p, NewStringLabelFilter(tt.LabelFilterParseHint)})
+
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
+			require.Equal(t, tt.wantLabels, lbs.LabelsResult().Labels().Len())
 			require.False(t, result)
 		})
 	}
@@ -328,7 +329,6 @@ func TestLabelShortCircuit(t *testing.T) {
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	lbs.parserKeyHints = hints
-	lbs.labelFilterHints = hints
 
 	tests := []struct {
 		name string
@@ -354,16 +354,13 @@ func TestLabelShortCircuit(t *testing.T) {
 }
 
 func newFakeParserHints() *fakeParseHints {
-	return &fakeParseHints{
-		keepGoing: true,
-	}
+	return &fakeParseHints{}
 }
 
 type fakeParseHints struct {
 	label      string
 	checkCount int
 	count      int
-	keepGoing  bool
 	extractAll bool
 }
 
@@ -399,10 +396,6 @@ func (p *fakeParseHints) Reset() {
 
 func (p *fakeParseHints) PreserveError() bool {
 	return false
-}
-
-func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
-	return p.keepGoing
 }
 
 func TestJSONExpressionParser(t *testing.T) {
@@ -878,7 +871,7 @@ func Benchmark_Parser(b *testing.B) {
 
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
-				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
+				stages := []Stage{tt.s, NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
 				builder.labelFilterHints = NewLabelFilterHints(stages)
@@ -1015,7 +1008,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
-				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
+				stages := []Stage{tt.s, NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
 				builder.labelFilterHints = NewLabelFilterHints(stages)
