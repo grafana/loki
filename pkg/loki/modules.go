@@ -2304,6 +2304,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	dataObjConsumer, err := consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
+		t.Cfg.DataObj.Index,
 		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
