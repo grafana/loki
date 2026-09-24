@@ -20,7 +20,7 @@ type termJob struct {
 
 type readerResult struct {
 	reader logline.Reader
-	idx   logproto.HintIndex
+	idx    logproto.HintIndex
 
 	result               format.Bitmap
 	done                 bool
@@ -290,7 +290,7 @@ func (p *LoglineHintProvider) openReadersForIndexes(
 			mu.Lock()
 			readersByID[readerID] = &readerResult{
 				reader: indexReader,
-				idx:   idx,
+				idx:    idx,
 				result: format.Bitmap{MatchesAll: true},
 			}
 			mu.Unlock()
