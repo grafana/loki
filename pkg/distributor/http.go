@@ -123,6 +123,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 		// all logs filtered. a success!
 		case errors.Is(err, loghttppush.ErrAllLogsFiltered):
+			d.recordParsedRequest(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver) // record metrics before early exit
 			recordSuccess("successful push request filtered all lines")
 			return
 
@@ -164,6 +165,12 @@ func (d *Distributor) recordParsedRequest(
 	pushStats *loghttppush.Stats,
 	streamResolver *requestScopedStreamResolver,
 ) {
+	// Not every RequestParser is guaranteed to populate req/pushStats on every error it
+	// returns (e.g. loghttppush.ErrAllLogsFiltered), so bail out rather than panic.
+	if req == nil || pushStats == nil {
+		return
+	}
+
 	var (
 		entriesSize            int64
 		structuredMetadataSize int64
