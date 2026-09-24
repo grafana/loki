@@ -378,7 +378,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	// A no-op unless logline query narrowing is enabled.
-	if err := c.Logline.ValidateQuery(); err != nil {
+	if err := c.Logline.ValidateQueryConfig(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 	}
 	if err := c.Distributor.Validate(); err != nil {

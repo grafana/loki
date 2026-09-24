@@ -47,9 +47,9 @@ func (cfg *Config) ValidateBuilder() error {
 	return cfg.Builder.Validate()
 }
 
-// ValidateQuery checks the config logline filtering in the query path needs.
+// ValidateQueryConfig checks the config logline filtering in the query path needs.
 // It is a no-op unless the query section is enabled.
-func (cfg *Config) ValidateQuery() error {
+func (cfg *Config) ValidateQueryConfig() error {
 	if !cfg.Query.Enabled {
 		return nil
 	}
