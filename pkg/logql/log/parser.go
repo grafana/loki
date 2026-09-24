@@ -34,6 +34,10 @@ var (
 	_ Stage = &JSONParser{}
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
+	_ Stage = &UnpackParser{}
+	_ Stage = &PatternParser{}
+	_ Stage = &LogfmtExpressionParser{}
+	_ Stage = &JSONExpressionParser{}
 
 	trueBytes = []byte("true")
 

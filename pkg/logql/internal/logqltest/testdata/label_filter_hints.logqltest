@@ -1,0 +1,191 @@
+# LabelFilterHints (pkg/logql/log/parser_hints.go) lets a parser stop
+# extracting a line early once a label it just set already fails a filter
+# later in the pipeline. Each rejected shape below is a trap: the raw
+# value fails the filter, but a later stage rewrites it, so the real
+# answer is a match. A wrongly-applied optimization would drop the line
+# on the raw value instead.
+
+# Stage order around the parser.
+clear
+load
+  {app="a"} "foo=bar" @ 10s
+  {app="b", foo="bar"} "irrelevant" @ 10s
+
+eval instant at 60s sum(count_over_time({app="a"} | foo="bar" | logfmt [1m]))
+  expect empty # foo is absent pre-parse
+eval instant at 60s sum(count_over_time({app="b"} | foo="bar" | logfmt [1m]))
+  {} 1 # foo is a real stream label here
+
+clear
+load
+  {app="a"} "foo=nope bar=hello" @ 10s
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | label_format foo="bar" | foo="bar" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | drop foo | foo="" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | keep bar | foo="" [1m]))
+  {} 1
+
+clear
+load
+  {app="a"} `{"foo":"bar"}` @ 10s
+  {app="b"} "foo=bar" @ 10s
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | json | foo="bar" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | logfmt | foo="bar" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | regexp "(?P<baz>.*)" | foo="bar" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | pattern "<baz>" | foo="bar" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | unpack | foo="bar" [1m]))
+  {} 1
+
+# The first mutator after the parser can be the filter itself.
+clear
+load
+  {app="a"} "foo=10" @ 10s
+  {app="b"} "foo=3"  @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | logfmt | foo > 5 [1m]))
+  {app="a"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | logfmt | foo > 5 or foo < 1 [1m]))
+  {app="a"} 1
+
+clear
+load
+  {app="a"} "foo=10MB" @ 10s
+  {app="b"} "foo=3MB"  @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | logfmt | foo > 5MB [1m]))
+  {app="a"} 1
+
+clear
+load
+  {app="a"} "foo=10s" @ 10s
+  {app="b"} "foo=3s"  @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | logfmt | foo > 5s [1m]))
+  {app="a"} 1
+
+clear
+load
+  {app="a"} "foo=10 ===bad" @ 10s
+  {app="b"} "foo=10" @ 10s
+
+eval select from 0 to 20s forward {app="a"} | logfmt --strict | foo > 5 | __error__!=""
+  {app="a"} "foo=10 ===bad" @ 10s [parsed foo="10" __error__="LogfmtParserErr" __error_details__="logfmt syntax error at pos 8 : unexpected '='"]
+eval select from 0 to 20s forward {app="b"} | logfmt --strict | foo > 5 | __error__!=""
+  expect empty
+
+# A filter spanning two labels never qualifies as the first mutator, and()
+# or or(), even with both legs numeric. A same-label chain still does.
+clear
+load
+  {app="a"} "foo=10 bar=7" @ 10s
+  {app="b"} "foo=10 bar=1" @ 10s
+  {app="c"} "foo=1 bar=1"  @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo > 5 and bar > 5 [1m]))
+  {app="a"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo > 5 or bar > 5 [1m]))
+  {app="a"} 1
+  {app="b"} 1
+
+clear
+load
+  {app="a"} "foo=7"  @ 10s
+  {app="b"} "foo=5"  @ 10s
+  {app="c"} "foo=15" @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo > 1 and foo < 10 and foo != 5 [1m]))
+  {app="a"} 1
+
+# No-impact stages and filter operators.
+clear
+load
+  {app="a"} "keep foo=bar" @ 10s
+  {app="b"} "drop foo=bar" @ 10s
+
+eval select from 0 to 20s forward {app="a"} |= "keep" | logfmt | foo="bar"
+  {app="a"} "keep foo=bar" @ 10s [parsed foo="bar"]
+eval select from 0 to 20s forward {app="a"} | logfmt |= "keep" | foo="bar"
+  {app="a"} "keep foo=bar" @ 10s [parsed foo="bar"]
+eval select from 0 to 20s forward {app="b"} |= "keep" | logfmt | foo="bar"
+  expect empty
+eval select from 0 to 20s forward {app="a"} | logfmt | decolorize | foo="bar"
+  {app="a"} "keep foo=bar" @ 10s [parsed foo="bar"]
+
+clear
+load
+  {app="a"} "foo=bar" @ 10s
+  {app="b"} "foo=baz" @ 10s
+  {app="c"} "foo=qux" @ 10s
+
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} != "baz" | logfmt | foo=~".*" [1m]))
+  {app="a"} 1
+  {app="c"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} |~ "^foo=b" | logfmt | foo=~".*" [1m]))
+  {app="a"} 1
+  {app="b"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} |= "bar" or "qux" | logfmt [1m]))
+  {app="a"} 1
+  {app="c"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo!="bar" [1m]))
+  {app="b"} 1
+  {app="c"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo=~"^ba[rz]" [1m]))
+  {app="a"} 1
+  {app="b"} 1
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b|c"} | logfmt | foo!~"^ba[rz]" [1m]))
+  {app="c"} 1
+
+# Parser and filter variety.
+clear
+load
+  {app="a"} "ipaddr=1.2.3.4" @ 10s
+  {app="b"} "ipaddr=9.9.9.9" @ 10s
+
+eval select from 0 to 20s forward {app="a"} | logfmt | ipaddr=ip("1.2.3.4")
+  {app="a"} "ipaddr=1.2.3.4" @ 10s [parsed ipaddr="1.2.3.4"]
+eval select from 0 to 20s forward {app="b"} | logfmt | ipaddr=ip("1.2.3.4")
+  expect empty
+
+clear
+load
+  {app="a"} "somefield=bar" @ 10s
+  {app="b"} `{"a":{"b":"bar"}}` @ 10s
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt somefield | somefield="bar" [1m]))
+  {} 1 # unrenamed: a renamed form (logfmt foo="somefield") has a separate, unrelated bug
+eval instant at 60s sum(count_over_time({app="b"} | json foo="a.b" | foo="bar" [1m]))
+  {} 1
+
+# unwrap()
+clear
+load
+  {app="a"} "foo=10" @ 10s
+  {app="b"} "foo=3"  @ 10s
+
+eval instant at 60s sum(sum_over_time({app="a"} | logfmt | unwrap foo [1m]))
+  {} 10
+eval instant at 60s sum by (app) (sum_over_time({app=~"a|b"} | logfmt | unwrap foo | foo > 5 [1m]))
+  {app="a"} 10
+
+# Metric wrapping and multiple pipelines.
+clear
+load
+  {app="a"} "foo=nope bar=hello" @ 10s
+
+eval instant at 300s sum by (bar) (rate({app="a"} | logfmt | label_format foo="bar" | foo="bar" [5m]))
+  {bar="hello"} 0.0033333333333333335 # 1 line / 300s
+
+clear
+load
+  {app="a"} "foo=nope" @ 10s
+  {app="b"} "foo=bar"  @ 10s
+
+eval instant at 60s sum(count_over_time({app="a"} | logfmt | label_format foo="bar" | foo="bar" [1m])) / sum(count_over_time({app="b"} | logfmt | foo="bar" [1m]))
+  {} 1

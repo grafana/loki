@@ -208,25 +208,74 @@ func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *Labe
 	return true
 }
 
-// NewLabelFilterHints scans stages for single-label filters so a parser can stop
+// NewLabelFilterHints scans stages for label filters so a parser can stop
 // extracting a line as soon as one of them fails to match a label it just extracted.
 func NewLabelFilterHints(stages []Stage) LabelFilterHints {
 	var labelNames []string
 	var labelFilters []LabelFilterer
+
+	isParser := func(s Stage) bool {
+		switch s.(type) {
+		case *JSONParser, *LogfmtParser, *RegexpParser, *UnpackParser, *PatternParser, *LogfmtExpressionParser, *JSONExpressionParser:
+			return true
+		}
+		return false
+	}
+
+	addIfLabelFilterer := func(s Stage) {
+		f, ok := s.(LabelFilterer)
+		if !ok {
+			return
+		}
+		requiredNames := f.RequiredLabelNames()
+		if len(requiredNames) > 1 || len(requiredNames) == 0 { // ShouldContinueParsing is only able to evaluate one label at a time so we have to exclude any filter operating on multiple
+			return
+		}
+		labelFilters = append(labelFilters, f)
+		labelNames = append(labelNames, requiredNames[0])
+	}
+
+	// only support 1 parser. technically you can write 2 parsers into a single query but i'm not sure
+	// the optimization is possible in that case.
+	parserCount := 0
 	for _, s := range stages {
-		switch f := s.(type) {
-		case *BinaryLabelFilter:
-			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
-			// we should be able to add this to our filters
-			continue
-		case LabelFilterer:
-			if len(f.RequiredLabelNames()) > 1 {
-				// Hints can only operate on one label at a time
-				continue
-			}
-			labelFilters = append(labelFilters, f)
-			labelNames = append(labelNames, f.RequiredLabelNames()...)
+		if isParser(s) {
+			parserCount++
 		}
 	}
+	if parserCount != 1 {
+		return NoLabelFilterHints()
+	}
+
+	foundParser := false
+	for _, s := range stages {
+		if isParser(s) {
+			foundParser = true
+			continue
+		}
+
+		// we found a stage that modifies labels, all future filters are not eligible for the optimization since ShouldContinueParsingLine is order independent
+		if s.Hints().CanModifyLabels {
+			addIfLabelFilterer(s) // the _very first_ label modifier is ok to include if it's a label filterer
+			break
+		}
+
+		// let's find some filters
+		_, ok := s.(LabelFilterer)
+		if !ok {
+			continue
+		}
+
+		if !foundParser { // we found a label, but no parser. we can't optimize since ShouldContinueParsingLine is order independent
+			return NoLabelFilterHints()
+		}
+
+		addIfLabelFilterer(s)
+	}
+
+	if !foundParser || len(labelNames) == 0 {
+		return NoLabelFilterHints()
+	}
+
 	return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames}
 }
