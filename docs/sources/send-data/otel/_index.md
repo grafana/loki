@@ -116,3 +116,11 @@ The `set` statement must come before `delete_key`. The stack trace then counts a
 - If you don't need stack traces in Loki, drop the attribute at ingest with a `log_attributes` rule using `action: drop` under `limits_config.otlp_config` (Example 3 above shows the pattern). Rules are applied first-match-wins, so place the specific attribute before any catch-all regex.
 - On self-managed Loki, you can raise `max_structured_metadata_size` or `max_structured_metadata_entries_count` for a tenant through runtime overrides.
 - On Grafana Cloud, contact support to discuss limit adjustments.
+
+## Invalid UTF-8 in log records
+
+OTLP string values must be valid UTF-8, but Loki does not reject a push request that contains invalid byte sequences. What Loki does with them depends on where they appear:
+
+- **Log body:** Loki stores the log line as received. The query API returns JSON, which cannot contain invalid UTF-8, so each invalid byte appears as the Unicode replacement character `U+FFFD` in query results. Functions that measure lines, such as `bytes_over_time`, count the original bytes.
+- **Attributes stored as structured metadata:** Loki replaces each invalid byte with a space and increments the `loki_distributor_push_structured_metadata_sanitized_total` metric.
+- **Attributes stored as index labels,** such as `service.name`: label values must be valid UTF-8, so Loki drops every log record in that stream. It counts them in the `loki_discarded_samples_total` metric with reason `invalid_labels`, and logs the reason if `limited_log_push_errors` is enabled, which is the default. The push request still succeeds if it contains other valid streams. If no valid stream remains, Loki returns an HTTP 422 response. For more information, refer to [Troubleshoot ingestion errors](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-ingest/#error-invalid_labels).
