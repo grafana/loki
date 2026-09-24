@@ -81,6 +81,52 @@ type DataobjSectionDescriptor struct {
 	AmbiguousPredicates []string
 }
 
+// DataobjSectionDescriptors is a set of section descriptors. A resolution covers every object
+// whose sections match, so a set generally holds sections of several objects.
+type DataobjSectionDescriptors []*DataobjSectionDescriptor
+
+// ByObject groups the descriptors by the object that holds them.
+//
+// A stream ID means something only within one object, so a caller that reads streams has to
+// work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
+func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
+	byObject := make(map[string]DataobjSectionDescriptors)
+	for _, descriptor := range d {
+		byObject[descriptor.ObjectPath] = append(byObject[descriptor.ObjectPath], descriptor)
+	}
+	return byObject
+}
+
+// StreamIDs returns the stream IDs the descriptors list, deduplicated and in first-seen order.
+//
+// Call it on one object's descriptors, which [DataobjSectionDescriptors.ByObject] returns. A
+// data object's builder assigns its own stream IDs, so the same ID names a different stream in
+// another object.
+func (d DataobjSectionDescriptors) StreamIDs() []int64 {
+	// One object holds far more streams than sections, so size by the stream IDs rather than by
+	// the descriptors that carry them.
+	var total int
+	for _, descriptor := range d {
+		total += len(descriptor.StreamIDs)
+	}
+
+	var (
+		out  = make([]int64, 0, total)
+		seen = make(map[int64]struct{})
+	)
+
+	for _, descriptor := range d {
+		for _, id := range descriptor.StreamIDs {
+			if _, duplicate := seen[id]; duplicate {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // dedupeStringSlice returns s with duplicates removed, order preserved.
 func dedupeStringSlice(s []string) []string {
 	if len(s) <= 1 {

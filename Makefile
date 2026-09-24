@@ -22,7 +22,7 @@ TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
 
 # Ensure you run `make update-go-version` after changing this
-GO_VERSION         := 1.26.6
+GO_VERSION         := 1.26.7
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -52,6 +52,8 @@ else
   GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 endif
 DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
+# -race cannot be combined with -s/-w or -extldflags -static.
+GO_TEST_FLAGS      := -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
@@ -398,11 +400,11 @@ endif
 ########
 
 test: all ## run the unit tests
-	go test $(GO_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+	go test -race $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
 
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
+	$(GOTEST) -race -count=1 -v -tags=integration -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)

@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -75,10 +76,15 @@ func (b *Builder) Bytes() int {
 // resources for the Object must be released by calling Close on the returned
 // io.Closer. After closing, the returned Object must no longer be read.
 //
-// Flush returns an error if the object could not be constructed.
-// [Builder.Reset] is called after a successful flush to discard any pending
-// data, allowing new data to be appended.
+// Flush returns an error if the object could not be constructed. No object is
+// handed to the caller in that case, so the sections buffered so far are
+// released from the scratch store instead.
+//
+// [Builder.Reset] is called by Flush, whether it succeeds or fails, to discard
+// any pending data and allow new data to be appended.
 func (b *Builder) Flush() (*Object, io.Closer, error) {
+	defer b.Reset()
+
 	snapshot, err := b.encoder.Flush()
 	if err != nil {
 		return nil, nil, fmt.Errorf("flushing object: %w", err)
@@ -86,17 +92,16 @@ func (b *Builder) Flush() (*Object, io.Closer, error) {
 
 	obj, err := FromReaderAt(snapshot, snapshot.Size())
 	if err != nil {
-		// The snapshot is invalid; in this case, we *don't* want to call
-		// [snapshot.Close], otherwise it removes all of the in-progress
-		// sections from our encoder and we can't potentially recover them.
-		return nil, nil, fmt.Errorf("error building object: %w", err)
+		// The snapshot took over the buffered sections and is never handed to
+		// the caller, so closing it here is the only way to release them.
+		return nil, nil, errors.Join(fmt.Errorf("error building object: %w", err), snapshot.Close())
 	}
 
-	b.Reset()
 	return obj, snapshot, nil
 }
 
-// Reset discards pending data and resets the builder to an empty state.
+// Reset discards pending data and resets the builder to an empty state,
+// releasing any sections it still holds from the scratch store.
 func (b *Builder) Reset() {
 	b.encoder.Reset()
 }

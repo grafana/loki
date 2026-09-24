@@ -50,6 +50,11 @@ func newTableOfContentsMetrics() *tocMetrics {
 		}, []string{"status"}),
 	}
 
+	// Initialize each status to 0, otherwise neither the rate nor increase
+	// PromQL functions detect increases from 0 to 1.
+	metrics.tocWriteFailures.WithLabelValues(string(statusSuccess)).Add(0)
+	metrics.tocWriteFailures.WithLabelValues(string(statusFailure)).Add(0)
+
 	return metrics
 }
 

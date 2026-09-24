@@ -1003,7 +1003,7 @@ func mustNewPatternParser(p string) log.Stage {
 	return r
 }
 
-func Test_canInjectVectorGrouping(t *testing.T) {
+func Test_CanInjectVectorGrouping(t *testing.T) {
 	tests := []struct {
 		vecOp   string
 		rangeOp string
@@ -1032,8 +1032,8 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.vecOp+"_"+tt.rangeOp, func(t *testing.T) {
-			if got := canInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
-				t.Errorf("canInjectVectorGrouping() = %v, want %v", got, tt.want)
+			if got := CanInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
+				t.Errorf("CanInjectVectorGrouping() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -274,8 +274,11 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 		{name: "checksum", client: &storageErrorClient{err: fmt.Errorf("decode chunk: %w", chunk.ErrInvalidChecksum)}, wantReason: storageErrorOther},
 		{name: "chunkenc checksum", client: &storageErrorClient{err: fmt.Errorf("decode chunk: %w", chunkenc.ErrInvalidChecksum)}, wantReason: storageErrorOther},
 		{name: "retries exceeded", client: &storageErrorClient{err: congestion.RetriesExceeded}, wantReason: storageErrorRetryable},
-		{name: "canceled", client: &storageErrorClient{err: context.Canceled}},
-		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}},
+		// storageErr wrapping context.Canceled/DeadlineExceeded is still a genuine storage
+		// failure (e.g. an object-client's own per-request sub-timeout) as long as the
+		// query's own context is still live, so these are counted like any other error.
+		{name: "canceled", client: &storageErrorClient{err: context.Canceled}, wantReason: storageErrorOther},
+		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}, wantReason: storageErrorOther},
 		{name: "no error", client: &storageErrorClient{}},
 	}
 
@@ -308,9 +311,7 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 					require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
 				}
 
-				// One of the two requested chunks fails whenever the client
-				// returns an error, except cancellation/deadline: those aren't
-				// counted as data-loss failures.
+				// One of the two requested chunks fails whenever the client returns an error.
 				wantFailures := int64(0)
 				if test.client.err != nil && test.wantReason != "" {
 					wantFailures = 1
@@ -319,6 +320,41 @@ func TestFetchChunks_HandlesStorageErrors(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestFetchChunks_QueryCanceledDuringFetchSkipsFailureAccounting simulates the query's own
+// context being canceled/timed out while the storage fetch is in flight (as opposed to a
+// storage-internal sub-timeout with the query context still live, which IS counted as a
+// failure per TestFetchChunks_HandlesStorageErrors). The context is still live when FetchChunks
+// starts -- otherwise the ctx.Err() guard at the top of FetchChunks would return early -- and is
+// canceled by the storage client itself right as it returns its error, mirroring a real race
+// between query cancellation and an in-flight fetch.
+func TestFetchChunks_QueryCanceledDuringFetchSkipsFailureAccounting(t *testing.T) {
+	chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour})
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &cancelingStorageClient{cancel: cancel, err: context.Canceled}
+	f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), client, 0, 0, false)
+	require.NoError(t, err)
+	t.Cleanup(f.Stop)
+
+	before := readStorageErrorCounters(t)
+	statsCtx, ctx := stats.NewContext(ctx)
+	_, err = f.FetchChunks(ctx, chunks)
+	require.NoError(t, err)
+
+	require.Empty(t, storageErrorCounterDeltas(t, before))
+	require.Equal(t, int64(0), statsCtx.Store().ChunkFetchFailures)
+}
+
+type cancelingStorageClient struct {
+	client.Client
+	cancel context.CancelFunc
+	err    error
+}
+
+func (s *cancelingStorageClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
+	s.cancel()
+	return nil, s.err
 }
 
 func readStorageErrorCounters(t *testing.T) map[string]float64 {

@@ -24,7 +24,7 @@ func CopySpanID(dest, src *SpanID) {
 	*dest = *src
 }
 
-// IsEmpty returns true if id contains at least one non-zero byte.
+// IsEmpty returns true if id doesn't contain at least one non-zero byte.
 func (sid SpanID) IsEmpty() bool {
 	return sid == [spanIDSize]byte{}
 }

@@ -179,8 +179,9 @@ type Config struct {
 	// existing trace when the function returns true. A span link will be used
 	// to connect to any existing trace. It only works if using Open-Telemetry
 	// tracing.
-	PublicEndpointFn func(*http.Request) bool `yaml:"-"`
-	CreateNewTraces  bool                     `yaml:"create_new_traces"`
+	PublicEndpointFn                    func(*http.Request) bool `yaml:"-"`
+	CreateNewTraces                     bool                     `yaml:"create_new_traces"`
+	EnableOpenMetricsTextCreatedSamples bool                     `yaml:"enable_open_metrics_text_created_samples"`
 }
 
 type Throughput struct {
@@ -253,9 +254,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
 	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
 	f.BoolVar(&cfg.CreateNewTraces, "server.create-new-traces", false, "Creates new traces for each call rather than continuing the existing trace. A span link is used to allow navigation to the parent trace. Only works when using Open-Telemetry tracing.")
+	f.BoolVar(&cfg.EnableOpenMetricsTextCreatedSamples, "server.enable-open-metrics-text-created-samples", false, "Specifies if this handler should emit start timestamps for counters, histograms and summaries over OpenMetrics 1.0, which are defined as extra series with the same name and \"_created\" suffix. Only applies if -server.register-instrumentation is set to true.")
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.EnableOpenMetricsTextCreatedSamples && !cfg.RegisterInstrumentation {
+		return fmt.Errorf("server.enable-open-metrics-text-created-samples can only be used if server.register-instrumentation is set to true")
+	}
 	return cfg.ClusterValidation.Validate()
 }
 
@@ -413,7 +418,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
 	}
 	if cfg.RegisterInstrumentation {
-		RegisterInstrumentationWithGatherer(router, gatherer)
+		RegisterInstrumentationWithGathererAndCreatedSamples(router, gatherer, cfg.EnableOpenMetricsTextCreatedSamples)
 	}
 
 	// Setup gRPC server
@@ -580,13 +585,20 @@ func RegisterInstrumentation(router *mux.Router) {
 	RegisterInstrumentationWithGatherer(router, prometheus.DefaultGatherer)
 }
 
-// RegisterInstrumentationWithGatherer on the given router.
-func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus.Gatherer) {
+// RegisterInstrumentationWithGathererAndCreatedSamples registers metrics and pprof handlers.
+// If enableOpenMetricsTextCreatedSamples is true, OpenMetrics 1.0 responses include _created samples.
+func RegisterInstrumentationWithGathererAndCreatedSamples(router *mux.Router, gatherer prometheus.Gatherer, enableOpenMetricsTextCreatedSamples bool) {
 	router.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
-		EnableOpenMetrics: true,
+		EnableOpenMetrics:                   true,
+		EnableOpenMetricsTextCreatedSamples: enableOpenMetricsTextCreatedSamples,
 	}))
 	router.Handle("/debug/pprof/cmdline", http.NotFoundHandler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
+}
+
+// RegisterInstrumentationWithGatherer registers metrics and pprof handlers.
+func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus.Gatherer) {
+	RegisterInstrumentationWithGathererAndCreatedSamples(router, gatherer, false)
 }
 
 func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logger gokit_log.Logger) ([]middleware.Interface, error) {

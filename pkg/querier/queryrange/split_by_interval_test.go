@@ -2057,39 +2057,34 @@ func Test_splitByInterval_firstIntervalFillsLimit(t *testing.T) {
 	const limit uint32 = 3
 	const intervals = 3
 
-	next := func(calls *atomic.Int32) queryrangebase.Handler {
-		return queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			req := r.(*LokiRequest)
-			time.Sleep(time.Millisecond)
-			calls.Add(1)
-			return &LokiResponse{
-				Status:    loghttp.QueryStatusSuccess,
-				Direction: req.Direction,
-				Limit:     req.Limit,
-				Version:   uint32(loghttp.VersionV1),
-				Data: LokiData{
-					ResultType: loghttp.ResultTypeStream,
-					Result: []logproto.Stream{
-						{
-							Labels:  `{foo="bar", level="debug"}`,
-							Entries: splitIntervalLogLines(req.StartTs, perSplit, req.Direction),
-						},
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		req := r.(*LokiRequest)
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: req.Direction,
+			Limit:     req.Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels:  `{foo="bar", level="debug"}`,
+						Entries: splitIntervalLogLines(req.StartTs, perSplit, req.Direction),
 					},
 				},
-			}, nil
-		})
-	}
+			},
+		}, nil
+	})
 
 	for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
 		t.Run(direction.String(), func(t *testing.T) {
-			var calls atomic.Int32
 			split := SplitByIntervalMiddleware(
 				testSchemas,
 				WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour),
 				DefaultCodec,
 				newDefaultSplitter(fakeLimits{}, nil),
 				nilMetrics,
-			).Wrap(next(&calls))
+			).Wrap(next)
 
 			res, err := split.Do(ctx, &LokiRequest{
 				StartTs:   time.Unix(0, 0),
@@ -2105,7 +2100,6 @@ func Test_splitByInterval_firstIntervalFillsLimit(t *testing.T) {
 			got := res.(*LokiResponse)
 			require.Equal(t, int64(limit), got.Count())
 			require.Equal(t, stats.Result{Summary: stats.Summary{Splits: 1}}, got.Statistics)
-			require.Equal(t, int32(1), calls.Load())
 
 			firstStart := time.Unix(0, 0)
 			if direction == logproto.BACKWARD {

@@ -18,6 +18,23 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
+// countingCloser counts how many times it was closed. When inner is set it is
+// closed too, so a closer substituted by a mock still releases the real
+// resource behind it.
+type countingCloser struct {
+	closed int
+	err    error
+	inner  io.Closer
+}
+
+func (c *countingCloser) Close() error {
+	c.closed++
+	if c.inner != nil {
+		_ = c.inner.Close()
+	}
+	return c.err
+}
+
 // mockBuilder mocks a [logsobj.Builder].
 type mockBuilder struct {
 	builder *logsobj.Builder
@@ -25,6 +42,10 @@ type mockBuilder struct {
 	// full, when true, forces IsFull to report the builder as full regardless
 	// of the underlying builder's estimated size.
 	full bool
+	// flushCloser, when set, is returned by Flush in place of the underlying
+	// builder's closer, letting tests observe and fail the release of the
+	// unsorted object.
+	flushCloser *countingCloser
 }
 
 func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
@@ -56,7 +77,12 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 		m.nextErr = nil
 		return nil, nil, err
 	}
-	return m.builder.Flush()
+	obj, closer, err := m.builder.Flush()
+	if err != nil || m.flushCloser == nil {
+		return obj, closer, err
+	}
+	m.flushCloser.inner = closer
+	return obj, m.flushCloser, nil
 }
 
 func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
@@ -73,13 +99,21 @@ func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
 	return nil
 }
 
+// mockFlusher implements the flusher interface, handing out a distinct object
+// path per flush.
 type mockFlusher struct {
 	flushes int
+	// obj is returned by every flush, letting tests assert that the flushed
+	// object reaches the caller.
+	obj *dataobj.Object
+	// closer is returned by every flush, letting tests assert that the caller
+	// releases the flushed object once it is done with it.
+	closer countingCloser
 }
 
-func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
+func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.flushes++
-	return "", nil
+	return m.obj, &m.closer, fmt.Sprintf("object_%03d", m.flushes), nil
 }
 
 type mockFlushCommitter struct {
@@ -203,10 +237,17 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 	return kgo.ProduceResults{{Err: nil}}
 }
 
-type mockSorter struct{}
+// mockSorter returns the object it is given, so the flusher can be driven
+// without performing a real sort.
+type mockSorter struct {
+	// closer is handed to the flusher on every sort, letting tests assert
+	// whether ownership of the sorted object was transferred to the caller or
+	// released by the flusher.
+	closer countingCloser
+}
 
 func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return obj, io.NopCloser(nil), nil
+	return obj, &m.closer, nil
 }
 
 type mockUploader struct {
@@ -219,4 +260,11 @@ func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, e
 	defer m.mtx.Unlock()
 	m.uploaded = append(m.uploaded, obj)
 	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
+}
+
+// failureUploader is an uploader that always fails.
+type failureUploader struct{}
+
+func (f *failureUploader) Upload(_ context.Context, _ *dataobj.Object) (string, error) {
+	return "", errors.New("mock error")
 }

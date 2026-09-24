@@ -15,8 +15,8 @@ import (
 // from producing through partitioning, so you can set fields in the record
 // struct before producing to aid in partitioning with a custom partitioner.
 type Partitioner interface {
-	// forTopic returns a partitioner for an individual topic. It is
-	// guaranteed that only one record will use the an individual topic's
+	// ForTopic returns a partitioner for an individual topic. It is
+	// guaranteed that only one record will use an individual topic's
 	// topicPartitioner at a time, meaning partitioning within a topic does
 	// not require locks.
 	ForTopic(string) TopicPartitioner
@@ -229,7 +229,7 @@ func (p *leastBackupTopicPartitioner) PartitionByBackup(_ *Record, n int, backup
 				leastBackup = backup
 				p.onPart = pick
 				npicked = 1
-			} else {
+			} else if backup == leastBackup {
 				npicked++ // reservoir sampling with k = 1
 				if p.rng.Intn(npicked) == 0 {
 					p.onPart = pick
@@ -245,11 +245,11 @@ func (p *leastBackupTopicPartitioner) PartitionByBackup(_ *Record, n int, backup
 ///////////////////
 
 // UniformBytesPartitioner is a redux of the StickyPartitioner, proposed in
-// KIP-794 and release with the Java client in Kafka 3.3. This partitioner
+// KIP-794 and released with the Java client in Kafka 3.3. This partitioner
 // returns the same partition until 'bytes' is hit. At that point, a
 // re-partitioning happens. If adaptive is false, this chooses a new random
-// partition, otherwise this chooses a broker based on the inverse of the
-// backlog currently buffered for that broker. If keys is true, this uses
+// partition, otherwise this chooses a partition based on the inverse of the
+// backlog currently buffered for that partition. If keys is true, this uses
 // standard hashing based on record key for records with non-nil keys. hasher
 // is optional; if nil, the default hasher murmur2 (Kafka's default).
 //
@@ -355,8 +355,8 @@ func (p *uniformBytesTopicPartitioner) PartitionByBackup(r *Record, n int, backu
 	} else {
 		p.calc = p.calc[:0]
 
-		// For adaptive, the logic is that we pick by broker according
-		// to the inverse of the queue size. Presumably this means
+		// For adaptive, the logic is that we pick a partition according
+		// to the inverse of its queue size. Presumably this means
 		// bytes, but we use records for simplicity.
 		//
 		// We calculate 1/recs for all brokers and choose the first one
@@ -382,14 +382,28 @@ func (p *uniformBytesTopicPartitioner) PartitionByBackup(r *Record, n int, backu
 		}
 		r := p.rng.Float64()
 		pick := r * t
+		// The loop below selects nothing in two cases: floating rounding
+		// can leave pick just above 0 after subtracting every weight (the
+		// guarded case the original code handled), and we may have entered
+		// this re-pick with a stale p.onPart that is not the -1 byte-reset
+		// sentinel but rather a previously-pinned index that is now >= n
+		// because the writable partition count shrank under us (e.g. a
+		// leader election dropped partitions from writablePartitions). In
+		// both cases p.onPart is unchanged by the loop, so we must fall
+		// back to a valid index rather than return the stale value, which
+		// the caller would reject as an out-of-range partitioning choice
+		// (failing the record). The non-adaptive branch above re-picks
+		// unconditionally via Intn(n) and so has never had this hole.
+		picked := false
 		for _, c := range p.calc {
 			pick -= c.f
 			if pick <= 0 {
 				p.onPart = c.n
+				picked = true
 				break
 			}
 		}
-		if p.onPart == -1 {
+		if !picked {
 			p.onPart = p.calc[len(p.calc)-1].n
 		}
 	}
@@ -475,7 +489,7 @@ type PartitionerHasher func([]byte, int) int
 // KafkaHasher returns a PartitionerHasher using hashFn that mirrors how Kafka
 // partitions after hashing data. In Kafka, after hashing into a uint32, the
 // hash is converted to an int32 and the high bit is stripped. Kafka by default
-// uses murmur2 hashing, and the StickyKeyPartiitoner uses this by default.
+// uses murmur2 hashing, and the StickyKeyPartitioner uses this by default.
 // Using this KafkaHasher function is only necessary if you want to change the
 // underlying hashing algorithm.
 func KafkaHasher(hashFn func([]byte) uint32) PartitionerHasher {
@@ -497,8 +511,25 @@ func KafkaHasher(hashFn func([]byte) uint32) PartitionerHasher {
 // In particular, using this function with a crc32.ChecksumIEEE hasher makes
 // this partitioner match librdkafka's consistent partitioner, or the
 // zendesk/ruby-kafka partitioner.
+//
+// Note that the arithmetic depends on Go's int width: on 32-bit platforms,
+// hashes with the high bit set choose a different partition than on 64-bit
+// platforms (only the 64-bit behavior matches librdkafka). This is
+// deliberately left alone: the function exists to preserve a historical
+// placement, and changing either platform's placement would remap keys for
+// deployments relying on it.
 func SaramaHasher(hashFn func([]byte) uint32) PartitionerHasher {
 	return func(key []byte, n int) int {
+		// The int conversion makes this arithmetic int-width
+		// dependent: on 64-bit platforms int(uint32) is always
+		// non-negative (the negation below is dead and the result
+		// matches librdkafka's unsigned modulo), while on 32-bit
+		// platforms a hash with the high bit set wraps negative and
+		// is negated, choosing a different partition. This stays
+		// as-is deliberately: this function's entire purpose is
+		// preserving a historical placement (see the doc above), and
+		// existing deployments on either width depend on the
+		// placement they have been writing with.
 		p := int(hashFn(key)) % n
 		if p < 0 {
 			p = -p

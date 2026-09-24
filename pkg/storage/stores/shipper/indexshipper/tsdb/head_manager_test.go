@@ -559,6 +559,44 @@ func Test_HeadManager_RotateAndBuild(t *testing.T) {
 	require.Equal(t, 1, mgr.builds, "tick right after a forced flush should not build again")
 }
 
+// Test_HeadManager_RotateAndBuild_SamePeriodDoesNotDeleteActiveWAL guards
+// against a regression where two rotations landing in the same rotation
+// period (e.g. two forced flushes via /flush/tenant less than
+// defaultRotationPeriod apart) would delete the newly-active WAL: the old
+// truncation logic removed every WAL directory on disk that mapped to the
+// built head's period bucket, rather than only the one WAL that head was
+// actually built from.
+func Test_HeadManager_RotateAndBuild_SamePeriodDoesNotDeleteActiveWAL(t *testing.T) {
+	dir := t.TempDir()
+
+	// Anchor both rotations inside the same 15-minute rotation-period
+	// bucket, mimicking two forced flushes landing less than
+	// defaultRotationPeriod apart.
+	bucketStart := defaultRotationPeriod.TimeForPeriod(defaultRotationPeriod.PeriodFor(time.Now()))
+	t0 := bucketStart.Add(time.Minute)
+	t1 := bucketStart.Add(5 * time.Minute)
+	require.Equal(t, defaultRotationPeriod.PeriodFor(t0), defaultRotationPeriod.PeriodFor(t1),
+		"t0 and t1 must land in the same rotation period for this test to exercise the race")
+
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.NoError(t, util.EnsureDirectory(d))
+	}
+	require.NoError(t, hm.Rotate(t0)) // initialize active head (usually done by Start())
+	require.DirExists(t, walPath(hm.name, hm.dir, t0))
+
+	// Force a second rotation at t1, still within t0's period bucket: this
+	// rotates out and builds the t0 head, and t1 becomes the new active head.
+	require.NoError(t, hm.rotateAndBuild(t1, true))
+	require.Equal(t, 1, mgr.builds, "the t0 head should have been built exactly once")
+
+	require.NoDirExists(t, walPath(hm.name, hm.dir, t0), "the built-out t0 WAL should have been removed")
+	require.DirExists(t, walPath(hm.name, hm.dir, t1),
+		"the newly active t1 WAL must survive truncation of the t0 WAL that shares its period bucket")
+}
+
 // Test_HeadManager_Flush exercises the public, channel-triggered Flush() end to
 // end: the request is serviced on the running loop goroutine.
 func Test_HeadManager_Flush(t *testing.T) {
@@ -889,7 +927,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),

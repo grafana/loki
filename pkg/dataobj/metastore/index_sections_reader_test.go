@@ -50,7 +50,7 @@ func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -89,7 +89,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -151,7 +151,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -203,7 +203,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -249,7 +249,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -309,7 +309,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -358,7 +358,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a stream with label app=foo
@@ -422,7 +422,7 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{

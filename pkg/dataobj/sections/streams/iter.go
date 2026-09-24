@@ -190,13 +190,13 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			stream.MinTimestamp = time.Unix(0, columnValue.Int64())
+			stream.MinTimestamp = time.Unix(0, columnValue.Int64()).UTC()
 
 		case ColumnTypeMaxTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			stream.MaxTimestamp = time.Unix(0, columnValue.Int64())
+			stream.MaxTimestamp = time.Unix(0, columnValue.Int64()).UTC()
 
 		case ColumnTypeRows:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {

@@ -5,6 +5,7 @@ package streams
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -162,4 +163,9 @@ func (ct ColumnType) String() string {
 		return fmt.Sprintf("ColumnType(%d)", ct)
 	}
 	return text
+}
+
+// HasColumn reports whether the section holds a column of the given type.
+func (s *Section) HasColumn(typ ColumnType) bool {
+	return slices.ContainsFunc(s.columns, func(column *Column) bool { return column.Type == typ })
 }

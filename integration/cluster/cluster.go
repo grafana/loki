@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -223,7 +224,7 @@ func (c *Cluster) Run() error {
 			continue
 		}
 
-		if err := component.run(); err != nil {
+		if err := component.runMultiple(5); err != nil {
 			return err
 		}
 	}
@@ -347,6 +348,19 @@ func (c *Component) WithExtraConfig(cfg string) {
 func (c *Component) writeConfig() error {
 	var err error
 
+	if c.configFile != "" {
+		// remove previous config file
+		if err = os.Remove(c.configFile); err != nil {
+			return err
+		}
+		c.configFile = ""
+	}
+	if c.dataPath != "" {
+		if err = os.RemoveAll(c.dataPath); err != nil {
+			return err
+		}
+		c.dataPath = ""
+	}
 	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
@@ -354,13 +368,12 @@ func (c *Component) writeConfig() error {
 
 	// Listen ports are picked by the harness rather than by the server, so that
 	// the harness can probe readiness over the network.
-	if c.httpPort, err = freePort(); err != nil {
-		return fmt.Errorf("error allocating http port: %w", err)
+	ports, err := reservePorts(2)
+	if err != nil {
+		return fmt.Errorf("error reserving ports: %w", err)
 	}
-
-	if c.grpcPort, err = freePort(); err != nil {
-		return fmt.Errorf("error allocating grpc port: %w", err)
-	}
+	c.httpPort = ports[0]
+	c.grpcPort = ports[1]
 
 	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
@@ -430,6 +443,20 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	}
 
 	return merged, nil
+}
+
+func (c *Component) runMultiple(n int) error {
+	var err error
+	for i := 0; i < n; i++ {
+		err = c.run()
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "address already in use") {
+			return err
+		}
+	}
+	return err
 }
 
 func (c *Component) run() error {
@@ -516,7 +543,6 @@ func (c *Component) run() error {
 	case err := <-errCh:
 		return err
 	}
-
 	return nil
 }
 
@@ -539,7 +565,7 @@ func (c *Component) cleanup() (files []string, dirs []string) {
 func (c *Component) Restart() error {
 	c.cleanup()
 	c.wg.Wait()
-	return c.run()
+	return c.runMultiple(5)
 }
 
 type runtimeConfigValues struct {
@@ -584,15 +610,22 @@ func NewRemoteWriteServer(handler *http.HandlerFunc) *httptest.Server {
 	return server
 }
 
-// freePort asks the kernel for an unused port. There is an inherent gap between
-// releasing it here and the server binding it, but the integration tests start
-// components one at a time, so nothing else in the suite should compete for it.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+// reservePorts asks the kernel for n unused ports and returns them.
+func reservePorts(n int) ([]int, error) {
+	listeners := make([]net.Listener, 0, n)
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+	ports := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, l)
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
-	defer l.Close()
-
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return ports, nil
 }

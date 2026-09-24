@@ -107,7 +107,7 @@ func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 				// If the SubChannel is in idle state, initiate a connection but
 				// continue to check other pickers to see if there is one in
 				// ready state.
-				es.balancer.ExitIdle()
+				es.exitIdle()
 			}
 		}
 		if requestedConnection {

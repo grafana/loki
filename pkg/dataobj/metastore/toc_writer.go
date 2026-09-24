@@ -72,7 +72,7 @@ func (m *TableOfContentsWriter) initBuilder() error {
 
 	m.builderOnce.Do(func() {
 		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
-		indexBuilder, err := indexobj.NewBuilder(tocBuilderCfg, nil)
+		indexBuilder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		if err != nil {
 			initErr = err
 			return

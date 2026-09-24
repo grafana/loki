@@ -5,15 +5,13 @@ package generated
 
 import (
 	"encoding/xml"
-	"net/url"
-
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"net/url"
 )
 
 type TransactionalContentSetter interface {
 	SetCRC64([]byte)
 	SetMD5([]byte)
-	SetStructuredBody(bodyType string, contentLength int64)
 }
 
 func (a *AppendBlobClientAppendBlockOptions) SetCRC64(v []byte) {
@@ -24,22 +22,12 @@ func (a *AppendBlobClientAppendBlockOptions) SetMD5(v []byte) {
 	a.TransactionalContentMD5 = v
 }
 
-func (a *AppendBlobClientAppendBlockOptions) SetStructuredBody(bodyType string, contentLength int64) {
-	a.StructuredBodyType = to.Ptr(bodyType)
-	a.StructuredContentLength = to.Ptr(contentLength)
-}
-
 func (b *BlockBlobClientStageBlockOptions) SetCRC64(v []byte) {
 	b.TransactionalContentCRC64 = v
 }
 
 func (b *BlockBlobClientStageBlockOptions) SetMD5(v []byte) {
 	b.TransactionalContentMD5 = v
-}
-
-func (b *BlockBlobClientStageBlockOptions) SetStructuredBody(bodyType string, contentLength int64) {
-	b.StructuredBodyType = to.Ptr(bodyType)
-	b.StructuredContentLength = to.Ptr(contentLength)
 }
 
 func (p *PageBlobClientUploadPagesOptions) SetCRC64(v []byte) {
@@ -50,11 +38,6 @@ func (p *PageBlobClientUploadPagesOptions) SetMD5(v []byte) {
 	p.TransactionalContentMD5 = v
 }
 
-func (p *PageBlobClientUploadPagesOptions) SetStructuredBody(bodyType string, contentLength int64) {
-	p.StructuredBodyType = to.Ptr(bodyType)
-	p.StructuredContentLength = to.Ptr(contentLength)
-}
-
 func (b *BlockBlobClientUploadOptions) SetCRC64(v []byte) {
 	b.TransactionalContentCRC64 = v
 }
@@ -63,18 +46,13 @@ func (b *BlockBlobClientUploadOptions) SetMD5(v []byte) {
 	b.TransactionalContentMD5 = v
 }
 
-func (b *BlockBlobClientUploadOptions) SetStructuredBody(bodyType string, contentLength int64) {
-	b.StructuredBodyType = to.Ptr(bodyType)
-	b.StructuredContentLength = to.Ptr(contentLength)
-}
-
 type SourceContentSetter interface {
 	SetSourceContentCRC64(v []byte)
 	SetSourceContentMD5(v []byte)
 }
 
 func (a *AppendBlobClientAppendBlockFromURLOptions) SetSourceContentCRC64(v []byte) {
-	a.SourceContentCRC64 = v
+	a.SourceContentcrc64 = v
 }
 
 func (a *AppendBlobClientAppendBlockFromURLOptions) SetSourceContentMD5(v []byte) {
@@ -82,7 +60,7 @@ func (a *AppendBlobClientAppendBlockFromURLOptions) SetSourceContentMD5(v []byte
 }
 
 func (b *BlockBlobClientStageBlockFromURLOptions) SetSourceContentCRC64(v []byte) {
-	b.SourceContentCRC64 = v
+	b.SourceContentcrc64 = v
 }
 
 func (b *BlockBlobClientStageBlockFromURLOptions) SetSourceContentMD5(v []byte) {
@@ -90,7 +68,7 @@ func (b *BlockBlobClientStageBlockFromURLOptions) SetSourceContentMD5(v []byte) 
 }
 
 func (p *PageBlobClientUploadPagesFromURLOptions) SetSourceContentCRC64(v []byte) {
-	p.SourceContentCRC64 = v
+	p.SourceContentcrc64 = v
 }
 
 func (p *PageBlobClientUploadPagesFromURLOptions) SetSourceContentMD5(v []byte) {
@@ -98,14 +76,6 @@ func (p *PageBlobClientUploadPagesFromURLOptions) SetSourceContentMD5(v []byte) 
 }
 
 // Custom UnmarshalXML functions for types that need special handling.
-
-type BlobName struct {
-	// The name of the blob.
-	Content *string `xml:",chardata"`
-
-	// Indicates if the blob name is encoded.
-	Encoded *bool `xml:"Encoded,attr"`
-}
 
 // UnmarshalXML implements the xml.Unmarshaller interface for type BlobPrefix.
 func (b *BlobPrefix) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
