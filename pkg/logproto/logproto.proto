@@ -3,6 +3,7 @@ syntax = "proto3";
 package logproto;
 
 import "gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
@@ -61,6 +62,26 @@ message StreamRate {
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
   uint32 pushes = 5;
+}
+
+// HintTimeRange is a half-open time window [start, end) that may contain
+// matching logs.
+message HintTimeRange {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+message HintTimeRanges {
+  repeated HintTimeRange ranges = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "ranges"
+  ];
 }
 
 message QueryRequest {
@@ -409,6 +430,92 @@ message IndexStatsResponse {
   uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
   uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
+}
+
+message HintRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string expr = 3;
+  repeated HintIndex indexes = 4 [(gogoproto.nullable) = false];
+}
+
+// HintIndex is the slim index descriptor on HintRequest. Catalog identity is
+// a single id ("date/object_id"); the index object is "{id}/index".
+message HintIndex {
+  string id = 1 [
+    (gogoproto.customname) = "ID",
+    (gogoproto.jsontag) = "id"
+  ];
+  string version = 2 [(gogoproto.jsontag) = "version"];
+  int64 size_bytes = 3 [(gogoproto.jsontag) = "size_bytes"];
+  google.protobuf.Timestamp min_log_ts = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "min_log_ts"
+  ];
+  google.protobuf.Timestamp max_log_ts = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "max_log_ts"
+  ];
+  int64 shard_count = 6 [(gogoproto.jsontag) = "shard_count"];
+  string shard_algorithm = 7 [(gogoproto.jsontag) = "shard_algorithm"];
+  int64 shard_value = 8 [(gogoproto.jsontag) = "shard_value"];
+  HeaderInfo index_header = 9 [(gogoproto.jsontag) = "index_header"];
+}
+
+message HeaderInfo {
+  uint32 version = 1 [(gogoproto.jsontag) = "version"];
+  uint32 flags = 2 [(gogoproto.jsontag) = "flags"];
+  uint32 document_count = 3 [(gogoproto.jsontag) = "document_count"];
+  uint32 term_block_count = 4 [(gogoproto.jsontag) = "term_block_count"];
+  uint32 postings_block_count = 5 [(gogoproto.jsontag) = "postings_block_count"];
+  uint32 postings_compression = 6 [(gogoproto.jsontag) = "postings_compression"];
+  uint64 term_count = 7 [(gogoproto.jsontag) = "term_count"];
+  uint64 postings_data_size = 8 [(gogoproto.jsontag) = "postings_data_size"];
+  uint64 term_data_size = 9 [(gogoproto.jsontag) = "term_data_size"];
+  uint64 doc_metadata_size = 10 [(gogoproto.jsontag) = "doc_metadata_size"];
+  uint64 term_block_dir_size = 11 [(gogoproto.jsontag) = "term_block_dir_size"];
+  uint64 postings_block_dir_size = 12 [(gogoproto.jsontag) = "postings_block_dir_size"];
+}
+
+message HintQueryStats {
+  int64 header_reads = 1;
+  int64 metadata_reads = 2;
+  int64 term_dict_reads = 3;
+  int64 bitmap_reads = 4;
+  int64 header_cache_misses = 5;
+  int64 metadata_cache_misses = 6;
+  int64 object_storage_requests = 7;
+  google.protobuf.Duration total_io_wait = 8 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false,
+    (gogoproto.customname) = "TotalIOWait"
+  ];
+  int64 total_io_bytes = 9 [(gogoproto.customname) = "TotalIOBytes"];
+  int32 peak_concurrency = 10;
+  double effective_concurrency = 11;
+  int32 prefetch_calls = 12;
+  int32 prefetch_timeouts = 13;
+  int64 index_queries_total = 14;
+  int64 index_queries_term_miss = 15;
+  int64 index_queries_empty_and = 16;
+  int64 index_queries_positive = 17;
+  int64 total_term_batches_processed = 18;
+  string hint_cache_result = 19;
+  int64 hint_cache_days_fetched = 20;
+  int64 hint_cache_days_hit = 21;
+}
+
+message HintResponse {
+  repeated HintTimeRange time_ranges = 1 [(gogoproto.nullable) = false];
+  HintQueryStats stats = 2;
 }
 
 message VolumeRequest {

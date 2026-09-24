@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type queryStatsContextKey struct{}
@@ -314,6 +315,64 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 		HintCacheDaysFetched:      s.hintCacheDaysFetched.Load(),
 		HintCacheDaysHit:          s.hintCacheDaysHit.Load(),
 	}
+}
+
+// ToProto returns the wire snapshot used on HintResponse.
+func (s *QueryStats) ToProto() logproto.HintQueryStats {
+	snap := s.Snapshot()
+	return logproto.HintQueryStats{
+		HeaderReads:               snap.HeaderReads,
+		MetadataReads:             snap.MetadataReads,
+		TermDictReads:             snap.TermDictReads,
+		BitmapReads:               snap.BitmapReads,
+		HeaderCacheMisses:         snap.HeaderCacheMisses,
+		MetadataCacheMisses:       snap.MetadataCacheMisses,
+		ObjectStorageRequests:     snap.ObjectStorageRequests,
+		TotalIOWait:               snap.TotalIOWait,
+		TotalIOBytes:              snap.TotalIOBytes,
+		PeakConcurrency:           snap.PeakConcurrency,
+		EffectiveConcurrency:      snap.EffectiveConcurrency,
+		PrefetchCalls:             snap.PrefetchCalls,
+		PrefetchTimeouts:          snap.PrefetchTimeouts,
+		IndexQueriesTotal:         snap.IndexQueriesTotal,
+		IndexQueriesTermMiss:      snap.IndexQueriesTermMiss,
+		IndexQueriesEmptyAnd:      snap.IndexQueriesEmptyAnd,
+		IndexQueriesPositive:      snap.IndexQueriesPositive,
+		TotalTermBatchesProcessed: snap.TotalTermBatchesProcessed,
+		HintCacheResult:           snap.HintCacheResult,
+		HintCacheDaysFetched:      snap.HintCacheDaysFetched,
+		HintCacheDaysHit:          snap.HintCacheDaysHit,
+	}
+}
+
+// QueryStatsFromProto reconstructs a QueryStats accumulator from the wire type.
+func QueryStatsFromProto(p *logproto.HintQueryStats) *QueryStats {
+	s := NewQueryStats()
+	if p == nil {
+		return s
+	}
+	s.headerReads.Store(p.HeaderReads)
+	s.metadataReads.Store(p.MetadataReads)
+	s.termDictReads.Store(p.TermDictReads)
+	s.bitmapReads.Store(p.BitmapReads)
+	s.headerCacheMisses.Store(p.HeaderCacheMisses)
+	s.metadataCacheMisses.Store(p.MetadataCacheMisses)
+	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
+	s.totalIOBytes.Store(p.TotalIOBytes)
+	s.peakConcurrency.Store(p.PeakConcurrency)
+	s.prefetchCalls.Store(p.PrefetchCalls)
+	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
+	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
+	s.indexQueriesTermMiss.Store(p.IndexQueriesTermMiss)
+	s.indexQueriesEmptyAnd.Store(p.IndexQueriesEmptyAnd)
+	s.indexQueriesPositive.Store(p.IndexQueriesPositive)
+	s.totalTermBatchesProcessed.Store(p.TotalTermBatchesProcessed)
+	if p.HintCacheResult != "" {
+		s.hintCacheResult.Store(p.HintCacheResult)
+	}
+	s.hintCacheDaysFetched.Store(p.HintCacheDaysFetched)
+	s.hintCacheDaysHit.Store(p.HintCacheDaysHit)
+	return s
 }
 
 func (s *QueryStats) String() string {

@@ -634,6 +634,10 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
+func (q *querierMock) Hints(_ context.Context, _ *logproto.HintRequest) (*logproto.HintResponse, error) {
+	return nil, nil
+}
+
 func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
 	return nil, nil
 }

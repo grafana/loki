@@ -168,7 +168,7 @@ func WrapMiddlewareWithStore(
 		cfg.MaxHintParallel,
 		metrics.ObserveQueryMultipleTermBatches,
 		logger,
-		reg,
+		nil, // metadata cache lives on queriers
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)
@@ -198,7 +198,7 @@ func WrapMiddlewareWithStore(
 		}
 	}
 
-	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
+	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, 0, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
 	}

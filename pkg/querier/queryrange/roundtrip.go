@@ -502,6 +502,13 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
+	case *logproto.HintRequest:
+		logQueryExecution(ctx, logger,
+			"type", "hints",
+			"query", op.Expr,
+			"length", op.Through.Sub(op.From),
+		)
+		return r.next.Do(ctx, req)
 	case *logproto.ShardsRequest:
 		logQueryExecution(ctx, logger,
 			"type", "shards",

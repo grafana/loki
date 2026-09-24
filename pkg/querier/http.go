@@ -262,6 +262,10 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
+func (q *QuerierAPI) HintsHandler(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
+	return q.querier.Hints(ctx, req)
+}
+
 func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeShards))
 	defer timer.ObserveDuration()

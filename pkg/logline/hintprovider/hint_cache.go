@@ -9,9 +9,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -19,6 +21,10 @@ const (
 	hintCacheKeyPrefix  = "logline:"
 	hintCacheGeneration = 1
 	hintCacheDayLayout  = "2006-01-02"
+	// defaultHintsDayParallel is how many missed days ProvideHints may
+	// fetch at once. All missing days still run; only in-flight count is
+	// capped. This is not MaxHintParallel (index workers per HintRequest).
+	defaultHintsDayParallel = 7
 )
 
 const (
@@ -76,6 +82,7 @@ type minDateProvider interface {
 type CachingHintProvider struct {
 	delegate QueryHintProvider
 	cache    cache.Cache
+	max      int
 
 	flight singleflight.Group
 
@@ -84,10 +91,14 @@ type CachingHintProvider struct {
 }
 
 // NewCachingHintProvider constructs a caching decorator for QueryHintProvider.
-func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, reg prometheus.Registerer) *CachingHintProvider {
+func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, maxDays int, reg prometheus.Registerer) *CachingHintProvider {
+	if maxDays <= 0 {
+		maxDays = defaultHintsDayParallel
+	}
 	return &CachingHintProvider{
 		delegate: delegate,
 		cache:    c,
+		max:      maxDays,
 		requestsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_hint_cache_requests_total",
 			Help: "Total hint cache lookup requests by result.",
@@ -104,6 +115,7 @@ func (p *CachingHintProvider) ProvideHints(
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
+	next queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	if p.delegate == nil {
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
@@ -111,14 +123,14 @@ func (p *CachingHintProvider) ProvideHints(
 
 	if SkipCache(ctx) {
 		p.requestsTotal.WithLabelValues(hintCacheResultSkip).Inc()
-		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through, next)
 		if stats != nil {
 			stats.ObserveHintCache(hintCacheResultSkip, 0, 0)
 		}
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 	if p.cache == nil {
-		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through)
+		hints, stats, err := p.delegate.ProvideHints(ctx, tenant, expr, from, through, next)
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 
@@ -146,51 +158,54 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	p.requestsTotal.WithLabelValues(hintCacheResultMiss).Inc()
-	combinedRanges := append([]HintTimeRange(nil), cachedRanges...)
-	combinedStats := NewQueryStats()
-	for _, day := range missingDays {
-		dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
-		dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
-		sfKey := singleflightKey(tenant, queryString, day.day)
-		value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-			hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
-			result := &provideHintsResult{
-				hints: hints,
-				stats: stats,
-				err:   provideErr,
-			}
-			if provideErr != nil {
-				return result, nil
-			}
-			if result.hints == nil {
-				result.hints = &Hints{}
+
+	results := make([]provideHintsResult, len(missingDays))
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(p.max)
+
+	for i, day := range missingDays {
+		g.Go(func() error {
+			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
+			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
+			sfKey := singleflightKey(tenant, queryString, day.day)
+			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
+				hints, stats, provideErr := p.delegate.ProvideHints(gCtx, tenant, expr, dayFrom, dayThrough, next)
+				if provideErr != nil {
+					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
+				}
+				if hints == nil {
+					hints = &Hints{}
+				}
+				p.storeDays(gCtx, []dayWindow{day}, hints.TimeRanges)
+				return &provideHintsResult{hints: hints, stats: stats}, nil
+			})
+			if shared {
+				p.singleflightDedupedTot.Inc()
 			}
 
-			p.storeDays(ctx, []dayWindow{day}, result.hints.TimeRanges)
-			return result, nil
+			res, ok := value.(*provideHintsResult)
+			if !ok {
+				return fmt.Errorf("unexpected singleflight result type %T", value)
+			}
+			results[i] = *res
+			return res.err
 		})
-		if shared {
-			p.singleflightDedupedTot.Inc()
-		}
-
-		result, ok := value.(*provideHintsResult)
-		if !ok {
-			return nil, nil, fmt.Errorf("unexpected singleflight result type %T", value)
-		}
-		if result.err != nil {
-			return nil, result.stats, result.err
-		}
-		if result.hints == nil {
-			result.hints = &Hints{}
-		}
-		if result.stats != nil {
-			combinedStats.Merge(result.stats)
-		}
-		combinedRanges = append(combinedRanges, result.hints.TimeRanges...)
 	}
 
-	combinedStats.ObserveHintCache(hintCacheResultMiss, len(cacheKeys), daysHit)
-	return filterHintsByWindow(&Hints{TimeRanges: combinedRanges}, from, through), combinedStats, nil
+	waitErr := g.Wait()
+	combined := NewQueryStats()
+	combinedRanges := append([]HintTimeRange(nil), cachedRanges...)
+	for _, r := range results {
+		combined.Merge(r.stats)
+		if r.hints != nil {
+			combinedRanges = append(combinedRanges, r.hints.TimeRanges...)
+		}
+	}
+	if waitErr != nil {
+		return nil, combined, waitErr
+	}
+	combined.ObserveHintCache(hintCacheResultMiss, len(cacheKeys), daysHit)
+	return filterHintsByWindow(&Hints{TimeRanges: combinedRanges}, from, through), combined, nil
 }
 
 func filterHintsByWindow(hints *Hints, from, through model.Time) *Hints {

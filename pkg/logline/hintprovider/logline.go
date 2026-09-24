@@ -12,8 +12,12 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 const (
@@ -58,24 +62,53 @@ func NewLoglineHintProvider(
 		maxParallel:           maxParallel,
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
-		cache:                 newMetadataCache(defaultMetadataCacheEntries, reg),
 	}
-	p.startCacheInvalidationLoop()
+	// Metadata cache belongs on queriers (reg != nil), not the query-frontend.
+	if reg != nil {
+		p.cache = newMetadataCache(defaultMetadataCacheEntries, reg)
+		p.startCacheInvalidationLoop()
+	}
 	return p, nil
 }
 
-func (p *LoglineHintProvider) ProvideHints(
+func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
-	tenant string,
+	expr syntax.Expr,
+	overlapping []logproto.HintIndex,
+) (*logproto.HintResponse, error) {
+	filters := SupportedQuery(expr, p.ngramLength)
+	stats := NewQueryStats()
+	metas, err := hintIndexesToMeta(overlapping)
+	if err != nil {
+		snap := stats.ToProto()
+		return &logproto.HintResponse{Stats: &snap}, err
+	}
+	shardRanges, err := p.executeQuery(ctx, filters, metas, stats)
+	snap := stats.ToProto()
+	if err != nil {
+		return &logproto.HintResponse{Stats: &snap}, err
+	}
+	return &logproto.HintResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+}
+
+type hintPlan struct {
+	filters []string
+	ranges  []HintTimeRange
+	indexes []store.Meta
+	stats   *QueryStats
+}
+
+func (p *LoglineHintProvider) getHintPlan(
 	expr syntax.Expr,
 	from, through model.Time,
-) (*Hints, *QueryStats, error) {
+	tenant string,
+) (hintPlan, error) {
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
 
 	filters := SupportedQuery(expr, p.ngramLength)
 	if len(filters) == 0 {
-		return nil, stats, ErrUnsupported
+		return hintPlan{filters, nil, nil, stats}, ErrUnsupported
 	}
 
 	start := from.Time().UTC()
@@ -92,24 +125,153 @@ func (p *LoglineHintProvider) ProvideHints(
 			End:    minDate,
 			Source: HintSourcePreMinDate,
 		})
-		// Entire query window is pre-min-date: passthrough hint already fully covers it.
 		if !end.After(minDate) {
-			return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+			return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
 		}
 	}
 
 	overlapping := p.store.IndexesForRange(start, end)
 	if len(overlapping) == 0 {
-		return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+		return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
 	}
 
-	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
+	return hintPlan{filters, ranges, overlapping, stats}, nil
+}
+
+func (p *LoglineHintProvider) provideHintsRemote(
+	ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+	next queryrangebase.Handler,
+) (*Hints, *QueryStats, error) {
+	plan, err := p.getHintPlan(expr, from, through, tenant)
+	if err != nil || len(plan.indexes) == 0 {
+		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
+	}
+
+	resp, err := next.Do(ctx, &logproto.HintRequest{
+		From:    from,
+		Through: through,
+		Expr:    expr.String(),
+		Indexes: metasToHintIndexes(plan.indexes),
+	})
 	if err != nil {
-		return nil, stats, err
+		return nil, plan.stats, err
 	}
 
-	ranges = append(ranges, aggregateShardRanges(shardRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+	hr, ok := resp.(*queryrange.HintResponse)
+	if !ok || hr == nil || hr.Response == nil {
+		return nil, plan.stats, fmt.Errorf("unexpected hint response type %T", resp)
+	}
+
+	ranges := append(plan.ranges, fromProtoRanges(hr.Response.TimeRanges)...)
+	return &Hints{TimeRanges: normalizeRanges(ranges)}, QueryStatsFromProto(hr.Response.Stats), nil
+}
+
+func (p *LoglineHintProvider) ProvideHints(
+	ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+	next queryrangebase.Handler,
+) (*Hints, *QueryStats, error) {
+	if next != nil {
+		return p.provideHintsRemote(ctx, tenant, expr, from, through, next)
+	}
+	plan, err := p.getHintPlan(expr, from, through, tenant)
+	if err != nil || len(plan.indexes) == 0 {
+		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
+	}
+
+	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats)
+	if err != nil {
+		return nil, plan.stats, err
+	}
+
+	ranges := append(plan.ranges, aggregateShardRanges(shardRanges)...)
+	return &Hints{TimeRanges: normalizeRanges(ranges)}, plan.stats, nil
+}
+
+func metasToHintIndexes(in []store.Meta) []logproto.HintIndex {
+	out := make([]logproto.HintIndex, len(in))
+	for i, m := range in {
+		out[i] = logproto.HintIndex{
+			ID:             m.ID(),
+			Version:        m.Version,
+			SizeBytes:      m.SizeBytes,
+			MinLogTs:       m.MinLogTs,
+			MaxLogTs:       m.MaxLogTs,
+			ShardCount:     int64(m.ShardCount),
+			ShardAlgorithm: m.ShardAlgorithm,
+			ShardValue:     int64(m.ShardValue),
+			IndexHeader:    headerToProto(m.IndexHeader),
+		}
+	}
+	return out
+}
+
+func hintIndexesToMeta(in []logproto.HintIndex) ([]store.Meta, error) {
+	out := make([]store.Meta, 0, len(in))
+	for _, idx := range in {
+		date, id, ok := strings.Cut(idx.ID, "/")
+		if !ok || date == "" || id == "" {
+			return nil, fmt.Errorf("invalid hint index id %q", idx.ID)
+		}
+		out = append(out, store.Meta{
+			Date:           date,
+			StorageID:      id,
+			Version:        idx.Version,
+			SizeBytes:      idx.SizeBytes,
+			MinLogTs:       idx.MinLogTs,
+			MaxLogTs:       idx.MaxLogTs,
+			ShardCount:     int(idx.ShardCount),
+			ShardAlgorithm: idx.ShardAlgorithm,
+			ShardValue:     int(idx.ShardValue),
+			IndexHeader:    headerFromProto(idx.IndexHeader),
+		})
+	}
+	return out, nil
+}
+
+func headerToProto(h *format.HeaderInfo) *logproto.HeaderInfo {
+	if h == nil {
+		return nil
+	}
+	return &logproto.HeaderInfo{
+		Version:              h.Version,
+		Flags:                h.Flags,
+		DocumentCount:        h.DocumentCount,
+		TermBlockCount:       h.TermBlockCount,
+		PostingsBlockCount:   h.PostingsBlockCount,
+		PostingsCompression:  h.PostingsCompression,
+		TermCount:            h.TermCount,
+		PostingsDataSize:     h.PostingsDataSize,
+		TermDataSize:         h.TermDataSize,
+		DocMetadataSize:      h.DocMetadataSize,
+		TermBlockDirSize:     h.TermBlockDirSize,
+		PostingsBlockDirSize: h.PostingsBlockDirSize,
+	}
+}
+
+func headerFromProto(h *logproto.HeaderInfo) *format.HeaderInfo {
+	if h == nil {
+		return nil
+	}
+	return &format.HeaderInfo{
+		Version:              h.Version,
+		Flags:                h.Flags,
+		DocumentCount:        h.DocumentCount,
+		TermBlockCount:       h.TermBlockCount,
+		PostingsBlockCount:   h.PostingsBlockCount,
+		PostingsCompression:  h.PostingsCompression,
+		TermCount:            h.TermCount,
+		PostingsDataSize:     h.PostingsDataSize,
+		TermDataSize:         h.TermDataSize,
+		DocMetadataSize:      h.DocMetadataSize,
+		TermBlockDirSize:     h.TermBlockDirSize,
+		PostingsBlockDirSize: h.PostingsBlockDirSize,
+	}
 }
 
 // MinDate returns the configured minimum trusted date boundary used by the
@@ -130,18 +292,19 @@ func (p *LoglineHintProvider) openIndexReader(
 
 	storeReader := p.store.GetIndexReaderAt(ctx, meta)
 
-	if cached, ok := p.cache.get(indexID); ok {
-		trackedReader := newTrackingReaderAt(storeReader, stats)
-		reader, err := logline.OpenReaderCached(meta.Version, trackedReader, 0, meta.SizeBytes, cached.state)
-		if err == nil {
-			trackedReader.SetClassifier(reader)
-			return reader, nil
+	if p.cache != nil {
+		if cached, ok := p.cache.get(indexID); ok {
+			trackedReader := newTrackingReaderAt(storeReader, stats)
+			reader, err := logline.OpenReaderCached(meta.Version, trackedReader, 0, meta.SizeBytes, cached.state)
+			if err == nil {
+				trackedReader.SetClassifier(reader)
+				return reader, nil
+			}
+			// Cache entry may be stale/corrupt; evict it before uncached reopen.
+			p.cache.delete(indexID)
 		}
-		// Cache entry may be stale/corrupt; evict it before uncached reopen.
-		p.cache.delete(indexID)
+		stats.ObserveMetadataCacheMiss()
 	}
-
-	stats.ObserveMetadataCacheMiss()
 	if meta.IndexHeader == nil {
 		return nil, fmt.Errorf("index %s is missing required meta.index_header", indexID)
 	}
@@ -153,7 +316,7 @@ func (p *LoglineHintProvider) openIndexReader(
 	}
 	trackedReader.SetClassifier(reader)
 
-	if cachedState != nil {
+	if p.cache != nil && cachedState != nil {
 		p.cache.put(indexID, cachedMetadata{
 			headerInfo: *meta.IndexHeader,
 			state:      cachedState,
@@ -163,6 +326,9 @@ func (p *LoglineHintProvider) openIndexReader(
 }
 
 func (p *LoglineHintProvider) startCacheInvalidationLoop() {
+	if p.cache == nil {
+		return
+	}
 	ch := p.store.PollNotify()
 	if ch == nil {
 		return
