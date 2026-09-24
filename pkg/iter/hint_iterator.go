@@ -30,19 +30,11 @@ func NewHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) 
 
 	result.ranges = make([]hintTimeRange, 0, len(hints))
 	for _, hint := range hints {
-		start, end := hint.Start, hint.End
-		if start.Before(from) {
-			start = from
+		clipped, ok := clipHintRange(hint.Start, hint.End, from, through)
+		if !ok {
+			continue
 		}
-		if end.After(through) {
-			end = through
-		}
-		if start.Before(end) {
-			result.ranges = append(result.ranges, hintTimeRange{
-				start: start.UnixNano(),
-				end:   end.UnixNano(),
-			})
-		}
+		result.ranges = append(result.ranges, clipped)
 	}
 
 	sort.Slice(result.ranges, func(i, j int) bool {
@@ -62,6 +54,26 @@ func NewHintTimeRanges(hints []logproto.HintTimeRange, from, through time.Time) 
 	}
 	result.ranges = merged
 	return result
+}
+
+// clipHintRange clips the half-open interval [start, end) to [from, through)
+// before converting to unix nanoseconds. ok is false when the clipped interval
+// is empty. Clipping happens first so extreme wire timestamps are not passed to
+// UnixNano.
+func clipHintRange(start, end, from, through time.Time) (hintTimeRange, bool) {
+	if start.Before(from) {
+		start = from
+	}
+	if end.After(through) {
+		end = through
+	}
+	if !start.Before(end) {
+		return hintTimeRange{}, false
+	}
+	return hintTimeRange{
+		start: start.UnixNano(),
+		end:   end.UnixNano(),
+	}, true
 }
 
 // Enabled reports whether hints were supplied.
