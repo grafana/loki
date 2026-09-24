@@ -2635,6 +2635,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
+- `tsdb.shipper.postings-cache`
 
 &nbsp;
 
@@ -2726,7 +2727,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.chunks-cache-l2.memcached
+  # tsdb.shipper.postings-cache.memcached
   [<tls_config>]
 
 redis:
@@ -7010,6 +7011,12 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
   [streaming_index_max_idle_file_handles: <int> | default = 16]
 
+  # Experimental. Caches expanded postings for downloaded per-tenant TSDB index
+  # files.
+  # The CLI flags prefix for this block configuration is:
+  # tsdb.shipper.postings-cache
+  [postings_cache: <cache_config>]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -7711,6 +7718,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
+- `tsdb.shipper.postings-cache.memcached`
 - `ui.ring.etcd`
 
 &nbsp;
