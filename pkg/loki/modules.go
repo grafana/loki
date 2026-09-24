@@ -56,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -544,7 +545,32 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
+	var loglineStore *loglinestore.Store
+	if t.Cfg.Logline.Query.Enabled {
+		loglineStore, err = loglinestore.New(
+			context.Background(),
+			t.Cfg.SchemaConfig,
+			t.Cfg.StorageConfig.ObjectStore,
+			t.Cfg.Logline.Store,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.Querier, err = querier.New(
+		t.Cfg.Querier,
+		t.Store,
+		t.ingesterQuerier,
+		t.Overrides,
+		deleteStore,
+		logger,
+		loglineStore,
+		t.Cfg.Logline.Index.NgramLength,
+		t.Cfg.Logline.Query.MaxHintParallel,
+	)
 	if err != nil {
 		return nil, err
 	}

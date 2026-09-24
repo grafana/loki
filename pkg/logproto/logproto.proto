@@ -77,13 +77,6 @@ message HintTimeRange {
   ];
 }
 
-message HintTimeRanges {
-  repeated HintTimeRange ranges = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "ranges"
-  ];
-}
-
 message QueryRequest {
   string selector = 1 [deprecated = true];
   uint32 limit = 2;
