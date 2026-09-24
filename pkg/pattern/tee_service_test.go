@@ -197,6 +197,105 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		return teedStream{hashKey: 123, stream: s, size: s.Size()}
 	}
 
+	t.Run("queued rate shards own their entry slices", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			labels string
+			owns   bool
+		}{
+			{name: "unsharded", labels: `{foo="bar"}`},
+			{name: "time shard", labels: `{foo="bar", __time_shard__="1_2"}`},
+			{name: "rate shard", labels: `{foo="bar", __stream_shard__="0"}`, owns: true},
+			{name: "combined", labels: `{foo="bar", __time_shard__="1_2", __stream_shard__="0"}`, owns: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				tee, _ := getTestTee(t)
+				entries := []push.Entry{{Line: "kept"}, {Line: "other shard"}}
+				shard := push.Stream{Labels: tc.labels, Entries: entries[:1:1]}
+				tee.cfg.TeeConfig.MaxBufferedBytes = shard.Size()
+				tee.Duplicate(t.Context(), "test", keyed(shard), nil)
+				require.Len(t, tee.buf["test"], 1)
+				queued := tee.buf["test"][0].stream
+				require.Equal(t, shard, queued)
+				if tc.owns {
+					require.NotSame(t, &entries[0], &queued.Entries[0])
+				} else {
+					require.Same(t, &entries[0], &queued.Entries[0])
+				}
+			})
+		}
+	})
+
+	t.Run("multiple nested groups preserve metadata precedence", func(t *testing.T) {
+		for _, streamLabels := range []string{`{foo="bar"}`, `{foo="bar", __stream_shard__="0"}`} {
+			t.Run(streamLabels, func(t *testing.T) {
+				tee, client := getTestTee(t)
+				at := time.Now()
+				nested := logproto.InternalStreamAdapter{Labels: streamLabels, ResourceLogs: []logproto.ResourceLogs{
+					{Attrs: []push.LabelAdapter{{Name: "shared", Value: "resource"}}, ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: []push.LabelAdapter{{Name: "shared", Value: "scope"}}, Entries: []push.Entry{
+							{Timestamp: at, Line: "entry wins", StructuredMetadata: []push.LabelAdapter{{Name: "shared", Value: "entry"}}},
+							{Timestamp: at.Add(time.Second), Line: "scope wins"},
+						}},
+						{Entries: []push.Entry{{Timestamp: at.Add(2 * time.Second), Line: "resource wins"}}},
+					}},
+					{ScopeLogs: []logproto.ScopeLogs{{Entries: []push.Entry{{Timestamp: at.Add(3 * time.Second), Line: "no shared attributes"}}}}},
+				}}
+				want := push.Stream{Labels: streamLabels, Entries: []push.Entry{
+					{Timestamp: at, Line: "entry wins", StructuredMetadata: []push.LabelAdapter{{Name: "shared", Value: "entry"}}},
+					{Timestamp: at.Add(time.Second), Line: "scope wins", StructuredMetadata: []push.LabelAdapter{{Name: "shared", Value: "scope"}}},
+					{Timestamp: at.Add(2 * time.Second), Line: "resource wins", StructuredMetadata: []push.LabelAdapter{{Name: "shared", Value: "resource"}}},
+					{Timestamp: at.Add(3 * time.Second), Line: "no shared attributes"},
+				}}
+				streams := []distributor.KeyedStream{{HashKey: 123, Stream: nested}}
+				tee.cfg.TeeConfig.MaxBufferedBytes = want.Size() - 1
+				tee.Duplicate(t.Context(), "test", streams, nil)
+				require.Empty(t, tee.buf)
+				require.Zero(t, tee.bufferedBytes)
+
+				tee.cfg.TeeConfig.MaxBufferedBytes = want.Size()
+				tee.Duplicate(t.Context(), "test", streams, nil)
+				require.Equal(t, []teedStream{buffered(want)}, tee.buf["test"])
+				tee.flush()
+				select {
+				case request := <-tee.flushQueue:
+					tee.sendBatch(t.Context(), request)
+				default:
+					t.Fatal("flush did not enqueue the stream")
+				}
+				require.NotNil(t, client.req)
+				require.Equal(t, []push.Stream{want}, client.req.Streams)
+				require.Zero(t, tee.bufferedBytes)
+			})
+		}
+	})
+
+	t.Run("a full flush queue releases rejected rate-shard bytes", func(t *testing.T) {
+		tee, client := getTestTee(t)
+		tee.flushQueue = make(chan clientRequest, 1)
+		shard := push.Stream{Labels: `{foo="bar", __stream_shard__="0"}`, Entries: []push.Entry{{Line: "kept"}}}
+		tee.cfg.TeeConfig.MaxBufferedBytes = 2 * shard.Size()
+		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
+		tee.flush()
+		require.Len(t, tee.flushQueue, 1)
+		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+
+		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
+		require.Equal(t, int64(2*shard.Size()), tee.bufferedBytes)
+		tee.flush()
+		require.Empty(t, tee.buf)
+		require.Len(t, tee.flushQueue, 1)
+		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+
+		tee.sendBatch(t.Context(), <-tee.flushQueue)
+		require.NotNil(t, client.req)
+		require.Equal(t, []push.Stream{shard}, client.req.Streams)
+		require.Zero(t, tee.bufferedBytes)
+		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
+		require.Len(t, tee.buf["test"], 1)
+		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+	})
+
 	t.Run("shared metadata is included in the buffer limit and released after flush", func(t *testing.T) {
 		ctx := t.Context()
 		tee, client := getTestTee(t)
