@@ -118,6 +118,7 @@ TEXT syscallX(SB), NOSPLIT, $0
 	// Store results back
 	MOV X10, syscallArgs_a1(X9)
 	MOV X11, syscallArgs_a2(X9)
+	MOV X0, syscallArgs_a3(X9) // no errno here: clear the input argument
 
 	// Store back float return regs if used by your ABI contract
 	MOVD F10, syscallArgs_f1(X9)
