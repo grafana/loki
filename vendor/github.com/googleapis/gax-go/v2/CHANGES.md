@@ -1,5 +1,12 @@
 # Changes
 
+## [2.25.0](https://github.com/googleapis/gax-go/compare/v2.24.1...v2.25.0) (2026-09-21)
+
+
+### Features
+
+* update go min version to 1.26 ([#548](https://github.com/googleapis/gax-go/issues/548)) ([b943a7d](https://github.com/googleapis/gax-go/commit/b943a7d2b80b8c2acd519311084c92ec0a972b8b))
+
 ## [2.24.1](https://github.com/googleapis/gax-go/compare/v2.24.0...v2.24.1) (2026-09-03)
 
 
