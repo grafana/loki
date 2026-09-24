@@ -313,7 +313,7 @@ quantile_over_time(
 	) by (cluster)
 ```
 
-The grouping removes the special error labels like any other label, so a `by (...)` clause reports only the labels it names.
+A range aggregation's `by (...)` (e.g. `count_over_time()`) keeps the error labels next to the labels it names, so an errored sample still reports `__error__`. A vector aggregation's `by (...)` (e.g. `count()`) drops them, like any other label it does not name.
 
 In a `__error__` filter joined by `and` or `or`, only a part that asks to keep the errored lines keeps them:
 
@@ -321,7 +321,6 @@ In a `__error__` filter joined by `and` or `or`, only a part that asks to keep t
 - `| __error__="" and pod="p2"` asks to drop them too, and `and` applies both parts, so the errored lines never reach the aggregation and the query runs
 
 The `__error__` filter applies to every error a pipeline can raise, not only a parser error. A line whose `| unwrap` conversion failed has no number to report, so its sample reports `0` next to the error labels; an outer aggregation reads that `0` like any other value, so check the `__error__` label before aggregating further.
-
 
 ## Functions
 

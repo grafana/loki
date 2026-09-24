@@ -1029,13 +1029,14 @@ func TestHints_PreserveError(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name     string
-		stages   Stages
-		groups   []string
-		without  bool
-		noLabels bool
-		unwrap   string
-		want     bool
+		name        string
+		stages      Stages
+		groups      []string
+		without     bool
+		noLabels    bool
+		unwrap      string
+		postFilters []LabelFilterer
+		want        bool
 	}{
 		{
 			name:   `__error__!="" keeps the errored lines under a by(<labels>) grouping`,
@@ -1065,6 +1066,11 @@ func TestHints_PreserveError(t *testing.T) {
 			name:   `__error__="JSONParserErr" keeps the errored lines`,
 			stages: Stages{errorFilter(labels.MatchEqual, "JSONParserErr")},
 			groups: []string{"pod"},
+			want:   true,
+		},
+		{
+			name:   `__error__="malformed" keeps the errored lines although no stage sets that value`,
+			stages: Stages{errorFilter(labels.MatchEqual, "malformed")},
 			want:   true,
 		},
 		{
@@ -1177,6 +1183,18 @@ func TestHints_PreserveError(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:        `a __error__!="" post filter after the unwrap keeps the errored lines`,
+			unwrap:      "v",
+			postFilters: []LabelFilterer{errorFilter(labels.MatchNotEqual, "")},
+			want:        true,
+		},
+		{
+			name:        `a __error__="" post filter after the unwrap drops the errored lines`,
+			unwrap:      "v",
+			postFilters: []LabelFilterer{errorFilter(labels.MatchEqual, "")},
+			want:        false,
+		},
+		{
 			name: `a pipeline that never mentions __error__ does not keep the errored lines`,
 			want: false,
 		},
@@ -1187,7 +1205,7 @@ func TestHints_PreserveError(t *testing.T) {
 			// extractor and the conversion never run.
 			var hints ParserHint
 			if tc.unwrap != "" {
-				ex, err := LabelExtractorWithStages(tc.unwrap, ConvertFloat, tc.groups, tc.without, tc.noLabels, tc.stages, ReduceAndLabelFilter(nil))
+				ex, err := LabelExtractorWithStages(tc.unwrap, ConvertFloat, tc.groups, tc.without, tc.noLabels, tc.stages, ReduceAndLabelFilter(tc.postFilters))
 				require.NoError(t, err)
 				hints = ex.(*labelSampleExtractor).baseBuilder.ParserLabelHints()
 			} else {

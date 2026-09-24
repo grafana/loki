@@ -57,10 +57,6 @@ func (s Stages) RequiredLabelNames() []string {
 }
 
 // Hints returns the hints of the stages as one.
-//
-// The result answers for the whole pipeline rather than per stage. KeepsErroredLines therefore
-// reports true when any stage asks to keep the errored lines, so a filter on __error__ also
-// keep errored lines raised after it.
 func (s Stages) Hints() StageHints {
 	var hints StageHints
 	for _, stage := range s {
@@ -77,10 +73,18 @@ type StageHints struct {
 	// replace a label, or set __error__.
 	CanModifyLabels bool
 
-	// ReadsErrorLabel reports whether the stage compares __error__, whatever it does with the value.
+	// ReadsErrorLabel reports whether the stage compares __error__ or __error_details__, whatever
+	// it does with the value.
+	//
+	// Only a label filter reports it. A converting comparison against either label cannot report
+	// it, and the parser rejects that form instead.
 	ReadsErrorLabel bool
 
 	// KeepsErroredLines reports whether the stage asks to keep the lines that carry __error__.
+	//
+	// The hints of a pipeline answer for the whole of it rather than per stage: they report true
+	// when any stage asks. A filter on __error__ therefore also covers an error returned by a
+	// stage placed after the __error__ filter.
 	KeepsErroredLines bool
 }
 
@@ -234,14 +238,15 @@ type AnalyzablePipeline interface {
 }
 
 // NewPipeline creates a new pipeline for a given set of stages.
-func NewPipeline(stages []Stage) Pipeline {
+func NewPipeline(stages Stages) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
 	}
 
 	hints := NewParserHint(nil, nil, false, false, "", stages)
 
-	// A log query never fails on __error__, so it never marks an errored line.
+	// A log query returns an errored line either way, so it must not record the answer. Otherwise
+	// every errored entry would report a __preserve_error__ label of its own.
 	hints.shouldPreserveError = false
 
 	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)

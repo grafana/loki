@@ -281,10 +281,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
 	})
 
-	t.Run("it keeps each filter aligned with its label when a filter requires no label", func(t *testing.T) {
-		// An unwrap with no post filter reaches the pipeline as a NoopLabelFilter that requires no
-		// label name. Collecting it would shift every later filter by one, so each label would then
-		// be checked against the wrong filter.
+	t.Run("it keeps each filter aligned with its label when an unwrap has no post filter", func(t *testing.T) {
 		s := []log.Stage{
 			log.ReduceAndLabelFilter(nil),
 			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "HTTP/2.0")),

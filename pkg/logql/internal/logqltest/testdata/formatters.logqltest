@@ -27,6 +27,16 @@ eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "V={{
 # line_format; bytes_over_time reads the line and runs the stage.
 eval instant at 60s bytes_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])
   expect fail msg: not defined
+# A template that fails at run time sets __error__, so the query fails unless a filter keeps the
+# errored lines. line_format() returns the line unchanged on that failure, so each line still
+# measures 1 byte.
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" [1m])
+  expect fail msg: TemplateFormatErr
+eval instant at 60s sum by (level) (bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__!="" [1m]))
+  {level="error"} 3
+  {level="warn"} 2
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__="" [1m])
+  expect empty
 
 # line_format reads a structured-metadata field the same way it reads a stream label.
 clear

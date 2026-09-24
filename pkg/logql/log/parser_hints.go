@@ -44,7 +44,8 @@ type ParserHint interface {
 	// Resets the state of extracted labels
 	Reset()
 
-	// PreserveError returns true when parsing errors were specifically requested
+	// PreserveError returns true when a label filter on __error__ asks to keep the errored lines.
+	// It answers for every error a pipeline raises, not only a parser error.
 	PreserveError() bool
 
 	// ShouldContinueParsingLine returns true when there is no label matcher for the

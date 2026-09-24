@@ -475,9 +475,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("by() ignores a stream label named __preserve_error__", func(t *testing.T) {
-		// Only SetErr answers whether to keep the errored lines, so a stream cannot switch off the
-		// failure a metric query returns for them.
+	t.Run("by() ignores a __preserve_error__ stream label, so a stream cannot switch off the failure", func(t *testing.T) {
 		base := labels.FromStrings(logqlmodel.PreserveErrorLabel, "true", "pod", "p1")
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(base, labels.StableHash(base))
 		b.Reset()
@@ -595,7 +593,7 @@ func TestLabelsBuilder_SetErr(t *testing.T) {
 		require.False(t, b.HasErrorDetails())
 	})
 
-	t.Run("drops a __preserve_error__ label the line carried, whichever category it came in", func(t *testing.T) {
+	t.Run("drops a __preserve_error__ label the line carried, whichever category it came in, when the query doesn't filter on __error__", func(t *testing.T) {
 		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
 			b := newBuilder(nil)
 			b.Set(category, logqlmodel.PreserveErrorLabel, "true")
@@ -606,9 +604,25 @@ func TestLabelsBuilder_SetErr(t *testing.T) {
 		}
 	})
 
-	t.Run("resetting the error drops the preserve answer with it", func(t *testing.T) {
+	t.Run("drops a __preserve_error__ label the line carried under a grouping, when the query doesn't filter on __error__", func(t *testing.T) {
+		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
+			for _, without := range []bool{true, false} {
+				b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, without, false).ForLabels(lbs, labels.StableHash(lbs))
+				b.Reset()
+				b.Set(category, logqlmodel.PreserveErrorLabel, "true")
+				b.SetErr("SampleExtractionErr", nil)
+
+				require.False(t, b.GroupedLabels().Labels().Has(logqlmodel.PreserveErrorLabel))
+			}
+		}
+	})
+
+	t.Run("ResetError() drops the __preserve__error__", func(t *testing.T) {
 		b := newBuilder(&Hints{shouldPreserveError: true})
-		b.SetErr("JSONParserErr", nil)
+		// The details outlive ResetError, and the parsed label defeats the memoized fast path, so
+		// the result is built rather than returned whole.
+		b.Set(ParsedLabel, "ok", "1")
+		b.SetErr("JSONParserErr", errors.New("boom"))
 		b.ResetError()
 
 		require.False(t, b.LabelsResult().Labels().Has(logqlmodel.PreserveErrorLabel))
