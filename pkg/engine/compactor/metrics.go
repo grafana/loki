@@ -47,6 +47,11 @@ type coordinatorMetrics struct {
 	// iteration (IndexMerge or LogMerge).
 	cycleDurationSeconds prometheus.Histogram
 
+	// cycleBackoffSeconds measures the wait a worker applies between phases. A
+	// rising distribution means workers are increasingly idle (converged, empty,
+	// or failing) and backing off rather than hammering object storage.
+	cycleBackoffSeconds prometheus.Histogram
+
 	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
 	// duration. Excludes the converged-skip path.
 	tenantCycleDurationSeconds *prometheus.HistogramVec // outcome=compacted|failed
@@ -104,6 +109,11 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
 			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
+		}),
+		cycleBackoffSeconds: f.NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_cycle_backoff_seconds",
+			Help:    "Wait a worker applies between phases. Grows exponentially for idle (converged/empty) or failing tenants up to max-backoff.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s .. ~68m
 		}),
 		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_tenant_cycle_duration_seconds",
@@ -175,6 +185,14 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 	}
 	m.cyclesTotal.WithLabelValues(outcome).Inc()
 	m.cycleDurationSeconds.Observe(duration.Seconds())
+}
+
+// observeBackoff records the wait a worker applies between phases.
+func (m *coordinatorMetrics) observeBackoff(wait time.Duration) {
+	if m == nil {
+		return
+	}
+	m.cycleBackoffSeconds.Observe(wait.Seconds())
 }
 
 // observeTenantCycle records per-tenant index-compaction cycle outcomes and

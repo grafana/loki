@@ -103,10 +103,6 @@ func toCamelCase(str string, isBig bool) string {
 		}
 	}
 
-	if isFirstRuneUpper && !isBig {
-		r0 = unicode.ToLower(r0)
-	}
-
 	buf.WriteRune(r0)
 	return buf.String()
 }

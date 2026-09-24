@@ -106,6 +106,8 @@ TEXT syscallX(SB), NOSPLIT, $0
 	// Store integer results back (R3, R4)
 	MOVD R3, syscallArgs_a1(R11)
 	MOVD R4, syscallArgs_a2(R11)
+	MOVD $0, R3
+	MOVD R3, syscallArgs_a3(R11) // no errno here: clear the input argument
 
 	// Store float return values F1-F8 (an HFA may span up to eight).
 	FMOVD F1, syscallArgs_f1(R11)

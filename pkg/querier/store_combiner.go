@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var _ Store = &StoreCombiner{}
@@ -99,7 +100,7 @@ type storeWithRange struct {
 }
 
 // SelectSamples implements Store
-func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	stores := sc.findStoresForTimeRange(model.TimeFromUnixNano(req.Start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano()))
 
 	if len(stores) == 0 {
@@ -111,19 +112,34 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 	}
 
 	iters := make([]iter.SampleIterator, 0, len(stores))
-	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
 
-		iter, err := s.store.SelectSamples(ctx, reqCopy)
+	// If SelectSamples returns an error below, close every per-store iterator opened so far, so
+	// neither a later store's error nor a rejected order leaks them.
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		for _, opened := range iters {
+			util.LogErrorWithContext(ctx, "closing per-store sample iterator after SelectSamples failed", opened.Close)
+		}
+	}()
+
+	for _, s := range stores {
+		it, err := s.store.SelectSamples(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}
-		iters = append(iters, iter)
+		iters = append(iters, it)
 	}
 
-	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
 }
 
 // SelectLogs implements Store
@@ -140,11 +156,7 @@ func (sc *StoreCombiner) SelectLogs(ctx context.Context, req logql.SelectLogPara
 
 	iters := make([]iter.EntryIterator, 0, len(stores))
 	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
-
-		iter, err := s.store.SelectLogs(ctx, reqCopy)
+		iter, err := s.store.SelectLogs(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}
@@ -175,11 +187,7 @@ func (sc *StoreCombiner) SelectSeries(ctx context.Context, req logql.SelectLogPa
 	var key uint64
 
 	for _, s := range stores {
-		reqCopy := req
-		reqCopy.Start = s.from.Time()
-		reqCopy.End = s.through.Time()
-
-		series, err := s.store.SelectSeries(ctx, reqCopy)
+		series, err := s.store.SelectSeries(ctx, req.WithTimeRange(s.from.Time(), s.through.Time()))
 		if err != nil {
 			return nil, err
 		}

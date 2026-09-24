@@ -54,8 +54,8 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/queryfrontend"
+	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
 	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -96,36 +96,40 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Server               server.Config                  `yaml:"server,omitempty"`
-	InternalServer       internalserver.Config          `yaml:"internal_server,omitempty" doc:"hidden"`
-	UI                   ui.Config                      `yaml:"ui,omitempty"`
-	Distributor          distributor.Config             `yaml:"distributor,omitempty"`
-	Querier              querier.Config                 `yaml:"querier,omitempty"`
-	QueryEngine          engine.Config                  `yaml:"query_engine,omitempty" category:"experimental"`
-	QueryScheduler       scheduler.Config               `yaml:"query_scheduler"`
-	Frontend             lokifrontend.Config            `yaml:"frontend,omitempty"`
-	QueryRange           queryrange.Config              `yaml:"query_range,omitempty"`
-	Ruler                ruler.Config                   `yaml:"ruler,omitempty"`
-	RulerStorage         rulestore.Config               `yaml:"ruler_storage,omitempty"`
-	IngesterClient       ingester_client.Config         `yaml:"ingester_client,omitempty"`
-	Ingester             ingester.Config                `yaml:"ingester,omitempty"`
-	Pattern              pattern.Config                 `yaml:"pattern_ingester,omitempty"`
-	IndexGateway         indexgateway.Config            `yaml:"index_gateway"`
-	BloomBuild           bloombuild.Config              `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway         bloomgateway.Config            `yaml:"bloom_gateway,omitempty" category:"experimental"`
-	StorageConfig        storage.Config                 `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig     config.ChunkStoreConfig        `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig         config.SchemaConfig            `yaml:"schema_config,omitempty"`
-	CompactorConfig      compactor.Config               `yaml:"compactor,omitempty"`
-	CompactorHTTPClient  compactorclient.HTTPConfig     `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient  compactorclient.GRPCConfig     `yaml:"compactor_grpc_client,omitempty"`
-	LimitsConfig         validation.Limits              `yaml:"limits_config"`
-	Worker               worker.Config                  `yaml:"frontend_worker,omitempty"`
-	MemberlistKV         memberlist.KVConfig            `yaml:"memberlist"`
-	KafkaConfig          kafka.Config                   `yaml:"kafka_config,omitempty" category:"experimental"`
-	DataObj              dataobjconfig.Config           `yaml:"dataobj,omitempty" category:"experimental"`
-	Logline              logline.Config                 `yaml:"logline,omitempty"`
-	LoglineQueryFrontend queryfrontend.MiddlewareConfig `yaml:"logline_query_frontend,omitempty"`
+	Server              server.Config              `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	UI                  ui.Config                  `yaml:"ui,omitempty"`
+	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
+	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
+	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
+	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
+	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config"`
+	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
+	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
+	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+	// TODO(segflow): restore `yaml:"logline,omitempty"` once the logline
+	// configuration is settled. Until then the section is flags-only and left
+	// out of the config reference. Every field is reachable through
+	// -logline-index.*, -logline-store.*, -logline-builder.* and
+	// -logline-query.*.
+	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -244,7 +248,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
-	c.LoglineQueryFrontend.RegisterFlagsWithPrefix("logline-query-frontend", f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -366,13 +369,17 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
-	if err := c.Logline.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
-	}
-	if c.Logline.Enabled {
-		if err := c.LoglineQueryFrontend.Validate(); err != nil {
-			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline query frontend config"))
+	// Only validated for the selected target. The builder's config has required
+	// fields with no sensible defaults, so validating it unconditionally would
+	// break every deployment that does not run logline.
+	if c.isTarget(LoglineIndexBuilder) {
+		if err := c.Logline.ValidateBuilder(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
+	}
+	// A no-op unless logline query narrowing is enabled.
+	if err := c.Logline.ValidateQueryConfig(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
@@ -467,6 +474,7 @@ type Loki struct {
 	dataObjConsumerRing                 *ring.Ring
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
+	loglinePartitionRing                *loglinebuilder.PartitionRingWatcher
 	dataObjConsumerPartitionKVClient    kv.Client
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
@@ -828,6 +836,11 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
+
+	// Logline: keep the target invisible while it is experimental.
+	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
@@ -845,7 +858,7 @@ func (t *Loki) setupModuleManager() error {
 		TenantConfigs:                {RuntimeConfig},
 		UI:                           {UIRing},
 		UIRing:                       {Server, MemberlistKV},
-		Distributor:                  {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, DataObjConsumerRing, DataObjConsumerPartitionRing, IngestLimitsFrontendRing, UIRing},
+		Distributor:                  {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UIRing},
 		IngestLimitsRing:             {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:                 {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:         {IngestLimitsRing, Overrides, Server, MemberlistKV},
@@ -854,7 +867,7 @@ func (t *Loki) setupModuleManager() error {
 		Ingester:                     {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
 		Querier:                      {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs},
-		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
+		QueryFrontend:                {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
 		QueryEngine:                  {QueryEngineScheduler},
 		QueryEngineWorker:            {Server, Overrides, TenantConfigs, Analytics},
@@ -883,6 +896,10 @@ func (t *Loki) setupModuleManager() error {
 		DataObjCompactionPlanner:     {Server, UIRing, Overrides},
 		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
+
+		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},
+		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
+		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
@@ -981,6 +998,13 @@ func (t *Loki) setupModuleManager() error {
 	if t.Cfg.LBAC.Enabled {
 		err := t.setupLBAC()
 		if err != nil {
+			return err
+		}
+
+		// Logline wraps the label access middleware rather than the other
+		// way round, so the logline prefetch stays the outermost layer and
+		// the index-stats requests it sends go through label access.
+		if err := mm.AddDependency(LoglineQueryFrontendTripperware, LabelAccessTripperware); err != nil {
 			return err
 		}
 	}

@@ -2,8 +2,10 @@ package indexobj
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -14,8 +16,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// builderMetrics provides instrumnetation for a [Builder].
-type builderMetrics struct {
+// BuilderMetrics provides instrumentation for a [Builder].
+type BuilderMetrics struct {
 	pointers      *pointers.Metrics
 	indexPointers *indexpointers.Metrics
 	streams       *streams.Metrics
@@ -38,29 +40,32 @@ type builderMetrics struct {
 	builtSize    prometheus.Histogram
 }
 
-// newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
-// logs objects.
-func newBuilderMetrics() *builderMetrics {
-	return &builderMetrics{
+// NewBuilderMetrics creates a new set of [BuilderMetrics] for instrumenting
+// index objects and registers them with reg. If reg is nil the metrics are
+// created but not registered.
+func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
+	factory := promauto.With(reg)
+
+	m := &BuilderMetrics{
 		indexPointers: indexpointers.NewMetrics(),
 		pointers:      pointers.NewMetrics(),
 		streams:       streams.NewMetrics(),
 		postings:      postings.NewMetrics(),
 		stats:         stats.NewMetrics(),
 		dataobj:       dataobj.NewMetrics(),
-		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
+		targetPageSize: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_page_size_bytes",
 
 			Help: "Configured target page size in bytes.",
 		}),
 
-		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
+		targetObjectSize: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_object_size_bytes",
 
 			Help: "Configured target object size in bytes.",
 		}),
 
-		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		appendTime: factory.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_indexobj_append_time_seconds",
 
 			Help: "Time taken appending a set of log lines in a stream to a data object.",
@@ -71,17 +76,17 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 
-		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
+		appendFailures: factory.NewCounter(prometheus.CounterOpts{
 			Name: "loki_indexobj_append_failures_total",
 			Help: "Total number of append failures",
 		}),
 
-		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		appendsTotal: factory.NewCounter(prometheus.CounterOpts{
 			Name: "loki_indexobj_appends_total",
 			Help: "Total number of appends",
 		}),
 
-		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		buildTime: factory.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_indexobj_build_time_seconds",
 
 			Help: "Time taken building a data object to flush.",
@@ -92,13 +97,13 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 
-		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
+		sizeEstimate: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_size_estimate_bytes",
 
 			Help: "Current estimated size of the data object in bytes.",
 		}),
 
-		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
+		builtSize: factory.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_indexobj_built_size_bytes",
 
 			Help: "Distribution of constructed data object sizes in bytes.",
@@ -108,74 +113,37 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 
-		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+		flushFailures: factory.NewCounter(prometheus.CounterOpts{
 			Name: "loki_indexobj_flush_failures_total",
 
 			Help: "Total number of flush failures.",
 		}),
 
-		flushTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		flushTotal: factory.NewCounter(prometheus.CounterOpts{
 			Name: "loki_indexobj_flush_total",
 
 			Help: "Total number of flushes.",
 		}),
 	}
+
+	if reg != nil {
+		if err := errors.Join(
+			m.indexPointers.Register(reg),
+			m.pointers.Register(reg),
+			m.streams.Register(reg),
+			m.postings.Register(reg),
+			m.stats.Register(reg),
+			m.dataobj.Register(reg),
+		); err != nil {
+			panic(fmt.Errorf("registering index object section metrics: %w", err))
+		}
+	}
+
+	return m
 }
 
 // ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *builderMetrics) ObserveConfig(cfg logsobj.BuilderBaseConfig) {
+func (m *BuilderMetrics) ObserveConfig(cfg logsobj.BuilderBaseConfig) {
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
-}
-
-// Register registers metrics to report to reg.
-func (m *builderMetrics) Register(reg prometheus.Registerer) error {
-	var errs []error
-
-	errs = append(errs, m.indexPointers.Register(reg))
-	errs = append(errs, m.pointers.Register(reg))
-	errs = append(errs, m.streams.Register(reg))
-	errs = append(errs, m.postings.Register(reg))
-	errs = append(errs, m.stats.Register(reg))
-	errs = append(errs, m.dataobj.Register(reg))
-
-	errs = append(errs, reg.Register(m.targetPageSize))
-	errs = append(errs, reg.Register(m.targetObjectSize))
-
-	errs = append(errs, reg.Register(m.appendTime))
-	errs = append(errs, reg.Register(m.appendFailures))
-	errs = append(errs, reg.Register(m.appendsTotal))
-
-	errs = append(errs, reg.Register(m.buildTime))
-
-	errs = append(errs, reg.Register(m.sizeEstimate))
-	errs = append(errs, reg.Register(m.builtSize))
-	errs = append(errs, reg.Register(m.flushFailures))
-	errs = append(errs, reg.Register(m.flushTotal))
-
-	return errors.Join(errs...)
-}
-
-// Unregister unregisters metrics from the provided Registerer.
-func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
-	m.indexPointers.Unregister(reg)
-	m.pointers.Unregister(reg)
-	m.streams.Unregister(reg)
-	m.postings.Unregister(reg)
-	m.stats.Unregister(reg)
-	m.dataobj.Unregister(reg)
-
-	reg.Unregister(m.targetPageSize)
-	reg.Unregister(m.targetObjectSize)
-
-	reg.Unregister(m.appendTime)
-	reg.Unregister(m.appendFailures)
-	reg.Unregister(m.appendsTotal)
-
-	reg.Unregister(m.buildTime)
-
-	reg.Unregister(m.sizeEstimate)
-	reg.Unregister(m.builtSize)
-	reg.Unregister(m.flushFailures)
-	reg.Unregister(m.flushTotal)
 }

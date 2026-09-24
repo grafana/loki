@@ -2,6 +2,8 @@ package consumer
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -155,16 +158,15 @@ func TestFlushCommitter(t *testing.T) {
 // time) as a real flusher would.
 type flushingMockFlusher struct {
 	flushes int
+	closer  countingCloser
 }
 
-func (m *flushingMockFlusher) Flush(_ context.Context, b builder, _ string) (string, error) {
+func (m *flushingMockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.flushes++
-	_, closer, err := b.Flush()
+	obj, closer, err := b.Flush()
 	if err != nil {
-		return "", err
+		return nil, nil, "", err
 	}
-	if closer != nil {
-		_ = closer.Close()
-	}
-	return "", nil
+	m.closer.inner = closer
+	return obj, &m.closer, fmt.Sprintf("object_%03d", m.flushes), nil
 }

@@ -140,7 +140,7 @@ func (rlsBB) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.
 		lbCfg:              &lbConfig{},
 		pendingMap:         make(map[cacheKey]*backoffState),
 		childPolicies:      make(map[string]*childPolicyWrapper),
-		updateCh:           buffer.NewUnbounded(),
+		updateCh:           buffer.NewUnbounded[any](),
 	}
 	lb.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-experimental-lb %p] ", lb))
 	lb.dataCache = newDataCache(maxCacheSize, lb.logger, opts.Target.String())
@@ -204,7 +204,7 @@ type rlsBalancer struct {
 	inhibitPickerUpdates bool
 
 	// Channel on which all updates are pushed. Processed in run().
-	updateCh *buffer.Unbounded
+	updateCh *buffer.Unbounded[any]
 }
 
 type resumePickerUpdates struct {

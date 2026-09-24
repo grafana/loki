@@ -591,7 +591,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		SectionStripeMergeLimit: 2,
 	}
 
-	builder, err := indexobj.NewBuilder(cfg, nil)
+	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err, "failed to create indexobj.Builder")
 
 	// Append a stream to get a streams section.

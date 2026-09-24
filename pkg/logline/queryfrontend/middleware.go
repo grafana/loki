@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -249,16 +250,13 @@ func intervalDuration(start, end time.Time) time.Duration {
 // SplitByInterval generates intervals.
 func NewLoglinePrefetchMiddleware(
 	hp hintprovider.QueryHintProvider,
-	cfg MiddlewareConfig,
-	tenantSettings TenantSettings,
+	cfg Config,
+	limits logline_query_limits.Limits,
 	metrics *Metrics,
 	logger log.Logger,
 ) queryrangebase.Middleware {
 	if logger == nil {
 		logger = log.NewNopLogger()
-	}
-	if tenantSettings == nil {
-		tenantSettings = staticTenantSettings{}
 	}
 	if cfg.ShardPlanning == (ShardPlanningConfig{}) {
 		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
@@ -272,11 +270,10 @@ func NewLoglinePrefetchMiddleware(
 			requireOptInHeader:   cfg.RequireOptInHeader,
 			ngramLength:          cfg.NgramLength,
 			hintTimeout:          cfg.HintTimeout,
-			minQueryBytes:        cfg.MinQueryBytesForIndex,
 			queryIngestersWithin: cfg.QueryIngestersWithin,
 			querySplitDuration:   cfg.QuerySplitDuration,
 			shardPlanning:        cfg.ShardPlanning,
-			tenantSettings:       tenantSettings,
+			limits:               limits,
 			metrics:              metrics,
 			logger:               logger,
 		}
@@ -291,13 +288,37 @@ type loglinePrefetchHandler struct {
 	ngramLength          int
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
-	minQueryBytes        int64
 	queryIngestersWithin time.Duration
 	querySplitDuration   time.Duration
 	shardPlanning        ShardPlanningConfig
-	tenantSettings       TenantSettings
+	limits               logline_query_limits.Limits
 	metrics              *Metrics
 	logger               log.Logger
+}
+
+// Mode controls how logline filtering behaves for a tenant.
+type Mode int
+
+const (
+	ModeUnset Mode = iota
+	ModeOff
+	ModeDryRun
+	ModeLive
+)
+
+// modeFromLimit maps the limits_config value to a Mode. Loki validates the
+// value when it loads the limits, so anything else is treated as unset.
+func modeFromLimit(s string) Mode {
+	switch s {
+	case "off":
+		return ModeOff
+	case "dry_run":
+		return ModeDryRun
+	case "live":
+		return ModeLive
+	default:
+		return ModeUnset
+	}
 }
 
 func modeFromDryRun(dryRun bool) Mode {
@@ -773,14 +794,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	header := httpreq.ExtractHeader(ctx, LoglineIndexHeader)
 	tenant, _ := user.ExtractOrgID(ctx)
-	tenantMode := ModeUnset
-	minQueryBytes := h.minQueryBytes
-	if h.tenantSettings != nil {
-		tenantMode = h.tenantSettings.Mode(tenant)
-		if tenantMinQueryBytes, ok := h.tenantSettings.MinQueryBytesForIndex(tenant); ok {
-			minQueryBytes = tenantMinQueryBytes
-		}
-	}
+	// A multi-tenant request (a|b) has no entry of its own in the runtime
+	// overrides, so it gets the limits_config defaults.
+	tenantMode := modeFromLimit(h.limits.LoglineQueryMode(tenant))
+	minQueryBytes := h.limits.LoglineQueryMinQueryBytesForIndex(tenant)
 	mode, passthrough := resolveMode(header, tenantMode, h.defaultMode, h.requireOptInHeader)
 	if passthrough {
 		return h.next.Do(ctx, req)

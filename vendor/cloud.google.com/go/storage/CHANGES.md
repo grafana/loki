@@ -1,6 +1,13 @@
 # Changes
 
 
+## [1.68.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.1...storage/v1.68.0) (2026-09-17)
+
+
+### Bug Fixes
+
+* **storage:** Minor documentation fixes ([#20531](https://github.com/googleapis/google-cloud-go/issues/20531)) ([8a55dee](https://github.com/googleapis/google-cloud-go/commit/8a55dee7d694d1b0b35f9eaff8a0517bffec320d))
+
 ## [1.67.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.0...storage/v1.67.1) (2026-09-07)
 
 

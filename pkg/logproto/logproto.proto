@@ -64,6 +64,26 @@ message StreamRate {
   uint32 pushes = 5;
 }
 
+// HintTimeRange is a half-open time window [start, end) that may contain
+// matching logs.
+message HintTimeRange {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+message HintTimeRanges {
+  repeated HintTimeRange ranges = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "ranges"
+  ];
+}
+
 message QueryRequest {
   string selector = 1 [deprecated = true];
   uint32 limit = 2;
@@ -83,6 +103,10 @@ message QueryRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+  repeated HintTimeRange hintRanges = 11 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "hintRanges,omitempty"
+  ];
 }
 
 message SampleQueryRequest {
@@ -101,6 +125,11 @@ message SampleQueryRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+  SampleOrder order = 11;
+  repeated HintTimeRange hintRanges = 12 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "hintRanges,omitempty"
+  ];
 }
 
 // SampleOrder identifies how a set of samples is ordered.
@@ -462,17 +491,6 @@ message HeaderInfo {
   uint64 doc_metadata_size = 10 [(gogoproto.jsontag) = "doc_metadata_size"];
   uint64 term_block_dir_size = 11 [(gogoproto.jsontag) = "term_block_dir_size"];
   uint64 postings_block_dir_size = 12 [(gogoproto.jsontag) = "postings_block_dir_size"];
-}
-
-message HintTimeRange {
-  google.protobuf.Timestamp start = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp end = 2 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
 }
 
 message HintQueryStats {

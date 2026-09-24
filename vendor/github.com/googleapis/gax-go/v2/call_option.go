@@ -285,4 +285,24 @@ type CallSettings struct {
 	// clientMetrics holds the pre-allocated OpenTelemetry metrics instruments
 	// to use for this call.
 	clientMetrics *ClientMetrics
+
+	// clientTracing holds the pre-allocated OpenTelemetry tracer
+	// to use for this call.
+	clientTracing *ClientTracing
+}
+
+type clientTracingOpt struct {
+	ct *ClientTracing
+}
+
+// Resolve applies the ClientTracing to the CallSettings.
+func (o clientTracingOpt) Resolve(s *CallSettings) {
+	s.clientTracing = o.ct
+}
+
+// WithClientTracing applies tracing instrumentation to the CallSettings.
+//
+// This is for internal use only.
+func WithClientTracing(ct *ClientTracing) CallOption {
+	return clientTracingOpt{ct: ct}
 }
