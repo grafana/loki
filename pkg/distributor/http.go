@@ -133,7 +133,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	d.recordPush(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver)
+	d.recordParsedRequest(r, logger, tenantID, format, presumedAgentIP, req, pushStats, streamResolver)
 
 	_, err = d.pushWithResolver(r.Context(), logproto.FromPushRequest(req), streamResolver, format)
 	if err != nil {
@@ -152,9 +152,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	recordSuccess("push request successful")
 }
 
-// recordPush emits all metrics and debug logging for a push request that was successfully parsed
+// recordParsedRequest emits all metrics and debug logging for a push request that was successfully parsed
 // and is about to be forwarded to ingesters.
-func (d *Distributor) recordPush(
+func (d *Distributor) recordParsedRequest(
 	r *http.Request,
 	logger log.Logger,
 	tenantID, format, presumedAgentIP string,
