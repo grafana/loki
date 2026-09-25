@@ -694,6 +694,43 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
 }
 
+func TestCachingHintProvider_SkipCacheFetchesDaysInParallelWithoutStore(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &stubHintProvider{
+		hints: &Hints{
+			TimeRanges: []HintTimeRange{
+				{
+					Start: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 10, 12, 15, 0, 0, time.UTC),
+				},
+				{
+					Start: time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 11, 9, 10, 0, 0, time.UTC),
+				},
+			},
+		},
+	}
+	provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	from := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	through := time.Date(2026, 3, 11, 17, 0, 0, 0, time.UTC)
+	require.Len(t, buildDayWindows("tenant-a", expr.String(), "", from, through), 2)
+
+	hints, _, err := provider.ProvideHints(
+		WithSkipCache(context.Background()),
+		"tenant-a",
+		expr,
+		model.TimeFromUnixNano(from.UnixNano()),
+		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, delegate.Calls(), "skip should still fetch each day")
+	require.Equal(t, 0, backend.FetchCalls(), "skip should avoid cache fetch")
+	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
+	require.Equal(t, delegate.hints.TimeRanges, hints.TimeRanges)
+}
+
 func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	backend := newMockHintCacheBackend()
