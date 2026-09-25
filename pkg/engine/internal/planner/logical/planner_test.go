@@ -984,6 +984,66 @@ RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
+
+	t.Run("label filter after drop labels is applied after the projection", func(t *testing.T) {
+		q := &query{
+			statement: `{service_name="loki"} | drop level | level="info"`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(context.Background(), q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		// The filter must not become a scan predicate: drop removes the column
+		// it reads, so it has to be evaluated on the projected columns.
+		expected := `%1 = EQ label.service_name "loki"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=*D, expr=ambiguous.level]
+%8 = EQ ambiguous.level "info"
+%9 = SELECT %7 [predicate=%8]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("label filter before drop labels is still a scan predicate", func(t *testing.T) {
+		q := &query{
+			statement: `{service_name="loki"} | level="info" | drop level`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(context.Background(), q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		expected := `%1 = EQ label.service_name "loki"
+%2 = EQ ambiguous.level "info"
+%3 = MAKETABLE [selector=%1, predicates=[%2], shard=0_of_1]
+%4 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%5 = SELECT %3 [predicate=%4]
+%6 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = SELECT %7 [predicate=%2]
+%9 = PROJECT %8 [mode=*D, expr=ambiguous.level]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
+	})
 }
 
 func TestBuildDeletePredicates(t *testing.T) {
