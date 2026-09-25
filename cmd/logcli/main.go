@@ -105,6 +105,10 @@ Example with --output-timestamp-format:
 	   --output-timestamp-format=rfc3339nano
 	   'my-query'
 
+By default the query command sends the request to be executed by a Loki server.
+Optionally, logcli can execute the query itself, reading from object storage
+via --store-config.
+
 The output is limited to 30 entries by default; use --limit to increase.
 
 While "query" does support metrics queries, its output contains multiple
