@@ -237,13 +237,17 @@ func mountS3HTTPClient(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*
 	// to maintain backwards compatibility with previous versions of Cortex while providing
 	// more flexible configuration of the http client
 	// https://github.com/weaveworks/common/blob/4b1847531bc94f54ce5cf210a771b2a86cd34118/aws/config.go#L23
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	// A negative FallbackDelay disables Fast Fallback, which replaced DualStack.
+	if cfg.DisableDualstack {
+		dialer.FallbackDelay = -1
+	}
 	transport := http.RoundTripper(&http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: !cfg.DisableDualstack,
-		}).DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
 		MaxIdleConnsPerHost:   200,

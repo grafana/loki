@@ -103,9 +103,10 @@ func (s *Service) RegisterHandler() {
 func (s *Service) clusterProxyHandler() http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport: s.client.Transport,
-		Director: func(r *http.Request) {
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			r := pr.Out
 			r.URL.Scheme = proxyScheme
-			vars := mux.Vars(r)
+			vars := mux.Vars(pr.In)
 			nodeName := vars["nodename"]
 			if nodeName == "" {
 				level.Error(s.logger).Log("msg", "node name not found in URL")
@@ -131,7 +132,6 @@ func (s *Service) clusterProxyHandler() http.Handler {
 			// Rewrite the URL to forward to the target node
 			r.URL.Host = nodeAddr
 			r.URL.Path = newPath
-			r.RequestURI = "" // Must be cleared according to Go docs
 
 			level.Debug(s.logger).Log(
 				"msg", "proxying request",
@@ -223,9 +223,10 @@ func (s *Service) notFoundHandler() http.Handler {
 func (s *Service) analyzeLabelsHandler() http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport: s.client.Transport,
-		Director: func(r *http.Request) {
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			r := pr.Out
 			// Extract tenantID from URL path
-			vars := mux.Vars(r)
+			vars := mux.Vars(pr.In)
 			tenantID := vars["tenantID"]
 
 			// Validate tenant ID using existing validation
@@ -239,7 +240,6 @@ func (s *Service) analyzeLabelsHandler() http.Handler {
 			r.URL.Scheme = proxyScheme
 			r.URL.Host = s.localAddr
 			r.URL.Path = "/loki/api/v1/series"
-			r.RequestURI = "" // Must be cleared according to Go docs
 
 			// Override tenant header with the one from URL
 			r.Header.Set("X-Scope-OrgID", tenantID)
