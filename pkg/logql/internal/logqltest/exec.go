@@ -32,8 +32,8 @@ func isKnownStackName(name string) bool {
 type executionStack interface {
 	// name identifies the stack in subtest output.
 	name() string
-	// setStreams (re)builds the stack's store with the provided log streams.
-	setStreams(streams []logproto.Stream)
+	// setStreams (re)builds the stack's store with the provided logs groups of log streams.
+	setStreams(groups [][]logproto.Stream)
 	// eval runs cmd and returns the query result.
 	eval(cmd evalCmd) (logqlmodel.Result, error)
 	// isQueryShardingSupported reports whether this stack runs queries with sharding enabled.
@@ -51,8 +51,9 @@ func isQueryShardingSupported(query string) bool {
 	return expr.Shardable(true)
 }
 
-// newScriptStore builds a chunk store from streams and registers its close.
-func newScriptStore(t *testing.T, streams []logproto.Stream) *testingChunkStore {
+// newScriptStore builds a chunk store from the logs groups and registers its close. Each group is
+// written and flushed on its own, so a stream present in several groups gets one chunk per group.
+func newScriptStore(t *testing.T, groups [][]logproto.Stream) *testingChunkStore {
 	store := newTestingChunkStore(t)
 
 	// The close runs before the store's temp dir is removed: newTestingChunkStore
@@ -60,7 +61,9 @@ func newScriptStore(t *testing.T, streams []logproto.Stream) *testingChunkStore 
 	// first (t.Cleanup is LIFO).
 	t.Cleanup(store.close)
 
-	store.write(t, streams)
-	store.flush(t)
+	for _, streams := range groups {
+		store.write(t, streams)
+		store.flush(t)
+	}
 	return store
 }

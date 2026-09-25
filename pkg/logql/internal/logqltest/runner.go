@@ -71,6 +71,15 @@ func RunScript(t *testing.T, name, script string) {
 			streams = newStreamsParser()
 			streamsChanged = true
 			i++
+		case "flush":
+			// Cut the chunks written so far. Entries loaded after this land in a new chunk,
+			// which overlaps the earlier one in time if their timestamps overlap. The data
+			// itself does not change, so the stores do not need a rebuild here.
+			if len(fields) != 1 {
+				t.Fatalf("%s: flush takes no arguments, got %q", name, trimmed)
+			}
+			streams.flush()
+			i++
 		case "load":
 			var err error
 			i, err = parseLoadBlock(streams, lines, i+1)

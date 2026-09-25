@@ -37,12 +37,12 @@ func (*directExecutionStack) isEvalSupported(evalCmd, expectations) bool {
 	return true
 }
 
-func (s *directExecutionStack) setStreams(streams []logproto.Stream) {
+func (s *directExecutionStack) setStreams(groups [][]logproto.Stream) {
 	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
 	if s.store != nil {
 		s.store.close()
 	}
-	s.store = newScriptStore(s.t, streams)
+	s.store = newScriptStore(s.t, groups)
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
