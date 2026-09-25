@@ -604,7 +604,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			name: "parse operation collects ambiguous columns from RangeAggregation and Filter",
 			buildLogical: func() logical.Value {
 				// Create a logical plan that represents:
-				// sum by(status,code) (count_over_time({app="test"} | logfmt | duration > 100 [5m]))
+				// sum by(status,code) (count_over_time({app="test"} | logfmt | duration > "100" [5m]))
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
 						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
@@ -620,7 +620,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
 					Left:  logical.NewColumnRef("duration", types.ColumnTypeAmbiguous),
-					Right: logical.NewLiteral(int64(100)),
+					Right: logical.NewLiteral("100"),
 					Op:    types.BinaryOpGt,
 				}
 				builder = builder.Select(filterExpr)
