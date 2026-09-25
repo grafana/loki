@@ -20,6 +20,7 @@ const (
 	testActiveWindow = 5 * time.Minute
 	testRateWindow   = time.Minute
 	testBucketSize   = 10 * time.Second
+	testZone         = "zone1"
 )
 
 // newTestStreamShardStore returns a store with a single partition and one
@@ -33,7 +34,7 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 		ShardStreamsConfig:     shardstreams.Config{Enabled: true},
 	}
 	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set(desiredRate))
-	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, limits, prometheus.NewRegistry())
+	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, limits, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -257,6 +258,124 @@ func TestStreamShardStore_SlotsFollowTheTrackedStreams(t *testing.T) {
 	require.Equal(t, uint64(0), bucketSlots())
 }
 
+// mergeRecord merges one record for the test tenant.
+func mergeRecord(s *streamShardStore, zone string, streamHash uint64, bucketStart time.Time, size, pushes uint64, shardCount uint32) {
+	s.merge("test", &proto.StreamMetadataRecord{
+		Zone:     zone,
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: streamHash},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: bucketStart.Truncate(testBucketSize).UnixNano(),
+			Size_:       size,
+			Pushes:      pushes,
+		},
+		ShardCount: shardCount,
+	})
+}
+
+// trackedStream returns the state tracked for streamHash in the test
+// tenant's default policy bucket.
+func trackedStream(t *testing.T, s *streamShardStore, streamHash uint64) streamShardUsage {
+	t.Helper()
+	var stream streamShardUsage
+	s.withLock("test", func(i int) {
+		bucket := s.stripes[i]["test"][s.getPartitionForHash(streamHash)][noPolicy]
+		require.NotNil(t, bucket)
+		stream = bucket.streams[streamHash]
+	})
+	return stream
+}
+
+func TestStreamShardStore_MergeRestoresTheRateHistory(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// Replay a rate window's worth of another zone's buckets, 6KiB per bucket,
+	// which is the history TestStreamShardStore_ShardCountFollowsTheRate
+	// builds up by pushing.
+	for range testRateWindow / testBucketSize {
+		mergeRecord(s, "zone2", 0x1, clock.Now(), 6<<10, 1, 1)
+		clock.Advance(testBucketSize)
+	}
+	// The first push after the merge is decided on that history instead of
+	// looking brand new.
+	res := push(t, s, 0x1, 6<<10, clock.Now())
+	require.Equal(t, uint32(2), res.Shards)
+	require.Equal(t, uint64(614), res.Stats.EvaluatedRate)
+}
+
+func TestStreamShardStore_MergeIsIdempotent(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	for range 3 {
+		mergeRecord(s, "zone2", 0x1, clock.Now(), 6<<10, 3, 2)
+	}
+	stream := trackedStream(t, s, 0x1)
+	bytes, pushes := sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(6<<10), bytes)
+	require.Equal(t, uint64(3), pushes)
+	require.Equal(t, uint64(2), stream.slots)
+}
+
+func TestStreamShardStore_MergeKeepsTheLargerBucketTotals(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 600, 3, 1)
+	// A later record for the same bucket carries the zone's grown totals.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 900, 4, 1)
+	// An out-of-order record, such as one produced by the previous owner of
+	// the partition, must not shrink them back.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 300, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	bytes, pushes := sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(900), bytes)
+	require.Equal(t, uint64(4), pushes)
+
+	// A record for the next bucket replaces the slot rather than merging into
+	// it, as the ring reuses slots.
+	clock.Advance(testRateWindow)
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 100, 1, 1)
+	stream = trackedStream(t, s, 0x1)
+	bytes, pushes = sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(100), bytes)
+	require.Equal(t, uint64(1), pushes)
+}
+
+func TestStreamShardStore_MergeOwnZoneDoesNotRegressLocalBuckets(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// A push, then our own record for the same bucket as it was when the
+	// record was produced: replaying it must neither drop the bytes pushed
+	// after the flush nor count them twice.
+	push(t, s, 0x1, 600, clock.Now())
+	push(t, s, 0x1, 600, clock.Now())
+	mergeRecord(s, testZone, 0x1, clock.Now(), 600, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	require.Empty(t, stream.remoteBuckets)
+	bytes, pushes := sumRateBuckets(stream.rateBuckets, 0)
+	require.Equal(t, uint64(1200), bytes)
+	require.Equal(t, uint64(2), pushes)
+}
+
+func TestStreamShardStore_MergeKeepsTheFresherFootprint(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	track(t, s, streamShardUsage{
+		hash:          0x1,
+		shardCount:    3,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 3, clock.Now().UnixNano()),
+	}, clock.Now())
+
+	// A record older than what we know about the stream contributes its rate
+	// bucket but must not shrink the footprint back to one shard.
+	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testBucketSize), 600, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	require.Equal(t, uint32(3), stream.shardCount)
+	require.Equal(t, uint64(3), stream.slots)
+	require.NotEmpty(t, stream.remoteBuckets["zone2"])
+}
+
+func TestStreamShardStore_MergeIgnoresRecordsOutsideTheRateWindow(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testRateWindow-testBucketSize), 600, 1, 1)
+	require.Equal(t, 0, countTrackedStreams(s))
+}
+
 func TestStreamShardStore_Evict(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
 	push(t, s, 0x1, 1, clock.Now())
@@ -409,7 +528,7 @@ func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
 				ShardStreamsConfig: shardstreams.Config{Enabled: true},
 			}
 			require.NoError(b, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
-			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, limits, prometheus.NewRegistry())
+			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, testZone, limits, prometheus.NewRegistry())
 			require.NoError(b, err)
 
 			now := time.Now()

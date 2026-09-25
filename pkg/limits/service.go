@@ -109,7 +109,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
-	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
+	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, cfg.LifecyclerConfig.Zone, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
 	}

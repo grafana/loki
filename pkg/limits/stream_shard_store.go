@@ -53,6 +53,9 @@ type streamShardStore struct {
 	bucketSize    time.Duration
 	numBuckets    int
 	numPartitions int
+	// zone is this instance's zone. It tells a merged record apart from
+	// another zone's, see merge.
+	zone string
 
 	stripes []map[string]streamShardTenantUsage
 	locks   []stripeLock
@@ -125,13 +128,14 @@ type shardRateBucket struct {
 	pushes    uint64
 }
 
-func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, limits Limits, reg prometheus.Registerer) (*streamShardStore, error) {
+func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, zone string, limits Limits, reg prometheus.Registerer) (*streamShardStore, error) {
 	s := &streamShardStore{
 		activeWindow:  activeWindow,
 		rateWindow:    rateWindow,
 		bucketSize:    bucketSize,
 		numBuckets:    int(rateWindow / bucketSize),
 		numPartitions: numPartitions,
+		zone:          zone,
 		stripes:       make([]map[string]streamShardTenantUsage, numStripes),
 		locks:         make([]stripeLock, numStripes),
 		limits:        limits,
@@ -297,6 +301,89 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 		}
 	})
 	return results
+}
+
+// merge applies a record produced by this or another zone, restoring the
+// rate history and the shard footprint the producing zone had when it wrote
+// the record. It is how a restarted instance, or an instance that has just
+// been assigned a partition, avoids the warm-up window in which every stream
+// looks brand new and gets a single shard.
+//
+// The record states the producing zone's absolute totals for one rate bucket,
+// so merging is not additive and a record can be applied any number of times.
+// Where a bucket is already tracked for that zone, the larger totals win:
+// within a bucket a zone's totals only grow, so this is independent of the
+// order records arrive in, and it cannot regress a ring that holds fresher
+// pushes than the record does. That covers replaying our own records into a
+// store that is already serving, and a record produced by the previous owner
+// of a partition landing after the new owner's.
+//
+// Records older than the rate window are ignored: they carry no rate that
+// still counts, and tracking the stream for its footprint alone would keep
+// idle streams in memory for the rest of the active window. The cost is that
+// the stream count budget is not restored for streams that have been idle
+// for longer than a rate window.
+func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord) {
+	if rec.Metadata == nil || rec.ShardRateBucket == nil {
+		return
+	}
+	var (
+		now         = s.clock.Now()
+		bucketStart = rec.ShardRateBucket.BucketStart
+	)
+	if bucketStart < now.Add(-s.rateWindow).UnixNano() {
+		return
+	}
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
+	var (
+		hash      = rec.Metadata.StreamHash
+		partition = s.getPartitionForHash(hash)
+		cutoff    = now.Add(-s.activeWindow).UnixNano()
+	)
+	s.withLock(tenant, func(i int) {
+		bucket := s.checkInitMap(i, tenant, partition, policyBucket)
+		stream := bucket.streams[hash]
+		stream.hash = hash
+		stream.policy = policyBucket
+		if rec.Zone == s.zone {
+			stream.rateBuckets = s.mergeRateBucket(stream.rateBuckets, rec.ShardRateBucket)
+		} else {
+			if stream.remoteBuckets == nil {
+				stream.remoteBuckets = make(map[string][]shardRateBucket, 1)
+			}
+			stream.remoteBuckets[rec.Zone] = s.mergeRateBucket(stream.remoteBuckets[rec.Zone], rec.ShardRateBucket)
+		}
+		// The record's shard count is only adopted when the record is newer
+		// than anything we know about the stream. Otherwise a replayed record
+		// would age the footprint of a stream that has been pushed to since,
+		// and shrink it back to a count that has already grown.
+		if bucketStart > stream.lastSeenAt {
+			stream.lastSeenAt = bucketStart
+			stream.shardCount = rec.ShardCount
+			stream.shardLastUsed = refreshLiveShards(stream.shardLastUsed, rec.ShardCount, bucketStart)
+		}
+		bucket.put(stream, cutoff)
+	})
+}
+
+// mergeRateBucket writes the record's bucket into the ring, allocating it if
+// needed, and returns it.
+func (s *streamShardStore) mergeRateBucket(buckets []shardRateBucket, in *proto.ShardRateBucket) []shardRateBucket {
+	if len(buckets) == 0 {
+		buckets = make([]shardRateBucket, s.numBuckets)
+	}
+	idx := int((in.BucketStart / int64(s.bucketSize)) % int64(s.numBuckets))
+	b := buckets[idx]
+	switch {
+	case b.timestamp < in.BucketStart:
+		// A newer bucket reusing the slot: replace it rather than merge.
+		b = shardRateBucket{timestamp: in.BucketStart, size: in.Size_, pushes: in.Pushes}
+	case b.timestamp == in.BucketStart:
+		b.size = max(b.size, in.Size_)
+		b.pushes = max(b.pushes, in.Pushes)
+	}
+	buckets[idx] = b
+	return buckets
 }
 
 // Evict evicts all streams that have not been seen within the active window,

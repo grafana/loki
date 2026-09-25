@@ -22,7 +22,7 @@ func newTestService(t *testing.T, limits Limits, numPartitions int) (*Service, *
 	require.NoError(t, err)
 	usage, err := newUsageStore(activeWindow, time.Minute, 10*time.Second, numPartitions, limits, reg)
 	require.NoError(t, err)
-	streamShards, err := newStreamShardStore(activeWindow, time.Minute, 10*time.Second, numPartitions, limits, reg)
+	streamShards, err := newStreamShardStore(activeWindow, time.Minute, 10*time.Second, numPartitions, "zone1", limits, reg)
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	usage.clock = clock
