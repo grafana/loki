@@ -3,8 +3,9 @@ package v4
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
 
 	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 )
