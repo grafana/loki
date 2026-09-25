@@ -770,11 +770,11 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		{ID: 1, MinTimeUnix: t0.Add(2 * time.Second).UnixMilli(), MaxTimeUnix: t0.Add(3 * time.Second).UnixMilli()},
 	}
 	indexStore := newTestStore(t)
-	writeShardedTermTestIndex(t, indexStore, "1111111111111111", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "1111111111111111", docs, map[string][]uint32{
 		byShard[emptyShard][0]: {0},
 		byShard[emptyShard][1]: {1},
 	}, emptyShard)
-	writeShardedTermTestIndex(t, indexStore, "2222222222222222", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "2222222222222222", docs, map[string][]uint32{
 		byShard[matchingShard][0]: {0},
 	}, matchingShard)
 
@@ -792,6 +792,67 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 	require.NoError(t, err)
 	require.NotNil(t, hints)
 	require.Empty(t, hints.TimeRanges)
+}
+
+// TestLoglineHintProvider_ProvideHints_MixedVersionShards queries a sharded
+// window that spans a v3 to v4 cutover. v3 splits the needle into four 6-grams
+// spread over several shards, v4 packs it into one key on a single shard. Both
+// periods hold the needle, so both must come back as hint ranges.
+func TestLoglineHintProvider_ProvideHints_MixedVersionShards(t *testing.T) {
+	const needle = "123456789"
+	t0 := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+
+	indexStore := newTestStore(t)
+	for i, period := range []struct {
+		version string
+		start   time.Time
+	}{
+		{version: "v3", start: t0},
+		{version: "v4", start: t1},
+	} {
+		terms, err := ExtractQueryNgrams(needle, 6, period.version)
+		require.NoError(t, err)
+		require.NotEmpty(t, terms)
+
+		docs := []format.DocumentMetadata{{
+			ID:          0,
+			MinTimeUnix: period.start.UnixMilli(),
+			MaxTimeUnix: period.start.Add(time.Second).UnixMilli(),
+		}}
+		// Like the builder, each shard only holds the terms routed to it.
+		for shardValue := range 10 {
+			meta := store.Meta{ShardCount: 10, ShardAlgorithm: shard.AlgorithmMurmur3Mix, ShardValue: shardValue}
+			postings := make(map[string][]uint32)
+			for _, term := range filterNgramsForShard(terms, meta) {
+				postings[term] = []uint32{0}
+			}
+			if len(postings) == 0 {
+				continue
+			}
+			hash := fmt.Sprintf("%015d%d", i, shardValue)
+			writeShardedTermTestIndex(t, indexStore, period.version, hash, docs, postings, shardValue)
+		}
+	}
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |= "123456789"`)
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		expr,
+		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
+		model.TimeFromUnixNano(t1.Add(time.Minute).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+	require.Len(t, hints.TimeRanges, 2)
+	require.Equal(t, t0, hints.TimeRanges[0].Start)
+	require.Equal(t, t0.Add(time.Second), hints.TimeRanges[0].End)
+	require.Equal(t, t1, hints.TimeRanges[1].Start)
+	require.Equal(t, t1.Add(time.Second), hints.TimeRanges[1].End)
 }
 
 func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
@@ -1098,6 +1159,7 @@ func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]b
 func writeShardedTermTestIndex(
 	t *testing.T,
 	indexStore *store.Store,
+	version string,
 	hash string,
 	docs []format.DocumentMetadata,
 	postings map[string][]uint32,
@@ -1107,7 +1169,7 @@ func writeShardedTermTestIndex(
 	require.NotEmpty(t, docs)
 
 	path := filepath.Join(t.TempDir(), "test.lidx")
-	writer, err := logline.NewWriter(logline.CurrentVersion, path, docs, nil)
+	writer, err := logline.NewWriter(version, path, docs, nil)
 	require.NoError(t, err)
 
 	terms := make([]string, 0, len(postings))
@@ -1136,7 +1198,7 @@ func writeShardedTermTestIndex(
 	meta := store.Meta{
 		Date:           minLogTS.Format("2006-01-02"),
 		Hash:           hash,
-		Version:        logline.CurrentVersion,
+		Version:        version,
 		MinLogTs:       minLogTS,
 		MaxLogTs:       maxLogTS,
 		MinRecordTs:    minLogTS,
