@@ -24,7 +24,7 @@ func CopyProfileID(dest, src *ProfileID) {
 	*dest = *src
 }
 
-// IsEmpty returns true if id contains at leas one non-zero byte.
+// IsEmpty returns true if id doesn't contain at least one non-zero byte.
 func (pid ProfileID) IsEmpty() bool {
 	return pid == [profileIDSize]byte{}
 }

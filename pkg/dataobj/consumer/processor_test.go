@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -162,8 +164,8 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 // failureFlusher is a special flusher that always fails.
 type failureFlusher struct{}
 
-func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
-	return "", errors.New("mock error")
+func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+	return nil, nil, "", errors.New("mock error")
 }
 
 type failureFlushCommitter struct{}

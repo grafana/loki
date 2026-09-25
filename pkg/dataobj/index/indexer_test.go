@@ -61,7 +61,7 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
@@ -137,7 +137,7 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
@@ -184,7 +184,7 @@ func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(prometheus.NewRegistry()))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(prometheus.NewRegistry()))
 
 	indexer := newSerialIndexer(
@@ -232,7 +232,7 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
@@ -385,7 +385,7 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
@@ -446,7 +446,7 @@ func TestSerialIndexer_ResetsCalculatorOnCancel(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
@@ -566,10 +566,10 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator(indexBuilder)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "test-path-0", 0)
 	require.NoError(t, err)
@@ -612,10 +612,10 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator(indexBuilder)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "objects/test-object", 0)
 	require.NoError(t, err)
@@ -685,7 +685,7 @@ func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
-	indexerMetrics := newIndexerMetrics()
+	indexerMetrics := newSerialIndexerMetrics()
 	require.NoError(t, indexerMetrics.register(reg))
 
 	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
@@ -694,11 +694,11 @@ func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 		TargetSectionSize:       1,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	indexer := newSerialIndexer(
-		NewCalculator(indexBuilder),
+		NewCalculator(indexBuilder, NewCalculatorMetrics(nil)),
 		bucket,
 		indexStorageBucket,
 		builderMetrics,

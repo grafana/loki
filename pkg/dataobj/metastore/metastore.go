@@ -31,7 +31,7 @@ type SectionsRequest struct {
 }
 
 type SectionsResponse struct {
-	Sections []*DataobjSectionDescriptor
+	Sections DataobjSectionDescriptors
 }
 
 type GetIndexesRequest struct {

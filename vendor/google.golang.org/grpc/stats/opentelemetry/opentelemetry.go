@@ -216,21 +216,55 @@ func serverRPCInfo(ctx context.Context) *rpcInfo {
 	return ri
 }
 
-func getOrCreateClientRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+func getOrCreateClientRPCInfo(ctx context.Context, info *stats.RPCTagInfo) (context.Context, *rpcInfo) {
 	ri := clientRPCInfo(ctx)
 	if ri != nil {
 		return ctx, ri
 	}
-	ri = &rpcInfo{ai: &attemptInfo{}}
+	ri = &rpcInfo{
+		ai: &attemptInfo{
+			startTime: time.Now(),
+			method:    removeLeadingSlash(info.FullMethodName),
+			xdsLabels: map[string]string{
+				// The defaults for all the per call labels from a plugin that
+				// executes on the callpath that this OpenTelemetry component
+				// currently supports.
+				"grpc.lb.locality":        "",
+				"grpc.lb.backend_service": "",
+			},
+		},
+	}
 	return context.WithValue(ctx, clientRPCInfoKey{}, ri), ri
 }
 
-func getOrCreateServerRPCInfo(ctx context.Context) (context.Context, *rpcInfo) {
+func getOrCreateServerRPCInfo(ctx context.Context, info *stats.RPCTagInfo, options MetricsOptions) (context.Context, *rpcInfo) {
 	ri := serverRPCInfo(ctx)
 	if ri != nil {
 		return ctx, ri
 	}
-	ri = &rpcInfo{ai: &attemptInfo{}}
+	method := info.FullMethodName
+	if options.MethodAttributeFilter != nil {
+		if !options.MethodAttributeFilter(method) {
+			method = "other"
+		}
+	}
+	server := internal.ServerFromContext.(func(context.Context) *grpc.Server)(ctx)
+	if server == nil { // Shouldn't happen, defensive programming.
+		logger.Error("ctx passed into server side stats handler has no grpc server ref")
+		method = "other"
+	} else {
+		isRegisteredMethod := internal.IsRegisteredMethod.(func(*grpc.Server, string) bool)
+		if !isRegisteredMethod(server, method) {
+			method = "other"
+		}
+	}
+
+	ri = &rpcInfo{
+		ai: &attemptInfo{
+			startTime: time.Now(),
+			method:    removeLeadingSlash(method),
+		},
+	}
 	return context.WithValue(ctx, serverRPCInfoKey{}, ri), ri
 }
 

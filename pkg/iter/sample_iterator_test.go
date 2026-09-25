@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -198,6 +199,7 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
+
 func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
 	it := NewTimestampFirstSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
@@ -220,6 +222,45 @@ func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
 	require.NoError(t, it.Close())
 }
 
+func TestNewStreamFirstSampleQueryClientIterator(t *testing.T) {
+	// A stream-first source: four complete streams, ascending in stream hash.
+	newSource := func() SampleIterator {
+		return NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4), mkSample(2, 5))),
+			// One stream whose labels alternate, so the encoding splits it into runs.
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 30, mkSample(1, 6))),
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="warn"}`, 30, mkSample(2, 7))),
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 30, mkSample(3, 8), mkSample(4, 9))),
+			// A grouping query's shape: same labels as the stream above, different hash.
+			NewSeriesIterator(mkStreamSeries(`{s="c",level="info"}`, 40, mkSample(1, 10), mkSample(2, 11))),
+		})
+	}
+
+	want := collectSamplesWithLabels(t, newSource())
+	require.Len(t, want, 11)
+
+	// Every batch size, including ones that cut a stream and a run in half, must round-trip to
+	// the exact same samples in the exact same order.
+	for _, batchSize := range []uint32{1, 2, 3, 4, 8, 128} {
+		t.Run(fmt.Sprintf("batch size %d", batchSize), func(t *testing.T) {
+			var batches [][]logproto.Series
+			enc := newSource()
+			for {
+				res, size, err := ReadStreamFirstSampleBatch(enc, batchSize)
+				require.NoError(t, err)
+				if size == 0 {
+					break
+				}
+				batches = append(batches, res.Series)
+			}
+
+			it := NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches})
+			require.Equal(t, want, collectSamplesWithLabels(t, it))
+		})
+	}
+}
+
 func TestNewNonOverlappingSampleIterator(t *testing.T) {
 	it := NewNonOverlappingSampleIterator([]SampleIterator{
 		NewSeriesIterator(varSeries),
@@ -239,16 +280,148 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 	require.NoError(t, it.Close())
 }
 
-func TestReadSampleBatch(t *testing.T) {
-	res, size, err := ReadSampleBatch(NewSeriesIterator(carSeries), 1)
+func TestReadTimestampFirstSampleBatch(t *testing.T) {
+	res, size, err := ReadTimestampFirstSampleBatch(NewSeriesIterator(carSeries), 1)
 	require.Equal(t, &logproto.SampleQueryResponse{Series: []logproto.Series{{Labels: carSeries.Labels, StreamHash: carSeries.StreamHash, Samples: []logproto.Sample{sample(1)}}}}, res)
 	require.Equal(t, uint32(1), size)
 	require.NoError(t, err)
 
-	res, size, err = ReadSampleBatch(NewMultiSeriesIterator([]logproto.Series{carSeries, varSeries}), 100)
+	res, size, err = ReadTimestampFirstSampleBatch(NewTimestampFirstMultiSeriesIterator([]logproto.Series{carSeries, varSeries}), 100)
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+func TestReadStreamFirstSampleBatch(t *testing.T) {
+	t.Run("should emit one Series per stream, in the input order", func(t *testing.T) {
+		// The streams are fed in descending hash order on purpose: the encoding must keep the
+		// input order, not impose one of its own.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 1))),
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 2), mkSample(2, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(4), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="c"}`, StreamHash: 30, Samples: []logproto.Sample{mkSample(1, 1)}},
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 2), mkSample(2, 3)}},
+			{Labels: `{s="b"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 4)}},
+		}, res.Series)
+	})
+
+	t.Run("should start a new Series when the labels change but the stream hash does not", func(t *testing.T) {
+		// One stream whose output labels alternate, as structured metadata makes them. Each run
+		// becomes its own Series, so concatenating them replays the samples in timestamp order.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(1, 1))),
+			NewSeriesIterator(mkStreamSeries(`{level="warn"}`, 10, mkSample(2, 2))),
+			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(3, 3))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(3), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{level="info"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1)}},
+			{Labels: `{level="warn"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(2, 2)}},
+			{Labels: `{level="info"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(3, 3)}},
+		}, res.Series)
+	})
+
+	t.Run("should start a new Series when the stream hash changes but the labels do not", func(t *testing.T) {
+		// A grouping query collapses two streams onto one output label set. Fusing them into one
+		// Series would hand the second stream's samples the first stream's hash, and the merge
+		// dedups on the hash, so a matching sample would silently disappear.
+		src := NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 10, mkSample(1, 1), mkSample(2, 2))),
+			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 20, mkSample(1, 3), mkSample(2, 4))),
+		})
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.NoError(t, err)
+		require.Equal(t, uint32(4), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{job="3"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1), mkSample(2, 2)}},
+			{Labels: `{job="3"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 3), mkSample(2, 4)}},
+		}, res.Series)
+	})
+
+	t.Run("should stop at size, splitting a stream", func(t *testing.T) {
+		src := NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3)))
+
+		res, size, err := ReadStreamFirstSampleBatch(src, 2)
+		require.NoError(t, err)
+		require.Equal(t, uint32(2), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 1), mkSample(2, 2)}},
+		}, res.Series)
+
+		res, size, err = ReadStreamFirstSampleBatch(src, 2)
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), size)
+		require.Equal(t, []logproto.Series{
+			{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(3, 3)}},
+		}, res.Series)
+	})
+
+	t.Run("should return no Series once the source is drained", func(t *testing.T) {
+		res, size, err := ReadStreamFirstSampleBatch(NoopSampleIterator, 100)
+		require.NoError(t, err)
+		require.Zero(t, size)
+		require.Empty(t, res.Series)
+
+		// The accessors must be safe before the first Next, which is what the empty case buys:
+		// a concatenation over no Series dereferences a nil current iterator instead.
+		it := NewStreamFirstSampleQueryResponseIterator(res)
+		require.Zero(t, it.At())
+		require.Empty(t, it.Labels())
+		require.Zero(t, it.StreamHash())
+		require.False(t, it.Next())
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+	})
+
+	t.Run("should surface the source's read error", func(t *testing.T) {
+		src := &erroringSampleIterator{err: errors.New("boom")}
+
+		_, size, err := ReadStreamFirstSampleBatch(src, 100)
+		require.ErrorContains(t, err, "boom")
+		require.Zero(t, size)
+	})
+}
+
+func TestSampleQueryClientIterator_Close(t *testing.T) {
+	batches := [][]logproto.Series{
+		{mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1))},
+		{mkStreamSeries(`{s="b"}`, 20, mkSample(1, 2))},
+	}
+
+	t.Run("should collect a close error from every batch, not only the last", func(t *testing.T) {
+		var closed int
+		failing := func(resp *logproto.SampleQueryResponse) SampleIterator {
+			closed++
+			return SampleIteratorWithClose(NewStreamFirstMultiSeriesIterator(resp.Series), func() error {
+				return fmt.Errorf("batch %d close", closed)
+			})
+		}
+
+		it := &sampleQueryClientIterator{client: &fakeSampleClient{series: batches}, newBatchIterator: failing}
+		for it.Next() {
+		}
+		require.NoError(t, it.Err())
+
+		err := it.Close()
+		require.ErrorContains(t, err, "batch 1 close", "the drained batch's close error must survive")
+		require.ErrorContains(t, err, "batch 2 close")
+	})
+
+	t.Run("should close cleanly when no batch fails", func(t *testing.T) {
+		it := NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches})
+		require.Equal(t, 2, len(collectSamplesWithLabels(t, it)))
+	})
 }
 
 type CloseTestingSmplIterator struct {
@@ -281,133 +454,522 @@ func TestNonOverlappingSampleClose(t *testing.T) {
 	require.Equal(t, true, b.closed.Load())
 }
 
-// TestMergeSampleIterator_ShouldCloseEverySource checks the merge closes every
-// input exactly once: drained during Next, empty in requeue, left on the heap
-// for Close, or never prefetched.
+// mergeConstructors pairs each merge-order constructor with a name. Shared test logic
+// can then run once per order via t.Run.
+var mergeConstructors = []struct {
+	name string
+	new  func(context.Context, []SampleIterator) SampleIterator
+}{
+	{"timestamp-first", NewTimestampFirstMergeSampleIterator},
+	{"stream-first", NewStreamFirstMergeSampleIterator},
+}
+
 func TestMergeSampleIterator_ShouldCloseEverySource(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("fully drained closes every source once", func(t *testing.T) {
-		// Staggered timestamps drain the early sources through the merge loop and
-		// the last remaining source through the single-iterator shortcut.
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(4)}, labels: `{s="a"}`}
-		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(5)}, labels: `{s="b"}`}
-		c := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="c"}`}
+	for _, mc := range mergeConstructors {
+		t.Run(mc.name, func(t *testing.T) {
+			t.Run("fully drained closes every source once", func(t *testing.T) {
+				// Staggered per-source values guarantee a mix of sources drain through
+				// the merge loop and the single-iterator shortcut. Which source takes
+				// which path depends on the merge order. Every source must close
+				// exactly once either way.
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(4)}, labels: `{s="a"}`}
+				b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(5)}, labels: `{s="b"}`}
+				c := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="c"}`}
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b, c})
-		var got int
-		for it.Next() {
-			got++
-		}
-		require.NoError(t, it.Err())
-		require.Equal(t, 5, got)
-		require.NoError(t, it.Close())
+				it := mc.new(ctx, []SampleIterator{a, b, c})
+				var got int
+				for it.Next() {
+					got++
+				}
+				require.NoError(t, it.Err())
+				require.Equal(t, 5, got)
+				require.NoError(t, it.Close())
 
-		require.Equal(t, 1, a.closed, "a drains through the merge loop and is closed once")
-		require.Equal(t, 1, b.closed, "b drains last through the shortcut and is closed once")
-		require.Equal(t, 1, c.closed, "c drains through the merge loop and is closed once")
-	})
+				require.Equal(t, 1, a.closed)
+				require.Equal(t, 1, b.closed)
+				require.Equal(t, 1, c.closed)
+			})
 
-	t.Run("single source drained through the shortcut is closed once", func(t *testing.T) {
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`}
+			t.Run("single source drained through the shortcut is closed once", func(t *testing.T) {
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`}
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a})
-		for it.Next() { //nolint:revive
-		}
-		require.NoError(t, it.Close())
+				it := mc.new(ctx, []SampleIterator{a})
+				for it.Next() { //nolint:revive
+				}
+				require.NoError(t, it.Close())
 
-		require.Equal(t, 1, a.closed)
-	})
+				require.Equal(t, 1, a.closed)
+			})
 
-	t.Run("empty sources are closed once", func(t *testing.T) {
-		empty := &erroringSampleIterator{labels: `{s="empty"}`}
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
+			t.Run("close error on a source drained through Next surfaces only through Close, not Err", func(t *testing.T) {
+				closeBoom := errors.New("close a")
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, closeErr: closeBoom}
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{empty, a})
-		for it.Next() { //nolint:revive
-		}
-		require.NoError(t, it.Close())
+				it := mc.new(ctx, []SampleIterator{a})
+				for it.Next() { //nolint:revive
+				}
+				require.NoError(t, it.Err())
+				require.ErrorIs(t, it.Close(), closeBoom)
+			})
 
-		require.Equal(t, 1, empty.closed, "an empty source is closed once when requeued")
-		require.Equal(t, 1, a.closed)
-	})
+			t.Run("empty sources are closed once", func(t *testing.T) {
+				empty := &erroringSampleIterator{labels: `{s="empty"}`}
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 
-	t.Run("close before full drain closes each source once", func(t *testing.T) {
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
-		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+				it := mc.new(ctx, []SampleIterator{empty, a})
+				for it.Next() { //nolint:revive
+				}
+				require.NoError(t, it.Close())
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
-		require.True(t, it.Next()) // drains a; b stays on the heap
-		require.NoError(t, it.Close())
+				require.Equal(t, 1, empty.closed, "an empty source is closed once during init")
+				require.Equal(t, 1, a.closed)
+			})
 
-		require.Equal(t, 1, a.closed, "a drained during Next is not closed again by Close")
-		require.Equal(t, 1, b.closed, "b left on the heap is closed by Close")
-	})
+			t.Run("close before full drain closes each source once", func(t *testing.T) {
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
+				b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
 
-	t.Run("Close closes every heap source even when one Close fails", func(t *testing.T) {
-		// Two data runs so a single Next leaves both sources on the heap. Both
-		// Close calls fail, so a first-error return would leak whichever is second.
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(3)}, labels: `{s="a"}`, closeErr: errors.New("close a")}
-		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(4)}, labels: `{s="b"}`, closeErr: errors.New("close b")}
+				it := mc.new(ctx, []SampleIterator{a, b})
+				require.True(t, it.Next()) // drains a; b stays on the heap
+				require.NoError(t, it.Close())
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
-		require.True(t, it.Next()) // prefetch both onto the heap
-		it.Close()
+				require.Equal(t, 1, a.closed, "a drained during Next is not closed again by Close")
+				require.Equal(t, 1, b.closed, "b left on the heap is closed by Close")
+			})
 
-		require.Equal(t, 1, a.closed, "a is closed once")
-		require.Equal(t, 1, b.closed, "a failing Close must not leak b")
-	})
+			t.Run("close error on a source left on the heap surfaces only through Close, not Err", func(t *testing.T) {
+				closeBoom := errors.New("close a")
+				// a's later timestamp keeps it on the heap: the first Next drains b (the
+				// earlier sample) instead, so a is only closed once Close pops it.
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="a"}`, closeErr: closeBoom}
+				b := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="b"}`}
 
-	t.Run("Close before any iteration closes every source", func(t *testing.T) {
-		// Never iterated, so the sources are still queued and not yet on the heap.
-		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
-		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+				it := mc.new(ctx, []SampleIterator{a, b})
+				require.True(t, it.Next())
+				require.Zero(t, a.closed, "a must still be on the heap, not already closed by Next")
+				require.ErrorIs(t, it.Close(), closeBoom)
+				// a never failed during iteration: Next never drained it. Its close error must
+				// not retroactively make Err report a failure the iteration never encountered.
+				require.NoError(t, it.Err())
+				require.Equal(t, 1, a.closed)
+			})
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{a, b})
-		require.NoError(t, it.Close())
+			t.Run("Close closes every heap source even when one Close fails", func(t *testing.T) {
+				// Two data runs so a single Next leaves both sources on the heap. Both
+				// Close calls fail, so a first-error return would leak whichever is second.
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(3)}, labels: `{s="a"}`, closeErr: errors.New("close a")}
+				b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(4)}, labels: `{s="b"}`, closeErr: errors.New("close b")}
 
-		require.Equal(t, 1, a.closed, "an un-prefetched source is closed by Close")
-		require.Equal(t, 1, b.closed, "an un-prefetched source is closed by Close")
-	})
+				it := mc.new(ctx, []SampleIterator{a, b})
+				require.True(t, it.Next()) // init pushes both onto the heap
+				it.Close()
+
+				require.Equal(t, 1, a.closed, "a is closed once")
+				require.Equal(t, 1, b.closed, "a failing Close must not leak b")
+			})
+
+			t.Run("Close before any iteration closes every source", func(t *testing.T) {
+				// Never iterated, so the sources are still queued and not yet on the heap.
+				a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
+				b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+
+				it := mc.new(ctx, []SampleIterator{a, b})
+				require.NoError(t, it.Close())
+
+				require.Equal(t, 1, a.closed, "an un-initialized source is closed by Close")
+				require.Equal(t, 1, b.closed, "an un-initialized source is closed by Close")
+			})
+		})
+	}
 }
 
 // TestMergeSampleIterator_ShouldSurfaceDrainError checks a source's read error
 // reaches Err when it fails at EOF while draining through Next.
+//
+// It runs under both merge orders. Error surfacing is shared code, so it does not
+// depend on order.
 func TestMergeSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("boom")
 
-	t.Run("error draining through the merge loop is surfaced", func(t *testing.T) {
-		// errored yields ts1,ts2 then fails at EOF; healthy at ts3 keeps the merge
-		// going, so errored drains through the merge loop rather than the shortcut.
-		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
-		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="b"}`}
+	for _, mc := range mergeConstructors {
+		t.Run(mc.name, func(t *testing.T) {
+			t.Run("error draining through the merge loop is surfaced", func(t *testing.T) {
+				// errored yields ts1,ts2 then fails at EOF; healthy at ts3 keeps the merge
+				// going, so errored drains through the merge loop rather than the shortcut.
+				errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
+				healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="b"}`}
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{errored, healthy})
-		for it.Next() { //nolint:revive
+				it := mc.new(ctx, []SampleIterator{errored, healthy})
+				for it.Next() { //nolint:revive
+				}
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.Equal(t, 1, errored.closed)
+				require.Zero(t, healthy.closed, "the merge stops on the first error, leaving healthy for Close to close")
+
+				require.NoError(t, it.Close())
+				require.Equal(t, 1, healthy.closed, "Close must still close whatever the aborted merge left behind")
+			})
+
+			t.Run("error draining through the single-iterator shortcut is surfaced", func(t *testing.T) {
+				// A lone source that fails at EOF drains through the heap.Len()==1 shortcut.
+				errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
+
+				it := mc.new(ctx, []SampleIterator{errored})
+				for it.Next() { //nolint:revive
+				}
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.Equal(t, 1, errored.closed)
+				it.Close()
+			})
+
+			t.Run("a source's Close echoing its own read error is not reported again through Close", func(t *testing.T) {
+				// Some implementations (e.g. pkg/chunkenc's bufferedIterator) return their
+				// stored read error a second time from Close. That must not turn into a
+				// spurious close error once the read error already surfaced through Err.
+				echoing := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, err: wantErr, closeErr: wantErr}
+				healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+
+				it := mc.new(ctx, []SampleIterator{echoing, healthy})
+				for it.Next() { //nolint:revive
+				}
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.NoError(t, it.Close(), "the echoed read error must not surface a second time as a close error")
+			})
+
+			t.Run("a distinct close error alongside a read error still surfaces through Close", func(t *testing.T) {
+				// The close error here is not the echoed read error: it is its own,
+				// independent cleanup failure, and must still reach the caller.
+				closeErr := errors.New("close boom")
+				errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, err: wantErr, closeErr: closeErr}
+				healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+
+				it := mc.new(ctx, []SampleIterator{errored, healthy})
+				for it.Next() { //nolint:revive
+				}
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.ErrorIs(t, it.Close(), closeErr, "a close error distinct from the read error must still surface")
+			})
+
+			t.Run("stops immediately on error, without merging in other sources' data", func(t *testing.T) {
+				// errored's one sample is the current global minimum, so it is the first
+				// popped off the heap; other1 and other2 sit at later, distinct timestamps
+				// and must never be touched once errored fails mid-drain.
+				errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, err: wantErr}
+				other1 := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+				other2 := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="c"}`}
+
+				it := mc.new(ctx, []SampleIterator{errored, other1, other2})
+
+				require.False(t, it.Next(), "must stop on the very first call, discarding errored's own buffered sample rather than returning it")
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.Equal(t, 1, errored.closed)
+				require.Zero(t, other1.closed, "other1 must be left untouched for Close, not drained")
+				require.Zero(t, other2.closed, "other2 must be left untouched for Close, not drained")
+
+				require.NoError(t, it.Close())
+				require.Equal(t, 1, other1.closed)
+				require.Equal(t, 1, other2.closed)
+			})
+
+			t.Run("stops immediately on error, without merging in a same-group source still on the heap", func(t *testing.T) {
+				// a and b share one dedup group (same timestamp and stream hash). a is
+				// inserted first, so with tied sort keys the heap peeks it first. Once a
+				// fails while still inside that group, b — same group, still on the heap,
+				// untouched — must not get pulled in to extend it.
+				const groupHash = 42
+				a := &erroringSampleIterator{samples: []logproto.Sample{{Timestamp: 1, Hash: 100}}, labels: `{s="a"}`, streamHash: groupHash, err: wantErr}
+				b := &erroringSampleIterator{samples: []logproto.Sample{{Timestamp: 1, Hash: 200}}, labels: `{s="b"}`, streamHash: groupHash}
+
+				it := mc.new(ctx, []SampleIterator{a, b})
+
+				require.False(t, it.Next(), "must stop rather than merging in b's same-group entry")
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.Equal(t, 1, a.closed)
+				require.Zero(t, b.closed, "b must be left untouched for Close, not drained")
+
+				require.NoError(t, it.Close())
+				require.Equal(t, 1, b.closed)
+			})
+
+			t.Run("Next returns false once init finds an error, without draining other sources it also initialized", func(t *testing.T) {
+				// errored fails on its very first Next, during init. init still
+				// probes other1 and other2 too (it does not stop early), but Next must not
+				// drain or return anything from them once it sees the error afterward.
+				errored := &erroringSampleIterator{labels: `{s="a"}`, err: wantErr} // no samples: fails immediately
+				other1 := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="b"}`}
+				other2 := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="c"}`}
+
+				it := mc.new(ctx, []SampleIterator{errored, other1, other2})
+
+				require.False(t, it.Next())
+				require.ErrorIs(t, it.Err(), wantErr)
+				require.Equal(t, 1, errored.closed)
+				require.Equal(t, 1, other1.i, "init still probes other1")
+				require.Equal(t, 1, other2.i, "init still probes other2")
+				require.Zero(t, other1.closed, "other1 must be left on the heap for Close, not drained")
+				require.Zero(t, other2.closed, "other2 must be left on the heap for Close, not drained")
+
+				require.NoError(t, it.Close())
+				require.Equal(t, 1, other1.closed)
+				require.Equal(t, 1, other2.closed)
+			})
+		})
+	}
+}
+
+// TestSampleIteratorHeap_Less_StreamFirst checks SampleIteratorHeap.Less under
+// SAMPLE_ORDER_BY_STREAM.
+func TestSampleIteratorHeap_Less_StreamFirst(t *testing.T) {
+	tt := []struct {
+		name       string
+		a, b       SampleIterator
+		wantALessB bool
+		wantBLessA bool
+	}{
+		{
+			name:       "different non-zero StreamHash orders by hash",
+			a:          NewSeriesIterator(mkStreamSeries(`{s="z"}`, 10, sample(1))),
+			b:          NewSeriesIterator(mkStreamSeries(`{s="a"}`, 20, sample(1))),
+			wantALessB: true,
+			wantBLessA: false,
+		},
+		{
+			name:       "one side's StreamHash is zero: still orders by hash value",
+			a:          NewSeriesIterator(mkStreamSeries(`{s="z"}`, 0, sample(1))),
+			b:          NewSeriesIterator(mkStreamSeries(`{s="a"}`, 20, sample(1))),
+			wantALessB: true,
+			wantBLessA: false,
+		},
+		{
+			// Label order would put b (labels "a") before a (labels "z"). Timestamp
+			// order must win instead. Labels play no part in the stream-first order.
+			name:       "equal StreamHash, including zero, falls back to timestamp, not labels",
+			a:          NewSeriesIterator(mkStreamSeries(`{s="z"}`, 0, sample(1))),
+			b:          NewSeriesIterator(mkStreamSeries(`{s="a"}`, 0, sample(2))),
+			wantALessB: true,
+			wantBLessA: false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			require.True(t, tc.a.Next())
+			require.True(t, tc.b.Next())
+
+			h := NewSampleIteratorHeap([]SampleIterator{tc.a, tc.b}, logproto.SAMPLE_ORDER_BY_STREAM)
+			require.Equal(t, tc.wantALessB, h.Less(0, 1), "a < b")
+			require.Equal(t, tc.wantBLessA, h.Less(1, 0), "b < a")
+		})
+	}
+}
+
+func TestNewStreamFirstMergeSampleIterator(t *testing.T) {
+	t.Run("orders by stream hash then timestamp, and dedupes replicas", func(t *testing.T) {
+		a := mkStreamSeries(`{s="a"}`, 30, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))
+		b := mkStreamSeries(`{s="b"}`, 10, mkSample(1, 4), mkSample(2, 5), mkSample(3, 6))
+		c := mkStreamSeries(`{s="c"}`, 20, mkSample(1, 7), mkSample(2, 8), mkSample(3, 9))
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSeriesIterator(a), NewSeriesIterator(b), NewSeriesIterator(c),
+			// Replicas: same content, must collapse away.
+			NewSeriesIterator(a), NewSeriesIterator(b), NewSeriesIterator(c),
+		})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 4), labels: `{s="b"}`, streamHash: 10}, {Sample: mkSample(2, 5), labels: `{s="b"}`, streamHash: 10}, {Sample: mkSample(3, 6), labels: `{s="b"}`, streamHash: 10},
+			{Sample: mkSample(1, 7), labels: `{s="c"}`, streamHash: 20}, {Sample: mkSample(2, 8), labels: `{s="c"}`, streamHash: 20}, {Sample: mkSample(3, 9), labels: `{s="c"}`, streamHash: 20},
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 30}, {Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: 30}, {Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: 30},
 		}
-		require.ErrorIs(t, it.Err(), wantErr)
-		require.Equal(t, 1, errored.closed)
-		require.Equal(t, 1, healthy.closed)
-		it.Close()
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
 	})
 
-	t.Run("error draining through the single-iterator shortcut is surfaced", func(t *testing.T) {
-		// A lone source that fails at EOF drains through the heap.Len()==1 shortcut.
-		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
+	t.Run("keeps samples with distinct Sample.Hash at the same stream hash and timestamp", func(t *testing.T) {
+		s1 := mkStreamSeries(`{s="a"}`, 5, logproto.Sample{Timestamp: 1, Hash: 100, Value: 1})
+		s2 := mkStreamSeries(`{s="a"}`, 5, logproto.Sample{Timestamp: 1, Hash: 200, Value: 2})
 
-		it := NewTimestampFirstMergeSampleIterator(ctx, []SampleIterator{errored})
-		for it.Next() { //nolint:revive
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSeriesIterator(s1), NewSeriesIterator(s2),
+		})
+
+		want := []sampleWithLabels{
+			{Sample: logproto.Sample{Timestamp: 1, Hash: 100, Value: 1}, labels: `{s="a"}`, streamHash: 5},
+			{Sample: logproto.Sample{Timestamp: 1, Hash: 200, Value: 2}, labels: `{s="a"}`, streamHash: 5},
 		}
-		require.ErrorIs(t, it.Err(), wantErr)
-		require.Equal(t, 1, errored.closed)
-		it.Close()
+		require.ElementsMatch(t, want, collectSamplesWithLabels(t, it))
+	})
+
+	t.Run("streamHash collision interleaves by timestamp instead of staying contiguous", func(t *testing.T) {
+		// Injecting the collision directly (equal hash, different labels) is enough.
+		// Labels play no part in the order, so a collision orders exactly like two
+		// unrelated streams that happen to interleave by timestamp.
+		const collidingHash = 42
+		a := mkStreamSeries(`{s="a"}`, collidingHash, mkSample(1, 1), mkSample(3, 3))
+		b := mkStreamSeries(`{s="b"}`, collidingHash, mkSample(2, 2), mkSample(4, 4))
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSeriesIterator(a), NewSeriesIterator(b),
+		})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: collidingHash},
+			{Sample: mkSample(2, 2), labels: `{s="b"}`, streamHash: collidingHash},
+			{Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: collidingHash},
+			{Sample: mkSample(4, 4), labels: `{s="b"}`, streamHash: collidingHash},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
+	})
+
+	t.Run("streamHash collision among three streams orders the colliding pair by timestamp, unaffected by a third stream", func(t *testing.T) {
+		const collidingHash = 42
+		a := mkStreamSeries(`{s="a"}`, collidingHash, mkSample(1, 1), mkSample(3, 3))
+		b := mkStreamSeries(`{s="b"}`, collidingHash, mkSample(2, 2))
+		d := mkStreamSeries(`{s="d"}`, 99, mkSample(1, 100), mkSample(4, 400))
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSeriesIterator(a), NewSeriesIterator(b), NewSeriesIterator(d),
+		})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: collidingHash},
+			{Sample: mkSample(2, 2), labels: `{s="b"}`, streamHash: collidingHash},
+			{Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: collidingHash},
+			{Sample: mkSample(1, 100), labels: `{s="d"}`, streamHash: 99},
+			{Sample: mkSample(4, 400), labels: `{s="d"}`, streamHash: 99},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
+	})
+
+	t.Run("streamHash collision dedupes exactly like timestamp-first, keyed only by Sample.Hash", func(t *testing.T) {
+		// Two different streams collide on StreamHash and also happen to share a
+		// Sample.Hash at the same timestamp. Labels do not guard the dedup key; see
+		// sameDedupGroup. This collapses exactly as NewTimestampFirstMergeSampleIterator
+		// already does. The two orders must not disagree on what counts as a duplicate.
+		const (
+			collidingHash    = 42
+			sharedSampleHash = 7
+		)
+		build := func() []SampleIterator {
+			a := mkStreamSeries(`{s="a"}`, collidingHash, logproto.Sample{Timestamp: 1, Hash: sharedSampleHash, Value: 1})
+			b := mkStreamSeries(`{s="b"}`, collidingHash, logproto.Sample{Timestamp: 1, Hash: sharedSampleHash, Value: 2})
+			return []SampleIterator{NewSeriesIterator(a), NewSeriesIterator(b)}
+		}
+
+		timestampFirst := collectSamplesWithLabels(t, NewTimestampFirstMergeSampleIterator(context.Background(), build()))
+		streamFirst := collectSamplesWithLabels(t, NewStreamFirstMergeSampleIterator(context.Background(), build()))
+		require.Len(t, streamFirst, 1, "one of the two colliding samples is dropped as a duplicate")
+		require.Equal(t, timestampFirst, streamFirst)
+	})
+
+	t.Run("same stream, same Sample.Hash, different timestamps: neither sample is dropped", func(t *testing.T) {
+		// Guards sameDedupGroup's timestamp check. Without it, the merge could treat
+		// this second sample as a duplicate of the first and silently discard it.
+		// b keeps the heap at two entries. That forces the merge loop, which calls
+		// sameDedupGroup. The single-iterator shortcut never calls it.
+		a := mkStreamSeries(`{s="a"}`, 1, logproto.Sample{Timestamp: 1, Hash: 77, Value: 1}, logproto.Sample{Timestamp: 2, Hash: 77, Value: 2})
+		b := mkStreamSeries(`{s="b"}`, 2, logproto.Sample{Timestamp: 3, Hash: 88, Value: 3})
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSeriesIterator(a), NewSeriesIterator(b),
+		})
+
+		got := collectSamplesWithLabels(t, it)
+		require.Len(t, got, 3, "both of a's samples survive despite sharing a Sample.Hash, since their timestamps differ")
+	})
+
+	t.Run("dedupes a replica pair even when they break a same-timestamp tie differently", func(t *testing.T) {
+		// One stream's Labels() can vary per sample (structured metadata, label_format)
+		// while its StreamHash stays fixed. Two replica sources of that stream can
+		// present a same-timestamp tie in a different order. The dedup key must not
+		// include labels. Otherwise the merge never compares the two copies of one
+		// sample, and both survive.
+		replica := func(first, second logproto.Series) SampleIterator {
+			return NewNonOverlappingSampleIterator([]SampleIterator{NewSeriesIterator(first), NewSeriesIterator(second)})
+		}
+		foo1 := mkStreamSeries(`{foo="1"}`, 7, logproto.Sample{Timestamp: 1, Hash: 111, Value: 1})
+		foo2 := mkStreamSeries(`{foo="2"}`, 7, logproto.Sample{Timestamp: 1, Hash: 222, Value: 2})
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			replica(foo1, foo2), // one replica: foo=1 then foo=2
+			replica(foo2, foo1), // the other replica: same content, opposite tie-break order
+		})
+
+		got := collectSamplesWithLabels(t, it)
+		require.Len(t, got, 2, "each of the two distinct samples collapses from its two replicas")
+	})
+
+	t.Run("composes with NewSampleIteratorWithStreamHash to merge per-stream iterators from several sources", func(t *testing.T) {
+		// This is the intended real usage. A per-stream iterator's own StreamHash can be
+		// a reduced, extractor-derived value. Wrapping it exposes the real stream
+		// fingerprint before the iterator joins the merge.
+		rawA := NewSeriesIterator(mkStreamSeries(`{s="a"}`, 999, mkSample(1, 1), mkSample(2, 2))) // 999: reduced hash, not the real one
+		rawB := NewSeriesIterator(mkStreamSeries(`{s="b"}`, 888, mkSample(1, 3)))                 // 888: reduced hash, not the real one
+
+		it := NewStreamFirstMergeSampleIterator(context.Background(), []SampleIterator{
+			NewSampleIteratorWithStreamHash(rawA, 30), // 30: the real fingerprint
+			NewSampleIteratorWithStreamHash(rawB, 10), // 10: the real fingerprint
+		})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 3), labels: `{s="b"}`, streamHash: 10},
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 30}, {Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: 30},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
 	})
 }
 
-// TestSortSampleIterator_ShouldCloseEverySource checks the sort closes every
-// input exactly once: drained during Next, empty at init, left on the heap for
-// Close, or never prefetched.
+// TestStreamFirstMergeMatchesTimestampFirstMergeDedup verifies the stream-first and
+// timestamp-first merges keep the same deduplicated set. Only the order differs.
+func TestStreamFirstMergeMatchesTimestampFirstMergeDedup(t *testing.T) {
+	build := func() []SampleIterator {
+		a := mkStreamSeries(`{s="a"}`, 30, mkSample(1, 11), mkSample(2, 12), mkSample(5, 15))
+		b := mkStreamSeries(`{s="b"}`, 10, mkSample(2, 22), mkSample(3, 23), mkSample(4, 24))
+		c := mkStreamSeries(`{s="c"}`, 20, mkSample(1, 31), mkSample(4, 34))
+		return []SampleIterator{
+			NewSeriesIterator(a), NewSeriesIterator(b), NewSeriesIterator(c),
+			// Partial replicas.
+			NewSeriesIterator(a), NewSeriesIterator(c),
+		}
+	}
+
+	// Sort onto (streamHash, ts) so the two merges' differing orders compare equal.
+	sortByStream := func(s []sampleWithLabels) []sampleWithLabels {
+		sort.Slice(s, func(i, j int) bool {
+			if s[i].streamHash != s[j].streamHash {
+				return s[i].streamHash < s[j].streamHash
+			}
+			return s[i].Timestamp < s[j].Timestamp
+		})
+		return s
+	}
+
+	timestampFirst := sortByStream(collectSamplesWithLabels(t, NewTimestampFirstMergeSampleIterator(context.Background(), build())))
+	streamFirst := sortByStream(collectSamplesWithLabels(t, NewStreamFirstMergeSampleIterator(context.Background(), build())))
+	require.Equal(t, timestampFirst, streamFirst)
+}
+
+// TestNewSampleIteratorWithStreamHash verifies the wrapper overrides StreamHash and
+// passes every other method through to the wrapped iterator unchanged.
+func TestNewSampleIteratorWithStreamHash(t *testing.T) {
+	inner := NewSeriesIterator(mkStreamSeries(`{s="a"}`, 5, sample(1), sample(2)))
+	it := NewSampleIteratorWithStreamHash(inner, 99)
+
+	require.True(t, it.Next())
+	require.Equal(t, uint64(99), it.StreamHash(), "StreamHash returns the fixed value, not the wrapped iterator's")
+	require.Equal(t, `{s="a"}`, it.Labels())
+	require.Equal(t, sample(1), it.At())
+
+	require.True(t, it.Next())
+	require.Equal(t, uint64(99), it.StreamHash())
+	require.Equal(t, sample(2), it.At())
+
+	require.False(t, it.Next())
+	require.NoError(t, it.Err())
+	require.NoError(t, it.Close())
+}
+
 func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 	t.Run("fully drained closes every source once", func(t *testing.T) {
 		// Distinct timestamps interleave the sources so each drains through Next.
@@ -416,7 +978,7 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(5)}, labels: `{s="b"}`}
 		c := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="c"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{a, b, c})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b, c})
 		var got int
 		for it.Next() {
 			got++
@@ -434,25 +996,54 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		empty := &erroringSampleIterator{labels: `{s="empty"}`}
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{empty, a})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{empty, a})
 		for it.Next() { //nolint:revive
 		}
 		require.NoError(t, it.Close())
 
-		require.Equal(t, 1, empty.closed, "an empty source is closed once in init")
+		require.Equal(t, 1, empty.closed, "an empty source is closed once during init")
 		require.Equal(t, 1, a.closed)
+	})
+
+	t.Run("close error on a source emptied during init surfaces only through Close, not Err", func(t *testing.T) {
+		closeBoom := errors.New("close empty")
+		empty := &erroringSampleIterator{labels: `{s="empty"}`, closeErr: closeBoom}
+		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{empty, a})
+		for it.Next() { //nolint:revive
+		}
+		require.NoError(t, it.Err())
+		require.ErrorIs(t, it.Close(), closeBoom)
 	})
 
 	t.Run("close before full drain closes each source once", func(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{a, b})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b})
 		require.True(t, it.Next()) // drains a; b stays on the heap
 		require.NoError(t, it.Close())
 
 		require.Equal(t, 1, a.closed, "a drained during Next is not closed again by Close")
 		require.Equal(t, 1, b.closed, "b left on the heap is closed by Close")
+	})
+
+	t.Run("close error on a source left on the heap surfaces only through Close, not Err", func(t *testing.T) {
+		closeBoom := errors.New("close a")
+		// a's later timestamp keeps it on the heap: the first Next drains b (the earlier
+		// sample) instead, so a is only closed once Close pops it.
+		a := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="a"}`, closeErr: closeBoom}
+		b := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="b"}`}
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b})
+		require.True(t, it.Next())
+		require.Zero(t, a.closed, "a must still be on the heap, not already closed by Next")
+		require.ErrorIs(t, it.Close(), closeBoom)
+		// a never failed during iteration: Next never drained it. Its close error must not
+		// retroactively make Err report a failure the iteration never encountered.
+		require.NoError(t, it.Err())
+		require.Equal(t, 1, a.closed)
 	})
 
 	t.Run("Close closes every heap source even when one Close fails", func(t *testing.T) {
@@ -461,7 +1052,7 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(3)}, labels: `{s="a"}`, closeErr: errors.New("close a")}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2), sample(4)}, labels: `{s="b"}`, closeErr: errors.New("close b")}
 
-		it := NewSortSampleIterator([]SampleIterator{a, b})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b})
 		require.True(t, it.Next()) // both stay on the heap
 		it.Close()
 
@@ -474,16 +1065,16 @@ func TestSortSampleIterator_ShouldCloseEverySource(t *testing.T) {
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`}
 		b := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{a, b})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{a, b})
 		require.NoError(t, it.Close())
 
-		require.Equal(t, 1, a.closed, "an un-prefetched source is closed by Close")
-		require.Equal(t, 1, b.closed, "an un-prefetched source is closed by Close")
+		require.Equal(t, 1, a.closed, "an un-initialized source is closed by Close")
+		require.Equal(t, 1, b.closed, "an un-initialized source is closed by Close")
 	})
 }
 
 // TestSortSampleIterator_ShouldSurfaceDrainError checks a source's read error
-// reaches Err whether it fails at EOF during Next or fails immediately in init.
+// reaches Err whether it fails at EOF during Next or fails immediately during init.
 func TestSortSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 	wantErr := errors.New("boom")
 
@@ -491,26 +1082,119 @@ func TestSortSampleIterator_ShouldSurfaceDrainError(t *testing.T) {
 		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1), sample(2)}, labels: `{s="a"}`, err: wantErr}
 		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{s="b"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{errored, healthy})
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{errored, healthy})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
 		require.Equal(t, 1, errored.closed)
-		require.Equal(t, 1, healthy.closed)
-		it.Close()
+		require.Zero(t, healthy.closed, "the sort stops on the first error, leaving healthy for Close to close")
+
+		require.NoError(t, it.Close())
+		require.Equal(t, 1, healthy.closed, "Close must still close whatever the aborted sort left behind")
 	})
 
-	t.Run("error from an empty source in init is surfaced", func(t *testing.T) {
+	t.Run("a source's Close echoing its own read error is not reported again through Close", func(t *testing.T) {
+		// Some implementations (e.g. pkg/chunkenc's bufferedIterator) return their
+		// stored read error a second time from Close. That must not turn into a
+		// spurious close error once the read error already surfaced through Err.
+		echoing := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, err: wantErr, closeErr: wantErr}
+		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{echoing, healthy})
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.NoError(t, it.Close(), "the echoed read error must not surface a second time as a close error")
+	})
+
+	t.Run("a distinct close error alongside a read error still surfaces through Close", func(t *testing.T) {
+		// The close error here is not the echoed read error: it is its own,
+		// independent cleanup failure, and must still reach the caller.
+		closeErr := errors.New("close boom")
+		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="a"}`, err: wantErr, closeErr: closeErr}
+		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{s="b"}`}
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{errored, healthy})
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.ErrorIs(t, it.Close(), closeErr, "a close error distinct from the read error must still surface")
+	})
+
+	t.Run("stops immediately once init finds an error, without draining a healthy source it also initialized", func(t *testing.T) {
+		// errored fails on its very first Next, during init. init still pushes
+		// healthy onto the heap (it does not stop early), but Next must not drain or
+		// return anything from it once it sees the error afterward.
 		errored := &erroringSampleIterator{labels: `{s="a"}`, err: wantErr} // no samples: fails immediately
 		healthy := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{s="b"}`}
 
-		it := NewSortSampleIterator([]SampleIterator{errored, healthy})
-		for it.Next() { //nolint:revive
-		}
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{errored, healthy})
+
+		require.False(t, it.Next(), "must stop before draining healthy, which init already pushed onto the heap")
 		require.ErrorIs(t, it.Err(), wantErr)
 		require.Equal(t, 1, errored.closed)
-		require.Equal(t, 1, healthy.closed)
-		it.Close()
+		require.Zero(t, healthy.closed, "healthy must be left on the heap for Close, not drained")
+
+		require.NoError(t, it.Close())
+		require.Equal(t, 1, healthy.closed, "Close must still close whatever the aborted sort left behind")
+	})
+}
+
+func TestNewTimestampFirstSortSampleIterator(t *testing.T) {
+	t.Run("orders by timestamp, without deduplication", func(t *testing.T) {
+		a := mkStreamSeries(`{s="a"}`, 30, mkSample(1, 1), mkSample(3, 3))
+		b := mkStreamSeries(`{s="b"}`, 10, mkSample(2, 2), mkSample(4, 4))
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{NewSeriesIterator(a), NewSeriesIterator(b)})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 30},
+			{Sample: mkSample(2, 2), labels: `{s="b"}`, streamHash: 10},
+			{Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: 30},
+			{Sample: mkSample(4, 4), labels: `{s="b"}`, streamHash: 10},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
+	})
+
+	t.Run("keeps exact replicas, unlike the merge iterator", func(t *testing.T) {
+		a := mkStreamSeries(`{s="a"}`, 5, mkSample(1, 1))
+
+		it := NewTimestampFirstSortSampleIterator([]SampleIterator{NewSeriesIterator(a), NewSeriesIterator(a)})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 5},
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 5},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it), "sort must not dedupe identical samples across sources")
+	})
+}
+
+func TestNewStreamFirstSortSampleIterator(t *testing.T) {
+	t.Run("orders by stream hash then timestamp, without deduplication", func(t *testing.T) {
+		a := mkStreamSeries(`{s="a"}`, 30, mkSample(1, 1), mkSample(2, 2))
+		b := mkStreamSeries(`{s="b"}`, 10, mkSample(1, 4), mkSample(2, 5))
+
+		it := NewStreamFirstSortSampleIterator([]SampleIterator{NewSeriesIterator(a), NewSeriesIterator(b)})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 4), labels: `{s="b"}`, streamHash: 10},
+			{Sample: mkSample(2, 5), labels: `{s="b"}`, streamHash: 10},
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 30},
+			{Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: 30},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it))
+	})
+
+	t.Run("keeps exact replicas, unlike the merge iterator", func(t *testing.T) {
+		a := mkStreamSeries(`{s="a"}`, 5, mkSample(1, 1))
+
+		it := NewStreamFirstSortSampleIterator([]SampleIterator{NewSeriesIterator(a), NewSeriesIterator(a)})
+
+		want := []sampleWithLabels{
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 5},
+			{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 5},
+		}
+		require.Equal(t, want, collectSamplesWithLabels(t, it), "sort must not dedupe identical samples across sources")
 	})
 }
 
@@ -599,7 +1283,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 				itrs = append(itrs, NewSeriesIterator(series[i]))
 			}
 			b.StartTimer()
-			it := NewSortSampleIterator(itrs)
+			it := NewTimestampFirstSortSampleIterator(itrs)
 			for it.Next() {
 				it.At()
 			}
@@ -611,7 +1295,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 func Test_SampleSortIterator(t *testing.T) {
 	t.Run("forward", func(t *testing.T) {
 		t.Parallel()
-		it := NewSortSampleIterator(
+		it := NewTimestampFirstSortSampleIterator(
 			[]SampleIterator{
 				NewSeriesIterator(logproto.Series{
 					Samples: []logproto.Sample{
@@ -639,7 +1323,7 @@ func Test_SampleSortIterator(t *testing.T) {
 	})
 	t.Run("forward sort by stream", func(t *testing.T) {
 		t.Parallel()
-		it := NewSortSampleIterator(
+		it := NewTimestampFirstSortSampleIterator(
 			[]SampleIterator{
 				NewSeriesIterator(logproto.Series{
 					Samples: []logproto.Sample{
@@ -786,6 +1470,15 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		return NewSeriesIterator(logproto.Series{Labels: labels, Samples: []logproto.Sample{sample(ts)}})
 	}
 
+	t.Run("curr stays valued after a clean terminal exhaustion, so accessors keep returning its last value", func(t *testing.T) {
+		it := NewNonOverlappingSampleIterator([]SampleIterator{healthy(1, `{app="a"}`)})
+
+		require.True(t, it.Next())
+		require.False(t, it.Next(), "exhausted after the single sample")
+		require.Equal(t, `{app="a"}`, it.Labels(), "curr is left for Close, not closed or cleared, so Labels still returns its last value")
+		require.NoError(t, it.Close())
+	})
+
 	t.Run("error stops iteration and is surfaced", func(t *testing.T) {
 		wantErr := errors.New("boom")
 		it := NewNonOverlappingSampleIterator([]SampleIterator{
@@ -838,14 +1531,14 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		require.ErrorIs(t, it.Close(), wantErr, "Close must surface a sub-iterator close error")
 	})
 
-	t.Run("close error while iterating is not a read error", func(t *testing.T) {
+	t.Run("close error while iterating surfaces through Close, not Err", func(t *testing.T) {
 		// The first iterator reads cleanly, then its Close fails while iterating.
-		// That is a cleanup failure, not a read failure, so iteration continues
-		// and Err stays nil.
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
-			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: errors.New("close boom")},
-			healthy(2, `{app="b"}`),
-		})
+		// That is a cleanup failure, not a read failure, so iteration continues and
+		// Err stays nil. The close error must still reach the caller, once Close
+		// is called.
+		closeBoom := errors.New("close boom")
+		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: closeBoom}
+		it := NewNonOverlappingSampleIterator([]SampleIterator{a, healthy(2, `{app="b"}`)})
 
 		var got int
 		for it.Next() {
@@ -853,6 +1546,8 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		}
 		require.Equal(t, 2, got, "both streams play; a close failure does not stop iteration")
 		require.NoError(t, it.Err(), "a close error during iteration must not become a read error")
+		require.ErrorIs(t, it.Close(), closeBoom, "a close error during iteration must still surface through Close")
+		require.Equal(t, 1, a.closed, "a must not be closed again by the later top-level Close")
 	})
 
 	t.Run("stream that errors before any sample stops immediately", func(t *testing.T) {
@@ -919,6 +1614,20 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		require.Equal(t, 1, errored.closed)
 	})
 
+	t.Run("a distinct close error alongside a read error still surfaces through Close", func(t *testing.T) {
+		// The close error here is not the echoed read error: it is its own,
+		// independent cleanup failure, and must still reach the caller.
+		wantErr := errors.New("boom")
+		closeErr := errors.New("close boom")
+		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, err: wantErr, closeErr: closeErr}
+
+		it := NewNonOverlappingSampleIterator([]SampleIterator{errored, healthy(2, `{app="b"}`)})
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.ErrorIs(t, it.Close(), closeErr, "a close error distinct from the read error must still surface")
+	})
+
 	t.Run("Close surfaces every close error", func(t *testing.T) {
 		it := NewNonOverlappingSampleIterator([]SampleIterator{
 			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, closeErr: errors.New("close a")},
@@ -945,12 +1654,13 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 // sample returns false with err set, modeling a stream that read some data and
 // then failed mid-stream.
 type erroringSampleIterator struct {
-	samples  []logproto.Sample
-	labels   string
-	err      error // a read failure, returned by Err once the samples are exhausted
-	closeErr error // a cleanup failure, returned by Close; kept separate from err
-	closed   int   // number of times Close was called
-	i        int
+	samples    []logproto.Sample
+	labels     string
+	streamHash uint64
+	err        error // a read failure, returned by Err once the samples are exhausted
+	closeErr   error // a cleanup failure, returned by Close; kept separate from err
+	closed     int   // number of times Close was called
+	i          int
 }
 
 func (it *erroringSampleIterator) Next() bool {
@@ -959,11 +1669,37 @@ func (it *erroringSampleIterator) Next() bool {
 }
 func (it *erroringSampleIterator) At() logproto.Sample { return it.samples[it.i-1] }
 func (it *erroringSampleIterator) Labels() string      { return it.labels }
-func (it *erroringSampleIterator) StreamHash() uint64  { return 0 }
+func (it *erroringSampleIterator) StreamHash() uint64  { return it.streamHash }
 func (it *erroringSampleIterator) Close() error        { it.closed++; return it.closeErr }
 func (it *erroringSampleIterator) Err() error {
 	if it.i > len(it.samples) {
 		return it.err
 	}
 	return nil
+}
+
+// mkStreamSeries builds a series with a fixed streamHash. A test can then inject a
+// streamHash directly, instead of computing one.
+func mkStreamSeries(labels string, hash uint64, samples ...logproto.Sample) logproto.Series {
+	return logproto.Series{Labels: labels, StreamHash: hash, Samples: samples}
+}
+
+// mkSample returns a sample at ts, with Hash and Value both set to v. A sample
+// misattributed to another stream is easy to spot this way. Identical replicas
+// still collapse, since they share the same Hash.
+func mkSample(ts int64, v float64) logproto.Sample {
+	return logproto.Sample{Timestamp: ts, Hash: uint64(v), Value: v}
+}
+
+// collectSamplesWithLabels drains it into the (sample, labels, streamHash) triples it
+// produced. It also asserts it produced no error and closed cleanly.
+func collectSamplesWithLabels(t *testing.T, it SampleIterator) []sampleWithLabels {
+	t.Helper()
+	var got []sampleWithLabels
+	for it.Next() {
+		got = append(got, sampleWithLabels{Sample: it.At(), labels: it.Labels(), streamHash: it.StreamHash()})
+	}
+	require.NoError(t, it.Err())
+	require.NoError(t, it.Close())
+	return got
 }

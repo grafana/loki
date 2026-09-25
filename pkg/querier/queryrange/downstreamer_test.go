@@ -405,6 +405,27 @@ func TestParamsToLokiRequest(t *testing.T) {
 	}
 }
 
+func TestParamsToLokiRequestPreservesHintRanges(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	hintRanges := []logproto.HintTimeRange{{
+		Start: start.Add(5 * time.Minute),
+		End:   start.Add(10 * time.Minute),
+	}}
+	req := &LokiRequest{
+		Query:      `{foo="bar"} |= "error"`,
+		StartTs:    start,
+		EndTs:      start.Add(time.Hour),
+		Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
+		HintRanges: hintRanges,
+	}
+
+	params, err := ParamsFromRequest(req)
+	require.NoError(t, err)
+
+	got := ParamsToLokiRequest(params).(*LokiRequest)
+	require.Equal(t, hintRanges, got.HintRanges)
+}
+
 func TestInstanceDownstream(t *testing.T) {
 	t.Run("Downstream simple query", func(t *testing.T) {
 		ts := time.Unix(1, 0)

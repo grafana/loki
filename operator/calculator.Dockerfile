@@ -1,5 +1,5 @@
 # Build the calculator binary
-FROM golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6 as builder
+FROM docker.io/library/golang:1.27.1@sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

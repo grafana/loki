@@ -3,6 +3,7 @@ package pattern
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -85,7 +87,7 @@ type TeeService struct {
 	flushQueue chan clientRequest
 
 	bufMtx *sync.Mutex
-	buf    map[string][]distributor.KeyedStream
+	buf    map[string][]teedStream
 
 	// bufferedBytes is a count of the total number of bytes in buf, and all
 	// client requests in the flushQueue.
@@ -113,7 +115,7 @@ func NewTeeService(
 		ringClient: ringClient,
 		wg:         &sync.WaitGroup{},
 		bufMtx:     &sync.Mutex{},
-		buf:        make(map[string][]distributor.KeyedStream),
+		buf:        make(map[string][]teedStream),
 		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 		metrics:    newTeeMetrics(reg),
 	}
@@ -194,7 +196,7 @@ func (ts *TeeService) flush() {
 	}
 
 	buffered := ts.buf
-	ts.buf = make(map[string][]distributor.KeyedStream)
+	ts.buf = make(map[string][]teedStream)
 	ts.bufMtx.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
@@ -246,9 +248,17 @@ func (ts *TeeService) flush() {
 	}
 }
 
+// teedStream stores the flat stream and its reserved byte count.
+// The same count must be released when the stream is sent or dropped.
+type teedStream struct {
+	hashKey uint32
+	stream  logproto.Stream
+	size    int
+}
+
 func (ts *TeeService) batchesForTenant(
 	tenant string,
-	streams []distributor.KeyedStream,
+	streams []teedStream,
 ) map[string]map[string]*logproto.PushRequest {
 	batches := map[string]map[string]*logproto.PushRequest{
 		tenant: make(map[string]*logproto.PushRequest),
@@ -261,9 +271,9 @@ func (ts *TeeService) batchesForTenant(
 	for _, stream := range streams {
 		var descs [1]ring.InstanceDesc
 		replicationSet, err := ts.ringClient.Ring().
-			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+			Get(stream.hashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
-			ts.releaseBufferedBytes(stream.Stream.Size())
+			ts.releaseBufferedBytes(stream.size)
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
@@ -275,7 +285,7 @@ func (ts *TeeService) batchesForTenant(
 			batches[tenant][addr] = batch
 		}
 
-		batch.Streams = append(batch.Streams, stream.Stream)
+		batch.Streams = append(batch.Streams, stream.stream)
 		ts.metrics.teedStreams.WithLabelValues("batched").Inc()
 	}
 
@@ -456,7 +466,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 
 	for _, stream := range streams {
 		// Skip streams with no entries.
-		if len(stream.Stream.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 
@@ -471,15 +481,23 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
+		// Flatten once for buffer accounting and the pattern ingester's flat wire format.
+		flat := stream.Stream.FlatView()
+
 		// Check that the stream is allowed within the current limit.
-		size := stream.Stream.Size()
+		size := flat.Size()
 		if !ts.reserveBufferedBytes(size) {
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
 
+		// A queued rate shard must not retain the other shards' entry storage.
+		if lbls.Has(ingester.ShardLbName) {
+			flat.Entries = slices.Clone(flat.Entries)
+		}
+
 		ts.bufMtx.Lock()
-		ts.buf[tenant] = append(ts.buf[tenant], stream)
+		ts.buf[tenant] = append(ts.buf[tenant], teedStream{hashKey: stream.HashKey, stream: flat, size: size})
 		ts.bufMtx.Unlock()
 	}
 }

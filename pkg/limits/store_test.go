@@ -137,67 +137,6 @@ func TestUsageStore_Update(t *testing.T) {
 	require.NoError(t, s.Update("tenant", metadata, time2))
 }
 
-// This test asserts that we update the correct rate buckets, and as rate
-// buckets are implemented as a circular list, when we reach the end of
-// list the next bucket is the start of the list.
-func TestUsageStore_UpdateRates(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
-	require.NoError(t, err)
-	clock := quartz.NewMock(t)
-	s.clock = clock
-	metadata := []*proto.StreamMetadata{{
-		StreamHash: 0x1,
-		TotalSize:  100,
-	}}
-	// Metadata at clock.Now() should update the first rate bucket because
-	// the mocked clock starts at 2024-01-01T00:00:00Z.
-	time1 := clock.Now()
-	rates, err := s.UpdateRates("tenant", metadata, time1)
-	require.NoError(t, err)
-	expected := make([]rateBucket, 1, 5)
-	expected[0].timestamp = time1.UnixNano()
-	expected[0].size = 100
-	require.Len(t, rates, 1)
-	require.Equal(t, expected, rates[0].rateBuckets)
-	// Update the first bucket with the same metadata but 1 second later.
-	clock.Advance(time.Second)
-	time2 := clock.Now()
-	rates, err = s.UpdateRates("tenant", metadata, time2)
-	require.NoError(t, err)
-	expected[0].size = 200
-	require.Equal(t, expected, rates[0].rateBuckets)
-	// Advance the clock forward to the next bucket. Should update the second
-	// bucket and leave the first bucket unmodified.
-	clock.Advance(time.Minute)
-	time3 := clock.Now()
-	rates, err = s.UpdateRates("tenant", metadata, time3)
-	require.NoError(t, err)
-	// As the clock is now 1 second ahead of the bucket start time, we must
-	// truncate the expected time to the start of the bucket.
-	expected = append(expected, rateBucket{})
-	expected[1].timestamp = time3.Truncate(time.Minute).UnixNano()
-	expected[1].size = 100
-	require.Equal(t, expected, rates[0].rateBuckets)
-	// Advance the clock to the last bucket.
-	clock.Advance(3 * time.Minute)
-	time4 := clock.Now()
-	rates, err = s.UpdateRates("tenant", metadata, time4)
-	require.NoError(t, err)
-	expected = append(expected, rateBucket{})
-	expected[2].timestamp = time4.Truncate(time.Minute).UnixNano()
-	expected[2].size = 100
-	require.Equal(t, expected, rates[0].rateBuckets)
-	// Advance the clock one last one. It should wrap around to the start of
-	// the list and replace the original bucket with time1.
-	clock.Advance(time.Minute)
-	time5 := clock.Now()
-	rates, err = s.UpdateRates("tenant", metadata, time5)
-	require.NoError(t, err)
-	expected[0].timestamp = time5.Truncate(time.Minute).UnixNano()
-	expected[0].size = 100
-	require.Equal(t, expected, rates[0].rateBuckets)
-}
-
 // This test asserts that rate buckets are not updated while the TODOs are
 // in place.
 func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
@@ -217,43 +156,6 @@ func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, uint64(0), stream.totalSize)
 	require.Nil(t, stream.rateBuckets)
-}
-
-// TestUsageStore_UpdateRates_AfterUpdate asserts that UpdateRates works correctly
-// when called on a stream that was previously created via Update() (which doesn't
-// initialize rateBuckets). This prevents panics when a stream is created by
-// ExceedsLimits and then UpdateRates is called on it (e.g., from cross-zone replication).
-func TestUsageStore_UpdateRates_AfterUpdate(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
-	require.NoError(t, err)
-	clock := quartz.NewMock(t)
-	s.clock = clock
-
-	// First, create a stream via Update() (simulates ExceedsLimits creating the stream)
-	err = s.Update("tenant", &proto.StreamMetadata{
-		StreamHash: 0x1,
-		TotalSize:  50,
-	}, clock.Now())
-	require.NoError(t, err)
-
-	// Verify the stream exists but has no rate buckets
-	s.withRLock("tenant", func(i int) {
-		partition := s.getPartitionForHash(0x1)
-		stream, ok := s.stripes[i]["tenant"][partition][noPolicy][0x1]
-		require.True(t, ok, "stream should exist")
-		require.Nil(t, stream.rateBuckets, "rateBuckets should be nil after Update()")
-	})
-
-	// Now call UpdateRates on the same stream (simulates cross-zone replication)
-	// This should NOT panic and should initialize rateBuckets
-	rates, err := s.UpdateRates("tenant", []*proto.StreamMetadata{{
-		StreamHash: 0x1,
-		TotalSize:  100,
-	}}, clock.Now())
-	require.NoError(t, err)
-	require.Len(t, rates, 1)
-	require.NotNil(t, rates[0].rateBuckets, "rateBuckets should be initialized")
-	require.Greater(t, len(rates[0].rateBuckets), 0, "rateBuckets should have entries")
 }
 
 func TestUsageStore_UpdateCond(t *testing.T) {

@@ -1413,6 +1413,8 @@ const (
 	ReasonInvalidGatewayTLSConfig LokiStackConditionReason = "InvalidGatewayTLSConfig"
 	// ReasonInvalidPassthroughConfiguration when the passthrough configuration is invalid.
 	ReasonInvalidPassthroughConfiguration LokiStackConditionReason = "InvalidPassthroughConfiguration"
+	// ReasonMissingPassthroughConfiguration when the passthrough configuration is missing.
+	ReasonMissingPassthroughConfiguration LokiStackConditionReason = "MissingPassthroughConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.

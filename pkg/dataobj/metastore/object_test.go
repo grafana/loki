@@ -225,7 +225,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -372,7 +372,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -490,7 +490,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
@@ -650,7 +650,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a stream with label app=foo
@@ -872,7 +872,7 @@ func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{

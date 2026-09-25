@@ -262,10 +262,10 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 			result = append(result, f)
 		case *LineFilterExpr:
 			lineFilters = append(lineFilters, f)
-		case *LineFmtExpr:
-			// line_format modifies the contents of the line so any line filter
-			// originally after a line_format must still be after the same
-			// line_format.
+		case *LineFmtExpr, *DecolorizeExpr:
+			// line_format and decolorize modify the contents of the line so any
+			// line filter originally after one of them must still be after the
+			// same stage.
 
 			notLineFilters = append(notLineFilters, f)
 
@@ -1861,7 +1861,7 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	}
 	// inject in the range vector extractor the outer groups to improve performance.
 	// This is only possible if the operation is a sum. Anything else needs all labels.
-	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
+	if r, ok := e.Left.(*RangeAggregationExpr); ok && CanInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
 			return r.extractor(e.Grouping)
@@ -1870,8 +1870,12 @@ func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	return e.Left.Extractor()
 }
 
-// canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
-func canInjectVectorGrouping(vecOp, rangeOp string) bool {
+// CanInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
+//
+// An injected grouping replaces the extractor's label set at extraction time. It reaches the
+// extractor only when the range aggregation carries no grouping of its own, because that one
+// wins.
+func CanInjectVectorGrouping(vecOp, rangeOp string) bool {
 	if vecOp != OpTypeSum {
 		return false
 	}

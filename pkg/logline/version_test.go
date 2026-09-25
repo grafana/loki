@@ -1012,7 +1012,7 @@ func writeIndexAtPath(t *testing.T, version, path string, docs []format.Document
 	t.Helper()
 
 	// Disable density filter so general-correctness tests get exact intersection semantics.
-	// Density-filter behaviour is covered by dedicated tests in pkg/logline/v3/.
+	// Density-filter behaviour is covered by dedicated tests in pkg/logline/internal/v3/.
 	writer, err := NewWriter(version, path, docs, &format.WriterConfig{DensityThreshold: -1})
 	require.NoError(t, err)
 

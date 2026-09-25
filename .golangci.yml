@@ -46,6 +46,28 @@ linters:
           deny:
             - pkg: github.com/go-kit/kit/log
               desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
+        sync-atomic:
+          files:
+            - "!**/pkg/logproto/extensions.go"
+            - "!**/pkg/logqlmodel/stats/context.go"
+            - "!**/pkg/querier/stats/stats.go"
+          deny:
+            - pkg: sync/atomic$
+              desc: Use go.uber.org/atomic instead of sync/atomic
+        spanlogger:
+          files:
+            - "!**/pkg/util/spanlogger/spanlogger.go"
+          deny:
+            - pkg: github.com/grafana/dskit/spanlogger$
+              desc: Use github.com/grafana/loki/v3/pkg/util/spanlogger instead of github.com/grafana/dskit/spanlogger
+        opentracing:
+          deny:
+            - pkg: github.com/opentracing/opentracing-go
+              desc: Use Loki OpenTelemetry tracing instead of OpenTracing
+            - pkg: github.com/uber/jaeger-client-go$
+              desc: Use Loki OpenTelemetry tracing instead of Jaeger OpenTracing
+            - pkg: github.com/opentracing-contrib/go-stdlib/nethttp$
+              desc: Use Loki OpenTelemetry tracing instead of OpenTracing
     goconst:
       min-occurrences: 5
     misspell:

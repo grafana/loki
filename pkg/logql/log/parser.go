@@ -21,8 +21,15 @@ import (
 )
 
 const (
-	jsonSpacer      = '_'
-	duplicateSuffix = "_extracted"
+	jsonSpacer = '_'
+
+	// DuplicateSuffix is appended to a label whose name is already taken, so both reach the
+	// output. A stream label always takes its name. The parsers also count a structured-metadata
+	// key as taking its name, for the labels they extract.
+	//
+	// A rename appends the suffix once, so one trim recovers the original name. A key that
+	// genuinely ends with it is indistinguishable, so a reader must consider both names.
+	DuplicateSuffix = "_extracted"
 	trueString      = "true"
 	falseString     = "false"
 	// How much stack space to allocate for unescaping JSON strings; if a string longer
@@ -150,7 +157,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		}
 
 		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
-			sanitizedKey = sanitizedKey + duplicateSuffix
+			sanitizedKey = sanitizedKey + DuplicateSuffix
 		}
 
 		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
@@ -180,9 +187,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	})
 
 	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
-		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(DuplicateSuffix))
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
-		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
+		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], DuplicateSuffix...)
 
 		keyString = string(j.buildSanitizedPrefixFromBuffer())
 	}
@@ -239,12 +246,16 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
 		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
-		// Trim _extracted suffix if the extracted field was a duplicate field
-		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
+		partStr = strings.TrimSuffix(partStr, DuplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}
 
 	return jsonPath
+}
+
+// Hints implements Stage.
+func (j *JSONParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -340,7 +351,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = fmt.Sprintf("%s%s", key, duplicateSuffix)
+				key = fmt.Sprintf("%s%s", key, DuplicateSuffix)
 			}
 
 			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -354,6 +365,11 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 	}
 	return line, true
+}
+
+// Hints implements Stage.
+func (r *RegexpParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -407,7 +423,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-			key = key + duplicateSuffix
+			key = key + DuplicateSuffix
 		}
 
 		if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
@@ -446,6 +462,11 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	return line, true
 }
 
+// Hints implements Stage.
+func (l *LogfmtParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
@@ -479,7 +500,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	for i, m := range matches {
 		name := names[i]
 		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
-			name = name + duplicateSuffix
+			name = name + DuplicateSuffix
 		}
 
 		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
@@ -492,6 +513,11 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		}
 	}
 	return line, true
+}
+
+// Hints implements Stage.
+func (l *PatternParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -600,7 +626,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = key + duplicateSuffix
+				key = key + DuplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
@@ -621,6 +647,11 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	}
 
 	return line, true
+}
+
+// Hints implements Stage.
+func (l *LogfmtExpressionParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -694,7 +725,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		})
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-			key = key + duplicateSuffix
+			key = key + DuplicateSuffix
 		}
 
 		switch typ {
@@ -730,6 +761,11 @@ func isValidJSONStart(data []byte) bool {
 	}
 }
 
+// Hints implements Stage.
+func (j *JSONExpressionParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
+}
+
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
@@ -746,6 +782,11 @@ func NewUnpackParser() *UnpackParser {
 		lbsBuffer: make([]string, 0, 16),
 		keys:      internedStringSet{},
 	}
+}
+
+// Hints implements Stage.
+func (u *UnpackParser) Hints() StageHints {
+	return StageHints{CanModifyLabels: true}
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
@@ -809,7 +850,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			})
 
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = key + duplicateSuffix
+				key = key + DuplicateSuffix
 			}
 
 			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {

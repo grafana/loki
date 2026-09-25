@@ -80,11 +80,15 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 		}
 
 	case zstdContentEncoding:
-		var err error
-		body, err = zstd.NewReader(body)
+		dec, err := zstd.NewReader(body)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
+		body = dec
+		// The decoder decodes on its own goroutine(s); left unreleased on an early
+		// return (e.g. the decompressed-size check below), they leak for the
+		// lifetime of the process.
+		defer dec.Close()
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
