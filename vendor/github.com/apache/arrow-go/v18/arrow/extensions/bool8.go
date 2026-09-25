@@ -121,6 +121,13 @@ func (a *Bool8Array) GetOneForMarshal(i int) interface{} {
 	return a.Value(i)
 }
 
+func (a *Bool8Array) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 // boolToInt8 performs the simple scalar conversion of bool to the canonical int8
 // value for the Bool8Type.
 func boolToInt8(v bool) int8 {

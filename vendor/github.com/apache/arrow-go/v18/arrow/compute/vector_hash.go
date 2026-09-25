@@ -20,18 +20,43 @@ package compute
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
 )
 
 var (
 	uniqueDoc = FunctionDoc{
-		Summary:     "Compute unique elements",
-		Description: "Return an array with distinct values. Nulls in the input are ignored",
+		Summary: "Compute unique elements",
+		Description: "Return an array with distinct values.\n" +
+			"Nulls in the input are considered a distinct value",
+		ArgNames: []string{"array"},
+	}
+	dictionaryEncodeDoc = FunctionDoc{
+		Summary: "Dictionary encode an array",
+		Description: "Return a dictionary-encoded array with the distinct values in the dictionary.\n" +
+			"If the input is already dictionary encoded, it is returned unchanged,\n" +
+			"including its index type and null representation.\n" +
+			"Newly encoded arrays use int32 dictionary indices.",
 		ArgNames:    []string{"array"},
+		OptionsType: "DictionaryEncodeOptions",
 	}
 )
+
+// NullEncodingBehavior controls how null input values are represented.
+type NullEncodingBehavior = kernels.NullEncodingBehavior
+
+const (
+	// NullEncodingMask keeps null input values null in the indices array.
+	NullEncodingMask = kernels.NullEncodingMask
+	// NullEncodingEncode adds null input values to the dictionary as a regular entry.
+	NullEncodingEncode = kernels.NullEncodingEncode
+)
+
+// DictionaryEncodeOptions controls dictionary encoding behavior.
+type DictionaryEncodeOptions = kernels.DictionaryEncodeOptions
 
 func Unique(ctx context.Context, values Datum) (Datum, error) {
 	return CallFunction(ctx, "unique", nil, values)
@@ -47,8 +72,38 @@ func UniqueArray(ctx context.Context, values arrow.Array) (arrow.Array, error) {
 	return out.(*ArrayDatum).MakeArray(), nil
 }
 
+// DictionaryEncode returns a dictionary-encoded version of values.
+// Newly encoded arrays use int32 indices. For newly encoded arrays, nulls are
+// masked unless NullEncodingEncode is selected. Existing dictionary arrays are
+// returned unchanged, including their index type and null representation.
+func DictionaryEncode(ctx context.Context, opts DictionaryEncodeOptions, values Datum) (Datum, error) {
+	return CallFunction(ctx, "dictionary_encode", &opts, values)
+}
+
+// DictionaryEncodeArray returns a dictionary-encoded version of values.
+func DictionaryEncodeArray(ctx context.Context, opts DictionaryEncodeOptions, values arrow.Array) (arrow.Array, error) {
+	datum, err := DictionaryEncode(ctx, opts, &ArrayDatum{Value: values.Data()})
+	if err != nil {
+		return nil, err
+	}
+	defer datum.Release()
+
+	switch out := datum.(type) {
+	case *ArrayDatum:
+		return out.MakeArray(), nil
+	case *ChunkedDatum:
+		return array.Concatenate(out.Chunks(), GetAllocator(ctx))
+	default:
+		return nil, fmt.Errorf(
+			"%w: dictionary_encode returned unexpected datum kind %s",
+			arrow.ErrInvalid,
+			datum.Kind(),
+		)
+	}
+}
+
 func RegisterVectorHash(reg FunctionRegistry) {
-	unique, _, _ := kernels.GetVectorHashKernels()
+	unique, _, dictEncode := kernels.GetVectorHashKernels()
 	uniqFn := NewVectorFunction("unique", Unary(), uniqueDoc)
 	for _, vd := range unique {
 		if err := uniqFn.AddKernel(vd); err != nil {
@@ -56,4 +111,13 @@ func RegisterVectorHash(reg FunctionRegistry) {
 		}
 	}
 	reg.AddFunction(uniqFn, false)
+
+	dictFn := NewVectorFunction("dictionary_encode", Unary(), dictionaryEncodeDoc)
+	dictFn.SetDefaultOptions(&DictionaryEncodeOptions{})
+	for _, vd := range dictEncode {
+		if err := dictFn.AddKernel(vd); err != nil {
+			panic(err)
+		}
+	}
+	reg.AddFunction(dictFn, false)
 }

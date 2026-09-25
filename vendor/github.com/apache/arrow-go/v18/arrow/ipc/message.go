@@ -18,6 +18,7 @@ package ipc
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -172,6 +173,14 @@ func NewMessageReader(r io.Reader, opts ...Option) MessageReader {
 	return mr
 }
 
+func readFullMessagePart(r io.Reader, buf []byte) error {
+	_, err := io.ReadFull(r, buf)
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
+}
+
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (r *messageReader) Retain() {
@@ -217,7 +226,7 @@ func (r *messageReader) Message() (msg *Message, err error) {
 		// EOS message.
 		return nil, io.EOF // FIXME(sbinet): send nil instead? or a special EOS error?
 	case kIPCContToken:
-		_, err = io.ReadFull(r.r, buf)
+		err = readFullMessagePart(r.r, buf)
 		if err != nil {
 			return nil, fmt.Errorf("arrow/ipc: could not read message length: %w", err)
 		}
@@ -240,7 +249,7 @@ func (r *messageReader) Message() (msg *Message, err error) {
 	}
 
 	buf = make([]byte, msgLen)
-	_, err = io.ReadFull(r.r, buf)
+	err = readFullMessagePart(r.r, buf)
 	if err != nil {
 		return nil, fmt.Errorf("arrow/ipc: could not read message metadata: %w", err)
 	}
@@ -259,7 +268,7 @@ func (r *messageReader) Message() (msg *Message, err error) {
 	defer body.Release()
 	body.Resize(int(bodyLen))
 
-	_, err = io.ReadFull(r.r, body.Bytes())
+	err = readFullMessagePart(r.r, body.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("arrow/ipc: could not read message body: %w", err)
 	}

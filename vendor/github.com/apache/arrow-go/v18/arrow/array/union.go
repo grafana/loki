@@ -333,6 +333,13 @@ func (a *SparseUnion) GetOneForMarshal(i int) interface{} {
 	return []interface{}{typeID, data.GetOneForMarshal(i)}
 }
 
+func (a *SparseUnion) ValueAsAny(i int) any {
+	typeID := a.RawTypeCodes()[i]
+	childID := a.ChildID(i)
+	data := a.Field(childID)
+	return []any{typeID, ValueAsAny(data, i)}
+}
+
 func (a *SparseUnion) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -444,18 +451,20 @@ func arraySparseUnionEqual(l, r *SparseUnion) bool {
 	childIDs := l.unionType.ChildIDs()
 	leftCodes, rightCodes := l.RawTypeCodes(), r.RawTypeCodes()
 
-	for i := 0; i < l.data.length; i++ {
+	for i := 0; i < l.data.length; {
 		typeID := leftCodes[i]
 		if typeID != rightCodes[i] {
 			return false
 		}
 
+		end := sparseUnionRunEnd(leftCodes, rightCodes, typeID, i, l.data.length)
 		childNum := childIDs[typeID]
-		eq := SliceEqual(l.children[childNum], int64(i), int64(i+1),
-			r.children[childNum], int64(i), int64(i+1))
+		eq := SliceEqual(l.children[childNum], int64(i), int64(end),
+			r.children[childNum], int64(i), int64(end))
 		if !eq {
 			return false
 		}
+		i = end
 	}
 	return true
 }
@@ -464,20 +473,30 @@ func arraySparseUnionApproxEqual(l, r *SparseUnion, opt equalOption) bool {
 	childIDs := l.unionType.ChildIDs()
 	leftCodes, rightCodes := l.RawTypeCodes(), r.RawTypeCodes()
 
-	for i := 0; i < l.data.length; i++ {
+	for i := 0; i < l.data.length; {
 		typeID := leftCodes[i]
 		if typeID != rightCodes[i] {
 			return false
 		}
 
+		end := sparseUnionRunEnd(leftCodes, rightCodes, typeID, i, l.data.length)
 		childNum := childIDs[typeID]
-		eq := sliceApproxEqual(l.children[childNum], int64(i+l.data.offset), int64(i+l.data.offset+1),
-			r.children[childNum], int64(i+r.data.offset), int64(i+r.data.offset+1), opt)
+		eq := sliceApproxEqual(l.children[childNum], int64(i), int64(end),
+			r.children[childNum], int64(i), int64(end), opt)
 		if !eq {
 			return false
 		}
+		i = end
 	}
 	return true
+}
+
+func sparseUnionRunEnd(leftCodes, rightCodes []arrow.UnionTypeCode, typeID arrow.UnionTypeCode, start, length int) int {
+	end := start + 1
+	for end < length && leftCodes[end] == typeID && rightCodes[end] == typeID {
+		end++
+	}
+	return end
 }
 
 // DenseUnion represents an array where each logical value is taken from
@@ -627,6 +646,14 @@ func (a *DenseUnion) GetOneForMarshal(i int) interface{} {
 	return []interface{}{typeID, data.GetOneForMarshal(offset)}
 }
 
+func (a *DenseUnion) ValueAsAny(i int) any {
+	typeID := a.RawTypeCodes()[i]
+	childID := a.ChildID(i)
+	data := a.Field(childID)
+	offset := int(a.RawValueOffsets()[i])
+	return []any{typeID, ValueAsAny(data, offset)}
+}
+
 func (a *DenseUnion) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -687,18 +714,22 @@ func arrayDenseUnionEqual(l, r *DenseUnion) bool {
 	leftCodes, rightCodes := l.RawTypeCodes(), r.RawTypeCodes()
 	leftOffsets, rightOffsets := l.RawValueOffsets(), r.RawValueOffsets()
 
-	for i := 0; i < l.data.length; i++ {
+	for i := 0; i < l.data.length; {
 		typeID := leftCodes[i]
 		if typeID != rightCodes[i] {
 			return false
 		}
 
+		end := denseUnionRunEnd(leftCodes, rightCodes, leftOffsets, rightOffsets, typeID, i, l.data.length)
 		childNum := childIDs[typeID]
-		eq := SliceEqual(l.children[childNum], int64(leftOffsets[i]), int64(leftOffsets[i]+1),
-			r.children[childNum], int64(rightOffsets[i]), int64(rightOffsets[i]+1))
+		leftStart, leftEnd := int64(leftOffsets[i]), int64(leftOffsets[end-1])+1
+		rightStart, rightEnd := int64(rightOffsets[i]), int64(rightOffsets[end-1])+1
+		eq := SliceEqual(l.children[childNum], leftStart, leftEnd,
+			r.children[childNum], rightStart, rightEnd)
 		if !eq {
 			return false
 		}
+		i = end
 	}
 	return true
 }
@@ -708,20 +739,35 @@ func arrayDenseUnionApproxEqual(l, r *DenseUnion, opt equalOption) bool {
 	leftCodes, rightCodes := l.RawTypeCodes(), r.RawTypeCodes()
 	leftOffsets, rightOffsets := l.RawValueOffsets(), r.RawValueOffsets()
 
-	for i := 0; i < l.data.length; i++ {
+	for i := 0; i < l.data.length; {
 		typeID := leftCodes[i]
 		if typeID != rightCodes[i] {
 			return false
 		}
 
+		end := denseUnionRunEnd(leftCodes, rightCodes, leftOffsets, rightOffsets, typeID, i, l.data.length)
 		childNum := childIDs[typeID]
-		eq := sliceApproxEqual(l.children[childNum], int64(leftOffsets[i]), int64(leftOffsets[i]+1),
-			r.children[childNum], int64(rightOffsets[i]), int64(rightOffsets[i]+1), opt)
+		leftStart, leftEnd := int64(leftOffsets[i]), int64(leftOffsets[end-1])+1
+		rightStart, rightEnd := int64(rightOffsets[i]), int64(rightOffsets[end-1])+1
+		eq := sliceApproxEqual(l.children[childNum], leftStart, leftEnd,
+			r.children[childNum], rightStart, rightEnd, opt)
 		if !eq {
 			return false
 		}
+		i = end
 	}
 	return true
+}
+
+func denseUnionRunEnd(leftCodes, rightCodes []arrow.UnionTypeCode, leftOffsets, rightOffsets []int32, typeID arrow.UnionTypeCode, start, length int) int {
+	end := start + 1
+	for end < length &&
+		leftCodes[end] == typeID && rightCodes[end] == typeID &&
+		int64(leftOffsets[end]) == int64(leftOffsets[end-1])+1 &&
+		int64(rightOffsets[end]) == int64(rightOffsets[end-1])+1 {
+		end++
+	}
+	return end
 }
 
 // UnionBuilder is a convenience interface for building Union arrays of
@@ -757,8 +803,30 @@ type unionBuilder struct {
 	typeIDtoBuilder []Builder
 	typeIDtoChildID []int
 	// for all typeID < denseTypeID, typeIDtoBuilder[typeID] != nil
-	denseTypeID  arrow.UnionTypeCode
+	denseTypeID  int
 	typesBuilder *int8BufferBuilder
+}
+
+func unionTypeCodeFromJSON(dec *json.Decoder, typeID json.RawMessage, typ arrow.DataType) (arrow.UnionTypeCode, error) {
+	id, err := json.Number(string(typeID)).Int64()
+	if err != nil {
+		return 0, &json.UnmarshalTypeError{
+			Offset: dec.InputOffset(),
+			Type:   reflect.TypeOf(int8(0)),
+			Struct: fmt.Sprint(typ),
+			Value:  "integer",
+		}
+	}
+
+	if id < 0 || id > int64(arrow.MaxUnionTypeCode) {
+		return 0, &json.UnmarshalTypeError{
+			Offset: dec.InputOffset(),
+			Type:   reflect.TypeOf(int8(0)),
+			Struct: fmt.Sprint(typ),
+			Value:  "integer",
+		}
+	}
+	return arrow.UnionTypeCode(id), nil
 }
 
 func newUnionBuilder(mem memory.Allocator, children []Builder, typ arrow.UnionType) *unionBuilder {
@@ -801,7 +869,7 @@ func (b *unionBuilder) NumChildren() int {
 }
 
 func (b *unionBuilder) Child(idx int) Builder {
-	if idx < 0 || idx > len(b.children) {
+	if idx < 0 || idx >= len(b.children) {
 		panic("arrow/array: invalid child index for union builder")
 	}
 	return b.children[idx]
@@ -849,9 +917,9 @@ func (b *unionBuilder) Type() arrow.DataType {
 }
 
 func (b *unionBuilder) AppendChild(newChild Builder, fieldName string) arrow.UnionTypeCode {
+	newType := b.nextTypeID()
 	newChild.Retain()
 	b.children = append(b.children, newChild)
-	newType := b.nextTypeID()
 
 	b.typeIDtoChildID[newType] = len(b.children) - 1
 	b.typeIDtoBuilder[newType] = newChild
@@ -865,21 +933,23 @@ func (b *unionBuilder) nextTypeID() arrow.UnionTypeCode {
 	// find typeID such that typeIDtoBuilder[typeID] == nil
 	// use that for the new child. Start searching at denseTypeID
 	// since typeIDtoBuilder is densely packed up at least to denseTypeID
-	for ; int(b.denseTypeID) < len(b.typeIDtoBuilder); b.denseTypeID++ {
+	for ; b.denseTypeID < len(b.typeIDtoBuilder); b.denseTypeID++ {
 		if b.typeIDtoBuilder[b.denseTypeID] == nil {
 			id := b.denseTypeID
 			b.denseTypeID++
-			return id
+			return arrow.UnionTypeCode(id)
 		}
 	}
 
-	debug.Assert(len(b.typeIDtoBuilder) < int(arrow.MaxUnionTypeCode), "too many children typeids")
+	if b.denseTypeID > int(arrow.MaxUnionTypeCode) {
+		panic("arrow/array: too many children typeids")
+	}
 	// typeIDtoBuilder is already densely packed, so just append the new child
 	b.typeIDtoBuilder = append(b.typeIDtoBuilder, nil)
 	b.typeIDtoChildID = append(b.typeIDtoChildID, arrow.InvalidUnionChildID)
 	id := b.denseTypeID
 	b.denseTypeID++
-	return id
+	return arrow.UnionTypeCode(id)
 }
 
 func (b *unionBuilder) newData() *Data {
@@ -893,6 +963,34 @@ func (b *unionBuilder) newData() *Data {
 	}
 
 	return NewData(b.Type(), length, []*memory.Buffer{nil, typesBuffer}, childData, 0, 0)
+}
+
+func unsafeAppendRepeatedInt8(b *int8BufferBuilder, value int8, n int) {
+	if n <= 0 {
+		return
+	}
+
+	end := b.length + n
+	if b.capacity < end {
+		b.resize(bitutil.NextPowerOf2(end))
+	}
+	memory.Set(b.bytes[b.length:end], byte(value))
+	b.length = end
+}
+
+func unsafeAppendRepeatedInt32(b *int32BufferBuilder, value int32, n int) {
+	if n <= 0 {
+		return
+	}
+
+	end := b.length + n*arrow.Int32SizeBytes
+	if b.capacity < end {
+		b.resize(bitutil.NextPowerOf2(end))
+	}
+	for i := b.length; i < end; i += arrow.Int32SizeBytes {
+		arrow.Int32Traits.PutValue(b.bytes[i:], value)
+	}
+	b.length = end
 }
 
 // SparseUnionBuilder is used to build a Sparse Union array using the Append
@@ -945,6 +1043,10 @@ func (b *SparseUnionBuilder) Resize(n int) {
 	b.typesBuilder.resize(n)
 }
 
+func (b *SparseUnionBuilder) truncate(n int) {
+	b.typesBuilder.SetLength(n)
+}
+
 // AppendNull will append a null to the first child and an empty value
 // (implementation-defined) to the rest of the children.
 func (b *SparseUnionBuilder) AppendNull() {
@@ -959,17 +1061,20 @@ func (b *SparseUnionBuilder) AppendNull() {
 // AppendNulls is identical to calling AppendNull() n times, except
 // it will pre-allocate with reserve for all the nulls beforehand.
 func (b *SparseUnionBuilder) AppendNulls(n int) {
+	if n <= 0 {
+		return
+	}
+
 	firstChildCode := b.codes[0]
 	b.Reserve(n)
 	for _, c := range b.codes {
 		b.typeIDtoBuilder[c].Reserve(n)
 	}
-	for i := 0; i < n; i++ {
-		b.typesBuilder.AppendValue(firstChildCode)
-		b.typeIDtoBuilder[firstChildCode].AppendNull()
-		for _, c := range b.codes[1:] {
-			b.typeIDtoBuilder[c].AppendEmptyValue()
-		}
+
+	unsafeAppendRepeatedInt8(b.typesBuilder, firstChildCode, n)
+	b.typeIDtoBuilder[firstChildCode].AppendNulls(n)
+	for _, c := range b.codes[1:] {
+		b.typeIDtoBuilder[c].AppendEmptyValues(n)
 	}
 }
 
@@ -986,16 +1091,19 @@ func (b *SparseUnionBuilder) AppendEmptyValue() {
 // AppendEmptyValues is identical to calling AppendEmptyValue() n times,
 // except it pre-allocates first so it is more efficient.
 func (b *SparseUnionBuilder) AppendEmptyValues(n int) {
+	if n <= 0 {
+		return
+	}
+
 	b.Reserve(n)
 	firstChildCode := b.codes[0]
 	for _, c := range b.codes {
 		b.typeIDtoBuilder[c].Reserve(n)
 	}
-	for i := 0; i < n; i++ {
-		b.typesBuilder.AppendValue(firstChildCode)
-		for _, c := range b.codes {
-			b.typeIDtoBuilder[c].AppendEmptyValue()
-		}
+
+	unsafeAppendRepeatedInt8(b.typesBuilder, firstChildCode, n)
+	for _, c := range b.codes {
+		b.typeIDtoBuilder[c].AppendEmptyValues(n)
 	}
 }
 
@@ -1051,6 +1159,7 @@ func (b *SparseUnionBuilder) AppendValueFromString(s string) error {
 		return nil
 	}
 	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
 	return b.UnmarshalOne(dec)
 }
 
@@ -1063,30 +1172,21 @@ func (b *SparseUnionBuilder) UnmarshalOne(dec *json.Decoder) error {
 	switch t {
 	case json.Delim('['):
 		// should be [type_id, Value]
-		typeID, err := dec.Token()
+		var typeID json.RawMessage
+		if err := dec.Decode(&typeID); err != nil {
+			return err
+		}
+
+		typeCode, err := unionTypeCodeFromJSON(dec, typeID, b.Type())
 		if err != nil {
 			return err
 		}
 
-		var typeCode int8
-
-		switch tid := typeID.(type) {
-		case json.Number:
-			id, err := tid.Int64()
-			if err != nil {
-				return err
+		if int(typeCode) >= len(b.typeIDtoChildID) {
+			return &json.UnmarshalTypeError{
+				Offset: dec.InputOffset(),
+				Value:  "invalid type code",
 			}
-			typeCode = int8(id)
-		case float64:
-			if tid != float64(int64(tid)) {
-				return &json.UnmarshalTypeError{
-					Offset: dec.InputOffset(),
-					Type:   reflect.TypeOf(int8(0)),
-					Struct: fmt.Sprint(b.Type()),
-					Value:  "float",
-				}
-			}
-			typeCode = int8(tid)
 		}
 
 		childNum := b.typeIDtoChildID[typeCode]
@@ -1186,6 +1286,11 @@ func (b *DenseUnionBuilder) Resize(n int) {
 	b.offsetsBuilder.resize(n * arrow.Int32SizeBytes)
 }
 
+func (b *DenseUnionBuilder) truncate(n int) {
+	b.typesBuilder.SetLength(n)
+	b.offsetsBuilder.SetLength(n * arrow.Int32SizeBytes)
+}
+
 // AppendNull will only append a null value arbitrarily to the first child
 // and use that offset for this element of the array.
 func (b *DenseUnionBuilder) AppendNull() {
@@ -1201,14 +1306,16 @@ func (b *DenseUnionBuilder) AppendNull() {
 // for a DenseUnion this is more efficient than calling AppendNull multiple
 // times in a loop
 func (b *DenseUnionBuilder) AppendNulls(n int) {
+	if n <= 0 {
+		return
+	}
+
 	// only append 1 null to the child builder, use the same offset twice
 	firstChildCode := b.codes[0]
 	childBuilder := b.typeIDtoBuilder[firstChildCode]
 	b.Reserve(n)
-	for i := 0; i < n; i++ {
-		b.typesBuilder.AppendValue(firstChildCode)
-		b.offsetsBuilder.AppendValue(int32(childBuilder.Len()))
-	}
+	unsafeAppendRepeatedInt8(b.typesBuilder, firstChildCode, n)
+	unsafeAppendRepeatedInt32(b.offsetsBuilder, int32(childBuilder.Len()), n)
 	// only append a single null to the child builder, the offsets all refer to the same value
 	childBuilder.AppendNull()
 }
@@ -1228,14 +1335,16 @@ func (b *DenseUnionBuilder) AppendEmptyValue() {
 // at that value using the offsets n times. That makes this more efficient
 // than calling AppendEmptyValue multiple times.
 func (b *DenseUnionBuilder) AppendEmptyValues(n int) {
+	if n <= 0 {
+		return
+	}
+
 	// only append 1 null to the child builder, use the same offset twice
 	firstChildCode := b.codes[0]
 	childBuilder := b.typeIDtoBuilder[firstChildCode]
 	b.Reserve(n)
-	for i := 0; i < n; i++ {
-		b.typesBuilder.AppendValue(firstChildCode)
-		b.offsetsBuilder.AppendValue(int32(childBuilder.Len()))
-	}
+	unsafeAppendRepeatedInt8(b.typesBuilder, firstChildCode, n)
+	unsafeAppendRepeatedInt32(b.offsetsBuilder, int32(childBuilder.Len()), n)
 	// only append a single empty value to the child builder, the offsets all
 	// refer to the same value
 	childBuilder.AppendEmptyValue()
@@ -1311,6 +1420,7 @@ func (d *DenseUnionBuilder) AppendValueFromString(s string) error {
 		return nil
 	}
 	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
 	return d.UnmarshalOne(dec)
 }
 
@@ -1323,30 +1433,21 @@ func (b *DenseUnionBuilder) UnmarshalOne(dec *json.Decoder) error {
 	switch t {
 	case json.Delim('['):
 		// should be [type_id, Value]
-		typeID, err := dec.Token()
+		var typeID json.RawMessage
+		if err := dec.Decode(&typeID); err != nil {
+			return err
+		}
+
+		typeCode, err := unionTypeCodeFromJSON(dec, typeID, b.Type())
 		if err != nil {
 			return err
 		}
 
-		var typeCode int8
-
-		switch tid := typeID.(type) {
-		case json.Number:
-			id, err := tid.Int64()
-			if err != nil {
-				return err
+		if int(typeCode) >= len(b.typeIDtoChildID) {
+			return &json.UnmarshalTypeError{
+				Offset: dec.InputOffset(),
+				Value:  "invalid type code",
 			}
-			typeCode = int8(id)
-		case float64:
-			if tid != float64(int64(tid)) {
-				return &json.UnmarshalTypeError{
-					Offset: dec.InputOffset(),
-					Type:   reflect.TypeOf(int8(0)),
-					Struct: fmt.Sprint(b.Type()),
-					Value:  "float",
-				}
-			}
-			typeCode = int8(tid)
 		}
 
 		childNum := b.typeIDtoChildID[typeCode]

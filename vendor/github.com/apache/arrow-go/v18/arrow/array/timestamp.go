@@ -34,20 +34,27 @@ import (
 // Timestamp represents an immutable sequence of arrow.Timestamp values.
 type Timestamp struct {
 	array
-	values []arrow.Timestamp
-	layout string
+	values           []arrow.Timestamp
+	layout           string
+	useDefaultLayout bool
 }
+
+const timestampNoTimezoneLayout = "2006-01-02T15:04:05.999999999"
 
 // NewTimestampData creates a new Timestamp from Data.
 func NewTimestampData(data arrow.ArrayData) *Timestamp {
-	return NewTimestampDataWithValueStrLayout(data, time.RFC3339Nano)
+	return newTimestampDataWithValueStrLayout(data, "", true)
 }
 
 // NewTimestampDataWithValueStrLayout creates a new Timestamp from Data with a custom ValueStr layout.
 // The layout is passed to the time.Time.Format method.
 // This is useful for cases where consumers expect a non standard layout
 func NewTimestampDataWithValueStrLayout(data arrow.ArrayData, layout string) *Timestamp {
-	a := &Timestamp{layout: layout}
+	return newTimestampDataWithValueStrLayout(data, layout, false)
+}
+
+func newTimestampDataWithValueStrLayout(data arrow.ArrayData, layout string, useDefaultLayout bool) *Timestamp {
+	a := &Timestamp{layout: layout, useDefaultLayout: useDefaultLayout}
 	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
@@ -101,12 +108,25 @@ func (a *Timestamp) ValueStr(i int) string {
 		return NullValueStr
 	}
 
-	toTime, _ := a.DataType().(*arrow.TimestampType).GetToTimeFunc()
-	layout := a.layout
-	if layout == "" {
-		layout = time.RFC3339Nano
+	typ := a.DataType().(*arrow.TimestampType)
+	toTime, err := typ.GetToTimeFunc()
+	if err != nil {
+		return "..."
 	}
-	return toTime(a.values[i]).Format(layout)
+	value := toTime(a.values[i])
+	if a.useDefaultLayout && (value.Year() < 0 || value.Year() > 9999) {
+		return strconv.FormatInt(int64(a.values[i]), 10)
+	}
+	layout := a.layout
+	if a.useDefaultLayout {
+		layout = time.RFC3339Nano
+		if typ.TimeZone == "" {
+			layout = timestampNoTimezoneLayout
+		} else if _, offset := value.Zone(); offset%60 != 0 {
+			layout = timestampNoTimezoneLayout + "Z07:00:00"
+		}
+	}
+	return value.Format(layout)
 }
 
 func (a *Timestamp) GetOneForMarshal(i int) interface{} {
@@ -114,6 +134,13 @@ func (a *Timestamp) GetOneForMarshal(i int) interface{} {
 		return val
 	}
 	return nil
+}
+
+func (a *Timestamp) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
 }
 
 func (a *Timestamp) MarshalJSON() ([]byte, error) {
@@ -126,35 +153,37 @@ func (a *Timestamp) MarshalJSON() ([]byte, error) {
 }
 
 func arrayEqualTimestamp(left, right *Timestamp) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		if left.Value(i) != right.Value(i) {
-			return false
-		}
-	}
-	return true
+	return arrayEqualFixedWidth(left, right)
 }
 
 type TimestampBuilder struct {
 	builder
 
-	dtype   *arrow.TimestampType
-	data    *memory.Buffer
-	rawData []arrow.Timestamp
-	layout  string
+	dtype            *arrow.TimestampType
+	data             *memory.Buffer
+	rawData          []arrow.Timestamp
+	layout           string
+	useDefaultLayout bool
 }
 
 func NewTimestampBuilder(mem memory.Allocator, dtype *arrow.TimestampType) *TimestampBuilder {
-	return NewTimestampBuilderWithValueStrLayout(mem, dtype, time.RFC3339Nano)
+	return newTimestampBuilderWithValueStrLayout(mem, dtype, "", true)
 }
 
 // NewTimestampBuilderWithValueStrLayout creates a new TimestampBuilder with a custom ValueStr layout.
 // The layout is passed to the time.Time.Format method.
 // This is useful for cases where consumers expect a non standard layout
 func NewTimestampBuilderWithValueStrLayout(mem memory.Allocator, dtype *arrow.TimestampType, layout string) *TimestampBuilder {
-	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype, layout: layout}
+	return newTimestampBuilderWithValueStrLayout(mem, dtype, layout, false)
+}
+
+func newTimestampBuilderWithValueStrLayout(mem memory.Allocator, dtype *arrow.TimestampType, layout string, useDefaultLayout bool) *TimestampBuilder {
+	tb := &TimestampBuilder{
+		builder:          builder{mem: mem},
+		dtype:            dtype,
+		layout:           layout,
+		useDefaultLayout: useDefaultLayout,
+	}
 	tb.refCount.Add(1)
 	return tb
 }
@@ -198,9 +227,15 @@ func (b *TimestampBuilder) AppendNull() {
 }
 
 func (b *TimestampBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *TimestampBuilder) AppendEmptyValue() {
@@ -208,9 +243,15 @@ func (b *TimestampBuilder) AppendEmptyValue() {
 }
 
 func (b *TimestampBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.unsafeAppendEmptyValues(b.data.Bytes(), arrow.TimestampTraits.BytesRequired(1), n)
 }
 
 func (b *TimestampBuilder) UnsafeAppend(v arrow.Timestamp) {
@@ -287,7 +328,7 @@ func (b *TimestampBuilder) NewArray() arrow.Array {
 // so it can be used to build a new array.
 func (b *TimestampBuilder) NewTimestampArray() (a *Timestamp) {
 	data := b.newData()
-	a = NewTimestampDataWithValueStrLayout(data, b.layout)
+	a = newTimestampDataWithValueStrLayout(data, b.layout, b.useDefaultLayout)
 	data.Release()
 	return
 }
@@ -311,6 +352,11 @@ func (b *TimestampBuilder) newData() (data *Data) {
 }
 
 func (b *TimestampBuilder) AppendValueFromString(s string) error {
+	loc, err := b.dtype.GetZone()
+	if err != nil {
+		return err
+	}
+
 	if s == NullValueStr {
 		b.AppendNull()
 		return nil
@@ -321,16 +367,20 @@ func (b *TimestampBuilder) AppendValueFromString(s string) error {
 		return nil
 	}
 
-	loc, err := b.dtype.GetZone()
-	if err != nil {
-		return err
-	}
-
-	v, _, err := arrow.TimestampFromStringInLocation(s, b.dtype.Unit, loc)
+	v, zonePresent, err := arrow.TimestampFromStringInLocation(s, b.dtype.Unit, loc)
 	if err != nil {
 		b.AppendNull()
 		return err
 	}
+
+	if zonePresent != (b.dtype.TimeZone != "") {
+		b.AppendNull()
+		if b.dtype.TimeZone != "" {
+			return fmt.Errorf("%w: timestamp value %q for type %s must include a zone offset", arrow.ErrInvalid, s, b.dtype)
+		}
+		return fmt.Errorf("%w: timestamp value %q for type %s must not include a zone offset", arrow.ErrInvalid, s, b.dtype)
+	}
+
 	b.Append(v)
 	return nil
 }
@@ -354,8 +404,15 @@ func (b *TimestampBuilder) UnmarshalOne(dec *json.Decoder) error {
 			b.Append(arrow.Timestamp(i))
 			break
 		}
-		tm, _, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
+		tm, zonePresent, err := arrow.TimestampFromStringInLocation(v, b.dtype.Unit, loc)
 		if err != nil {
+			return &json.UnmarshalTypeError{
+				Value:  v,
+				Type:   reflect.TypeOf(arrow.Timestamp(0)),
+				Offset: dec.InputOffset(),
+			}
+		}
+		if zonePresent != (b.dtype.TimeZone != "") {
 			return &json.UnmarshalTypeError{
 				Value:  v,
 				Type:   reflect.TypeOf(arrow.Timestamp(0)),
