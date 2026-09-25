@@ -825,8 +825,8 @@ github.com/go-openapi/validate
 ## explicit; go 1.17
 github.com/go-playground/locales
 github.com/go-playground/locales/currency
-# github.com/go-playground/universal-translator v0.18.1
-## explicit; go 1.18
+# github.com/go-playground/universal-translator v0.18.2
+## explicit; go 1.26
 github.com/go-playground/universal-translator
 # github.com/go-playground/validator/v10 v10.30.5
 ## explicit; go 1.26.0
