@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -121,18 +122,40 @@ func (s *sink) createReq(id int64, epoch int16) (*produceRequest, *kmsg.AddParti
 		recBufsIdx = (recBufsIdx + 1) % len(s.recBufs)
 
 		recBuf.mu.Lock()
-		if recBuf.failing || len(recBuf.batches) == recBuf.batchDrainIdx || recBuf.inflightOnSink != nil && recBuf.inflightOnSink != s || recBuf.inflight != 0 && !recBuf.okOnSink {
+		// A pending seq reset applies only to the first batch: stage
+		// nothing more until everything inflight finishes.
+		if recBuf.failing ||
+			recBuf.merging ||
+			len(recBuf.batches) == recBuf.batchDrainIdx ||
+			recBuf.needSeqReset && recBuf.inflight != 0 ||
+			recBuf.inflightOnSink != nil && recBuf.inflightOnSink != s ||
+			recBuf.inflight != 0 && !recBuf.okOnSink {
 			recBuf.mu.Unlock()
 			continue
 		}
 
 		batch := recBuf.batches[recBuf.batchDrainIdx]
+		// A merged batch keeps the codec and format it was sealed with.
+		// A broker below produce v3 takes message sets, not record
+		// batches, and one below v7 cannot read zstd. A partition that
+		// moved to such a broker after merging fails its records back to
+		// you here rather than retrying a request the broker rejects.
+		if v := s.produceVersion.Load(); batch.stream != nil && v >= 0 && (v < 3 || v < 7 && batch.stream.codec == CodecZstd) {
+			// Only once nothing is inflight ahead of it: failAllRecords
+			// drops inflight batches too, and the seq chain with them
+			// (see tryAddBatch). Their responses re-trigger the drain.
+			if batch == recBuf.batches[0] {
+				recBuf.failAllRecords(errMergedBatchUnsupported)
+			}
+			recBuf.mu.Unlock()
+			continue
+		}
 		if added := req.tryAddBatch(s.produceVersion.Load(), recBuf, batch); !added {
 			recBuf.mu.Unlock()
 			moreToDrain = true
 			continue
 		}
-		if req.produceMax > 12 && recBuf.topicID == ([16]byte{}) {
+		if req.produceMax > 12 && recBuf.topicID == noID {
 			req.produceMax = 12
 		}
 
@@ -268,7 +291,18 @@ func (s *sink) clearBackoff() {
 func (s *sink) drain() {
 	again := true
 	for again {
-		s.maybeBackoff()
+		// We merge before waiting on an inflight sem slot. When we
+		// saturate the wire, we spend time waiting on the sem;
+		// compressing while we wait increases throughput rather than
+		// compressing after the sem slot.
+		//
+		// More batches can build up after our initial compression
+		// attempt (which does nothing if only one batch exists right
+		// now). Ideally, producing takes long enough that the NEXT time
+		// we loop here, we have multiple batches to compress again. In
+		// the steady state, one merge here amortizes to be the single
+		// good option needed.
+		s.mergeBacklogs()
 
 		sem := s.inflightSem.Load().(chan struct{})
 		select {
@@ -277,6 +311,13 @@ func (s *sink) drain() {
 			s.drainState.hardFinish()
 			return
 		}
+
+		// We back off after taking our inflight slot, not before. A
+		// response arrives, triggers a backoff, and only then frees the
+		// slot we are waiting on, so a backoff checked before the wait
+		// is always one request out of date. Only one goroutine is ever
+		// in this loop, so holding the slot while we wait costs nothing.
+		s.maybeBackoff()
 
 		again = s.drainState.maybeFinish(s.produce(sem))
 	}
@@ -377,9 +418,9 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 
 	id, epoch, err := s.cl.producerID(ctxFn)
 	if err != nil {
-		var pe *errProducerIDLoadFail
+		pe, isLoadFail := errors.AsType[*errProducerIDLoadFail](err)
 		switch {
-		case errors.As(err, &pe):
+		case isLoadFail:
 			if errors.Is(pe.err, context.Canceled) && isHolCtxDone() {
 				// Some head-of-line record in a partition had a context cancelation.
 				// We look for any partition with HOL cancelations and fail them all.
@@ -432,68 +473,32 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 	// sequence numbers using our new producer ID, which will then again
 	// fail with OOOSN.
 	req, txnReq, moreToDrain := s.createReq(id, epoch)
-	if len(req.batches.bs) == 0 { // everything was failing or lingering, or what is buffered is in flight already
+	if len(req.batches.bs) == 0 { // every recBuf is failing, has nothing new buffered, or is waiting on what is in flight
 		return moreToDrain
 	}
 
-	// With KIP-890 (EndTxn v5+), the epoch is bumped on every EndTxn.
-	// There is a possible TOCTOU race between producerID() and
-	// createReq() above:
+	// With KIP-890 (EndTxn v5+), the epoch bumps on every EndTxn,
+	// which opens a race between producerID() and createReq() above:
+	// we read epoch N, and before createReq runs, the last produce
+	// response lands on another sink, Flush returns, EndTxn bumps the
+	// epoch to N+1, and the user produces records for the next
+	// transaction. Our createReq then picks those records up stamped
+	// with the stale epoch N, and the broker rejects them with
+	// INVALID_PRODUCER_EPOCH, failing the records permanently. We
+	// recheck after building the request: if anything changed, we
+	// undo the staged batches and return true so the drain loop
+	// retries with the new epoch.
 	//
-	//   - Sink A's drain loop calls producerID(), gets epoch N.
-	//   - Sink A is preempted or otherwise delayed before calling
-	//     createReq().
-	//   - Meanwhile, the last produce response arrives on another
-	//     sink. bufferedRecords hits 0, Flush returns.
-	//   - EndTxn round-trips, the epoch bumps to N+1.
-	//   - The user produces records for the next transaction.
-	//   - Sink A resumes, calls createReq(epoch=N), and picks up
-	//     those new records stamped with the stale epoch N.
-	//   - The broker rejects with INVALID_PRODUCER_EPOCH, failing
-	//     the records permanently.
-	//
-	// We check the epoch after building the request. If it changed,
-	// we undo the drain state (resetBatchDrainIdx + decInflight) and
-	// return true so the drain loop retries with the new epoch.
-	//
-	// If the epoch has NOT changed, then EndTxn has not completed,
-	// Flush has not returned, and the user has not produced any
-	// records for a new transaction. Any records in the request are
-	// from the current transaction at epoch N, which is correct.
-	//
-	// This undo is safe: undoStagedBatches rewinds each recBuf to its
-	// pre-drain state -- drain index, inflight, and (for any partition
-	// this createReq newly added to the transaction) the addedToTxn flag,
-	// so the next drain re-issues its AddPartitionsToTxn instead of
-	// producing to a partition the broker never learned is in the txn (see
-	// undoStagedBatches). The existing defer releases the semaphore
-	// (produced is still false), and returning true retries produce() with
-	// the correct epoch.
-	//
-	// We use a raw atomic load rather than producerID() to avoid
-	// side effects (blocking on idMu, triggering InitProducerID
-	// reloads). We bail on ANY change to the producer ID - whether
-	// from an epoch bump, a reload, or an error - so we do not need
-	// to interpret the stored value beyond id/epoch comparison. The
-	// next produce() call handles errors through producerID()'s
-	// normal error paths.
-	//
-	// We also bail on cur.err != nil. A parallel sink handling an
-	// OOOSN response can call failProducerID, which sets err on the
-	// stored producerID *without* changing id/epoch. The next
-	// producerID() call on that sink then reloads, and its
-	// resetAllProducerSequences pass walks every recBuf flipping
-	// needSeqReset=true BEFORE storing the new (id, epoch). There is
-	// a narrow window where a concurrent createReq on THIS sink has
-	// already picked up (id, epoch) from a pre-fail producerID() and
-	// now observes needSeqReset=true on some recBuf while the stored
-	// id/epoch still match. Without the err check, that createReq
-	// would send a request stamped with the old (id, epoch) but a
-	// freshly-reset seq=0; the broker would reject with OOOSN and we
-	// would retry. Checking err catches the window: after
-	// failProducerID, cur.err is non-nil even though id/epoch are
-	// unchanged, so we bail and the next drain pulls the reloaded
-	// (id, epoch) with seq=0 consistently.
+	// We use a raw atomic load rather than producerID() to avoid its
+	// side effects (blocking on idMu, triggering InitProducerID), and
+	// we bail on any change: id, epoch, or err. The err check matters
+	// because a parallel sink handling OOOSN calls failProducerID,
+	// which sets err without changing the id/epoch; the reload that
+	// follows flips needSeqReset on every recBuf before storing the
+	// new id, so a createReq in that window could ship the old id
+	// with a freshly reset seq of 0 and hit another OOOSN. After
+	// failProducerID, err is non-nil, so we bail and the next drain
+	// pulls the reloaded id with seq 0 consistently.
 	if cur := s.cl.producer.id.Load().(*producerID); cur.id != id || cur.epoch != epoch || cur.err != nil {
 		req.undoStagedBatches(txnReq)
 		return true
@@ -517,24 +522,14 @@ func (s *sink) produce(sem <-chan struct{}) bool {
 				s.cl.triggerUpdateMetadata(false, "attempting to refresh broker list due to failed AddPartitionsToTxn requests")
 				return moreToDrain || len(req.batches.bs) > 0 // nothing stripped if request-issuing error
 			default:
-				// This includes TransactionAbortable. We used to
-				// continue into producing on TransactionAbortable so
-				// the produce failure would carry the error to the
-				// user, but doTxnReq's error path has already
-				// requeued every batch in the request (reset drain
-				// indexes, decremented inflight, and un-marked
-				// addedToTxn for the partitions whose add actually
-				// failed): producing those batches anyway would
-				// decrement inflight a second time (wrapping the
-				// counter and permanently wedging the recBuf's
-				// drain gate) and could re-drain batches that are
-				// already in flight. Failing the producer ID delivers
-				// the same error to all buffered records on the next
-				// drain, and TransactionAbortable remains recoverable
-				// via EndTransaction.
-				//
-				// Note that err can also be InvalidProducerEpoch,
-				// which is potentially recoverable in EndTransaction.
+				// doTxnReq's error path already requeued every batch
+				// in this request; producing them anyway would
+				// decrement inflight twice and could re-drain batches
+				// that are already in flight. Failing the producer ID
+				// delivers this error to all buffered records on the
+				// next drain. The error can be TransactionAbortable
+				// or InvalidProducerEpoch, both potentially
+				// recoverable in EndTransaction.
 				//
 				// We do not fail all buffered records here,
 				// because that can lead to undesirable behavior
@@ -636,9 +631,8 @@ func (s *sink) doTxnReq(
 	// be requeued and any partition this request newly added to the
 	// transaction must be un-marked, since we will not issue the produce
 	// request. undoStagedBatches scopes the un-marking to txnReq so a
-	// partition added by an EARLIER AddPartitionsToTxn of this transaction
-	// (a broker-acked fact, deliberately absent here) keeps its membership;
-	// clearing it would make EndTransaction's anyAdded walk skip EndTxn and
+	// partition an earlier request added keeps its broker-acked
+	// membership; clearing it would make EndTransaction skip EndTxn and
 	// strand the broker-side transaction until its timeout abort.
 	//
 	// These batches must be the first in their recBuf, because we would
@@ -685,31 +679,30 @@ func txnReqContains(txnReq *kmsg.AddPartitionsToTxnRequest, topic string, partit
 	return false
 }
 
-// undoStagedBatches rewinds every batch that createReq staged into this request
-// back to its pre-drain state, for the early-return arms that decide not to
-// issue the request after staging it: the producer-ID/epoch recheck in
-// produce() and doTxnReq's failure defer. It resets each recBuf's drain index
-// and decrements inflight, and -- for the partitions THIS request newly added
-// to the transaction -- clears addedToTxn so the next drain re-issues their
-// AddPartitionsToTxn.
+// undoStagedBatches rewinds every batch that createReq staged into this
+// request, for when we decide not to issue the request after building it.
+// txnReq holds exactly the partitions this request newly added to the
+// transaction; we clear addedToTxn for those (and only those) so the next
+// drain re-adds them.
 //
-// txnReq holds exactly the partitions createReq newly added: txnReqBuilder.add
-// only records a partition whose addedToTxn flipped false->true, so partitions
-// added to the transaction by an EARLIER request are deliberately absent and
-// keep their broker-acked membership. Leaving a newly-added partition's
-// addedToTxn set after rewinding would suppress its AddPartitionsToTxn on the
-// next drain (txnReqBuilder.add skips already-added partitions); the broker
-// then rejects the produce to that unverified partition with INVALID_TXN_STATE
-// (or, on a non-verifying broker, the records hang in a transaction the
-// coordinator never learned the partition belongs to). txnReq is nil for
-// non-transactional and pv12+ (KIP-890p2) producers, which never stage
-// addedToTxn in createReq, so the clear is correctly skipped for them.
+// We do not reset the drain index to zero: earlier batches can still be
+// inflight from prior requests, and finishBatch decrements the index as they
+// finish, pushing a zeroed index negative (#1385). Our batch is always the
+// last one staged, so we rewind to just before it. If the batch is gone, the
+// buffer was failed and fully rewound already.
 func (p *produceRequest) undoStagedBatches(txnReq *kmsg.AddPartitionsToTxnRequest) {
 	p.batches.eachOwnerLocked(func(batch seqRecBatch) {
-		if txnReq != nil && txnReqContains(txnReq, batch.owner.topic, batch.owner.partition) {
-			batch.owner.addedToTxn.Store(false)
+		recBuf := batch.owner
+		if txnReq != nil && txnReqContains(txnReq, recBuf.topic, recBuf.partition) {
+			recBuf.addedToTxn.Store(false)
 		}
-		batch.owner.resetBatchDrainIdx()
+		for i, b := range recBuf.batches {
+			if b == batch.recBatch {
+				recBuf.batchDrainIdx = i
+				recBuf.seq = batch.seq
+				break
+			}
+		}
 		batch.decInflight()
 	})
 }
@@ -905,7 +898,8 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 	}
 
 	var kmove kip951move
-	var reqRetry seqRecBatches // handled at the end
+	var reqRetry seqRecBatches   // handled at the end
+	var reqBackoff seqRecBatches // retried after the produce backoff, no metadata update
 
 	kresp := resp.(*kmsg.ProduceResponse)
 	for i := range kresp.Topics {
@@ -962,7 +956,15 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 				tmetrics[partition],
 			)
 			if retry {
-				reqRetry.addSeqBatch(topic, tid, partition, batch)
+				// A timed-out append, or one short of replicas,
+				// comes from a leader that is still the leader:
+				// metadata has nothing to say, so we retry after
+				// the produce backoff.
+				if rp.ErrorCode == kerr.RequestTimedOut.Code || rp.ErrorCode == kerr.NotEnoughReplicasAfterAppend.Code {
+					reqBackoff.addSeqBatch(topic, tid, partition, batch)
+				} else {
+					reqRetry.addSeqBatch(topic, tid, partition, batch)
+				}
 			}
 			if !didProduce {
 				delete(tmetrics, partition)
@@ -983,10 +985,13 @@ func (s *sink) handleReqResp(br *broker, req *produceRequest, resp kmsg.Response
 
 	if len(req.batches.bs) > 0 {
 		s.cl.cfg.logger.Log(LogLevelError, "broker did not reply to all topics / partitions in the produce request! reenqueuing missing partitions", "broker", logID(s.nodeID))
-		s.handleRetryBatches(req.batches, nil, 0, true, false, "broker did not reply to all topics in produce request")
+		s.handleRetryBatches(req.batches, nil, req.backoffSeq, true, false, "broker did not reply to all topics in produce request")
 	}
 	if len(reqRetry.bs) > 0 {
-		s.handleRetryBatches(reqRetry, &kmove, 0, true, true, "produce request had retry batches")
+		s.handleRetryBatches(reqRetry, &kmove, req.backoffSeq, true, true, "produce request had retry batches")
+	}
+	if len(reqBackoff.bs) > 0 {
+		s.handleRetryBatches(reqBackoff, nil, req.backoffSeq, false, true, "produce request had timed out batches")
 	}
 }
 
@@ -1172,7 +1177,15 @@ func (s *sink) handleReqRespBatch(
 			return false, false
 		}
 		if s.cl.cfg.onDataLoss != nil {
-			s.cl.cfg.onDataLoss(topic, rp.Partition)
+			// Dispatch on a fresh goroutine: we hold this partition's
+			// recBuf.mu here, and the natural reaction to "data loss
+			// on (topic, partition)" is to produce to that partition
+			// -- which re-enters recBuf.mu on this goroutine and
+			// deadlocks it forever, wedging the partition and this
+			// sink's response processing. The callback is an
+			// informational notification with no ordering contract
+			// (same dispatch style as HookProduceBatchWritten).
+			go s.cl.cfg.onDataLoss(topic, rp.Partition)
 		}
 
 		// For OOOSN, and UnknownProducerID
@@ -1289,6 +1302,7 @@ func (cl *Client) finishBatch(batch *recBatch, producerID int64, producerEpoch i
 	batch.mu.Lock()
 	records, attrs := batch.records, batch.attrs
 	batch.records = nil
+	batch.releaseStream()
 	batch.mu.Unlock()
 
 	cl.producer.promiseBatch(batchPromise{
@@ -1373,6 +1387,14 @@ func (s *sink) handleRetryBatches(
 			return
 		}
 
+		// The broker hinted a leader we are already using. We retry on
+		// the same sink, but we wait first: without this we resend as
+		// fast as the broker can reject us.
+		if kmove.hasStaleRecBuf(batch.owner) {
+			shouldBackoff = true
+			return
+		}
+
 		// If our first batch (seq == 0) fails with unknown topic, we
 		// retry immediately. Kafka can reply with valid metadata
 		// immediately after a topic was created, before the leaders
@@ -1436,11 +1458,16 @@ func (s *sink) addRecBuf(add *recBuf) {
 	add.clearFailing()
 }
 
-// removeRecBuf removes a record buffer from a sink.
+// removeRecBuf removes a record buffer from a sink. Removing a buffer that
+// is not in the sink is a no-op: a recreated topic's buffers are removed
+// when the recreation is detected and again when the topic is purged.
 func (s *sink) removeRecBuf(rm *recBuf) {
 	s.recBufsMu.Lock()
 	defer s.recBufsMu.Unlock()
 
+	if rm.recBufsIdx < 0 {
+		return
+	}
 	if rm.recBufsIdx != len(s.recBufs)-1 {
 		s.recBufs[rm.recBufsIdx], s.recBufs[len(s.recBufs)-1] = s.recBufs[len(s.recBufs)-1], nil
 		s.recBufs[rm.recBufsIdx].recBufsIdx = rm.recBufsIdx
@@ -1452,6 +1479,7 @@ func (s *sink) removeRecBuf(rm *recBuf) {
 	if s.recBufsStart == len(s.recBufs) {
 		s.recBufsStart = 0
 	}
+	rm.recBufsIdx = -1
 }
 
 // recBuf is a buffer of records being produced to a partition and being
@@ -1478,6 +1506,11 @@ type recBuf struct {
 	buffered atomic.Int64
 
 	mu xsync.Mutex // guards r/w access to all fields below
+
+	// merging is true while mergeBacklog compresses this partition's
+	// unsent batches outside of mu. createReq skips the partition until
+	// the merged batch is spliced in.
+	merging bool
 
 	// sink is who is currently draining us. This can be modified
 	// concurrently during a metadata update.
@@ -1584,9 +1617,34 @@ type recBuf struct {
 	// It is always cleared on metadata update.
 	failing bool
 
-	// Only possibly set in PurgeTopics, this is used to fail anything that
-	// was in the process of being buffered.
-	purged bool
+	// abandoned is set once the buffer is done for good: the topic was
+	// purged, or it was deleted and recreated. Anything buffered after
+	// it is set fails with it at once.
+	abandoned error
+}
+
+// abandon removes the buffer from its sink and fails everything buffered, and
+// everything buffered later, with err.
+//
+// This runs in the metadata loop, so the sink cannot change under us and we
+// read it unlocked; recBuf.mu => sink.recBufsMu would invert the lock order.
+func (recBuf *recBuf) abandon(err error) {
+	// We set abandoned first, so that anything in the process of being
+	// buffered fails once it takes the lock.
+	recBuf.mu.Lock()
+	recBuf.abandoned = err
+	recBuf.mu.Unlock()
+
+	// Once removed from the sink, the buffer is not drained again. A
+	// produce request in flight may still finish; if it finishes after
+	// we fail the records below, its response no longer matches a batch
+	// we hold, but the records may have been produced. This is the
+	// duplicate risk of purging.
+	recBuf.sink.removeRecBuf(recBuf)
+
+	recBuf.mu.Lock()
+	recBuf.failAllRecords(err)
+	recBuf.mu.Unlock()
 }
 
 // bufferRecord usually buffers a record, but does not if abortOnNewBatch is
@@ -1606,25 +1664,19 @@ func (recBuf *recBuf) bufferRecord(pr promisedRec, abortOnNewBatch bool) bool {
 	pr.Timestamp = pr.Timestamp.Truncate(time.Millisecond)
 	pr.Partition = recBuf.partition // set now, for the hook below
 
-	if recBuf.purged {
-		recBuf.cl.producer.promiseRecord(pr, errPurged)
+	if recBuf.abandoned != nil {
+		recBuf.cl.producer.promiseRecord(pr, recBuf.abandoned)
 		return true
 	}
 
 	// If the client is closing, fail the record rather than buffering it
-	// into a recBuf whose sink drain loop has already exited. close() cancels
-	// cl.ctx and then sweeps every recBuf exactly once via
-	// failBufferedRecords; a record buffered after that sweep would never be
-	// failed - its promise would never fire, BufferedProduceRecords would
-	// never return to zero, and a later Flush would hang - contradicting the
-	// documented ErrClientClosed contract ("for producing, records are failed
-	// with this error"). Checking cl.ctx under recBuf.mu (held here and by
-	// failAllRecords) is race-free given the close ordering (ctxCancel then
-	// sweep): we either observe the cancel and fail here, or we buffer before
-	// the sweep and the sweep fails us. The unknown-topic sibling path already
-	// honors this via waitUnknownTopic's cl.ctx.Done arm; this is the missing
-	// guard on the known-topic sibling. We select on Done rather than calling
-	// Err to keep this per-record hot path free of the context's per-call mutex.
+	// into a recBuf whose drain loop has already exited. close() cancels
+	// cl.ctx and then sweeps every recBuf once via failBufferedRecords: a
+	// record buffered after that sweep would never be failed and a later
+	// Flush would hang. Both this check and the sweep run under recBuf.mu,
+	// so we either see the cancel and fail here, or we buffer before the
+	// sweep and the sweep fails us. We select on Done rather than calling
+	// Err to keep this hot path off the context's internal mutex.
 	select {
 	case <-recBuf.cl.ctx.Done():
 		recBuf.cl.producer.promiseRecord(pr, ErrClientClosed)
@@ -1649,11 +1701,11 @@ func (recBuf *recBuf) bufferRecord(pr promisedRec, abortOnNewBatch bool) bool {
 
 		switch {
 		case aborted: // not processed
-			recBuf.cl.prsPool.put(newBatch.records)
+			newBatch.recycle()
 			return false
 		case appended: // we return true below
 		default: // processed as failure
-			recBuf.cl.prsPool.put(newBatch.records)
+			newBatch.recycle()
 			recBuf.cl.producer.promiseRecord(pr,
 				fmt.Errorf("%w (uncompressed_bytes=%d)", kerr.MessageTooLarge, pr.userSize()),
 			)
@@ -1814,6 +1866,7 @@ func (recBuf *recBuf) failAllRecords(err error) {
 		batch.mu.Lock()
 		records := batch.records
 		batch.records = nil
+		batch.releaseStream()
 		batch.mu.Unlock()
 
 		recBuf.cl.producer.promiseBatch(batchPromise{
@@ -1907,6 +1960,43 @@ type recBatch struct {
 
 	mu      xsync.Mutex   // guards appendTo's reading of records against failAllRecords emptying it
 	records []promisedRec // record w/ length, ts calculated
+
+	// stream is set on a batch that mergeBacklog built: the records are
+	// already compressed, and appendTo writes the blob rather than
+	// serializing and compressing the records again. Guarded like
+	// records.
+	stream *batchStream
+}
+
+// batchStream holds a merged batch's compressed records.
+type batchStream struct {
+	buf          *bytes.Buffer // from byteBuffers; blob aliases it
+	blob         []byte
+	codec        CompressionCodecType
+	uncompressed int
+}
+
+// releaseStream returns a merged batch's blob buffer to the pool.
+//
+// NOTE: an in-flight request may still be copying the blob under batch.mu.
+// Call this only under batch.mu where the batch's records are also taken
+// (finishBatch, failAllRecords), or through recycle on a batch nothing
+// references.
+func (b *recBatch) releaseStream() {
+	if b.stream != nil {
+		byteBuffers.Put(b.stream.buf)
+		b.stream = nil
+	}
+}
+
+// recycle returns everything a batch holds from a pool, for a batch nothing
+// else references: one that never joined recBuf.batches, or a discarded
+// merge and its tail. Consumed merge sources qualify too, since their
+// records were copied into the merged batch.
+func (b *recBatch) recycle() {
+	b.releaseStream()
+	b.owner.cl.prsPool.put(b.records)
+	b.records = nil
 }
 
 // Returns an error if the batch should fail.
@@ -1953,27 +2043,34 @@ func (b *recBatch) appendRecord(pr promisedRec, nums recordNumbers) {
 		b.maxTimestampDelta = nums.tsDelta
 	}
 	b.records = append(b.records, pr)
+	pr.setLengthAndTimestampDelta(nums.lengthField, nums.tsDelta)
 }
 
+// recordBatchOverhead is the wire size of a record batch with no records.
+const recordBatchOverhead = 4 + // array len
+	8 + // firstOffset
+	4 + // batchLength
+	4 + // partitionLeaderEpoch
+	1 + // magic
+	4 + // crc
+	2 + // attributes
+	4 + // lastOffsetDelta
+	8 + // firstTimestamp
+	8 + // maxTimestamp
+	8 + // producerID
+	2 + // producerEpoch
+	4 + // seq
+	4 // record array length
+
 // newRecordBatch returns a new record batch for a topic and partition.
-func (recBuf *recBuf) newRecordBatch() *recBatch {
-	const recordBatchOverhead = 4 + // array len
-		8 + // firstOffset
-		4 + // batchLength
-		4 + // partitionLeaderEpoch
-		1 + // magic
-		4 + // crc
-		2 + // attributes
-		4 + // lastOffsetDelta
-		8 + // firstTimestamp
-		8 + // maxTimestamp
-		8 + // producerID
-		2 + // producerEpoch
-		4 + // seq
-		4 // record array length
+func (recBuf *recBuf) newRecordBatch() *recBatch { return recBuf.newRecordBatchN(0) }
+
+// newRecordBatchN returns a new record batch with room for n records, so a
+// merge grows its slice once rather than doubling per append.
+func (recBuf *recBuf) newRecordBatchN(n int) *recBatch {
 	return &recBatch{
 		owner:      recBuf,
-		records:    recBuf.cl.prsPool.get()[:0],
+		records:    slices.Grow(recBuf.cl.prsPool.get(), n),
 		wireLength: recordBatchOverhead,
 
 		canFailFromLoadErrs: true, // until we send this batch, we can fail it
@@ -2103,13 +2200,16 @@ func (p *produceRequest) tryAddBatch(produceVersion int32, recBuf *recBuf, batch
 	batchWireLength, flexible, topicIDs := batch.wireLengthForProduceVersion(produceVersion)
 	batchWireLength += 4 // int32 partition prefix
 
+	if flexible {
+		batchWireLength++ // the partition's empty tagged field section
+	}
 	if partitions, exists := p.batches.bs[recBuf.topic]; !exists {
 		if topicIDs {
-			batchWireLength += 16 + 1 // topic ID size, compact array len for 1 item (if we are using topic IDs, we are definitely flexible)
+			batchWireLength += 16 + 1 + 1 // topic ID size, compact array len for 1 item, topic tagged fields (if we are using topic IDs, we are definitely flexible)
 		} else {
 			lt := int32(len(recBuf.topic))
 			if flexible {
-				batchWireLength += uvarlen(len(recBuf.topic)) + lt + 1 // compact string len, topic, compact array len for 1 item
+				batchWireLength += uvarlen(len(recBuf.topic)) + lt + 1 + 1 // compact string len, topic, compact array len for 1 item, topic tagged fields
 			} else {
 				batchWireLength += 2 + lt + 4 // string len, topic, partition array len
 			}
@@ -2255,13 +2355,15 @@ func (cl *Client) baseProduceRequestLength() int32 {
 		2 + // int16 version
 		4 + // int32 correlation ID
 		2 // int16 client ID len (always non flexible)
-		// empty tag section skipped; see below
+		// The flexible header's empty tag section is not counted: the
+		// topics array length below is counted at its 4 byte non-flexible
+		// size and flexible writes 1, which covers it.
 
 	const produceRequestBaseOverhead int32 = 2 + // int16 transactional ID len (flexible or not, since we cap at 16382)
 		2 + // int16 acks
 		4 + // int32 timeout
-		4 // int32 topics non-flexible array length
-		// empty tag section skipped; see below
+		4 + // int32 topics non-flexible array length
+		1 // request tagged fields, counted whether or not we end up flexible
 
 	baseLength := messageRequestOverhead + produceRequestBaseOverhead
 	if cl.cfg.id != nil {
@@ -2331,16 +2433,20 @@ func messageSet1Length(r *Record) int32 {
 
 // Returns the numbers for a record if it were added to the record batch.
 func (b *recBatch) calculateRecordNumbers(r *Record) recordNumbers {
+	return b.recordNumbersAt(r, int32(len(b.records))) // called before adding the record, so the delta is the current end
+}
+
+// recordNumbersAt calculates the numbers for r at position offsetDelta in
+// the batch.
+func (b *recBatch) recordNumbersAt(r *Record, offsetDelta int32) recordNumbers {
 	tsMillis := r.Timestamp.UnixNano() / 1e6
 	tsDelta := tsMillis - b.firstTimestamp
 
 	// If this is to be the first record in the batch, then our timestamp
 	// delta is actually 0.
-	if len(b.records) == 0 {
+	if offsetDelta == 0 {
 		tsDelta = 0
 	}
-
-	offsetDelta := int32(len(b.records)) // since called before adding record, delta is the current end
 
 	l := 1 + // attributes, int8 unused
 		kbin.VarlongLen(tsDelta) +
@@ -2383,9 +2489,17 @@ func (b *recBatch) wireLengthForProduceVersion(v int32) (batchWireLength int32, 
 
 	// If we do not yet know the produce version, we default to the largest
 	// size. Our request building sizes will always be an overestimate.
+	//
+	// A merged batch is sized by its sealed blob. Its message set size is
+	// the uncompressed records, which can be far past the request limit,
+	// so counting it here would keep the batch out of every request until
+	// the sink learns its version from some other partition. (A sink that
+	// turns out to speak message sets, Kafka below 0.11, then writes the
+	// records uncompressed against this size; createReq fails the batch
+	// once the version is known.)
 	if v < 0 {
 		v1BatchWireLength := b.v1wireLength
-		if v1BatchWireLength > batchWireLength {
+		if b.stream == nil && v1BatchWireLength > batchWireLength {
 			batchWireLength = v1BatchWireLength
 		}
 		flexibleBatchWireLength := b.flexibleWireLength()
@@ -2423,11 +2537,279 @@ func (b *recBatch) tryBuffer(pr promisedRec, produceVersion, maxBatchBytes int32
 		return false, true
 	}
 	b.appendRecord(pr, nums)
-	pr.setLengthAndTimestampDelta(
-		nums.lengthField,
-		nums.tsDelta,
-	)
 	return true, false
+}
+
+// mergeBacklogs merges every partition's backlog of unsent batches into
+// compressed-size-bound batches. Compression runs on the drain goroutine
+// holding no locks, so producing never waits on it.
+func (s *sink) mergeBacklogs() {
+	cc, codec := s.streamCodec()
+	if cc == nil {
+		return
+	}
+	// We walk by index rather than snapshot the slice, to avoid an
+	// allocation per request. A concurrent remove swaps the last recBuf
+	// into the hole; if the hole is behind us, that recBuf is skipped this
+	// round and merged next round. Skipping only delays a merge: createReq
+	// sends a head batch merged or not.
+	for i := 0; ; i++ {
+		s.recBufsMu.Lock()
+		if i >= len(s.recBufs) {
+			s.recBufsMu.Unlock()
+			return
+		}
+		recBuf := s.recBufs[i]
+		s.recBufsMu.Unlock()
+		recBuf.mergeBacklog(cc, codec)
+	}
+}
+
+// streamCodec returns the compressor and codec to merge with, or nil if we
+// cannot merge: the option is off, the compressor is custom or picks no
+// codec, or we have not yet seen a produce response, since the codec
+// depends on the produce version. A merged batch keeps its codec; if its
+// partition later moves to a broker that cannot take it, createReq fails
+// the records back to you.
+func (s *sink) streamCodec() (*compressor, CompressionCodecType) {
+	cc, _ := s.cl.cfg.compressor.(*compressor)
+	v := s.produceVersion.Load()
+	if !s.cl.cfg.streamCompression || s.cl.producer.mergeOff.Load() || cc == nil || v < 3 {
+		return nil, CodecNone
+	}
+	codec := cc.pickCodec(v < 7)
+	if codec == CodecNone {
+		return nil, CodecNone
+	}
+	return cc, codec
+}
+
+// mergeBacklog merges this partition's unsent batches into one batch whose
+// compressed size stays under maxRecordBatchBytes: freeze them under mu so
+// nothing appends and createReq leaves them alone, stream their records
+// through the codec outside mu, then splice the merged batch in under mu.
+// A failure sweep during the merge owns every promise, so the merge is
+// discarded. Only never-frozen batches merge: a frozen batch may have been
+// sent and must be resent as is.
+func (recBuf *recBuf) mergeBacklog(cc *compressor, codec CompressionCodecType) {
+	recBuf.mu.Lock()
+	span := make([]*recBatch, 0, 8)
+	if !recBuf.failing && !recBuf.merging {
+		for _, b := range recBuf.batches[recBuf.batchDrainIdx:] {
+			if b.frozen {
+				break
+			}
+			span = append(span, b)
+		}
+	}
+	if len(span) < 2 {
+		recBuf.mu.Unlock()
+		return
+	}
+	var total, size int
+	for _, b := range span {
+		b.frozen = true
+		total += len(b.records)
+		size += int(b.wireLength)
+	}
+	recBuf.merging = true
+	recBuf.mu.Unlock()
+
+	m, tail, consumed, ok := recBuf.mergeSpan(span, total, size, cc, codec)
+
+	recBuf.mu.Lock()
+	defer recBuf.mu.Unlock()
+	recBuf.merging = false
+	// Wake whatever sink the partition is on now; this runs before the
+	// deferred unlock. Our own sink builds a request right after this
+	// merge anyway, and the trigger only costs it one more loop. If the
+	// partition moved to another sink while we merged, that sink's
+	// createReq skipped it for as long as merging was set, and if its
+	// drain loop has since finished, nothing else wakes it.
+	defer recBuf.maybeTriggerDrain()
+	at := slices.Index(recBuf.batches, span[0])
+	if !ok || at < 0 {
+		// The sources drain as they were, so their records must be
+		// stamped for them again. If a failure sweep took the batches,
+		// it nil'd their records and owns their promises, and there is
+		// nothing to restore.
+		for _, b := range span {
+			b.restoreStamps()
+			b.frozen = false
+		}
+		m.recycle()
+		if tail != nil {
+			tail.recycle()
+		}
+		return
+	}
+	for _, b := range span[consumed:] {
+		b.frozen = false
+	}
+	// Load errors counted against the head keep counting. They bump tries
+	// under recBuf.mu, so the copies are made here rather than in mergeSpan.
+	m.tries.Store(span[0].tries.Load())
+	if tail != nil {
+		tail.tries.Store(span[consumed-1].tries.Load())
+	}
+	for _, b := range span[:consumed] {
+		b.recycle()
+	}
+	merged := []*recBatch{m}
+	if tail != nil {
+		merged = append(merged, tail)
+	}
+	recBuf.batches = slices.Replace(recBuf.batches, at, at+consumed, merged...)
+}
+
+// mergeSpan streams the span's records through the codec into one batch,
+// cutting just before the compressed size would pass the limit; a cut mid
+// source moves that source's remaining records to a tail batch. A source
+// is read under its mu, which we release while each chunk compresses (the
+// flush before a cut, at most a chunk's work, runs under it); a failure
+// sweep can take the source then, and the merge is discarded if one did.
+// The bound is the size at the last flush plus the codec's worst
+// case for everything since: we flush only when that would overflow, and
+// cut only if the record still does not fit, so the codec only ever holds
+// accepted records. The worst case is measured from the codecs, so the
+// finished blob is checked too; if it is ever over, merging turns off for
+// the client with a warning. Unlike the legacy path, a merged batch is
+// sent compressed even when compressing did not help: the bound already
+// budgets for the expansion, and discarding the merge would only retry it
+// on the next drain. Returns how many sources were consumed, the cut one
+// included, and false if the merge must be discarded, in which case the
+// caller recycles m and the tail.
+func (recBuf *recBuf) mergeSpan(span []*recBatch, total, size int, cc *compressor, codec CompressionCodecType) (m, tail *recBatch, consumed int, ok bool) {
+	buf := byteBuffers.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Grow(min(size, int(recBuf.maxRecordBatchBytes))) // the blob's ceiling; one allocation for a fresh buffer rather than doubling up to it
+	sc := cc.newStream(codec, buf)
+	m = recBuf.newRecordBatchN(total)
+	m.frozen = true
+	m.stream = &batchStream{buf: buf, codec: codec} // m owns buf from here; recycling m returns it
+
+	var (
+		limit        = int(recBuf.maxRecordBatchBytes)
+		checkpoint   int // compressed size at the last flush
+		since        int // uncompressed bytes written since the last flush
+		uncompressed int
+		swept        bool
+		err          error
+	)
+	// A consumer decompresses a batch into one allocation, so the
+	// uncompressed size is bounded as well.
+	maxUncompressed := recBuf.cl.cfg.maxDecompressBatchBytes
+	fits := func(n int) bool {
+		return n <= maxUncompressed-uncompressed && recordBatchOverhead+1+checkpoint+sc.worst(since+n) <= limit
+	}
+	for _, src := range span {
+		done := func() bool {
+			src.mu.Lock()
+			defer src.mu.Unlock()
+			if src.records == nil {
+				swept = true
+				return true
+			}
+			for i, pr := range src.records {
+				nums := m.renumber(pr, int32(i))
+				n := int(nums.wireLength())
+				if !fits(n) && since > 0 {
+					if err = sc.flush(); err != nil {
+						return true
+					}
+					checkpoint, since = buf.Len(), 0
+				}
+				if !fits(n) {
+					if i > 0 {
+						tail = recBuf.newRecordBatchN(len(src.records) - i)
+						for j, pr := range src.records[i:] {
+							tail.appendRecord(pr, tail.renumber(pr, int32(i+j)))
+						}
+						consumed++
+					}
+					return true
+				}
+				m.appendRecord(pr, nums)
+				sc.buf = pr.appendTo(sc.buf, int32(len(m.records)-1))
+				if len(sc.buf) >= streamChunk {
+					// The chunk is copies of records we already own,
+					// so a sweep may take the source while the codec
+					// works on it: release, compress, retake, and stop
+					// if it did. A sweep then waits one chunk's
+					// compression, or the flush before a cut, rather
+					// than a source's.
+					src.mu.Unlock()
+					err = sc.write(false)
+					src.mu.Lock()
+					if err != nil || src.records == nil {
+						swept = src.records == nil
+						return true
+					}
+				}
+				since += n
+				uncompressed += n
+			}
+			consumed++
+			return false
+		}()
+		if done {
+			break
+		}
+	}
+	if ferr := sc.finish(); err == nil {
+		err = ferr
+	}
+	if err == nil && recordBatchOverhead+buf.Len() > limit {
+		recBuf.cl.producer.mergeOff.Store(true)
+		recBuf.cl.cfg.logger.Log(LogLevelWarn, "a merged batch exceeded ProducerBatchMaxBytes after compression; disabling StreamingCompression for this client, please open an issue at https://github.com/twmb/franz-go",
+			"topic", recBuf.topic,
+			"partition", recBuf.partition,
+			"codec", codec,
+			"compressed_bytes", buf.Len(),
+			"uncompressed_bytes", uncompressed,
+			"max_bytes", limit,
+		)
+		err = errors.New("merged batch too large")
+	}
+	if err != nil || swept || consumed == 0 {
+		return m, tail, consumed, false
+	}
+	m.stream.blob, m.stream.uncompressed = buf.Bytes(), uncompressed
+	m.wireLength = recordBatchOverhead + int32(len(m.stream.blob))
+	return m, tail, consumed, true
+}
+
+// renumber returns the numbers a record stamped for position oldOff in
+// another batch would have if appended to b. Only the varint widths of the
+// timestamp and offset deltas can differ, so we adjust the stamped length
+// rather than walk the record again.
+//
+// NOTE: a record's length and timestamp stamps live on the user's Record
+// and describe its position in exactly one batch. A merge re-stamps the
+// records of its sources for the merged batch while those sources are
+// frozen and skipped by createReq, so nothing can serialize them with the
+// wrong stamps; if the merge is discarded, restoreStamps puts the sources'
+// own stamps back.
+func (b *recBatch) renumber(pr promisedRec, oldOff int32) recordNumbers {
+	length, oldTs := pr.lengthAndTimestampDelta()
+	nums := recordNumbers{tsDelta: pr.Timestamp.UnixNano()/1e6 - b.firstTimestamp}
+	if len(b.records) == 0 {
+		nums.tsDelta = 0
+	}
+	nums.lengthField = length +
+		int32(kbin.VarlongLen(nums.tsDelta)-kbin.VarlongLen(oldTs)) +
+		int32(kbin.VarintLen(int32(len(b.records)))-kbin.VarintLen(oldOff))
+	return nums
+}
+
+// restoreStamps re-stamps every record's length and timestamp delta for
+// this batch. A discarded merge leaves the records stamped for the merged
+// batch, and appendTo serializes from the stamps.
+func (b *recBatch) restoreStamps() {
+	for i, pr := range b.records {
+		nums := b.recordNumbersAt(pr.Record, int32(i))
+		pr.setLengthAndTimestampDelta(nums.lengthField, nums.tsDelta)
+	}
 }
 
 //////////////
@@ -2443,7 +2825,10 @@ func (p *produceRequest) IsFlexible() bool   { return p.version >= 9 }
 func (p *produceRequest) AppendTo(dst []byte) []byte {
 	flexible := p.IsFlexible()
 
-	p.metrics = make(map[string]map[int32]ProduceBatchMetrics)
+	// The metrics maps are rebuilt on every AppendTo and take one entry
+	// per topic and one per partition we actually write, so size them up
+	// front rather than growing our way there.
+	p.metrics = make(map[string]map[int32]ProduceBatchMetrics, len(p.batches.bs))
 
 	if p.version >= 3 {
 		if flexible {
@@ -2474,7 +2859,7 @@ func (p *produceRequest) AppendTo(dst []byte) []byte {
 			dst = kbin.AppendArrayLen(dst, len(partitions))
 		}
 
-		tmetrics := make(map[int32]ProduceBatchMetrics)
+		tmetrics := make(map[int32]ProduceBatchMetrics, len(partitions))
 		p.metrics[topic] = tmetrics
 
 		for partition, batch := range partitions {
@@ -2483,6 +2868,14 @@ func (p *produceRequest) AppendTo(dst []byte) []byte {
 			if batch.records == nil || batch.isFailingFromLoadErr { // concurrent failAllRecords OR concurrent bumpRepeatedLoadErr
 				if flexible {
 					dst = kbin.AppendCompactNullableBytes(dst, nil)
+					// Flexible versions terminate every partition
+					// element with a tagged-field count; the healthy
+					// arm appends it after the batch bytes below.
+					// Skipping it here left the request one byte
+					// short per failed batch, desyncing the broker's
+					// parse of every following partition and killing
+					// the connection.
+					dst = append(dst, 0)
 				} else {
 					dst = kbin.AppendNullableBytes(dst, nil)
 				}
@@ -2613,12 +3006,24 @@ func (b seqRecBatch) appendTo(
 
 	dst = kbin.AppendArrayLen(dst, len(b.records))
 	recordsAt := len(dst)
+	m.NumRecords = len(b.records)
+
+	if st := b.stream; st != nil { // merged: the records are already compressed
+		dst = append(dst, st.blob...)
+		b.attrs |= int16(st.codec)
+		kbin.AppendInt16(dst[:attrsAt], b.attrs)
+		m.UncompressedBytes = st.uncompressed
+		m.CompressedBytes = len(st.blob)
+		m.CompressionType = uint8(st.codec)
+		kbin.AppendInt32(dst[:crcStart], int32(crc32.Checksum(dst[crcStart+4:], crc32c)))
+		return dst, m
+	}
+
 	for i, pr := range b.records {
 		dst = pr.appendTo(dst, int32(i))
 	}
 
 	toCompress := dst[recordsAt:]
-	m.NumRecords = len(b.records)
 	m.UncompressedBytes = len(toCompress)
 	m.CompressedBytes = m.UncompressedBytes
 

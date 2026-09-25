@@ -101,6 +101,8 @@ type cfg struct {
 	maxBrokerWriteBytes int32
 	maxBrokerReadBytes  int32
 
+	maxDecompressBatchBytes int
+
 	metadataMaxAge time.Duration
 	metadataMinAge time.Duration
 
@@ -126,6 +128,7 @@ type cfg struct {
 	maxProduceInflight                 int                // if idempotency is disabled, we allow a configurable max inflight
 	compression                        []CompressionCodec // order of preference
 
+	rackAwarePartitioning     bool
 	defaultProduceTopic       string
 	defaultProduceTopicAlways bool
 	maxRecordBatchBytes       func(string) int32
@@ -142,6 +145,8 @@ type cfg struct {
 
 	partitioner Partitioner
 	compressor  Compressor
+
+	streamCompression bool
 
 	stopOnDataLoss bool
 	onDataLoss     func(string, int32)
@@ -165,6 +170,7 @@ type cfg struct {
 	isolationLevel int8
 	keepControl    bool
 	rack           string
+	balanceRacks   bool
 	preferLagFn    PreferLagFn
 	decompressor   Decompressor
 
@@ -214,7 +220,7 @@ type cfg struct {
 	autocommitInterval time.Duration
 	commitCallback     func(*Client, *kmsg.OffsetCommitRequest, *kmsg.OffsetCommitResponse, error)
 
-	disableNextGenBalancer bool
+	serverSideBalancer bool
 }
 
 func (cfg *cfg) validate() error {
@@ -284,6 +290,12 @@ func (cfg *cfg) validate() error {
 		}
 	}
 
+	// Brokers reject an empty transactional id with INVALID_REQUEST at
+	// InitProducerID; catch it here where the error can say why.
+	if cfg.txnID != nil && *cfg.txnID == "" {
+		return errors.New("invalid empty transactional id")
+	}
+
 	i64lt := func(l, r int64) (bool, string) { return l < r, "less" }
 	i64gt := func(l, r int64) (bool, string) { return l > r, "larger" }
 
@@ -329,6 +341,9 @@ func (cfg *cfg) validate() error {
 		// fetch bytes limit, but hopefully we do not run into that.
 		{v: int64(cfg.maxBrokerWriteBytes), allowed: int64(cfg.maxRecordBatchBytes("")), badcmp: i64lt, fmt: "max broker write bytes %v is erroneously less than max record batch bytes %v"},
 		{v: int64(cfg.maxBrokerReadBytes), allowed: int64(cfg.maxBytes), badcmp: i64lt, fmt: "max broker read bytes %v is erroneously less than max fetch bytes %v"},
+
+		{name: "max decompressed batch bytes", v: int64(cfg.maxDecompressBatchBytes), allowed: 1, badcmp: i64lt},
+		{name: "max decompressed batch bytes", v: int64(cfg.maxDecompressBatchBytes), allowed: math.MaxInt32, badcmp: i64gt},
 
 		// -1 <= allowed concurrency (-1 is unbounded)
 		{name: "max concurrent fetches", v: int64(cfg.maxConcurrentFetches), allowed: -1, badcmp: i64lt},
@@ -477,11 +492,17 @@ func (cfg *cfg) validate() error {
 		if topic == "" {
 			return errors.New("invalid empty topic name in ConsumePartitions")
 		}
-		for p := range partitions {
+		for p, o := range partitions {
 			if p < 0 {
 				return fmt.Errorf("invalid negative partition %d for topic %q in ConsumePartitions", p, topic)
 			}
+			if o.at == atRewind {
+				return fmt.Errorf("RewindOffset is only valid as ConsumeResetOffset, not for topic %q partition %d in ConsumePartitions", topic, p)
+			}
 		}
+	}
+	if cfg.startOffset.at == atRewind {
+		return errors.New("RewindOffset is only valid as ConsumeResetOffset, not as ConsumeStartOffset")
 	}
 
 	// These options take a value; if explicitly set to "" it is a mistake (an
@@ -645,6 +666,8 @@ func defaultCfg() cfg {
 		maxBrokerWriteBytes: 100 << 20, // Kafka socket.request.max.bytes default is 100<<20
 		maxBrokerReadBytes:  100 << 20,
 
+		maxDecompressBatchBytes: 1 << 30,
+
 		metadataMaxAge:     5 * time.Minute,
 		metadataMinAge:     5 * time.Second,
 		missingTopicDelete: 15 * time.Second,
@@ -675,7 +698,7 @@ func defaultCfg() cfg {
 		maxBytes:       50 << 20,
 		maxPartBytes:   1 << 20,
 		startOffset:    NewOffset().AtStart(),
-		resetOffset:    NewOffset().AtStart(),
+		resetOffset:    RewindOffset(time.Minute),
 		isolationLevel: 0,
 
 		maxConcurrentFetches: -1, // unbounded default
@@ -966,6 +989,20 @@ func BrokerMaxReadBytes(v int32) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.maxBrokerReadBytes = v }}
 }
 
+// MaxDecompressBatchBytes sets the maximum size a fetched batch may
+// decompress to, overriding the default of 1 GiB (1 << 30). This also
+// caps the uncompressed size of a batch that [StreamingCompression]
+// merges.
+//
+// If a batch would decompress past this bound, the client stops consuming
+// the partition, PollFetches returns [ErrDecompressTooLarge], and the
+// partition is not fetched again until you [SetOffsets] past the batch.
+//
+// This option does not apply to custom decompressors, you must bound them.
+func MaxDecompressBatchBytes(n int) Opt {
+	return clientOpt{func(cfg *cfg) { cfg.maxDecompressBatchBytes = n }}
+}
+
 // MetadataMaxAge sets the maximum age for the client's cached metadata,
 // overriding the default 5m, to allow detection of new topics, partitions,
 // etc.
@@ -1051,6 +1088,14 @@ func ConsiderMissingTopicDeletedAfter(t time.Duration) Opt {
 // brokers for the client to use, or an error. Internally, the client will then
 // call UpdateSeedBrokers with the seeds you return. All other live connections
 // to brokers are stopped and active requests are failed.
+//
+// The same function is called when a broker answers REBOOTSTRAP_REQUIRED to
+// the ApiVersions request (KIP-1242, Kafka 4.4). The client names the cluster
+// and broker it expects on every connection, and a broker that is not the
+// node the client says it should be answers REBOOTSTRAP_REQUIRED. In that
+// case the client drops all discovered brokers and rediscovers the cluster
+// from the seeds whether or not this option is set; the option only lets you
+// replace the seeds first.
 //
 // The REBOOTSTRAP_REQUIRED error was introduced in Kafka 4.0, as a way for
 // Kafka to tell the client that the client needs to stop all non seed broker
@@ -1319,6 +1364,26 @@ func RecordPartitioner(partitioner Partitioner) ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.partitioner = partitioner }}
 }
 
+// RackAwarePartitioning prefers partitions whose leader is in this client's
+// rack when producing records that do not require a consistent partition
+// (unkeyed records, with the default partitioner), overriding the default of
+// considering every partition. This implements KIP-1123. [Rack] must also be
+// set; this option does nothing otherwise.
+//
+// Producing to a same-rack leader avoids cross rack, and often cross
+// datacenter, traffic. If no leader is in your rack, every partition is
+// considered. The filtering happens before your partitioner is consulted, so
+// this works with any partitioner, not only the default one as in the Java
+// client. Records that your partitioner requires consistency for (keyed
+// records, by default) are never filtered.
+//
+// Note that this skews which partitions receive records: if your producers are
+// not spread across racks in the same proportion as partition leaders, the
+// partitions led from racks with more producers receive more records.
+func RackAwarePartitioning() ProducerOpt {
+	return producerOpt{func(cfg *cfg) { cfg.rackAwarePartitioning = true }}
+}
+
 // ProduceRequestTimeout sets how long Kafka broker's are allowed to respond to
 // produce requests, overriding the default 10s. If a broker exceeds this
 // duration, it will reply with a request timeout error.
@@ -1409,6 +1474,34 @@ func ProducerLinger(linger time.Duration) ProducerOpt {
 // have already been produced and not flushed will return ErrMaxBuffered.
 func ManualFlushing() ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.manualFlushing = true }}
+}
+
+// StreamingCompression opts the client into compressing as many batches as
+// possible together when producing. By default, the client creates batches
+// internally up to ProducerBatchMaxBytes in size, and each of these batches
+// goes into its own produce request. With streaming compression, the client
+// compresses all batches available when a produce request is about to be
+// cut, up until the point that the next batch would exceed
+// ProducerBatchMaxBytes. This effectively changes the max bytes option from
+// bounding uncompressed bytes to bounding compressed bytes.
+//
+// The two potential downsides of this option are:
+//
+//   - Consumers cannot bound how much memory they use as well, because a
+//     consumer cannot ask "I want only 1MiB per partition uncompressed":
+//     consumers can only ask for batch sizes and do not know how large a
+//     batch will inflate to.
+//   - The client hard codes compression overhead; if the client gets it
+//     wrong and the compressed batch exceeds ProducerBatchMaxBytes, the
+//     client backs out of streaming compression permanently and logs a
+//     warning for you to create an issue.
+//
+// Streaming compression is recommended for high throughput producers whose
+// consumers can afford the larger decompressed batches. Streaming compression
+// is not supported if you use a custom compressor; using one will make this
+// option a no-op.
+func StreamingCompression() ProducerOpt {
+	return producerOpt{func(cfg *cfg) { cfg.streamCompression = true }}
 }
 
 // RecordDeliveryTimeout sets a rough time of how long a record can sit around
@@ -1560,17 +1653,15 @@ func FetchMaxPartitionBytes(b int32) ConsumerOpt {
 //
 // Negative values imply unlimited concurrent fetches (bounded by the number of
 // brokers in the cluster). A value of 0 means that a single fetch is allowed
-// ONLY when you poll - there is no fetch buffering.
+// only when you poll - there is no fetch buffering.
 func MaxConcurrentFetches(n int) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.maxConcurrentFetches = n }}
 }
 
 // ConsumeStartOffset sets the offset to start consuming from when consuming a
-// partition for the first time. If you do not set [ConsumeResetOffset], this
-// is also the offset to reset to if the client sees an OffsetOutOfRange error
-// while consuming a partition. The default is NewOffset().AtStart(), i.e.,
-// start processing a partition from the earliest offset. If using this option,
-// it is strongly recommended to also set ConsumeResetOffset.
+// partition for the first time, overriding the default of
+// NewOffset().AtStart(), i.e., start processing a partition from the earliest
+// offset.
 //
 // If you use an exact or relative offsets and the offset ends up out of range,
 // the client chooses the nearest of either the log start offset or the log end
@@ -1589,74 +1680,108 @@ func MaxConcurrentFetches(n int) ConsumerOpt {
 //	relative?                         => start at the above, + / - the relative amount
 //	exact/relative are out of bounds? => start at the nearest boundary (start or end)
 //	after millisec?                   => start at first offset after millisec if one exists, else log end offset
+//	LookbackOffset(d)?                => start d before the newest record
 //
 // To match Kafka's auto.offset.reset which is used for both the start offset
 // and the reset offset,
 //
+//	LookbackOffset(d)         == auto.offset.reset "by_duration"
 //	NewOffset().AtStart()     == auto.offset.reset "earliest"
 //	NewOffset().AtEnd()       == auto.offset.reset "latest"
 //	NewOffset().AtCommitted() == auto.offset.reset "none"
 //
-// Be sure to check the documentation for [ConsumeResetOffset], especially if
-// you rely on this option as the reset offset as well.
+// This option only sets the start offset. [ConsumeResetOffset] handles every
+// OffsetOutOfRange, whether or not this option is set. The one exception is a
+// [NoResetOffset] start offset, including [Offset.AtCommitted]: as those
+// document, OffsetOutOfRange is then fatal.
 func ConsumeStartOffset(offset Offset) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.startOffset, cfg.setStartOffset = offset, true }}
 }
 
-// ConsumeResetOffset sets the offset to reset to if the client ever sees
-// OffsetOutOfRange while fetching. If you do not set [ConsumeStartOffset],
-// this is also the offset to start consuming from when consuming a partition
-// for the first time. The default is NewOffset().AtStart(), i.e., reset to the
-// earliest offset. If using this option, it is strongly recommended to also
-// set ConsumeStartOffset.
+// ConsumeResetOffset sets where to resume consuming when the client detects
+// that the broker lost data at a point the client cannot determine,
+// overriding the default of RewindOffset(time.Minute).
 //
-// This option is *only* used if a consumer seeds OffsetOutOfRange on the
-// *first* fetch of a partition. If the consumer has consumed the partition at
-// all and sees the error, it will automatically reset to the first offset
-// after the timestamp of the last successfully consumed offset. If data loss
-// occurred such that even the last successfully consumed offset is lost, the
-// client automatically resets to the new current end offset. If you want to
-// disable offset resetting entirely, you can use [NoResetOffset].
+// When the client has a leader epoch to validate against, it first asks the
+// broker with OffsetForLeaderEpoch where the log diverged and resumes exactly
+// there. This option is used in the three cases where the client cannot
+// locate the loss:
 //
-// If you use an exact or relative offsets and the offset ends up out of range,
-// the client chooses the nearest of either the log start offset or the log end
-// offset. For example, using At(3) when the partition starts at 8 results in
-// the partition being consumed from offset 8.
+//   - The broker replied OffsetOutOfRange for an offset past the log end: the
+//     broker lost data, and the client had no leader epoch to validate against
+//     (with one, OffsetForLeaderEpoch catches this first).
+//   - The broker replied OffsetOutOfRange for an offset that is back within
+//     the log: the broker lost data, and by the time the client asked where
+//     the log ends, producers had written enough for the offset to be in
+//     range again.
+//   - OffsetForLeaderEpoch replied that the broker has no record of the epoch
+//     the client consumed at, so the broker cannot say where the log diverged.
 //
-// The following determines the offset for when a partition is seen for the
-// first time, or reset while fetching:
+// Each of these cases reports an [ErrDataLoss]. If instead the client fell
+// below the log start, it resumes at the log start: every record that still
+// exists is one it never consumed.
 //
-//	at start?                         => reset to the log start offset
-//	at end?                           => reset to the log end offset
-//	at exact?                         => reset to an exact offset (3 means offset 3)
-//	relative?                         => reset to the above, + / - the relative amount
-//	exact/relative are out of bounds? => reset to the nearest boundary (start or end)
-//	after millisec?                   => reset to the first offset after millisec if one exists, else the log end offset
+// This option also decides how an OffsetOutOfRange error is handled for a
+// partition that has not consumed anything yet. This happens when a committed
+// or requested offset is no longer in the log, most often a consumer resuming
+// a commit that fell below the log start. In this case, a RewindOffset resumes
+// from the log start.
+//
+// The default resumes at the first record stamped one minute before the last
+// consumed record. The client cannot know exactly where to resume to avoid
+// missing data: a larger rewind reduces your chance of skipping data but
+// increases the amount you may re-process. See [RewindOffset].
 //
 // To match Kafka's auto.offset.reset,
 //
-//	NewOffset().AtStart()     == auto.offset.reset "earliest"
-//	NewOffset().AtEnd()       == auto.offset.reset "latest"
-//	NewOffset().AtCommitted() == auto.offset.reset "none"
+//	RewindOffset(d)       == the default, with d of a minute; Kafka has no equivalent
+//	LookbackOffset(d)     == "by_duration": keep the last d of the log
+//	NewOffset().AtStart() == "earliest": never skip, at the cost of re-reading the log
+//	NewOffset().AtEnd()   == "latest": skip whatever was lost
+//	NoResetOffset()       == "none": the partition is fatal on any OffsetOutOfRange
 //
-// With the above, make sure to use [NoResetOffset] if you want to stop
-// consuming when you encounter OffsetOutOfRange. It is highly recommended
-// to read the docs for all Offset methods.
+// An exact or relative offset is bounded within the log: At(3) when the
+// partition starts at 8 resumes at offset 8.
 //
-// Be sure to check the documentation for [ConsumeStartOffset], especially if
-// you rely on this option as the start offset as well.
+// For historical compatibility, this option also sets [ConsumeStartOffset] if
+// you do not set it yourself (unless you use RewindOffset, in which case the
+// start offset stays at the start).
 func ConsumeResetOffset(offset Offset) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.resetOffset, cfg.setResetOffset = offset, true }}
 }
 
-// Rack specifies where the client is physically located and changes fetch
-// requests to consume from the closest replica as opposed to the leader
-// replica.
+// Rack specifies where the client is physically located. Brokers configured
+// with a rack aware replica selector use this to serve fetches from the
+// closest replica rather than the leader; by default, brokers serve every
+// fetch from the leader and this changes nothing about fetching.
 //
 // Consuming from a preferred replica can increase latency but can decrease
-// cross datacenter costs. See KIP-392 for more information.
+// cross datacenter costs. See KIP-392 for more information, and see
+// [BalanceRacks] to also take racks into account when assigning partitions
+// or [RackAwarePartitioning] to prefer same-rack leaders when producing.
 func Rack(rack string) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.rack = rack }}
+}
+
+// BalanceRacks makes the range and sticky balancers prefer giving a member
+// partitions whose leader is in the member's rack (KIP-881). [Rack] must
+// also be set. Set both on every member, since whichever member leads the
+// group computes the assignment.
+//
+// Brokers serve every fetch from the leader by default, so the leader's rack
+// decides whether a fetch crosses zones. Set neither option if your
+// consumers and brokers share a zone, or if cross zone traffic does not
+// matter to you. Set only Rack if your brokers use a rack aware replica
+// selector (KIP-392): fetches are then served from a replica in your rack
+// where one exists, and assigning partitions by the leader's rack would
+// gain nothing. Set both if brokers serve fetches from the leader and your
+// consumers span zones: each member is then assigned partitions whose
+// leader is in its own zone wherever an even balance allows. Turning this
+// on in a running group reassigns, at its next rebalance, every partition
+// held by a member in a different zone from the partition's leader, since
+// placing by zone outranks keeping partitions where they were.
+func BalanceRacks() ConsumerOpt {
+	return consumerOpt{func(cfg *cfg) { cfg.balanceRacks = true }}
 }
 
 // IsolationLevel controls whether uncommitted or only committed records are
@@ -1718,6 +1843,16 @@ func ConsumePartitions(partitions map[string]map[int32]Offset) ConsumerOpt {
 // ConsumeRegex sets the client to parse all topics passed to ConsumeTopics as
 // regular expressions. You can further use ConsumeExcludeTopics to exclude
 // topics that would match any ConsumeTopics regex.
+//
+// A regular expression matches anywhere in a topic name, the same as Go's
+// MatchString: "foo" matches "foo", "foobar", and "barfoo". Anchor with ^ and
+// $ to match an entire name. A regex client never consumes internal topics
+// such as __consumer_offsets; consume those from a client without
+// ConsumeRegex. The one exception to this is the next-gen consumer group
+// protocol, where if you don't use ConsumeExcludeTopics, the broker resolves
+// the regex and may include internal topics. ConsumeExcludeTopics forces
+// client-side regex evaluation because the next-gen protocol does not yet
+// support exclude regexes.
 //
 // When consuming via regex, every metadata request loads *all* topics, so that
 // all topics can be passed to any regular expressions. Every topic is
@@ -1803,7 +1938,9 @@ func ConsumePreferringLagFn(fn PreferLagFn) ConsumerOpt {
 // WithDecompressor allows you to completely control how fetch batches are
 // decompressed, allowing you to use alternative libraries than what franz-go
 // supports, allowing you to have more control over memory & pooling, and other
-// benefits. The client default compressor is the [DefaultDecompressor].
+// benefits. The client default compressor is the [DefaultDecompressor]. A
+// [DefaultDecompressor] passed here is rebuilt internally with
+// [MaxDecompressBatchBytes].
 func WithDecompressor(decompressor Decompressor) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.decompressor = decompressor }}
 }
@@ -1926,8 +2063,30 @@ func ShareAckCallback(fn func(*Client, ShareAckResults)) GroupOpt {
 // Note that if you opt into cooperative-sticky rebalancing, cooperative group
 // balancing is incompatible with eager (classical) rebalancing and requires a
 // careful rollout strategy (see KIP-429).
+//
+// If you use both cooperative and eager balancers, the group runs
+// cooperatively only if all members support cooperative balancing: an
+// eager-only member joining downgrades the whole group to eager. On
+// downgrade, the client revokes all partitions and re-consumes from
+// committed offsets, which can result in duplicates. It is not recommended
+// to downgrade once a group is cooperative.
+//
+// The range and sticky balancers can additionally take racks into account;
+// see [BalanceRacks].
 func Balancers(balancers ...GroupBalancer) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.balancers = balancers }}
+}
+
+// ServerSideBalancer opts into KIP-848 "next-gen" consumer groups, where the
+// broker's group coordinator assigns partitions rather than the client. This
+// requires Kafka 4.0+ and either [RangeBalancer] or [StickyBalancer] as your
+// balancer; otherwise, the client uses the classic client-driven protocol.
+//
+// It is recommended to use this only if you are on Kafka 4.3+. Before that,
+// it is possible to receive a STALE_MEMBER_EPOCH error during an offset commit
+// during standard client behavior that the client cannot handle itself.
+func ServerSideBalancer() GroupOpt {
+	return groupOpt{func(cfg *cfg) { cfg.serverSideBalancer = true }}
 }
 
 // SessionTimeout sets how long a member in the group can go between
@@ -2256,22 +2415,3 @@ func GroupProtocol(protocol string) GroupOpt {
 func AutoCommitCallback(fn func(*Client, *kmsg.OffsetCommitRequest, *kmsg.OffsetCommitResponse, error)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.commitCallback = fn }}
 }
-
-// !!! Only uncomment once we trust the broker implementation!
-// !!! And add this option to Opt!
-//
-// DisableNextGenRebalancer opts out of the "next gen" rebalancer that is
-// the default as of Kafka 4.0+. The client opts in to the next gen rebalancer
-// automatically if the broker supports it AND if you are using either the
-// [RangeBalancer] or [StickyBalancer] or [CooperativeStickyBalancer]. If you
-// use your own rebalancer or use the [RoundRobinBalancer] or are talking to
-// a broker that does not support the next gen balancer, the client uses the
-// old client-driven group balancing behavior.
-//
-// You may want to use this function if you notice a regression or run into
-// a broker or client bug, or if you prefer the performance of the old
-// client driven rebalancers.
-//  func DisableNextGenRebalancer() GroupOpt {
-//  	return groupOpt{func(cfg *cfg) { cfg.disableNextGenBalancer = true }}
-//  }
-//

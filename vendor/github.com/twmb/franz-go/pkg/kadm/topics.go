@@ -3,6 +3,7 @@ package kadm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -620,6 +621,7 @@ func (cl *Client) createPartitions(ctx context.Context, dry bool, add, set int, 
 		}
 	}
 
+	rs := make(CreatePartitionsResponses)
 	req := kmsg.NewCreatePartitionsRequest()
 	req.TimeoutMillis = cl.timeoutMillis
 	req.ValidateOnly = dry
@@ -629,17 +631,31 @@ func (cl *Client) createPartitions(ctx context.Context, dry bool, add, set int, 
 		if add == -1 {
 			rt.Count = int32(set)
 		} else {
-			rt.Count = int32(len(td[t].Partitions) + add)
+			// Surface metadata failures rather than masking them: a
+			// topic that errored (or was missing) in the listing
+			// previously computed Count = 0 + add, sending a shrink
+			// request whose broker error hid the real cause.
+			d, exists := td[t]
+			switch {
+			case !exists:
+				rs[t] = CreatePartitionsResponse{Topic: t, Err: fmt.Errorf("unable to determine the current partition count: %w", kerr.UnknownTopicOrPartition)}
+				continue
+			case d.Err != nil:
+				rs[t] = CreatePartitionsResponse{Topic: t, Err: fmt.Errorf("unable to determine the current partition count: %w", d.Err)}
+				continue
+			}
+			rt.Count = int32(len(d.Partitions) + add)
 		}
 		req.Topics = append(req.Topics, rt)
+	}
+	if len(req.Topics) == 0 {
+		return rs, nil
 	}
 
 	resp, err := req.RequestWith(ctx, cl.cl)
 	if err != nil {
 		return nil, err
 	}
-
-	rs := make(CreatePartitionsResponses)
 	for _, t := range resp.Topics {
 		rs[t.Topic] = CreatePartitionsResponse{
 			Topic:      t.Topic,
