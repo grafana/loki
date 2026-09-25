@@ -104,8 +104,9 @@ func (q *Query) tailQuery(
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var conn atomic.Pointer[websocket.Conn]
-	conn.Store(initialConn)
+	conn := initialConn
+	var connMu sync.Mutex
+	var stopping atomic.Bool
 
 	done := make(chan struct{})
 	var signalWG sync.WaitGroup
@@ -115,10 +116,13 @@ func (q *Query) tailQuery(
 
 		select {
 		case <-stopChan:
-			// Stop reconnects first. Dial cancellation does not close an
-			// established socket, so we can still send its close frame below.
-			cancel()
-			currentConn := conn.Load()
+			// Mark shutdown before sending the close frame: the peer may
+			// respond before we cancel the context. Serialize this with
+			// installing a reconnected socket so shutdown cannot miss it.
+			connMu.Lock()
+			stopping.Store(true)
+			currentConn := conn
+			connMu.Unlock()
 			if err := currentConn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
@@ -126,6 +130,7 @@ func (q *Query) tailQuery(
 			); err != nil {
 				log.Println("Error closing websocket:", err)
 			}
+			cancel()
 			_ = currentConn.Close()
 		case <-done:
 		}
@@ -133,7 +138,7 @@ func (q *Query) tailQuery(
 	defer func() {
 		close(done)
 		signalWG.Wait()
-		_ = conn.Load().Close()
+		_ = conn.Close()
 	}()
 
 	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
@@ -147,17 +152,15 @@ func (q *Query) tailQuery(
 	lastReceivedTimestamp := q.Start
 
 	for {
-		select {
-		case <-ctx.Done():
+		if stopping.Load() {
 			return nil
-		default:
 		}
 
 		tailResponse := new(loghttp.TailResponse)
-		currentConn := conn.Load()
+		currentConn := conn
 		err := unmarshal.ReadTailResponseJSON(tailResponse, currentConn)
 		if err != nil {
-			if ctx.Err() != nil {
+			if stopping.Load() {
 				return nil
 			}
 
@@ -181,19 +184,22 @@ func (q *Query) tailQuery(
 					MaxRetries: 5,
 				})
 
-				for bo.Ongoing() {
+				for bo.Ongoing() && !stopping.Load() {
 					var nextConn *websocket.Conn
 					nextConn, err = liveTailQueryConn(ctx, c, q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
-						if ctx.Err() != nil {
+						connMu.Lock()
+						if stopping.Load() {
+							connMu.Unlock()
 							_ = nextConn.Close()
 							return nil
 						}
-						conn.Store(nextConn)
+						conn = nextConn
+						connMu.Unlock()
 						break
 					}
 
-					if ctx.Err() != nil {
+					if stopping.Load() {
 						return nil
 					}
 
@@ -202,7 +208,7 @@ func (q *Query) tailQuery(
 				}
 
 				if err = bo.Err(); err != nil {
-					if ctx.Err() != nil {
+					if stopping.Load() {
 						return nil
 					}
 					log.Println("Error recreating tailing connection:", err)

@@ -286,6 +286,89 @@ type reconnectingTailClient struct {
 	dial func(context.Context) (*websocket.Conn, error)
 }
 
+// Force the peer's close response to arrive before the close-frame write returns,
+// while the reconnect context is still live.
+func TestTailQueryCloseResponseBeforeCancellation(t *testing.T) {
+	leaks := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, leaks) })
+	serverConn, initialConn := newTailTestConnection(t)
+	require.NoError(t, serverConn.Close())
+	responseRead := make(chan struct{})
+	writeContext := make(chan error, 1)
+	stopChan := make(chan os.Signal, 1)
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"streams":[{"stream":{"app":"foo"},"values":[["1","line"]]}]}`)); err != nil {
+			return
+		}
+		_, _, _ = conn.ReadMessage() // The default handler immediately replies to the close frame.
+	}))
+	t.Cleanup(server.Close)
+	c := &reconnectingTailClient{dial: func(ctx context.Context) (*websocket.Conn, error) {
+		var transport *closeResponseConn
+		dialer := websocket.Dialer{NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+			transport = &closeResponseConn{Conn: conn, responseRead: responseRead, ctx: ctx, writeContext: writeContext}
+			return transport, nil
+		}}
+		conn, _, err := dialer.DialContext(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+		if err != nil {
+			return nil, err
+		}
+		transport.armed = true
+		conn.SetCloseHandler(func(int, string) error {
+			close(responseRead)
+			return nil
+		})
+		return conn, nil
+	}}
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- (&Query{Quiet: true}).tailQuery(0, c, &interruptOutput{stopChan: stopChan}, initialConn, stopChan)
+	}()
+	select {
+	case err := <-errChan:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("tail did not stop after the peer's close response")
+	}
+	select {
+	case err := <-writeContext:
+		require.NoError(t, err, "context was canceled before the close-frame write completed")
+	default:
+		t.Fatal("close frame was not sent")
+	}
+}
+
+type closeResponseConn struct {
+	net.Conn
+	armed        bool
+	responseRead <-chan struct{}
+	ctx          context.Context
+	writeContext chan<- error
+}
+
+func (c *closeResponseConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	if c.armed && err == nil {
+		select {
+		case <-c.responseRead:
+		case <-time.After(2 * time.Second):
+			return n, errors.New("peer did not reply to close frame")
+		}
+		c.writeContext <- c.ctx.Err()
+	}
+	return n, err
+}
+
 func (c *reconnectingTailClient) LiveTailQueryConnContext(ctx context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	return c.dial(ctx)
 }
