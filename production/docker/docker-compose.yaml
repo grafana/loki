@@ -40,7 +40,7 @@ x-loki-common: &loki-common
 
 services:
   grafana:
-    image: grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
+    image: grafana/grafana:13.2.2@sha256:ac461fb352abc50da10a51c7d02462e9c05488f11f53f14b3ad79a8145f638a0
     ports:
       - "3000:3000"
     environment:
