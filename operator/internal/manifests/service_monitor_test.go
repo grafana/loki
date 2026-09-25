@@ -198,8 +198,7 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 			require.NotNil(t, tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig)
 
 			// Do not use bearer authentication for loki endpoints
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenFile)   //nolint:staticcheck
-			require.Empty(t, tst.ServiceMonitor.Spec.Endpoints[0].BearerTokenSecret) //nolint:staticcheck
+			require.Nil(t, tst.ServiceMonitor.Spec.Endpoints[0].Authorization)
 
 			// Check using built-in PKI
 			c := tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig
@@ -297,7 +296,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -374,7 +373,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -451,7 +450,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -544,7 +543,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -577,7 +576,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -670,7 +669,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
@@ -703,7 +702,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 											Key: caFile,
 										},
 									},
-									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+									ServerName: new("test-gateway-http.test.svc.cluster.local"),
 								},
 							},
 						},
