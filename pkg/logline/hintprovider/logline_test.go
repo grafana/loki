@@ -770,11 +770,11 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		{ID: 1, MinTimeUnix: t0.Add(2 * time.Second).UnixMilli(), MaxTimeUnix: t0.Add(3 * time.Second).UnixMilli()},
 	}
 	indexStore := newTestStore(t)
-	writeShardedTermTestIndex(t, indexStore, "1111111111111111", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "1111111111111111", docs, map[string][]uint32{
 		byShard[emptyShard][0]: {0},
 		byShard[emptyShard][1]: {1},
 	}, emptyShard)
-	writeShardedTermTestIndex(t, indexStore, "2222222222222222", docs, map[string][]uint32{
+	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "2222222222222222", docs, map[string][]uint32{
 		byShard[matchingShard][0]: {0},
 	}, matchingShard)
 
@@ -792,6 +792,67 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 	require.NoError(t, err)
 	require.NotNil(t, hints)
 	require.Empty(t, hints.TimeRanges)
+}
+
+// TestLoglineHintProvider_ProvideHints_MixedVersionShards queries a sharded
+// window that spans a v3 to v4 cutover. v3 splits the needle into four 6-grams
+// spread over several shards, v4 packs it into one key on a single shard. Both
+// periods hold the needle, so both must come back as hint ranges.
+func TestLoglineHintProvider_ProvideHints_MixedVersionShards(t *testing.T) {
+	const needle = "123456789"
+	t0 := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+
+	indexStore := newTestStore(t)
+	for i, period := range []struct {
+		version string
+		start   time.Time
+	}{
+		{version: "v3", start: t0},
+		{version: "v4", start: t1},
+	} {
+		terms, err := ExtractQueryNgrams(needle, 6, period.version)
+		require.NoError(t, err)
+		require.NotEmpty(t, terms)
+
+		docs := []format.DocumentMetadata{{
+			ID:          0,
+			MinTimeUnix: period.start.UnixMilli(),
+			MaxTimeUnix: period.start.Add(time.Second).UnixMilli(),
+		}}
+		// Like the builder, each shard only holds the terms routed to it.
+		for shardValue := range 10 {
+			meta := store.Meta{ShardCount: 10, ShardAlgorithm: shard.AlgorithmMurmur3Mix, ShardValue: shardValue}
+			postings := make(map[string][]uint32)
+			for _, term := range filterNgramsForShard(terms, meta) {
+				postings[term] = []uint32{0}
+			}
+			if len(postings) == 0 {
+				continue
+			}
+			hash := fmt.Sprintf("%015d%d", i, shardValue)
+			writeShardedTermTestIndex(t, indexStore, period.version, hash, docs, postings, shardValue)
+		}
+	}
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |= "123456789"`)
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		expr,
+		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
+		model.TimeFromUnixNano(t1.Add(time.Minute).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+	require.Len(t, hints.TimeRanges, 2)
+	require.Equal(t, t0, hints.TimeRanges[0].Start)
+	require.Equal(t, t0.Add(time.Second), hints.TimeRanges[0].End)
+	require.Equal(t, t1, hints.TimeRanges[1].Start)
+	require.Equal(t, t1.Add(time.Second), hints.TimeRanges[1].End)
 }
 
 func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
@@ -1046,6 +1107,82 @@ func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
+func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testing.T) {
+	meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v4")
+
+	// v4 can look up the text filter, but emits no term for an 8-digit number:
+	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
+	jobs, metasByID, err := buildTermJobs(
+		[]string{"abcdefg", "12345678"},
+		[]store.Meta{meta},
+		6,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, jobs)
+	require.Contains(t, metasByID, meta.ID())
+}
+
+// TestBuildTermJobs_FiltersWithoutTerms pins what happens to a filter that has
+// no terms under a block's version. It drops out of that version's AND, but a
+// version that no filter can narrow makes the whole lookup unsupported.
+// Skipping that version's blocks instead would leave them without ranges and
+// hide their matches.
+func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
+	v3Meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
+	v4Meta := minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
+
+	tests := []struct {
+		name    string
+		filters []string
+		metas   []store.Meta
+		wantErr error
+		// wantTerms maps a block ID to the terms looked up in it.
+		wantTerms map[string][]string
+	}{
+		{
+			name:    "v4 cannot narrow a number shorter than 9 digits",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v4Meta},
+			wantErr: ErrUnsupported,
+		},
+		{
+			name:    "one version without terms fails a mixed window",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v3Meta, v4Meta},
+			wantErr: ErrUnsupported,
+		},
+		{
+			name:    "each version narrows on the filters it has terms for",
+			filters: []string{"abcdefg", "12345678"},
+			metas:   []store.Meta{v3Meta, v4Meta},
+			wantTerms: map[string][]string{
+				v3Meta.ID(): {"ABCDEF", "BCDEFG", "123456", "234567", "345678"},
+				v4Meta.ID(): {"ABCDEF", "BCDEFG"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobs, metasByID, err := buildTermJobs(tt.filters, tt.metas, 6)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+
+			got := make(map[string][]string)
+			for _, job := range jobs {
+				got[job.readerID] = append(got[job.readerID], job.term)
+			}
+			require.Len(t, got, len(tt.wantTerms))
+			for id, want := range tt.wantTerms {
+				require.ElementsMatch(t, want, got[id], "terms for block %s", id)
+				require.Contains(t, metasByID, id)
+			}
+		})
+	}
+}
+
 func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -1083,6 +1220,7 @@ func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]b
 func writeShardedTermTestIndex(
 	t *testing.T,
 	indexStore *store.Store,
+	version string,
 	hash string,
 	docs []format.DocumentMetadata,
 	postings map[string][]uint32,
@@ -1092,7 +1230,7 @@ func writeShardedTermTestIndex(
 	require.NotEmpty(t, docs)
 
 	path := filepath.Join(t.TempDir(), "test.lidx")
-	writer, err := logline.NewWriter(logline.CurrentVersion, path, docs, nil)
+	writer, err := logline.NewWriter(version, path, docs, nil)
 	require.NoError(t, err)
 
 	terms := make([]string, 0, len(postings))
@@ -1121,7 +1259,7 @@ func writeShardedTermTestIndex(
 	meta := store.Meta{
 		Date:           minLogTS.Format("2006-01-02"),
 		Hash:           hash,
-		Version:        logline.CurrentVersion,
+		Version:        version,
 		MinLogTs:       minLogTS,
 		MaxLogTs:       maxLogTS,
 		MinRecordTs:    minLogTS,

@@ -222,6 +222,12 @@ func buildTermJobs(
 	jobs := make([]termJob, 0, len(filters)*len(overlapping))
 	metasByID := make(map[string]store.Meta, len(overlapping))
 
+	// Filters are ANDed, so a filter that yields no terms under a version
+	// constrains nothing there and drops out. For example, v4 emits no term for
+	// a number shorter than 9 digits. hasTerms records, per index version,
+	// whether any filter is left to narrow it.
+	hasTerms := make(map[string]bool)
+
 	for _, filter := range filters {
 		// Per-version cache: each unique index version is extracted at most once
 		// per filter. The common case (all blocks share the current index version)
@@ -236,9 +242,7 @@ func buildTermJobs(
 				if err != nil {
 					return nil, nil, fmt.Errorf("block %s: %w", meta.ID(), err)
 				}
-				if len(ngrams) == 0 {
-					return nil, nil, ErrUnsupported
-				}
+				hasTerms[meta.Version] = hasTerms[meta.Version] || len(ngrams) > 0
 				orderedNgrams = orderUncorrelated(ngrams)
 				ngramsByVersion[meta.Version] = orderedNgrams
 			}
@@ -255,6 +259,14 @@ func buildTermJobs(
 					readerID: readerID,
 				})
 			}
+		}
+	}
+
+	// A version that no filter can narrow leaves its blocks unconstrained, so
+	// the whole query passes through to a full Loki scan.
+	for _, ok := range hasTerms {
+		if !ok {
+			return nil, nil, ErrUnsupported
 		}
 	}
 	return jobs, metasByID, nil
