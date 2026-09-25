@@ -549,13 +549,15 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	var loglineStore *loglinestore.Store
 	if t.Cfg.Logline.Query.Enabled {
+		// Query-frontend tripperware also constructs a store. Distinct
+		// component labels let both register metrics in a single binary.
 		loglineStore, err = loglinestore.New(
 			context.Background(),
 			t.Cfg.SchemaConfig,
 			t.Cfg.StorageConfig.ObjectStore,
 			t.Cfg.Logline.Store,
 			logger,
-			prometheus.DefaultRegisterer,
+			prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer),
 		)
 		if err != nil {
 			return nil, err
@@ -2771,7 +2773,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 		t.Cfg.StorageConfig.ObjectStore,
 		t.Cfg.Logline.Store,
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-builder"}, prometheus.DefaultRegisterer),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline index store: %w", err)

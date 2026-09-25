@@ -111,7 +111,7 @@ func WrapMiddleware(
 		deps.ObjectStore,
 		storeCfg,
 		logger,
-		reg,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "query-frontend"}, reg),
 	)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create logline index store: %w", err)
