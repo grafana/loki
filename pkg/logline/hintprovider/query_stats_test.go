@@ -219,6 +219,8 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats.totalIOWaitNanos.Add(1500)
 	stats.totalIOBytes.Add(99)
 	stats.peakConcurrency.Store(7)
+	stats.SetWallTime(100 * time.Millisecond)
+	stats.totalWorkNanos.Store((250 * time.Millisecond).Nanoseconds())
 	stats.prefetchCalls.Store(3)
 	stats.prefetchTimeouts.Store(1)
 	stats.indexQueriesTotal.Add(5)
@@ -227,7 +229,12 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats.ObserveHintCache("miss", 4, 2)
 
 	snap := stats.Snapshot()
-	got := fromProtoStats(&snap).Snapshot()
+	require.Equal(t, 2.5, snap.EffectiveConcurrency)
+
+	restored := fromProtoStats(&snap)
+	// QF overwrites wall after the hop; work is not on the proto.
+	restored.SetWallTime(5 * time.Second)
+	got := restored.Snapshot()
 
 	require.Equal(t, snap.HeaderReads, got.HeaderReads)
 	require.Equal(t, snap.MetadataReads, got.MetadataReads)
@@ -238,6 +245,7 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
+	require.Equal(t, snap.EffectiveConcurrency, got.EffectiveConcurrency)
 	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
 	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
 	require.Equal(t, snap.IndexQueriesTotal, got.IndexQueriesTotal)

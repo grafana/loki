@@ -21,9 +21,6 @@ type Metrics struct {
 	// time ranges that bypass the logline index entirely.
 	// Labels: reason — "ingester_window".
 	passthroughSubRequests *prometheus.CounterVec
-	// queryTermBatchesProcessed records QueryMultiple term-batch depth per index query.
-	// Labels: reason — "term_miss", "empty_and", "positive".
-	queryTermBatchesProcessed *prometheus.HistogramVec
 	// hintSkippedSmallQuery counts requests that skip hint prefetch because
 	// query index-stats bytes are below the configured threshold.
 	hintSkippedSmallQuery prometheus.Counter
@@ -68,11 +65,6 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "logline_query_frontend_passthrough_sub_requests_total",
 			Help: "Total sub-requests dispatched for ingester-window time ranges",
 		}, []string{"reason"}),
-		queryTermBatchesProcessed: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "logline_query_frontend_query_term_batches_processed",
-			Help:    "Term batches processed by QueryMultiple per index query",
-			Buckets: []float64{1, 2, 3, 4, 5, 8, 10, 15, 20},
-		}, []string{"reason"}),
 		hintSkippedSmallQuery: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "logline_query_frontend_hint_skipped_small_query_total",
 			Help: "Total requests that skipped logline hint prefetch because query bytes were below threshold",
@@ -98,11 +90,4 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help: "Total shard-planning cancel-then-rerun decisions and outcomes",
 		}, []string{"result", "reason"}),
 	}
-}
-
-func (m *Metrics) ObserveQueryMultipleTermBatches(reason string, termBatchesProcessed int) {
-	if m == nil || termBatchesProcessed <= 0 {
-		return
-	}
-	m.queryTermBatchesProcessed.WithLabelValues(reason).Observe(float64(termBatchesProcessed))
 }

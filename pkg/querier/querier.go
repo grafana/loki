@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
@@ -51,6 +52,19 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/querier")
+
+var queryTermBatchesProcessed = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "logline_querier_query_term_batches_processed",
+	Help:    "Term batches processed by QueryMultiple per index query",
+	Buckets: []float64{1, 2, 3, 4, 5, 8, 10, 15, 20},
+}, []string{"reason"})
+
+func observeQueryMultipleTermBatches(reason string, termBatchesProcessed int) {
+	if termBatchesProcessed <= 0 {
+		return
+	}
+	queryTermBatchesProcessed.WithLabelValues(reason).Observe(float64(termBatchesProcessed))
+}
 
 // Config for a querier.
 type Config struct {
@@ -156,7 +170,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 			loglineStore,
 			ngramLength,
 			maxHintParallel,
-			nil,
+			observeQueryMultipleTermBatches,
 			logger,
 			prometheus.DefaultRegisterer,
 		)
