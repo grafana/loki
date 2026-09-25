@@ -41,7 +41,7 @@ install_dist_dependencies() {
 
 install_lint_dependencies() {
     echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION}"
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh |
         sh -s -- -b /usr/local/bin "${GOLANGCI_LINT_VERSION}"
 }
 
