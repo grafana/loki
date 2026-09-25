@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
@@ -20,6 +20,7 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		params      s3.SSEConfig
 		expected    *SSEParsedConfig
 		expectedErr error
+		errContains string
 	}{
 		{
 			name: "Test SSE encryption with SSES3 type",
@@ -76,7 +77,9 @@ func TestNewSSEParsedConfig(t *testing.T) {
 				KMSKeyID:             kmsKeyID,
 				KMSEncryptionContext: `INVALID_JSON`,
 			},
-			expectedErr: errors.New("failed to parse KMS encryption context: failed to marshal KMS encryption context: json: error calling MarshalJSON for type json.RawMessage: invalid character 'I' looking for beginning of value"),
+			// Go 1.26 and 1.27 disagree on the encoding/json type name in this error.
+			expectedErr: errors.New("failed to parse KMS encryption context: failed to marshal KMS encryption context"),
+			errContains: "invalid character 'I'",
 		},
 	}
 
@@ -84,9 +87,12 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := NewSSEParsedConfig(tt.params)
 			if tt.expectedErr != nil {
-				assert.Equal(t, tt.expectedErr.Error(), err.Error())
+				require.ErrorContains(t, err, tt.expectedErr.Error())
 			}
-			assert.Equal(t, tt.expected, result)
+			if tt.errContains != "" {
+				require.ErrorContains(t, err, tt.errContains)
+			}
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

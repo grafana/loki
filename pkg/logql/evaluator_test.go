@@ -11,8 +11,64 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
+
+type hintCapturingQuerier struct {
+	logParams    SelectLogParams
+	sampleParams SelectSampleParams
+}
+
+func (q *hintCapturingQuerier) SelectLogs(_ context.Context, params SelectLogParams) (iter.EntryIterator, error) {
+	q.logParams = params
+	return iter.NoopEntryIterator, nil
+}
+
+func (q *hintCapturingQuerier) SelectSamples(_ context.Context, params SelectSampleParams) (iter.SampleIterator, error) {
+	q.sampleParams = params
+	return iter.NoopSampleIterator, nil
+}
+
+func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	hintRanges := []logproto.HintTimeRange{{
+		Start: start.Add(5 * time.Minute),
+		End:   start.Add(10 * time.Minute),
+	}}
+	querier := &hintCapturingQuerier{}
+	evaluator := NewDefaultEvaluator(querier, 0, 0)
+
+	logQuery := `{app="foo"} |= "error"`
+	logExpr := syntax.MustParseExpr(logQuery).(syntax.LogSelectorExpr)
+	logParams := LiteralParams{
+		queryString: logQuery,
+		queryExpr:   logExpr,
+		start:       start,
+		end:         start.Add(time.Hour),
+		hintRanges:  hintRanges,
+	}
+	iterator, err := evaluator.NewIterator(context.Background(), logExpr, logParams)
+	require.NoError(t, err)
+	require.NoError(t, iterator.Close())
+	require.Equal(t, hintRanges, querier.logParams.HintRanges)
+
+	sampleQuery := `rate({app="foo"}[1m])`
+	sampleExpr := syntax.MustParseExpr(sampleQuery).(syntax.SampleExpr)
+	sampleParams := LiteralParams{
+		queryString: sampleQuery,
+		queryExpr:   sampleExpr,
+		start:       start,
+		end:         start.Add(time.Hour),
+		step:        time.Minute,
+		hintRanges:  hintRanges,
+	}
+	stepEvaluator, err := evaluator.NewStepEvaluator(context.Background(), evaluator, sampleExpr, sampleParams)
+	require.NoError(t, err)
+	require.NoError(t, stepEvaluator.Close())
+	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
+}
 
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 	op, err := syntax.MergeBinOp(syntax.OpTypeDiv,

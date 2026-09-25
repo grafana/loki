@@ -114,11 +114,16 @@ func (it *peekingSampleIterator) Err() error {
 
 type SampleIteratorHeap struct {
 	its []SampleIterator
+
+	// order selects which of Less's two comparison strategies applies. Every element
+	// pushed onto the heap must already be sorted consistently with it.
+	order logproto.SampleOrder
 }
 
-func NewSampleIteratorHeap(its []SampleIterator) SampleIteratorHeap {
+func NewSampleIteratorHeap(its []SampleIterator, order logproto.SampleOrder) SampleIteratorHeap {
 	return SampleIteratorHeap{
-		its: its,
+		its:   its,
+		order: order,
 	}
 }
 
@@ -137,6 +142,21 @@ func (h *SampleIteratorHeap) Pop() interface{} {
 }
 
 func (h SampleIteratorHeap) Less(i, j int) bool {
+	if h.order == logproto.SAMPLE_ORDER_BY_STREAM {
+		// Stream-first: order by stream hash, then timestamp.
+		//
+		// On a stream hash collision, it's unsafe to tiebreak on Labels(). One
+		// stream can report a different Labels() per sample. Structured metadata
+		// and label_format both extract a different value per line. Ordering by
+		// labels would scatter one stream's samples out of timestamp order.
+		h1, h2 := h.its[i].StreamHash(), h.its[j].StreamHash()
+		if h1 != h2 {
+			return h1 < h2
+		}
+		return h.its[i].At().Timestamp < h.its[j].At().Timestamp
+	}
+
+	// Timestamp-first (default): order by timestamp, then stream hash (or labels when no hash).
 	s1, s2 := h.its[i].At(), h.its[j].At()
 	if s1.Timestamp == s2.Timestamp {
 		if h.its[i].StreamHash() == 0 {
@@ -147,12 +167,29 @@ func (h SampleIteratorHeap) Less(i, j int) bool {
 	return s1.Timestamp < s2.Timestamp
 }
 
+// closeSampleIterator closes it, and routes its outcome: a close error into closeErrs, and a
+// read error into *iterErr (unless *iterErr is already set).
+func closeSampleIterator(it SampleIterator, iterErr *error, closeErrs *util.MultiError) {
+	itErr := it.Err()
+	closeErr := it.Close()
+
+	// Some implementations (e.g. pkg/chunkenc's bufferedIterator) return their stored read
+	// error from Close too. When it does, closeErr is skipped: it already surfaced through
+	// itErr, so adding it to closeErrs would report it a second time as a close error.
+	if closeErr != nil && closeErr != itErr {
+		closeErrs.Add(closeErr)
+	}
+	if itErr != nil && *iterErr == nil {
+		*iterErr = itErr
+	}
+}
+
 // mergeSampleIterator iterates over a heap of iterators by merging samples.
 type mergeSampleIterator struct {
-	heap       *SampleIteratorHeap
-	is         []SampleIterator
-	prefetched bool
-	stats      *stats.Context
+	heap        *SampleIteratorHeap
+	is          []SampleIterator
+	initialized bool
+	stats       *stats.Context
 	// pushBuffer contains the list of iterators that needs to be pushed to the heap
 	// This is to avoid allocations.
 	pushBuffer []SampleIterator
@@ -161,18 +198,50 @@ type mergeSampleIterator struct {
 	// We buffer entries with the same timestamp to correctly dedupe them.
 	buffer []sampleWithLabels
 	curr   sampleWithLabels
-	errs   []error
+
+	// iterErr is the first read error a sub-iterator reported when its own Next returned
+	// false.
+	iterErr error
+
+	// closeErrs collects every sub-iterator Close error, whether Close ran while Next drained
+	// that sub-iterator or later, from this iterator's own Close.
+	closeErrs util.MultiError
 }
 
-// NewTimestampFirstMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
-// The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
-// This means using this iterator with a single iterator will result in the same result as the input iterator.
-// Samples are returned in global timestamp order, as long as each input iterator is itself timestamp-ordered.
-// If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
+// NewTimestampFirstMergeSampleIterator returns a sample iterator that merges and
+// deduplicates samples from several iterators in timestamp-first order.
+//
+// The merge orders every sample by timestamp, across all inputs. It never reorders
+// entries within a single input iterator. It may still deduplicate exact repeats
+// found there.
+//
+// Each input iterator must already carry that order. A single input iterator comes
+// back unchanged.
+//
+// Use NewTimestampFirstSortSampleIterator instead if you do not need deduplication.
 func NewTimestampFirstMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
-	h := SampleIteratorHeap{
-		its: make([]SampleIterator, 0, len(is)),
-	}
+	return newMergeSampleIterator(ctx, is, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
+}
+
+// NewStreamFirstMergeSampleIterator returns a sample iterator that merges and
+// deduplicates samples from several iterators in stream-first order.
+//
+// The merge groups samples into runs by stream hash. Within a run, it orders samples
+// by timestamp.
+//
+// Each input iterator must already carry that order. It can be a single stream, or
+// several complete streams concatenated in ascending stream-hash order.
+func NewStreamFirstMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
+	return newMergeSampleIterator(ctx, is, logproto.SAMPLE_ORDER_BY_STREAM)
+}
+
+// newMergeSampleIterator is the shared merge and dedup core for the timestamp-first and
+// stream-first sample iterators.
+//
+// The two differ only in heap order. Buffering and per-group deduplication stay the same
+// for both.
+func newMergeSampleIterator(ctx context.Context, is []SampleIterator, order logproto.SampleOrder) SampleIterator {
+	h := NewSampleIteratorHeap(make([]SampleIterator, 0, len(is)), order)
 	return &mergeSampleIterator{
 		stats:      stats.FromContext(ctx),
 		is:         is,
@@ -182,52 +251,65 @@ func NewTimestampFirstMergeSampleIterator(ctx context.Context, is []SampleIterat
 	}
 }
 
-// prefetch iterates over all inner iterators to merge together, calls Next() on
-// each of them to prefetch the first entry and pushes of them - who are not
-// empty - to the heap
-func (i *mergeSampleIterator) prefetch() {
-	if i.prefetched {
-		return
+// sampleIteratorWithStreamHash overrides the wrapped iterator's StreamHash with a fixed
+// value.
+//
+// It lets a per-stream iterator expose its real stream identity, the fingerprint the
+// stream-first merge orders and deduplicates by. The wrapped iterator reports whatever hash its
+// extractor computes, which is not guaranteed to be that fingerprint.
+//
+// The wrapped iterator must report samples from one stream only. Its Labels() may
+// still vary per sample. Only its StreamHash is overridden here.
+type sampleIteratorWithStreamHash struct {
+	SampleIterator
+	hash uint64
+}
+
+// NewSampleIteratorWithStreamHash wraps it so StreamHash() returns hash.
+func NewSampleIteratorWithStreamHash(it SampleIterator, hash uint64) SampleIterator {
+	return &sampleIteratorWithStreamHash{SampleIterator: it, hash: hash}
+}
+
+func (i *sampleIteratorWithStreamHash) StreamHash() uint64 {
+	return i.hash
+}
+
+// init calls Next() on each inner iterator to pull its first sample, and pushes the
+// non-empty ones onto the heap. It must run before the merge can return any sample.
+// It returns false if any inner iterator failed.
+func (i *mergeSampleIterator) init() bool {
+	if i.initialized {
+		return i.iterErr == nil
 	}
 
-	i.prefetched = true
+	i.initialized = true
 	for _, it := range i.is {
-		i.requeue(it, false)
+		if !it.Next() {
+			closeSampleIterator(it, &i.iterErr, &i.closeErrs)
+			continue
+		}
+		heap.Push(i.heap, it)
 	}
 
 	// We can now clear the list of input iterators to merge, given they have all
 	// been processed and the non empty ones have been pushed to the heap
 	i.is = nil
+
+	return i.iterErr == nil
 }
 
-// requeue pushes the input ei EntryIterator to the heap, advancing it via an ei.Next()
-// call unless the advanced input parameter is true. In this latter case it expects that
-// the iterator has already been advanced before calling requeue().
-//
-// If the iterator has no more entries or an error occur while advancing it, the iterator
-// is not pushed to the heap and any possible error captured, so that can be get via Error().
-func (i *mergeSampleIterator) requeue(ei SampleIterator, advanced bool) {
-	if advanced || ei.Next() {
-		heap.Push(i.heap, ei)
-		return
-	}
-
-	i.closeIterator(ei)
-}
-
-// closeIterator closes a drained input iterator and records its pending error.
-//
-// This function runs while Next drains an iterator. Close reaches only the iterators left
-// on the heap, so without this a fully drained merge would leak every source.
-func (i *mergeSampleIterator) closeIterator(ei SampleIterator) {
-	if err := ei.Err(); err != nil {
-		i.errs = append(i.errs, err)
-	}
-	util.LogError("closing iterator", ei.Close)
+// sameDedupGroup reports whether it belongs to the buffer's current dedup group at timestamp
+// ts. The buffer must not be empty.
+func (i *mergeSampleIterator) sameDedupGroup(it SampleIterator, ts int64) bool {
+	// Checking the timestamp first is deliberate. The timestamp changes far more often
+	// than the stream hash does. Checking it first short-circuits sooner, on average.
+	return i.buffer[0].Timestamp == ts && i.buffer[0].streamHash == it.StreamHash()
 }
 
 func (i *mergeSampleIterator) Next() bool {
-	i.prefetch()
+	if !i.init() {
+		return false
+	}
 
 	if len(i.buffer) != 0 {
 		i.nextFromBuffer()
@@ -244,7 +326,7 @@ func (i *mergeSampleIterator) Next() bool {
 		i.curr.labels = i.heap.Peek().Labels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
-			i.closeIterator(i.heap.Pop().(SampleIterator))
+			closeSampleIterator(i.heap.Pop().(SampleIterator), &i.iterErr, &i.closeErrs)
 		}
 		return true
 	}
@@ -257,7 +339,7 @@ Outer:
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
 		sample := next.At()
-		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() || i.buffer[0].Timestamp != sample.Timestamp) {
+		if len(i.buffer) > 0 && !i.sameDedupGroup(next, sample.Timestamp) {
 			break
 		}
 		heap.Pop(i.heap)
@@ -282,12 +364,17 @@ Outer:
 	inner:
 		for {
 			if !next.Next() {
-				i.closeIterator(next)
+				closeSampleIterator(next, &i.iterErr, &i.closeErrs)
+				if i.iterErr != nil {
+					// Stop pulling in more sources' data now that the merge is failing.
+					// pushBuffer, flushed below regardless, still gets whatever this call
+					// already finished with, so Close can still close it.
+					break Outer
+				}
 				continue Outer
 			}
 			sample := next.At()
-			if next.StreamHash() != i.buffer[0].streamHash ||
-				sample.Timestamp != i.buffer[0].Timestamp {
+			if !i.sameDedupGroup(next, sample.Timestamp) {
 				break
 			}
 			if sample.Hash != 0 {
@@ -307,13 +394,18 @@ Outer:
 		i.pushBuffer = append(i.pushBuffer, next)
 	}
 
+	// Flush pushBuffer first, so sources this call already finished with do not leak.
 	for _, ei := range i.pushBuffer {
 		heap.Push(i.heap, ei)
 	}
 	i.pushBuffer = i.pushBuffer[:0]
 
-	i.nextFromBuffer()
+	if i.iterErr != nil {
+		// An error occurred reading from one of the iterators, so interrupt the iteration.
+		return false
+	}
 
+	i.nextFromBuffer()
 	return true
 }
 
@@ -340,88 +432,119 @@ func (i *mergeSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
 
+// Err returns the first read error a sub-iterator reported. It never reports a close-time
+// error: check Close for that.
 func (i *mergeSampleIterator) Err() error {
-	switch len(i.errs) {
-	case 0:
-		return nil
-	case 1:
-		return i.errs[0]
-	default:
-		return util.MultiError(i.errs)
-	}
+	return i.iterErr
 }
 
-// Close closes every input iterator and returns any error the merge collected.
+// Close closes every remaining input iterator and returns any error collected while closing
+// sub-iterators, across this call and every close Next already ran. It never returns an
+// iteration error: check Err for that.
 func (i *mergeSampleIterator) Close() error {
 	// Closes the sources not yet moved onto the heap (Close before the first Next).
 	for _, it := range i.is {
-		i.closeIterator(it)
+		i.closeErrs.Add(it.Close())
 	}
 	i.is = nil
 
 	// Close the sources still on the heap, and closes all of them even when one fails,
 	// so no source leaks.
 	for i.heap.Len() > 0 {
-		i.closeIterator(i.heap.Pop().(SampleIterator))
+		i.closeErrs.Add(i.heap.Pop().(SampleIterator).Close())
 	}
 	i.buffer = nil
-	return i.Err()
+
+	return util.UnwrapMultiError(i.closeErrs)
 }
 
 // sortSampleIterator iterates over a heap of iterators by sorting samples.
 type sortSampleIterator struct {
-	heap       *SampleIteratorHeap
-	is         []SampleIterator
-	prefetched bool
+	heap        *SampleIteratorHeap
+	is          []SampleIterator
+	initialized bool
 
 	curr sampleWithLabels
-	errs []error
+
+	// iterErr is the first read error a sub-iterator reported when its own Next returned
+	// false.
+	iterErr error
+
+	// closeErrs collects every sub-iterator Close error, whether Close ran while Next drained
+	// that sub-iterator or later, from this iterator's own Close.
+	closeErrs util.MultiError
 }
 
-// NewSortSampleIterator returns a new SampleIterator that sorts samples by ascending timestamp the input iterators.
-// The iterator only order sample across given `is` iterators, it does not sort samples within individual iterator.
-// This means using this iterator with a single iterator will result in the same result as the input iterator.
-// When timestamp is equal, the iterator sorts samples by their label alphabetically.
-func NewSortSampleIterator(is []SampleIterator) SampleIterator {
+// NewTimestampFirstSortSampleIterator returns a sample iterator that sorts samples from
+// several iterators in timestamp-first order, without deduplication.
+//
+// The sort only orders samples across the given iterators. It never reorders entries
+// within a single input iterator, so a single input iterator comes back unchanged.
+//
+// When two samples tie on timestamp, it breaks the tie by stream hash. It falls back
+// to stream labels comparison only when the stream hash is zero.
+func NewTimestampFirstSortSampleIterator(is []SampleIterator) SampleIterator {
+	return newSortSampleIterator(is, logproto.SAMPLE_ORDER_BY_TIMESTAMP)
+}
+
+// NewStreamFirstSortSampleIterator returns a sample iterator that sorts samples from
+// several iterators in stream-first order, without deduplication.
+//
+// The sort groups samples into runs by stream hash. Within a run, it orders samples by
+// timestamp. It never reorders entries within a single input iterator, so a single input
+// iterator comes back unchanged.
+//
+// Each input iterator must already carry that order. It can be a single stream, or
+// several complete streams concatenated in ascending stream-hash order.
+func NewStreamFirstSortSampleIterator(is []SampleIterator) SampleIterator {
+	return newSortSampleIterator(is, logproto.SAMPLE_ORDER_BY_STREAM)
+}
+
+// newSortSampleIterator is the shared sort core for the timestamp-first and stream-first
+// sample iterators. The two differ only in heap order.
+func newSortSampleIterator(is []SampleIterator, order logproto.SampleOrder) SampleIterator {
 	if len(is) == 0 {
 		return NoopSampleIterator
 	}
 	if len(is) == 1 {
 		return is[0]
 	}
-	h := SampleIteratorHeap{
-		its: make([]SampleIterator, 0, len(is)),
-	}
+	h := NewSampleIteratorHeap(make([]SampleIterator, 0, len(is)), order)
 	return &sortSampleIterator{
 		is:   is,
 		heap: &h,
 	}
 }
 
-// init initialize the underlying heap
-func (i *sortSampleIterator) init() {
-	if i.prefetched {
-		return
+// init calls Next() on each inner iterator to pull its first sample, and pushes the
+// non-empty ones onto the heap. It must run before the sort can return any sample.
+// It returns false if any inner iterator failed.
+func (i *sortSampleIterator) init() bool {
+	if i.initialized {
+		return i.iterErr == nil
 	}
 
-	i.prefetched = true
+	i.initialized = true
 	for _, it := range i.is {
-		if it.Next() {
-			i.heap.Push(it)
+		if !it.Next() {
+			closeSampleIterator(it, &i.iterErr, &i.closeErrs)
 			continue
 		}
-
-		i.closeIterator(it)
+		i.heap.Push(it)
 	}
 	heap.Init(i.heap)
 
-	// We can now clear the list of input iterators to merge, given they have all
-	// been processed and the non empty ones have been pushed to the heap
+	// We can now clear the list of input iterators, given they have all been
+	// processed and the non empty ones have been pushed to the heap.
 	i.is = nil
+
+	return i.iterErr == nil
 }
 
 func (i *sortSampleIterator) Next() bool {
-	i.init()
+	if !i.init() {
+		return false
+	}
 
 	if i.heap.Len() == 0 {
 		return false
@@ -434,7 +557,7 @@ func (i *sortSampleIterator) Next() bool {
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
 		heap.Pop(i.heap)
-		i.closeIterator(next)
+		closeSampleIterator(next, &i.iterErr, &i.closeErrs)
 		return true
 	}
 	if i.heap.Len() > 1 {
@@ -455,45 +578,43 @@ func (i *sortSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
 
+// Err returns the first read error a sub-iterator reported. It never reports a close-time
+// error: check Close for that.
 func (i *sortSampleIterator) Err() error {
-	switch len(i.errs) {
-	case 0:
-		return nil
-	case 1:
-		return i.errs[0]
-	default:
-		return util.MultiError(i.errs)
-	}
+	return i.iterErr
 }
 
-// closeIterator closes a drained input iterator and records its pending error.
-func (i *sortSampleIterator) closeIterator(it SampleIterator) {
-	if err := it.Err(); err != nil {
-		i.errs = append(i.errs, err)
-	}
-	util.LogError("closing iterator", it.Close)
-}
-
-// Close closes every input iterator and returns any error the sort collected.
+// Close closes every remaining input iterator and returns any error collected while closing
+// sub-iterators, across this call and every close Next already ran. It never returns an
+// iteration error: check Err for that.
 func (i *sortSampleIterator) Close() error {
 	// Closes the sources not yet moved onto the heap.
 	for _, it := range i.is {
-		i.closeIterator(it)
+		i.closeErrs.Add(it.Close())
 	}
 	i.is = nil
 
 	// Close the sources still on the heap, and closes all of them even when one fails,
 	// so no source leaks.
 	for i.heap.Len() > 0 {
-		i.closeIterator(i.heap.Pop().(SampleIterator))
+		i.closeErrs.Add(i.heap.Pop().(SampleIterator).Close())
 	}
-	return i.Err()
+
+	return util.UnwrapMultiError(i.closeErrs)
 }
 
 type sampleQueryClientIterator struct {
 	client QuerySampleClient
 	err    error
 	curr   SampleIterator
+
+	// newBatchIterator creates an iterator to iterate over the received samples batch. It must
+	// match the order the sender encoded the batch with.
+	newBatchIterator func(*logproto.SampleQueryResponse) SampleIterator
+
+	// closeErrs collects every batch iterator's Close error, whether Close ran while Next moved
+	// past that batch or later, from this iterator's own Close.
+	closeErrs util.MultiError
 }
 
 // QuerySampleClient is GRPC stream client with only method used by the SampleQueryClientIterator
@@ -506,7 +627,20 @@ type QuerySampleClient interface {
 // NewTimestampFirstSampleQueryClientIterator returns a timestamp-first iterator over a QueryClient.
 func NewTimestampFirstSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 	return &sampleQueryClientIterator{
-		client: client,
+		client:           client,
+		newBatchIterator: NewTimestampFirstSampleQueryResponseIterator,
+	}
+}
+
+// NewStreamFirstSampleQueryClientIterator returns a stream-first iterator over a QueryClient.
+//
+// The client must deliver batches that ReadStreamFirstSampleBatch encoded. The iterator keeps the
+// sender's order, inside a batch and across batches. A stream the sender split over two batches
+// stays contiguous, because each batch plays to completion before the iterator reads the next one.
+func NewStreamFirstSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
+	return &sampleQueryClientIterator{
+		client:           client,
+		newBatchIterator: NewStreamFirstSampleQueryResponseIterator,
 	}
 }
 
@@ -525,7 +659,10 @@ func (i *sampleQueryClientIterator) Next() bool {
 		stats.JoinIngesters(ctx, batch.Stats)
 		_ = metadata.AddWarnings(ctx, batch.Warnings...)
 
-		i.curr = NewTimestampFirstSampleQueryResponseIterator(batch)
+		if i.curr != nil {
+			i.closeErrs.Add(i.curr.Close())
+		}
+		i.curr = i.newBatchIterator(batch)
 	}
 	return true
 }
@@ -546,13 +683,30 @@ func (i *sampleQueryClientIterator) Err() error {
 	return i.err
 }
 
+// Close closes the batch still being read, closes the send side of the stream, and returns any
+// error collected while closing batches, across this call and every close Next already ran. It
+// never returns an iteration error: check Err for that.
 func (i *sampleQueryClientIterator) Close() error {
-	return i.client.CloseSend()
+	if i.curr != nil {
+		i.closeErrs.Add(i.curr.Close())
+		i.curr = nil
+	}
+	i.closeErrs.Add(i.client.CloseSend())
+
+	return util.UnwrapMultiError(i.closeErrs)
 }
 
 // NewTimestampFirstSampleQueryResponseIterator returns a timestamp-first iterator over a SampleQueryResponse.
 func NewTimestampFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
-	return NewMultiSeriesIterator(resp.Series)
+	return NewTimestampFirstMultiSeriesIterator(resp.Series)
+}
+
+// NewStreamFirstSampleQueryResponseIterator returns a stream-first iterator over a
+// SampleQueryResponse that ReadStreamFirstSampleBatch encoded.
+//
+// It plays the Series in the order the response holds them, so the sender's order survives.
+func NewStreamFirstSampleQueryResponseIterator(resp *logproto.SampleQueryResponse) SampleIterator {
+	return NewStreamFirstMultiSeriesIterator(resp.Series)
 }
 
 type seriesIterator struct {
@@ -590,13 +744,31 @@ func SampleIteratorWithClose(it SampleIterator, closeFn func() error) SampleIter
 	}
 }
 
-// NewMultiSeriesIterator returns an iterator over multiple logproto.Series
-func NewMultiSeriesIterator(series []logproto.Series) SampleIterator {
+// NewTimestampFirstMultiSeriesIterator returns an iterator over multiple logproto.Series, in
+// global timestamp order.
+func NewTimestampFirstMultiSeriesIterator(series []logproto.Series) SampleIterator {
 	is := make([]SampleIterator, 0, len(series))
 	for i := range series {
 		is = append(is, NewSeriesIterator(series[i]))
 	}
-	return NewSortSampleIterator(is)
+	return NewTimestampFirstSortSampleIterator(is)
+}
+
+// NewStreamFirstMultiSeriesIterator returns an iterator over multiple logproto.Series, in the
+// order the slice holds them. The caller therefore decides the order.
+func NewStreamFirstMultiSeriesIterator(series []logproto.Series) SampleIterator {
+	if len(series) == 0 {
+		return NoopSampleIterator
+	}
+
+	is := make([]SampleIterator, 0, len(series))
+	for i := range series {
+		is = append(is, NewSeriesIterator(series[i]))
+	}
+
+	// Two Series can cover overlapping timestamps. Despite its name,
+	// NewNonOverlappingSampleIterator accepts that: it plays each input to completion in turn.
+	return NewNonOverlappingSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -637,6 +809,10 @@ type nonOverlappingSampleIterator struct {
 	iterators []SampleIterator
 	curr      SampleIterator
 	err       error
+
+	// closeErrs collects every sub-iterator Close error, whether Close ran while Next
+	// drained that sub-iterator or later, from this iterator's own Close.
+	closeErrs util.MultiError
 }
 
 // NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
@@ -652,17 +828,21 @@ func (i *nonOverlappingSampleIterator) Next() bool {
 			// The current iterator stopped. If it failed, surface the error and stop:
 			// any error fails the query, so advancing would hide the failure as normal
 			// exhaustion and read remaining streams whose data the query discards.
+			// Leave curr for Close to close either way.
 			if err := i.curr.Err(); err != nil {
 				i.err = err
 				return false
 			}
-			// A close error here is a cleanup failure, not a read failure. Reporting it
-			// as a read failure would be inaccurate.
-			i.curr.Close()
 		}
 
 		if len(i.iterators) == 0 {
 			return false
+		}
+
+		// Advancing to the next iterator: curr drained cleanly and won't be
+		// referenced again, so close it now or it leaks.
+		if i.curr != nil {
+			i.closeErrs.Add(i.curr.Close())
 		}
 
 		i.i++
@@ -677,16 +857,10 @@ func (i *nonOverlappingSampleIterator) At() logproto.Sample {
 }
 
 func (i *nonOverlappingSampleIterator) Labels() string {
-	if i.curr == nil {
-		return ""
-	}
 	return i.curr.Labels()
 }
 
 func (i *nonOverlappingSampleIterator) StreamHash() uint64 {
-	if i.curr == nil {
-		return 0
-	}
 	return i.curr.StreamHash()
 }
 
@@ -695,23 +869,21 @@ func (i *nonOverlappingSampleIterator) Err() error {
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {
-	// Close every iterator and keep all errors: Add ignores nil, so a clean close
-	// still returns nil.
-	var errs util.MultiError
 	if i.curr != nil {
-		// If curr already failed, some implementations return that same read error
-		// from Close too. It was already surfaced through Err, so closing here is
-		// cleanup only: do not report it a second time as a close error.
-		if err := i.curr.Close(); err != nil && i.err == nil {
-			errs.Add(err)
+		// Some implementations return their stored read error from Close too. When
+		// it does, err is skipped: it already surfaced through i.Err(), so adding it
+		// to closeErrs would report it a second time as a close error.
+		if err := i.curr.Close(); err != nil && err != i.err {
+			i.closeErrs.Add(err)
 		}
+		i.curr = nil
 	}
 	for _, iter := range i.iterators {
-		errs.Add(iter.Close())
+		i.closeErrs.Add(iter.Close())
 	}
 	i.iterators = nil
 
-	return errs.Err()
+	return util.UnwrapMultiError(i.closeErrs)
 }
 
 type timeRangedSampleIterator struct {
@@ -756,8 +928,11 @@ func (i *timeRangedSampleIterator) Next() bool {
 	return ok
 }
 
-// ReadSampleBatch reads a set of entries off an iterator.
-func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
+// ReadTimestampFirstSampleBatch reads up to size samples off an iterator.
+//
+// It groups the samples into one Series per stream hash and label set. The Series come back in an
+// unspecified order, so the iterator's own order does not survive.
+func ReadTimestampFirstSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
 	var (
 		series      = map[uint64]map[string]*logproto.Series{}
 		respSize    uint32
@@ -791,4 +966,28 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 		}
 	}
 	return &result, respSize, i.Err()
+}
+
+// ReadStreamFirstSampleBatch reads up to size samples off a stream-first iterator and keeps that
+// order in the encoded Series.
+//
+// It starts a new Series every time the stream hash or the labels change, so the Series order is
+// the sample order. Structured metadata makes a stream's labels change from sample to sample, and
+// such a stream is therefore split across several Series.
+func ReadStreamFirstSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryResponse, uint32, error) {
+	var (
+		series   []logproto.Series
+		respSize uint32
+	)
+
+	for ; respSize < size && i.Next(); respSize++ {
+		labels, hash, sample := i.Labels(), i.StreamHash(), i.At()
+		if len(series) == 0 || series[len(series)-1].StreamHash != hash || series[len(series)-1].Labels != labels {
+			series = append(series, logproto.Series{Labels: labels, StreamHash: hash})
+		}
+		curr := &series[len(series)-1]
+		curr.Samples = append(curr.Samples, sample)
+	}
+
+	return &logproto.SampleQueryResponse{Series: series}, respSize, i.Err()
 }

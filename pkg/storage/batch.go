@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -33,6 +35,9 @@ type ChunkMetrics struct {
 	series       *prometheus.CounterVec
 	chunks       *prometheus.CounterVec
 	batches      *prometheus.HistogramVec
+
+	streamFirstBatchLoad    prometheus.Histogram
+	streamFirstConsumerWait prometheus.Histogram
 }
 
 const (
@@ -80,6 +85,26 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			// split buckets evenly across 0->maxBatchSize
 			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets+1), // increment buckets by one to ensure upper bound bucket exists.
 		}, []string{"status"}),
+		streamFirstBatchLoad: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Subsystem:                       "store",
+			Name:                            "stream_first_ordered_batch_load_seconds",
+			Help:                            "Time to fetch one chunk batch in the stream-first sample reader's preloader.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		streamFirstConsumerWait: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Subsystem:                       "store",
+			Name:                            "stream_first_ordered_consumer_wait_seconds",
+			Help:                            "Time the stream-first sample reader's consumer waited for a preloaded chunk batch.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+			Buckets:                         prometheus.DefBuckets,
+		}),
 	}
 }
 
@@ -95,12 +120,16 @@ type batchChunkIterator struct {
 	metrics         *ChunkMetrics
 	matchers        []*labels.Matcher
 	chunkFilterer   chunk.Filterer
+	hintRanges      iter.HintTimeRanges
 
 	begun      bool
 	ctx        context.Context
 	start, end time.Time
 	direction  logproto.Direction
 	next       chan *chunkBatch
+
+	// done closes when loop's goroutine returns. If Start was never called, done stays open.
+	done chan struct{}
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
@@ -114,6 +143,7 @@ func newBatchChunkIterator(
 	metrics *ChunkMetrics,
 	matchers []*labels.Matcher,
 	chunkFilterer chunk.Filterer,
+	hintRanges iter.HintTimeRanges,
 ) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
@@ -130,7 +160,9 @@ func newBatchChunkIterator(
 		ctx:           ctx,
 		chunks:        lazyChunks{direction: direction, chunks: chunks},
 		next:          make(chan *chunkBatch),
+		done:          make(chan struct{}),
 		chunkFilterer: chunkFilterer,
+		hintRanges:    hintRanges,
 	}
 	sort.Sort(res.chunks)
 	return res
@@ -144,7 +176,25 @@ func (it *batchChunkIterator) Start() {
 	}
 }
 
+// waitStopped blocks until loop's goroutine returns, if Start ever launched one.
+func (it *batchChunkIterator) waitStopped() {
+	if !it.begun {
+		return
+	}
+
+	// We explicitly wait until the loop() goroutine terminated.
+	//
+	// A canceled context alone does not guarantee that. Cancellation takes effect only the next
+	// time loop reaches its select. A fetch already in flight when the context is canceled still
+	// runs to completion. It can still write to the chunks it was fetching.
+	//
+	// A caller that mutates these chunks after Close returns relies on this. Close calls
+	// waitStopped before returning, so the fetch has already stopped by then.
+	<-it.done
+}
+
 func (it *batchChunkIterator) loop() {
+	defer close(it.done)
 	for {
 		if it.chunks.Len() == 0 {
 			close(it.next)
@@ -334,13 +384,14 @@ func newLogBatchIterator(
 	direction logproto.Direction,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
+	hintRanges iter.HintTimeRanges,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &logBatchIterator{
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer, hintRanges),
 	}, nil
 }
 
@@ -367,6 +418,7 @@ func (it *logBatchIterator) Err() error {
 
 func (it *logBatchIterator) Close() error {
 	it.cancel()
+	it.waitStopped()
 	if it.curr != nil {
 		return it.curr.Close()
 	}
@@ -442,7 +494,7 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk, it.hintRanges)
 			if err != nil {
 				return nil, err
 			}
@@ -459,10 +511,14 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
 }
 
-type sampleBatchIterator struct {
+type timestampFirstSampleBatchIterator struct {
 	*batchChunkIterator
 	curr iter.SampleIterator
 	err  error
+
+	// closeErrs collects every sub-iterator Close error: from each curr Next replaces,
+	// and from the final Close call.
+	closeErrs util.MultiError
 
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -479,9 +535,10 @@ func newTimestampFirstSampleBatchIterator(
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
 	extractor syntax.SampleExtractor,
+	hintRanges iter.HintTimeRanges,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	return &sampleBatchIterator{
+	return &timestampFirstSampleBatchIterator{
 		extractor: extractor,
 		ctx:       ctx,
 		cancel:    cancel,
@@ -496,19 +553,20 @@ func newTimestampFirstSampleBatchIterator(
 			metrics,
 			matchers,
 			chunkFilterer,
+			hintRanges,
 		),
 	}, nil
 }
 
-func (it *sampleBatchIterator) Labels() string {
+func (it *timestampFirstSampleBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
-func (it *sampleBatchIterator) StreamHash() uint64 {
+func (it *timestampFirstSampleBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
 
-func (it *sampleBatchIterator) Err() error {
+func (it *timestampFirstSampleBatchIterator) Err() error {
 	if it.err != nil {
 		return it.err
 	}
@@ -521,40 +579,63 @@ func (it *sampleBatchIterator) Err() error {
 	return nil
 }
 
-func (it *sampleBatchIterator) Close() error {
+func (it *timestampFirstSampleBatchIterator) Close() error {
 	it.cancel()
+	it.waitStopped()
 	if it.curr != nil {
-		return it.curr.Close()
+		it.closeErrs.Add(it.curr.Close())
+		it.curr = nil
 	}
-	return nil
+
+	return util.UnwrapMultiError(it.closeErrs)
 }
 
-func (it *sampleBatchIterator) At() logproto.Sample {
+func (it *timestampFirstSampleBatchIterator) At() logproto.Sample {
 	return it.curr.At()
 }
 
-func (it *sampleBatchIterator) Next() bool {
+func (it *timestampFirstSampleBatchIterator) Next() bool {
 	// for loop to avoid recursion
 	for it.ctx.Err() == nil {
+		// Once set, err is sticky: every further call must keep returning false,
+		// without pulling in a later batch's data.
+		if it.err != nil {
+			return false
+		}
+
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
-		// close previous iterator
+
+		// curr just failed or drained cleanly. A read error takes priority: leave curr
+		// for Close to close, and stop before fetching a later batch.
 		if it.curr != nil {
-			it.err = it.curr.Close()
+			if err := it.curr.Err(); err != nil {
+				it.err = err
+				return false
+			}
 		}
+
 		next := it.batchChunkIterator.Next()
 		if next == nil {
+			// No more batches: leave curr for Close to close.
 			return false
 		}
 		if next.err != nil {
+			// This batch failed to fetch: leave curr, still valued and unclosed,
+			// for Close to close.
 			it.err = next.err
 			return false
 		}
-		var err error
-		it.curr, err = it.newChunksIterator(next)
-		if err != nil {
-			it.err = err
+
+		// Another batch is coming: curr drained cleanly and won't be referenced
+		// again, so close it now or it leaks.
+		if it.curr != nil {
+			it.closeErrs.Add(it.curr.Close())
+		}
+
+		it.curr, it.err = it.newChunksIterator(next)
+		if it.err != nil {
 			return false
 		}
 	}
@@ -562,16 +643,16 @@ func (it *sampleBatchIterator) Next() bool {
 }
 
 // newChunksIterator creates an iterator over a set of lazychunks.
-func (it *sampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIterator, error) {
+func (it *timestampFirstSampleBatchIterator) newChunksIterator(b *chunkBatch) (iter.SampleIterator, error) {
 	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
 	if err != nil {
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	return iter.NewTimestampFirstSortSampleIterator(iters), nil
 }
 
-func (it *sampleBatchIterator) buildIterators(
+func (it *timestampFirstSampleBatchIterator) buildIterators(
 	chks map[model.Fingerprint][][]*LazyChunk,
 	from, through time.Time,
 	nextChunk *LazyChunk,
@@ -595,7 +676,7 @@ func (it *sampleBatchIterator) buildIterators(
 	return result, nil
 }
 
-func (it *sampleBatchIterator) buildHeapIterator(
+func (it *timestampFirstSampleBatchIterator) buildHeapIterator(
 	chks [][]*LazyChunk,
 	from, through time.Time,
 	streamExtractor log.StreamSampleExtractor,
@@ -609,7 +690,7 @@ func (it *sampleBatchIterator) buildHeapIterator(
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractor)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractor, it.hintRanges)
 			if err != nil {
 				return nil, err
 			}
@@ -621,16 +702,16 @@ func (it *sampleBatchIterator) buildHeapIterator(
 	return iter.NewTimestampFirstMergeSampleIterator(it.ctx, result), nil
 }
 
+// removeMatchersByName returns matchers without any matcher whose name is in names. It does not
+// modify the input slice: a caller may reuse it, unmodified, across several calls.
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {
-	for _, omit := range names {
-		for i := range matchers {
-			if matchers[i].Name == omit {
-				matchers = append(matchers[:i], matchers[i+1:]...)
-				break
-			}
+	out := make([]*labels.Matcher, 0, len(matchers))
+	for _, m := range matchers {
+		if !slices.Contains(names, m.Name) {
+			out = append(out, m)
 		}
 	}
-	return matchers
+	return out
 }
 
 func fetchChunkBySeries(

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"expvar"
@@ -8,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -543,7 +545,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	return it, err
 }
 
-func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	expr, err := req.Expr()
 	if err != nil {
 		return nil, err
@@ -579,7 +581,6 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	stats := stats.FromContext(ctx)
-	var iters []iter.SampleIterator
 
 	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
@@ -589,13 +590,33 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 	if err != nil {
 		return nil, err
 	}
+
+	var (
+		streams []sampleStream
+
+		// hashBuf is reused across streams, because forMatchingStreams runs its callback
+		// sequentially. It is not i.buf, which the write path owns.
+		hashBuf []byte
+	)
+
+	// If querySample returns an error below, close every stream iterator opened so far. Only the
+	// combined iterator closes them, and no error path builds one.
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		for _, opened := range streams {
+			util.LogErrorWithContext(ctx, "closing per-stream sample iterator after querySample failed", opened.it.Close)
+		}
+	}()
+
 	err = i.forMatchingStreams(
 		ctx,
 		req.Start,
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(
+			streamIter, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
@@ -605,7 +626,10 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 			if err != nil {
 				return err
 			}
-			iters = append(iters, iter)
+
+			var streamHash uint64
+			streamHash, hashBuf = stream.labels.HashWithoutLabels(hashBuf)
+			streams = append(streams, sampleStream{it: streamIter, streamHash: streamHash})
 			return nil
 		},
 	)
@@ -613,7 +637,72 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return combineByTimestampFirst(streams), nil
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return combineByStreamFirst(streams), nil
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
+}
+
+// sampleStream is one matching stream's sample iterator, with the stream hash that stream-first
+// order groups by.
+type sampleStream struct {
+	it iter.SampleIterator
+
+	// streamHash is the hash of the stream's raw labels, with __name__ skipped.
+	streamHash uint64
+}
+
+// combineByTimestampFirst sorts the per-stream iterators into global timestamp order.
+func combineByTimestampFirst(streams []sampleStream) iter.SampleIterator {
+	its := make([]iter.SampleIterator, len(streams))
+	for i, s := range streams {
+		its[i] = s.it
+	}
+	return iter.NewTimestampFirstSortSampleIterator(its)
+}
+
+// combineByStreamFirst concatenates the per-stream iterators in ascending stable hash order, with
+// each one reporting that hash. The output is therefore stream-first: one contiguous run per hash,
+// timestamps non-decreasing inside a run.
+//
+// It reorders streams in place, so the caller must not rely on the given order afterwards.
+func combineByStreamFirst(streams []sampleStream) iter.SampleIterator {
+	if len(streams) == 0 {
+		return iter.NoopSampleIterator
+	}
+
+	// The sort does not need to be stable. Streams that tie on the hash go into one
+	// timestamp-ordered run below. Samples that also tie on the timestamp may come back in any
+	// order.
+	slices.SortFunc(streams, func(a, b sampleStream) int { return cmp.Compare(a.streamHash, b.streamHash) })
+
+	its := make([]iter.SampleIterator, 0, len(streams))
+	for start := 0; start < len(streams); {
+		end := start + 1
+		for end < len(streams) && streams[end].streamHash == streams[start].streamHash {
+			end++
+		}
+
+		group := make([]iter.SampleIterator, 0, end-start)
+		for _, s := range streams[start:end] {
+			group = append(group, s.it)
+		}
+		its = append(its, iter.NewSampleIteratorWithStreamHash(
+			iter.NewTimestampFirstSortSampleIterator(group),
+			streams[start].streamHash,
+		))
+
+		start = end
+	}
+
+	if len(its) == 1 {
+		return its[0]
+	}
+	return iter.NewNonOverlappingSampleIterator(its)
 }
 
 // Label returns the label names or values depending on the given request
@@ -1142,13 +1231,25 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer, order logproto.SampleOrder) error {
 	sp := trace.SpanFromContext(ctx)
+
+	// The receiver decodes the batch with the decoder paired to this order. A mismatched pair
+	// hands the samples to the query in an order it does not expect.
+	var readBatch func(iter.SampleIterator, uint32) (*logproto.SampleQueryResponse, uint32, error)
+	switch order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		readBatch = iter.ReadTimestampFirstSampleBatch
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		readBatch = iter.ReadStreamFirstSampleBatch
+	default:
+		return fmt.Errorf("unknown sample order %v", order)
+	}
 
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
-		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		batch, size, err := readBatch(it, queryBatchSampleSize)
 		if err != nil {
 			return err
 		}

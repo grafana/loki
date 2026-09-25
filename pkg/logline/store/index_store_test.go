@@ -322,9 +322,10 @@ func TestConfig_RegisterFlags_Smoke(_ *testing.T) {
 
 func TestConfig_RegisterFlags_NilFlagSet(t *testing.T) {
 	cfg := Config{}
-	// should not panic when nil is passed (uses flag.CommandLine)
+	// CommandLine is process-wide; a fresh FlagSet keeps -count>1 from
+	// panicking with "flag redefined".
 	require.NotPanics(t, func() {
-		cfg.RegisterFlags(nil)
+		cfg.RegisterFlags(flag.NewFlagSet(t.Name(), flag.ContinueOnError))
 	})
 }
 

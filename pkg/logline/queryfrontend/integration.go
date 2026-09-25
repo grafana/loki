@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
+	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
@@ -48,6 +51,22 @@ func (r lenientRegisterer) MustRegister(cs ...prometheus.Collector) {
 	}
 }
 
+// Deps is what the middleware needs from the surrounding Loki config.
+type Deps struct {
+	// Store is the shared logline.store section.
+	Store store.Config
+	// SchemaConfig and ObjectStore locate the bucket the index lives in.
+	SchemaConfig config.SchemaConfig
+	ObjectStore  bucket.ConfigWithNamedStores
+	// ResultsCache is the query-range results cache config. The hint cache
+	// reuses its backend under its own key prefix.
+	ResultsCache cache.Config
+	// QueryIngestersWithin is querier.query_ingesters_within.
+	QueryIngestersWithin time.Duration
+	// QuerySplitDuration is the global limits_config.split_queries_by_interval.
+	QuerySplitDuration time.Duration
+}
+
 type identityMiddleware struct{}
 
 func (identityMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler { return next }
@@ -61,9 +80,9 @@ func (identityMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handl
 //   - store polling service (start/stop managed by caller)
 //   - cleanup function (idempotent; stops hint cache)
 func WrapMiddleware(
-	lokiCfg loki.ConfigWrapper,
 	cfg Config,
-	tenantSettings TenantSettings,
+	deps Deps,
+	limits logline_query_limits.Limits,
 	existing queryrangebase.Middleware,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -78,16 +97,19 @@ func WrapMiddleware(
 		return nil, nil, nil, fmt.Errorf("invalid logline config: %w", err)
 	}
 
-	lokiQIW := lokiCfg.Querier.QueryIngestersWithin
+	lokiQIW := deps.QueryIngestersWithin
 	if lokiQIW == 0 {
 		lokiQIW = store.DefaultQueryIngestersWithin
 	}
-	cfg.Store.QueryIngestersWithin = lokiQIW
+	// The store comes from the shared logline.store section, the single owner
+	// of it, so the read path cannot drift from the index the builder writes.
+	storeCfg := deps.Store
+	storeCfg.QueryIngestersWithin = lokiQIW
 	indexStore, err := store.New(
 		context.Background(),
-		lokiCfg.SchemaConfig,
-		lokiCfg.StorageConfig.ObjectStore,
-		cfg.Store,
+		deps.SchemaConfig,
+		deps.ObjectStore,
+		storeCfg,
 		logger,
 		reg,
 	)
@@ -96,9 +118,9 @@ func WrapMiddleware(
 	}
 
 	wrapped, hintCache, err := WrapMiddlewareWithStore(
-		lokiCfg,
-		cfg.QueryFrontend,
-		tenantSettings,
+		cfg,
+		deps,
+		limits,
 		indexStore,
 		existing,
 		logger,
@@ -137,9 +159,9 @@ func WrapMiddleware(
 // WrapMiddlewareWithStore injects logline middlewares around an existing
 // middleware stack using a caller-provided index store.
 func WrapMiddlewareWithStore(
-	lokiCfg loki.ConfigWrapper,
-	cfg MiddlewareConfig,
-	tenantSettings TenantSettings,
+	cfg Config,
+	deps Deps,
+	limits logline_query_limits.Limits,
 	indexStore *store.Store,
 	existing queryrangebase.Middleware,
 	logger log.Logger,
@@ -175,7 +197,7 @@ func WrapMiddlewareWithStore(
 
 	var hintCache cache.Cache
 	if cfg.HintCacheTTL > 0 {
-		hintCacheCfg := lokiCfg.QueryRange.ResultsCacheConfig.CacheConfig
+		hintCacheCfg := deps.ResultsCache
 		hintCacheCfg.Prefix = "logline-hint-cache."
 		hintCacheCfg.DefaultValidity = cfg.HintCacheTTL
 		hintCacheCfg.Memcache.Expiration = cfg.HintCacheTTL
@@ -199,10 +221,13 @@ func WrapMiddlewareWithStore(
 
 	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
-		cfg.QueryIngestersWithin = lokiCfg.Querier.QueryIngestersWithin
+		cfg.QueryIngestersWithin = deps.QueryIngestersWithin
+	}
+	if cfg.QuerySplitDuration == 0 {
+		cfg.QuerySplitDuration = deps.QuerySplitDuration
 	}
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, tenantSettings, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, limits, metrics, logger)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)
 
 	if existing == nil {

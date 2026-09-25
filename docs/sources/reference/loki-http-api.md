@@ -225,7 +225,7 @@ POST /loki/api/v1/push
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a [Snappy](https://github.com/google/snappy)-compressed [Protocol Buffer](https://github.com/protocolbuffers/protobuf) message:
 
-- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/logproto/logproto.proto)
+- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/push/push.proto)
 - [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
 
 These POST requests require the `Content-Type` HTTP header to be `application/x-protobuf`.

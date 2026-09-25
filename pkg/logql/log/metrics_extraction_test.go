@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
@@ -207,7 +209,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 		},
@@ -221,7 +222,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 		},
@@ -245,7 +245,6 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "time: invalid duration \"not_a_number\"",
 				"bar", "foo",
-				"foo", "not_a_number",
 			),
 			wantOk: true,
 			line:   "foo=not_a_number",
@@ -579,4 +578,406 @@ func (p *stubStreamExtractor) ProcessString(
 
 func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
+}
+
+func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputHasConstantLabels(t *testing.T) {
+	lbs := labels.FromStrings("namespace", "dev", "cluster", "us-central1")
+
+	// builderExtractor returns the non-specialized, per-line builder path for a grouping, to compare the
+	// constant fast path against. (ForStream auto-selects the constant path, so there is no other way to
+	// get the builder path for the same grouping.)
+	builderExtractor := func(groups []string, streamLabels labels.Labels) StreamSampleExtractor {
+		base := NewBaseLabelsBuilderWithGrouping(groups, NewParserHint(nil, groups, false, false, "", nil), false, false)
+		return &streamLineSampleExtractor{Stage: NoopStage, LineExtractor: CountExtractor, builder: base.ForLabels(streamLabels, base.Hash(streamLabels))}
+	}
+
+	t.Run("grouping by a stream label is constant and matches the builder path", func(t *testing.T) {
+		fast, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+
+		fsse := fast.ForStream(lbs)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, fsse)
+		ref := builderExtractor([]string{"namespace"}, lbs)
+
+		// BaseLabels is the stream's own identity (for StreamHash/dedup), not the grouped output.
+		assertLabelResult(t, lbs, fsse.BaseLabels())
+		require.Equal(t, ref.BaseLabels().String(), fsse.BaseLabels().String())
+
+		for i := 0; i < 3; i++ {
+			fs, ok := fsse.Process(int64(i), []byte("line"), labels.EmptyLabels())
+			require.True(t, ok)
+			rs, ok := ref.Process(int64(i), []byte("line"), labels.EmptyLabels())
+			require.True(t, ok)
+			require.Equal(t, 1., fs.Value)
+			require.Equal(t, rs.Labels.String(), fs.Labels.String())
+			assertLabelResult(t, labels.FromStrings("namespace", "dev"), fs.Labels)
+		}
+	})
+
+	t.Run("structured metadata cannot change a stream-label grouping", func(t *testing.T) {
+		// A line carrying SM "namespace" spills to namespace_extracted (stream labels win the base name),
+		// so grouping by "namespace" still yields the stream value. The constant extractor ignores the SM
+		// and stays in agreement with the builder path.
+		fast, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+
+		fsse := fast.ForStream(lbs)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, fsse)
+
+		sm := labels.FromStrings("namespace", "override", "trace_id", "t1")
+		fs, ok := fsse.Process(0, []byte("line"), sm)
+		require.True(t, ok)
+		rs, ok := builderExtractor([]string{"namespace"}, lbs).Process(0, []byte("line"), sm)
+		require.True(t, ok)
+		require.Equal(t, rs.Labels.String(), fs.Labels.String())
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), fs.Labels)
+	})
+
+	t.Run("noLabels grouping is constant and empty", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, true)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
+
+		fs, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 1., fs.Value)
+		assertLabelResult(t, labels.EmptyLabels(), fs.Labels)
+	})
+
+	t.Run("bytes value follows the line while labels stay constant", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(BytesExtractor, nil, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
+
+		s1, ok := sse.Process(0, []byte("hello"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 5., s1.Value)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s1.Labels)
+
+		s2, ok := sse.ProcessString(0, "hi", labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 2., s2.Value)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s2.Labels)
+	})
+
+	t.Run("ungrouped is not constant: the full label set carries metadata per line", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &streamLineSampleExtractor{}, sse)
+
+		s, ok := sse.Process(0, []byte("x"), labels.FromStrings("trace_id", "t1"))
+		require.True(t, ok)
+		assertLabelResult(t, appendLabels(lbs, labels.FromStrings("trace_id", "t1")), s.Labels)
+	})
+
+	t.Run("grouping by a non-stream label (metadata) is not constant", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"trace_id"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs) // lbs has no trace_id, so it comes from per-line metadata
+		require.IsType(t, &streamLineSampleExtractor{}, sse)
+	})
+
+	t.Run("a line-filter stage keeps the constant fast path and still filters", func(t *testing.T) {
+		// A line filter cannot change the labels (Stage.Hints().CanModifyLabels is false), so the grouping
+		// stays constant. The filtered constant path runs the stage per line to drop non-matching lines but
+		// emits the cached constant labels.
+		se, err := NewLineSampleExtractor(CountExtractor, []Stage{mustFilter(NewFilter("keep", LineMatchEqual)).ToStage()}, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
+
+		assertLabelResult(t, lbs, sse.BaseLabels())
+
+		s, ok := sse.Process(0, []byte("keep me"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 1., s.Value)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+
+		_, ok = sse.Process(0, []byte("drop me"), labels.EmptyLabels())
+		require.False(t, ok)
+	})
+
+	t.Run("a label-modifying stage disables the fast path", func(t *testing.T) {
+		// label_format can add or rename a label, so the output labels are no longer the stream labels.
+		lf, err := NewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("region", "cluster")})
+		require.NoError(t, err)
+		se, err := NewLineSampleExtractor(CountExtractor, []Stage{lf}, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &streamLineSampleExtractor{}, sse)
+
+		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 1., s.Value)
+	})
+
+	t.Run("a filter reading a stream label keeps the constant fast path", func(t *testing.T) {
+		// `| namespace="dev"` reads only a stream label, so the constant path runs it against the stream's
+		// own labels. This stream matches, so every line is kept with the constant grouped labels.
+		f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"))
+		se, err := NewLineSampleExtractor(CountExtractor, []Stage{f}, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
+
+		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		require.Equal(t, 1., s.Value)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+	})
+
+	t.Run("a filter reading a stream label drops a non-matching stream", func(t *testing.T) {
+		// The fast path still applies (the filter reads a stream label), but this stream's namespace does
+		// not match, so every line is dropped.
+		f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "namespace", "other"))
+		se, err := NewLineSampleExtractor(CountExtractor, []Stage{f}, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
+
+		_, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.False(t, ok)
+	})
+
+	t.Run("a filter reading a metadata label disables the fast path", func(t *testing.T) {
+		// `| trace_id="t1"` reads a label the stream does not carry: it can only come from per-line
+		// structured metadata, which the constant path does not build. The builder path must run instead.
+		f := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "trace_id", "t1"))
+		se, err := NewLineSampleExtractor(CountExtractor, []Stage{f}, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &streamLineSampleExtractor{}, sse)
+
+		// The builder path adds the metadata, so the filter matches the line carrying trace_id=t1.
+		s, ok := sse.Process(0, []byte("line"), labels.FromStrings("trace_id", "t1"))
+		require.True(t, ok)
+		require.Equal(t, 1., s.Value)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+
+		// A line whose metadata does not match is dropped.
+		_, ok = sse.Process(0, []byte("line"), labels.FromStrings("trace_id", "other"))
+		require.False(t, ok)
+	})
+
+	t.Run("without grouping is not constant: the output keeps per-line metadata", func(t *testing.T) {
+		// `without (pod)` keeps every other label, including per-line structured metadata, so the output
+		// is not constant.
+		se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"pod"}, true, false)
+		require.NoError(t, err)
+		sse := se.ForStream(lbs)
+		require.IsType(t, &streamLineSampleExtractor{}, sse)
+	})
+
+	t.Run("distinct streams get their own constant labels", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"app"}, false, false)
+		require.NoError(t, err)
+
+		a := labels.FromStrings("app", "a")
+		b := labels.FromStrings("app", "b")
+		ra, ok := se.ForStream(a).Process(0, []byte("x"), labels.EmptyLabels())
+		require.True(t, ok)
+		rb, ok := se.ForStream(b).Process(0, []byte("x"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, a, ra.Labels)
+		assertLabelResult(t, b, rb.Labels)
+	})
+}
+
+// TestLineSampleExtractor_ForStream_FilteredConstantIsolatesFromSiblingStreams is a regression test: the
+// filtered-constant fast path shares its LabelsBuilder overlay with the sibling normal-path extractors of
+// the same SampleExtractor. A normal-path stream must not leave structured metadata in that overlay that a
+// filtered-constant stream then reads.
+func TestLineSampleExtractor_ForStream_FilteredConstantIsolatesFromSiblingStreams(t *testing.T) {
+	se, err := NewLineSampleExtractor(CountExtractor,
+		[]Stage{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"))},
+		[]string{"app"}, false, false)
+	require.NoError(t, err)
+
+	// Stream A carries namespace as a stream label → filtered-constant fast path.
+	a := labels.FromStrings("app", "a", "namespace", "dev")
+	// Stream B lacks namespace as a stream label; it arrives as metadata → normal builder path.
+	b := labels.FromStrings("app", "b")
+
+	seA := se.ForStream(a)
+	seB := se.ForStream(b)
+	require.IsType(t, &filteredConstantLabelStreamExtractor{}, seA)
+	require.IsType(t, &streamLineSampleExtractor{}, seB)
+
+	// Interleave A → B → A. B's line carries namespace="prod" in metadata; it does not match namespace="dev"
+	// and is dropped, but it leaves namespace="prod" in the shared builder overlay.
+	ra, ok := seA.Process(0, []byte("line"), labels.EmptyLabels())
+	require.True(t, ok)
+	assertLabelResult(t, labels.FromStrings("app", "a"), ra.Labels)
+
+	_, ok = seB.Process(0, []byte("line"), labels.FromStrings("namespace", "prod"))
+	require.False(t, ok)
+
+	// A's own stream label namespace="dev" matches, so its line must still be kept — not dropped because
+	// of B's leftover metadata.
+	ra, ok = seA.Process(0, []byte("line"), labels.EmptyLabels())
+	require.True(t, ok, "stream A must match its own namespace stream label, not stream B's leftover metadata")
+	require.Equal(t, 1., ra.Value)
+	assertLabelResult(t, labels.FromStrings("app", "a"), ra.Labels)
+}
+
+// TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadataError verifies that a line
+// whose structured metadata carries __error__ still surfaces the __error__ as series labels.
+func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadataError(t *testing.T) {
+	var (
+		// cluster is a stream label outside the grouping, so its absence from the fallback's result
+		// is what proves the grouping was applied and not bypassed.
+		streamLabels = labels.FromStrings("namespace", "dev", "cluster", "us-central1")
+		errLabel     = labels.FromStrings(logqlmodel.ErrorLabel, "SampleExtractionErr")
+		// The fallback groups like any other line and carries the error labels on top.
+		groupedWithErr = appendLabels(labels.FromStrings("namespace", "dev"), errLabel)
+	)
+
+	t.Run("noop constant path", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(streamLabels)
+		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
+
+		// A normal line still takes the fast, constant-label path.
+		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+
+		// A line whose structured metadata carries __error__ must surface it, so it leaves the
+		// cached constant labels for the per-line builder, exactly like the normal path.
+		s, ok = sse.Process(0, []byte("line"), errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, groupedWithErr, s.Labels)
+
+		// ProcessString takes the same fallback as Process.
+		s, ok = sse.ProcessString(0, "line", errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, groupedWithErr, s.Labels)
+
+		// The cached constant path still serves the next normal line unaffected by the error line.
+		s, ok = sse.Process(0, []byte("line"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+	})
+
+	t.Run("filtered constant path", func(t *testing.T) {
+		se, err := NewLineSampleExtractor(CountExtractor,
+			[]Stage{mustFilter(NewFilter("keep", LineMatchEqual)).ToStage()},
+			[]string{"namespace"}, false, false)
+		require.NoError(t, err)
+		sse := se.ForStream(streamLabels)
+		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
+
+		s, ok := sse.Process(0, []byte("keep me"), errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, groupedWithErr, s.Labels)
+
+		// ProcessString takes the same fallback as Process.
+		s, ok = sse.ProcessString(0, "keep me", errLabel)
+		require.True(t, ok)
+		assertLabelResult(t, groupedWithErr, s.Labels)
+
+		// The stage still drops a line it rejects, even one whose structured metadata carries __error__.
+		_, ok = sse.Process(0, []byte("drop me"), errLabel)
+		require.False(t, ok)
+
+		// The cached constant path still serves the next normal line unaffected by the error line.
+		s, ok = sse.Process(0, []byte("keep me"), labels.EmptyLabels())
+		require.True(t, ok)
+		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
+	})
+}
+
+func TestStageHints_Merge(t *testing.T) {
+	require.False(t, StageHints{CanModifyLabels: false}.Merge(StageHints{CanModifyLabels: false}).CanModifyLabels)
+	require.True(t, StageHints{CanModifyLabels: true}.Merge(StageHints{CanModifyLabels: false}).CanModifyLabels)
+	require.True(t, StageHints{CanModifyLabels: false}.Merge(StageHints{CanModifyLabels: true}).CanModifyLabels)
+}
+
+func TestReduceStages_FoldsHintsAcrossStages(t *testing.T) {
+	lineFilter := mustFilter(NewFilter("x", LineMatchEqual)).ToStage() // cannot modify labels
+	parser := NewLogfmtParser(false, false)                            // adds parsed labels
+
+	// The fold is OR across every stage, regardless of order: one label-modifying stage taints the pipeline.
+	require.True(t, ReduceStages([]Stage{parser, lineFilter}).Hints().CanModifyLabels)
+	require.True(t, ReduceStages([]Stage{lineFilter, parser}).Hints().CanModifyLabels)
+	require.False(t, ReduceStages([]Stage{lineFilter, lineFilter}).Hints().CanModifyLabels)
+}
+
+func BenchmarkLineSampleExtractor_Process(b *testing.B) {
+	var (
+		streamLabels       = labels.FromStrings("cluster", "us-central1", "namespace", "dev", "pod", "app-7d9f8c-abcde")
+		structuredMetadata = labels.FromStrings("trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
+		line               = []byte(`level=info msg="request handled" status=200`)
+	)
+
+	benchmarks := []struct {
+		name  string
+		build func(b *testing.B) SampleExtractor
+	}{
+		{
+			name: "no labels and no structured metadata processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, true)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by labels but no stage processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"namespace"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by labels with line filtering",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor,
+					[]Stage{mustFilter(NewFilter("info", LineMatchEqual)).ToStage()},
+					[]string{"namespace"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "no grouping and no processing",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+		{
+			name: "group by structured metadata",
+			build: func(b *testing.B) SampleExtractor {
+				se, err := NewLineSampleExtractor(CountExtractor, nil, []string{"trace_id"}, false, false)
+				require.NoError(b, err)
+				return se
+			},
+		},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			sse := bm.build(b).ForStream(streamLabels)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, _ = sse.Process(int64(i), line, structuredMetadata)
+			}
+		})
+	}
+}
+
+func TestBinaryLabelFilter_Hints(t *testing.T) {
+	safe := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "a", "1")) // reads only
+	unsafeFilter := NewBytesLabelFilter(LabelFilterGreaterThan, "size", 5)           // sets __error__ on parse failure
+
+	require.True(t, NewAndLabelFilter(safe, unsafeFilter).Hints().CanModifyLabels)
+	require.True(t, NewOrLabelFilter(unsafeFilter, safe).Hints().CanModifyLabels)
+	require.False(t, NewAndLabelFilter(safe, safe).Hints().CanModifyLabels)
 }

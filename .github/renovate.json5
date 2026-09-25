@@ -178,6 +178,16 @@
       enabled: false,
     },
     {
+      // Keep v1.8.0 until Azure resolves https://github.com/Azure/azure-sdk-for-go/issues/27543.
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/Azure/azure-sdk-for-go/sdk/storage/azblob',
+      ],
+      enabled: false,
+    },
+    {
       // Disable updates driven by Kustomize, used by the operator
       matchManagers: [
         'kustomize',

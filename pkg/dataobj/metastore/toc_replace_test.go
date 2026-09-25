@@ -84,7 +84,7 @@ func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path str
 // Uses the same indexobj.Builder + tocBuilderCfg path that the production writer uses.
 func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocRow) {
 	t.Helper()
-	b, err := indexobj.NewBuilder(tocBuilderCfg, nil)
+	b, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 	for _, r := range rows {
 		require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC(), FileSize: r.FileSize, UncompressedLogsSize: r.UncompressedLogsSize}))

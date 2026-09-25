@@ -41,6 +41,7 @@ a frozen algorithm: revert. Do not update the expected values.
 - `version.go` — Reader/Writer/Merger interfaces, `CurrentVersion`, `AllVersions`,
   `ValidateVersion`, factory functions
 - `ngrams.go` — `ExtractorForVersion` shim that returns the matching `vN` extractor
+- `index_config.go` — `IndexConfig`, the shared `logline.index` section (see below)
 
 ## Compaction open question
 

@@ -207,8 +207,8 @@ func containsError(hints []string) bool {
 func appendLabelHints(dst []string, src ...string) []string {
 	for _, l := range src {
 		dst = append(dst, l)
-		if strings.HasSuffix(l, duplicateSuffix) {
-			dst = append(dst, strings.TrimSuffix(l, duplicateSuffix))
+		if strings.HasSuffix(l, DuplicateSuffix) {
+			dst = append(dst, strings.TrimSuffix(l, DuplicateSuffix))
 		}
 	}
 	return dst

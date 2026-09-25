@@ -4,15 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"time"
-
-	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 const (
 	defaultNgramLength                    = 6
 	defaultMaxHintParallel                = 64
 	defaultHintTimeout                    = 15 * time.Second
-	defaultMinQueryBytes                  = int64(500 * 1024 * 1024 * 1024) // 500 GB
 	defaultShardPlanningEnabled           = true
 	defaultShardPlanningMinReductionRatio = 0.75
 
@@ -41,8 +38,10 @@ func (c *ShardPlanningConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	return unmarshal((*plain)(c))
 }
 
-// MiddlewareConfig controls logline query narrowing behavior.
-type MiddlewareConfig struct {
+// Config is logline's read path configuration.
+type Config struct {
+	// Enabled turns on logline filtering in the query path.
+	Enabled bool `yaml:"enabled"`
 	// DryRun performs passive hint lookups for verification without modifying
 	// query execution.
 	DryRun bool `yaml:"dry_run"`
@@ -51,7 +50,7 @@ type MiddlewareConfig struct {
 	RequireOptInHeader bool `yaml:"require_opt_in_header"`
 	// NgramLength is the n-gram size used for hint lookups against the logline index.
 	// Defaults to 6 when zero.
-	NgramLength int `yaml:"ngram_length"`
+	NgramLength int `yaml:"-"`
 	// MaxHintParallel is the maximum number of concurrent hint index workers
 	// dispatched per query. Defaults to 64 when zero.
 	MaxHintParallel int `yaml:"max_hint_parallel"`
@@ -60,6 +59,11 @@ type MiddlewareConfig struct {
 	// cover this window, so it is always passed through to the Loki pipeline.
 	// Populated from Loki's querier.query_ingesters_within at assembly time.
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	// QuerySplitDuration is Loki's split_queries_by_interval. Prefetch sits
+	// above SplitByInterval and uses this to apply the filter's k-budget per
+	// slice. Populated from limits_config.split_queries_by_interval at assembly
+	// time. Zero disables splitting, matching Loki.
+	QuerySplitDuration time.Duration `yaml:"-"`
 	// HintTimeout is the maximum time to wait for the logline index hint
 	// lookup before falling back to passthrough. Defaults to 15s when zero.
 	HintTimeout time.Duration `yaml:"hint_timeout"`
@@ -72,31 +76,15 @@ type MiddlewareConfig struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
-	// MinQueryBytesForIndex is the minimum query size (from index stats bytes)
-	// required before running logline index hint lookup.
-	// Set to 0 to disable stats-based gating.
-	MinQueryBytesForIndex int64 `yaml:"min_query_bytes_for_index"`
 	// ShardPlanning controls optional live-query reruns that force Loki's TSDB
 	// shard planner to use a configured strategy when hints prove the request is narrow.
 	ShardPlanning ShardPlanningConfig `yaml:"shard_planning"`
 }
 
-// RegisterFlags registers configuration flags with the given FlagSet.
-func (c *MiddlewareConfig) RegisterFlags(f *flag.FlagSet) {
-	c.RegisterFlagsWithPrefix("query-frontend", f)
-}
-
-// RegisterFlagsWithPrefix registers middleware flags under a custom prefix.
-func (c *MiddlewareConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	if f == nil {
-		f = flag.CommandLine
-	}
-	if prefix == "" {
-		prefix = "query-frontend"
-	}
-
-	f.IntVar(&c.NgramLength, prefix+".ngram-length", 0,
-		"N-gram size for hint lookups against the logline index (default 6)")
+// RegisterFlagsWithPrefix registers the section's flags under prefix.
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&c.Enabled, prefix+".enabled", false,
+		"Enable logline filtering in the query path.")
 	f.BoolVar(&c.DryRun, prefix+".dry-run", false,
 		"Run logline hint lookups passively for verification without modifying query execution")
 	f.BoolVar(&c.RequireOptInHeader, prefix+".require-opt-in-header", true,
@@ -109,8 +97,6 @@ func (c *MiddlewareConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
-	f.Int64Var(&c.MinQueryBytesForIndex, prefix+".min-query-bytes-for-index", defaultMinQueryBytes,
-		"Minimum index-stats bytes required before performing logline hint lookup; set to 0 to disable (default 500 GB)")
 	f.BoolVar(&c.ShardPlanning.Enabled, prefix+".shard-planning.enabled", defaultShardPlanningEnabled,
 		"Enable logline shard-planning reruns for narrow live queries")
 	f.Float64Var(&c.ShardPlanning.MinTimeReductionRatio, prefix+".shard-planning.min-time-reduction-ratio", defaultShardPlanningMinReductionRatio,
@@ -118,7 +104,7 @@ func (c *MiddlewareConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 }
 
 // Validate checks constraints and applies defaults for zero-valued fields.
-func (c *MiddlewareConfig) Validate() error {
+func (c *Config) Validate() error {
 	if c.NgramLength <= 0 {
 		c.NgramLength = defaultNgramLength
 	}
@@ -136,9 +122,6 @@ func (c *MiddlewareConfig) Validate() error {
 	}
 	if c.HintCacheMaxSizeMB == 0 {
 		c.HintCacheMaxSizeMB = 100
-	}
-	if c.MinQueryBytesForIndex < 0 {
-		return fmt.Errorf("min_query_bytes_for_index must be >= 0")
 	}
 	if err := c.ShardPlanning.Validate(); err != nil {
 		return fmt.Errorf("invalid shard_planning config: %w", err)
@@ -158,34 +141,5 @@ func (c *ShardPlanningConfig) Validate() error {
 		return nil
 	}
 	c.applyDefaults()
-	return nil
-}
-
-// Config controls logline query frontend middleware injection.
-type Config struct {
-	Enabled       bool             `yaml:"enabled"`
-	Store         store.Config     `yaml:"store"`
-	QueryFrontend MiddlewareConfig `yaml:"query_frontend"`
-}
-
-// RegisterFlags registers the integration flags for the logline middleware.
-func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	if f == nil {
-		f = flag.CommandLine
-	}
-
-	f.BoolVar(&c.Enabled, "logline.enabled", false, "Enable logline query frontend middleware injection")
-	c.Store.RegisterFlags(f)
-	c.QueryFrontend.RegisterFlagsWithPrefix("logline-query-frontend", f)
-}
-
-// Validate checks constraints and applies defaults.
-func (c *Config) Validate() error {
-	if err := c.Store.Validate(); err != nil {
-		return fmt.Errorf("invalid store config: %w", err)
-	}
-	if err := c.QueryFrontend.Validate(); err != nil {
-		return fmt.Errorf("invalid query frontend config: %w", err)
-	}
 	return nil
 }

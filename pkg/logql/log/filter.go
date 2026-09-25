@@ -142,11 +142,9 @@ func (e existsFilter) Filter(line []byte) bool {
 }
 
 func (e existsFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, e.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, e.Filter(line)
+	})
 }
 
 // Matches implements Matcher
@@ -164,11 +162,9 @@ func (n notFilter) Filter(line []byte) bool {
 }
 
 func (n notFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, n.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, n.Filter(line)
+	})
 }
 
 func (n notFilter) Matches(test Checker) bool {
@@ -212,11 +208,9 @@ func (a andFilter) Filter(line []byte) bool {
 }
 
 func (a andFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
 }
 
 func (a andFilter) Matches(test Checker) bool {
@@ -293,11 +287,9 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
 }
 
 type orFilter struct {
@@ -339,11 +331,9 @@ func (a orFilter) Filter(line []byte) bool {
 }
 
 func (a orFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
 }
 
 // Matches implements Matcher
@@ -376,11 +366,9 @@ func (r regexpFilter) Filter(line []byte) bool {
 }
 
 func (r regexpFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, r.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, r.Filter(line)
+	})
 }
 
 func (r regexpFilter) Matches(test Checker) bool {
@@ -405,11 +393,9 @@ func (l equalFilter) Filter(line []byte) bool {
 }
 
 func (l equalFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, l.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, l.Filter(line)
+	})
 }
 
 func (l equalFilter) Matches(test Checker) bool {
@@ -536,11 +522,9 @@ func containsLower(line, substr []byte) bool {
 }
 
 func (l containsFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, l.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, l.Filter(line)
+	})
 }
 
 // Matches implements Matcher
@@ -588,11 +572,9 @@ func (f containsAllFilter) Filter(line []byte) bool {
 }
 
 func (f containsAllFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, f.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, f.Filter(line)
+	})
 }
 
 func (f containsAllFilter) Matches(test Checker) bool {
@@ -877,9 +859,7 @@ func (f *patternFilter) Matches(test Checker) bool {
 }
 
 func (f *patternFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, f.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, f.Filter(line)
+	})
 }
