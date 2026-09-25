@@ -1,6 +1,7 @@
 package tail
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
@@ -32,6 +35,17 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
+		return
+	}
+
+	// ParseTailQuery only validates the label matchers. Build the pipeline up
+	// front as well: a query whose pipeline stages can't be compiled (e.g. an
+	// invalid regexp in a line filter) is rejected by the ingesters after the
+	// websocket upgrade, and since the ingesters reject it on every reconnect
+	// the client hangs on an open connection that only receives pings. Fail
+	// with a 400 before upgrading, just like query_range does.
+	if err := validateTailQuery(req); err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 		return
 	}
@@ -144,4 +158,18 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// validateTailQuery compiles the pipeline stages of a parsed tail query so
+// that queries the ingesters will reject are refused before the websocket
+// upgrade. ParseTailQuery only validates label matchers; pipeline stages are
+// compiled lazily on the ingester side, which is too late to tell the HTTP
+// client about it.
+func validateTailQuery(req *logproto.TailRequest) error {
+	expr, ok := req.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("unsupported query expression: want (LogSelectorExpr), got (%T)", req.Plan.AST)
+	}
+	_, err := expr.Pipeline()
+	return err
 }
