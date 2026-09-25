@@ -20,11 +20,10 @@ const (
 	StorageClassReducedRedundancy        = "REDUCED_REDUNDANCY"
 	StorageClassStandard                 = "STANDARD"
 	StorageClassStandardInfrequentAccess = "STANDARD_IA"
+	StorageClassExpressOneZone           = "EXPRESS_ONEZONE"
 )
 
-var (
-	SupportedStorageClasses = []string{StorageClassGlacier, StorageClassDeepArchive, StorageClassGlacierInstantRetrieval, StorageClassIntelligentTiering, StorageClassOneZoneInfrequentAccess, StorageClassOutposts, StorageClassReducedRedundancy, StorageClassStandard, StorageClassStandardInfrequentAccess}
-)
+var SupportedStorageClasses = []string{StorageClassGlacier, StorageClassDeepArchive, StorageClassGlacierInstantRetrieval, StorageClassIntelligentTiering, StorageClassOneZoneInfrequentAccess, StorageClassOutposts, StorageClassReducedRedundancy, StorageClassStandard, StorageClassStandardInfrequentAccess}
 
 func ValidateStorageClass(storageClass string) error {
 	if !util.StringsContain(SupportedStorageClasses, storageClass) {
