@@ -27,6 +27,16 @@ eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "V={{
 # line_format; bytes_over_time reads the line and runs the stage.
 eval instant at 60s bytes_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])
   expect fail msg: not defined
+# A template that fails at run time sets __error__, so the query fails unless a filter keeps the
+# errored lines. line_format() returns the line unchanged on that failure, so each line still
+# measures 1 byte.
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" [1m])
+  expect fail msg: TemplateFormatErr
+eval instant at 60s sum by (level) (bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__!="" [1m]))
+  {level="error"} 3
+  {level="warn"} 2
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__="" [1m])
+  expect empty
 
 # line_format reads a structured-metadata field the same way it reads a stream label.
 clear
@@ -186,11 +196,11 @@ eval range from 60s to 180s step 120s first_over_time({app="a"} | json | drop __
 # A cleared __error_details__ leaves __error__, so the query still fails.
 eval instant at 60s first_over_time({app="a"} | json | drop __error_details__ | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
-# drop deletes __preserve_error__ like an ordinary label, so the query still fails.
+# drop cannot delete __preserve_error__.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__ | unwrap v [1m]) by (code)
-  expect fail msg: JSONParserErr
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__="true" | unwrap v [1m]) by (code)
-  expect fail msg: JSONParserErr
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
 # The filter runs before drop, so the malformed line is the only one left to report.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __error__ | unwrap v [1m]) by (code)
   {code="500"} 7

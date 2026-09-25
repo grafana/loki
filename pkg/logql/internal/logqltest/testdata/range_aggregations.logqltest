@@ -354,6 +354,49 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
 eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2 2
 
+# quantile_over_time() over a malformed line: quantile computed from structured metadata.
+clear
+load
+  {app="a", pod="p1"}     `{` @ 20s [metadata v="7"] # malformed
+  {app="a", pod="p1"}     `{` @ 30s [metadata v="9"] # malformed
+  {app="noise", pod="p2"} `{` @ 20s [metadata v="1"]
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 8
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod) # non-overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 7 8
+# Dropping the errored lines leaves no sample to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect empty
+
+# quantile_over_time() over a malformed line: quantile computed from line field.
+clear
+load
+  {app="a", pod="p1"}     `{"v":4}` @ 10s
+  {app="a", pod="p1"}     `{"v":6}` @ 20s
+  {app="a", pod="p1"}     `{"v":8}` @ 30s
+  {app="a", pod="p1"}     `{`       @ 40s # malformed
+  {app="noise", pod="p2"} `{"v":1}` @ 20s
+
+# The malformed line carries no `v` to unwrap, so it becomes no sample and never reaches the query,
+# reason why the query doesn't fail.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="p1"} 6
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod) # overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="p1"} 5 6   # (-40s,20s]={4,6}, (0s,60s]={4,6,8}
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  {pod="p1"} 6
+# Keeping the malformed line adds no sample either, so no group is left to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect empty
+
 # approx_count_distinct()
 #
 # A duplicate id=1 does not raise the distinct count. A "noise" line has no id, so logfmt skips it.
@@ -484,6 +527,8 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
   expect fail msg: LogfmtParserErr
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
   {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__!="" [1m])
+  {__error__="LogfmtParserErr", __error_details__="logfmt syntax error at pos 23 : unterminated quoted value", __preserve_error__="true", app="a"} 1
 
 # approx_count_distinct() with a large set.
 #
@@ -824,6 +869,8 @@ eval instant at 60s rate({app="err"} | unwrap v [1m])
   expect fail
 eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
+eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", __preserve_error__="true", app="err"} 0
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -1128,6 +1175,28 @@ eval instant at 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
 eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | v > 3 [1m]) by (pod)
   {pod="1"} 4 4 _
   {pod="2"} 9 9 _
+
+# avg_over_time() with an __error__ post filter on the unwrap: avg_over_time() decomposes into a
+# sum and a count when sharded, and the count leg cannot reproduce the post filter, so the shard
+# mapper leaves the query alone. Every spelling of the filter has to reach that guard, or the
+# sharded stack reports a different label set.
+clear
+load
+  {app="a", pod="p1"}     `{"ok":1}` @ 20s [metadata v="5"]
+  {app="a", pod="p2"}     `{`        @ 40s [metadata v="7"] # malformed
+  {app="a", pod="p2"}     `{`        @ 50s [metadata v="9"] # malformed
+  {app="noise", pod="p3"} `{`        @ 40s [metadata v="1"]
+
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__=~".*" [1m]) by (pod)
+  {pod="p1"} 5
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__="" [1m]) by (pod)
+  {pod="p1"} 5
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__!="" [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+# A post-unwrap filter on __error_details__ doesn't keep errors.
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error_details__="" [1m]) by (pod)
+  expect fail msg: JSONParserErr
 
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
@@ -1529,3 +1598,51 @@ eval range from 60s to 120s step 60s absent_over_time({app="a"} | logfmt | unwra
   {app="a"} 1 1
 eval range from 60s to 180s step 120s absent_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
   {app="a"} 1 1
+
+# absent_over_time() over a malformed line.
+clear
+load
+  {app="a"}     `{`        @ 40s # malformed
+  {app="noise"} `{"ok":1}` @ 40s
+
+# Without an __error__ filter the query does not fail, although the malformed line reaches it.
+# absent_over_time() groups to no labels, so the parser hints name no label to extract. json() then
+# skips the line, so it never parses it and never fails. The line still counts as present.
+eval instant at 60s absent_over_time({app="a"} | json [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | json | __error__!="" [1m])
+  expect empty
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__!="" [1m]) # overlapping
+  {app="a"} _ 1
+eval instant at 60s absent_over_time({app="a"} | json | __error__="" [1m])
+  {app="a"} 1
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__="" [1m]) # overlapping
+  {app="a"} 1 1
+
+# absent_over_time() over a failed unwrap conversion.
+clear
+load
+  {app="a"}     "v=oops" @ 40s # `v` is present but not a number
+  {app="a"}     "v=5"    @ 50s # the same field converts on this line
+  {app="noise"} "v=1"    @ 40s
+
+# The __error__ filter keeps the errored sample, whose default value is 0, so it's a present.
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])
+  expect fail msg: SampleExtractionErr
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__!="" [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m])
+  expect empty
+# A query that reads both lines reports the failed conversion as a 0.
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m])
+  {app="a"} 5
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", __preserve_error__="true", app="a"} 0
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 0
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 5
+# Dropping the errored line leaves the conversion that worked.
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5

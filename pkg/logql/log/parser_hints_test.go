@@ -281,6 +281,20 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
 	})
 
+	t.Run("it keeps each filter aligned with its label when an unwrap has no post filter", func(t *testing.T) {
+		s := []log.Stage{
+			log.ReduceAndLabelFilter(nil),
+			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "HTTP/2.0")),
+			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "response", "200")),
+		}
+		require.Empty(t, s[0].RequiredLabelNames(), "the first stage must require no label name")
+
+		h := log.NewParserHint(nil, nil, true, true, "metric", s)
+
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
+		require.True(t, h.ShouldContinueParsingLine("response", lb))
+	})
+
 	t.Run("it ignores BinaryMatchers", func(t *testing.T) {
 		s := []log.Stage{
 			log.ReduceAndLabelFilter([]log.LabelFilterer{
