@@ -23,7 +23,7 @@ func TestBuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	spec := lokiv1.ObjectStorageSpec{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 		},
@@ -33,7 +33,7 @@ func TestBuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	actual, err := BuildSchemaConfig(time.Now().UTC(), spec, status)
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 	}
@@ -47,11 +47,11 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	spec := lokiv1.ObjectStorageSpec{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 			{
-				Version:       lokiv1.ObjectStorageSchemaV12,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2021-10-01",
 			},
 		},
@@ -59,7 +59,7 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	status := lokiv1.LokiStackStorageStatus{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 		},
@@ -68,11 +68,11 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	actual, err := BuildSchemaConfig(utcTime, spec, status)
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 	}
@@ -87,11 +87,11 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) 
 	spec := lokiv1.ObjectStorageSpec{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 			{
-				Version:       lokiv1.ObjectStorageSchemaV12,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: lokiv1.StorageSchemaEffectiveDate(updateWindow),
 			},
 		},
@@ -99,7 +99,7 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) 
 	status := lokiv1.LokiStackStorageStatus{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 		},
@@ -114,46 +114,46 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithInvalidDate(t *testing.T) 
 func TestBuildSchemas(t *testing.T) {
 	schemas := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-11-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-06-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-12-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-02-01",
 		},
 	}
 
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-06-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-11-01",
 		},
 	}
@@ -165,46 +165,46 @@ func TestBuildSchemas(t *testing.T) {
 func TestReduceSortedSchemas(t *testing.T) {
 	schemas := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-02-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-06-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-11-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-12-01",
 		},
 	}
 
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-06-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-11-01",
 		},
 	}

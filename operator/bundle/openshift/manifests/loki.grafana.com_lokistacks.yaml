@@ -817,9 +817,6 @@ spec:
                   to store logs.
                 properties:
                   schemas:
-                    default:
-                    - effectiveDate: "2020-10-11"
-                      version: v11
                     description: Schemas for reading and writing logs.
                     items:
                       description: ObjectStorageSchema defines a schema version and
@@ -837,10 +834,7 @@ spec:
                           type: string
                         version:
                           description: Version for writing and reading logs.
-                          enum:
-                          - v11
-                          - v12
-                          - v13
+                          pattern: ^v1[3-9]$|^v[2-9][0-9]$
                           type: string
                       required:
                       - effectiveDate
@@ -899,6 +893,7 @@ spec:
                     - caName
                     type: object
                 required:
+                - schemas
                 - secret
                 type: object
               storageClassName:
@@ -4232,10 +4227,7 @@ spec:
                           type: string
                         version:
                           description: Version for writing and reading logs.
-                          enum:
-                          - v11
-                          - v12
-                          - v13
+                          pattern: ^v1[3-9]$|^v[2-9][0-9]$
                           type: string
                       required:
                       - effectiveDate
@@ -4580,8 +4572,7 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
-                          - v11
-                          - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -5403,8 +5394,7 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
-                          - v11
-                          - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate

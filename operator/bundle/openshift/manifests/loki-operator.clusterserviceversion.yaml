@@ -55,6 +55,12 @@ metadata:
           "spec": {
             "size": "1x.small",
             "storage": {
+              "schemas": [
+                {
+                  "effectiveDate": "2024-01-01",
+                  "version": "v13"
+                }
+              ],
               "secret": {
                 "name": "test"
               }
@@ -152,7 +158,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2026-09-08T17:29:28Z"
+    createdAt: "2026-09-23T13:31:27Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -758,8 +764,6 @@ spec:
         displayName: Version
         path: storage.schemas[0].version
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:v11
-        - urn:alm:descriptor:com.tectonic.ui:select:v12
         - urn:alm:descriptor:com.tectonic.ui:select:v13
       - description: Name of a secret in the namespace configured for object storage
           secrets.

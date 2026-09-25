@@ -107,20 +107,8 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
-	// Build a slice of with the shippers that are being used in the config
-	// booleans used to prevent duplicates
-	shippers := []string{}
-	boltdb := false
-	tsdb := false
-	for _, schema := range opt.Stack.Storage.Schemas {
-		if !boltdb && (schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12) {
-			shippers = append(shippers, "boltdb")
-			boltdb = true
-		} else if !tsdb {
-			shippers = append(shippers, "tsdb")
-			tsdb = true
-		}
-	}
+	// All schemas now use tsdb shipper (v13 and later). BoltDB schemas (v11, v12) removed in Loki 4.0.
+	shippers := []string{"tsdb"}
 
 	return config.Options{
 		Stack: opt.Stack,
