@@ -42,8 +42,21 @@ func putGzipReader(reader io.Reader) {
 type GetFileFunc func() (io.ReadCloser, error)
 
 // DownloadFileFromStorage downloads a file from storage to given location.
-func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) (err error) {
+func DownloadFileFromStorage(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc) error {
+	return DownloadFileFromStorageWithObserver(destination, decompressFile, sync, logger, getFileFunc, nil)
+}
+
+// DownloadFileFromStorageWithObserver reports transfer duration and error once
+// per attempt when observeDownload is non-nil. Successful transfer is reported
+// before extraction, fsync and opening.
+func DownloadFileFromStorageWithObserver(destination string, decompressFile bool, sync bool, logger log.Logger, getFileFunc GetFileFunc, observeDownload func(time.Duration, error)) (err error) {
 	start := time.Now()
+	transferred := false
+	defer func() {
+		if !transferred && observeDownload != nil {
+			observeDownload(time.Since(start), err)
+		}
+	}()
 	readCloser, err := getFileFunc()
 	if err != nil {
 		return err
@@ -76,6 +89,10 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}
 
 	dlTime := time.Since(start)
+	transferred = true
+	if observeDownload != nil {
+		observeDownload(dlTime, nil)
+	}
 	level.Info(logger).Log("msg", "downloaded file", "total_time", dlTime)
 	start = time.Now()
 

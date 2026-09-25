@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 )
 
 // mtxWithReadiness combines a mutex with readiness channel. It would acquire lock only when the channel is closed to mark it ready.
@@ -33,6 +35,7 @@ func (m *mtxWithReadiness) isReady() bool {
 }
 
 func (m *mtxWithReadiness) awaitReady(ctx context.Context) error {
+	defer timing.Track(ctx, timing.ReadyWait)()
 	ctx, cancel := context.WithTimeoutCause(ctx, 30*time.Second, errors.New("exceeded 30 seconds in awaitReady"))
 	defer cancel()
 

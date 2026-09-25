@@ -53,6 +53,7 @@ type indexSet struct {
 	logger            log.Logger
 	maxConcurrent     int
 	downloadTimeout   time.Duration
+	observeDownload   func(time.Duration, error)
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -62,7 +63,9 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
+// NewIndexSet creates an index set. A non-nil observer measures object transfer
+// attempts independently of subsequent extraction, fsync and index opening.
+func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration, observeDownload func(time.Duration, error)) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -85,6 +88,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		logger:            logger,
 		maxConcurrent:     maxConcurrent,
 		downloadTimeout:   downloadTimeout,
+		observeDownload:   observeDownload,
 		lastUsedAt:        time.Now(),
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
@@ -434,7 +438,7 @@ func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folder
 	if decompress {
 		dst = strings.TrimSuffix(dst, gzipExtension)
 	}
-	return filepath.Base(dst), storage.DownloadFileFromStorage(
+	return filepath.Base(dst), storage.DownloadFileFromStorageWithObserver(
 		dst,
 		decompress,
 		true,
@@ -442,6 +446,7 @@ func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folder
 		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
 		},
+		t.observeDownload,
 	)
 }
 
