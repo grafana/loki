@@ -347,22 +347,46 @@ loki_ingest_limits_stream_shard_total_streams{tenant="test"} 4
 	))
 }
 
-func TestCurrentRate(t *testing.T) {
+func TestStreamShardUsage_CurrentRate(t *testing.T) {
 	now := time.Unix(1000, 0)
-	buckets := []shardRateBucket{
-		{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
-		// Outside the rate window: a slot the ring buffer has not reused yet
-		// still holds stale data, which must not be counted.
-		{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
-		{},
+	stream := streamShardUsage{
+		rateBuckets: []shardRateBucket{
+			{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
+			// Outside the rate window: a slot the ring buffer has not reused yet
+			// still holds stale data, which must not be counted.
+			{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
+			{},
+		},
 	}
-	bytesRate, pushRate := currentRate(buckets, now, time.Minute)
+	bytesRate, pushRate := stream.currentRate(now, time.Minute)
 	require.Equal(t, uint64(10), bytesRate)
 	require.InDelta(t, 0.05, pushRate, 0.001)
 
-	bytesRate, pushRate = currentRate(buckets, now, 0)
+	bytesRate, pushRate = stream.currentRate(now, 0)
 	require.Zero(t, bytesRate)
 	require.Zero(t, pushRate)
+}
+
+func TestStreamShardUsage_CurrentRate_AllZones(t *testing.T) {
+	now := time.Unix(1000, 0)
+	stream := streamShardUsage{
+		rateBuckets: []shardRateBucket{
+			{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
+		},
+		remoteBuckets: map[string][]shardRateBucket{
+			"zone2": {
+				{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 300, pushes: 2},
+				{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
+			},
+			"zone3": {
+				{timestamp: now.Add(-10 * time.Second).UnixNano(), size: 300, pushes: 1},
+			},
+		},
+	}
+	// 1200 bytes and 6 pushes over a minute, the stale bucket excluded.
+	bytesRate, pushRate := stream.currentRate(now, time.Minute)
+	require.Equal(t, uint64(20), bytesRate)
+	require.InDelta(t, 0.1, pushRate, 0.001)
 }
 
 func TestCeilDivU32(t *testing.T) {

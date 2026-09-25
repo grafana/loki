@@ -90,6 +90,17 @@ type streamShardUsage struct {
 	policy      string
 	rateBuckets []shardRateBucket
 
+	// remoteBuckets holds the rate buckets of the other zones, keyed by zone,
+	// as merged from their records. Rates are kept per zone rather than as a
+	// single aggregate so that merging a record is an assignment and not an
+	// addition, which is what makes replay idempotent.
+	//
+	// It is nil until another zone's record is merged. The frontend tries
+	// zones in a fixed order, so in steady state a stream is answered by one
+	// zone, which pays for the local ring only, while the other zones pay for
+	// one map entry each.
+	remoteBuckets map[string][]shardRateBucket
+
 	// slots is the budget this stream consumes: one per live shard, with a
 	// floor of one so a tracked unsharded stream still counts as one stream.
 	slots uint64
@@ -235,7 +246,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				// the whole push.
 				var pushRate float64
 				window := clampShardRateWindow(shardCfg.LimitsServiceStreamShardingRateWindow, s.bucketSize, s.rateWindow)
-				evaluatedRate, pushRate = currentRate(existing.rateBuckets, seenAt, window)
+				evaluatedRate, pushRate = existing.currentRate(seenAt, window)
 				s.updateRateBucket(&stream, m.TotalSize, seenAt)
 				if pushRate == 0 {
 					// No traffic observed in the rate window, so there is no
@@ -500,24 +511,35 @@ func refreshLiveShards(shardLastUsed []int64, count uint32, now int64) []int64 {
 }
 
 // currentRate returns the windowed average byte rate and push rate per
-// second, using the same approach as Service.UpdateRates.
-func currentRate(buckets []shardRateBucket, now time.Time, rateWindow time.Duration) (bytesRate uint64, pushRate float64) {
+// second over all zones, using the same approach as Service.UpdateRates.
+// Summing the zones gives the stream's full rate even while the frontend is
+// spreading its pushes over more than one zone.
+func (s streamShardUsage) currentRate(now time.Time, rateWindow time.Duration) (bytesRate uint64, pushRate float64) {
 	seconds := rateWindow.Seconds()
 	if seconds <= 0 {
 		return 0, 0
 	}
-	// Sum only the buckets still inside the rate window. The ring buffer
-	// resets a slot when it is reused, so a slot not touched this window
-	// still holds stale data that must be skipped rather than counted.
 	cutoff := now.Add(-rateWindow).UnixNano()
-	var totalBytes, totalPushes uint64
+	totalBytes, totalPushes := sumRateBuckets(s.rateBuckets, cutoff)
+	for _, buckets := range s.remoteBuckets {
+		bytes, pushes := sumRateBuckets(buckets, cutoff)
+		totalBytes += bytes
+		totalPushes += pushes
+	}
+	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
+}
+
+// sumRateBuckets sums the buckets that start at or after cutoff. The ring
+// buffer resets a slot when it is reused, so a slot not touched this window
+// still holds stale data that must be skipped rather than counted.
+func sumRateBuckets(buckets []shardRateBucket, cutoff int64) (totalBytes, totalPushes uint64) {
 	for _, b := range buckets {
 		if b.timestamp >= cutoff {
 			totalBytes += b.size
 			totalPushes += b.pushes
 		}
 	}
-	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
+	return totalBytes, totalPushes
 }
 
 // clampShardRateWindow resolves the window the rate is averaged over for the
