@@ -126,12 +126,21 @@ type TLSProfileSpec struct {
 	// MinTLSVersion is used to specify the minimal version of the TLS protocol
 	// that is negotiated during the TLS handshake.
 	MinTLSVersion string
+	// Groups is used to specify the key exchange groups (curves) that are
+	// negotiated during the TLS handshake.
+	Groups []string
 }
 
 // TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
 // to a string of elements joined with a comma.
 func (o Options) TLSCipherSuites() string {
 	return strings.Join(o.TLSProfile.Ciphers, ",")
+}
+
+// TLSCurvePreferences transforms TLSProfileSpec.Groups from a slice
+// to a string of elements joined with a comma.
+func (o Options) TLSCurvePreferences() string {
+	return strings.Join(o.TLSProfile.Groups, ",")
 }
 
 // NewTimeoutConfig creates a TimeoutConfig from the QueryTimeout values in the spec's limits.

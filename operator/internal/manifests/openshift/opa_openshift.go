@@ -24,7 +24,7 @@ const (
 	ocpMonitoringGroupByLabel = "namespace"
 )
 
-func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups []string) corev1.Container {
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers, curves string, withTLS bool, adminGroups []string) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -72,6 +72,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 			fmt.Sprintf("--tls.internal.server.key-file=%s", keyFilePath),
 			fmt.Sprintf("--tls.min-version=%s", minTLSVersion),
 			fmt.Sprintf("--tls.cipher-suites=%s", ciphers),
+			fmt.Sprintf("--tls.curve-preferences=%s", curves),
 		}...)
 
 		uriScheme = corev1.URISchemeHTTPS
