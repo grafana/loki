@@ -101,15 +101,23 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 
 	metadata := inspectFile(r.Context(), s.logger, s.bucket, filename)
 	metadata.LastModified = attrs.LastModified.UTC()
-	for _, section := range metadata.Sections {
-		section.MinTimestamp = section.MinTimestamp.UTC().Truncate(time.Second)
-		section.MaxTimestamp = section.MaxTimestamp.UTC().Truncate(time.Second)
-	}
+	normalizeSectionTimestamps(metadata.Sections)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
 		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
 		return
+	}
+}
+
+// normalizeSectionTimestamps normalizes each section's MinTimestamp and
+// MaxTimestamp to UTC, truncated to the second, in place. sections must be
+// addressed by index: SectionMetadata is a value type, so ranging by value
+// would mutate copies and silently discard the normalization.
+func normalizeSectionTimestamps(sections []SectionMetadata) {
+	for i := range sections {
+		sections[i].MinTimestamp = sections[i].MinTimestamp.UTC().Truncate(time.Second)
+		sections[i].MaxTimestamp = sections[i].MaxTimestamp.UTC().Truncate(time.Second)
 	}
 }
 
