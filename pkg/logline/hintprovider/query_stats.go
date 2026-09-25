@@ -288,8 +288,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	}
 }
 
-// QueryStatsFromProto reconstructs a QueryStats accumulator from the wire type.
-func QueryStatsFromProto(p *logproto.HintQueryStats) *QueryStats {
+// fromProtoStats reconstructs a QueryStats accumulator from the wire type.
+func fromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s := NewQueryStats()
 	if p == nil {
 		return s

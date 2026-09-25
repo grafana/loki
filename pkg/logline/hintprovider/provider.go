@@ -44,10 +44,11 @@ type HintTimeRange struct {
 	Source string
 }
 
-// IsPassthrough reports whether this range is a synthetic window where the
-// logline index has no coverage (e.g. before store min date). A zero Start
-// is the sentinel; the filter middleware should pass these intervals through
-// to Loki unmodified rather than treating them as narrowed.
+// IsPassthrough returns true for synthetic hint ranges that represent time
+// windows where the logline index has no coverage (e.g. before store min
+// date). These ranges use a zero-value Start as a sentinel. The filter
+// middleware should pass these intervals through to Loki unmodified rather
+// than treating them as narrowed.
 func (h HintTimeRange) IsPassthrough() bool {
 	return h.Start.IsZero()
 }

@@ -82,7 +82,7 @@ type minDateProvider interface {
 type CachingHintProvider struct {
 	delegate QueryHintProvider
 	cache    cache.Cache
-	max      int
+	maxDays  int
 
 	flight singleflight.Group
 
@@ -98,7 +98,7 @@ func NewCachingHintProvider(delegate QueryHintProvider, c cache.Cache, maxDays i
 	return &CachingHintProvider{
 		delegate: delegate,
 		cache:    c,
-		max:      maxDays,
+		maxDays:  maxDays,
 		requestsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "logline_hint_cache_requests_total",
 			Help: "Total hint cache lookup requests by result.",
@@ -161,7 +161,7 @@ func (p *CachingHintProvider) ProvideHints(
 
 	results := make([]provideHintsResult, len(missingDays))
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.max)
+	g.SetLimit(p.maxDays)
 
 	for i, day := range missingDays {
 		g.Go(func() error {

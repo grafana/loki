@@ -207,7 +207,7 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(6), snap.TotalTermBatchesProcessed)
 }
 
-func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
+func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats := NewQueryStats()
 	stats.headerReads.Add(1)
 	stats.metadataReads.Add(2)
@@ -227,7 +227,7 @@ func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
 	stats.ObserveHintCache("miss", 4, 2)
 
 	snap := stats.Snapshot()
-	got := QueryStatsFromProto(&snap).Snapshot()
+	got := fromProtoStats(&snap).Snapshot()
 
 	require.Equal(t, snap.HeaderReads, got.HeaderReads)
 	require.Equal(t, snap.MetadataReads, got.MetadataReads)
@@ -248,8 +248,8 @@ func TestQueryStatsFromProtoRoundTrip(t *testing.T) {
 	require.Equal(t, snap.HintCacheDaysHit, got.HintCacheDaysHit)
 }
 
-func TestQueryStatsFromProtoNil(t *testing.T) {
-	got := QueryStatsFromProto(nil)
+func TestFromProtoStatsNil(t *testing.T) {
+	got := fromProtoStats(nil)
 	require.NotNil(t, got)
 	require.Equal(t, logproto.HintQueryStats{}, got.Snapshot())
 }

@@ -169,6 +169,25 @@ func TestLoglineHintProvider_OpenIndexReader(t *testing.T) {
 	require.NoError(t, reader.Close())
 }
 
+func TestLoglineHintProvider_OpenIndexReader_ErrorWhenHeaderMissing(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	stats := NewQueryStats()
+	_, err = provider.openIndexReader(context.Background(), logproto.HintIndex{
+		ID:        "2026-02-26/eeeeffffffffeeee",
+		Version:   "v3",
+		SizeBytes: 1,
+	}, stats)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index_header")
+
+	snap := stats.Snapshot()
+	require.Equal(t, int64(1), snap.MetadataCacheMisses)
+	require.Equal(t, int64(0), snap.HeaderCacheMisses)
+}
+
 func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 	indexStore := newTestStore(t)
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
@@ -902,6 +921,78 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 
 	snap := stats.Snapshot()
 	require.Equal(t, int64(1), snap.IndexQueriesTotal)
+}
+
+func TestLoglineHintProvider_MetadataCache_SkipsPutWhenFull(t *testing.T) {
+	cache := newMetadataCache(2, nil)
+
+	type opaqueState struct{}
+	a1 := &opaqueState{}
+	cache.put("a", cachedMetadata{state: a1})
+	cache.put("b", cachedMetadata{state: &opaqueState{}})
+	cache.put("c", cachedMetadata{state: &opaqueState{}})
+
+	require.Equal(t, 2, cache.len(), "cache should remain capped at max entries")
+	_, ok := cache.get("a")
+	require.True(t, ok, "existing entries should be retained when cache is full")
+	_, ok = cache.get("b")
+	require.True(t, ok)
+	_, ok = cache.get("c")
+	require.False(t, ok, "new entry should not be cached when full")
+
+	// Existing keys should still be updated even when the cache is at capacity.
+	a2 := &opaqueState{}
+	cache.put("a", cachedMetadata{state: a2})
+	require.Equal(t, 2, cache.len(), "updating existing key should not change cache size")
+	got, ok := cache.get("a")
+	require.True(t, ok)
+	require.Same(t, a2, got.state.(*opaqueState), "existing entry should be updated when full")
+}
+
+func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
+	indexStore := newTestStore(t)
+	needle := "9fA81cD2Ef0077aa"
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base, base.Add(10*time.Second))
+	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(20*time.Second), base.Add(30*time.Second))
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	metas := indexStore.Snapshot().Active()
+	require.Len(t, metas, 2)
+	active := hintIndexesFromMetas(metas)
+
+	for _, idx := range active {
+		reader, err := provider.openIndexReader(context.Background(), idx, nil)
+		require.NoError(t, err)
+		require.NoError(t, reader.Close())
+	}
+
+	require.Equal(t, 2, provider.cache.len())
+
+	ids := map[string]struct{}{
+		active[0].ID: {},
+		active[1].ID: {},
+	}
+	deletedID := active[0].ID
+
+	require.NoError(t, indexStore.DeleteIndex(context.Background(), metas[0]))
+	require.NoError(t, indexStore.Poll(context.Background()))
+
+	provider.cache.evictStale(indexStore.Snapshot())
+
+	require.Equal(t, 1, provider.cache.len())
+	_, ok := provider.cache.get(deletedID)
+	require.False(t, ok)
+
+	delete(ids, deletedID)
+	var remainingID string
+	for id := range ids {
+		remainingID = id
+	}
+	_, ok = provider.cache.get(remainingID)
+	require.True(t, ok)
 }
 
 // minimalHintIndex returns a HintIndex suitable for buildTermJobs tests that

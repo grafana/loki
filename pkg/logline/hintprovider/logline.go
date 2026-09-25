@@ -176,7 +176,7 @@ func (p *LoglineHintProvider) provideHintsRemote(
 	}
 
 	ranges := append(plan.ranges, fromProtoRanges(hr.Response.TimeRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, QueryStatsFromProto(hr.Response.Stats), nil
+	return &Hints{TimeRanges: normalizeRanges(ranges)}, fromProtoStats(hr.Response.Stats), nil
 }
 
 func (p *LoglineHintProvider) ProvideHints(
@@ -217,9 +217,6 @@ func (p *LoglineHintProvider) openIndexReader(
 	idx logproto.HintIndex,
 	stats *QueryStats,
 ) (logline.Reader, error) {
-	if idx.IndexHeader == nil {
-		return nil, fmt.Errorf("index %s is missing required index_header", idx.ID)
-	}
 	storeReader := p.store.GetIndexReaderAt(ctx, idx.IndexPath())
 
 	if p.cache != nil {
@@ -234,6 +231,10 @@ func (p *LoglineHintProvider) openIndexReader(
 			p.cache.delete(idx.ID)
 		}
 		stats.ObserveMetadataCacheMiss()
+	}
+
+	if idx.IndexHeader == nil {
+		return nil, fmt.Errorf("index %s is missing required index_header", idx.ID)
 	}
 
 	trackedReader := newTrackingReaderAt(storeReader, stats)
