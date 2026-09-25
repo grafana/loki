@@ -253,6 +253,7 @@ func perfstatdiskadapter2diskadapter(n *C.perfstat_diskadapter_t) DiskAdapter {
 	d.Version = int64(n.version)
 	d.AdapterType = int64(n.adapter_type)
 	d.DkBSize = int64(n.dk_bsize)
+    d.DkRxfers = int64(n.dk_rxfers)
 	d.DkRserv = int64(n.dk_rserv)
 	d.DkWserv = int64(n.dk_wserv)
 	d.MinRserv = int64(n.min_rserv)
@@ -686,9 +687,13 @@ func perfstatpagingspace2pagingspace(n *C.perfstat_pagingspace_t) PagingSpace {
 
 	i.Name = C.GoString(&n.name[0])
 	i.Type = uint8(n._type)
-	i.VGName = C.GoString(C.get_ps_vgname(n))
-	i.Hostname = C.GoString(C.get_ps_hostname(n))
-	i.Filename = C.GoString(C.get_ps_filename(n))
+    switch n._type {
+    case C.LV_PAGING:
+        i.VGName = C.GoString(C.get_ps_vgname(n))
+    case C.NFS_PAGING:
+        i.Hostname = C.GoString(C.get_ps_hostname(n))
+        i.Filename = C.GoString(C.get_ps_filename(n))
+    }
 	i.LPSize = int64(n.lp_size)
 	i.MBSize = int64(n.mb_size)
 	i.MBUsed = int64(n.mb_used)

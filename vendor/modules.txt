@@ -170,8 +170,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0
 ## explicit; go 1.26.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
-# github.com/IBM/go-sdk-core/v5 v5.23.3
-## explicit; go 1.25.0
+# github.com/IBM/go-sdk-core/v5 v5.23.4
+## explicit; go 1.26.0
 github.com/IBM/go-sdk-core/v5/core
 # github.com/IBM/ibm-cos-sdk-go v1.15.1
 ## explicit; go 1.25.0
@@ -1233,7 +1233,7 @@ github.com/moby/moby/api/types/network
 github.com/moby/moby/api/types/storage
 github.com/moby/moby/api/types/swarm
 github.com/moby/moby/api/types/volume
-# github.com/moby/moby/v2 v2.0.0-beta.23
+# github.com/moby/moby/v2 v2.0.0-beta.24
 ## explicit; go 1.26.3
 github.com/moby/moby/v2/daemon/internal/filters
 github.com/moby/moby/v2/daemon/internal/stringid
@@ -1401,7 +1401,7 @@ github.com/planetscale/vtprotobuf/types/known/wrapperspb
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6
+# github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0
 ## explicit; go 1.14
 github.com/power-devops/perfstat
 # github.com/pressly/goose/v3 v3.28.0

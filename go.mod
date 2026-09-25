@@ -58,7 +58,7 @@ require (
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
-	github.com/moby/moby/v2 v2.0.0-beta.23
+	github.com/moby/moby/v2 v2.0.0-beta.24
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/oklog/run v1.2.0
@@ -98,7 +98,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
-	github.com/IBM/go-sdk-core/v5 v5.23.3
+	github.com/IBM/go-sdk-core/v5 v5.23.4
 	github.com/IBM/ibm-cos-sdk-go v1.15.1
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/aliyun/credentials-go v1.4.13
@@ -249,7 +249,7 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
-	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
+	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
 	github.com/prometheus/alertmanager v0.34.1 // indirect
 	github.com/prometheus/client_golang/exp v0.0.0-20260921141911-45322d125bf0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
