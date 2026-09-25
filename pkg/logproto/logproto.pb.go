@@ -23,6 +23,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	_ "google.golang.org/protobuf/types/known/durationpb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -12174,7 +12175,7 @@ func (this *HintQueryStats) String() string {
 		`HeaderCacheMisses:` + fmt.Sprintf("%v", this.HeaderCacheMisses) + `,`,
 		`MetadataCacheMisses:` + fmt.Sprintf("%v", this.MetadataCacheMisses) + `,`,
 		`ObjectStorageRequests:` + fmt.Sprintf("%v", this.ObjectStorageRequests) + `,`,
-		`TotalIOWait:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TotalIOWait), "Duration", "types.Duration", 1), `&`, ``, 1) + `,`,
+		`TotalIOWait:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TotalIOWait), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`TotalIOBytes:` + fmt.Sprintf("%v", this.TotalIOBytes) + `,`,
 		`PeakConcurrency:` + fmt.Sprintf("%v", this.PeakConcurrency) + `,`,
 		`EffectiveConcurrency:` + fmt.Sprintf("%v", this.EffectiveConcurrency) + `,`,
