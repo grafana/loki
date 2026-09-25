@@ -104,6 +104,7 @@ func (s *Service) clusterProxyHandler() http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport: s.client.Transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetXForwarded()
 			r := pr.Out
 			r.URL.Scheme = proxyScheme
 			vars := mux.Vars(pr.In)
@@ -224,6 +225,7 @@ func (s *Service) analyzeLabelsHandler() http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Transport: s.client.Transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetXForwarded()
 			r := pr.Out
 			// Extract tenantID from URL path
 			vars := mux.Vars(pr.In)
