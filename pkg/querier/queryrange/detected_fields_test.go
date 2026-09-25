@@ -183,7 +183,7 @@ func Test_parseDetectedFields(t *testing.T) {
 				parsers := df[expected].parsers
 
 				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
-				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json and logfmt parser for %s", expected)
 			}
 
 			// multiple parsers for fields that exist in both streams
@@ -272,7 +272,7 @@ func Test_parseDetectedFields(t *testing.T) {
 				parsers := df[expected].parsers
 
 				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
-				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json and logfmt parser for %s", expected)
 			}
 
 			// multiple parsers for fields that exist in both streams
@@ -614,7 +614,7 @@ func Test_parseDetectedFields(t *testing.T) {
 				parsers := df[expected].parsers
 
 				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
-				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json and logfmt parser for %s", expected)
 			}
 
 			// multiple parsers for fields that exist in both streams
@@ -819,7 +819,7 @@ func Test_parseDetectedFields(t *testing.T) {
 				parsers := df[expected].parsers
 
 				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
-				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json and logfmt parser for %s", expected)
 			}
 
 			// multiple parsers for fields that exist in both streams
