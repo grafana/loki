@@ -752,6 +752,65 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 	})
 }
 
+// TestNewProjectPipeline_KeepLabels covers the keep-mode projection with the exact
+// column set the logical planner emits for a LogQL `| keep` stage: the builtin and
+// generated columns are listed explicitly alongside the kept labels, so the line,
+// the timestamp and __error__ survive while every unlisted label is dropped.
+func TestNewProjectPipeline_KeepLabels(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentError, true),
+		semconv.FieldFromFQN("utf8.label.service_name", true),
+		semconv.FieldFromFQN("utf8.metadata.trace_id", true),
+		semconv.FieldFromFQN("utf8.parsed.level", true),
+	}, nil)
+
+	ts := time.Unix(0, 1).UTC()
+	input := arrowtest.Rows{
+		{
+			"timestamp_ns.builtin.timestamp": ts,
+			"utf8.builtin.message":           "hello",
+			"utf8.generated.__error__":       "SampleExtractionErr",
+			"utf8.label.service_name":        "loki",
+			"utf8.metadata.trace_id":         "abc",
+			"utf8.parsed.level":              "info",
+		},
+	}
+
+	// `| keep level` keeps the parsed `level` column and drops service_name and
+	// trace_id, while timestamp, message and __error__ are preserved.
+	columns := []physical.Expression{
+		&physical.ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
+		&physical.ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin}},
+		&physical.ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameError, Type: types.ColumnTypeGenerated}},
+		&physical.ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameErrorDetails, Type: types.ColumnTypeGenerated}},
+		&physical.ColumnExpr{Ref: createAmbiguousColumnRef("level")},
+	}
+
+	e := newExpressionEvaluator()
+	pipeline, err := NewProjectPipeline(
+		NewArrowtestPipeline(schema, input),
+		&physical.Projection{Expressions: columns},
+		e)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	actual, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+	require.Equal(t, arrowtest.Rows{
+		{
+			"timestamp_ns.builtin.timestamp": ts,
+			"utf8.builtin.message":           "hello",
+			"utf8.generated.__error__":       "SampleExtractionErr",
+			"utf8.parsed.level":              "info",
+		},
+	}, actual)
+}
+
 // Helper to create a column reference
 func createColumnRef(name string) types.ColumnRef {
 	return types.ColumnRef{
