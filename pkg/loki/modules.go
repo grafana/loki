@@ -2715,7 +2715,6 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
 			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
 			QueryIngestersWithin: t.Cfg.Querier.QueryIngestersWithin,
-			QuerySplitDuration:   time.Duration(t.Cfg.LimitsConfig.QuerySplitDuration),
 		},
 		// Per-tenant mode and minimum query bytes are limits_config settings,
 		// so tenants override them in the runtime config like any limit.

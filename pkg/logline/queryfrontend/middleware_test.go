@@ -155,7 +155,7 @@ func streamResponseWithEntries(entries ...logproto.Entry) *queryrange.LokiRespon
 	}
 }
 
-// buildStack wires prefetch + filter middleware the same way service.go does,
+// buildStack wires prefetch + filter middleware the same way integration.go does,
 // except the "Loki tripperware" is replaced by a transparent pass-through.
 // This lets us test the two-layer interaction in isolation.
 func buildStack(
@@ -332,10 +332,12 @@ func TestPrefetchFilter_OptInHeader_Present(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -345,8 +347,9 @@ func TestPrefetchFilter_OptInHeader_Present(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "should call ProvideHints when opt-in header is present")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestPrefetchFilter_RequireOptInHeaderFalse_UsesHintsWithoutHeader(t *testing.T) {
@@ -362,10 +365,12 @@ func TestPrefetchFilter_RequireOptInHeaderFalse_UsesHintsWithoutHeader(t *testin
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -376,8 +381,9 @@ func TestPrefetchFilter_RequireOptInHeaderFalse_UsesHintsWithoutHeader(t *testin
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "should call ProvideHints when header requirement is disabled")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestDryRun_QueryUnmodified(t *testing.T) {
@@ -1064,12 +1070,14 @@ func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	queryCalls := 0
 	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		queryCalls++
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -1091,8 +1099,9 @@ func TestPrefetchFilter_QueryBytesAboveThreshold_UsesHints(t *testing.T) {
 	require.Equal(t, 1, statsCalls, "should call index stats once for gating")
 	require.Equal(t, 1, hp.Calls(), "should prefetch hints when query bytes exceed threshold")
 	require.Equal(t, 1, queryCalls)
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T) {
@@ -1108,10 +1117,12 @@ func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -1136,8 +1147,9 @@ func TestPrefetchFilter_TenantMinQueryBytesOverridesGlobalThreshold(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, 1, statsCalls, "should call index stats once for tenant gating")
 	require.Equal(t, 1, hp.Calls(), "tenant threshold should allow hint prefetch")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestPrefetchFilter_QueryStatsError_SkipsHintPrefetch(t *testing.T) {
@@ -1195,10 +1207,12 @@ func TestPrefetchFilter_MinQueryBytesZero_DisablesStatsGating(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -1219,8 +1233,9 @@ func TestPrefetchFilter_MinQueryBytesZero_DisablesStatsGating(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, statsCalls, "stats gating should be disabled when threshold is zero")
 	require.Equal(t, 1, hp.Calls(), "hint prefetch should run when stats gating is disabled")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T) {
@@ -1236,10 +1251,12 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -1264,8 +1281,9 @@ func TestPrefetchFilter_TenantMinQueryBytesZero_DisablesStatsGating(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, 0, statsCalls, "tenant zero threshold should disable stats gating")
 	require.Equal(t, 1, hp.Calls(), "hint prefetch should run when tenant disables stats gating")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T) {
@@ -1398,10 +1416,11 @@ func TestPrefetchFilter_EmptyHints_SkipsQuerier(t *testing.T) {
 	require.Equal(t, "success", lokiResp.Status)
 }
 
-func TestPrefetchFilter_NarrowsToHintRanges(t *testing.T) {
+func TestPrefetchFilter_AttachesHintRanges(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hintStart := now.Add(-45 * time.Minute)
 	hintEnd := now.Add(-30 * time.Minute)
+	reqStart := now.Add(-1 * time.Hour)
 
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
@@ -1411,21 +1430,21 @@ func TestPrefetchFilter_NarrowsToHintRanges(t *testing.T) {
 		},
 	}
 
-	var gotStart, gotEnd time.Time
+	var got *queryrange.LokiRequest
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		lokiReq := req.(*queryrange.LokiRequest)
-		gotStart = lokiReq.StartTs
-		gotEnd = lokiReq.EndTs
+		got = req.(*queryrange.LokiRequest)
 		return emptyStreamResponse(), nil
 	})
 
 	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
-	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, reqStart, now)
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, got.StartTs)
+	require.Equal(t, req.EndTs, got.EndTs)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, got.HintRanges)
+	require.Empty(t, req.HintRanges)
 }
 
 func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
@@ -1445,11 +1464,13 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		prefetchResult = hintPrefetchFromContext(ctx)
 		return emptyStreamResponse(), nil
 	})
@@ -1461,8 +1482,9 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, prefetchResult)
 
-	require.Equal(t, reqStart.UTC(), gotStart, "pre-min-date hint should pass through original start")
-	require.Equal(t, reqEnd.UTC(), gotEnd, "pre-min-date hint should pass through original end")
+	require.Equal(t, reqStart, gotStart, "pre-min-date hint should pass through original start")
+	require.Equal(t, reqEnd, gotEnd, "pre-min-date hint should pass through original end")
+	require.Empty(t, gotHints)
 
 	impact := prefetchResult.impactSnapshot()
 	require.Equal(t, int64(1), impact.totalIntervals)
@@ -1529,130 +1551,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	require.Equal(t, int32(1), snap.PrefetchTimeouts)
 }
 
-func TestGroupHintEnvelopes(t *testing.T) {
-	utc := func(h, m int) time.Time {
-		return time.Date(2026, 9, 8, h, m, 0, 0, time.UTC)
-	}
-	hint := func(sh, sm, eh, em int) hintprovider.HintTimeRange {
-		return hintprovider.HintTimeRange{Start: utc(sh, sm), End: utc(eh, em)}
-	}
-	env := func(sh, sm, eh, em int) hintEnvelope {
-		return hintEnvelope{Start: utc(sh, sm), End: utc(eh, em)}
-	}
-
-	intervalStart := utc(12, 0)
-	intervalEnd := utc(12, 59)
-
-	tests := []struct {
-		name      string
-		start     time.Time
-		end       time.Time
-		hints     []hintprovider.HintTimeRange
-		maxGroups int
-		want      []hintEnvelope
-	}{
-		{
-			name:  "five hints k=4 cuts the three largest gaps",
-			start: intervalStart,
-			end:   intervalEnd,
-			hints: []hintprovider.HintTimeRange{
-				hint(12, 5, 12, 6),
-				hint(12, 21, 12, 22),
-				hint(12, 35, 12, 36),
-				hint(12, 41, 12, 42),
-				hint(12, 51, 12, 52),
-			},
-			maxGroups: 4,
-			want: []hintEnvelope{
-				env(12, 5, 12, 6),
-				env(12, 21, 12, 22),
-				env(12, 35, 12, 42),
-				env(12, 51, 12, 52),
-			},
-		},
-		{
-			name:  "k=1 unions all hints",
-			start: intervalStart,
-			end:   intervalEnd,
-			hints: []hintprovider.HintTimeRange{
-				hint(12, 5, 12, 6),
-				hint(12, 21, 12, 22),
-				hint(12, 35, 12, 36),
-			},
-			maxGroups: 1,
-			want:      []hintEnvelope{env(12, 5, 12, 36)},
-		},
-		{
-			name:  "overlapping hints are never split",
-			start: intervalStart,
-			end:   intervalEnd,
-			hints: []hintprovider.HintTimeRange{
-				hint(12, 5, 12, 20),
-				hint(12, 18, 12, 22),
-				hint(12, 40, 12, 41),
-			},
-			maxGroups: 4,
-			want: []hintEnvelope{
-				env(12, 5, 12, 22),
-				env(12, 40, 12, 41),
-			},
-		},
-		{
-			name:  "clips to the request interval",
-			start: utc(12, 10),
-			end:   utc(12, 40),
-			hints: []hintprovider.HintTimeRange{
-				hint(12, 0, 12, 20),
-				hint(12, 30, 12, 50),
-			},
-			maxGroups: 2,
-			want: []hintEnvelope{
-				env(12, 10, 12, 20),
-				env(12, 30, 12, 40),
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := groupHintEnvelopes(tc.hints, tc.start, tc.end, tc.maxGroups)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestEnvelopeBudget(t *testing.T) {
-	require.Equal(t, 1, envelopeBudget(15*time.Minute))
-	require.Equal(t, 2, envelopeBudget(15*time.Minute+time.Nanosecond))
-	require.Equal(t, 4, envelopeBudget(59*time.Minute))
-	require.Equal(t, 4, envelopeBudget(time.Hour))
-	require.Equal(t, maxEnvelopesPerInterval, envelopeBudget(24*time.Hour))
-	require.Equal(t, 1, envelopeBudget(0))
-}
-
-func TestEnvelopeQueriedDuration_AppliesBudgetPerSplitInterval(t *testing.T) {
-	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
-	end := start.Add(8 * time.Hour)
-	var ranges []hintprovider.HintTimeRange
-	for i := 0; i < 16; i++ {
-		hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
-		ranges = append(ranges, hintprovider.HintTimeRange{
-			Start: hintStart,
-			End:   hintStart.Add(time.Minute),
-		})
-	}
-
-	// One k=8 budget on the unsplit 8h range unions eight 29m gaps.
-	require.Equal(t, 16*time.Minute+8*29*time.Minute, intervalEnvelopeDuration(ranges, start, end))
-	require.Equal(t, 16*time.Minute+8*29*time.Minute, envelopeQueriedDuration(ranges, start, end, 0))
-	// After the configured 1h SplitByInterval slices, each hour keeps both 1m hints.
-	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, time.Hour))
-	require.Equal(t, 16*time.Minute, envelopeQueriedDuration(ranges, start, end, 30*time.Minute))
-}
-
 func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
-	// 12:00–12:59 / 15m target → k=4. Five disjoint hints cut at the three
-	// largest gaps: isolate the far ones, keep 12:35–12:42 together.
 	intervalStart := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 12, 59, 0, 0, time.UTC)
 	hints := []hintprovider.HintTimeRange{
@@ -1665,11 +1564,12 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 
 	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: hints}}
 
-	var got [][2]time.Time
+	var got *queryrange.LokiRequest
+	calls := 0
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		lokiReq := req.(*queryrange.LokiRequest)
-		got = append(got, [2]time.Time{lokiReq.StartTs, lokiReq.EndTs})
+		calls++
+		got = req.(*queryrange.LokiRequest)
 		prefetchResult = hintPrefetchFromContext(ctx)
 		return emptyStreamResponse(), nil
 	})
@@ -1679,24 +1579,28 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
-	require.Equal(t, [][2]time.Time{
-		{hints[0].Start, hints[0].End},
-		{hints[1].Start, hints[1].End},
-		{hints[2].Start, hints[3].End},
-		{hints[4].Start, hints[4].End},
-	}, got)
+	require.Equal(t, 1, calls)
+	require.Equal(t, intervalStart, got.StartTs)
+	require.Equal(t, intervalEnd, got.EndTs)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: hints[0].Start, End: hints[0].End},
+		{Start: hints[1].Start, End: hints[1].End},
+		{Start: hints[2].Start, End: hints[2].End},
+		{Start: hints[3].Start, End: hints[3].End},
+		{Start: hints[4].Start, End: hints[4].End},
+	}, got.HintRanges)
 
 	require.NotNil(t, prefetchResult)
 	impact := prefetchResult.impactSnapshot()
 	require.Equal(t, int64(1), impact.totalIntervals)
 	require.Equal(t, int64(1), impact.narrowedIntervals)
 	require.Equal(t, 59*time.Minute, impact.originalDuration)
-	require.Equal(t, 10*time.Minute, impact.queryDuration, "queried duration must be the sum of k envelopes")
+	require.Equal(t, 5*time.Minute, impact.queryDuration, "queried duration must be the sum of raw hint ranges")
 	require.Equal(t, 1.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("narrowed")))
 	require.Equal(t, 0.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("skipped")))
 }
 
-func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
+func TestPrefetchFilter_ClipsHintsToInterval(t *testing.T) {
 	intervalStart := time.Date(2026, 9, 8, 12, 10, 0, 0, time.UTC)
 	intervalEnd := time.Date(2026, 9, 8, 12, 40, 0, 0, time.UTC)
 	hp := &mockHintProvider{
@@ -1706,10 +1610,9 @@ func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
 		}},
 	}
 
-	var got [][2]time.Time
+	var got *queryrange.LokiRequest
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		lokiReq := req.(*queryrange.LokiRequest)
-		got = append(got, [2]time.Time{lokiReq.StartTs, lokiReq.EndTs})
+		got = req.(*queryrange.LokiRequest)
 		return emptyStreamResponse(), nil
 	})
 
@@ -1717,10 +1620,12 @@ func TestPrefetchFilter_EnvelopeClippedToRequest(t *testing.T) {
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
-	require.Equal(t, [][2]time.Time{
-		{intervalStart, time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC)},
-		{time.Date(2026, 9, 8, 12, 30, 0, 0, time.UTC), intervalEnd},
-	}, got)
+	require.Equal(t, intervalStart, got.StartTs)
+	require.Equal(t, intervalEnd, got.EndTs)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: intervalStart, End: time.Date(2026, 9, 8, 12, 20, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 30, 0, 0, time.UTC), End: intervalEnd},
+	}, got.HintRanges)
 }
 
 func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
@@ -1735,13 +1640,11 @@ func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 		}},
 	}
 
-	var gotStart, gotEnd time.Time
+	var got *queryrange.LokiRequest
 	nextCalled := 0
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		nextCalled++
-		lokiReq := req.(*queryrange.LokiRequest)
-		gotStart = lokiReq.StartTs
-		gotEnd = lokiReq.EndTs
+		got = req.(*queryrange.LokiRequest)
 		return emptyStreamResponse(), nil
 	})
 
@@ -1750,8 +1653,9 @@ func TestPrefetchFilter_HintsOutsideIntervalIgnored(t *testing.T) {
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.Equal(t, 1, nextCalled)
-	require.Equal(t, inside.Start, gotStart)
-	require.Equal(t, inside.End, gotEnd)
+	require.Equal(t, intervalStart, got.StartTs)
+	require.Equal(t, intervalEnd, got.EndTs)
+	require.Equal(t, []logproto.HintTimeRange{{Start: inside.Start, End: inside.End}}, got.HintRanges)
 }
 
 func TestPrefetchFilter_DownstreamErrorPropagated(t *testing.T) {
@@ -1808,21 +1712,25 @@ func TestPrefetchFilter_PreservesRequestFields(t *testing.T) {
 	}
 	_, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
-	require.Len(t, got, 2)
-	require.Equal(t, time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), got[0].StartTs)
-	require.Equal(t, time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC), got[0].EndTs)
-	require.Equal(t, time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), got[1].StartTs)
-	require.Equal(t, time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC), got[1].EndTs)
-	for _, g := range got {
-		require.Equal(t, req.Query, g.Query)
-		require.Equal(t, req.Limit, g.Limit)
-		require.Equal(t, req.Step, g.Step)
-		require.Equal(t, req.Interval, g.Interval)
-		require.Equal(t, req.Direction, g.Direction)
-		require.Equal(t, req.Path, g.Path)
-		require.Equal(t, req.Shards, g.Shards)
-		require.Equal(t, req.StoreChunks, g.StoreChunks)
-	}
+	require.Len(t, got, 1)
+	require.Equal(t, intervalStart, got[0].StartTs)
+	require.Equal(t, intervalEnd, got[0].EndTs)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: time.Date(2026, 9, 8, 12, 5, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 6, 0, 0, time.UTC)},
+		{Start: time.Date(2026, 9, 8, 12, 35, 0, 0, time.UTC), End: time.Date(2026, 9, 8, 12, 36, 0, 0, time.UTC)},
+	}, got[0].HintRanges)
+	require.Equal(t, intervalStart, req.StartTs)
+	require.Equal(t, intervalEnd, req.EndTs)
+	require.Empty(t, req.HintRanges)
+	g := got[0]
+	require.Equal(t, req.Query, g.Query)
+	require.Equal(t, req.Limit, g.Limit)
+	require.Equal(t, req.Step, g.Step)
+	require.Equal(t, req.Interval, g.Interval)
+	require.Equal(t, req.Direction, g.Direction)
+	require.Equal(t, req.Path, g.Path)
+	require.Equal(t, req.Shards, g.Shards)
+	require.Equal(t, req.StoreChunks, g.StoreChunks)
 }
 
 // --- Ingester window tests ---
@@ -1875,15 +1783,16 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	var mu sync.Mutex
 	type subReqInfo struct {
 		start, end time.Time
+		hints      []logproto.HintTimeRange
 	}
 	var gotReqs []subReqInfo
 
-	// The filter + querier for both intervals.
+	// The filter middleware + querier for both intervals.
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		mu.Lock()
-		gotReqs = append(gotReqs, subReqInfo{start: lokiReq.StartTs, end: lokiReq.EndTs})
+		gotReqs = append(gotReqs, subReqInfo{start: lokiReq.StartTs, end: lokiReq.EndTs, hints: lokiReq.HintRanges})
 		mu.Unlock()
 		return emptyStreamResponse(), nil
 	})
@@ -1916,22 +1825,23 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 
-	// Covered interval should be narrowed to the hint range.
-	// Ingester interval should pass through to querier.
-	require.Len(t, gotReqs, 2, "should have narrowed + ingester sub-requests")
+	// Covered interval keeps its bounds and carries the hint. The ingester
+	// interval passes through with no hints.
+	require.Len(t, gotReqs, 2, "should have hinted + ingester sub-requests")
 
-	// One should be the hint range, one should be the ingester window.
-	hasNarrowed := false
+	hasHinted := false
 	hasIngester := false
 	for _, r := range gotReqs {
-		if r.start.Equal(hintRange.Start) && r.end.Equal(hintRange.End) {
-			hasNarrowed = true
+		if r.end.Equal(now.Add(-3 * time.Hour)) {
+			hasHinted = true
+			require.Equal(t, []logproto.HintTimeRange{{Start: hintRange.Start, End: hintRange.End}}, r.hints)
 		}
 		if r.end.Equal(now) {
 			hasIngester = true
+			require.Empty(t, r.hints)
 		}
 	}
-	require.True(t, hasNarrowed, "should have a narrowed sub-request")
+	require.True(t, hasHinted, "should have a hinted sub-request")
 	require.True(t, hasIngester, "should have an ingester passthrough sub-request")
 }
 
@@ -1958,12 +1868,15 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
-	type subReqInfo struct{ start, end time.Time }
+	type subReqInfo struct {
+		start, end time.Time
+		hints      []logproto.HintTimeRange
+	}
 	var gotReqs []subReqInfo
 	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		mu.Lock()
-		gotReqs = append(gotReqs, subReqInfo{start: lokiReq.StartTs, end: lokiReq.EndTs})
+		gotReqs = append(gotReqs, subReqInfo{start: lokiReq.StartTs, end: lokiReq.EndTs, hints: lokiReq.HintRanges})
 		mu.Unlock()
 		return emptyStreamResponse(), nil
 	})
@@ -1988,23 +1901,25 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 
-	// Covered interval [-24h, -3h] should narrow to hint range [-12h, -10h].
+	// Covered interval [-24h, -3h] keeps its bounds and carries the hint.
 	// Ingester interval [-3h, now] should pass through.
-	require.Equal(t, 2, len(gotReqs), "expected narrowed + ingester sub-requests, got %d", len(gotReqs))
+	require.Equal(t, 2, len(gotReqs), "expected hinted + ingester sub-requests, got %d", len(gotReqs))
 
-	hasNarrowed := false
+	hasHinted := false
 	hasIngester := false
 	for _, r := range gotReqs {
-		if r.start.Equal(hintRange.Start) && r.end.Equal(hintRange.End) {
-			hasNarrowed = true
+		if r.end.Equal(now.Add(-3 * time.Hour)) {
+			hasHinted = true
+			require.Equal(t, []logproto.HintTimeRange{{Start: hintRange.Start, End: hintRange.End}}, r.hints)
 		}
 		if r.end.Equal(now) {
 			hasIngester = true
 			dur := r.end.Sub(r.start)
 			require.InDelta(t, (3 * time.Hour).Seconds(), dur.Seconds(), 5)
+			require.Empty(t, r.hints)
 		}
 	}
-	require.True(t, hasNarrowed, "should have narrowed sub-request")
+	require.True(t, hasHinted, "should have hinted sub-request")
 	require.True(t, hasIngester, "should have ingester passthrough")
 }
 
@@ -2339,10 +2254,12 @@ func TestDryRun_ForceLiveHeader_OverridesToLivePath(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -2356,8 +2273,9 @@ func TestDryRun_ForceLiveHeader_OverridesToLivePath(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "force-live should still call ProvideHints")
-	require.Equal(t, hintStart, gotStart, "force-live should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "force-live should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 
 	require.NotContains(t, logs.String(), "dry-run verification", "should NOT take dry-run path")
 }
@@ -2375,10 +2293,12 @@ func TestDryRun_ForceLiveHeader_WithOptInRequired(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -2390,8 +2310,9 @@ func TestDryRun_ForceLiveHeader_WithOptInRequired(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "force-live with requireOptInHeader should still activate (header is present)")
-	require.Equal(t, hintStart, gotStart, "should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestDryRun_DryRunHeader_StaysInDryRun(t *testing.T) {
@@ -2477,10 +2398,12 @@ func TestTenantMode_Off_HeaderLive_ForcesLive(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -2492,8 +2415,9 @@ func TestTenantMode_Off_HeaderLive_ForcesLive(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "force-live should override tenant off mode")
-	require.Equal(t, hintStart, gotStart, "force-live should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "force-live should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }
 
 func TestTenantMode_Off_HeaderDryRun_ForcesDryRun(t *testing.T) {
@@ -2551,12 +2475,14 @@ func TestTenantMode_Live_OverridesGlobalDryRun(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	var logs bytes.Buffer
 	logger := log.NewLogfmtLogger(&logs)
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -2568,8 +2494,9 @@ func TestTenantMode_Live_OverridesGlobalDryRun(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls())
-	require.Equal(t, hintStart, gotStart, "tenant live mode should narrow even when global dry-run is true")
-	require.Equal(t, hintEnd, gotEnd, "tenant live mode should narrow even when global dry-run is true")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 	require.NotContains(t, logs.String(), "dry-run verification", "tenant live mode should not execute dry-run path")
 }
 
@@ -2628,10 +2555,12 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 	}
 
 	var gotStart, gotEnd time.Time
+	var gotHints []logproto.HintTimeRange
 	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lokiReq := req.(*queryrange.LokiRequest)
 		gotStart = lokiReq.StartTs
 		gotEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
 		return emptyStreamResponse(), nil
 	})
 
@@ -2643,6 +2572,7 @@ func TestTenantMode_Live_BypassesRequireOptInHeader(t *testing.T) {
 	_, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, hp.Calls(), "tenant live mode should bypass opt-in-header gating")
-	require.Equal(t, hintStart, gotStart, "tenant live mode should narrow to hint start")
-	require.Equal(t, hintEnd, gotEnd, "tenant live mode should narrow to hint end")
+	require.Equal(t, req.StartTs, gotStart)
+	require.Equal(t, req.EndTs, gotEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintStart, End: hintEnd}}, gotHints)
 }

@@ -4,7 +4,7 @@
 
 This package integrates the **logline index** into **Loki's query-range pipeline**. It
 injects two middlewares around Loki's existing `queryrangebase` middleware stack to skip
-or narrow time intervals that the logline index proves contain no matching log lines.
+or attach hint ranges for time intervals that the logline index proves contain no matching log lines.
 
 ## Architecture: Two-layer middleware
 
@@ -20,10 +20,10 @@ or narrow time intervals that the logline index proves contain no matching log l
    below the results cache. For each interval sub-request, it consults the prefetched
    hints to either:
    - **Skip** the interval entirely (return empty response) if no hint ranges overlap
-   - **Narrow** to at most k envelopes (k = ceil(interval/15m), cap 8) by cutting
-     the largest inter-hint gaps. One `next.Do` per envelope; intra-group gaps
-     are scanned so nearby hints do not refetch the same chunk.
-   - **Pass through** if the interval is in the ingester window, or on error/timeout
+   - **Forward** one request with the clipped raw hint ranges attached. Request bounds
+     stay the split interval. Queriers use the ranges to skip storage work.
+   - **Pass through** if the interval is in the ingester window, is covered only by a
+     pre-min-date sentinel, or on error/timeout
 
 ## Key integration points
 

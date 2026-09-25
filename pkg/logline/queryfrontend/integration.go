@@ -63,8 +63,6 @@ type Deps struct {
 	ResultsCache cache.Config
 	// QueryIngestersWithin is querier.query_ingesters_within.
 	QueryIngestersWithin time.Duration
-	// QuerySplitDuration is the global limits_config.split_queries_by_interval.
-	QuerySplitDuration time.Duration
 }
 
 type identityMiddleware struct{}
@@ -222,9 +220,6 @@ func WrapMiddlewareWithStore(
 	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = deps.QueryIngestersWithin
-	}
-	if cfg.QuerySplitDuration == 0 {
-		cfg.QuerySplitDuration = deps.QuerySplitDuration
 	}
 
 	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, limits, metrics, logger)
