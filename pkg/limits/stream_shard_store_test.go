@@ -34,7 +34,7 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 		ShardStreamsConfig:     shardstreams.Config{Enabled: true},
 	}
 	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set(desiredRate))
-	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, limits, prometheus.NewRegistry())
+	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, true, limits, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -54,12 +54,20 @@ func track(t *testing.T, s *streamShardStore, stream streamShardUsage, now time.
 // push sends one push of size bytes for streamHash and returns its result.
 func push(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt time.Time) *proto.StreamShardResult {
 	t.Helper()
-	results := s.checkAndShard(t.Context(), "test", []*proto.StreamMetadata{{
+	results, _ := pushWithRecords(t, s, streamHash, size, seenAt)
+	return results
+}
+
+// pushWithRecords sends one push and returns its result together with the
+// records the store wants produced.
+func pushWithRecords(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt time.Time) (*proto.StreamShardResult, []*proto.StreamMetadataRecord) {
+	t.Helper()
+	results, toProduce := s.checkAndShard(t.Context(), "test", []*proto.StreamMetadata{{
 		StreamHash: streamHash,
 		TotalSize:  size,
 	}}, seenAt)
 	require.Len(t, results, 1)
-	return results[0]
+	return results[0], toProduce
 }
 
 func TestStreamShardStore_NewStreamGetsOneShard(t *testing.T) {
@@ -284,6 +292,69 @@ func trackedStream(t *testing.T, s *streamShardStore, streamHash uint64) streamS
 		stream = bucket.streams[streamHash]
 	})
 	return stream
+}
+
+func TestStreamShardStore_ProducesOneRecordPerCompleteBucket(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// Nothing to produce while the first bucket is still in flight.
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+
+	// The first push of the next bucket publishes the complete one.
+	bucketStart := clock.Now().Truncate(testBucketSize)
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Equal(t, []*proto.StreamMetadataRecord{{
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: 0x1},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: bucketStart.UnixNano(),
+			Size_:       1200,
+			Pushes:      2,
+		},
+		ShardCount: 1,
+	}}, toProduce)
+
+	// The same bucket is not published twice.
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+}
+
+func TestStreamShardStore_ProducesNothingWithoutDurability(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	s.durabilityEnabled = false
+	push(t, s, 0x1, 600, clock.Now())
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+}
+
+func TestStreamShardStore_ProducedRecordRestoresTheRate(t *testing.T) {
+	// What one store produces is what another store needs to reach the same
+	// decision, so feed the records of a warm store into a cold one.
+	warm, clock := newTestStreamShardStore(t, 0, "1KB")
+	cold, _ := newTestStreamShardStore(t, 0, "1KB")
+	cold.clock = clock
+	// A zone only merges the other zones' records while it is serving, so the
+	// cold store sees these as another zone's.
+	cold.zone = "zone2"
+
+	for range testRateWindow / testBucketSize {
+		_, toProduce := pushWithRecords(t, warm, 0x1, 6<<10, clock.Now())
+		for _, rec := range toProduce {
+			rec.Zone = testZone
+			cold.merge("test", rec)
+		}
+		clock.Advance(testBucketSize)
+	}
+
+	// The rate the cold store evaluates is the warm store's rate less the
+	// bucket that was still in flight when the last record was produced.
+	require.Equal(t, uint64(614), push(t, warm, 0x1, 6<<10, clock.Now()).Stats.EvaluatedRate)
+	require.Equal(t, uint64(512), push(t, cold, 0x1, 6<<10, clock.Now()).Stats.EvaluatedRate)
+	require.Equal(t, uint32(2), push(t, cold, 0x1, 6<<10, clock.Now()).Shards)
 }
 
 func TestStreamShardStore_MergeRestoresTheRateHistory(t *testing.T) {
@@ -528,7 +599,7 @@ func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
 				ShardStreamsConfig: shardstreams.Config{Enabled: true},
 			}
 			require.NoError(b, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
-			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, testZone, limits, prometheus.NewRegistry())
+			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, testZone, true, limits, prometheus.NewRegistry())
 			require.NoError(b, err)
 
 			now := time.Now()
@@ -539,7 +610,8 @@ func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
 					TotalSize:  1024,
 				})
 			}
-			require.Len(b, s.checkAndShard(b.Context(), "test", metadata, now), streamsInBucket)
+			results, _ := s.checkAndShard(b.Context(), "test", metadata, now)
+			require.Len(b, results, streamsInBucket)
 
 			one := metadata[:1]
 			b.ResetTimer()

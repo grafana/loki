@@ -43,6 +43,10 @@ type Config struct {
 	// EvictionInterval defines the interval at which old streams are evicted.
 	EvictionInterval time.Duration `yaml:"eviction_interval"`
 
+	// StreamShardingDurabilityEnabled enables writing the stream sharding
+	// rate buckets to the metadata topic and restoring them from it.
+	StreamShardingDurabilityEnabled bool `yaml:"stream_sharding_durability_enabled"`
+
 	// The number of partitions for the Kafka topic used to read and write stream metadata.
 	// It is fixed, not a maximum.
 	NumPartitions int `yaml:"num_partitions"`
@@ -85,6 +89,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"ingest-limits.eviction-interval",
 		DefaultEvictInterval,
 		"The interval at which old streams are evicted.",
+	)
+	f.BoolVar(
+		&cfg.StreamShardingDurabilityEnabled,
+		"ingest-limits.stream-sharding-durability-enabled",
+		false,
+		"Enable durability for stream sharding. Rate buckets are written to the stream metadata topic and restored from it, which removes the warm-up period after a restart or a partition rebalance during which streams are not sharded. It adds one record per stream per bucket size.",
 	)
 	f.IntVar(
 		&cfg.NumPartitions,

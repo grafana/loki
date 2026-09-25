@@ -22,7 +22,7 @@ func TestPartitionLifecycler_RevokeEvictsBothStores(t *testing.T) {
 	require.NoError(t, err)
 	usage, err := newUsageStore(time.Hour, time.Minute, 10*time.Second, numPartitions, limits, reg)
 	require.NoError(t, err)
-	streamShards, err := newStreamShardStore(time.Hour, time.Minute, 10*time.Second, numPartitions, "zone1", limits, reg)
+	streamShards, err := newStreamShardStore(time.Hour, time.Minute, 10*time.Second, numPartitions, "zone1", true, limits, reg)
 	require.NoError(t, err)
 
 	l := newPartitionLifecycler(partitionManager, nil, usage, streamShards, time.Hour, log.NewNopLogger())
