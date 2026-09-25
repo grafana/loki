@@ -69,8 +69,8 @@ var (
 	ErrMissingValidStartDate = errors.New("Schema does not contain a valid starting effective date")
 	// ErrSchemaRetroactivelyAdded when a schema has been retroactively added
 	ErrSchemaRetroactivelyAdded = errors.New("Cannot retroactively add schema")
-	// ErrSchemaRetroactivelyRemoved when a schema or schemas has been retroactively removed
-	ErrSchemaRetroactivelyRemoved = errors.New("Cannot retroactively remove schema(s)")
+	// ErrSchemaNotExpired when attempting to remove a schema before its retention period has expired
+	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, global retention is configured, and retention period for the schema being removed has elapsed.")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
@@ -83,7 +83,6 @@ var (
 	ErrReplicationSpecConflict = errors.New("replicationSpec and replicationFactor (deprecated) cannot be used at the same time")
 	// ErrIPv6InstanceAddrTypeNotAllowed when the default InstanceAddrType is used with enableIPv6.
 	ErrIPv6InstanceAddrTypeNotAllowed = errors.New(`instanceAddrType "default" cannot be used with enableIPv6 at the same time`)
-
 	// ErrOTLPGlobalNoStreamLabel when the global OTLP configuration does not define at least one stream label.
 	ErrOTLPGlobalNoStreamLabel = errors.New("global OTLP configuration needs to define at least one stream label")
 	// ErrOTLPTenantMissing when a tenant is missing from the OTLP configuration although it has been defined in the tenancy.
@@ -106,4 +105,16 @@ var (
 	ErrSummaryAnnotationMissing = errors.New("rule requires annotation: summary")
 	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
 	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
+
+	// ErrSchemaRetentionConflict when both schema configuration and retention are changed in the same update.
+	ErrSchemaRetentionConflict = errors.New("Cannot update schemas and retention in the same request. Update retention first, then remove the schema. This ensures each schema is using the correct retention period.")
+
+	// WarnSchemaRemoval warns users that schema removal validation uses current retention config
+	WarnSchemaRemoval = "If retention was not properly configured during the schema's active period, this may leave unreadable data in object storage. " +
+		"You can add the schema back to the spec up until the next compactor cycle."
+
+	// WarnRetentionUpdate warns users that changing retention affects schema removal validation
+	WarnRetentionUpdate = "Retention configuration has changed. Retention is enforced by the compactor " +
+		"asynchronously and can take several hours to fully apply (defaults, ~6h before expired " +
+		"data is deleted). If you intend to remove a schema, wait for the new retention to take effect first."
 )
