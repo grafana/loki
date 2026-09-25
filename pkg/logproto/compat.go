@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/util/jsonutil"
 	attribute "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -180,22 +181,25 @@ func (s *LegacySample) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func unsafeSampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	legacySample := (*LegacySample)(ptr)
+	SampleJsoniterEncode(legacySample, stream)
+}
 
+func SampleJsoniterEncode(legacySample *LegacySample, stream *jsoniter.Stream) {
 	if isTesting && math.IsNaN(legacySample.Value) {
 		stream.Error = fmt.Errorf("test sample")
 		return
 	}
 
 	stream.WriteArrayStart()
-	stream.WriteFloat64(float64(legacySample.TimestampMs) / float64(time.Second/time.Millisecond))
+	jsonutil.MarshalTimestamp(legacySample.TimestampMs, stream)
 	stream.WriteMore()
-	stream.WriteString(model.SampleValue(legacySample.Value).String())
+	jsonutil.MarshalFloat(legacySample.Value, stream)
 	stream.WriteArrayEnd()
 }
 
-func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+func unsafeSampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	if !iter.ReadArray() {
 		iter.ReportError("logproto.LegacySample", "expected [")
 		return
@@ -231,9 +235,22 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 }
 
+func LabelAdaptersJsoniterEncode(lbls []LabelAdapter, stream *jsoniter.Stream) {
+	stream.WriteObjectStart()
+	for i, v := range lbls {
+		if i != 0 {
+			stream.WriteMore()
+		}
+		stream.WriteString(v.Name)
+		stream.WriteRaw(`:`)
+		stream.WriteString(v.Value)
+	}
+	stream.WriteObjectEnd()
+}
+
 func init() {
-	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
+	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", unsafeSampleJsoniterEncode, nil)
+	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", unsafeSampleJsoniterDecode)
 }
 
 // Combine unique values from multiple LabelResponses into a single, sorted LabelResponse.
