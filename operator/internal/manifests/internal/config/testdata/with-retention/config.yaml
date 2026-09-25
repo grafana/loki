@@ -58,6 +58,7 @@ ingester:
   wal:
     enabled: true
     dir: /tmp/wal
+    flush_on_shutdown: true
     replay_memory_ceiling: 2147483648
 ingester_client:
   grpc_client_config:
