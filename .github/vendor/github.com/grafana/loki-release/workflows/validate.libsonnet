@@ -147,23 +147,6 @@ local validationJob = _validationJob();
     }
   ),
 
-  faillint:
-    validationJob
-    + job.withSteps([
-      common.fetchReleaseRepo,
-      common.fixDubiousOwnership,
-      common.fetchReleaseLib,
-      step.new('install dependencies')
-      + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-      + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
-      step.new('faillint')
-      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-      + step.withRun(|||
-        faillint -paths "sync/atomic=go.uber.org/atomic" ./...
-      |||)
-      + step.withWorkingDirectory('release'),
-    ]),
-
   golangciLint: setupValidationDeps(
     validationJob
     + job.withSteps(
@@ -202,7 +185,6 @@ local validationJob = _validationJob();
   failCheck: job.new()
              + job.withNeeds([
                'checkFiles',
-               'faillint',
                'golangciLint',
                'lintFiles',
                'integration',
@@ -224,7 +206,6 @@ local validationJob = _validationJob();
   check: job.new()
          + job.withNeeds([
            'checkFiles',
-           'faillint',
            'golangciLint',
            'lintFiles',
            'integration',

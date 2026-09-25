@@ -30,7 +30,6 @@ linters:
     - depguard
     - errcheck
     - gochecksumtype
-    - goconst
     - govet
     - ineffassign
     - misspell

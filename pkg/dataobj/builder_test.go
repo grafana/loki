@@ -151,7 +151,7 @@ func (s *trackingStore) requireReleased(t *testing.T) {
 	t.Helper()
 	require.NotEmpty(t, s.handles, "no sections were buffered")
 	for _, h := range s.handles {
-		require.ErrorAs(t, s.Store.Remove(h), new(scratch.HandleNotFoundError), "handle %d was not released", h)
+		require.ErrorAs(t, s.Remove(h), new(scratch.HandleNotFoundError), "handle %d was not released", h)
 	}
 }
 
