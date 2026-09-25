@@ -2235,6 +2235,13 @@ ingest_limits_frontend_client:
 # CLI flag: -limits.tenant-limits-allow-publish
 [tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
 
+# List of /config fields to expose via /loki/api/v1/config/public, addressed by
+# dot-separated path (e.g.
+# 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty
+# by default, meaning the endpoint exposes nothing.
+# CLI flag: -config.public-fields
+[public_config_fields: <list of strings> | default = []]
+
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.

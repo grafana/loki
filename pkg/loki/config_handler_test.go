@@ -122,6 +122,54 @@ func TestConfigDiffHandler(t *testing.T) {
 	}
 }
 
+func TestPublicConfigHandler(t *testing.T) {
+	cfg := newDefaultDiffConfigMock()
+
+	for _, tc := range []struct {
+		name                 string
+		allowedFields        []string
+		expectedStatusCode   int
+		expectedBodyContains string
+	}{
+		{
+			name:               "returns exactly the allowed fields, top-level and nested",
+			allowedFields:      []string{"my_int", "my_nested_struct.my_string"},
+			expectedStatusCode: 200,
+			expectedBodyContains: "my_int: 666\n" +
+				"my_nested_struct:\n" +
+				"    my_string: string1\n",
+		},
+		{
+			name:                 "empty allowlist returns an empty object, not the full config",
+			allowedFields:        []string{},
+			expectedStatusCode:   200,
+			expectedBodyContains: "{}\n",
+		},
+		{
+			name:               "a field absent from the actual config is a server error, not a client one",
+			allowedFields:      []string{"does.not.exist"},
+			expectedStatusCode: 500,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Query params a caller sends, notably q and mode, must have no effect: this handler
+			// always returns exactly tc.allowedFields, unlike configHandler's q=.
+			req := httptest.NewRequest("GET", "http://test.com/loki/api/v1/config/public?q=my_slice&mode=diff", nil)
+			w := httptest.NewRecorder()
+
+			publicConfigHandler(cfg, tc.allowedFields)(w, req)
+			resp := w.Result()
+			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+
+			if tc.expectedBodyContains != "" {
+				body, err := io.ReadAll(resp.Body)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedBodyContains, string(body))
+			}
+		})
+	}
+}
+
 func TestLimitsDirectJSONMarshaling(t *testing.T) {
 	// Test that validation.Limits can be directly marshaled to JSON
 	// (it has proper json tags)
