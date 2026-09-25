@@ -693,10 +693,9 @@ type ObjectStorageSchema struct {
 type ObjectStorageSpec struct {
 	// Schemas for reading and writing logs.
 	//
-	// +optional
-	// +kubebuilder:validation:Optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems:=1
-	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
 	Schemas []ObjectStorageSchema `json:"schemas"`
 
 	// Secret for object storage authentication.

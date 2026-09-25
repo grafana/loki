@@ -3197,7 +3197,6 @@ storage bucket to persist logs by the ingester component.</p>
 </em>
 </td>
 <td>
-<em>(Optional)</em>
 <p>Schemas for reading and writing logs.</p>
 </td>
 </tr>
