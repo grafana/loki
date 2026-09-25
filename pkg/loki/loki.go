@@ -707,6 +707,10 @@ func (t *Loki) Run(opts RunOpts) error {
 			}
 		}
 	}
+
+	if shutdownRequested.Load() {
+		flushShutdownQueryStats(t.Cfg.Worker, prometheus.DefaultGatherer, util_log.Logger)
+	}
 	return err
 }
 
