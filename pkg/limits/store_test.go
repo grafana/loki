@@ -339,6 +339,41 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 	require.Equal(t, metadata1, toProduce)
 }
 
+func TestUsageStore_MarkProduced(t *testing.T) {
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	metadata := []*proto.StreamMetadata{{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}}
+
+	// An unknown stream is not tracked just because a record was produced for
+	// it elsewhere.
+	s.markProduced("tenant", metadata[0], clock.Now())
+	var tracked int
+	for range s.TenantActiveStreams("tenant") {
+		tracked++
+	}
+	require.Equal(t, 0, tracked)
+
+	// A stream marked as produced is not produced again within the produce
+	// interval, and is produced again once it has passed.
+	toProduce, _, _, err := s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, metadata, toProduce)
+	clock.Advance(time.Minute)
+	s.markProduced("tenant", metadata[0], clock.Now())
+	toProduce, _, _, err = s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Empty(t, toProduce)
+	clock.Advance(time.Minute + time.Second)
+	toProduce, _, _, err = s.UpdateCond("tenant", metadata, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, metadata, toProduce)
+}
+
 func TestUsageStore_Evict(t *testing.T) {
 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)

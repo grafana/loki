@@ -248,12 +248,17 @@ func (s *Service) CheckLimitsAndShard(
 		}
 		owned = append(owned, stream)
 	}
-	shardResults, toProduce := s.streamShards.checkAndShard(ctx, req.Tenant, owned, s.clock.Now())
+	now := s.clock.Now()
+	shardResults, toProduce := s.streamShards.checkAndShard(ctx, req.Tenant, owned, now)
 	results = append(results, shardResults...)
 	for _, rec := range toProduce {
 		if err := s.producer.ProduceRecord(context.WithoutCancel(ctx), rec); err != nil {
 			level.Error(s.logger).Log("msg", "failed to produce stream sharding record", "err", err.Error())
+			continue
 		}
+		// The record carries the stream's metadata, so it also serves the
+		// usage store and there is no need for it to produce its own.
+		s.usage.markProduced(req.Tenant, rec.Metadata, now)
 	}
 	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 }

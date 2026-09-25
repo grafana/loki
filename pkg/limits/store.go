@@ -269,6 +269,27 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	return toProduce, accepted, rejected, nil
 }
 
+// markProduced records that a record carrying this stream's metadata has
+// already been produced, so UpdateCond does not produce a second one for it
+// within the produce interval. The stream sharding path calls it for the
+// records it produces, which carry the same metadata, so that enabling
+// stream sharding durability does not change the number of records on the
+// topic.
+//
+// A stream this store does not track yet is ignored rather than created: an
+// entry created here would count towards the stream limits with a zero
+// lastSeenAt until it is evicted.
+func (s *usageStore) markProduced(tenant string, metadata *proto.StreamMetadata, now time.Time) {
+	partition := s.getPartitionForHash(metadata.StreamHash)
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
+	s.withLock(tenant, func(i int) {
+		if _, ok := s.stripes[i][tenant][partition][policyBucket][metadata.StreamHash]; !ok {
+			return
+		}
+		s.setLastProducedAt(i, tenant, partition, metadata.StreamHash, policyBucket, now)
+	})
+}
+
 // Evict evicts all streams that have not been seen within the window.
 func (s *usageStore) Evict() map[string]int {
 	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
