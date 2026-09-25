@@ -28,6 +28,7 @@ import (
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
@@ -814,6 +815,31 @@ func TestGetGatewayImage(t *testing.T) {
 
 			result := getGatewayImage(tc.stack)
 			require.Equal(t, tc.wantImage, result)
+		})
+	}
+}
+
+func TestGetOperatorImage(t *testing.T) {
+	tests := []struct {
+		name      string
+		envImage  string
+		wantImage string
+	}{
+		{
+			name:      "default image",
+			wantImage: manifests.DefaultOperatorImage,
+		},
+		{
+			name:      "related image override",
+			envImage:  "example.com/loki-operator:test",
+			wantImage: "example.com/loki-operator:test",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(manifests.EnvRelatedImageOperator, tc.envImage)
+			require.Equal(t, tc.wantImage, getOperatorImage())
 		})
 	}
 }

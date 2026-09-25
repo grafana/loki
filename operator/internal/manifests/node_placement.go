@@ -28,7 +28,7 @@ var availabilityZoneEnvVar = corev1.EnvVar{
 	},
 }
 
-func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *lokiv1.ReplicationSpec, component string, stackName string) error {
+func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *lokiv1.ReplicationSpec, component string, stackName string, operatorImage string) error {
 	if replication == nil || len(replication.Zones) == 0 {
 		return nil
 	}
@@ -66,7 +66,7 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 
 	if component != LabelGatewayComponent {
 		template.Spec.InitContainers = []corev1.Container{
-			initContainerAZAnnotationCheck(podTemplate.Spec.Containers[0].Image),
+			initContainerAZAnnotationCheck(operatorImage),
 		}
 
 		src := corev1.Container{
@@ -94,15 +94,16 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 }
 
 func initContainerAZAnnotationCheck(image string) corev1.Container {
+	if image == "" {
+		image = DefaultOperatorImage
+	}
+
 	azPath := fmt.Sprintf("%s/%s", availabilityZoneInitVolumeMountPath, availabilityZoneInitVolumeFileName)
 	return corev1.Container{
-		Name:  "az-annotation-check",
-		Image: image,
-		Command: []string{
-			"sh",
-			"-c",
-			fmt.Sprintf("while ! [ -s %s ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat %s; echo", azPath, azPath),
-		},
+		Name:    "az-annotation-check",
+		Image:   image,
+		Command: []string{"/manager"},
+		Args:    []string{fmt.Sprintf("--wait-for-file=%s", azPath)},
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      availabilityZoneInitVolumeName,
