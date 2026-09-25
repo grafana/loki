@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type queryStatsContextKey struct{}
@@ -45,10 +46,11 @@ type QueryStats struct {
 	totalIOWaitNanos atomic.Int64
 	totalIOBytes     atomic.Int64
 
-	activeWorkers   atomic.Int32
-	peakConcurrency atomic.Int32
-	totalWorkNanos  atomic.Int64
-	wallTimeNanos   atomic.Int64
+	activeWorkers        atomic.Int32
+	peakConcurrency      atomic.Int32
+	totalWorkNanos       atomic.Int64
+	wallTimeNanos        atomic.Int64
+	effectiveConcurrency atomic.Float64
 
 	prefetchCalls    atomic.Int32
 	prefetchTimeouts atomic.Int32
@@ -210,6 +212,17 @@ func (s *QueryStats) Merge(other *QueryStats) {
 			break
 		}
 	}
+
+	otherEffective := other.effectiveConcurrency.Load()
+	for {
+		effective := s.effectiveConcurrency.Load()
+		if otherEffective <= effective {
+			break
+		}
+		if s.effectiveConcurrency.CompareAndSwap(effective, otherEffective) {
+			break
+		}
+	}
 }
 
 func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited time.Duration) {
@@ -236,39 +249,10 @@ func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited
 	}
 }
 
-type QueryStatsSnapshot struct {
-	HeaderReads   int64
-	MetadataReads int64
-	TermDictReads int64
-	BitmapReads   int64
-
-	HeaderCacheMisses   int64
-	MetadataCacheMisses int64
-
-	ObjectStorageRequests int64
-	TotalIOWait           time.Duration
-	TotalIOBytes          int64
-
-	PeakConcurrency      int32
-	EffectiveConcurrency float64
-
-	PrefetchCalls    int32
-	PrefetchTimeouts int32
-
-	IndexQueriesTotal         int64
-	IndexQueriesTermMiss      int64
-	IndexQueriesEmptyAnd      int64
-	IndexQueriesPositive      int64
-	TotalTermBatchesProcessed int64
-
-	HintCacheResult      string
-	HintCacheDaysFetched int64
-	HintCacheDaysHit     int64
-}
-
-func (s *QueryStats) Snapshot() QueryStatsSnapshot {
+// Snapshot returns a frozen copy of the accumulator as the wire stats type.
+func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 	if s == nil {
-		return QueryStatsSnapshot{}
+		return logproto.HintQueryStats{}
 	}
 
 	headerReads := s.headerReads.Load()
@@ -284,14 +268,14 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 
 	totalWorkNanos := s.totalWorkNanos.Load()
 	wallTimeNanos := s.wallTimeNanos.Load()
-	effective := 0.0
-	if wallTimeNanos > 0 {
+	effective := s.effectiveConcurrency.Load()
+	if totalWorkNanos > 0 && wallTimeNanos > 0 {
 		effective = float64(totalWorkNanos) / float64(wallTimeNanos)
 	}
 
 	hintCacheResult, _ := s.hintCacheResult.Load().(string)
 
-	return QueryStatsSnapshot{
+	return logproto.HintQueryStats{
 		HeaderReads:               headerReads,
 		MetadataReads:             metadataReads,
 		TermDictReads:             termDictReads,
@@ -314,6 +298,37 @@ func (s *QueryStats) Snapshot() QueryStatsSnapshot {
 		HintCacheDaysFetched:      s.hintCacheDaysFetched.Load(),
 		HintCacheDaysHit:          s.hintCacheDaysHit.Load(),
 	}
+}
+
+// fromProtoStats reconstructs a QueryStats accumulator from the wire type.
+func fromProtoStats(p *logproto.HintQueryStats) *QueryStats {
+	s := NewQueryStats()
+	if p == nil {
+		return s
+	}
+	s.headerReads.Store(p.HeaderReads)
+	s.metadataReads.Store(p.MetadataReads)
+	s.termDictReads.Store(p.TermDictReads)
+	s.bitmapReads.Store(p.BitmapReads)
+	s.headerCacheMisses.Store(p.HeaderCacheMisses)
+	s.metadataCacheMisses.Store(p.MetadataCacheMisses)
+	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
+	s.totalIOBytes.Store(p.TotalIOBytes)
+	s.peakConcurrency.Store(p.PeakConcurrency)
+	s.effectiveConcurrency.Store(p.EffectiveConcurrency)
+	s.prefetchCalls.Store(p.PrefetchCalls)
+	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
+	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
+	s.indexQueriesTermMiss.Store(p.IndexQueriesTermMiss)
+	s.indexQueriesEmptyAnd.Store(p.IndexQueriesEmptyAnd)
+	s.indexQueriesPositive.Store(p.IndexQueriesPositive)
+	s.totalTermBatchesProcessed.Store(p.TotalTermBatchesProcessed)
+	if p.HintCacheResult != "" {
+		s.hintCacheResult.Store(p.HintCacheResult)
+	}
+	s.hintCacheDaysFetched.Store(p.HintCacheDaysFetched)
+	s.hintCacheDaysHit.Store(p.HintCacheDaysHit)
+	return s
 }
 
 func (s *QueryStats) String() string {

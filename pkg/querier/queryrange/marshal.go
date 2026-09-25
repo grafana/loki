@@ -257,6 +257,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_Hints:
+		return concrete.Hints, nil
 	case *QueryResponse_ShardsResponse:
 		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
@@ -306,6 +308,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *HintResponse:
+		p.Response = &QueryResponse_Hints{response}
 	case *VolumeResponse:
 		p.Response = &QueryResponse_Volume{response}
 	case *TopKSketchesResponse:
@@ -406,6 +410,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
+	case *QueryRequest_Hints:
+		return concrete.Hints, ctx, nil
 	case *QueryRequest_ShardsRequest:
 		return concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
@@ -453,6 +459,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
 	case *logproto.IndexStatsRequest:
 		result.Request = &QueryRequest_Stats{Stats: req}
+	case *logproto.HintRequest:
+		result.Request = &QueryRequest_Hints{Hints: req}
 	case *logproto.VolumeRequest:
 		result.Request = &QueryRequest_Volume{Volume: req}
 	case *LokiInstantRequest:

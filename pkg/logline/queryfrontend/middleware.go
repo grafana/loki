@@ -618,6 +618,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(eligibleEnd.UnixNano()),
+			h.next,
 		)
 		lookup.duration = time.Since(start)
 		if h.metrics != nil && h.metrics.hintProviderDuration != nil {
@@ -925,7 +926,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		eligibleFrom := model.TimeFromUnixNano(from.UnixNano())
 		eligibleThrough := model.TimeFromUnixNano(eligibleEnd.UnixNano())
 
-		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, tenant, expr, eligibleFrom, eligibleThrough)
+		hints, stats, err := h.hintProvider.ProvideHints(prefetchCtx, tenant, expr, eligibleFrom, eligibleThrough, h.next)
 		if stats != nil {
 			result.stats.Merge(stats)
 		}

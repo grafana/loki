@@ -17,6 +17,8 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
@@ -28,6 +30,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
@@ -48,6 +52,19 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/querier")
+
+var queryTermBatchesProcessed = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "logline_querier_query_term_batches_processed",
+	Help:    "Term batches processed by QueryMultiple per index query",
+	Buckets: []float64{1, 2, 3, 4, 5, 8, 10, 15, 20},
+}, []string{"reason"})
+
+func observeQueryMultipleTermBatches(reason string, termBatchesProcessed int) {
+	if termBatchesProcessed <= 0 {
+		return
+	}
+	queryTermBatchesProcessed.WithLabelValues(reason).Observe(float64(termBatchesProcessed))
+}
 
 // Config for a querier.
 type Config struct {
@@ -98,6 +115,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
@@ -126,17 +144,18 @@ type Store interface {
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
-	cfg             Config
-	store           Store
-	limits          querier_limits.Limits
-	ingesterQuerier *IngesterQuerier
-	patternQuerier  pattern.PatterQuerier
-	deleteGetter    deletion.DeleteGetter
-	logger          log.Logger
+	cfg                 Config
+	store               Store
+	limits              querier_limits.Limits
+	ingesterQuerier     *IngesterQuerier
+	patternQuerier      pattern.PatterQuerier
+	deleteGetter        deletion.DeleteGetter
+	logger              log.Logger
+	loglineHintProvider *hintprovider.LoglineHintProvider
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -144,6 +163,21 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+	}
+
+	if loglineStore != nil {
+		p, err := hintprovider.NewLoglineHintProvider(
+			loglineStore,
+			ngramLength,
+			maxHintParallel,
+			observeQueryMultipleTermBatches,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, err
+		}
+		q.loglineHintProvider = p
 	}
 
 	return q, nil
@@ -584,6 +618,17 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		model.TimeFromUnixNano(end.UnixNano()),
 		matchers...,
 	)
+}
+
+func (q *SingleTenantQuerier) Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
+	if q.loglineHintProvider == nil {
+		return nil, errors.New("logline hint provider is not configured")
+	}
+	expr, err := syntax.ParseExpr(req.Expr)
+	if err != nil {
+		return nil, err
+	}
+	return q.loglineHintProvider.QueryHints(ctx, expr, req.Indexes)
 }
 
 func (q *SingleTenantQuerier) IndexShards(

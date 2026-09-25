@@ -238,6 +238,9 @@ func TestQuerier_HintRanges(t *testing.T) {
 				limits,
 				&mockDeleteGettter{},
 				log.NewNopLogger(),
+				nil,
+				0,
+				0,
 			)
 			require.NoError(t, err)
 
@@ -293,6 +296,9 @@ func TestQuerier_HintRanges(t *testing.T) {
 				limits,
 				&mockDeleteGettter{},
 				log.NewNopLogger(),
+				nil,
+				0,
+				0,
 			)
 			require.NoError(t, err)
 
@@ -1531,7 +1537,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, log.NewNopLogger())
+	return New(cfg, store, iq, limits, dg, log.NewNopLogger(), nil, 0, 0)
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {

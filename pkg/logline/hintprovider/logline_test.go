@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -42,6 +43,7 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -74,6 +76,7 @@ func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *
 		expr,
 		model.TimeFromUnixNano(logTS.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(logTS.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -99,6 +102,7 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
@@ -109,8 +113,6 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 	require.GreaterOrEqual(t, snap.TermDictReads, int64(1))
 	require.GreaterOrEqual(t, snap.BitmapReads, int64(1))
 	require.GreaterOrEqual(t, snap.PeakConcurrency, int32(1))
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
-	require.Equal(t, int64(0), snap.HeaderCacheMisses)
 }
 
 func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
@@ -131,7 +133,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	stats := NewQueryStats()
-	active := indexStore.Snapshot().Active()
+	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
@@ -149,20 +151,37 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.Equal(t, 1, observedTermBatches)
 }
 
-func TestLoglineHintProvider_OpenIndexReader_ErrorWhenMetaHeaderMissing(t *testing.T) {
+func TestLoglineHintProvider_OpenIndexReader(t *testing.T) {
 	indexStore := newTestStore(t)
+	needle := "9fA81cD2Ef0077aa"
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
+
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
+	metas := indexStore.IndexesForRange(docMin, docMax)
+	require.Len(t, metas, 1)
+	reader, err := provider.openIndexReader(context.Background(), hintIndexFromMeta(metas[0]), NewQueryStats())
+	require.NoError(t, err)
+	require.NotNil(t, reader)
+	require.NoError(t, reader.Close())
+}
+
+func TestLoglineHintProvider_OpenIndexReader_ErrorWhenHeaderMissing(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
 	stats := NewQueryStats()
-	meta := store.Meta{
-		Date:      "2026-02-26",
-		Hash:      "eeeeffffffffeeee",
+	_, err = provider.openIndexReader(context.Background(), logproto.HintIndex{
+		ID:        "2026-02-26/eeeeffffffffeeee",
 		Version:   "v3",
 		SizeBytes: 1,
-	}
-	_, err = provider.openIndexReader(context.Background(), meta, stats)
+	}, stats)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "index_header")
 
 	snap := stats.Snapshot()
 	require.Equal(t, int64(1), snap.MetadataCacheMisses)
@@ -181,9 +200,23 @@ func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Now().Add(-time.Hour).UnixNano()),
 		model.TimeFromUnixNano(time.Now().UnixNano()),
+		nil,
 	)
-	require.Nil(t, hints)
+	require.NotNil(t, hints)
+	require.Empty(t, hints.TimeRanges)
 	require.ErrorIs(t, err, ErrUnsupported)
+}
+
+func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
+	resp, err := provider.QueryHints(context.Background(), expr, nil)
+	require.ErrorIs(t, err, ErrUnsupported)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.TimeRanges)
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {
@@ -203,6 +236,7 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -228,6 +262,7 @@ func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -253,6 +288,7 @@ func TestLoglineHintProvider_ProvideHints_LabelFilterNoMatches(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -283,6 +319,7 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -298,6 +335,7 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -321,6 +359,7 @@ func TestLoglineHintProvider_NoMatches(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -347,6 +386,7 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -724,6 +764,7 @@ func TestLoglineHintProvider_ProvideHints_CrossShardIntersection(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(31*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -742,12 +783,12 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 
 	byShard := make(map[int][]string)
 	for shardValue := range 10 {
-		meta := store.Meta{
+		idx := logproto.HintIndex{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-			ShardValue:     shardValue,
+			ShardValue:     int64(shardValue),
 		}
-		if terms := filterNgramsForShard(ngrams, meta); len(terms) > 0 {
+		if terms := filterNgramsForShard(ngrams, idx); len(terms) > 0 {
 			byShard[shardValue] = terms
 		}
 	}
@@ -788,6 +829,7 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -818,6 +860,7 @@ func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(61*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -853,6 +896,7 @@ func TestLoglineHintProvider_ProvideHints_CrossIndexBatchingFillsSharedBatches(t
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(16*time.Minute).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -879,7 +923,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	active := indexStore.Snapshot().Active()
+	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
@@ -888,7 +932,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.NotEmpty(t, shardRanges)
 
 	snap := stats.Snapshot()
-	require.Equal(t, int64(1), snap.MetadataCacheMisses)
+	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
 func TestLoglineHintProvider_MetadataCache_SkipsPutWhenFull(t *testing.T) {
@@ -924,14 +968,15 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, base, base.Add(10*time.Second))
 	writeTestIndex(t, indexStore, "bbbbbbbbbbbbbbbb", needle, base.Add(20*time.Second), base.Add(30*time.Second))
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	active := indexStore.Snapshot().Active()
-	require.Len(t, active, 2)
+	metas := indexStore.Snapshot().Active()
+	require.Len(t, metas, 2)
+	active := hintIndexesFromMetas(metas)
 
-	for _, meta := range active {
-		reader, err := provider.openIndexReader(context.Background(), meta, nil)
+	for _, idx := range active {
+		reader, err := provider.openIndexReader(context.Background(), idx, nil)
 		require.NoError(t, err)
 		require.NoError(t, reader.Close())
 	}
@@ -939,12 +984,12 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.Equal(t, 2, provider.cache.len())
 
 	ids := map[string]struct{}{
-		active[0].ID(): {},
-		active[1].ID(): {},
+		active[0].ID: {},
+		active[1].ID: {},
 	}
-	deletedID := active[0].ID()
+	deletedID := active[0].ID
 
-	require.NoError(t, indexStore.DeleteIndex(context.Background(), active[0]))
+	require.NoError(t, indexStore.DeleteIndex(context.Background(), metas[0]))
 	require.NoError(t, indexStore.Poll(context.Background()))
 
 	provider.cache.evictStale(indexStore.Snapshot())
@@ -962,15 +1007,36 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.True(t, ok)
 }
 
-// minimalMeta returns a store.Meta suitable for buildTermJobs tests that don't need real index data.
-// Only Version and ID-related fields are set; ShardCount=0 so filterNgramsForShard
-// passes all ngrams through unchanged.
-func minimalMeta(hash, date, indexVersion string) store.Meta {
-	return store.Meta{
-		Date:    date,
-		Hash:    hash,
+// minimalHintIndex returns a HintIndex suitable for buildTermJobs tests that
+// don't need real index data. Only Version and ID are set; ShardCount=0 so
+// filterNgramsForShard passes all ngrams through unchanged.
+func minimalHintIndex(hash, date, indexVersion string) logproto.HintIndex {
+	return logproto.HintIndex{
+		ID:      date + "/" + hash,
 		Version: indexVersion,
 	}
+}
+
+func hintIndexFromMeta(m store.Meta) logproto.HintIndex {
+	return logproto.HintIndex{
+		ID:             m.ID(),
+		Version:        m.Version,
+		SizeBytes:      m.SizeBytes,
+		MinLogTs:       m.MinLogTs,
+		MaxLogTs:       m.MaxLogTs,
+		ShardCount:     int64(m.ShardCount),
+		ShardAlgorithm: m.ShardAlgorithm,
+		ShardValue:     int64(m.ShardValue),
+		IndexHeader:    m.IndexHeader,
+	}
+}
+
+func hintIndexesFromMetas(metas []store.Meta) []logproto.HintIndex {
+	out := make([]logproto.HintIndex, len(metas))
+	for i, m := range metas {
+		out[i] = hintIndexFromMeta(m)
+	}
+	return out
 }
 
 // TestBuildTermJobs_SingleVersionCache verifies that two blocks sharing the same
@@ -978,18 +1044,18 @@ func minimalMeta(hash, date, indexVersion string) store.Meta {
 // doesn't accidentally drop the second block.
 func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in metasByID (each produced at least one job).
-	require.Contains(t, metasByID, metas[0].ID())
-	require.Contains(t, metasByID, metas[1].ID())
+	// Both blocks should appear in indexesByID (each produced at least one job).
+	require.Contains(t, indexesByID, indexes[0].ID)
+	require.Contains(t, indexesByID, indexes[1].ID)
 }
 
 // TestBuildTermJobs_MixedVersions verifies that blocks with different index
@@ -1005,31 +1071,31 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 	}
 
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in metasByID even though they carry different
+	// Both blocks should appear in indexesByID even though they carry different
 	// index versions.
-	require.Contains(t, metasByID, metas[0].ID())
-	require.Contains(t, metasByID, metas[1].ID())
+	require.Contains(t, indexesByID, indexes[0].ID)
+	require.Contains(t, indexesByID, indexes[1].ID)
 }
 
 // TestBuildTermJobs_UnknownVersionReturnsError verifies that a block with an
 // unrecognised index version causes the query to fail with an error.
 func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	filter := "abcdefg"
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.Error(t, err)
 }
 
@@ -1038,11 +1104,11 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 // known index version.
 func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
 	filter := "ab" // too short for n=6
-	metas := []store.Meta{
-		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+	indexes := []logproto.HintIndex{
+		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 

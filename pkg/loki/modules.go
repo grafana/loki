@@ -547,7 +547,34 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	var loglineStore *loglinestore.Store
+	if t.Cfg.Logline.Query.Enabled {
+		// Query-frontend tripperware also constructs a store. Distinct
+		// component labels let both register metrics in a single binary.
+		loglineStore, err = loglinestore.New(
+			context.Background(),
+			t.Cfg.SchemaConfig,
+			t.Cfg.StorageConfig.ObjectStore,
+			t.Cfg.Logline.Store,
+			logger,
+			prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.Querier, err = querier.New(
+		t.Cfg.Querier,
+		t.Store,
+		t.ingesterQuerier,
+		t.Overrides,
+		deleteStore,
+		logger,
+		loglineStore,
+		t.Cfg.Logline.Index.NgramLength,
+		t.Cfg.Logline.Query.MaxHintParallel,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -2563,7 +2590,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
@@ -2744,7 +2771,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 		t.Cfg.StorageConfig.ObjectStore,
 		t.Cfg.Logline.Store,
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-builder"}, prometheus.DefaultRegisterer),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline index store: %w", err)

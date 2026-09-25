@@ -75,6 +75,7 @@ func (m *mockHintProvider) ProvideHints(
 	_ syntax.Expr,
 	_,
 	_ model.Time,
+	_ queryrangebase.Handler,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	stats := hintprovider.NewQueryStats()
 

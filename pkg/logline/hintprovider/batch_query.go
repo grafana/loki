@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type termJob struct {
@@ -20,7 +20,7 @@ type termJob struct {
 
 type readerResult struct {
 	reader logline.Reader
-	meta   store.Meta
+	idx    logproto.HintIndex
 
 	result               format.Bitmap
 	done                 bool
@@ -109,10 +109,10 @@ func (s *queryExecutionState) applyBitmap(readerID string, readerRes format.Bitm
 func (p *LoglineHintProvider) executeQuery(
 	ctx context.Context,
 	filters []string,
-	overlapping []store.Meta,
+	overlapping []logproto.HintIndex,
 	stats *QueryStats,
 ) (map[shardKey][]HintTimeRange, error) {
-	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
+	jobs, indexesByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (p *LoglineHintProvider) executeQuery(
 		return byShard, nil
 	}
 
-	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats)
+	readersByID, err := p.openReadersForIndexes(ctx, indexesByID, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -187,14 +187,14 @@ func (p *LoglineHintProvider) executeQuery(
 			p.queryMultipleObserver(queryMultipleReasonLabel(res.reason), res.termBatchesProcessed)
 		}
 
-		key := shardKeyOf(res.meta)
+		key := shardKeyOf(res.idx)
 		var ranges []HintTimeRange
 		switch res.reason {
 		case format.QueryMultipleReasonComplete:
 			if res.result.MatchesAll {
-				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
+				ranges = []HintTimeRange{hintTimeRangeForIndex(res.idx)}
 			} else if !res.result.IsEmpty() {
-				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				ranges = rangesForDocIDs(res.idx, res.result.Roaring.ToArray(), res.reader.Documents())
 			}
 			if len(ranges) == 0 {
 				continue
@@ -216,11 +216,11 @@ func (p *LoglineHintProvider) executeQuery(
 
 func buildTermJobs(
 	filters []string,
-	overlapping []store.Meta,
+	overlapping []logproto.HintIndex,
 	ngramLength int,
-) ([]termJob, map[string]store.Meta, error) {
+) ([]termJob, map[string]logproto.HintIndex, error) {
 	jobs := make([]termJob, 0, len(filters)*len(overlapping))
-	metasByID := make(map[string]store.Meta, len(overlapping))
+	indexesByID := make(map[string]logproto.HintIndex, len(overlapping))
 
 	for _, filter := range filters {
 		// Per-version cache: each unique index version is extracted at most once
@@ -229,26 +229,26 @@ func buildTermJobs(
 		// extraction per filter.
 		ngramsByVersion := make(map[string][]string)
 
-		for _, meta := range overlapping {
-			orderedNgrams, seen := ngramsByVersion[meta.Version]
+		for _, idx := range overlapping {
+			orderedNgrams, seen := ngramsByVersion[idx.Version]
 			if !seen {
-				ngrams, err := ExtractQueryNgrams(filter, ngramLength, meta.Version)
+				ngrams, err := ExtractQueryNgrams(filter, ngramLength, idx.Version)
 				if err != nil {
-					return nil, nil, fmt.Errorf("block %s: %w", meta.ID(), err)
+					return nil, nil, fmt.Errorf("block %s: %w", idx.ID, err)
 				}
 				if len(ngrams) == 0 {
 					return nil, nil, ErrUnsupported
 				}
 				orderedNgrams = orderUncorrelated(ngrams)
-				ngramsByVersion[meta.Version] = orderedNgrams
+				ngramsByVersion[idx.Version] = orderedNgrams
 			}
 
-			jobTerms := filterNgramsForShard(orderedNgrams, meta)
+			jobTerms := filterNgramsForShard(orderedNgrams, idx)
 			if len(jobTerms) == 0 {
 				continue
 			}
-			readerID := meta.ID()
-			metasByID[readerID] = meta
+			readerID := idx.ID
+			indexesByID[readerID] = idx
 			for _, term := range jobTerms {
 				jobs = append(jobs, termJob{
 					term:     term,
@@ -257,40 +257,40 @@ func buildTermJobs(
 			}
 		}
 	}
-	return jobs, metasByID, nil
+	return jobs, indexesByID, nil
 }
 
-func (p *LoglineHintProvider) openReadersForMetas(
+func (p *LoglineHintProvider) openReadersForIndexes(
 	ctx context.Context,
-	metasByID map[string]store.Meta,
+	indexesByID map[string]logproto.HintIndex,
 	stats *QueryStats,
 ) (map[string]*readerResult, error) {
-	readersByID := make(map[string]*readerResult, len(metasByID))
-	if len(metasByID) == 0 {
+	readersByID := make(map[string]*readerResult, len(indexesByID))
+	if len(indexesByID) == 0 {
 		return readersByID, nil
 	}
 
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(p.maxParallel)
-	for readerID, meta := range metasByID {
+	for readerID, idx := range indexesByID {
 		g.Go(func() error {
 			if gCtx.Err() != nil {
 				return gCtx.Err()
 			}
-			if meta.SizeBytes <= 0 {
-				return fmt.Errorf("index %s has unknown size, cannot query via range reads", meta.ID())
+			if idx.SizeBytes <= 0 {
+				return fmt.Errorf("index %s has unknown size, cannot query via range reads", idx.ID)
 			}
 			// Use the parent ctx (not gCtx) so the bucketReaderAt inside
 			// the reader keeps a live context after the errgroup finishes.
-			indexReader, err := p.openIndexReader(ctx, meta, stats)
+			indexReader, err := p.openIndexReader(ctx, idx, stats)
 			if err != nil {
-				return fmt.Errorf("open index %s: %w", meta.ID(), err)
+				return fmt.Errorf("open index %s: %w", idx.ID, err)
 			}
 			mu.Lock()
 			readersByID[readerID] = &readerResult{
 				reader: indexReader,
-				meta:   meta,
+				idx:    idx,
 				result: format.Bitmap{MatchesAll: true},
 			}
 			mu.Unlock()
@@ -323,23 +323,23 @@ func queryMultipleReasonLabel(reason format.QueryMultipleTerminationReason) stri
 	}
 }
 
-// hintTimeRangeForMeta converts inclusive observed index bounds to a half-open
+// hintTimeRangeForIndex converts inclusive observed index bounds to a half-open
 // hint range. One millisecond matches the cache and document timestamp
 // precision and guarantees that a log at MaxLogTs remains covered.
-func hintTimeRangeForMeta(meta store.Meta) HintTimeRange {
+func hintTimeRangeForIndex(idx logproto.HintIndex) HintTimeRange {
 	return HintTimeRange{
-		Start: meta.MinLogTs,
-		End:   meta.MaxLogTs.Add(time.Millisecond),
+		Start: idx.MinLogTs,
+		End:   idx.MaxLogTs.Add(time.Millisecond),
 		Source: fmt.Sprintf(
 			"index=%s,matches_all,min=%s,max=%s",
-			meta.ID(),
-			meta.MinLogTs.Format(time.RFC3339Nano),
-			meta.MaxLogTs.Format(time.RFC3339Nano),
+			idx.ID,
+			idx.MinLogTs.Format(time.RFC3339Nano),
+			idx.MaxLogTs.Format(time.RFC3339Nano),
 		),
 	}
 }
 
-func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
+func rangesForDocIDs(idx logproto.HintIndex, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}
@@ -363,7 +363,7 @@ func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMet
 			End:   maxTS,
 			Source: fmt.Sprintf(
 				"index=%s,doc=%d,min=%s,max=%s",
-				meta.ID(),
+				idx.ID,
 				doc.ID,
 				minTS.Format(time.RFC3339Nano),
 				maxTS.Format(time.RFC3339Nano),

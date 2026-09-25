@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -123,6 +124,7 @@ func (s *stubHintProvider) ProvideHints(
 	_ syntax.Expr,
 	_,
 	_ model.Time,
+	_ queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	s.mu.Lock()
 	s.calls++
@@ -172,7 +174,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -208,6 +210,7 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -243,7 +246,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -268,6 +271,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls(), "partial miss should call delegate")
@@ -281,6 +285,7 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls(), "full hit should avoid additional delegate calls")
@@ -299,18 +304,18 @@ func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 		hints: &Hints{TimeRanges: []HintTimeRange{spanning}},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+	provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	from := model.TimeFromUnixNano(midnight.Add(-2 * time.Hour).UnixNano())
 	through := model.TimeFromUnixNano(midnight.Add(2 * time.Hour).UnixNano())
 
 	// Fill both day entries.
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
 	require.NoError(t, err)
 
 	// Serve the same window from cache.
-	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{spanning}, hit.TimeRanges)
 }
@@ -421,7 +426,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
@@ -433,7 +438,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	errCh := make(chan error, workers)
 	for range workers {
 		wg.Go(func() {
-			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through, nil)
 			errCh <- err
 		})
 	}
@@ -447,7 +452,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	require.Equal(t, 1, backend.StoreCalls(), "coalesced miss should store once")
 }
 
-func TestCachedHints_JSONRoundTripOmitsSource(t *testing.T) {
+func TestCachedHints_JSONRoundTrip(t *testing.T) {
 	input := []HintTimeRange{
 		{
 			Start:  time.Date(2026, 3, 10, 2, 0, 0, 0, time.UTC),
@@ -496,7 +501,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("cache hit", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 		days := buildDayWindows(tenant, expr.String(), "", from, through)
 		require.Len(t, days, 1)
 
@@ -510,6 +515,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
+			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 0, delegate.Calls(), "delegate should not be called on full cache hit")
@@ -519,7 +525,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("cache miss", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
@@ -527,6 +533,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
+			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -535,7 +542,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 
 	t.Run("nil cache", func(t *testing.T) {
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, nil, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			context.Background(),
@@ -543,6 +550,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
+			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -552,7 +560,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	t.Run("skip cache", func(t *testing.T) {
 		backend := newMockHintCacheBackend()
 		delegate := &stubHintProvider{hints: &Hints{TimeRanges: allRanges}}
-		provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+		provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
 
 		hints, _, err := provider.ProvideHints(
 			WithSkipCache(context.Background()),
@@ -560,6 +568,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
+			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -580,7 +589,7 @@ func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, nil, prometheus.NewRegistry())
+	provider := NewCachingHintProvider(delegate, nil, 0, prometheus.NewRegistry())
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 
 	_, _, err := provider.ProvideHints(
@@ -589,6 +598,7 @@ func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 6, 0, 0, 0, time.UTC).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls())
@@ -598,15 +608,15 @@ func TestCachingHintProvider_ErrUnsupportedNotCached(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	backend := newMockHintCacheBackend()
 	delegate := &stubHintProvider{err: ErrUnsupported}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
 	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
 	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC).UnixNano())
 
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
 	require.ErrorIs(t, err, ErrUnsupported)
-	_, _, err = provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
+	_, _, err = provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
 	require.ErrorIs(t, err, ErrUnsupported)
 
 	require.Equal(t, 2, delegate.Calls(), "errors must not be cached")
@@ -632,7 +642,7 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 		},
 		stats: NewQueryStats(),
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	from := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
@@ -644,6 +654,7 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err, "cache fetch failure should fall back to delegate")
 	require.Equal(t, 2, delegate.Calls(), "delegate should be called for each missed day")
@@ -663,7 +674,7 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 
 	ctx := WithSkipCache(context.Background())
@@ -675,11 +686,49 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC).UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls())
 	require.Equal(t, 0, backend.FetchCalls(), "skip should avoid cache fetch")
 	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
+}
+
+func TestCachingHintProvider_SkipCacheFetchesDaysInParallelWithoutStore(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &stubHintProvider{
+		hints: &Hints{
+			TimeRanges: []HintTimeRange{
+				{
+					Start: time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 10, 12, 15, 0, 0, time.UTC),
+				},
+				{
+					Start: time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC),
+					End:   time.Date(2026, 3, 11, 9, 10, 0, 0, time.UTC),
+				},
+			},
+		},
+	}
+	provider := NewCachingHintProvider(delegate, backend, 0, prometheus.NewRegistry())
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	from := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	through := time.Date(2026, 3, 11, 17, 0, 0, 0, time.UTC)
+	require.Len(t, buildDayWindows("tenant-a", expr.String(), "", from, through), 2)
+
+	hints, _, err := provider.ProvideHints(
+		WithSkipCache(context.Background()),
+		"tenant-a",
+		expr,
+		model.TimeFromUnixNano(from.UnixNano()),
+		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, delegate.Calls(), "skip should still fetch each day")
+	require.Equal(t, 0, backend.FetchCalls(), "skip should avoid cache fetch")
+	require.Equal(t, 0, backend.StoreCalls(), "skip should avoid cache store")
+	require.Equal(t, delegate.hints.TimeRanges, hints.TimeRanges)
 }
 
 func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
@@ -695,7 +744,7 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
 	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
@@ -707,6 +756,7 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 2, delegate.Calls(), "all missed days should fetch independently")
@@ -738,7 +788,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 			},
 		},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 	expr := mustParseExpr(t, `{job="api"} |= "error"`)
 	tenant := "tenant-a"
 	from := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
@@ -750,6 +800,7 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -773,6 +824,7 @@ func (p *mutableWindowHintProvider) ProvideHints(
 	_ syntax.Expr,
 	from,
 	through model.Time,
+	_ queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	p.mu.Lock()
 	p.calls++
@@ -825,7 +877,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 	delegate := &mutableWindowHintProvider{
 		indexRanges: []HintTimeRange{oldRange, newRange},
 	}
-	provider := NewCachingHintProvider(delegate, backend, reg)
+	provider := NewCachingHintProvider(delegate, backend, 0, reg)
 
 	expr := mustParseExpr(t, `{job="api"} |= "needle"`)
 	tenant := "tenant-a"
@@ -839,6 +891,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(narrowEnd.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{oldRange}, firstHints.TimeRanges)
@@ -851,6 +904,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(widerEnd.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cachedStats)
@@ -863,6 +917,7 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(widerEnd.UnixNano()),
+		nil,
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []HintTimeRange{oldRange, newRange}, freshHints.TimeRanges)
