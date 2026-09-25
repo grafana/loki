@@ -465,6 +465,23 @@ func TestCanExecuteQuery(t *testing.T) {
 			// match pattern is not supported
 			statement: `sum(count_over_time({env="prod"} |> "ts=<_>" [1m]))`,
 		},
+		{
+			// a line filter before line_format matches the original line
+			statement: `{env="prod"} |= "metrics.go" | line_format "{{.cluster}}"`,
+			expected:  true,
+		},
+		{
+			// a line filter after line_format has to match the formatted line
+			statement: `{env="prod"} | line_format "{{.cluster}}" |= "metrics.go"`,
+		},
+		{
+			// label_format leaves the line alone, so a following line filter is fine
+			statement: `{env="prod"} | label_format cluster="us" |= "metrics.go"`,
+			expected:  true,
+		},
+		{
+			statement: `sum(count_over_time({env="prod"} | logfmt | line_format "{{.msg}}" |= "boom" [1m]))`,
+		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
 			q := &query{
@@ -578,6 +595,11 @@ func TestConvertAST_UnimplementedErrorNamesFeature(t *testing.T) {
 			name:      "unsupported log parser",
 			statement: `{app="foo"} | pattern "<msg>"`,
 			feature:   `log parser "pattern"`,
+		},
+		{
+			name:      "line filter after line_format",
+			statement: `{app="foo"} | line_format "{{.msg}}" |= "boom"`,
+			feature:   "line filter after line_format",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
