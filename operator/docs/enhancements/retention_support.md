@@ -1,5 +1,6 @@
 ---
 title: Stream-based Retention Support
+state: committed
 authors:
   - "@shwetaap"
 reviewers:
