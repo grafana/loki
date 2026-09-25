@@ -125,11 +125,14 @@ func (p *CachingHintProvider) fetchDays(
 
 	for i, day := range days {
 		g.Go(func() error {
+			if err := gCtx.Err(); err != nil {
+				return err
+			}
 			dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 			sfKey := singleflightKey(tenant, queryString, day.day)
 			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-				hints, stats, provideErr := p.delegate.ProvideHints(gCtx, tenant, expr, dayFrom, dayThrough, next)
+				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough, next)
 				if provideErr != nil {
 					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
 				}
@@ -137,7 +140,7 @@ func (p *CachingHintProvider) fetchDays(
 					hints = &Hints{}
 				}
 				if writeCache {
-					p.storeDays(gCtx, []dayWindow{day}, hints.TimeRanges)
+					p.storeDays(ctx, []dayWindow{day}, hints.TimeRanges)
 				}
 				return &provideHintsResult{hints: hints, stats: stats}, nil
 			})

@@ -1168,6 +1168,16 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 }
 
+func Test_codec_hints_EncodeRequest(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	got, err := DefaultCodec.EncodeRequest(ctx, &logproto.HintRequest{
+		Expr: `{job="foo"}`,
+	})
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.ErrorContains(t, err, "HintRequest requires frontend.encoding=protobuf")
+}
+
 func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
 	toEncode := &logproto.VolumeRequest{

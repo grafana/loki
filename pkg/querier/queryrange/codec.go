@@ -1022,6 +1022,8 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.HintRequest:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "HintRequest requires frontend.encoding=protobuf")
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", fmt.Sprintf("invalid request format, got (%T)", r))
 	}
