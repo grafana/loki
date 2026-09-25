@@ -66,3 +66,8 @@ Query-shape support and hint lookup for logline index lookups.
    - Shard values are intersected only within one `(version, algorithm, count)`
      group. Intersecting across versions drops the ranges of a version that has
      no term on a shard the other version queried.
+   - Filters are ANDed per version. A filter with no terms under a version (v4
+     emits none for a number shorter than 9 digits) drops out for that version.
+     If no filter has terms for some version in the window, `buildTermJobs`
+     returns `ErrUnsupported`. Skipping that version's blocks would leave them
+     without ranges and hide their matches.

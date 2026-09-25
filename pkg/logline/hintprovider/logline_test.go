@@ -1122,6 +1122,67 @@ func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testin
 	require.Contains(t, metasByID, meta.ID())
 }
 
+// TestBuildTermJobs_FiltersWithoutTerms pins what happens to a filter that has
+// no terms under a block's version. It drops out of that version's AND, but a
+// version that no filter can narrow makes the whole lookup unsupported.
+// Skipping that version's blocks instead would leave them without ranges and
+// hide their matches.
+func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
+	v3Meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
+	v4Meta := minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
+
+	tests := []struct {
+		name    string
+		filters []string
+		metas   []store.Meta
+		wantErr error
+		// wantTerms maps a block ID to the terms looked up in it.
+		wantTerms map[string][]string
+	}{
+		{
+			name:    "v4 cannot narrow a number shorter than 9 digits",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v4Meta},
+			wantErr: ErrUnsupported,
+		},
+		{
+			name:    "one version without terms fails a mixed window",
+			filters: []string{"12345678"},
+			metas:   []store.Meta{v3Meta, v4Meta},
+			wantErr: ErrUnsupported,
+		},
+		{
+			name:    "each version narrows on the filters it has terms for",
+			filters: []string{"abcdefg", "12345678"},
+			metas:   []store.Meta{v3Meta, v4Meta},
+			wantTerms: map[string][]string{
+				v3Meta.ID(): {"ABCDEF", "BCDEFG", "123456", "234567", "345678"},
+				v4Meta.ID(): {"ABCDEF", "BCDEFG"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobs, metasByID, err := buildTermJobs(tt.filters, tt.metas, 6)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+
+			got := make(map[string][]string)
+			for _, job := range jobs {
+				got[job.readerID] = append(got[job.readerID], job.term)
+			}
+			require.Len(t, got, len(tt.wantTerms))
+			for id, want := range tt.wantTerms {
+				require.ElementsMatch(t, want, got[id], "terms for block %s", id)
+				require.Contains(t, metasByID, id)
+			}
+		})
+	}
+}
+
 func buildIndexBytes(t *testing.T, needle string, docMin, docMax time.Time) ([]byte, *format.HeaderInfo) {
 	t.Helper()
 	tmpDir := t.TempDir()

@@ -74,9 +74,11 @@ tag does not need to encode the length: the length is a property of the index ve
    terms are unchanged.
 3. **Rules are context-free.** Both read only the candidate gram's own bytes, so build and
    query always agree. This is what keeps recall exact: a numeric needle shorter than
-   `NumericNgramLength` produces no grams, `ExtractQueryNgrams` returns nothing,
-   `batch_query` returns `ErrUnsupported`, and the query passes through to a full Loki scan
-   instead of silently skipping data. Guarded by `TestExtractFeatures_BuildQuerySymmetry`.
+   `NumericNgramLength` produces no grams, so it is never looked up against a term that was
+   not indexed. `batch_query` drops such a filter from the AND and narrows on the others.
+   When no filter has grams it returns `ErrUnsupported`, and the query passes through to a
+   full Loki scan instead of silently skipping data. Guarded by
+   `TestExtractFeatures_BuildQuerySymmetry` and `TestBuildTermJobs_FiltersWithoutTerms`.
 4. **Text output equals v3** for any input without an all-digit window. Guarded by
    `TestExtractFeatures_TextParityWithV3`, whose expectations are copied from v3's golden.
 5. **Frozen.** Do not change the emitted n-gram set. Add a v5 instead.
