@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 )
 
 // A committer allows mocking of certain [kgo.Client] methods in tests.
@@ -20,9 +23,14 @@ type committer interface {
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
-// A metastoreEventEmitter allows mocking of [metastoreEvents] in tests.
-type metastoreEventEmitter interface {
-	Emit(ctx context.Context, objectPath string, earliestRecordTime time.Time) error
+// An indexer allows mocking of index building in tests.
+type indexer interface {
+	Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error)
+}
+
+// A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
+type tocWriter interface {
+	WriteEntry(ctx context.Context, idxPath string, tenantTimeRanges []multitenancy.TimeRange) error
 }
 
 // A flusher allows mocking of flushes in tests.
@@ -36,63 +44,92 @@ type flusher interface {
 
 // A flushCommitterImpl manages the flushing of data objects and commits.
 type flushCommitterImpl struct {
-	flusher         flusher
-	metastoreEvents metastoreEventEmitter
-	committer       committer
-	partition       int32
-	logger          log.Logger
+	flusher   flusher
+	committer committer
+	indexer   indexer
+	tocWriter tocWriter
+	partition int32
+	logger    log.Logger
 
-	// Metrics.
-	commits        prometheus.Counter
-	commitFailures prometheus.Counter
+	duration      *prometheus.HistogramVec
+	e2eLagSeconds prometheus.Gauge
 }
+
+const (
+	resultOK        = "ok"
+	resultError     = "error"
+	resultCancelled = "cancelled"
+)
 
 func newFlushCommitter(
 	flusher flusher,
-	metastoreEvents metastoreEventEmitter,
 	committer committer,
+	indexer indexer,
+	tocWriter tocWriter,
 	partition int32,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) *flushCommitterImpl {
+	d := promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            "loki_dataobj_builder_flush_commit_duration_seconds",
+		Help:                            "Time taken to flush a group of builders and commit the Kafka offset.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 0,
+	}, []string{"result"})
+
+	// Report the outcomes from the start, so that a rate over failures reads
+	// as zero rather than going missing until the first one happens.
+	d.WithLabelValues(resultOK)
+	d.WithLabelValues(resultError)
+	d.WithLabelValues(resultCancelled)
+
 	return &flushCommitterImpl{
-		flusher:         flusher,
-		metastoreEvents: metastoreEvents,
-		committer:       committer,
-		partition:       partition,
-		logger:          logger,
-		commits: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commits_total",
-			Help: "Total number of commits.",
-		}),
-		commitFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commit_failures_total",
-			Help: "Total number of commit failures.",
+		flusher:   flusher,
+		committer: committer,
+		indexer:   indexer,
+		tocWriter: tocWriter,
+		partition: partition,
+		logger:    logger,
+		duration:  d,
+		e2eLagSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_builder_e2e_lag_seconds",
+			Help: "Time between a log line being written to Kafka by the distributors and it becoming available for querying in seconds.",
 		}),
 	}
 }
 
 // Flush multiple data object builders and, if successful, commit the offset.
-func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) (returnErr error) {
+	start := time.Now()
+	defer func() { c.observeResult(time.Since(start), returnErr) }()
+
+	// Read before flushing: flushing resets the builders, which clears their
+	// earliest record times.
+	earliest := earliestRecordTime(builders)
+
 	for _, b := range builders {
 		if err := c.flushOne(ctx, b, reason); err != nil {
 			return err
 		}
 	}
 
+	// Everything above is queryable once its index is in the metastore, so the
+	// oldest record in this flush is the one that determines ingest lag.
+	if !earliest.IsZero() {
+		c.e2eLagSeconds.Set(time.Since(earliest).Seconds())
+	}
+
 	// commit returns an error only if context is cancelled, otherwise it retries indefinitely
 	if err := c.commit(ctx, offset); err != nil {
-		c.commitFailures.Inc()
 		return fmt.Errorf("failed to commit data object offset %d: %w", offset, err)
 	}
 	return nil
 }
 
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
-	// Read before flushing: flushing resets the builder, which clears the earliest record time.
-	earliestRecordTime := builder.GetEarliestRecordTime()
-
-	_, objCloser, objPath, err := c.flusher.Flush(ctx, builder, reason)
+	obj, objCloser, objPath, err := c.flusher.Flush(ctx, builder, reason)
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
@@ -100,19 +137,44 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// TODO(ivkalita): send events in batch
-	// emitEvent returns an error only if context is cancelled, otherwise
-	// it retries indefinitely.
-	if err := c.emitEvent(ctx, objPath, earliestRecordTime); err != nil {
-		return fmt.Errorf("failed to emit metastore event: %w", err)
+	// index returns an error only if the context is canceled, otherwise it
+	// retries indefinitely.
+	res, err := c.index(ctx, obj, objPath)
+	if err != nil {
+		return fmt.Errorf("failed to index data object: %w", err)
+	}
+
+	// WriteEntry retries each ToC window until it succeeds, so it returns an
+	// error only if the context is canceled.
+	if err := c.tocWriter.WriteEntry(ctx, res.Path, res.TimeRanges); err != nil {
+		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
 
 	return nil
 }
 
-// emitEvent emits a metastore event for the object, retries with exponential
-// backoff until successful or the context is canceled.
-func (c *flushCommitterImpl) emitEvent(ctx context.Context, objectPath string, earliestRecordTime time.Time) error {
+// earliestRecordTime returns the oldest record time across builders, or the
+// zero time if none of them hold any records. It must be called before the
+// builders are flushed, as flushing resets them.
+func earliestRecordTime(builders []builder) time.Time {
+	var earliest time.Time
+	for _, b := range builders {
+		t := b.GetEarliestRecordTime()
+		if t.IsZero() {
+			continue
+		}
+		if earliest.IsZero() || t.Before(earliest) {
+			earliest = t
+		}
+	}
+	return earliest
+}
+
+// index builds and uploads the index for the object, retrying with exponential
+// backoff until successful or the context is canceled. Retrying is safe because
+// the index is not referenced from the metastore until it is recorded in the
+// ToC.
+func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
@@ -120,14 +182,18 @@ func (c *flushCommitterImpl) emitEvent(ctx context.Context, objectPath string, e
 	})
 	var lastErr error
 	for b.Ongoing() {
-		lastErr = c.metastoreEvents.Emit(ctx, objectPath, earliestRecordTime)
-		if lastErr == nil {
-			break
+		res, err := c.indexer.Index(ctx, obj, objPath)
+		if err == nil {
+			return res, nil
 		}
-		level.Warn(c.logger).Log("msg", "failed to emit metastore event", "err", lastErr, "attempt", b.NumRetries())
+		lastErr = err
+		level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
 		b.Wait()
 	}
-	return lastErr
+	// The loop only gives up once the context is done. Surface that alongside
+	// the last failure so the processor shuts down gracefully instead of
+	// treating it as an unrecoverable flush.
+	return index.Result{}, errors.Join(b.Err(), lastErr)
 }
 
 // commits the offset, retries with exponential backoff until successful or
@@ -138,7 +204,6 @@ func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 0,
 	})
-	c.commits.Inc()
 	var lastErr error
 	for b.Ongoing() {
 		lastErr = c.committer.Commit(ctx, c.partition, offset)
@@ -149,5 +214,19 @@ func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 		level.Warn(c.logger).Log("msg", "failed to commit offset", "err", lastErr, "attempt", b.NumRetries())
 		b.Wait()
 	}
-	return lastErr
+	return errors.Join(b.Err(), lastErr)
+}
+
+func (c *flushCommitterImpl) observeResult(duration time.Duration, err error) {
+	var result string
+	switch {
+	case err == nil:
+		result = resultOK
+	case errors.Is(err, context.Canceled):
+		result = resultCancelled
+	default:
+		result = resultError
+	}
+
+	c.duration.WithLabelValues(result).Observe(duration.Seconds())
 }

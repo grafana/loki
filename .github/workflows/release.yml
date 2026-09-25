@@ -7,7 +7,7 @@ env:
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
+  RELEASE_LIB_REF: "4587d0b45edcb18585ff09f4e5dd1ed1174efeb6"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -29,20 +29,20 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
       with:
         node-version: 24
         package-manager-cache: false
@@ -144,7 +144,7 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
@@ -190,6 +190,9 @@ jobs:
         
         echo "Checking if branch already exists: $BRANCH_NAME"
         
+        # explicitly authenticate with the github app identity
+        git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
+        
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
@@ -197,16 +200,13 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
-          
+        
           # Create branch from the tag
           git fetch --tags
           git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
-        
-          # explicity set the github app token to override the release branch protection
-          git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
-          
+        
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
@@ -219,7 +219,7 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false
@@ -264,7 +264,7 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
@@ -298,13 +298,13 @@ jobs:
     runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
-      uses: "actions/checkout@v4"
+      uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
       with:
         path: "lib"
         persist-credentials: false

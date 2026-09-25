@@ -2331,11 +2331,10 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	dataObjConsumer, err := consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
+		t.Cfg.DataObj.Index,
 		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
-		t.Cfg.Ingester.LifecyclerConfig.ID,
-		t.partitionRing,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 		t.Overrides,
@@ -2743,7 +2742,6 @@ func (t *Loki) initLoglineQueryFrontendTripperware() (services.Service, error) {
 			ObjectStore:          t.Cfg.StorageConfig.ObjectStore,
 			ResultsCache:         t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig,
 			QueryIngestersWithin: t.Cfg.Querier.QueryIngestersWithin,
-			QuerySplitDuration:   time.Duration(t.Cfg.LimitsConfig.QuerySplitDuration),
 		},
 		// Per-tenant mode and minimum query bytes are limits_config settings,
 		// so tenants override them in the runtime config like any limit.

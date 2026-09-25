@@ -1870,13 +1870,13 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	require.NoError(t, err)
 
 	return ingesterClient{
-			PusherClient:  logproto.NewPusherClient(conn),
-			QuerierClient: logproto.NewQuerierClient(conn),
-		}, func() {
-			_ = services.StopAndAwaitTerminated(context.Background(), ing)
-			server.Stop()
-			_ = listener.Close()
-		}
+		PusherClient:  logproto.NewPusherClient(conn),
+		QuerierClient: logproto.NewQuerierClient(conn),
+	}, func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), ing)
+		server.Stop()
+		_ = listener.Close()
+	}
 }
 
 func buildPushRequest(ts int64, streams []labels.Labels) *logproto.PushRequest {

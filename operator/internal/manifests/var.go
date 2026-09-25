@@ -36,7 +36,7 @@ const (
 
 	lokiFrontendContainerName = "loki-query-frontend"
 
-	defaultIngesterTerminationGracePeriodSeconds = int64(300)
+	defaultIngesterTerminationGracePeriodSeconds = int64(600)
 
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080

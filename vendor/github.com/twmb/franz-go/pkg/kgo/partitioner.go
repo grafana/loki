@@ -383,17 +383,16 @@ func (p *uniformBytesTopicPartitioner) PartitionByBackup(r *Record, n int, backu
 		r := p.rng.Float64()
 		pick := r * t
 		// The loop below selects nothing in two cases: floating rounding
-		// can leave pick just above 0 after subtracting every weight (the
-		// guarded case the original code handled), and we may have entered
-		// this re-pick with a stale p.onPart that is not the -1 byte-reset
-		// sentinel but rather a previously-pinned index that is now >= n
-		// because the writable partition count shrank under us (e.g. a
-		// leader election dropped partitions from writablePartitions). In
-		// both cases p.onPart is unchanged by the loop, so we must fall
-		// back to a valid index rather than return the stale value, which
-		// the caller would reject as an out-of-range partitioning choice
-		// (failing the record). The non-adaptive branch above re-picks
-		// unconditionally via Intn(n) and so has never had this hole.
+		// can leave pick just above 0 after subtracting every weight, and
+		// we may have entered this re-pick with a stale p.onPart that is
+		// not the -1 byte-reset sentinel but a previously-pinned index
+		// now >= n because the writable partition count shrank under us
+		// (e.g. a leader election dropped partitions from
+		// writablePartitions). In both cases p.onPart is unchanged by the
+		// loop, so we must fall back to a valid index rather than return
+		// the stale value, which the caller would reject as an
+		// out-of-range partitioning choice (failing the record). The
+		// non-adaptive branch above re-picks unconditionally via Intn(n).
 		picked := false
 		for _, c := range p.calc {
 			pick -= c.f

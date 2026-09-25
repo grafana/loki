@@ -8,13 +8,13 @@ set -e
 # needed for the make release-workflows target.
 #
 # Optional arguments (combinable): dist, lint, loki-release, loki-build-tools.
-# Environment: GOLANGCI_LINT_VERSION for lint (default v2.10.1); LYCHEE_VER; BUF_VER; HELM_VER; HELM_DOCS_VER.
+# Environment: GOLANGCI_LINT_VERSION for lint (default v2.13.2); LYCHEE_VER; BUF_VER; HELM_VER; HELM_DOCS_VER.
 
 # Set default source directory to GitHub workspace if not provided
 SRC_DIR=${SRC_DIR:-${GITHUB_WORKSPACE}}
 
-# golangci-lint version (e.g. v2.10.1). Override when invoking with the "lint" mode.
-GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-v2.10.1}
+# golangci-lint version (e.g. v2.13.2). Override when invoking with the "lint" mode.
+GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION:-v2.13.2}
 
 # Debug information
 echo "Current directory: $(pwd)"
@@ -41,7 +41,7 @@ install_dist_dependencies() {
 
 install_lint_dependencies() {
     echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION}"
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh |
         sh -s -- -b /usr/local/bin "${GOLANGCI_LINT_VERSION}"
 }
 
@@ -118,9 +118,6 @@ install_loki_release_dependencies() {
     # Install gotestsum
     echo "Installing gotestsum"
     curl -sSfL https://github.com/gotestyourself/gotestsum/releases/download/v1.9.0/gotestsum_1.9.0_linux_amd64.tar.gz | tar -xz -C /usr/local/bin gotestsum
-
-    # Install faillint
-    go install github.com/fatih/faillint@latest
 }
 
 # Update package lists

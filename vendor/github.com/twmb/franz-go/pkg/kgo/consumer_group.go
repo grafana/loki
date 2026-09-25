@@ -50,6 +50,13 @@ type groupConsumer struct {
 
 	rejoinCh chan string // cap 1; sent to if subscription changes (regex)
 
+	// reassign holds topics that metadata added back to using while the
+	// broker still assigned them, so their cursors are new but the
+	// assignment did not change by name. A regex topic that is purged
+	// and then rediscovered does this. The next session treats them as
+	// added; see diffAssigned. Guarded by mu.
+	reassign map[string]struct{}
+
 	// For EOS, before we commit, we force a heartbeat. If the client and
 	// group member are both configured properly, then the transactional
 	// timeout will be less than the session timeout. By forcing a
@@ -64,6 +71,10 @@ type groupConsumer struct {
 	// nowAssigned, we re-issue.
 	lastAssigned map[string][]int32
 	nowAssigned  amtps
+
+	// Set when a join downgrades the group from cooperative to eager;
+	// the next session revokes everything before consuming.
+	protocolDowngraded bool
 
 	// Fetching ensures we continue fetching offsets across cooperative
 	// rebalance if an offset fetch returns early due to an immediate
@@ -264,6 +275,11 @@ func (cl *Client) LeaveGroup() {
 //
 // LeaveGroupContext is a no-op for direct (non-group) consumers.
 //
+// Leaving does not wake a concurrent PollFetches or PollRecords parked on
+// another goroutine: a parked poll returns only for buffered data, its own
+// context, or client close. To unblock a poll loop when leaving, cancel the
+// context you poll with (or Close the client).
+//
 // Do not call this function with a non-nil context synchronously from
 // within an OnPartitions callback: the leave waits for the group
 // management loop to finish, and the loop is waiting for your callback to
@@ -394,9 +410,9 @@ func (c *consumer) initGroup() {
 			default:
 			}
 			if ctxExpired {
-				cl.cfg.logger.Log(LogLevelDebug, "entering "+name, "with", m, "context_expired", ctxExpired)
+				cl.cfg.logger.Log(LogLevelDebug, "entering "+name, "with", mtps(m), "context_expired", ctxExpired)
 			} else {
-				cl.cfg.logger.Log(LogLevelDebug, "entering "+name, "with", m)
+				cl.cfg.logger.Log(LogLevelDebug, "entering "+name, "with", mtps(m))
 			}
 			if user != nil {
 				dup := make(map[string][]int32)
@@ -651,15 +667,40 @@ func (g *groupConsumer) leave(ctx context.Context) {
 	}()
 }
 
+// needsReassign returns whether the assignment names a topic in reassign,
+// whose cursors a new session must assign even though the assignment did
+// not change.
+func (g *groupConsumer) needsReassign(assigned map[string][]int32) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for topic := range g.reassign {
+		if _, ok := assigned[topic]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // returns the difference of g.nowAssigned and g.lastAssigned.
 func (g *groupConsumer) diffAssigned() (added, lost map[string][]int32) {
 	nowAssigned := g.nowAssigned.clone()
+	g.mu.Lock()
+	reassign := g.reassign
+	g.reassign = nil
+	g.mu.Unlock()
 	if !g.cooperative.Load() {
 		return nowAssigned, nil
 	}
 
 	added = make(map[string][]int32, len(nowAssigned))
 	lost = make(map[string][]int32, len(nowAssigned))
+	// A topic in both last and now whose cursors are nonetheless new is
+	// added in full; see reassign.
+	for topic := range reassign {
+		if partitions, ok := nowAssigned[topic]; ok {
+			added[topic] = partitions
+		}
+	}
 
 	// First, we diff lasts: any topic in last but not now is lost,
 	// otherwise, (1) new partitions are added, (2) common partitions are
@@ -742,9 +783,9 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 		g.c.mu.Unlock()
 
 		if !g.cooperative.Load() {
-			g.cfg.logger.Log(LogLevelInfo, "eager consumer revoking prior assigned partitions", "group", g.cfg.group, "revoking", g.nowAssigned.read())
+			g.cfg.logger.Log(LogLevelInfo, "eager consumer revoking prior assigned partitions", "group", g.cfg.group, "revoking", mtps(g.nowAssigned.read()))
 		} else {
-			g.cfg.logger.Log(LogLevelInfo, "cooperative consumer revoking prior assigned partitions because leaving group", "group", g.cfg.group, "revoking", g.nowAssigned.read())
+			g.cfg.logger.Log(LogLevelInfo, "cooperative consumer revoking prior assigned partitions because leaving group", "group", g.cfg.group, "revoking", mtps(g.nowAssigned.read()))
 		}
 		g.cfg.onRevoked(g.cl.ctx, g.cl, g.nowAssigned.read())
 		g.nowAssigned.store(nil)
@@ -775,8 +816,38 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 		// which causes a new metadata request -- in short, this could
 		// be concurrent with a metadata findNewAssignments, so we
 		// lock.
+		//
+		// For 848 the server owns assignment: nowAssigned only holds
+		// what the server currently wants us to own (handleResp already
+		// dropped anything the server revoked), while g.using is filled
+		// asynchronously by the metadata regex evaluation. When a new
+		// regex-matched topic is created, the server can assign it via
+		// heartbeat before our metadata loop has added it to g.using:
+		// the heartbeat exits this session with the topic in nowAssigned
+		// but the metadata goroutine has not yet run findNewAssignments.
+		// Self-revoking on (nowAssigned - g.using) here would then drop
+		// that just-assigned topic, and because the server still
+		// believes we own it (we echoed its topic id), it never re-sends
+		// -- stranding the topic permanently. Skip the self-revoke for
+		// 848 and let the server drive all revocation through heartbeats.
 		g.nowAssigned.write(func(nowAssigned map[string][]int32) {
 			g.mu.Lock()
+			defer g.mu.Unlock()
+			if g.is848 {
+				return
+			}
+			// We drop from lastAssigned too. lastAssigned is what
+			// the next session diffs against, and what we claim to
+			// already own in the next join, so a topic left there
+			// that we just stopped fetching is stranded: you purge
+			// a regex topic, which empties using. We get here and
+			// give the partition up. The regex then adds the topic
+			// back, and since we no longer own it,
+			// findNewAssignments notes nothing in reassign. We
+			// rejoin, subscribe to the topic again, and are
+			// assigned the same partition. The next session diffs
+			// that against a lastAssigned that still names the
+			// topic, so it adds nothing and fetches no offsets.
 			for topic, partitions := range nowAssigned {
 				if _, exists := g.using[topic]; !exists {
 					if lost == nil {
@@ -784,9 +855,9 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 					}
 					lost[topic] = partitions
 					delete(nowAssigned, topic)
+					delete(g.lastAssigned, topic)
 				}
 			}
-			g.mu.Unlock()
 		})
 	}
 
@@ -821,7 +892,7 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 		if len(lost) == 0 {
 			g.cfg.logger.Log(LogLevelInfo, "consumer calling onRevoke at the end of a session; consumer did not change any client-side subscription", "group", g.cfg.group)
 		} else {
-			g.cfg.logger.Log(LogLevelInfo, "calling onRevoke at the end of a session", "group", g.cfg.group, "lost", lost, "stage", stage)
+			g.cfg.logger.Log(LogLevelInfo, "calling onRevoke at the end of a session", "group", g.cfg.group, "lost", mtps(lost), "stage", stage)
 		}
 		g.cfg.onRevoked(g.cl.ctx, g.cl, lost)
 	}
@@ -834,16 +905,12 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 		// The rejoin triggers the second join of the classic
 		// cooperative two-phase rebalance: after giving up lost
 		// partitions, the member rejoins so the group can reassign
-		// them. 848 has no second join, the server reconciles
-		// through heartbeats. There, this signal would only tear
-		// down and rebuild the heartbeat session: the session that
-		// called us already handled both our lost and added
-		// partitions, so the rebuilt session re-enters with an empty
-		// diff, and because rebuilding re-arms the heartbeat timer
-		// at a full interval, the bounce also DELAYS the heartbeat
-		// that acks our revocation to the server. For 848, prerevoke
-		// instead forces an immediate heartbeat to ack the
-		// revocation.
+		// them. 848 has no second join; the server reconciles through
+		// heartbeats, and the session that called us already handled
+		// the diff, so a bounce would rebuild an identical session
+		// and re-arm the heartbeat timer at a full interval, delaying
+		// the heartbeat that acks our revocation. For 848, prerevoke
+		// instead forces an immediate heartbeat.
 		g.mu.Lock()
 		is848 := g.is848
 		g.mu.Unlock()
@@ -919,31 +986,25 @@ func (s *assignRevokeSession) prerevoke(g *groupConsumer, lost map[string][]int3
 		// If we revoked, ack the revocation to the server right away
 		// rather than waiting out the heartbeat timer: the server
 		// cannot give the revoked partitions to other members until
-		// it sees a heartbeat without them, so an immediate full
-		// heartbeat (prerevoking was cleared above, so it will not
-		// be a keepalive) directly speeds group-wide reconciliation.
-		// The Java client acks the same way the moment revocation
-		// callbacks complete.
+		// it sees a heartbeat without them (prerevoking was cleared
+		// above, so the heartbeat will not be a keepalive). The Java
+		// client acks the same way the moment revocation callbacks
+		// complete.
 		//
-		// The send must be best effort, NOT blocking. If the
+		// The send must be best effort, not blocking. If the
 		// heartbeat loop exits on a fatal error before consuming our
-		// send (its first heartbeat can fail while we are still
-		// revoking), nothing reads heartbeatForceCh again until the
-		// next session begins, but the next session cannot begin
-		// until we return: setupAssignedAndHeartbeat waits on
-		// assignDone, which waits on prerevokeDone, which closes
-		// only when this goroutine exits. A blocking send would
-		// deadlock the manage loop. If the send is missed (loop
-		// mid-heartbeat or already gone), the regular heartbeat
-		// timer acks within one interval, which is no worse than
-		// what the session bounce this replaced provided.
+		// send, nothing reads heartbeatForceCh again until the next
+		// session begins, but the next session cannot begin until we
+		// return: setupAssignedAndHeartbeat waits on assignDone,
+		// which waits on prerevokeDone, which closes only when this
+		// goroutine exits. A blocking send would deadlock the manage
+		// loop. If the send is missed, the regular heartbeat timer
+		// acks within one interval.
 		//
 		// We force even when nothing was lost: a session (re)entry
-		// with only added partitions also owes the server an ack -
-		// the next full heartbeat's Topics is what reports the new
-		// assignment as owned. The Java client likewise heartbeats
-		// the moment reconciliation completes rather than waiting
-		// out the interval.
+		// with only added partitions also owes the server an ack,
+		// since the next full heartbeat's Topics is what reports the
+		// new assignment as owned.
 		if is848 {
 			select {
 			case g.heartbeatForceCh <- func(error) {}:
@@ -1009,6 +1070,33 @@ func (s *assignRevokeSession) revoke(g *groupConsumer, leaving bool) <-chan stru
 //   - fetching is complete
 //   - heartbeating is complete
 func (g *groupConsumer) setupAssignedAndHeartbeat(initialHb time.Duration, hbfn func() (time.Duration, error)) (string, error) {
+	if g.protocolDowngraded {
+		g.protocolDowngraded = false
+		// Our prior cooperative session ended without revoking
+		// anything, but diffAssigned below short-circuits for eager
+		// consumers and returns the entire assignment as newly added.
+		// fetchOffsets would then set offsets on cursors that are
+		// still actively fetching, and the offset load's completion
+		// races any concurrent poll's cursor update (#1365). Instead,
+		// first revoke everything, as an eager session would have
+		// before rejoining: stop fetching everything, let the user
+		// commit final work in onRevoked, and clear commit state
+		// before everything is re-fetched from committed offsets.
+		g.c.waitAndAddRebalance()
+		prior := g.lastAssigned
+		g.c.mu.Lock()
+		g.c.assignPartitions(nil, assignInvalidateAll, nil, "revoking all assignments; group protocol downgraded from cooperative to eager")
+		g.c.mu.Unlock()
+		if len(prior) > 0 {
+			g.cfg.onRevoked(g.cl.ctx, g.cl, prior)
+		}
+		g.mu.Lock()
+		g.uncommitted = nil
+		g.mu.Unlock()
+		g.fetching = nil
+		g.c.unaddRebalance()
+	}
+
 	type hbquit struct {
 		rejoinWhy string
 		err       error
@@ -1212,31 +1300,25 @@ func (g *groupConsumer) heartbeat(initialHb time.Duration, fetchErrCh <-chan err
 		// session teardown/rebuild that would occur if the error
 		// propagated to the manage848 loop.
 		//
-		// We reset the counter on each success so that intermittent
-		// failures do not accumulate across the session. Without
-		// resetting, a few scattered failures per heartbeat cycle
-		// compound until the counter hits the cap, triggering an
-		// unnecessary session restart even though most heartbeats
-		// succeed and the broker-side session is healthy.
-		//
-		// If cfg.retries consecutive failures occur without any
-		// success, the error propagates to manage848 which
-		// rebuilds the session.
+		// We reset the counter on each success so intermittent
+		// failures do not compound across the session into an
+		// unnecessary restart. If cfg.retries consecutive failures
+		// occur without any success, the error propagates to
+		// manage848, which rebuilds the session.
 		//
 		// This arm must only see errors from the heartbeat itself,
 		// never from fetchErrCh, even though both feed the same err
-		// variable. Walkthrough of what would go wrong: the
-		// coordinator moves, OffsetFetch exhausts its internal
-		// retries, fetchOffsets returns the retryable error here, we
-		// "retry" by heartbeating in place, the next heartbeat
-		// succeeds and resets the counter - and the session lives on
-		// with partitions that were never handed to assignPartitions
-		// (that only happens after a successful fetch). The fetch
-		// goroutine is already gone and nothing inside a live session
-		// re-runs it, so those partitions silently never consume.
-		// Only re-entering setupAssignedAndHeartbeat re-fetches (via
-		// g.fetching), so a fetch error must propagate to manage848,
-		// whose transient arm restarts the session.
+		// variable. Otherwise: the coordinator moves, OffsetFetch
+		// exhausts its internal retries, fetchOffsets returns the
+		// retryable error here, we "retry" by heartbeating in place,
+		// the next heartbeat succeeds and resets the counter, and
+		// the session lives on with partitions that were never
+		// handed to assignPartitions: the fetch goroutine is gone
+		// and nothing inside a live session re-runs it, so those
+		// partitions silently never consume. Only re-entering
+		// setupAssignedAndHeartbeat re-fetches (via g.fetching), so
+		// a fetch error must propagate to manage848, whose transient
+		// arm restarts the session.
 		if is848 && !fetchErr && (isRetryableBrokerErr(err) || isAnyDialErr(err) || g.cl.maybeDeleteStaleCoordinator(g.cfg.group, coordinatorTypeGroup, err)) {
 			if int64(hbBrokerRetries) < g.cfg.retries {
 				hbBrokerRetries++
@@ -1359,20 +1441,19 @@ func (g *groupConsumer) rejoin(why string) {
 // shrink) and a reconcile is owed. The caller must hold g.mu (we read
 // g.is848).
 //
-// Classic and 848 reconcile differently, and routing every caller through
-// here is what keeps the difference from being re-derived (and forgotten)
-// at each site:
+// Classic and 848 reconcile subscription changes differently; every caller
+// routes through here so the difference lives in one place:
 //
 //   - Classic: bounce the heartbeat session via rejoinCh so the member
 //     re-joins and the group re-balances with the new subscription.
 //   - 848: the server reconciles through heartbeats, so feeding rejoinCh
-//     would only bounce the session pointlessly - AND that bounce runs the
+//     would only bounce the session pointlessly, and that bounce runs the
 //     session-end revoke concurrently with live heartbeats, the one
-//     interleaving where a completing heartbeat's nowAssigned store is lost
-//     to revoke's read-modify-write. Instead force an immediate heartbeat
-//     (best effort, must not block; see the walkthrough in prerevoke): the
-//     next request rebuilds the subscription from live state, and if the
-//     force is missed the heartbeat timer sends within one interval.
+//     interleaving where a completing heartbeat's nowAssigned store is
+//     lost to revoke's read-modify-write. Instead force an immediate
+//     heartbeat (best effort, must not block; see prerevoke): the next
+//     request rebuilds the subscription from live state, and if the force
+//     is missed the heartbeat timer sends within one interval.
 func (g *groupConsumer) signalSubscriptionChange(why string) {
 	if g.is848 {
 		select {
@@ -1545,7 +1626,14 @@ func (g *groupConsumer) handleJoinResp(resp *kmsg.JoinGroupResponse) (restart bo
 		if protocol == balancer.ProtocolName() {
 			cooperative := balancer.IsCooperative()
 			if !cooperative && g.cooperative.Load() {
-				g.cfg.logger.Log(LogLevelWarn, "downgrading from cooperative group to eager group, this is not supported per KIP-429!")
+				g.cfg.logger.Log(LogLevelInfo, "group protocol downgraded from cooperative to eager; all partitions will be revoked before consuming resumes from committed offsets")
+				g.protocolDowngraded = true
+			} else if cooperative {
+				// A join can restart (e.g. MemberIDRequired) or an
+				// earlier downgrade join's sync can fail; if the
+				// group is (back) on cooperative by the time a join
+				// succeeds, no downgrade materialized.
+				g.protocolDowngraded = false
 			}
 			g.cooperative.Store(cooperative)
 			break
@@ -1589,7 +1677,7 @@ func (g *groupConsumer) handleJoinResp(resp *kmsg.JoinGroupResponse) (restart bo
 			"balance_protocol", protocol,
 			"leader", true,
 		)
-		plan, err = g.balanceGroup(protocol, resp.Members, resp.SkipAssignment)
+		plan, err = g.balanceGroup(protocol, resp)
 	} else if leaderNoPlan {
 		g.leader.Store(true)
 		g.cfg.logger.Log(LogLevelInfo, "joined as leader but unable to balance group due to KIP-345 limitations",
@@ -1708,7 +1796,7 @@ func (g *groupExternal) updateLatest(meta map[string]*metadataTopic) {
 	// These are topics the leader balances but does not itself consume, so
 	// there is no kept-partition floor like the leader's own topics have
 	// (metadata.go). We rewrite the cached count and trigger a rejoin on
-	// ANY change, INCLUDING a one-response stale shrink - that is one churn
+	// any change, including a one-response stale shrink - that is one churn
 	// cycle (revoke + re-assign) that self-heals on the next refresh. This
 	// is the same stale-snapshot exposure Java's leader carries; it is
 	// intentional, not a bug to silence with a shrink filter.
@@ -1930,7 +2018,7 @@ start:
 		if td := groupTopics.loadTopic(topic); td != nil {
 			reqTopic.TopicID = td.id
 		}
-		if reqTopic.TopicID == ([16]byte{}) {
+		if reqTopic.TopicID == noID {
 			pinV9 = true
 		}
 		reqTopic.Partitions = partitions
@@ -2123,7 +2211,7 @@ start:
 				offset.epoch = rPartition.LeaderEpoch
 			}
 			// The coordinator's "no committed offset" sentinel is -1.
-			// We treat ANY negative offset as no-commit, matching the
+			// We treat any negative offset as no-commit, matching the
 			// Java client's `offset >= 0` test: a buggy broker's -5
 			// must not flow into partition assignment as a literal
 			// negative offset.
@@ -2141,8 +2229,48 @@ start:
 	// groupTopics was already loaded above to populate reqTopic.TopicID;
 	// reuse that snapshot so we validate against the same view that
 	// built the request.
+	//
+	// wanted reports whether a topic in the response is one we actually
+	// want to assign. Normally this is our subscription snapshot
+	// (groupTopics). `added` (what we built the request from) can diverge
+	// from that snapshot, but the meaning of the divergence differs by
+	// protocol, so we only trust `added` for 848:
+	//
+	//   - Classic: the client drives its own subscription (g.using feeds
+	//     JoinGroup, and g.using never leads g.tps because g.tps is stored
+	//     before findNewAssignments runs), so an assigned topic stays in
+	//     g.tps -- unless it is purged after assignment. That purge is
+	//     either an explicit PurgeTopicsFromConsuming/PurgeTopicsFromClient
+	//     call (e.g. #1355, where it overlapped AddConsumeTopics) or the
+	//     automatic regex missing-topic purge. In every case the topic is
+	//     being removed, so dropping it is correct; the nil guard above
+	//     just stops #1355's crash, and the drop here is the right result.
+	//
+	//   - 848: the server resolves the regex itself and can assign a live,
+	//     newly-created topic via heartbeat before our metadata loop has
+	//     added it to g.tps. Dropping it leaves the partition without a
+	//     cursor while the server believes we own it (we echoed its id
+	//     back), so it never re-sends -- stranding the topic. It is in
+	//     `added` (we requested it), so we keep it.
+	//
+	// `added` is precisely "what we requested", so a topic a buggy broker
+	// invents (neither subscribed nor requested) is still dropped -- the
+	// #1271 protection.
+	g.mu.Lock()
+	is848 := g.is848
+	g.mu.Unlock()
+	wanted := func(topic string) bool {
+		if groupTopics.hasTopic(topic) {
+			return true
+		}
+		if is848 {
+			_, ok := added[topic]
+			return ok
+		}
+		return false
+	}
 	for fetchedTopic, topicOffsets := range offsets {
-		if !groupTopics.hasTopic(fetchedTopic) {
+		if !wanted(fetchedTopic) {
 			delete(offsets, fetchedTopic)
 			g.cfg.logger.Log(LogLevelWarn, "member was assigned topic that we did not ask for in ConsumeTopics! skipping assigning this topic!", "group", g.cfg.group, "topic", fetchedTopic)
 			continue
@@ -2181,7 +2309,7 @@ start:
 	// above.
 	var omitted mtmps
 	for topic, partitions := range added {
-		if !groupTopics.hasTopic(topic) {
+		if !wanted(topic) {
 			continue // already warned and skipped above
 		}
 		topicOffsets := offsets[topic]
@@ -2329,9 +2457,6 @@ func (g *groupConsumer) findNewAssignments() {
 		// want to load the metadata", but the topic was not returned
 		// in the metadata (or it was returned with an error).
 		if useTopic && numPartitions > 0 {
-			if g.cfg.regex && parts.isInternal {
-				continue
-			}
 			toChange[topic] = change{isNew: true, delta: numPartitions}
 			numNewTopics++
 		}
@@ -2350,8 +2475,18 @@ func (g *groupConsumer) findNewAssignments() {
 		return
 	}
 
+	nowAssigned := g.nowAssigned.read()
 	for topic, change := range toChange {
 		g.using[topic] += change.delta
+		// The broker still assigns a topic we start using anew: it was
+		// purged and came back, and only a new session assigns its
+		// cursors. See reassign.
+		if _, assigned := nowAssigned[topic]; change.isNew && assigned {
+			if g.reassign == nil {
+				g.reassign = make(map[string]struct{})
+			}
+			g.reassign[topic] = struct{}{}
+		}
 	}
 
 	if !g.managing {
@@ -2385,6 +2520,11 @@ type uncommit struct {
 	dirty     EpochOffset // if autocommitting, what will move to head on next Poll
 	head      EpochOffset // ready to commit
 	committed EpochOffset // what is committed
+
+	// topicID is the ID of the topic the offsets were fetched under, if
+	// the fetch carried one. We commit under it, and refuse the offsets
+	// once the name has a different ID; see uncommittedFrom.
+	topicID [16]byte
 }
 
 // EpochOffset combines a record offset with the leader epoch the broker
@@ -2468,10 +2608,15 @@ func (g *groupConsumer) updateUncommitted(fetches Fetches) {
 					final.Offset + 1,
 				}
 				prior, ok := topicOffsets[partition.Partition]
-				if !ok {
+				// Records under a new ID come from a recreated topic
+				// that was purged and added back; the entry starts over.
+				if !ok || prior.topicID != noID && topic.TopicID != noID && prior.topicID != topic.TopicID {
 					uninit := EpochOffset{-1, 0}
-					uncommit := uncommit{uninit, uninit, uninit}
+					uncommit := uncommit{dirty: uninit, head: uninit, committed: uninit}
 					prior, topicOffsets[partition.Partition] = uncommit, uncommit
+				}
+				if prior.topicID == noID {
+					prior.topicID = topic.TopicID
 				}
 
 				if debug {
@@ -2798,6 +2943,7 @@ func (g *groupConsumer) applySetOffsets(setOffsets map[string]map[int32]EpochOff
 				dirty:     epochOffset,
 				head:      epochOffset,
 				committed: epochOffset,
+				topicID:   current.topicID,
 			}
 			if current.dirty == epochOffset {
 				continue
@@ -2856,6 +3002,29 @@ func (cl *Client) CommittedOffsets() map[string]map[int32]EpochOffset {
 	defer g.mu.Unlock()
 
 	return g.getUncommittedLocked(false, false)
+}
+
+// uncommittedFrom returns the topic ID the topic's uncommitted offsets were
+// fetched under, and whether the name now has a different ID: the topic was
+// deleted and recreated. Must be called with g.mu held.
+func (g *groupConsumer) uncommittedFrom(tps topicsPartitionsData, topic string) (from [16]byte, recreated bool) {
+	for _, u := range g.uncommitted[topic] {
+		if u.topicID != noID {
+			from = u.topicID
+			break
+		}
+	}
+	td := tps.loadTopic(topic)
+	if from == noID && td != nil && len(td.partitions) > 0 {
+		// Offsets fetched from the group, or fetched below Kafka 3.1,
+		// carry no ID. The cursors hold the ID the topic was loaded
+		// under and keep it through a recreation.
+		from = td.partitions[0].cursor.topicID
+	}
+	if from == noID {
+		return from, false
+	}
+	return from, td != nil && td.id != noID && td.id != from
 }
 
 func (g *groupConsumer) getUncommitted(dirty bool) map[string]map[int32]EpochOffset {
@@ -2920,6 +3089,10 @@ var txnCommitContextFn = func() *string { s := "txn_commit_ctx"; return &s }()
 // default internal metadata is the client's current member ID). If fn returns
 // an error, the commit is not attempted. This context can be used in either
 // GroupTransactSession.End or in Client.EndTransaction.
+//
+// fn runs while the client's internal transaction lock is held: it must not
+// block and must not re-enter transaction functions (Begin/End/Abort), which
+// would self-deadlock. Its purpose is pure request mutation.
 func PreTxnCommitFnContext(ctx context.Context, fn func(*kmsg.TxnOffsetCommitRequest) error) context.Context {
 	return context.WithValue(ctx, txnCommitContextFn, fn)
 }
@@ -3045,6 +3218,7 @@ func (cl *Client) MarkCommitRecords(rs ...*Record) {
 				dirty:     current.dirty,
 				committed: current.committed,
 				head:      newHead,
+				topicID:   current.topicID,
 			}
 		}
 	}
@@ -3082,6 +3256,7 @@ func (cl *Client) MarkCommitOffsets(unmarked map[string]map[int32]EpochOffset) {
 					dirty:     current.dirty,
 					committed: current.committed,
 					head:      newHead,
+					topicID:   current.topicID,
 				}
 			}
 		}
@@ -3300,6 +3475,11 @@ func (g *groupConsumer) commitOffsetsSync(
 // CommitOffsetsSync. If you commit async, the rebalance will proceed before
 // this function executes, and you will commit offsets for partitions that have
 // moved to a different consumer.
+//
+// Do not commit from within onDone: onDone runs while this commit is still
+// ordered against all other commits, so a commit issued inside onDone can
+// deadlock permanently (it always does if any sync commit is waiting). To
+// retry a failed commit, signal out of onDone and commit after it returns.
 func (cl *Client) CommitOffsets(
 	ctx context.Context,
 	uncommitted map[string]map[int32]EpochOffset,
@@ -3432,6 +3612,40 @@ func (g *groupConsumer) commit(
 	req.InstanceID = g.cfg.instanceID
 	is848 := g.is848 // g.mu is held, per the function comment above
 
+	// Build the request under g.mu: a purge, which also holds g.mu,
+	// removes the topic from tps, and a request built after it would
+	// commit a recreated topic's offsets by name.
+	//
+	// Offsets are committed under the ID they were fetched under; see
+	// uncommittedFrom. A recreated topic's offsets never go to the
+	// broker; we answer them UNKNOWN_TOPIC_ID below.
+	groupTopics := g.tps.load()
+	var refused []kmsg.OffsetCommitRequestTopic
+	for topic, partitions := range uncommitted {
+		reqTopic := kmsg.NewOffsetCommitRequestTopic()
+		reqTopic.Topic = topic
+		if td := groupTopics.loadTopic(topic); td != nil {
+			reqTopic.TopicID = td.id
+		}
+		from, recreated := g.uncommittedFrom(groupTopics, topic)
+		if from != noID {
+			reqTopic.TopicID = from
+		}
+		for partition, eo := range partitions {
+			reqPartition := kmsg.NewOffsetCommitRequestTopicPartition()
+			reqPartition.Partition = partition
+			reqPartition.Offset = eo.Offset
+			reqPartition.LeaderEpoch = eo.Epoch // KIP-320
+			reqPartition.Metadata = &req.MemberID
+			reqTopic.Partitions = append(reqTopic.Partitions, reqPartition)
+		}
+		if recreated {
+			refused = append(refused, reqTopic)
+			continue
+		}
+		req.Topics = append(req.Topics, reqTopic)
+	}
+
 	go func() {
 		defer close(commitDone) // allow future commits to continue when we are done
 		defer commitCancel()
@@ -3459,26 +3673,11 @@ func (g *groupConsumer) commit(
 		}
 		g.cfg.logger.Log(LogLevelDebug, "issuing commit", "group", g.cfg.group, "uncommitted", uncommitted)
 
-		groupTopics := g.tps.load()
-		pinV9 := false
-		for topic, partitions := range uncommitted {
-			reqTopic := kmsg.NewOffsetCommitRequestTopic()
-			reqTopic.Topic = topic
-			if td := groupTopics.loadTopic(topic); td != nil {
-				reqTopic.TopicID = td.id
+		if fn, ok := ctx.Value(commitContextFn).(func(*kmsg.OffsetCommitRequest) error); ok {
+			if err := fn(req); err != nil {
+				onDone(g.cl, req, nil, err)
+				return
 			}
-			if reqTopic.TopicID == ([16]byte{}) {
-				pinV9 = true
-			}
-			for partition, eo := range partitions {
-				reqPartition := kmsg.NewOffsetCommitRequestTopicPartition()
-				reqPartition.Partition = partition
-				reqPartition.Offset = eo.Offset
-				reqPartition.LeaderEpoch = eo.Epoch // KIP-320
-				reqPartition.Metadata = &req.MemberID
-				reqTopic.Partitions = append(reqTopic.Partitions, reqPartition)
-			}
-			req.Topics = append(req.Topics, reqTopic)
 		}
 
 		// OffsetCommit v10 switched Topic to TopicID. If we have no
@@ -3488,23 +3687,24 @@ func (g *groupConsumer) commit(
 		// See #1312. Held in a separate variable from commitCtx so
 		// the cancel/retry-sleep paths keep using the unwrapped ctx.
 		//
-		// pinV9 is computed once here and not recomputed inside the
-		// STALE_MEMBER_EPOCH retry loop below because that loop only
-		// DROPS partitions from req.Topics; it never re-adds topics
-		// whose TopicID state could change pinV9. If a future change
-		// allows re-adding topics on retry, recompute pinV9 (and rebuild
-		// reqCtx) inside the loop so a topic-id-less topic never lands
-		// on a v10+ wire by accident.
+		// This is computed after the PreCommitFnContext fn ran, since
+		// the fn may add topics with or without ids, and not
+		// recomputed inside the STALE_MEMBER_EPOCH retry loop below
+		// because that loop only DROPS partitions from req.Topics; it
+		// never re-adds topics whose TopicID state could change the
+		// pin. If a future change allows re-adding topics on retry,
+		// recompute the pin (and rebuild reqCtx) inside the loop so a
+		// topic-id-less topic never lands on a v10+ wire by accident.
 		reqCtx := commitCtx
+		var pinV9 bool
+		for _, t := range req.Topics {
+			if t.TopicID == noID {
+				pinV9 = true
+				break
+			}
+		}
 		if pinV9 {
 			reqCtx = context.WithValue(commitCtx, ctxPinReq, &pinReq{pinMax: true, max: 9})
-		}
-
-		if fn, ok := ctx.Value(commitContextFn).(func(*kmsg.OffsetCommitRequest) error); ok {
-			if err := fn(req); err != nil {
-				onDone(g.cl, req, nil, err)
-				return
-			}
 		}
 
 		var resp *kmsg.OffsetCommitResponse
@@ -3537,10 +3737,14 @@ func (g *groupConsumer) commit(
 
 		staleRetries := 0
 		for {
+			if len(req.Topics) == 0 { // every topic was refused above
+				resp = kmsg.NewPtrOffsetCommitResponse()
+				break
+			}
 			start := time.Now()
 			resp, err = req.RequestWith(reqCtx, g.cl)
 			if err != nil {
-				req.Topics = origReqTopics
+				req.Topics = append(origReqTopics, refused...)
 				onDone(g.cl, req, nil, err)
 				return
 			}
@@ -3649,7 +3853,7 @@ func (g *groupConsumer) commit(
 				// mismatch then made updateCommitted skip the whole
 				// response.
 				t := &resp.Topics[i]
-				if d.id != ([16]byte{}) && t.TopicID == d.id || t.Topic != "" && t.Topic == d.name {
+				if d.id != noID && t.TopicID == d.id || t.Topic != "" && t.Topic == d.name {
 					rt = t
 					break
 				}
@@ -3669,9 +3873,23 @@ func (g *groupConsumer) commit(
 			}
 		}
 
+		// Every partition of a refused topic is answered UNKNOWN_TOPIC_ID.
+		for _, rt := range refused {
+			st := kmsg.NewOffsetCommitResponseTopic()
+			st.Topic = rt.Topic
+			st.TopicID = rt.TopicID
+			for _, rp := range rt.Partitions {
+				sp := kmsg.NewOffsetCommitResponseTopicPartition()
+				sp.Partition = rp.Partition
+				sp.ErrorCode = kerr.UnknownTopicID.Code
+				st.Partitions = append(st.Partitions, sp)
+			}
+			resp.Topics = append(resp.Topics, st)
+		}
+
 		// Restore so updateCommitted and onDone see the caller's
 		// original request, not the wire-filtered one.
-		req.Topics = origReqTopics
+		req.Topics = append(origReqTopics, refused...)
 
 		// If the broker no longer recognizes our member (the session
 		// expired during a network blip, or the group rebalanced
@@ -3735,8 +3953,10 @@ func commitHasFatalMemberError(resp *kmsg.OffsetCommitResponse) error {
 }
 
 type reNews struct {
-	added   map[string][]string
-	skipped []string
+	added    map[string][]string
+	excluded map[string][]string
+	internal []string
+	skipped  []string
 }
 
 func (r *reNews) add(re, match string) {
@@ -3746,20 +3966,43 @@ func (r *reNews) add(re, match string) {
 	r.added[re] = append(r.added[re], match)
 }
 
+func (r *reNews) exclude(re, match string) {
+	if r.excluded == nil {
+		r.excluded = make(map[string][]string)
+	}
+	r.excluded[re] = append(r.excluded[re], match)
+}
+
+func (r *reNews) skipInternal(topic string) {
+	r.internal = append(r.internal, topic)
+}
+
 func (r *reNews) skip(topic string) {
 	r.skipped = append(r.skipped, topic)
 }
 
 func (r *reNews) log(cfg *cfg) {
-	if len(r.added) == 0 && len(r.skipped) == 0 {
+	if cfg.logger.Level() < LogLevelInfo {
 		return
 	}
-	var addeds []string
-	for re, matches := range r.added {
-		sort.Strings(matches)
-		addeds = append(addeds, fmt.Sprintf("%s[%s]", re, strings.Join(matches, " ")))
+	if len(r.added) == 0 && len(r.excluded) == 0 && len(r.internal) == 0 && len(r.skipped) == 0 {
+		return
 	}
-	added := strings.Join(addeds, " ")
+	fmtMatches := func(m map[string][]string) string {
+		var all []string
+		for re, matches := range m {
+			sort.Strings(matches)
+			all = append(all, fmt.Sprintf("%s[%s]", re, strings.Join(matches, " ")))
+		}
+		sort.Strings(all)
+		return strings.Join(all, " ")
+	}
+	sort.Strings(r.internal)
 	sort.Strings(r.skipped)
-	cfg.logger.Log(LogLevelInfo, "consumer regular expressions evaluated on new topics", "added", added, "evaluated_and_skipped", r.skipped)
+	cfg.logger.Log(LogLevelInfo, "consumer regular expressions evaluated on new topics",
+		"added", fmtMatches(r.added),
+		"excluded", fmtMatches(r.excluded),
+		"skipped_internal", r.internal,
+		"evaluated_and_skipped", r.skipped,
+	)
 }

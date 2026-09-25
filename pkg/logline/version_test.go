@@ -1454,18 +1454,18 @@ func buildFuzzMergeCase(sourceSeed, docSeed, modeSeed uint8) ([]testIndexSource,
 		}, [][]string{{"N00000"}}, false
 	case 2:
 		return []testIndexSource{
-				{
-					docs:  buildDocs(docCount),
-					terms: map[[8]byte][]uint32{term8("A00000"): {0}},
-				},
-				{
-					docs:  buildDocs(docCount),
-					terms: map[[8]byte][]uint32{term8("B00000"): {0}},
-				},
-			}, [][]string{
-				{"A00000"},
-				{"B00000"},
-			}, false
+			{
+				docs:  buildDocs(docCount),
+				terms: map[[8]byte][]uint32{term8("A00000"): {0}},
+			},
+			{
+				docs:  buildDocs(docCount),
+				terms: map[[8]byte][]uint32{term8("B00000"): {0}},
+			},
+		}, [][]string{
+			{"A00000"},
+			{"B00000"},
+		}, false
 	case 3:
 		return []testIndexSource{
 			{
@@ -1484,27 +1484,27 @@ func buildFuzzMergeCase(sourceSeed, docSeed, modeSeed uint8) ([]testIndexSource,
 		}, [][]string{{"S00000"}}, false
 	case 4:
 		return []testIndexSource{
-				{
-					docs: []format.DocumentMetadata{
-						{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-						{ID: 1, MinTimeUnix: 300, MaxTimeUnix: 400},
-					},
-					terms: map[[8]byte][]uint32{term8("F00000"): {0, 1}},
+			{
+				docs: []format.DocumentMetadata{
+					{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
+					{ID: 1, MinTimeUnix: 300, MaxTimeUnix: 400},
 				},
-				{
-					docs: []format.DocumentMetadata{
-						{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
-						{ID: 1, MinTimeUnix: 500, MaxTimeUnix: 600},
-					},
-					terms: map[[8]byte][]uint32{
-						term8("F00000"): {1},
-						term8("B00000"): {0},
-					},
+				terms: map[[8]byte][]uint32{term8("F00000"): {0, 1}},
+			},
+			{
+				docs: []format.DocumentMetadata{
+					{ID: 0, MinTimeUnix: 100, MaxTimeUnix: 200},
+					{ID: 1, MinTimeUnix: 500, MaxTimeUnix: 600},
 				},
-			}, [][]string{
-				{"F00000"},
-				{"B00000"},
-			}, false
+				terms: map[[8]byte][]uint32{
+					term8("F00000"): {1},
+					term8("B00000"): {0},
+				},
+			},
+		}, [][]string{
+			{"F00000"},
+			{"B00000"},
+		}, false
 	case 5:
 		sources := make([]testIndexSource, 0, sourceCount)
 		for i := range sourceCount {
