@@ -20,12 +20,13 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/decimal"
-	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/internal/json"
 )
 
@@ -99,6 +100,54 @@ func (d Date64) FormattedString() string {
 	return d.ToTime().Format("2006-01-02")
 }
 
+func parseTimestampOffset(value string) (int, bool) {
+	if len(value) != 3 && len(value) != 5 && len(value) != 6 && len(value) != 7 && len(value) != 9 {
+		return 0, false
+	}
+	if value[0] != '+' && value[0] != '-' {
+		return 0, false
+	}
+
+	hour, err := strconv.Atoi(value[1:3])
+	if err != nil || hour >= 24 {
+		return 0, false
+	}
+
+	minute, second := 0, 0
+	switch len(value) {
+	case 3:
+	case 5:
+		minute, err = strconv.Atoi(value[3:5])
+	case 6:
+		if value[3] != ':' {
+			return 0, false
+		}
+		minute, err = strconv.Atoi(value[4:6])
+	case 7:
+		minute, err = strconv.Atoi(value[3:5])
+		if err == nil {
+			second, err = strconv.Atoi(value[5:7])
+		}
+	case 9:
+		if value[3] != ':' || value[6] != ':' {
+			return 0, false
+		}
+		minute, err = strconv.Atoi(value[4:6])
+		if err == nil {
+			second, err = strconv.Atoi(value[7:9])
+		}
+	}
+	if err != nil || minute >= 60 || second >= 60 {
+		return 0, false
+	}
+
+	offset := (hour*60+minute)*60 + second
+	if value[0] == '-' {
+		offset = -offset
+	}
+	return offset, true
+}
+
 // TimestampFromStringInLocation is like TimestampFromString, but treats the time instant
 // as if it were in the provided timezone before converting to UTC for internal representation.
 func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location) (Timestamp, bool, error) {
@@ -117,15 +166,48 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 		case val[len(val)-1] == 'Z':
 			zoneFmt = "Z"
 			lenWithoutZone--
-		case val[len(val)-3] == '+' || val[len(val)-3] == '-':
+		case len(val) >= 19 && (val[len(val)-9] == '+' || val[len(val)-9] == '-'):
+			zoneFmt = "-07:00:00"
+			lenWithoutZone -= 9
+		case len(val) >= 17 && (val[len(val)-7] == '+' || val[len(val)-7] == '-'):
+			zoneFmt = "-070000"
+			lenWithoutZone -= 7
+		case len(val) >= 13 && (val[len(val)-3] == '+' || val[len(val)-3] == '-'):
 			zoneFmt = "-07"
 			lenWithoutZone -= 3
-		case val[len(val)-5] == '+' || val[len(val)-5] == '-':
+		case len(val) >= 15 && (val[len(val)-5] == '+' || val[len(val)-5] == '-'):
 			zoneFmt = "-0700"
 			lenWithoutZone -= 5
-		case val[len(val)-6] == '+' || val[len(val)-6] == '-':
+		case len(val) >= 16 && (val[len(val)-6] == '+' || val[len(val)-6] == '-'):
 			zoneFmt = "-07:00"
 			lenWithoutZone -= 6
+		}
+	}
+	if zoneFmt != "" && zoneFmt != "Z" {
+		if _, ok := parseTimestampOffset(val[lenWithoutZone:]); !ok {
+			return 0, true, fmt.Errorf("%w: invalid timezone offset", ErrInvalid)
+		}
+	}
+	if lenWithoutZone > 10 && val[10] != ' ' && val[10] != 'T' {
+		return 0, zoneFmt != "", fmt.Errorf("%w: timestamp separator must be a space or T", ErrInvalid)
+	}
+	if zoneFmt != "" && lenWithoutZone == 10 {
+		return 0, true, fmt.Errorf("%w: timezone offset requires a time component", ErrInvalid)
+	}
+	if lenWithoutZone > 19 {
+		if val[19] != '.' {
+			return 0, zoneFmt != "", fmt.Errorf("%w: fractional seconds must use a decimal point", ErrInvalid)
+		}
+		fractionDigits := lenWithoutZone - 20
+		switch {
+		case unit == Second && fractionDigits > 0:
+			return 0, zoneFmt != "", fmt.Errorf("%w: provided more than second precision for timestamp[s]", ErrInvalid)
+		case unit == Millisecond && fractionDigits > 3:
+			return 0, zoneFmt != "", fmt.Errorf("%w: provided more than millisecond precision for timestamp[ms]", ErrInvalid)
+		case unit == Microsecond && fractionDigits > 6:
+			return 0, zoneFmt != "", fmt.Errorf("%w: provided more than microsecond precision for timestamp[us]", ErrInvalid)
+		case unit == Nanosecond && fractionDigits > 9:
+			return 0, zoneFmt != "", fmt.Errorf("%w: provided more than nanosecond precision for timestamp[ns]", ErrInvalid)
 		}
 	}
 
@@ -136,18 +218,6 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 		format += string(val[10]) + "15:04"
 	case lenWithoutZone >= 19:
 		format += string(val[10]) + "15:04:05.999999999"
-	}
-
-	// error if we're truncating precision
-	// don't need a case for nano as time.Parse will already error if
-	// more than nanosecond precision is provided
-	switch {
-	case unit == Second && lenWithoutZone > 19:
-		return 0, zoneFmt != "", errors.New("provided more than second precision for timestamp[s]")
-	case unit == Millisecond && lenWithoutZone > 23:
-		return 0, zoneFmt != "", errors.New("provided more than millisecond precision for timestamp[ms]")
-	case unit == Microsecond && lenWithoutZone > 26:
-		return 0, zoneFmt != "", errors.New("provided more than microsecond precision for timestamp[us]")
 	}
 
 	format += zoneFmt
@@ -178,7 +248,8 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 //	YYYY-MM-DD[T]HH:MM:SS[.zzzzzzzz]
 //
 // You can also optionally have an ending Z to indicate UTC or indicate a specific
-// timezone using ±HH, ±HHMM or ±HH:MM at the end of the string.
+// timezone using ±HH, ±HHMM, ±HH:MM, ±HHMMSS or ±HH:MM:SS at the end
+// of the string.
 func TimestampFromString(val string, unit TimeUnit) (Timestamp, error) {
 	tm, _, err := TimestampFromStringInLocation(val, unit, time.UTC)
 	return tm, err
@@ -203,14 +274,36 @@ func TimestampFromTime(val time.Time, unit TimeUnit) (Timestamp, error) {
 	case Second:
 		return Timestamp(val.Unix()), nil
 	case Millisecond:
-		return Timestamp(val.Unix()*1e3 + int64(val.Nanosecond())/1e6), nil
+		return timestampFromTime(val, 1e3, 1e6, unit)
 	case Microsecond:
-		return Timestamp(val.Unix()*1e6 + int64(val.Nanosecond())/1e3), nil
+		return timestampFromTime(val, 1e6, 1e3, unit)
 	case Nanosecond:
-		return Timestamp(val.UnixNano()), nil
+		return timestampFromTime(val, 1e9, 1, unit)
 	default:
 		return 0, fmt.Errorf("%w: unexpected timestamp unit: %s", ErrInvalid, unit)
 	}
+}
+
+func timestampFromTime(val time.Time, multiplier, divisor int64, unit TimeUnit) (Timestamp, error) {
+	seconds := val.Unix()
+	fraction := int64(val.Nanosecond()) / divisor
+	maxSeconds := math.MaxInt64 / multiplier
+	if seconds > maxSeconds || (seconds == maxSeconds && fraction > math.MaxInt64%multiplier) {
+		return 0, fmt.Errorf("%w: timestamp value is out of range for %s", ErrInvalid, unit)
+	}
+
+	minSeconds := math.MinInt64 / multiplier
+	minRemainder := math.MinInt64 % multiplier
+	minFraction := multiplier + minRemainder
+	if seconds < minSeconds {
+		if minSeconds == math.MinInt64 || seconds != minSeconds-1 || fraction < minFraction {
+			return 0, fmt.Errorf("%w: timestamp value is out of range for %s", ErrInvalid, unit)
+		}
+		return Timestamp(math.MinInt64 + fraction - minFraction), nil
+	}
+
+	timestamp := seconds * multiplier
+	return Timestamp(timestamp + fraction), nil
 }
 
 // Time32FromString parses a string to return a Time32 value in the given unit,
@@ -389,9 +482,10 @@ func (t *TimestampType) ClearCachedLocation() {
 }
 
 // GetZone returns a *time.Location that represents the current TimeZone member
-// of the TimestampType. If it is "", "UTC", or "utc", you'll get time.UTC.
-// Otherwise it must either be a valid tzdata string such as "America/New_York"
-// or of the format +HH:MM or -HH:MM indicating an absolute offset.
+// of the TimestampType. If it is empty or any case-insensitive spelling of
+// "UTC", you'll get time.UTC. Otherwise it must either be a valid tzdata string
+// such as "America/New_York" or of the format +HH:MM or -HH:MM indicating an
+// absolute offset.
 //
 // The location object will be cached in the TimestampType for subsequent calls
 // so if you change the value of TimeZone after calling this, make sure to call
@@ -417,7 +511,7 @@ func (t *TimestampType) GetZone() (*time.Location, error) {
 	//
 	// As such we have two methods we can try, first we'll try LoadLocation
 	// and if that fails, we'll test for an absolute offset.
-	if t.TimeZone == "" || t.TimeZone == "UTC" || t.TimeZone == "utc" {
+	if t.TimeZone == "" || strings.EqualFold(t.TimeZone, "utc") {
 		t.loc = time.UTC
 		return time.UTC, nil
 	}
@@ -430,12 +524,11 @@ func (t *TimestampType) GetZone() (*time.Location, error) {
 	// at this point we know that the timezone isn't empty, and didn't match
 	// anything in the tzdata names. So either it's an absolute offset
 	// or it's invalid.
-	timetz, err := time.Parse("-07:00", t.TimeZone)
-	if err != nil {
+	offset, ok := parseTimestampOffset(t.TimeZone)
+	if !ok || len(t.TimeZone) != len("+00:00") {
 		return time.UTC, fmt.Errorf("could not find timezone location for '%s'", t.TimeZone)
 	}
 
-	_, offset := timetz.Zone()
 	t.loc = time.FixedZone(t.TimeZone, offset)
 	return t.loc, nil
 }
@@ -567,22 +660,32 @@ func NarrowestDecimalType(prec, scale int32) (DecimalType, error) {
 }
 
 func NewDecimalType(id Type, prec, scale int32) (DecimalType, error) {
+	var (
+		dtype        DecimalType
+		maxPrecision int32
+	)
 	switch id {
 	case DECIMAL32:
-		debug.Assert(prec <= int32(decimal.MaxPrecision[decimal.Decimal32]()), "invalid precision for decimal32")
-		return &Decimal32Type{Precision: prec, Scale: scale}, nil
+		dtype = &Decimal32Type{Precision: prec, Scale: scale}
+		maxPrecision = int32(decimal.MaxPrecision[decimal.Decimal32]())
 	case DECIMAL64:
-		debug.Assert(prec <= int32(decimal.MaxPrecision[decimal.Decimal64]()), "invalid precision for decimal64")
-		return &Decimal64Type{Precision: prec, Scale: scale}, nil
+		dtype = &Decimal64Type{Precision: prec, Scale: scale}
+		maxPrecision = int32(decimal.MaxPrecision[decimal.Decimal64]())
 	case DECIMAL128:
-		debug.Assert(prec <= int32(decimal.MaxPrecision[decimal.Decimal128]()), "invalid precision for decimal128")
-		return &Decimal128Type{Precision: prec, Scale: scale}, nil
+		dtype = &Decimal128Type{Precision: prec, Scale: scale}
+		maxPrecision = int32(decimal.MaxPrecision[decimal.Decimal128]())
 	case DECIMAL256:
-		debug.Assert(prec <= int32(decimal.MaxPrecision[decimal.Decimal256]()), "invalid precision for decimal256")
-		return &Decimal256Type{Precision: prec, Scale: scale}, nil
+		dtype = &Decimal256Type{Precision: prec, Scale: scale}
+		maxPrecision = int32(decimal.MaxPrecision[decimal.Decimal256]())
 	default:
 		return nil, fmt.Errorf("%w: must use one of the DECIMAL IDs to create a DecimalType", ErrInvalid)
 	}
+
+	if prec <= 0 || prec > maxPrecision {
+		return nil, fmt.Errorf("%w: precision for %s must be between 1 and %d, got %d",
+			ErrInvalid, id, maxPrecision, prec)
+	}
+	return dtype, nil
 }
 
 // Decimal32Type represents a fixed-size 32-bit decimal type.

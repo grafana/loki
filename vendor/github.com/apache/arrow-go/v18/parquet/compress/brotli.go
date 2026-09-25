@@ -27,6 +27,24 @@ import (
 
 type brotliCodec struct{}
 
+const (
+	// Brotli qualities above the default retain substantially larger encoder
+	// workspaces. Keep those writers transient so a high-quality request does
+	// not permanently increase the process memory footprint.
+	maxPooledBrotliLevel = brotli.DefaultCompression
+	brotliWriterPoolSize = 1
+)
+
+var brotliWriterPools = newBrotliWriterPools()
+
+func newBrotliWriterPools() [brotli.BestCompression + 1]chan *brotli.Writer {
+	var pools [brotli.BestCompression + 1]chan *brotli.Writer
+	for level := brotli.BestSpeed; level <= maxPooledBrotliLevel; level++ {
+		pools[level] = make(chan *brotli.Writer, brotliWriterPoolSize)
+	}
+	return pools
+}
+
 func (brotliCodec) NewReader(r io.Reader) io.ReadCloser {
 	return io.NopCloser(brotli.NewReader(r))
 }
@@ -41,15 +59,48 @@ func (b brotliCodec) EncodeLevel(dst, src []byte, level int) []byte {
 		dst = make([]byte, 0, maxlen)
 	}
 	buf := bytes.NewBuffer(dst[:0])
-	w := brotli.NewWriterLevel(buf, level)
+	pool := brotliWriterPool(level)
+	var w *brotli.Writer
+	if pool != nil {
+		select {
+		case w = <-pool:
+			w.Reset(buf)
+		default:
+		}
+	}
+	if w == nil {
+		w = brotli.NewWriterLevel(buf, level)
+	}
 	_, err := w.Write(src)
 	if err != nil {
+		releaseBrotliWriter(pool, w)
 		panic(err)
 	}
 	if err := w.Close(); err != nil {
+		releaseBrotliWriter(pool, w)
 		panic(err)
 	}
-	return buf.Bytes()
+	compressed := buf.Bytes()
+	releaseBrotliWriter(pool, w)
+	return compressed
+}
+
+func brotliWriterPool(level int) chan *brotli.Writer {
+	if level < brotli.BestSpeed || level > maxPooledBrotliLevel {
+		return nil
+	}
+	return brotliWriterPools[level]
+}
+
+func releaseBrotliWriter(pool chan *brotli.Writer, w *brotli.Writer) {
+	if pool == nil {
+		return
+	}
+	w.Reset(nil)
+	select {
+	case pool <- w:
+	default:
+	}
 }
 
 func (b brotliCodec) Encode(dst, src []byte) []byte {

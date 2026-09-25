@@ -298,10 +298,11 @@ func (rec *simpleRecord) MarshalJSON() ([]byte, error) {
 // RecordBuilder eases the process of building a Record, iteratively, from
 // a known Schema.
 type RecordBuilder struct {
-	refCount atomic.Int64
-	mem      memory.Allocator
-	schema   *arrow.Schema
-	fields   []Builder
+	refCount    atomic.Int64
+	mem         memory.Allocator
+	schema      *arrow.Schema
+	fields      []Builder
+	checkpoints []*builderCheckpoint
 }
 
 // NewRecordBuilder returns a builder, using the provided memory allocator and a schema.
@@ -315,6 +316,10 @@ func NewRecordBuilder(mem memory.Allocator, schema *arrow.Schema) *RecordBuilder
 
 	for i := 0; i < schema.NumFields(); i++ {
 		b.fields[i] = NewBuilder(b.mem, schema.Field(i).Type)
+	}
+	b.checkpoints = make([]*builderCheckpoint, len(b.fields))
+	for i, field := range b.fields {
+		b.checkpoints[i] = newBuilderCheckpoint(field)
 	}
 
 	return b
@@ -335,6 +340,7 @@ func (b *RecordBuilder) Release() {
 			f.Release()
 		}
 		b.fields = nil
+		b.checkpoints = nil
 	}
 }
 
@@ -415,6 +421,148 @@ func (b *RecordBuilder) NewRecord() arrow.Record {
 	return b.NewRecordBatch()
 }
 
+type checkpointableBuilder interface {
+	newCheckpoint() checkpointState
+}
+
+type checkpointState interface {
+	capture()
+	restore()
+}
+
+// CheckpointState captures and restores builder state that is not represented by
+// the builder's length or storage builders. RecordBuilder reuses the same
+// checkpoint for each row, calling Capture before decoding and Restore after a
+// failed decode.
+type CheckpointState interface {
+	// Capture records the current state of the builder.
+	Capture()
+	// Restore returns the builder to the last captured state.
+	Restore()
+}
+
+// CheckpointableBuilder allows custom builders to participate in RecordBuilder
+// row rollback. The returned checkpoint is reused for every row.
+type CheckpointableBuilder interface {
+	// NewCheckpoint returns a reusable checkpoint for the builder.
+	NewCheckpoint() CheckpointState
+}
+
+type checkpointStateAdapter struct {
+	state CheckpointState
+}
+
+func (s *checkpointStateAdapter) capture() { s.state.Capture() }
+func (s *checkpointStateAdapter) restore() { s.state.Restore() }
+
+type storageBuilder interface {
+	StorageBuilder() Builder
+}
+
+type builderCheckpoint struct {
+	builder          Builder
+	length           int
+	children         []*builderCheckpoint
+	state            checkpointState
+	lastUnmarshalled interface{}
+	unmarshalled     bool
+	lastStr          *string
+}
+
+func (checkpoint *builderCheckpoint) syncChildren(builders []Builder) {
+	for i := len(checkpoint.children); i < len(builders); i++ {
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builders[i]))
+	}
+}
+
+func newBuilderCheckpoint(builder Builder) *builderCheckpoint {
+	checkpoint := &builderCheckpoint{
+		builder: builder,
+	}
+	if checkpointable, ok := builder.(checkpointableBuilder); ok {
+		checkpoint.state = checkpointable.newCheckpoint()
+	} else if checkpointable, ok := builder.(CheckpointableBuilder); ok {
+		checkpoint.state = &checkpointStateAdapter{state: checkpointable.NewCheckpoint()}
+	}
+
+	// Keep this switch in sync with builder types that own children. An omitted
+	// nested builder would restore its own state but leave its children changed.
+	switch builder := builder.(type) {
+	case *ListBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.values))
+	case *LargeListBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.values))
+	case *ListViewBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.values))
+	case *LargeListViewBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.values))
+	case *FixedSizeListBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.values))
+	case *MapBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.listBuilder))
+	case *StructBuilder:
+		for _, field := range builder.fields {
+			checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(field))
+		}
+	case *SparseUnionBuilder:
+		checkpoint.syncChildren(builder.children)
+	case *DenseUnionBuilder:
+		checkpoint.syncChildren(builder.children)
+	case storageBuilder:
+		checkpoint.children = append(checkpoint.children, newBuilderCheckpoint(builder.StorageBuilder()))
+	case *RunEndEncodedBuilder:
+		checkpoint.children = append(checkpoint.children,
+			newBuilderCheckpoint(builder.runEnds),
+			newBuilderCheckpoint(builder.values),
+		)
+	}
+
+	checkpoint.capture()
+	return checkpoint
+}
+
+func (checkpoint *builderCheckpoint) capture() {
+	switch builder := checkpoint.builder.(type) {
+	case *SparseUnionBuilder:
+		checkpoint.syncChildren(builder.children)
+	case *DenseUnionBuilder:
+		checkpoint.syncChildren(builder.children)
+	}
+
+	checkpoint.length = checkpoint.builder.Len()
+	if checkpoint.state != nil {
+		checkpoint.state.capture()
+	}
+	if builder, ok := checkpoint.builder.(*RunEndEncodedBuilder); ok {
+		checkpoint.lastUnmarshalled = builder.lastUnmarshalled
+		checkpoint.unmarshalled = builder.unmarshalled
+		checkpoint.lastStr = builder.lastStr
+	}
+	for _, child := range checkpoint.children {
+		child.capture()
+	}
+}
+
+func (checkpoint *builderCheckpoint) restore() {
+	if builder, ok := checkpoint.builder.(*RunEndEncodedBuilder); ok {
+		builder.length = checkpoint.length
+		builder.lastUnmarshalled = checkpoint.lastUnmarshalled
+		builder.unmarshalled = checkpoint.unmarshalled
+		builder.lastStr = checkpoint.lastStr
+	} else {
+		// Truncate the parent before restoring children. Some parent builders
+		// truncate their children as part of truncation, so restoring children
+		// first would overwrite their physical state again.
+		checkpoint.builder.truncate(checkpoint.length)
+	}
+	if checkpoint.state != nil {
+		checkpoint.state.restore()
+	}
+	for _, child := range checkpoint.children {
+		child.restore()
+	}
+}
+
 // UnmarshalOne reads one row (a JSON object) from the supplied decoder and
 // appends a value to each field in the RecordBuilder. Missing fields are
 // appended as nulls and unrecognized keys are silently ignored.
@@ -424,6 +572,32 @@ func (b *RecordBuilder) NewRecord() arrow.Record {
 // for nested field decoding. This is critical for preserving large integer
 // values (>2^53) that cannot be represented exactly as float64.
 func (b *RecordBuilder) UnmarshalOne(dec *json.Decoder) error {
+	if len(b.checkpoints) != len(b.fields) {
+		b.checkpoints = make([]*builderCheckpoint, len(b.fields))
+		for i, field := range b.fields {
+			b.checkpoints[i] = newBuilderCheckpoint(field)
+		}
+	} else {
+		for i, checkpoint := range b.checkpoints {
+			if checkpoint.builder != b.fields[i] {
+				b.checkpoints[i] = newBuilderCheckpoint(b.fields[i])
+			}
+		}
+	}
+	for _, checkpoint := range b.checkpoints {
+		checkpoint.capture()
+	}
+	err := b.unmarshalOne(dec)
+	if err != nil {
+		for _, checkpoint := range b.checkpoints {
+			checkpoint.restore()
+		}
+	}
+	return err
+}
+
+func (b *RecordBuilder) unmarshalOne(dec *json.Decoder) (err error) {
+
 	// should start with a '{'
 	t, err := dec.Token()
 	if err != nil {

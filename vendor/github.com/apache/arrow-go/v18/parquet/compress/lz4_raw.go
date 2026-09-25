@@ -35,6 +35,10 @@ func compressBlock(src, dst []byte) (int, error) {
 type lz4RawCodec struct{}
 
 func (c lz4RawCodec) Encode(dst, src []byte) []byte {
+	if bound := c.CompressBound(int64(len(src))); int64(cap(dst)) < bound {
+		dst = make([]byte, int(bound))
+	}
+
 	n, err := compressBlock(src, dst[:cap(dst)])
 	if err != nil {
 		panic(err)

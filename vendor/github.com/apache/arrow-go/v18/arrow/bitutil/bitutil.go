@@ -58,6 +58,24 @@ func SetBit(buf []byte, i int) { buf[uint(i)/8] |= BitMask[byte(i)%8] }
 // ClearBit sets the bit at index i in buf to 0.
 func ClearBit(buf []byte, i int) { buf[uint(i)/8] &= FlippedBitMask[byte(i)%8] }
 
+// SetBitSwap sets the bit at index i in buf to 1 and returns whether it was previously set.
+func SetBitSwap(buf []byte, i int) bool {
+	p := &buf[uint(i)/8]
+	mask := BitMask[byte(i)%8]
+	old := *p
+	*p = old | mask
+	return old&mask != 0
+}
+
+// ClearBitSwap sets the bit at index i in buf to 0 and returns whether it was previously set.
+func ClearBitSwap(buf []byte, i int) bool {
+	p := &buf[uint(i)/8]
+	mask := BitMask[byte(i)%8]
+	old := *p
+	*p = old &^ mask
+	return old&mask != 0
+}
+
 // SetBitTo sets the bit at index i in buf to val.
 func SetBitTo(buf []byte, i int, val bool) {
 	if val {
