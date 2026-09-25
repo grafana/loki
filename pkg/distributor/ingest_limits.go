@@ -243,11 +243,7 @@ func (l *ingestLimits) CheckLimitsAndShard(ctx context.Context, tenant string, c
 func newCheckLimitsAndShardRequest(tenant string, candidates []limitsServiceShardCandidate) *proto.CheckLimitsAndShardRequest {
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(candidates))
 	for _, c := range candidates {
-		// c.totalSize is the push size the rate store was given for this
-		// stream, reused here so that both sides decide on the same size. It
-		// covers lines and structured metadata, except for time-sharded
-		// streams where it is lines only, see
-		// streamWithTimeShard.linesTotalLen.
+		// Use the same expanded size as the rate store, including shared metadata per entry.
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      c.stream.Hash,
 			TotalSize:       c.totalSize,

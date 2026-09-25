@@ -6,11 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 
@@ -278,7 +276,7 @@ func TestShardNested(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := tc.buildStream()
-			shards := shardNested(&input, shardLabels, tc.shards, tc.startShard)
+			shards := shardNested(input, shardLabels, tc.shards, tc.startShard)
 
 			for i, name := range tc.wantNames {
 				require.Equal(t, name, shards[i].Labels, "shard %d name", i)
@@ -294,14 +292,14 @@ func TestShardNested(t *testing.T) {
 
 			// The entry counts are the ones round-robin would produce: base, with the remainder
 			// spread over the leading shards.
-			total := nestedEntryCount(&source)
+			total := source.EntryCount()
 			base, remainder := total/len(shards), total%len(shards)
 			for s := range shards {
 				want := base
 				if s < remainder {
 					want++
 				}
-				require.Equal(t, want, nestedEntryCount(&shards[s]), "shard %d entry count", s)
+				require.Equal(t, want, shards[s].EntryCount(), "shard %d entry count", s)
 			}
 		})
 	}
@@ -318,7 +316,7 @@ func TestShardNestedRepeatsAGroupOnlyWhereItStraddlesAShard(t *testing.T) {
 		{3, 3, 7, 5},
 	} {
 		input := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
-		shards := shardNested(&input, shardLabels, tc.shards, 0)
+		shards := shardNested(input, shardLabels, tc.shards, 0)
 
 		source := buildGroupedStream(tc.resources, tc.scopesPer, tc.entriesPer)
 		requireShardsCarryTheStream(t, source, shards)
@@ -346,7 +344,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 		{name: "a stream of no groups", stream: logproto.InternalStreamAdapter{Labels: `{app="a"}`}, shards: 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Nil(t, shardNested(&tc.stream, shardLabels, tc.shards, 0),
+			require.Nil(t, shardNested(tc.stream, shardLabels, tc.shards, 0),
 				"nothing to divide, so the caller keeps the stream it has")
 		})
 	}
@@ -358,7 +356,7 @@ func TestShardNestedReturnsNothingToShard(t *testing.T) {
 func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	for _, shards := range []int{1, 2, 5} {
 		input := buildGroupedStream(2, 2, 3)
-		out := shardNested(&input, shardLabels, shards, 0)
+		out := shardNested(input, shardLabels, shards, 0)
 		require.NotEmpty(t, out)
 
 		out[0].Labels = "rewritten"
@@ -378,7 +376,7 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 		// to be one a boundary falls inside, or the shard holds it whole and an append runs off
 		// the end where nothing would notice.
 		split := buildGroupedStream(1, 1, 9)
-		partial := shardNested(&split, shardLabels, 3, 0)
+		partial := shardNested(split, shardLabels, 3, 0)
 		require.Len(t, partial, 3)
 		require.Len(t, partial[0].ResourceLogs[0].ScopeLogs[0].Entries, 3, "a partial run")
 
@@ -395,11 +393,7 @@ func TestShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	}
 }
 
-// benchStreams builds one logical push in both shapes. The nested one keeps each resource's and
-// scope's attributes on the group that owns them; the flat one carries them on every entry, which
-// is what the OTLP parser produces today. With sharedAttrs of zero the two hold identical entries,
-// which isolates what the sharding itself costs from what carrying the attributes costs.
-func benchStreams(resources, scopes, entriesPerScope, sharedAttrs int) (logproto.InternalStreamAdapter, logproto.Stream) {
+func benchNestedStream(resources, scopes, entriesPerScope, sharedAttrs int) logproto.InternalStreamAdapter {
 	attrs := func(prefix string, n int) []push.LabelAdapter {
 		out := make([]push.LabelAdapter, 0, n)
 		for i := 0; i < n; i++ {
@@ -412,7 +406,6 @@ func benchStreams(resources, scopes, entriesPerScope, sharedAttrs int) (logproto
 	}
 
 	nested := logproto.InternalStreamAdapter{Labels: `{app="checkout", env="prod"}`, Hash: 12345}
-	flat := logproto.Stream{Labels: nested.Labels, Hash: nested.Hash}
 
 	for r := 0; r < resources; r++ {
 		resourceAttrs := attrs(fmt.Sprintf("resource%d", r), sharedAttrs)
@@ -432,31 +425,19 @@ func benchStreams(resources, scopes, entriesPerScope, sharedAttrs int) (logproto
 				}
 				scope.Entries = append(scope.Entries, entry)
 
-				// The same entry as the flat path holds it: its own metadata, then the resource's
-				// attributes, then the scope's, in the order otlp.go appends them.
-				expanded := entry
-				expanded.StructuredMetadata = make(push.LabelsAdapter, 0,
-					len(entry.StructuredMetadata)+len(resourceAttrs)+len(scopeAttrs))
-				expanded.StructuredMetadata = append(expanded.StructuredMetadata, entry.StructuredMetadata...)
-				expanded.StructuredMetadata = append(expanded.StructuredMetadata, resourceAttrs...)
-				expanded.StructuredMetadata = append(expanded.StructuredMetadata, scopeAttrs...)
-				flat.Entries = append(flat.Entries, expanded)
 			}
 			resource.ScopeLogs = append(resource.ScopeLogs, scope)
 		}
 		nested.ResourceLogs = append(nested.ResourceLogs, resource)
 	}
-	return nested, flat
+	return nested
 }
 
 var benchShapes = []struct {
 	name        string
 	sharedAttrs int
 }{
-	// What an OTLP push looks like: attributes on the groups, copied onto every entry by the flat
-	// path.
 	{"attributes shared by their group", 12},
-	// The same entries either way, which leaves only the difference between the two algorithms.
 	{"no attributes to share", 0},
 }
 
@@ -464,32 +445,19 @@ func BenchmarkRateSharding(b *testing.B) {
 	const shards = 8
 
 	for _, shape := range benchShapes {
-		nested, flat := benchStreams(4, 2, 1000, shape.sharedAttrs)
+		nested := benchNestedStream(4, 2, 1000, shape.sharedAttrs)
 
-		// Both arms divide the stream, name every shard and take a ring token for it. Only the
-		// flat one also builds a KeyedStream around each, which cannot be shared while that type
-		// still holds the flat stream.
 		keys := make([]uint32, shards)
 
 		b.Run(shape.name+"/nested", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				out := shardNested(&nested, shardLabels, shards, 0)
+				out := shardNested(nested, shardLabels, shards, 0)
 				if len(out) != shards {
 					b.Fatalf("got %d shards", len(out))
 				}
 				for j := range out {
 					keys[j] = lokiring.TokenFor("tenant", out[j].Labels)
-				}
-			}
-		})
-
-		b.Run(shape.name+"/flat", func(b *testing.B) {
-			d := &Distributor{logger: log.NewNopLogger(), shardTracker: NewShardTracker()}
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				if out := d.divideEntriesBetweenShards("tenant", shards, shardstreams.Config{}, flat, "policy"); len(out) != shards {
-					b.Fatalf("got %d shards", len(out))
 				}
 			}
 		})
