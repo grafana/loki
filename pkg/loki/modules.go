@@ -2308,8 +2308,6 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
-		t.Cfg.Ingester.LifecyclerConfig.ID,
-		t.partitionRing,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 		t.Overrides,

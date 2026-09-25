@@ -52,7 +52,7 @@ type Service struct {
 	reg                         prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{

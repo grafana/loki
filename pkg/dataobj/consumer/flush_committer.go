@@ -79,6 +79,8 @@ func newFlushCommitter(
 		NativeHistogramMinResetDuration: 0,
 	}, []string{"result"})
 
+	// Report the outcomes from the start, so that a rate over failures reads
+	// as zero rather than going missing until the first one happens.
 	d.WithLabelValues(resultOK)
 	d.WithLabelValues(resultError)
 	d.WithLabelValues(resultCancelled)
