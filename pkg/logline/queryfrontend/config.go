@@ -189,17 +189,22 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	f.BoolVar(&c.Enabled, "logline.enabled", false, "Enable logline query frontend middleware injection")
-	c.Store.RegisterFlags(f)
+	// Store flags live on pkg/logline/config so weekly-k325 GEL does not
+	// redefine -logline-store.* after Loki's RegisterFlags already added them.
 	c.QueryFrontend.RegisterFlagsWithPrefix("logline-query-frontend", f)
 }
 
 // Validate checks constraints and applies defaults.
 func (c *Config) Validate() error {
-	if err := c.Store.Validate(); err != nil {
-		return fmt.Errorf("invalid store config: %w", err)
-	}
 	if err := c.QueryFrontend.Validate(); err != nil {
 		return fmt.Errorf("invalid query frontend config: %w", err)
+	}
+	// Store CLI flags bind to Loki's logline config, not this GEL-owned copy.
+	// store.New still validates when WrapMiddleware creates a store.
+	if c.Enabled && c.Store.MinDate != "" {
+		if err := c.Store.Validate(); err != nil {
+			return fmt.Errorf("invalid store config: %w", err)
+		}
 	}
 	return nil
 }

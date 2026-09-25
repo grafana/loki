@@ -83,12 +83,16 @@ func WrapMiddleware(
 	if lokiQIW == 0 {
 		lokiQIW = store.DefaultQueryIngestersWithin
 	}
-	cfg.Store.QueryIngestersWithin = lokiQIW
+	storeCfg := cfg.Store
+	if storeCfg.MinDate == "" {
+		storeCfg = lokiCfg.Logline.Store
+	}
+	storeCfg.QueryIngestersWithin = lokiQIW
 	indexStore, err := store.New(
 		context.Background(),
 		lokiCfg.SchemaConfig,
 		lokiCfg.StorageConfig.ObjectStore,
-		cfg.Store,
+		storeCfg,
 		logger,
 		reg,
 	)
