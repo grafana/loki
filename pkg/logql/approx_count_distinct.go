@@ -378,6 +378,9 @@ func (e *countDistinctSketchEvaluator) Explain(parent Node) {
 // JoinSampleVector and are not covered by max_query_series enforcement here.
 func (*countDistinctSketchEvaluator) SetMaxOutputSeries(int) {}
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*countDistinctSketchEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 // CountDistinctSketchMergeExpr concatenates sharded CountDistinctSketchExpr children.
 type CountDistinctSketchMergeExpr struct {
 	syntax.SampleExpr
@@ -465,3 +468,6 @@ func (e *CountDistinctSketchVectorStepEvaluator) Explain(parent Node) {
 // SetMaxOutputSeries does not enforce this limit (count-distinct sketch path,
 // see countDistinctSketchEvaluator).
 func (*CountDistinctSketchVectorStepEvaluator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*CountDistinctSketchVectorStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }

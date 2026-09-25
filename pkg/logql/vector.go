@@ -98,3 +98,6 @@ func (e *VectorStepEvaluator) Error() error {
 // SetMaxOutputSeries does not enforce the limit. It replays a materialized
 // vector produced downstream; the limit is enforced above it.
 func (*VectorStepEvaluator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*VectorStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }

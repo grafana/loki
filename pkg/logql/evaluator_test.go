@@ -463,6 +463,79 @@ func TestVectorAggEvaluator_MaxOutputSeries(t *testing.T) {
 	})
 }
 
+// spyMaxSeriesEvaluator records the n it's given via SetMaxOutputSeries. Used
+// to assert whether a parent evaluator forwarded the limit to its child(ren).
+type spyMaxSeriesEvaluator struct {
+	emptyEvaluator
+	gotMaxSeries int
+}
+
+func (e *spyMaxSeriesEvaluator) SetMaxOutputSeries(n int) { e.gotMaxSeries = n }
+
+func TestBinOpStepEvaluator_Hints(t *testing.T) {
+	mk := func(op string) *BinOpStepEvaluator {
+		return &BinOpStepEvaluator{expr: &syntax.BinOpExpr{Op: op}}
+	}
+
+	require.True(t, mk(syntax.OpTypeOr).Hints().PushDownMaxSeries)
+	require.False(t, mk(syntax.OpTypeAnd).Hints().PushDownMaxSeries)
+	require.False(t, mk(syntax.OpTypeUnless).Hints().PushDownMaxSeries)
+	require.False(t, mk(syntax.OpTypeGT).Hints().PushDownMaxSeries)
+}
+
+func TestBinOpStepEvaluator_MaxOutputSeries(t *testing.T) {
+	t.Run("or forwards to both operands", func(t *testing.T) {
+		lhs := &spyMaxSeriesEvaluator{}
+		rhs := &spyMaxSeriesEvaluator{}
+		e := &BinOpStepEvaluator{expr: &syntax.BinOpExpr{Op: syntax.OpTypeOr}, lse: lhs, rse: rhs}
+		e.SetMaxOutputSeries(5)
+		require.Equal(t, 5, lhs.gotMaxSeries)
+		require.Equal(t, 5, rhs.gotMaxSeries)
+	})
+
+	t.Run("and does not forward", func(t *testing.T) {
+		lhs := &spyMaxSeriesEvaluator{}
+		rhs := &spyMaxSeriesEvaluator{}
+		e := &BinOpStepEvaluator{expr: &syntax.BinOpExpr{Op: syntax.OpTypeAnd}, lse: lhs, rse: rhs}
+		e.SetMaxOutputSeries(5)
+		require.Zero(t, lhs.gotMaxSeries)
+		require.Zero(t, rhs.gotMaxSeries)
+	})
+}
+
+func TestLiteralStepEvaluator_Hints(t *testing.T) {
+	mk := func(op string, returnBool bool) *LiteralStepEvaluator {
+		return &LiteralStepEvaluator{op: op, returnBool: returnBool}
+	}
+
+	require.True(t, mk(syntax.OpTypeAdd, false).Hints().PushDownMaxSeries)
+	require.True(t, mk(syntax.OpTypeGT, true).Hints().PushDownMaxSeries)
+	require.False(t, mk(syntax.OpTypeGT, false).Hints().PushDownMaxSeries)
+}
+
+func TestLiteralStepEvaluator_MaxOutputSeries(t *testing.T) {
+	t.Run("arithmetic operator forwards to the operand", func(t *testing.T) {
+		child := &spyMaxSeriesEvaluator{}
+		e := &LiteralStepEvaluator{op: syntax.OpTypeAdd, nextEv: child}
+		e.SetMaxOutputSeries(7)
+		require.Equal(t, 7, child.gotMaxSeries)
+	})
+
+	t.Run("filtering comparison without bool does not forward", func(t *testing.T) {
+		child := &spyMaxSeriesEvaluator{}
+		e := &LiteralStepEvaluator{op: syntax.OpTypeGT, nextEv: child}
+		e.SetMaxOutputSeries(7)
+		require.Zero(t, child.gotMaxSeries)
+	})
+
+	t.Run("comparison with bool forwards to the operand", func(t *testing.T) {
+		child := &spyMaxSeriesEvaluator{}
+		e := &LiteralStepEvaluator{op: syntax.OpTypeGT, returnBool: true, nextEv: child}
+		e.SetMaxOutputSeries(7)
+		require.Equal(t, 7, child.gotMaxSeries)
+	})
+}
+
 type emptyEvaluator struct{}
 
 func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
@@ -480,6 +553,8 @@ func (*emptyEvaluator) Error() error {
 func (*emptyEvaluator) Explain(Node) {}
 
 func (*emptyEvaluator) SetMaxOutputSeries(int) {}
+
+func (*emptyEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
 
 // returnVectorEvaluator returns elements of vector
 // passed in, everytime it's `Next()` is called. Used for testing.
@@ -504,6 +579,8 @@ func (*returnVectorEvaluator) Explain(Node) {
 }
 
 func (*returnVectorEvaluator) SetMaxOutputSeries(int) {}
+
+func (*returnVectorEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
 
 func newReturnVectorEvaluator(vec []float64) *returnVectorEvaluator {
 	testTime := time.Now().Unix()

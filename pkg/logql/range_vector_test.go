@@ -78,7 +78,7 @@ func newNSeriesPeekingIterator(n int, ts time.Time) iter.PeekingSampleIterator {
 			StreamHash: labels.StableHash(lbl),
 		}))
 	}
-	return iter.NewPeekingSampleIterator(iter.NewSortSampleIterator(its))
+	return iter.NewPeekingSampleIterator(iter.NewTimestampFirstSortSampleIterator(its))
 }
 
 // TestRangeVectorIterator_MaxSeries verifies that both range vector iterators

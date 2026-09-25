@@ -185,6 +185,9 @@ func (e *QuantileSketchStepEvaluator) Error() error {
 // not covered by max_query_series enforcement here.
 func (*QuantileSketchStepEvaluator) SetMaxOutputSeries(int) {}
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*QuantileSketchStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 	parent.Child("QuantileSketch")
 }
@@ -375,3 +378,6 @@ func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }
 // SetMaxOutputSeries does not enforce this limit (quantile-sketch path, see
 // QuantileSketchStepEvaluator).
 func (*QuantileSketchVectorStepEvaluator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*QuantileSketchVectorStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }

@@ -878,6 +878,9 @@ func (e *ConcatStepEvaluator) Error() error {
 // itself limit-safe, which is left for a follow-up.
 func (*ConcatStepEvaluator) SetMaxOutputSeries(int) {}
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*ConcatStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
 func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (

@@ -722,6 +722,10 @@ func (e *VectorAggEvaluator) Error() error {
 // so the child's count is not a lower bound on the query output.
 func (e *VectorAggEvaluator) SetMaxOutputSeries(n int) { e.maxOutputSeries = n }
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries: the child inflates
+// cardinality relative to this node, so the limit must not be forwarded.
+func (*VectorAggEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 func newRangeAggEvaluator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
@@ -833,6 +837,10 @@ func (r *RangeVectorEvaluator) Error() error {
 // which caps the distinct series it holds per window.
 func (r *RangeVectorEvaluator) SetMaxOutputSeries(n int) { r.iter.SetMaxSeries(n) }
 
+// Hints implements StepEvaluator. RangeVectorEvaluator has no StepEvaluator
+// children: its iterator is configured directly by SetMaxOutputSeries above.
+func (*RangeVectorEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 type AbsentRangeVectorEvaluator struct {
 	iter RangeVectorIterator
 	lbs  labels.Labels
@@ -878,6 +886,10 @@ func (r AbsentRangeVectorEvaluator) Error() error {
 // SetMaxOutputSeries does not enforce the limit. absent_over_time emits at most
 // a single synthetic series, so the limit is never relevant here.
 func (*AbsentRangeVectorEvaluator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. AbsentRangeVectorEvaluator has no
+// StepEvaluator children.
+func (AbsentRangeVectorEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
 
 // newBinOpStepEvaluator explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
@@ -1035,20 +1047,32 @@ func (e *BinOpStepEvaluator) Error() error {
 	}
 }
 
-// SetMaxOutputSeries does not enforce the limit today: at the root its output
-// already equals the query output, so there is nothing to gain over the
-// enforcement JoinSampleVector performs. This is, however, the most valuable
-// place to push the limit down next:
-//   - `or`: the result is the union of both legs, so output >= each leg. The
-//     limit can be pushed into BOTH operands.
-//   - group_left (CardManyToOne) / group_right (CardOneToMany): the result has
-//     roughly the cardinality of the "many" side (the left / right leg
-//     respectively), so the limit can be pushed into that leg. Caveat: unmatched
-//     "many"-side series are dropped, so this can reject slightly early.
+// SetMaxOutputSeries enforces nothing itself (at the root its output already
+// equals the query output, so there is nothing to gain over the enforcement
+// JoinSampleVector performs), but forwards to both operands when Hints reports
+// it is sound to do so.
 //
-// It must NOT be pushed into `and`, `unless`, or one-to-one matches: these can
+// group_left (CardManyToOne) / group_right (CardOneToMany) are also a valuable
+// place to push the limit down: the result has roughly the cardinality of the
+// "many" side, so the limit could be pushed into that leg alone (unmatched
+// "many"-side series are dropped, so this can reject slightly early). That is
+// a per-leg decision Hints cannot express with a single bool, so it is left
+// for a follow-up.
+func (e *BinOpStepEvaluator) SetMaxOutputSeries(n int) {
+	if e.Hints().PushDownMaxSeries {
+		e.lse.SetMaxOutputSeries(n)
+		e.rse.SetMaxOutputSeries(n)
+	}
+}
+
+// Hints implements StepEvaluator. `or` is the only case sound to forward
+// uniformly to both operands: the result is the union of both legs, so output
+// >= each leg, and neither leg can be made to exceed n without the union doing
+// so too. `and`, `unless`, and one-to-one matches must return false: they can
 // drop series, so a leg's count is not a lower bound on the query output.
-func (*BinOpStepEvaluator) SetMaxOutputSeries(int) {}
+func (e *BinOpStepEvaluator) Hints() EvaluatorHints {
+	return EvaluatorHints{PushDownMaxSeries: e.expr.Op == syntax.OpTypeOr}
+}
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
@@ -1316,11 +1340,23 @@ func (e *LiteralStepEvaluator) Error() error {
 }
 
 // SetMaxOutputSeries (a scalar/vector operation such as `sum(...) / 60`) does
-// not enforce the limit. For arithmetic operators it preserves the vector
-// operand's series one-to-one, so the limit could be pushed into that child; but
-// a filtering comparison without `bool` (e.g. `sum(...) > 5`) drops series, so
-// pushing down is only sound for non-filtering operators. Left to the root.
-func (*LiteralStepEvaluator) SetMaxOutputSeries(int) {}
+// not enforce the limit itself, but forwards it to the vector operand when
+// Hints reports it is sound to do so.
+func (e *LiteralStepEvaluator) SetMaxOutputSeries(n int) {
+	if e.Hints().PushDownMaxSeries {
+		e.nextEv.SetMaxOutputSeries(n)
+	}
+}
+
+// Hints implements StepEvaluator. Arithmetic operators preserve the vector
+// operand's series one-to-one, so forwarding the limit is exact. A filtering
+// comparison without `bool` (e.g. `sum(...) > 5`) can drop many series while
+// the operand's own count stays large (e.g. `count_over_time(...) > 1e6`), so
+// forwarding there could reject a query the root would accept; only comparisons
+// with the `bool` modifier keep the one-to-one shape.
+func (e *LiteralStepEvaluator) Hints() EvaluatorHints {
+	return EvaluatorHints{PushDownMaxSeries: !syntax.IsComparisonOperator(e.op) || e.returnBool}
+}
 
 // VectorIterator return simple vector like (1).
 type VectorIterator struct {
@@ -1364,6 +1400,9 @@ func (r *VectorIterator) Error() error {
 // SetMaxOutputSeries does not enforce the limit: a literal vector such as
 // `vector(1)` produces a single series.
 func (*VectorIterator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. VectorIterator has no children.
+func (*VectorIterator) Hints() EvaluatorHints { return EvaluatorHints{} }
 
 // newLabelReplaceEvaluator
 func newLabelReplaceEvaluator(
@@ -1440,6 +1479,10 @@ func (e *LabelReplaceEvaluator) Error() error {
 // into a single output series, so its output is <= its input and the input count
 // is not a lower bound on the query output.
 func (*LabelReplaceEvaluator) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. See SetMaxOutputSeries: label_replace can
+// merge input series together, so the limit must not be forwarded.
+func (*LabelReplaceEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
 
 // This is to replace missing timeseries during absent_over_time aggregation.
 func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {

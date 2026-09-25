@@ -44,12 +44,24 @@ type StepEvaluator interface {
 	// Explain returns a print of the step evaluation tree
 	Explain(Node)
 	// SetMaxOutputSeries informs the evaluator of the maximum number of output
-	// series the query is allowed to produce. Ideally all implementations would perfectly
-	// detect when the output series should be evaluated at the current level and when it
-	// is safe to push the limit down to child evaluators. We are nowhere near this and it would be quite
-	// difficult. Implementing this should be done carefully. Currently we are only setting this at the
-	// root level in evalSample and never pushing down.
+	// series the query is allowed to produce. An implementation may enforce the
+	// limit itself, forward it to child evaluators (see Hints), or ignore it
+	// when neither applies to its shape.
 	SetMaxOutputSeries(n int)
+	// Hints reports static properties of this evaluator, so a caller can reason
+	// about the evaluator tree without depending on its concrete type.
+	Hints() EvaluatorHints
+}
+
+// EvaluatorHints holds static properties of a StepEvaluator.
+type EvaluatorHints struct {
+	// PushDownMaxSeries reports whether it is sound to forward the exact same
+	// max-output-series limit, unmodified, to every child evaluator: true only
+	// when none of this evaluator's children can, on their own, be made to
+	// exceed n while this evaluator's own output stays within it. When false,
+	// this evaluator may still enforce (or forward) the limit itself in
+	// SetMaxOutputSeries; it simply does not do so uniformly for every child.
+	PushDownMaxSeries bool
 }
 
 type EmptyEvaluator[R StepResult] struct {
@@ -118,6 +130,12 @@ func (m *SketchMatrixStepEvaluator[_]) Explain(parent Node) {
 // consumes the resulting vector.
 func (*SketchMatrixStepEvaluator[_]) SetMaxOutputSeries(int) {}
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*SketchMatrixStepEvaluator[_]) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 // SetMaxOutputSeries implements StepEvaluator. EmptyEvaluator produces no
 // series, so the limit is a no-op.
 func (EmptyEvaluator[_]) SetMaxOutputSeries(int) {}
+
+// Hints implements StepEvaluator. EmptyEvaluator has no children to push to.
+func (EmptyEvaluator[_]) Hints() EvaluatorHints { return EvaluatorHints{} }

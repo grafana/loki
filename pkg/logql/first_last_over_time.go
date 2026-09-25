@@ -219,6 +219,9 @@ func (*mergeOverTimeStepEvaluator) Error() error { return nil }
 // enforced above it (and by JoinSampleVector).
 func (*mergeOverTimeStepEvaluator) SetMaxOutputSeries(int) {}
 
+// Hints implements StepEvaluator. See SetMaxOutputSeries.
+func (*mergeOverTimeStepEvaluator) Hints() EvaluatorHints { return EvaluatorHints{} }
+
 func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset, rangeInterval time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}
