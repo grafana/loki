@@ -207,6 +207,18 @@ func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupported)
 }
 
+func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
+	resp, err := provider.QueryHints(context.Background(), expr, nil)
+	require.ErrorIs(t, err, ErrUnsupported)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.TimeRanges)
+}
+
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {
 	indexStore := newTestStore(t)
 	needle := "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"

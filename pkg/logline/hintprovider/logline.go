@@ -77,6 +77,10 @@ func (p *LoglineHintProvider) QueryHints(
 ) (*logproto.HintResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
+	if len(filters) == 0 {
+		snap := stats.Snapshot()
+		return &logproto.HintResponse{Stats: &snap}, ErrUnsupported
+	}
 	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
 	snap := stats.Snapshot()
 	if err != nil {
