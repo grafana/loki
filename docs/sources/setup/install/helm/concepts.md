@@ -14,6 +14,7 @@ keywords:
 # Helm chart components
 
 This section describes the components installed by the Helm Chart.
+For the ports and protocols these components use, refer to [Loki network ports](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/network-ports/).
 
 ## 3 methods of deployment
 
