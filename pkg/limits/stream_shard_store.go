@@ -319,33 +319,50 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 	return results, toProduce
 }
 
-// recordToProduce returns the record for the stream's last complete rate
-// bucket, or nil when there is nothing new to produce, and marks the bucket
-// as produced.
+// recordToProduce returns the record for the newest complete rate bucket the
+// stream has not published yet, or nil when there is nothing new to produce,
+// and marks that bucket as produced.
 //
-// The last complete bucket is published rather than the one in flight, so
-// that a stream produces one record per bucket and the value it carries is
-// final. The cost is that a restart loses up to one bucket of the newest
-// traffic, which understates the rate by at most one bucket's share of the
-// rate window. Publishing the bucket in flight instead would either cost a
-// record per push or, throttled to one record per bucket, publish a value
-// that stops at the bucket's first push.
+// A complete bucket is published rather than the one in flight, so that a
+// stream produces one record per bucket and the value it carries is final.
+// The cost is that a restart loses up to one bucket of the newest traffic,
+// which understates the rate by at most one bucket's share of the rate
+// window. Publishing the bucket in flight instead would either cost a record
+// per push or, throttled to one record per bucket, publish a value that
+// stops at the bucket's first push.
+//
+// The bucket published is the one holding the previous push, which is not
+// always the immediate predecessor of the current one: a stream pushed to
+// less often than once per bucket leaves gaps. Publishing only the immediate
+// predecessor would drop every bucket of such a stream, so it would never
+// restore any rate at all. Since a push publishes at most one bucket either
+// way, closing the gap costs no extra records.
 func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant string, m *proto.StreamMetadata, seenAt time.Time) *proto.StreamMetadataRecord {
 	if !s.durabilityEnabled {
 		return nil
 	}
-	bucketStart := seenAt.Truncate(s.bucketSize).Add(-s.bucketSize).UnixNano()
-	if stream.lastProducedBucket >= bucketStart || len(stream.rateBuckets) == 0 {
+	lastComplete := seenAt.Truncate(s.bucketSize).Add(-s.bucketSize).UnixNano()
+	if stream.lastProducedBucket >= lastComplete {
 		return nil
 	}
-	idx := int((bucketStart / int64(s.bucketSize)) % int64(s.numBuckets))
-	b := stream.rateBuckets[idx]
-	if b.timestamp != bucketStart || b.pushes == 0 {
-		// The stream had no traffic in that bucket, or the ring slot has
-		// already been reused by a later one.
+	// Scan the ring for the newest bucket that is complete, has traffic, is
+	// newer than the last one published, and still falls in the rate window.
+	// The window test uses the same cutoff as currentRate and merge, so a
+	// bucket a consumer would drop as too old is not produced at all.
+	cutoff := seenAt.Add(-s.rateWindow).UnixNano()
+	var b shardRateBucket
+	for _, candidate := range stream.rateBuckets {
+		if candidate.pushes == 0 || candidate.timestamp > lastComplete || candidate.timestamp < cutoff {
+			continue
+		}
+		if candidate.timestamp > stream.lastProducedBucket && candidate.timestamp > b.timestamp {
+			b = candidate
+		}
+	}
+	if b.pushes == 0 {
 		return nil
 	}
-	stream.lastProducedBucket = bucketStart
+	stream.lastProducedBucket = b.timestamp
 	return &proto.StreamMetadataRecord{
 		Tenant: tenant,
 		Metadata: &proto.StreamMetadata{
@@ -353,7 +370,7 @@ func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant stri
 			IngestionPolicy: m.IngestionPolicy,
 		},
 		ShardRateBucket: &proto.ShardRateBucket{
-			BucketStart: bucketStart,
+			BucketStart: b.timestamp,
 			Size_:       b.size,
 			Pushes:      b.pushes,
 		},

@@ -322,6 +322,51 @@ func TestStreamShardStore_ProducesOneRecordPerCompleteBucket(t *testing.T) {
 	require.Empty(t, toProduce)
 }
 
+func TestStreamShardStore_ProducesTheBucketsOfAStreamThatSkipsBuckets(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// A stream pushed to less often than once per bucket has no traffic in
+	// the bucket before the push, but the bucket holding its previous push is
+	// still complete and must be published.
+	first := clock.Now().Truncate(testBucketSize)
+	push(t, s, 0x1, 600, clock.Now())
+
+	clock.Advance(2 * testBucketSize)
+	second := clock.Now().Truncate(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 900, clock.Now())
+	require.Equal(t, []*proto.StreamMetadataRecord{{
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: 0x1},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: first.UnixNano(),
+			Size_:       600,
+			Pushes:      1,
+		},
+		ShardCount: 1,
+	}}, toProduce)
+
+	// The bucket just published is not published again by the next gap.
+	clock.Advance(2 * testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, &proto.ShardRateBucket{
+		BucketStart: second.UnixNano(),
+		Size_:       900,
+		Pushes:      1,
+	}, toProduce[0].ShardRateBucket)
+
+	// After a gap longer than the rate window the earlier buckets have fallen
+	// out of it, and a record for them would be dropped by the consumer, so
+	// nothing is published until the stream has a complete bucket again.
+	clock.Advance(testRateWindow + testBucketSize)
+	late := clock.Now().Truncate(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Empty(t, toProduce)
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, late.UnixNano(), toProduce[0].ShardRateBucket.BucketStart)
+}
+
 func TestStreamShardStore_ProducesNothingWithoutDurability(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
 	s.durabilityEnabled = false
