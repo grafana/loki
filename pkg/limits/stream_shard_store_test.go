@@ -20,6 +20,7 @@ const (
 	testActiveWindow = 5 * time.Minute
 	testRateWindow   = time.Minute
 	testBucketSize   = 10 * time.Second
+	testZone         = "zone1"
 )
 
 // newTestStreamShardStore returns a store with a single partition and one
@@ -33,7 +34,7 @@ func newTestStreamShardStore(t *testing.T, maxGlobalStreams int, desiredRate str
 		ShardStreamsConfig:     shardstreams.Config{Enabled: true},
 	}
 	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set(desiredRate))
-	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, limits, prometheus.NewRegistry())
+	s, err := newStreamShardStore(testActiveWindow, testRateWindow, testBucketSize, 1, testZone, true, limits, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -53,12 +54,20 @@ func track(t *testing.T, s *streamShardStore, stream streamShardUsage, now time.
 // push sends one push of size bytes for streamHash and returns its result.
 func push(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt time.Time) *proto.StreamShardResult {
 	t.Helper()
-	results := s.checkAndShard(t.Context(), "test", []*proto.StreamMetadata{{
+	results, _ := pushWithRecords(t, s, streamHash, size, seenAt)
+	return results
+}
+
+// pushWithRecords sends one push and returns its result together with the
+// records the store wants produced.
+func pushWithRecords(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt time.Time) (*proto.StreamShardResult, []*proto.StreamMetadataRecord) {
+	t.Helper()
+	results, toProduce := s.checkAndShard(t.Context(), "test", []*proto.StreamMetadata{{
 		StreamHash: streamHash,
 		TotalSize:  size,
 	}}, seenAt)
 	require.Len(t, results, 1)
-	return results[0]
+	return results[0], toProduce
 }
 
 func TestStreamShardStore_NewStreamGetsOneShard(t *testing.T) {
@@ -257,6 +266,278 @@ func TestStreamShardStore_SlotsFollowTheTrackedStreams(t *testing.T) {
 	require.Equal(t, uint64(0), bucketSlots())
 }
 
+// mergeRecord merges one record for the test tenant.
+func mergeRecord(s *streamShardStore, zone string, streamHash uint64, bucketStart time.Time, size, pushes uint64, shardCount uint32) {
+	s.merge("test", &proto.StreamMetadataRecord{
+		Zone:     zone,
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: streamHash},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: bucketStart.Truncate(testBucketSize).UnixNano(),
+			Size_:       size,
+			Pushes:      pushes,
+		},
+		ShardCount: shardCount,
+	})
+}
+
+// trackedStream returns the state tracked for streamHash in the test
+// tenant's default policy bucket.
+func trackedStream(t *testing.T, s *streamShardStore, streamHash uint64) streamShardUsage {
+	t.Helper()
+	var stream streamShardUsage
+	s.withLock("test", func(i int) {
+		bucket := s.stripes[i]["test"][s.getPartitionForHash(streamHash)][noPolicy]
+		require.NotNil(t, bucket)
+		stream = bucket.streams[streamHash]
+	})
+	return stream
+}
+
+func TestStreamShardStore_ProducesOneRecordPerCompleteBucket(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// Nothing to produce while the first bucket is still in flight.
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+
+	// The first push of the next bucket publishes the complete one.
+	bucketStart := clock.Now().Truncate(testBucketSize)
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Equal(t, []*proto.StreamMetadataRecord{{
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: 0x1},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: bucketStart.UnixNano(),
+			Size_:       1200,
+			Pushes:      2,
+		},
+		ShardCount: 1,
+	}}, toProduce)
+
+	// The same bucket is not published twice.
+	_, toProduce = pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+}
+
+func TestStreamShardStore_ProducesTheBucketsOfAStreamThatSkipsBuckets(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// A stream pushed to less often than once per bucket has no traffic in
+	// the bucket before the push, but the bucket holding its previous push is
+	// still complete and must be published.
+	first := clock.Now().Truncate(testBucketSize)
+	push(t, s, 0x1, 600, clock.Now())
+
+	clock.Advance(2 * testBucketSize)
+	second := clock.Now().Truncate(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 900, clock.Now())
+	require.Equal(t, []*proto.StreamMetadataRecord{{
+		Tenant:   "test",
+		Metadata: &proto.StreamMetadata{StreamHash: 0x1},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: first.UnixNano(),
+			Size_:       600,
+			Pushes:      1,
+		},
+		ShardCount: 1,
+	}}, toProduce)
+
+	// The bucket just published is not published again by the next gap.
+	clock.Advance(2 * testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, &proto.ShardRateBucket{
+		BucketStart: second.UnixNano(),
+		Size_:       900,
+		Pushes:      1,
+	}, toProduce[0].ShardRateBucket)
+
+	// After a gap longer than the rate window the earlier buckets have fallen
+	// out of it, and a record for them would be dropped by the consumer, so
+	// nothing is published until the stream has a complete bucket again.
+	clock.Advance(testRateWindow + testBucketSize)
+	late := clock.Now().Truncate(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Empty(t, toProduce)
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, s, 0x1, 300, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, late.UnixNano(), toProduce[0].ShardRateBucket.BucketStart)
+}
+
+func TestStreamShardStore_ProducesNothingWithoutDurability(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	s.durabilityEnabled = false
+	push(t, s, 0x1, 600, clock.Now())
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+}
+
+func TestStreamShardStore_ProducedRecordRestoresTheRate(t *testing.T) {
+	// What one store produces is what another store needs to reach the same
+	// decision, so feed the records of a warm store into a cold one.
+	warm, clock := newTestStreamShardStore(t, 0, "1KB")
+	cold, _ := newTestStreamShardStore(t, 0, "1KB")
+	cold.clock = clock
+	// A zone only merges the other zones' records while it is serving, so the
+	// cold store sees these as another zone's.
+	cold.zone = "zone2"
+
+	for range testRateWindow / testBucketSize {
+		_, toProduce := pushWithRecords(t, warm, 0x1, 6<<10, clock.Now())
+		for _, rec := range toProduce {
+			rec.Zone = testZone
+			cold.merge("test", rec)
+		}
+		clock.Advance(testBucketSize)
+	}
+
+	// The rate the cold store evaluates is the warm store's rate less the
+	// bucket that was still in flight when the last record was produced.
+	require.Equal(t, uint64(614), push(t, warm, 0x1, 6<<10, clock.Now()).Stats.EvaluatedRate)
+	require.Equal(t, uint64(512), push(t, cold, 0x1, 6<<10, clock.Now()).Stats.EvaluatedRate)
+	require.Equal(t, uint32(2), push(t, cold, 0x1, 6<<10, clock.Now()).Shards)
+}
+
+func TestStreamShardStore_MergeRestoresTheRateHistory(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// Replay a rate window's worth of another zone's buckets, 6KiB per bucket,
+	// which is the history TestStreamShardStore_ShardCountFollowsTheRate
+	// builds up by pushing.
+	for range testRateWindow / testBucketSize {
+		mergeRecord(s, "zone2", 0x1, clock.Now(), 6<<10, 1, 1)
+		clock.Advance(testBucketSize)
+	}
+	// The first push after the merge is decided on that history instead of
+	// looking brand new.
+	res := push(t, s, 0x1, 6<<10, clock.Now())
+	require.Equal(t, uint32(2), res.Shards)
+	require.Equal(t, uint64(614), res.Stats.EvaluatedRate)
+}
+
+func TestStreamShardStore_MergeIsIdempotent(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	for range 3 {
+		mergeRecord(s, "zone2", 0x1, clock.Now(), 6<<10, 3, 2)
+	}
+	stream := trackedStream(t, s, 0x1)
+	bytes, pushes := sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(6<<10), bytes)
+	require.Equal(t, uint64(3), pushes)
+	require.Equal(t, uint64(2), stream.slots)
+}
+
+func TestStreamShardStore_MergeKeepsTheLargerBucketTotals(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 600, 3, 1)
+	// A later record for the same bucket carries the zone's grown totals.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 900, 4, 1)
+	// An out-of-order record, such as one produced by the previous owner of
+	// the partition, must not shrink them back.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 300, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	bytes, pushes := sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(900), bytes)
+	require.Equal(t, uint64(4), pushes)
+
+	// A record for the next bucket replaces the slot rather than merging into
+	// it, as the ring reuses slots.
+	clock.Advance(testRateWindow)
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 100, 1, 1)
+	stream = trackedStream(t, s, 0x1)
+	bytes, pushes = sumRateBuckets(stream.remoteBuckets["zone2"], 0)
+	require.Equal(t, uint64(100), bytes)
+	require.Equal(t, uint64(1), pushes)
+}
+
+func TestStreamShardStore_MergeOwnZoneDoesNotRegressLocalBuckets(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// A push, then our own record for the same bucket as it was when the
+	// record was produced: replaying it must neither drop the bytes pushed
+	// after the flush nor count them twice.
+	push(t, s, 0x1, 600, clock.Now())
+	push(t, s, 0x1, 600, clock.Now())
+	mergeRecord(s, testZone, 0x1, clock.Now(), 600, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	require.Empty(t, stream.remoteBuckets)
+	bytes, pushes := sumRateBuckets(stream.rateBuckets, 0)
+	require.Equal(t, uint64(1200), bytes)
+	require.Equal(t, uint64(2), pushes)
+}
+
+func TestStreamShardStore_MergeDoesNotReproduceTheRestoredBucket(t *testing.T) {
+	// The topic already holds the record a store replays for its own zone, so
+	// the replaying store must not write it a second time.
+	warm, clock := newTestStreamShardStore(t, 0, "1KB")
+	cold, _ := newTestStreamShardStore(t, 0, "1KB")
+	cold.clock = clock
+
+	push(t, warm, 0x1, 600, clock.Now())
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, warm, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	produced := toProduce[0].ShardRateBucket.BucketStart
+	for _, rec := range toProduce {
+		rec.Zone = testZone
+		cold.merge("test", rec)
+	}
+	require.Equal(t, produced, trackedStream(t, cold, 0x1).lastProducedBucket)
+
+	// The replaying store is pushed to within the same bucket the record was
+	// written in, which is the only window in which the cursor decides
+	// anything: a later push finds the ring slot reused.
+	_, toProduce = pushWithRecords(t, cold, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+
+	// Buckets that complete after the merge are still produced.
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, cold, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, produced+int64(testBucketSize), toProduce[0].ShardRateBucket.BucketStart)
+}
+
+func TestStreamShardStore_MergeOtherZoneKeepsTheProduceCursor(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	push(t, s, 0x1, 600, clock.Now())
+	bucketStart := clock.Now().Truncate(testBucketSize).UnixNano()
+	// Another zone's record says nothing about whether this zone has written
+	// its own record for that bucket, so it must not hold ours back.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 600, 1, 1)
+	require.Zero(t, trackedStream(t, s, 0x1).lastProducedBucket)
+
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, bucketStart, toProduce[0].ShardRateBucket.BucketStart)
+}
+
+func TestStreamShardStore_MergeKeepsTheFresherFootprint(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	track(t, s, streamShardUsage{
+		hash:          0x1,
+		shardCount:    3,
+		lastSeenAt:    clock.Now().UnixNano(),
+		shardLastUsed: refreshLiveShards(nil, 3, clock.Now().UnixNano()),
+	}, clock.Now())
+
+	// A record older than what we know about the stream contributes its rate
+	// bucket but must not shrink the footprint back to one shard.
+	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testBucketSize), 600, 1, 1)
+	stream := trackedStream(t, s, 0x1)
+	require.Equal(t, uint32(3), stream.shardCount)
+	require.Equal(t, uint64(3), stream.slots)
+	require.NotEmpty(t, stream.remoteBuckets["zone2"])
+}
+
+func TestStreamShardStore_MergeIgnoresRecordsOutsideTheRateWindow(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testRateWindow-testBucketSize), 600, 1, 1)
+	require.Equal(t, 0, countTrackedStreams(s))
+}
+
 func TestStreamShardStore_Evict(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
 	push(t, s, 0x1, 1, clock.Now())
@@ -347,22 +628,46 @@ loki_ingest_limits_stream_shard_total_streams{tenant="test"} 4
 	))
 }
 
-func TestCurrentRate(t *testing.T) {
+func TestStreamShardUsage_CurrentRate(t *testing.T) {
 	now := time.Unix(1000, 0)
-	buckets := []shardRateBucket{
-		{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
-		// Outside the rate window: a slot the ring buffer has not reused yet
-		// still holds stale data, which must not be counted.
-		{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
-		{},
+	stream := streamShardUsage{
+		rateBuckets: []shardRateBucket{
+			{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
+			// Outside the rate window: a slot the ring buffer has not reused yet
+			// still holds stale data, which must not be counted.
+			{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
+			{},
+		},
 	}
-	bytesRate, pushRate := currentRate(buckets, now, time.Minute)
+	bytesRate, pushRate := stream.currentRate(now, time.Minute)
 	require.Equal(t, uint64(10), bytesRate)
 	require.InDelta(t, 0.05, pushRate, 0.001)
 
-	bytesRate, pushRate = currentRate(buckets, now, 0)
+	bytesRate, pushRate = stream.currentRate(now, 0)
 	require.Zero(t, bytesRate)
 	require.Zero(t, pushRate)
+}
+
+func TestStreamShardUsage_CurrentRate_AllZones(t *testing.T) {
+	now := time.Unix(1000, 0)
+	stream := streamShardUsage{
+		rateBuckets: []shardRateBucket{
+			{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 600, pushes: 3},
+		},
+		remoteBuckets: map[string][]shardRateBucket{
+			"zone2": {
+				{timestamp: now.Add(-30 * time.Second).UnixNano(), size: 300, pushes: 2},
+				{timestamp: now.Add(-2 * time.Minute).UnixNano(), size: 6000, pushes: 30},
+			},
+			"zone3": {
+				{timestamp: now.Add(-10 * time.Second).UnixNano(), size: 300, pushes: 1},
+			},
+		},
+	}
+	// 1200 bytes and 6 pushes over a minute, the stale bucket excluded.
+	bytesRate, pushRate := stream.currentRate(now, time.Minute)
+	require.Equal(t, uint64(20), bytesRate)
+	require.InDelta(t, 0.1, pushRate, 0.001)
 }
 
 func TestCeilDivU32(t *testing.T) {
@@ -385,7 +690,7 @@ func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
 				ShardStreamsConfig: shardstreams.Config{Enabled: true},
 			}
 			require.NoError(b, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
-			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, limits, prometheus.NewRegistry())
+			s, err := newStreamShardStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, testZone, true, limits, prometheus.NewRegistry())
 			require.NoError(b, err)
 
 			now := time.Now()
@@ -396,7 +701,8 @@ func BenchmarkStreamShardStore_CheckAndShard(b *testing.B) {
 					TotalSize:  1024,
 				})
 			}
-			require.Len(b, s.checkAndShard(b.Context(), "test", metadata, now), streamsInBucket)
+			results, _ := s.checkAndShard(b.Context(), "test", metadata, now)
+			require.Len(b, results, streamsInBucket)
 
 			one := metadata[:1]
 			b.ResetTimer()

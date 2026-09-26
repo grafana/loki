@@ -28,6 +28,9 @@ type consumer struct {
 	client           kafkaConsumer
 	partitionManager *partitionManager
 	usage            *usageStore
+	// streamShards is nil when stream sharding durability is disabled, in
+	// which case the rate buckets in records are ignored.
+	streamShards *streamShardStore
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
 	readinessCheck partitionReadinessCheck
@@ -50,6 +53,7 @@ func newConsumer(
 	client kafkaConsumer,
 	partitionManager *partitionManager,
 	usage *usageStore,
+	streamShards *streamShardStore,
 	readinessCheck partitionReadinessCheck,
 	zone string,
 	logger log.Logger,
@@ -59,6 +63,7 @@ func newConsumer(
 		client:           client,
 		partitionManager: partitionManager,
 		usage:            usage,
+		streamShards:     streamShards,
 		readinessCheck:   readinessCheck,
 		zone:             zone,
 		logger:           logger,
@@ -175,6 +180,9 @@ func (c *consumer) processRecord(_ context.Context, state partitionState, r *kgo
 	if c.shouldDiscardRecord(state, &s) {
 		c.recordsDiscarded.Inc()
 		return nil
+	}
+	if c.streamShards != nil {
+		c.streamShards.merge(s.Tenant, &s)
 	}
 	if err := c.usage.Update(s.Tenant, s.Metadata, r.Timestamp); err != nil {
 		if errors.Is(err, errOutsideActiveWindow) {

@@ -53,6 +53,12 @@ type streamShardStore struct {
 	bucketSize    time.Duration
 	numBuckets    int
 	numPartitions int
+	// zone is this instance's zone. It tells a merged record apart from
+	// another zone's, see merge.
+	zone string
+	// durabilityEnabled makes checkAndShard return the records that keep the
+	// rate buckets across restarts, see [Config.StreamShardingDurabilityEnabled].
+	durabilityEnabled bool
 
 	stripes []map[string]streamShardTenantUsage
 	locks   []stripeLock
@@ -90,6 +96,22 @@ type streamShardUsage struct {
 	policy      string
 	rateBuckets []shardRateBucket
 
+	// lastProducedBucket is the start of the most recent rate bucket written
+	// to the metadata topic, and bounds the records this stream produces to
+	// one per bucket.
+	lastProducedBucket int64
+
+	// remoteBuckets holds the rate buckets of the other zones, keyed by zone,
+	// as merged from their records. Rates are kept per zone rather than as a
+	// single aggregate so that merging a record is an assignment and not an
+	// addition, which is what makes replay idempotent.
+	//
+	// It is nil until another zone's record is merged. The frontend tries
+	// zones in a fixed order, so in steady state a stream is answered by one
+	// zone, which pays for the local ring only, while the other zones pay for
+	// one map entry each.
+	remoteBuckets map[string][]shardRateBucket
+
 	// slots is the budget this stream consumes: one per live shard, with a
 	// floor of one so a tracked unsharded stream still counts as one stream.
 	slots uint64
@@ -114,17 +136,19 @@ type shardRateBucket struct {
 	pushes    uint64
 }
 
-func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, limits Limits, reg prometheus.Registerer) (*streamShardStore, error) {
+func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, numPartitions int, zone string, durabilityEnabled bool, limits Limits, reg prometheus.Registerer) (*streamShardStore, error) {
 	s := &streamShardStore{
-		activeWindow:  activeWindow,
-		rateWindow:    rateWindow,
-		bucketSize:    bucketSize,
-		numBuckets:    int(rateWindow / bucketSize),
-		numPartitions: numPartitions,
-		stripes:       make([]map[string]streamShardTenantUsage, numStripes),
-		locks:         make([]stripeLock, numStripes),
-		limits:        limits,
-		clock:         quartz.NewReal(),
+		activeWindow:      activeWindow,
+		rateWindow:        rateWindow,
+		bucketSize:        bucketSize,
+		numBuckets:        int(rateWindow / bucketSize),
+		numPartitions:     numPartitions,
+		zone:              zone,
+		durabilityEnabled: durabilityEnabled,
+		stripes:           make([]map[string]streamShardTenantUsage, numStripes),
+		locks:             make([]stripeLock, numStripes),
+		limits:            limits,
+		clock:             quartz.NewReal(),
 	}
 	for i := range s.stripes {
 		s.stripes[i] = make(map[string]streamShardTenantUsage)
@@ -151,10 +175,14 @@ func newStreamShardStore(activeWindow, rateWindow, bucketSize time.Duration, num
 //     observed or has gone idle, gets one shard. There is no rate to
 //     amortize this push over, so nothing distinguishes a burst from
 //     sustained load.
-func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) []*proto.StreamShardResult {
+//
+// The second return value holds the records the caller should produce to keep
+// the decisions durable, and is always empty when durability is disabled.
+func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]*proto.StreamShardResult, []*proto.StreamMetadataRecord) {
 	var (
-		cutoff  = seenAt.Add(-s.activeWindow).UnixNano()
-		results = make([]*proto.StreamShardResult, 0, len(metadata))
+		cutoff    = seenAt.Add(-s.activeWindow).UnixNano()
+		results   = make([]*proto.StreamShardResult, 0, len(metadata))
+		toProduce []*proto.StreamMetadataRecord
 	)
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
@@ -235,7 +263,7 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 				// the whole push.
 				var pushRate float64
 				window := clampShardRateWindow(shardCfg.LimitsServiceStreamShardingRateWindow, s.bucketSize, s.rateWindow)
-				evaluatedRate, pushRate = currentRate(existing.rateBuckets, seenAt, window)
+				evaluatedRate, pushRate = existing.currentRate(seenAt, window)
 				s.updateRateBucket(&stream, m.TotalSize, seenAt)
 				if pushRate == 0 {
 					// No traffic observed in the rate window, so there is no
@@ -273,6 +301,9 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			stream.shardCount = granted
 			stream.lastSeenAt = max(seenAt.UnixNano(), stream.lastSeenAt)
 			stream.shardLastUsed = refreshLiveShards(stream.shardLastUsed, granted, seenAt.UnixNano())
+			if rec := s.recordToProduce(&stream, tenant, m, seenAt); rec != nil {
+				toProduce = append(toProduce, rec)
+			}
 			bucket.put(stream, cutoff)
 
 			results = append(results, &proto.StreamShardResult{
@@ -285,7 +316,155 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 			})
 		}
 	})
-	return results
+	return results, toProduce
+}
+
+// recordToProduce returns the record for the newest complete rate bucket the
+// stream has not published yet, or nil when there is nothing new to produce,
+// and marks that bucket as produced.
+//
+// A complete bucket is published rather than the one in flight, so that a
+// stream produces one record per bucket and the value it carries is final.
+// The cost is that a restart loses up to one bucket of the newest traffic,
+// which understates the rate by at most one bucket's share of the rate
+// window. Publishing the bucket in flight instead would either cost a record
+// per push or, throttled to one record per bucket, publish a value that
+// stops at the bucket's first push.
+//
+// The bucket published is the one holding the previous push, which is not
+// always the immediate predecessor of the current one: a stream pushed to
+// less often than once per bucket leaves gaps. Publishing only the immediate
+// predecessor would drop every bucket of such a stream, so it would never
+// restore any rate at all. Since a push publishes at most one bucket either
+// way, closing the gap costs no extra records.
+func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant string, m *proto.StreamMetadata, seenAt time.Time) *proto.StreamMetadataRecord {
+	if !s.durabilityEnabled {
+		return nil
+	}
+	lastComplete := seenAt.Truncate(s.bucketSize).Add(-s.bucketSize).UnixNano()
+	if stream.lastProducedBucket >= lastComplete {
+		return nil
+	}
+	// Scan the ring for the newest bucket that is complete, has traffic, is
+	// newer than the last one published, and still falls in the rate window.
+	// The window test uses the same cutoff as currentRate and merge, so a
+	// bucket a consumer would drop as too old is not produced at all.
+	cutoff := seenAt.Add(-s.rateWindow).UnixNano()
+	var b shardRateBucket
+	for _, candidate := range stream.rateBuckets {
+		if candidate.pushes == 0 || candidate.timestamp > lastComplete || candidate.timestamp < cutoff {
+			continue
+		}
+		if candidate.timestamp > stream.lastProducedBucket && candidate.timestamp > b.timestamp {
+			b = candidate
+		}
+	}
+	if b.pushes == 0 {
+		return nil
+	}
+	stream.lastProducedBucket = b.timestamp
+	return &proto.StreamMetadataRecord{
+		Tenant: tenant,
+		Metadata: &proto.StreamMetadata{
+			StreamHash:      m.StreamHash,
+			IngestionPolicy: m.IngestionPolicy,
+		},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: b.timestamp,
+			Size_:       b.size,
+			Pushes:      b.pushes,
+		},
+		ShardCount: stream.shardCount,
+	}
+}
+
+// merge applies a record produced by this or another zone, restoring the
+// rate history and the shard footprint the producing zone had when it wrote
+// the record. It is how a restarted instance, or an instance that has just
+// been assigned a partition, avoids the warm-up window in which every stream
+// looks brand new and gets a single shard.
+//
+// The record states the producing zone's absolute totals for one rate bucket,
+// so merging is not additive and a record can be applied any number of times.
+// Where a bucket is already tracked for that zone, the larger totals win:
+// within a bucket a zone's totals only grow, so this is independent of the
+// order records arrive in, and it cannot regress a ring that holds fresher
+// pushes than the record does. That covers replaying our own records into a
+// store that is already serving, and a record produced by the previous owner
+// of a partition landing after the new owner's.
+//
+// Records older than the rate window are ignored: they carry no rate that
+// still counts, and tracking the stream for its footprint alone would keep
+// idle streams in memory for the rest of the active window. The cost is that
+// the stream count budget is not restored for streams that have been idle
+// for longer than a rate window.
+func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord) {
+	if rec.Metadata == nil || rec.ShardRateBucket == nil {
+		return
+	}
+	var (
+		now         = s.clock.Now()
+		bucketStart = rec.ShardRateBucket.BucketStart
+	)
+	if bucketStart < now.Add(-s.rateWindow).UnixNano() {
+		return
+	}
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
+	var (
+		hash      = rec.Metadata.StreamHash
+		partition = s.getPartitionForHash(hash)
+		cutoff    = now.Add(-s.activeWindow).UnixNano()
+	)
+	s.withLock(tenant, func(i int) {
+		bucket := s.checkInitMap(i, tenant, partition, policyBucket)
+		stream := bucket.streams[hash]
+		stream.hash = hash
+		stream.policy = policyBucket
+		if rec.Zone == s.zone {
+			stream.rateBuckets = s.mergeRateBucket(stream.rateBuckets, rec.ShardRateBucket)
+			// The topic already holds a record for this bucket, so advance the
+			// produce cursor to keep the one-record-per-bucket bound across a
+			// restart or a change of partition owner. A record is only ever
+			// written for a complete bucket, so this cannot suppress a bucket
+			// that is still accumulating pushes.
+			stream.lastProducedBucket = max(stream.lastProducedBucket, bucketStart)
+		} else {
+			if stream.remoteBuckets == nil {
+				stream.remoteBuckets = make(map[string][]shardRateBucket, 1)
+			}
+			stream.remoteBuckets[rec.Zone] = s.mergeRateBucket(stream.remoteBuckets[rec.Zone], rec.ShardRateBucket)
+		}
+		// The record's shard count is only adopted when the record is newer
+		// than anything we know about the stream. Otherwise a replayed record
+		// would age the footprint of a stream that has been pushed to since,
+		// and shrink it back to a count that has already grown.
+		if bucketStart > stream.lastSeenAt {
+			stream.lastSeenAt = bucketStart
+			stream.shardCount = rec.ShardCount
+			stream.shardLastUsed = refreshLiveShards(stream.shardLastUsed, rec.ShardCount, bucketStart)
+		}
+		bucket.put(stream, cutoff)
+	})
+}
+
+// mergeRateBucket writes the record's bucket into the ring, allocating it if
+// needed, and returns it.
+func (s *streamShardStore) mergeRateBucket(buckets []shardRateBucket, in *proto.ShardRateBucket) []shardRateBucket {
+	if len(buckets) == 0 {
+		buckets = make([]shardRateBucket, s.numBuckets)
+	}
+	idx := int((in.BucketStart / int64(s.bucketSize)) % int64(s.numBuckets))
+	b := buckets[idx]
+	switch {
+	case b.timestamp < in.BucketStart:
+		// A newer bucket reusing the slot: replace it rather than merge.
+		b = shardRateBucket{timestamp: in.BucketStart, size: in.Size_, pushes: in.Pushes}
+	case b.timestamp == in.BucketStart:
+		b.size = max(b.size, in.Size_)
+		b.pushes = max(b.pushes, in.Pushes)
+	}
+	buckets[idx] = b
+	return buckets
 }
 
 // Evict evicts all streams that have not been seen within the active window,
@@ -500,24 +679,35 @@ func refreshLiveShards(shardLastUsed []int64, count uint32, now int64) []int64 {
 }
 
 // currentRate returns the windowed average byte rate and push rate per
-// second, using the same approach as Service.UpdateRates.
-func currentRate(buckets []shardRateBucket, now time.Time, rateWindow time.Duration) (bytesRate uint64, pushRate float64) {
+// second over all zones, using the same approach as Service.UpdateRates.
+// Summing the zones gives the stream's full rate even while the frontend is
+// spreading its pushes over more than one zone.
+func (s streamShardUsage) currentRate(now time.Time, rateWindow time.Duration) (bytesRate uint64, pushRate float64) {
 	seconds := rateWindow.Seconds()
 	if seconds <= 0 {
 		return 0, 0
 	}
-	// Sum only the buckets still inside the rate window. The ring buffer
-	// resets a slot when it is reused, so a slot not touched this window
-	// still holds stale data that must be skipped rather than counted.
 	cutoff := now.Add(-rateWindow).UnixNano()
-	var totalBytes, totalPushes uint64
+	totalBytes, totalPushes := sumRateBuckets(s.rateBuckets, cutoff)
+	for _, buckets := range s.remoteBuckets {
+		bytes, pushes := sumRateBuckets(buckets, cutoff)
+		totalBytes += bytes
+		totalPushes += pushes
+	}
+	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
+}
+
+// sumRateBuckets sums the buckets that start at or after cutoff. The ring
+// buffer resets a slot when it is reused, so a slot not touched this window
+// still holds stale data that must be skipped rather than counted.
+func sumRateBuckets(buckets []shardRateBucket, cutoff int64) (totalBytes, totalPushes uint64) {
 	for _, b := range buckets {
 		if b.timestamp >= cutoff {
 			totalBytes += b.size
 			totalPushes += b.pushes
 		}
 	}
-	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
+	return totalBytes, totalPushes
 }
 
 // clampShardRateWindow resolves the window the rate is averaged over for the

@@ -40,10 +40,28 @@ message StreamMetadata {
   string ingestionPolicy = 3;
 }
 
+// ShardRateBucket is the absolute total a single zone observed for a single
+// stream in a single rate bucket. It is not a delta: consumers merge it by
+// assignment, keyed by (stream, zone, bucketStart), so applying a record
+// more than once is a no-op and replay cannot double-count.
+message ShardRateBucket {
+  // Start of the bucket in unix nanoseconds, truncated to the bucket size.
+  int64 bucketStart = 1;
+  uint64 size = 2;
+  uint64 pushes = 3;
+}
+
 message StreamMetadataRecord {
   string zone = 1;
   string tenant = 2;
   StreamMetadata metadata = 3;
+  // The rate bucket the producing zone was in when it wrote this record.
+  // Optional: only set by the stream sharding path, and only when stream
+  // sharding durability is enabled.
+  ShardRateBucket shardRateBucket = 4;
+  // The shard count the producing zone last granted this stream. Restores
+  // the stream count budget on replay.
+  uint32 shardCount = 5;
 }
 
 message CheckLimitsAndShardRequest {

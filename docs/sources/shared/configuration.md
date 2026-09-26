@@ -1847,6 +1847,13 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
+  # Enable durability for stream sharding. Rate buckets are written to the
+  # stream metadata topic and restored from it, which removes the warm-up period
+  # after a restart or a partition rebalance during which streams are not
+  # sharded. It adds one record per stream per bucket size.
+  # CLI flag: -ingest-limits.stream-sharding-durability-enabled
+  [stream_sharding_durability_enabled: <boolean> | default = false]
+
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
   # CLI flag: -ingest-limits.num-partitions

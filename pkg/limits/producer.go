@@ -60,21 +60,28 @@ func newProducer(client kafkaProducer, topic string, numPartitions int, zone str
 // and pushes it to the metadata topic. It does not wait for the push to
 // complete.
 func (p *producer) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
-	v := proto.StreamMetadataRecord{
-		Zone:     p.zone,
+	return p.ProduceRecord(ctx, &proto.StreamMetadataRecord{
 		Tenant:   tenant,
 		Metadata: metadata,
-	}
-	b, err := v.Marshal()
+	})
+}
+
+// ProduceRecord pushes a prepared record to the metadata topic. The zone is
+// always set by the producer, as the consumer relies on it to tell its own
+// records apart from the other zones'. It does not wait for the push to
+// complete.
+func (p *producer) ProduceRecord(ctx context.Context, rec *proto.StreamMetadataRecord) error {
+	rec.Zone = p.zone
+	b, err := rec.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed to marshal proto: %w", err)
 	}
 	// The stream metadata topic expects a fixed number of partitions,
 	// the size of which is determined ahead of time. Streams are
 	// sharded over partitions using a simple mod.
-	partition := int32(metadata.StreamHash % uint64(p.numPartitions))
+	partition := int32(rec.Metadata.StreamHash % uint64(p.numPartitions))
 	r := kgo.Record{
-		Key:       []byte(tenant),
+		Key:       []byte(rec.Tenant),
 		Value:     b,
 		Topic:     p.topic,
 		Partition: partition,
