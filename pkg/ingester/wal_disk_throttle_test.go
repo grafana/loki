@@ -64,7 +64,7 @@ func TestWALDiskThrottleInterface(t *testing.T) {
 	})
 }
 
-// TestIngesterPushWithDiskThrottle verifies that Push returns ErrReadOnly when disk is throttled
+// TestIngesterPushWithDiskThrottle verifies that Push returns ErrDiskThrottled when disk is throttled
 func TestIngesterPushWithDiskThrottle(t *testing.T) {
 	mockWAL := &mockThrottledWAL{}
 	store, ing := newTestStore(t, defaultIngesterTestConfig(t), mockWAL)
@@ -89,11 +89,11 @@ func TestIngesterPushWithDiskThrottle(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("push returns ErrReadOnly when throttled", func(t *testing.T) {
+	t.Run("push returns ErrDiskThrottled when throttled", func(t *testing.T) {
 		mockWAL.SetThrottled(true)
 		_, err := ing.Push(ctx, req)
 		require.Error(t, err)
-		require.Equal(t, ErrReadOnly, err)
+		require.Equal(t, ErrDiskThrottled, err)
 	})
 
 	t.Run("push succeeds again after throttle is released", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestDiskThrottleWithMultiplePushes(t *testing.T) {
 	// Enable throttle
 	mockWAL.SetThrottled(true)
 
-	// All subsequent pushes should fail with ErrReadOnly
+	// All subsequent pushes should fail with ErrDiskThrottled
 	for i := 0; i < 5; i++ {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
@@ -236,7 +236,7 @@ func TestDiskThrottleWithMultiplePushes(t *testing.T) {
 		}
 		_, err := ing.Push(ctx, req)
 		require.Error(t, err, "push %d should fail when throttled", i)
-		require.Equal(t, ErrReadOnly, err, "push %d should return ErrReadOnly", i)
+		require.Equal(t, ErrDiskThrottled, err, "push %d should return ErrDiskThrottled", i)
 	}
 
 	// Disable throttle
@@ -288,7 +288,7 @@ func TestDiskThrottleDoesNotBlockOtherOperations(t *testing.T) {
 
 	// Verify Push is blocked
 	_, err = ing.Push(ctx, req)
-	require.Equal(t, ErrReadOnly, err)
+	require.Equal(t, ErrDiskThrottled, err)
 
 	// Verify throttling only affects Push operations, not the overall ingester state
 	// The fact that we could successfully push data before throttling proves the ingester is operational
