@@ -405,6 +405,12 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 		stream.policy = policyBucket
 		if rec.Zone == s.zone {
 			stream.rateBuckets = s.mergeRateBucket(stream.rateBuckets, rec.ShardRateBucket)
+			// The topic already holds a record for this bucket, so advance the
+			// produce cursor to keep the one-record-per-bucket bound across a
+			// restart or a change of partition owner. A record is only ever
+			// written for a complete bucket, so this cannot suppress a bucket
+			// that is still accumulating pushes.
+			stream.lastProducedBucket = max(stream.lastProducedBucket, bucketStart)
 		} else {
 			if stream.remoteBuckets == nil {
 				stream.remoteBuckets = make(map[string][]shardRateBucket, 1)

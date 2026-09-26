@@ -423,6 +423,52 @@ func TestStreamShardStore_MergeOwnZoneDoesNotRegressLocalBuckets(t *testing.T) {
 	require.Equal(t, uint64(2), pushes)
 }
 
+func TestStreamShardStore_MergeDoesNotReproduceTheRestoredBucket(t *testing.T) {
+	// The topic already holds the record a store replays for its own zone, so
+	// the replaying store must not write it a second time.
+	warm, clock := newTestStreamShardStore(t, 0, "1KB")
+	cold, _ := newTestStreamShardStore(t, 0, "1KB")
+	cold.clock = clock
+
+	push(t, warm, 0x1, 600, clock.Now())
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, warm, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	produced := toProduce[0].ShardRateBucket.BucketStart
+	for _, rec := range toProduce {
+		rec.Zone = testZone
+		cold.merge("test", rec)
+	}
+	require.Equal(t, produced, trackedStream(t, cold, 0x1).lastProducedBucket)
+
+	// The replaying store is pushed to within the same bucket the record was
+	// written in, which is the only window in which the cursor decides
+	// anything: a later push finds the ring slot reused.
+	_, toProduce = pushWithRecords(t, cold, 0x1, 600, clock.Now())
+	require.Empty(t, toProduce)
+
+	// Buckets that complete after the merge are still produced.
+	clock.Advance(testBucketSize)
+	_, toProduce = pushWithRecords(t, cold, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, produced+int64(testBucketSize), toProduce[0].ShardRateBucket.BucketStart)
+}
+
+func TestStreamShardStore_MergeOtherZoneKeepsTheProduceCursor(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	push(t, s, 0x1, 600, clock.Now())
+	bucketStart := clock.Now().Truncate(testBucketSize).UnixNano()
+	// Another zone's record says nothing about whether this zone has written
+	// its own record for that bucket, so it must not hold ours back.
+	mergeRecord(s, "zone2", 0x1, clock.Now(), 600, 1, 1)
+	require.Zero(t, trackedStream(t, s, 0x1).lastProducedBucket)
+
+	clock.Advance(testBucketSize)
+	_, toProduce := pushWithRecords(t, s, 0x1, 600, clock.Now())
+	require.Len(t, toProduce, 1)
+	require.Equal(t, bucketStart, toProduce[0].ShardRateBucket.BucketStart)
+}
+
 func TestStreamShardStore_MergeKeepsTheFresherFootprint(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
 	track(t, s, streamShardUsage{
