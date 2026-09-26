@@ -61,7 +61,7 @@ func NewLevel() *Level {
 	}
 }
 
-func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Level) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	type plain string
 	if err := unmarshal((*plain)(&s)); err != nil {
