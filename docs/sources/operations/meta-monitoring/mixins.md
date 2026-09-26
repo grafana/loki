@@ -73,6 +73,7 @@ Refer to [Import a dashboard](https://grafana.com/docs/grafana/latest/dashboards
 
 {{< admonition type="note" >}}
 The dashboards and alerts expect your metrics to carry these labels: `cluster`, `namespace`, `job`, `container`, `pod`, and `instance`. The Kubernetes Monitoring Helm chart provides them, because it adds the cluster name as a global label and collects container and node metrics using cAdvisor, kube-state-metrics, and Node Exporter.
+Log panels select streams on `cluster`, `namespace`, and `container`. If your log pipeline labels the component differently, set `per_component_label` in the mixin configuration and regenerate the dashboards; the Logs and Bloom Gateway dashboards still use `container`.
 
 If your setup uses different label names, or does not collect container and node metrics, some panels and alerts show no data until you relabel your metrics to match.
 {{< /admonition >}}

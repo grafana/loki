@@ -55,6 +55,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  then [utils.selector.re('pod', '(querier|loki-single-binary)')]
                                  else [utils.selector.re('pod', 'querier.*')],
                                },
+
+                               // Stream selectors for the log panels, which match on per_component_label
+                               // instead of job because log pipelines don't always index job.
+                               logMatchers:: {
+                                 distributor: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(distributor|loki)' else 'distributor')],
+                                 ingester: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(partition-ingester.*|ingester.*|loki)' else '(ingester.*|partition-ingester.*)')],
+                                 querier: [utils.selector.re($._config.per_component_label, if $._config.meta_monitoring.enabled then '(querier|loki)' else 'querier')],
+                                 backend: [utils.selector.re($._config.per_component_label, 'backend')],
+                               },
                              }
                              + lokiOperational + {
                                annotations:
@@ -182,6 +191,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    replaceMatchers(expr)
                                  ),
 
+                               local logMatcherStr(matcherId) =
+                                 std.join(', ', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].logMatchers[matcherId]]),
+
+                               // Log panels select streams on logMatchers; this runs before replaceAllMatchers
+                               // so their job matchers are gone by the time the metric matchers are replaced.
+                               local replaceLogMatchers(expr) =
+                                 std.foldl(
+                                   function(e, matcherId) std.strReplace(e, 'job="$namespace/%s"' % matcherId, logMatcherStr(matcherId)),
+                                   std.objectFields(dashboards['loki-operational.json'].logMatchers),
+                                   expr
+                                 ),
+
+                               local isLogPanel(panel) =
+                                 std.objectHas(panel, 'datasource') && panel.datasource == '$loki_datasource',
+
+                               local replacePanelMatchers(panel, expr) =
+                                 if isLogPanel(panel) then replaceLogMatchers(expr) else expr,
+
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
                                  else if ds == '$datasource' then '$datasource'
@@ -216,7 +243,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    datasource: selectDatasource(super.datasource),
                                    targets: if std.objectHas(p, 'targets') then [
                                      e {
-                                       expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                       expr: removeInternalComponents(p.title, replaceClusterMatchers(replacePanelMatchers(p, e.expr))),
                                      }
                                      for e in p.targets
                                    ] else [],
@@ -225,7 +252,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                        datasource: selectDatasource(super.datasource),
                                        targets: if std.objectHas(sp, 'targets') then [
                                          e {
-                                           expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                           expr: removeInternalComponents(p.title, replaceClusterMatchers(replacePanelMatchers(sp, e.expr))),
                                          }
                                          for e in sp.targets
                                        ] else [],
@@ -234,7 +261,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                            datasource: selectDatasource(super.datasource),
                                            targets: if std.objectHas(ssp, 'targets') then [
                                              e {
-                                               expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                               expr: removeInternalComponents(p.title, replaceClusterMatchers(replacePanelMatchers(ssp, e.expr))),
                                              }
                                              for e in ssp.targets
                                            ] else [],
