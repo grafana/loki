@@ -25,7 +25,7 @@ import (
 
 var errNaNOrInf = errors.New("value is NaN or Inf")
 
-func ConvertToFloat(i interface{}) (float64, error) {
+func ConvertToFloat(i any) (float64, error) {
 	switch v := i.(type) {
 	case float64:
 		return v, nil
@@ -58,7 +58,7 @@ func FloatToTime(v float64) (*time.Time, error) {
 	return &t, nil
 }
 
-func HumanizeDuration(i interface{}) (string, error) {
+func HumanizeDuration(i any) (string, error) {
 	v, err := ConvertToFloat(i)
 	if err != nil {
 		return "", err
@@ -105,7 +105,7 @@ func HumanizeDuration(i interface{}) (string, error) {
 	return fmt.Sprintf("%.4g%ss", v, prefix), nil
 }
 
-func HumanizeTimestamp(i interface{}) (string, error) {
+func HumanizeTimestamp(i any) (string, error) {
 	v, err := ConvertToFloat(i)
 	if err != nil {
 		return "", err

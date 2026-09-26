@@ -380,7 +380,9 @@ const (
 	epBuildinfo       = apiPrefix + "/status/buildinfo"
 	epRuntimeinfo     = apiPrefix + "/status/runtimeinfo"
 	epTSDB            = apiPrefix + "/status/tsdb"
+	epTSDBBlocks      = apiPrefix + "/status/tsdb/blocks"
 	epWalReplay       = apiPrefix + "/status/walreplay"
+	epFormatQuery     = apiPrefix + "/format_query"
 )
 
 // AlertState models the state of an alert.
@@ -475,7 +477,7 @@ type API interface {
 	// Flags returns the flag values that Prometheus was launched with.
 	Flags(ctx context.Context) (FlagsResult, error)
 	// LabelNames returns the unique label names present in the block in sorted order by given time range and matchers.
-	LabelNames(ctx context.Context, matches []string, startTime, endTime time.Time, opts ...Option) ([]string, Warnings, error)
+	LabelNames(ctx context.Context, matches []string, startTime, endTime time.Time, opts ...Option) (model.LabelNames, Warnings, error)
 	// LabelValues performs a query for the values of the given label, time range and matchers.
 	LabelValues(ctx context.Context, label string, matches []string, startTime, endTime time.Time, opts ...Option) (model.LabelValues, Warnings, error)
 	// Query performs a query for the given time.
@@ -494,7 +496,7 @@ type API interface {
 	// under the TSDB's data directory and returns the directory as response.
 	Snapshot(ctx context.Context, skipHead bool) (SnapshotResult, error)
 	// Rules returns a list of alerting and recording rules that are currently loaded.
-	Rules(ctx context.Context) (RulesResult, error)
+	Rules(ctx context.Context, matches []string) (RulesResult, error)
 	// Targets returns an overview of the current state of the Prometheus target discovery.
 	Targets(ctx context.Context) (TargetsResult, error)
 	// TargetsMetadata returns metadata about metrics currently scraped by the target.
@@ -503,8 +505,12 @@ type API interface {
 	Metadata(ctx context.Context, metric, limit string) (map[string][]Metadata, error)
 	// TSDB returns the cardinality statistics.
 	TSDB(ctx context.Context, opts ...Option) (TSDBResult, error)
+	// TSDBBlocks returns the list of currently loaded TSDB blocks and their metadata.
+	TSDBBlocks(ctx context.Context) (TSDBBlocksResult, error)
 	// WalReplay returns the current replay status of the wal.
 	WalReplay(ctx context.Context) (WalReplayStatus, error)
+	// FormatQuery formats a PromQL expression in a prettified way.
+	FormatQuery(ctx context.Context, query string) (string, error)
 }
 
 // AlertsResult contains the result from querying the alerts endpoint.
@@ -586,7 +592,7 @@ type RuleGroup struct {
 //	default:
 //		fmt.Printf("unknown rule type %s", v)
 //	}
-type Rules []interface{}
+type Rules []any
 
 // AlertingRule models a alerting rule.
 type AlertingRule struct {
@@ -666,7 +672,7 @@ type Metadata struct {
 // queryResult contains result data for a query.
 type queryResult struct {
 	Type   model.ValueType `json:"resultType"`
-	Result interface{}     `json:"result"`
+	Result any             `json:"result"`
 
 	// The decoded value.
 	v model.Value
@@ -688,6 +694,40 @@ type TSDBHeadStats struct {
 	ChunkCount    int `json:"chunkCount"`
 	MinTime       int `json:"minTime"`
 	MaxTime       int `json:"maxTime"`
+}
+
+// TSDBBlocksResult contains the results from querying the tsdb blocks endpoint.
+type TSDBBlocksResult struct {
+	Status string         `json:"status"`
+	Data   TSDBBlocksData `json:"data"`
+}
+
+// TSDBBlocksData contains the metadata for the tsdb blocks.
+type TSDBBlocksData struct {
+	Blocks []TSDBBlocksBlockMetadata `json:"blocks"`
+}
+
+// TSDBBlocksBlockMetadata contains the metadata for a single tsdb block.
+type TSDBBlocksBlockMetadata struct {
+	Ulid       string               `json:"ulid"`
+	MinTime    int64                `json:"minTime"`
+	MaxTime    int64                `json:"maxTime"`
+	Stats      TSDBBlocksStats      `json:"stats"`
+	Compaction TSDBBlocksCompaction `json:"compaction"`
+	Version    int                  `json:"version"`
+}
+
+// TSDBBlocksStats contains block stats for a single tsdb block.
+type TSDBBlocksStats struct {
+	NumSamples int `json:"numSamples"`
+	NumSeries  int `json:"numSeries"`
+	NumChunks  int `json:"numChunks"`
+}
+
+// TSDBBlocksCompaction contains block compaction details for a single block.
+type TSDBBlocksCompaction struct {
+	Level   int      `json:"level"`
+	Sources []string `json:"sources"`
 }
 
 // WalReplayStatus represents the wal replay status.
@@ -1024,7 +1064,7 @@ func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
 	return res, err
 }
 
-func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime, endTime time.Time, opts ...Option) ([]string, Warnings, error) {
+func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime, endTime time.Time, opts ...Option) (model.LabelNames, Warnings, error) {
 	u := h.client.URL(epLabels, nil)
 	q := addOptionalURLParams(u.Query(), opts)
 
@@ -1042,7 +1082,7 @@ func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime, e
 	if err != nil {
 		return nil, w, err
 	}
-	var labelNames []string
+	var labelNames model.LabelNames
 	err = json.Unmarshal(body, &labelNames)
 	return labelNames, w, err
 }
@@ -1235,8 +1275,15 @@ func (h *httpAPI) Snapshot(ctx context.Context, skipHead bool) (SnapshotResult, 
 	return res, err
 }
 
-func (h *httpAPI) Rules(ctx context.Context) (RulesResult, error) {
+func (h *httpAPI) Rules(ctx context.Context, matches []string) (RulesResult, error) {
 	u := h.client.URL(epRules, nil)
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -1340,6 +1387,24 @@ func (h *httpAPI) TSDB(ctx context.Context, opts ...Option) (TSDBResult, error) 
 	return res, err
 }
 
+func (h *httpAPI) TSDBBlocks(ctx context.Context) (TSDBBlocksResult, error) {
+	u := h.client.URL(epTSDBBlocks, nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return TSDBBlocksResult{}, err
+	}
+
+	_, body, _, err := h.client.Do(ctx, req)
+	if err != nil {
+		return TSDBBlocksResult{}, err
+	}
+
+	var res TSDBBlocksResult
+	err = json.Unmarshal(body, &res)
+	return res, err
+}
+
 func (h *httpAPI) WalReplay(ctx context.Context) (WalReplayStatus, error) {
 	u := h.client.URL(epWalReplay, nil)
 
@@ -1378,6 +1443,19 @@ func (h *httpAPI) QueryExemplars(ctx context.Context, query string, startTime, e
 	var res []ExemplarQueryResult
 	err = json.Unmarshal(body, &res)
 	return res, err
+}
+
+func (h *httpAPI) FormatQuery(ctx context.Context, query string) (string, error) {
+	u := h.client.URL(epFormatQuery, nil)
+	q := u.Query()
+	q.Set("query", query)
+
+	_, body, _, err := h.client.DoGetFallback(ctx, u, q)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
 }
 
 // Warnings is an array of non critical errors
@@ -1467,8 +1545,8 @@ func (h *apiClientImpl) Do(ctx context.Context, req *http.Request) (*http.Respon
 	return resp, []byte(result.Data), result.Warnings, err
 }
 
-// DoGetFallback will attempt to do the request as-is, and on a 405 or 501 it
-// will fallback to a GET request.
+// DoGetFallback will attempt to do the request as-is, and on a 403, 405, or
+// 501 it will fallback to a GET request.
 func (h *apiClientImpl) DoGetFallback(ctx context.Context, u *url.URL, args url.Values) (*http.Response, []byte, Warnings, error) {
 	encodedArgs := args.Encode()
 	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(encodedArgs))
@@ -1486,7 +1564,7 @@ func (h *apiClientImpl) DoGetFallback(ctx context.Context, u *url.URL, args url.
 	req.Header["Idempotency-Key"] = nil
 
 	resp, body, warnings, err := h.Do(ctx, req)
-	if resp != nil && (resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented) {
+	if resp != nil && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented) {
 		u.RawQuery = encodedArgs
 		req, err = http.NewRequest(http.MethodGet, u.String(), nil)
 		if err != nil {
