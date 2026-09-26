@@ -75,6 +75,19 @@ Refer to [Import a dashboard](https://grafana.com/docs/grafana/latest/dashboards
 The dashboards and alerts expect your metrics to carry these labels: `cluster`, `namespace`, `job`, `container`, `pod`, and `instance`. The Kubernetes Monitoring Helm chart provides them, because it adds the cluster name as a global label and collects container and node metrics using cAdvisor, kube-state-metrics, and Node Exporter.
 
 If your setup uses different label names, or does not collect container and node metrics, some panels and alerts show no data until you relabel your metrics to match.
+
+The dashboards expect `job` values of the form `<namespace>/<component>`, for example `loki/distributor`.
+If your jobs carry a prefix, for example `loki/loki-distributor` from the ServiceMonitor in the Loki Helm chart, set `job_prefix` in the mixin configuration and regenerate the dashboards instead of relabeling:
+
+```jsonnet
+(import 'mixin.libsonnet') + {
+  _config+:: {
+    job_prefix: '($namespace)/loki-',
+  },
+}
+```
+
+The Bloom Build and Bloom Gateway dashboards don't use `job_prefix` yet.
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}
