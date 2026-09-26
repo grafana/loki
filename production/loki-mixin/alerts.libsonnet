@@ -85,6 +85,7 @@
             'for': '1h',
             labels: {
               severity: 'critical',
+              reason: 'since-last-compaction',
             },
             annotations: {
               summary: 'Loki compaction has not run in the last 3 hours since the last compaction.',
@@ -109,6 +110,7 @@
             'for': '1h',
             labels: {
               severity: 'critical',
+              reason: 'since-startup',
             },
             annotations: {
               summary: 'Loki compaction has not run in the last 3h since startup.',

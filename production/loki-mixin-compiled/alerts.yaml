@@ -58,6 +58,7 @@ groups:
             > 60 * 60 * 3
           for: 1h
           labels:
+            reason: since-last-compaction
             severity: critical
         - alert: LokiCompactorHasNotSuccessfullyRunCompaction
           annotations:
@@ -75,4 +76,5 @@ groups:
             == 0
           for: 1h
           labels:
+            reason: since-startup
             severity: critical
