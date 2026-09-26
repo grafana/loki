@@ -1705,16 +1705,12 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
 	// This should be fixed in the future.
-	var err error
-	t.Cfg.MemberlistKV.AdvertiseAddr, err = ring.GetInstanceAddr(
+	t.Cfg.MemberlistKV.AdvertiseAddr = memberlistAdvertiseAddr(
 		t.Cfg.MemberlistKV.AdvertiseAddr,
 		t.Cfg.Common.Ring.InstanceInterfaceNames,
 		util_log.Logger,
 		t.Cfg.Common.Ring.EnableIPv6,
 	)
-	if err != nil {
-		return nil, err
-	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
 
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -1738,6 +1734,20 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	}
 
 	return t.MemberlistKV, nil
+}
+
+// memberlistAdvertiseAddr resolves the address memberlist advertises to other members.
+// Memberlist is only started when a KV store actually uses it, so a failed lookup is not
+// fatal here: the address is left unset and memberlist falls back to its own address
+// detection if it is used. This keeps deployments that don't use memberlist (e.g. inmemory
+// kvstore) from failing to start on hosts without a usable address on the configured interfaces.
+func memberlistAdvertiseAddr(configAddr string, netInterfaces []string, logger log.Logger, enableInet6 bool) string {
+	addr, err := ring.GetInstanceAddr(configAddr, netInterfaces, logger, enableInet6)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to resolve memberlist advertise address from configured interfaces, memberlist will fall back to its own address detection if used; set memberlist.advertise_addr to avoid this", "err", err)
+		return ""
+	}
+	return addr
 }
 
 func (t *Loki) initCompactorWorkerMode() (services.Service, error) {
