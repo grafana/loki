@@ -368,29 +368,26 @@ func (ko *Koanf) Get(path string) any {
 	return out
 }
 
-// Slices returns a list of Koanf instances constructed out of a
-// []map[string]any interface at the given path.
+// Slices returns a list of Koanf instances constructed from the value
+// at path. It accepts []map[string]any or []any containing map[string]any
+// elements. Non-slice elements are skipped.
 func (ko *Koanf) Slices(path string) []*Koanf {
 	out := []*Koanf{}
 	if path == "" {
 		return out
 	}
 
-	// Does the path exist?
-	sl, ok := ko.Get(path).([]any)
-	if !ok {
-		return out
-	}
-
-	for _, s := range sl {
-		mp, ok := s.(map[string]any)
-		if !ok {
-			continue
+	switch v := ko.Get(path).(type) {
+	case []map[string]any:
+		for _, mp := range v {
+			out = ko.appendMap(mp, out)
 		}
-
-		k := New(ko.conf.Delim)
-		_ = k.merge(mp, new(options))
-		out = append(out, k)
+	case []any:
+		for _, item := range v {
+			if mp, ok := item.(map[string]any); ok {
+				out = ko.appendMap(mp, out)
+			}
+		}
 	}
 
 	return out
@@ -655,4 +652,11 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFuncType {
 		}
 		return result, nil
 	}
+}
+
+// appendMap creates new Koanf instances from a map returns a slice of Koanf instances.
+func (ko *Koanf) appendMap(mp map[string]any, out []*Koanf) []*Koanf {
+	k := New(ko.conf.Delim)
+	_ = k.merge(mp, new(options))
+	return append(out, k)
 }
