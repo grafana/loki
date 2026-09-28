@@ -895,6 +895,28 @@ Common triggers include:
 - HTTP status: 499 (non-standard, client closed request)
 - Configurable per tenant: No
 
+### Error: Gateway keepalive failure (Grafana Cloud only)
+
+**Error message:**
+
+`rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout`
+
+**Cause:**
+
+On Grafana Cloud, push requests pass through a gateway/proxy layer in front of Loki. This error means that layer's own outbound connection to its backend missed a gRPC keepalive ping — a transient connectivity problem between the gateway and its backend, not something in the open-source Loki codebase. Self-hosted Loki does not have this component in the request path and will not produce this error.
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client; this is a transient condition.
+* **Contact Grafana Support** if this recurs, with the timestamp and tenant ID — the gateway's reconnection behavior is outside this repository.
+
+**Properties:**
+
+- Enforced by: Grafana Cloud gateway (not part of `grafana/loki`)
+- Retryable: Yes
+- HTTP status: 502 Bad Gateway
+- Configurable per tenant: No
+
 ### Error: Service unavailable
 
 **Error message:**
