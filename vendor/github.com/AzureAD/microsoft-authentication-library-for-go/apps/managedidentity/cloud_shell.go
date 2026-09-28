@@ -25,6 +25,7 @@ func createCloudShellAuthRequest(ctx context.Context, resource string) (*http.Re
 	msiDataEncoded := data.Encode()
 	body := io.NopCloser(strings.NewReader(msiDataEncoded))
 
+	// #nosec G704 -- MSI_ENDPOINT is supplied by the Cloud Shell managed identity host.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msiEndpointParsed.String(), body)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http request %s", err)
