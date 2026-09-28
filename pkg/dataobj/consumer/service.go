@@ -18,6 +18,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -37,7 +39,6 @@ const (
 type Service struct {
 	services.Service
 	cfg                         Config
-	metastoreEvents             *kgo.Client
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	consumer                    *kafkav2.SinglePartitionConsumer
@@ -51,7 +52,7 @@ type Service struct {
 	reg                         prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{
@@ -59,19 +60,6 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger: logger,
 		reg:    reg,
 	}
-
-	// Set up the Kafka client that produces events for the metastore. This
-	// must be done before we can set up the client that consumes records
-	// from distributors, as the code that consumes these records from also
-	// needs to be able to produce metastore events.
-	metastoreEventsCfg := kafkaCfg
-	metastoreEventsCfg.Topic = "loki.metastore-events"
-	metastoreEventsCfg.AutoCreateTopicDefaultPartitions = 1
-	metastoreEvents, err := client.NewWriterClient("loki.metastore-events", metastoreEventsCfg, logger, reg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create client for metastore events topic: %w", err)
-	}
-	s.metastoreEvents = metastoreEvents
 
 	// Set up the ring.
 	lifecycler, err := ring.NewLifecycler(
@@ -153,7 +141,13 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	err = builderMetrics.Register(wrapped)
+	// The logs and index builders share the same section and encoding
+	// collectors, so both must carry a component label. Registering only one of
+	// them with it makes the label names differ for the same metric name, which
+	// the Prometheus registry rejects.
+	logsReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "logs"}, wrapped)
+	indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index"}, wrapped)
+	err = builderMetrics.Register(logsReg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
@@ -163,10 +157,31 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	}
 	sorter := logsobj.NewSorter(builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
+
+	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+	indexer, err := index.NewSimpleIndexer(
+		idxCfg.BuilderBaseConfig,
+		scratchStore,
+		logger,
+		idxBucket,
+		index.NewIndexerMetrics(indexReg),
+		indexobj.NewBuilderMetrics(indexReg),
+		index.NewCalculatorMetrics(indexReg),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create indexer: %w", err)
+	}
+
+	tocWriter := metastore.NewTableOfContentsWriter(idxBucket, logger)
+	if err := tocWriter.RegisterMetrics(indexReg); err != nil {
+		return nil, fmt.Errorf("failed to register Table of Contents writer metrics: %w", err)
+	}
+
 	flushCommitter := newFlushCommitter(
 		s.flusher,
-		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
 		committer,
+		indexer,
+		tocWriter,
 		partitionID,
 		logger,
 		wrapped,
@@ -234,7 +249,6 @@ func (s *Service) stopping(failureCase error) error {
 	if err := services.StopAndAwaitTerminated(ctx, s.lifecycler); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop lifecycler", "err", err)
 	}
-	s.metastoreEvents.Close()
 	level.Info(s.logger).Log("msg", "stopped")
 	return failureCase
 }

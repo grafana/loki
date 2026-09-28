@@ -32,6 +32,7 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
+	stripClientHintRanges(request)
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {
@@ -43,6 +44,15 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	}
 
 	return rt.codec.EncodeResponse(ctx, r, response)
+}
+
+// stripClientHintRanges removes hint ranges decoded from an HTTP request.
+// Query-frontend and standalone-querier HTTP entrypoints both call this.
+// The scheduler path keeps ranges that internal middleware attached after decode.
+func stripClientHintRanges(request queryrangebase.Request) {
+	if request, ok := request.(*LokiRequest); ok {
+		request.HintRanges = nil
+	}
 }
 
 type serializeHTTPHandler struct {
@@ -67,6 +77,7 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		serverutil.WriteError(err, w)
 		return
 	}
+	stripClientHintRanges(request)
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {

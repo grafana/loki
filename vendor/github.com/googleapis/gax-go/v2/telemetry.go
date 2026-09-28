@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,7 +43,9 @@ import (
 	"github.com/googleapis/gax-go/v2/callctx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -189,8 +192,19 @@ func (a attrOpt) Resolve(opts *telemetryOptions) {
 	opts.attributes = a.attrs
 }
 
+func (a attrOpt) ResolveTracing(opts *tracingOptions) {
+	if opts != nil {
+		opts.attributes = a.attrs
+	}
+}
+
 // WithTelemetryAttributes specifies the static attributes attachments.
 func WithTelemetryAttributes(attr map[string]string) TelemetryOption {
+	return &attrOpt{attrs: attr}
+}
+
+// WithTracingAttributes specifies the static attributes attachments for tracing.
+func WithTracingAttributes(attr map[string]string) TracingOption {
 	return &attrOpt{attrs: attr}
 }
 
@@ -440,6 +454,12 @@ func ExtractTelemetryErrorInfo(ctx context.Context, err error) TelemetryErrorInf
 
 // recordMetric records a duration measurement for the configured metric.
 func recordMetric(ctx context.Context, settings CallSettings, d time.Duration, err error) {
+	errInfo := ExtractTelemetryErrorInfo(ctx, err)
+	recordMetricWithInfo(ctx, settings, d, &errInfo)
+}
+
+// recordMetricWithInfo records a duration measurement using pre-extracted error info.
+func recordMetricWithInfo(ctx context.Context, settings CallSettings, d time.Duration, errInfo *TelemetryErrorInfo) {
 	if settings.clientMetrics == nil || settings.clientMetrics.durationHistogram() == nil {
 		return
 	}
@@ -451,8 +471,6 @@ func recordMetric(ctx context.Context, settings CallSettings, d time.Duration, e
 	// Pre-allocate to avoid repeated appends (5 is the max number of dynamic attributes added here)
 	attrs := make([]attribute.KeyValue, 0, len(settings.clientMetrics.attributes())+5)
 	attrs = append(attrs, settings.clientMetrics.attributes()...)
-
-	errInfo := ExtractTelemetryErrorInfo(ctx, err)
 
 	if td := ExtractTransportTelemetry(ctx); td != nil {
 		if td.ServerAddress() != "" {
@@ -480,4 +498,196 @@ func recordMetric(ctx context.Context, settings CallSettings, d time.Duration, e
 	}
 
 	settings.clientMetrics.durationHistogram().Record(recordCtx, d.Seconds(), metric.WithAttributes(attrs...))
+}
+
+// startSpan starts a client request span if ClientTracing and its tracer are configured.
+func startSpan(ctx context.Context, ct *ClientTracing) (context.Context, trace.Span) {
+	if ct == nil {
+		return ctx, nil
+	}
+	tracer := ct.tracer()
+	if tracer == nil {
+		return ctx, nil
+	}
+	spanName := resolveSpanName(ctx)
+	staticAttrs := ct.attributes()
+	attrs := make([]attribute.KeyValue, 0, len(staticAttrs)+2)
+	attrs = append(attrs, staticAttrs...)
+	if urlTemplate, ok := callctx.TelemetryFromContext(ctx, "url_template"); ok && urlTemplate != "" {
+		if sanitized := sanitizeURLTemplate(urlTemplate); sanitized != "" {
+			attrs = append(attrs, attribute.String("url.template", sanitized))
+		}
+	}
+	if resName, ok := callctx.TelemetryFromContext(ctx, "resource_name"); ok && resName != "" {
+		attrs = append(attrs, attribute.String("gcp.resource.destination.id", resName))
+	}
+	return tracer.Start(
+		ctx,
+		spanName,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attrs...),
+	)
+}
+
+// endSpan records terminal status, diagnostic error details, and ends the client span.
+func endSpan(ctx context.Context, span trace.Span, errInfo *TelemetryErrorInfo, err error) {
+	if span == nil {
+		return
+	}
+	defer span.End()
+
+	if errInfo == nil {
+		info := ExtractTelemetryErrorInfo(ctx, err)
+		errInfo = &info
+	}
+
+	attrs := make([]attribute.KeyValue, 0, 3+len(errInfo.Metadata))
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(otelcodes.Error, errInfo.StatusCode)
+		attrs = append(attrs,
+			attribute.String("error.type", errInfo.ErrorType),
+			attribute.String("rpc.response.status_code", errInfo.StatusCode),
+		)
+		if errInfo.Domain != "" {
+			attrs = append(attrs, attribute.String("gcp.errors.domain", errInfo.Domain))
+		}
+		for k, v := range errInfo.Metadata {
+			attrs = append(attrs, attribute.String("gcp.errors.metadata."+k, v))
+		}
+	} else {
+		span.SetStatus(otelcodes.Ok, "")
+		attrs = append(attrs, attribute.String("rpc.response.status_code", "OK"))
+	}
+
+	if len(attrs) > 0 {
+		span.SetAttributes(attrs...)
+	}
+}
+
+// ClientTracing contains the pre-allocated OpenTelemetry tracer and attributes
+// for a specific generated Google Cloud client library.
+// There should be exactly one ClientTracing instance instantiated per generated client.
+type ClientTracing struct {
+	get func() clientTracingData
+}
+
+type clientTracingData struct {
+	tracer trace.Tracer
+	attr   []attribute.KeyValue
+}
+
+type tracingOptions struct {
+	provider   trace.TracerProvider
+	attributes map[string]string
+}
+
+// TracingOption is an option to configure a ClientTracing instance.
+// TracingOption works by modifying relevant fields of tracingOptions.
+type TracingOption interface {
+	// ResolveTracing applies the option by modifying opts.
+	ResolveTracing(opts *tracingOptions)
+}
+
+type tracerProviderOpt struct {
+	p trace.TracerProvider
+}
+
+func (p tracerProviderOpt) ResolveTracing(opts *tracingOptions) {
+	if opts != nil {
+		opts.provider = p.p
+	}
+}
+
+// WithTracerProvider specifies the trace.TracerProvider to use for client request tracing.
+func WithTracerProvider(p trace.TracerProvider) TracingOption {
+	return &tracerProviderOpt{p: p}
+}
+
+func (config *tracingOptions) tracerProvider() trace.TracerProvider {
+	if config != nil && config.provider != nil {
+		return config.provider
+	}
+	// Fall back to global tracer provider to prevent silent no-op bug!
+	return otel.GetTracerProvider()
+}
+
+// NewClientTracing initializes and returns a new ClientTracing instance.
+// It is intended to be called once per generated client during initialization.
+func NewClientTracing(opts ...TracingOption) *ClientTracing {
+	var config tracingOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt.ResolveTracing(&config)
+		}
+	}
+
+	return &ClientTracing{
+		get: sync.OnceValue(func() clientTracingData {
+			provider := config.tracerProvider()
+
+			var tracerOpts []trace.TracerOption
+			if val, ok := config.attributes[ClientVersion]; ok {
+				tracerOpts = append(tracerOpts, trace.WithInstrumentationVersion(val))
+			}
+			tracerOpts = append(tracerOpts, trace.WithSchemaURL(schemaURL))
+
+			tracer := provider.Tracer(config.attributes[ClientArtifact], tracerOpts...)
+
+			var attr []attribute.KeyValue
+			for _, m := range [...]struct{ attrKey, otelKey string }{
+				{URLDomain, keyURLDomain},
+				{RPCSystem, keyRPCSystemName},
+				{ClientService, keyGCPClientService},
+			} {
+				if val, ok := config.attributes[m.attrKey]; ok {
+					attr = append(attr, attribute.String(m.otelKey, val))
+				}
+			}
+			attr = attr[:len(attr):len(attr)]
+
+			return clientTracingData{
+				tracer: tracer,
+				attr:   attr,
+			}
+		}),
+	}
+}
+
+func (ct *ClientTracing) tracer() trace.Tracer {
+	if ct == nil || ct.get == nil {
+		return nil
+	}
+	return ct.get().tracer
+}
+
+func (ct *ClientTracing) attributes() []attribute.KeyValue {
+	if ct == nil || ct.get == nil {
+		return nil
+	}
+	return ct.get().attr
+}
+
+func resolveSpanName(ctx context.Context) string {
+	httpMethod, okHTTP := callctx.TelemetryFromContext(ctx, "http_method")
+	urlTemplate, okURL := callctx.TelemetryFromContext(ctx, "url_template")
+	if okHTTP && httpMethod != "" && okURL && urlTemplate != "" {
+		if sanitized := sanitizeURLTemplate(urlTemplate); sanitized != "" {
+			return httpMethod + " " + sanitized
+		}
+	}
+	if rpcMethod, ok := callctx.TelemetryFromContext(ctx, "rpc_method"); ok && rpcMethod != "" {
+		return rpcMethod
+	}
+	return "gcp.client.request"
+}
+
+// sanitizeURLTemplate removes query parameters and URL fragments from a raw URL template,
+// ensuring only the path template is retained.
+func sanitizeURLTemplate(rawURL string) string {
+	if idx := strings.IndexAny(rawURL, "?#"); idx != -1 {
+		return rawURL[:idx]
+	}
+	return rawURL
 }

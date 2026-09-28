@@ -52,6 +52,12 @@ var (
 	})
 )
 
+// RecordPanic counts one panic in loki_panic_total, so that total also covers a panic recovered
+// outside the request-level recovery.
+//
+// RecordPanic does not log the panic or its stack, and does not handle it.
+func RecordPanic() { panicTotal.Inc() }
+
 func onPanic(p interface{}) error {
 	stack := make([]byte, maxStacksize)
 	stack = stack[:runtime.Stack(stack, true)]

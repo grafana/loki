@@ -36,7 +36,7 @@ type Reader struct {
 	src     io.Reader        // source reader
 	num     int              // concurrency level
 	frame   *lz4stream.Frame // frame being read
-	data    []byte           // block buffer allocated in non concurrent mode
+	data    []byte           // block buffer allocated in non-concurrent mode
 	reads   chan []byte      // pending data
 	idx     int              // size of pending data
 	handler func(int)
@@ -94,7 +94,7 @@ func (r *Reader) init() error {
 	}
 	r.reads = data
 	r.idx = 0
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	size := r.frame.BlockSizeIndex()
 	r.data = size.Get()
 	r.cum = 0
 	return nil
@@ -187,7 +187,9 @@ func (r *Reader) read(buf []byte) (int, error) {
 	var direct bool
 	dst := r.data[:cap(r.data)]
 	if len(buf) >= len(dst) {
-		// Uncompress directly into buf.
+		// Decompress directly into buf.
+		// trim r.data as it is not needed now
+		r.data = r.data[:0]
 		direct = true
 		dst = buf
 	}
@@ -241,9 +243,21 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	defer r.state.nextd(&err)
 
+	if r.idx > 0 {
+		// A previous Read left part of the current block unconsumed.
+		var bn int
+		bn, err = w.Write(r.data[r.idx:])
+		n += int64(bn)
+		r.idx = 0
+		if err != nil {
+			return
+		}
+		r.handler(bn)
+	}
+
 	var data []byte
 	if r.isNotConcurrent() {
-		size := r.frame.Descriptor.Flags.BlockSizeIndex()
+		size := r.frame.BlockSizeIndex()
 		data = size.Get()
 		defer lz4block.Put(data)
 	}

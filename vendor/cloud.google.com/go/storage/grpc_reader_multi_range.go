@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/grpc"
@@ -58,6 +59,7 @@ type internalMultiRangeDownloader interface {
 	getHandle() []byte
 	getPermanentError() error
 	getSpanCtx() context.Context
+	getBytesRead() int64
 }
 
 // streamPickerStrategy is an interface which each stream picker must implement.
@@ -369,6 +371,7 @@ type multiRangeDownloaderManager struct {
 	wg           sync.WaitGroup // syncs completion of event loop.
 	cmds         chan mrdCommand
 	sessionResps chan mrdSessionResult
+	bytesRead    int64
 
 	// State
 	mu                 sync.Mutex
@@ -516,6 +519,10 @@ func (m *multiRangeDownloaderManager) getPermanentError() error {
 
 func (m *multiRangeDownloaderManager) getSpanCtx() context.Context {
 	return m.spanCtx
+}
+
+func (m *multiRangeDownloaderManager) getBytesRead() int64 {
+	return atomic.LoadInt64(&m.bytesRead)
 }
 
 func (m *multiRangeDownloaderManager) runCallback(origOffset, numBytes int64, err error, cb func(int64, int64, error)) {
@@ -1068,6 +1075,7 @@ func (m *multiRangeDownloaderManager) processDataRanges(result mrdSessionResult,
 
 		written, _, err := result.decoder.writeToAndUpdateCRC(req.output, readID, nil)
 		req.bytesWritten += written
+		atomic.AddInt64(&m.bytesRead, written)
 		mrdStream.updateCapacity(m, 0, -written)
 		if err != nil {
 			m.failRange(mrdStream, req, err)

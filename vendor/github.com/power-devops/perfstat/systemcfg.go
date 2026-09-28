@@ -121,7 +121,8 @@ const (
 	IMPL_POWER7        = 0x8000      /* 7 class CPU */
 	IMPL_POWER8        = 0x10000     /* 8 class CPU */
 	IMPL_POWER9        = 0x20000     /* 9 class CPU */
-	IMPL_POWER10       = 0x20000     /* 10 class CPU */
+	IMPL_POWER10       = 0x40000     /* 10 class CPU */
+	IMPL_POWER11       = 0x80000     /* 11 class CPU */
 )
 
 // Values for implementation field for IA64 Architectures
@@ -155,12 +156,14 @@ const (
 	PV_8          = 0x300000 /* Power PC 8 */
 	PV_9          = 0x400000 /* Power PC 9 */
 	PV_10         = 0x500000 /* Power PC 10 */
+	PV_11         = 0x600000 /* Power PC 11 */
 	PV_5_Compat   = 0x0F8000 /* Power PC 5 */
 	PV_6_Compat   = 0x108000 /* Power PC 6 */
 	PV_7_Compat   = 0x208000 /* Power PC 7 */
 	PV_8_Compat   = 0x308000 /* Power PC 8 */
 	PV_9_Compat   = 0x408000 /* Power PC 9 */
 	PV_10_Compat  = 0x508000 /* Power PC 10 */
+	PV_11_Compat  = 0x608000 /* Power PC 11 */
 	PV_RESERVED_2 = 0x0A0000 /* source compatability */
 	PV_RESERVED_3 = 0x0B0000 /* source compatability */
 	PV_RS2        = 0x040000 /* Power RS2 */
@@ -201,6 +204,7 @@ const (
 	PPI9    = 0x4E
 	PPI9_1  = 0x4E
 	PPI10_1 = 0x80
+	PPI11_1 = 0x82
 )
 
 // Macros for kernel attributes
@@ -300,14 +304,32 @@ func GetCPUImplementation() string {
 		return "POWER9"
 	case impl&IMPL_POWER10 != 0:
 		return "Power10"
+	case impl&IMPL_POWER11 != 0:
+		return "Power11"
 	default:
 		return "Unknown"
 	}
 }
 
+func POWER11OrNewer() bool {
+	impl := unix.Getsystemcfg(SC_IMPL)
+	if impl&IMPL_POWER11 != 0 {
+		return true
+	}
+	return false
+}
+
+func POWER11() bool {
+	impl := unix.Getsystemcfg(SC_IMPL)
+	if impl&IMPL_POWER11 != 0 {
+		return true
+	}
+	return false
+}
+
 func POWER10OrNewer() bool {
 	impl := unix.Getsystemcfg(SC_IMPL)
-	if impl&IMPL_POWER10 != 0 {
+	if impl&IMPL_POWER11 !=0 || impl&IMPL_POWER10 != 0 {
 		return true
 	}
 	return false
@@ -323,7 +345,7 @@ func POWER10() bool {
 
 func POWER9OrNewer() bool {
 	impl := unix.Getsystemcfg(SC_IMPL)
-	if impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 {
+	if impl&IMPL_POWER11 != 0 || impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 {
 		return true
 	}
 	return false
@@ -339,7 +361,7 @@ func POWER9() bool {
 
 func POWER8OrNewer() bool {
 	impl := unix.Getsystemcfg(SC_IMPL)
-	if impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 || impl&IMPL_POWER8 != 0 {
+	if impl&IMPL_POWER11 != 0 || impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 || impl&IMPL_POWER8 != 0 {
 		return true
 	}
 	return false
@@ -355,7 +377,7 @@ func POWER8() bool {
 
 func POWER7OrNewer() bool {
 	impl := unix.Getsystemcfg(SC_IMPL)
-	if impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 || impl&IMPL_POWER8 != 0 || impl&IMPL_POWER7 != 0 {
+	if impl&IMPL_POWER11 != 0 || impl&IMPL_POWER10 != 0 || impl&IMPL_POWER9 != 0 || impl&IMPL_POWER8 != 0 || impl&IMPL_POWER7 != 0 {
 		return true
 	}
 	return false
@@ -411,7 +433,7 @@ func HasVSX() bool {
 
 func HasDFP() bool {
 	impl := unix.Getsystemcfg(SC_DFP_STAT)
-	if impl > 1 {
+	if impl > 0 {
 		return true
 	}
 	return false
@@ -444,6 +466,8 @@ func PksEnabled() bool {
 func CPUMode() string {
 	impl := unix.Getsystemcfg(SC_VERS)
 	switch impl {
+    case PV_11, PV_11_Compat:
+        return "Power11"
 	case PV_10, PV_10_Compat:
 		return "Power10"
 	case PV_9, PV_9_Compat:

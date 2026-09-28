@@ -364,11 +364,16 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// information, since that is a long-running request.
 	ctx = lokigrpc.ExtractSpanFromRequest(ctx, msg)
 
+	var httpRequest *httpgrpc.HTTPRequest
+	if r, ok := msg.Request.(*schedulerpb.FrontendToScheduler_HttpRequest); ok {
+		httpRequest = r.HttpRequest
+	}
+
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
-		request:         msg.GetHttpRequest(),
+		request:         httpRequest,
 		queryRequest:    msg.GetQueryRequest(),
 		statsEnabled:    msg.StatsEnabled,
 	}

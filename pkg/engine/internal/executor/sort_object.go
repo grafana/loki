@@ -62,11 +62,11 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	}
 	defer sortedCloser.Close()
 
-	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
+	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: creating index builder: %w", err)
 	}
-	calculator := dataobjindex.NewCalculator(indexBuilder)
+	calculator := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
 
 	sortedPath, err := uploader.ObjectKey(ctx, sorted, c.uploaderCfg.SHAPrefixSize)
 	if err != nil {

@@ -61,7 +61,7 @@ type serialIndexer struct {
 	objectBucket       objstore.Bucket
 	indexStorageBucket objstore.Bucket
 	builderMetrics     *builderMetrics
-	indexerMetrics     *indexerMetrics
+	indexerMetrics     *serialIndexerMetrics
 	logger             log.Logger
 
 	// Worker management
@@ -75,7 +75,7 @@ func newSerialIndexer(
 	objectBucket objstore.Bucket,
 	indexStorageBucket objstore.Bucket,
 	builderMetrics *builderMetrics,
-	indexerMetrics *indexerMetrics,
+	indexerMetrics *serialIndexerMetrics,
 	logger log.Logger,
 	cfg indexerConfig,
 ) *serialIndexer {

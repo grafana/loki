@@ -191,6 +191,8 @@ func (r *PartitionRing) ShuffleShardSize(size int) int {
 //   - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 //     set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *PartitionRing) ShuffleShard(identifier string, size int) (*PartitionRing, error) {
+	size = r.normalizeShuffleShardSize(size)
+
 	if cached := r.shuffleShardCache.getSubring(identifier, size); cached != nil {
 		return cached, nil
 	}
@@ -215,6 +217,8 @@ func (r *PartitionRing) ShuffleShard(identifier string, size int) (*PartitionRin
 // This function supports caching, but the cache will only be effective if successive calls for the
 // same identifier are with the same lookbackPeriod and increasing values of now.
 func (r *PartitionRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
+	size = r.normalizeShuffleShardSize(size)
+
 	if cached := r.shuffleShardCache.getSubringWithLookback(identifier, size, lookbackPeriod, now); cached != nil {
 		return cached, nil
 	}
@@ -228,12 +232,18 @@ func (r *PartitionRing) ShuffleShardWithLookback(identifier string, size int, lo
 	return subring, nil
 }
 
-func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
-	// If the size is too small or too large, run with a size equal to the total number of partitions.
-	// We have to run the function anyway because the logic may filter out some INACTIVE partitions.
+// normalizeShuffleShardSize gives equivalent out-of-range requests the same cache key.
+// The total partition count preserves the sharding algorithm's filtering and lookback behavior.
+func (r *PartitionRing) normalizeShuffleShardSize(size int) int {
 	if size <= 0 || size >= len(r.desc.Partitions) {
-		size = len(r.desc.Partitions)
+		return len(r.desc.Partitions)
 	}
+	return size
+}
+
+func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) (*PartitionRing, error) {
+	// Normalize for callers bypassing the cache too. We still need to filter partitions below.
+	size = r.normalizeShuffleShardSize(size)
 
 	var lookbackUntil int64
 	if lookbackPeriod > 0 {

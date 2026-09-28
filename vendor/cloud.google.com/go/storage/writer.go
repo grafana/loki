@@ -270,7 +270,11 @@ func (w *Writer) wrapWriteError(n int, err error) (int, error) {
 }
 
 func (w *Writer) isGRPCClient() bool {
-	_, ok := w.o.c.tc.(*grpcStorageClient)
+	tc := w.o.c.tc
+	if mc, ok := tc.(*metricsStorageClient); ok {
+		tc = mc.storageClient
+	}
+	_, ok := tc.(*grpcStorageClient)
 	return ok
 }
 
@@ -432,6 +436,13 @@ func (w *Writer) Close() error {
 	return w.markClosed(nil)
 }
 
+// Abort is unimplemented and always returns an error.
+//
+// This is experimental and its signature can change in the future.
+func (w *Writer) Abort() error {
+	return errMethodNotSupported
+}
+
 // markClosed marks the Writer as closed, records any closing error on Writer.err,
 // and records request body size metrics and trace span completion.
 func (w *Writer) markClosed(err error) error {
@@ -446,7 +457,7 @@ func (w *Writer) markClosed(err error) error {
 
 	if state := metricsStateFromContext(w.ctx); state != nil {
 		if state.metrics != nil && total > 0 {
-			state.metrics.requestBodySize.Record(w.ctx, total, metric.WithAttributes(attribute.String("rpc.method", "WriteObject")))
+			state.metrics.requestBodySize.Record(w.ctx, total, metric.WithAttributes(attribute.String("rpc.system.name", state.getSystemName()), attribute.String("rpc.method", "WriteObject"), attribute.String("server.address", stripPort(state.getTarget()))))
 		}
 		if state.record != nil {
 			state.record(closingErr)

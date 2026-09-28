@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation is not supported for directory buckets.
@@ -124,12 +123,6 @@ func (c *Client) addOperationListBucketIntelligentTieringConfigurationsMiddlewar
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -137,12 +130,6 @@ func (c *Client) addOperationListBucketIntelligentTieringConfigurationsMiddlewar
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -155,9 +142,6 @@ func (c *Client) addOperationListBucketIntelligentTieringConfigurationsMiddlewar
 		return err
 	}
 	if err = addOpListBucketIntelligentTieringConfigurationsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ListBucketIntelligentTieringConfigurations"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

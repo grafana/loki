@@ -44,6 +44,7 @@ type Params interface {
 	Shards() []string
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
+	GetHintRanges() []logproto.HintTimeRange
 	CachingOptions() resultscache.CachingOptions
 }
 
@@ -131,6 +132,7 @@ type LiteralParams struct {
 	shards         []string
 	queryExpr      syntax.Expr
 	storeChunks    *logproto.ChunkRefGroup
+	hintRanges     []logproto.HintTimeRange
 	cachingOptions resultscache.CachingOptions
 }
 
@@ -165,6 +167,9 @@ func (p LiteralParams) Shards() []string { return p.shards }
 
 // StoreChunks impls Params
 func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
+
+// GetHintRanges implements Params.
+func (p LiteralParams) GetHintRanges() []logproto.HintTimeRange { return p.hintRanges }
 
 // CachingOptions returns whether Loki query created from this params should be cached.
 func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
@@ -309,6 +314,7 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 				AST: expr,
 			},
 			StoreChunks: q.GetStoreChunks(),
+			HintRanges:  q.GetHintRanges(),
 		},
 	}
 
@@ -344,6 +350,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 							AST: expr,
 						},
 						StoreChunks: q.GetStoreChunks(),
+						HintRanges:  q.GetHintRanges(),
 					},
 				})
 				if err != nil {
@@ -369,6 +376,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 					AST: expr,
 				},
 				StoreChunks: q.GetStoreChunks(),
+				HintRanges:  q.GetHintRanges(),
 			},
 		})
 		if err != nil {
@@ -412,6 +420,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 				AST: expr,
 			},
 			StoreChunks: q.GetStoreChunks(),
+			HintRanges:  q.GetHintRanges(),
 		},
 	})
 	if err != nil {

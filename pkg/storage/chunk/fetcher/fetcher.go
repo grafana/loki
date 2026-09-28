@@ -237,13 +237,17 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
 	if storageErr != nil {
-		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
+		// Only treat this as an expected, benign cancellation if the query itself was canceled
+		// or timed out: storageErr can also be (or wrap) context.Canceled/DeadlineExceeded from
+		// a per-request sub-timeout that object storage clients apply internally, which is a
+		// genuine storage failure rather than an expected query cancellation.
+		if ctx.Err() == nil {
 			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
 			if failures := len(missing) - len(fromStorage); failures > 0 {
 				st.AddChunkFetchFailures(int64(failures))
 			}
+			level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 		}
-		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 
 		if c.propagateChunkFetchErrors {
 			return nil, storageErr

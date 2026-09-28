@@ -86,19 +86,19 @@ func Test(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			Timestamp: time.Unix(100, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},
@@ -155,19 +155,19 @@ func TestAppendOrdered(t *testing.T) {
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
+			Timestamp: time.Unix(100, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(10, 0),
+			Timestamp: time.Unix(10, 0).UTC(),
 			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},

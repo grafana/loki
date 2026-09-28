@@ -18,11 +18,22 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// adoptAssignedTopic adds a topic the broker assigned us that our regex
+// filter skipped, so that the next metadata update loads it and we can
+// fetch from it.
+func (g *groupConsumer) adoptAssignedTopic(topic string) {
+	g.cfg.logger.Log(LogLevelInfo, "adopting a topic the broker assigned that our regex filter skipped", "group", g.cfg.group, "topic", topic)
+	g.c.mu.Lock()
+	defer g.c.mu.Unlock()
+	g.reSeen[topic] = true
+	g.tps.storeTopics([]string{topic})
+	g.cl.triggerUpdateMetadataNow("consumer group heartbeat assigned a topic we have not loaded")
+}
+
 func (g *groupConsumer) should848() bool {
-	if wantBeta := g.cl.ctx.Value("opt_in_kafka_next_gen_balancer_beta"); wantBeta == nil { // !!! TODO REMOVE ONCE BROKER IMPROVES
-		return false
-	}
-	if g.cl.cfg.disableNextGenBalancer {
+	// The context key was the hidden beta opt-in before ServerSideBalancer
+	// existed. It is honored for one release and then removed.
+	if !g.cfg.serverSideBalancer && g.cl.ctx.Value("opt_in_kafka_next_gen_balancer_beta") == nil {
 		return false
 	}
 	// We pin to v1, introduced in Kafka 4, which fully stabilizes KIP-848.
@@ -38,6 +49,25 @@ func (g *groupConsumer) should848() bool {
 	return true
 }
 
+// manage848 drives the KIP-848 heartbeat session: it restarts the session on
+// transient errors and re-fetches outstanding partitions via g.fetching.
+//
+// Any change to coordinator/leader-churn recovery (here, in heartbeat, and
+// in fetchOffsets) must preserve:
+//
+//  1. Heartbeat-originated transport and coordinator errors retry in place.
+//     Fetch errors do not take that arm; they propagate here so the session
+//     restarts and re-fetches. Do not collapse the two error sources.
+//  2. Session restart is the designed heal for fetch failures: the
+//     g.fetching carryover exists so a torn-down session re-fetches. Route
+//     fixes through it rather than a second retry inside fetchOffsets.
+//  3. Member-identity resets are the minimum the error implies: a fresh
+//     UUID for UnknownMemberID, the same UUID for epoch problems (FENCED
+//     and STALE both keep it). Anything stronger strands server-side state
+//     for a full session timeout.
+//  4. Leaves (MemberEpoch -1/-2) are idempotent and stateless, safe to
+//     retry anywhere. The heartbeat no-retry rule applies only to
+//     reconciliation-carrying heartbeats, never to leaves.
 func (g *groupConsumer) manage848() {
 	var serverAssignor string
 	switch g.cfg.balancers[0].(type) {
@@ -91,19 +121,27 @@ outer:
 
 		// Even if Kafka replies that the API is available, if we use it
 		// and the broker is not configured to support it, we receive
-		// UnsupportedVersion. On the first loop
+		// UnsupportedVersion. Until a join attempt settles the question
+		// (any other kerr, or success, means the API is really served),
+		// an UnsupportedVersion error falls back to classic group
+		// management.
 		if !known848Support {
 			if err != nil {
-				var ke *kerr.Error
-				if errors.As(err, &ke) {
+				if ke, ok := errors.AsType[*kerr.Error](err); ok {
 					if ke.Code == kerr.UnsupportedVersion.Code {
 						// It's okay to update is848 here. This is used while leaving
-						// and while heartbeating. We have not yet entered heartbeating,
-						// and if the user is concurrently leaving, the lack of a memberID
-						// means both 848 and old group mgmt leaves return early.
+						// and while heartbeating. We have not yet entered heartbeating.
 						g.mu.Lock()
 						g.is848 = false
 						g.mu.Unlock()
+						// We pre-stored a self-generated member id (v1 semantics)
+						// that the server never admitted - the join just failed.
+						// Clear it so a concurrent leave returns early (there is
+						// no member to remove; both the 848 and classic leave
+						// paths check for an empty member id) and so the classic
+						// join below starts with an empty member id rather than
+						// burning an UNKNOWN_MEMBER_ID round trip on our UUID.
+						g.memberGen.store("", -1)
 						g.cfg.logger.Log(LogLevelInfo, "falling back to standard consumer group management due to lack of broker support", "group", g.cfg.group)
 						fallbackToClassic = true
 						go g.manage()
@@ -122,13 +160,13 @@ outer:
 		// (connection closed, EOF) are transient, so we backoff and
 		// retry without going through manageFailWait.
 		//
-		// UnreleasedInstanceID is retryable-with-a-cap: the broker
+		// UnreleasedInstanceID is retryable a few times: the broker
 		// briefly keeps old static-instance state after
-		// FencedMemberEpoch, so an immediate rejoin can race for
-		// 1-2 cycles. Beyond 3 attempts it indicates a real
+		// FencedMemberEpoch, so an immediate rejoin can race for a
+		// cycle or two. Beyond 3 attempts it indicates a real
 		// cross-process InstanceID conflict and we fall through to
-		// manageFailWait so the user sees it (matches Java's
-		// handleFatalFailure semantics, with a small race budget).
+		// manageFailWait so the user sees it, matching the Java
+		// client.
 		retryable := err != nil && (g.cl.maybeDeleteStaleCoordinator(g.cfg.group, coordinatorTypeGroup, err) ||
 			isRetryableBrokerErr(err) || isAnyDialErr(err) ||
 			errors.Is(err, kerr.UnreleasedInstanceID) || errors.Is(err, kerr.StaleMemberEpoch))
@@ -207,17 +245,16 @@ outer:
 				prerevoking := g848.prerevoking.Load()
 				// When the client has no partitions (Topics is empty),
 				// always send a full request rather than a keepalive.
-				// This ensures the server sees our actual empty
-				// assignment state. Without this, a lost response
-				// containing our assignment can leave the server
-				// thinking we acknowledged partitions we never
-				// received: the server marks the assignment as
-				// delivered, but we never got it. Keepalive
-				// (Topics=nil) means "no change", which doesn't
-				// correct the stale server state. Sending Topics=[]
+				// A lost response containing our assignment can leave
+				// the server thinking we acknowledged partitions we
+				// never received; keepalive (Topics=nil) means "no
+				// change" and never corrects that, while Topics=[]
 				// tells the server "I have nothing", forcing it to
 				// re-deliver.
-				topicsMatch := len(req.Topics) > 0 && reflect.DeepEqual(g848.lastSubscribedTopics, req.SubscribedTopicNames) && reflect.DeepEqual(g848.lastTopics, req.Topics)
+				// A topic in reassign needs a response that carries
+				// the assignment, which only a full request gets when
+				// the assignment did not change; see reassign.
+				topicsMatch := len(req.Topics) > 0 && reflect.DeepEqual(g848.lastSubscribedTopics, req.SubscribedTopicNames) && reflect.DeepEqual(g848.lastTopics, req.Topics) && !g.needsReassign(g.nowAssigned.read())
 				if prerevoking || topicsMatch {
 					req.InstanceID = nil
 					req.RackID = nil
@@ -231,7 +268,12 @@ outer:
 				sleep := g.cfg.heartbeatInterval
 				if err == nil {
 					err = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
-					sleep = time.Duration(resp.HeartbeatIntervalMillis) * time.Millisecond
+					// A zero or negative server interval (buggy or
+					// hostile broker) would hot-loop heartbeats at
+					// round-trip pace; keep the configured cadence.
+					if hb := time.Duration(resp.HeartbeatIntervalMillis) * time.Millisecond; hb > 0 {
+						sleep = hb
+					}
 				}
 				if err != nil {
 					// Reset last-sent state so the next attempt
@@ -268,21 +310,27 @@ outer:
 				isAnyDialErr(err),
 				g.cl.maybeDeleteStaleCoordinator(g.cfg.group, coordinatorTypeGroup, err):
 				consecutiveTransientRestarts++
-				if int64(consecutiveTransientRestarts) >= g.cfg.retries && int64(consecutiveTransientRestarts)%g.cfg.retries == 0 {
+				if shouldNotify848Restart(int64(consecutiveTransientRestarts), g.cfg.retries) {
 					g.c.addFakeReadyForDraining("", 0, &ErrGroupSession{
 						Err: fmt.Errorf("consumer group %s heartbeat has been failing for %d consecutive attempts, still retrying: %w", g.cfg.group, consecutiveTransientRestarts, err),
 					}, "consumer group heartbeat persistently failing")
 				}
 				err = nil
+				// Continue directly: we nil err only to keep the
+				// session loop going, not because anything
+				// succeeded. Falling into the err == nil reset
+				// below would zero the counter we just
+				// incremented, capping it at 1 forever and making
+				// the every-cfg.retries notification above
+				// unreachable. The reset is for the other arms,
+				// whose nil means a processed response.
+				continue
 
-			case errors.Is(err, kerr.UnknownMemberID),
-				errors.Is(err, kerr.StaleMemberEpoch):
-				// UnknownMemberID: server forgot us.
-				// StaleMemberEpoch: our epoch drifted (e.g. a
-				// heartbeat response was lost). Either way, the
-				// fix is identical: abandon the assignment and
-				// re-initialJoin with a fresh member id so the
-				// server hands us back a current epoch.
+			case errors.Is(err, kerr.UnknownMemberID):
+				// The server forgot us (session expired during an
+				// outage, or we were administratively removed).
+				// Abandon the assignment and re-initialJoin with a
+				// fresh member id.
 				member, gen := g.memberGen.load()
 				g.cfg.logger.Log(LogLevelInfo, "consumer group heartbeat error, abandoning assignment and rejoining with new member id",
 					"group", g.cfg.group,
@@ -294,7 +342,17 @@ outer:
 				g.memberGen.store(newStringUUID(), 0)
 				continue outer
 
+			// StaleMemberEpoch means our epoch drifted from the
+			// server's; it reaches us via OffsetFetch (the heartbeat
+			// itself fences with FencedMemberEpoch), so the server
+			// still has this member. We must KEEP our member id:
+			// rejoining at epoch 0 with the same id is the protocol's
+			// lost-response recovery - the server re-admits the member
+			// in place and re-delivers its assignment. Rejoining with
+			// a fresh id would strand the old member server-side,
+			// parking its partitions until the session timeout.
 			case errors.Is(err, kerr.FencedMemberEpoch),
+				errors.Is(err, kerr.StaleMemberEpoch),
 				errors.Is(err, kerr.GroupMaxSizeReached),
 				errors.Is(err, kerr.UnsupportedAssignor):
 				lvl := LogLevelInfo
@@ -332,8 +390,9 @@ outer:
 		}
 
 		// The errors we have to handle are:
-		// * UnknownMemberID: abandon partitions, rejoin
-		// * FencedMemberEpoch: abandon partitions, rejoin
+		// * UnknownMemberID: abandon partitions, rejoin w/ new member id
+		// * FencedMemberEpoch / StaleMemberEpoch: abandon partitions,
+		//   rejoin with the same member id
 		// * UnreleasedInstanceID: fatal error, do not rejoin
 		// * General error: fatal error, do not rejoin
 		//
@@ -351,6 +410,22 @@ outer:
 			return
 		}
 	}
+}
+
+// shouldNotify848Restart reports whether a transient-restart count warrants
+// surfacing the "heartbeat persistently failing" notification, the only
+// user-visible signal that an 848 group is unreachable: once we have
+// restarted at least `retries` times, on every `retries`-th restart.
+//
+// retries <= 0 means the user disabled retries (RequestRetries(0)). That
+// also disables in-session heartbeat retries, so every transient error is
+// its own restart and each one warrants the notification; notifying on
+// every restart also avoids dividing by zero.
+func shouldNotify848Restart(restarts, retries int64) bool {
+	if retries < 1 {
+		return true
+	}
+	return restarts >= retries && restarts%retries == 0
 }
 
 func (g *groupConsumer) leave848(ctx context.Context) {
@@ -375,7 +450,16 @@ func (g *groupConsumer) leave848(ctx context.Context) {
 		g.leaveErr = err
 		return
 	}
-	g.leaveErr = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
+	err = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
+	// The leave rides the coordinator retry wrapper: if a prior attempt
+	// succeeded but its response was lost (the connection died), the
+	// retry finds the member already gone. Same if the session expired
+	// before we could leave. Either way the member is out of the group,
+	// which is the goal state of leaving, not an error.
+	if errors.Is(err, kerr.UnknownMemberID) {
+		err = nil
+	}
+	g.leaveErr = err
 }
 
 type g848 struct {
@@ -402,6 +486,23 @@ type g848 struct {
 	prerevoking atomic.Bool
 }
 
+// sanitizePartitions returns the broker-provided partitions sorted, with
+// duplicates and negatives dropped. A duplicated partition is not just
+// redundant: it survives into nowAssigned, makes the assignment compare as
+// changed, and diffAssigned then re-"adds" the partition we already own -
+// re-fetching its committed offset and rewinding the live cursor into
+// duplicate consumption. Negative numbers can only come from a buggy or
+// hostile broker and would otherwise flow into the offset-load machinery.
+func sanitizePartitions(ps []int32) []int32 {
+	ps = slices.Clone(ps)
+	slices.Sort(ps)
+	ps = slices.Compact(ps)
+	for len(ps) > 0 && ps[0] < 0 {
+		ps = ps[1:]
+	}
+	return ps
+}
+
 // v1+ requires the end user to generate their own MemberID, with the
 // recommendation being v4 uuid base64 encoded so it can be put in URLs. We
 // roughly do that (no version nor variant bits). crypto/rand does not fail
@@ -424,6 +525,17 @@ func (g *g848) initialJoin() (time.Duration, error) {
 	g.g.memberGen.storeGeneration(0)
 	g.lastSubscribedTopics = nil
 	g.lastTopics = nil
+	// A (re)join must carry an empty owned-partitions list: the broker
+	// rejects any epoch-0 heartbeat whose Topics is non-empty with
+	// INVALID_REQUEST. unresolvedAssigned holds the old member's
+	// server-side assignment, and mkreq folds it into Topics, so
+	// carrying it across a member reset would poison every join: the
+	// only other thing that clears unresolvedAssigned is a successful
+	// assignment-carrying response, which a rejected join never
+	// produces. Dropping it loses nothing, since the join response
+	// always re-delivers the member's full assignment; the Java client
+	// likewise clears its unresolved IDs on every rejoin.
+	g.unresolvedAssigned = nil
 	g.prerevoking.Store(false)
 	// Drain any stale rejoin signal, mirroring joinAndSync. Nothing
 	// else on the 848 path consumes the channel across a member reset:
@@ -454,12 +566,55 @@ func (g *g848) initialJoin() (time.Duration, error) {
 		"now_assigned", nowAssigned,
 	)
 
-	return time.Duration(resp.HeartbeatIntervalMillis) * time.Millisecond, nil
+	// As in the heartbeat closure: never adopt a zero/negative server
+	// interval, it would hot-loop the heartbeat timer.
+	if hb := time.Duration(resp.HeartbeatIntervalMillis) * time.Millisecond; hb > 0 {
+		return hb, nil
+	}
+	return g.g.cfg.heartbeatInterval, nil
 }
 
 func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.ConsumerGroupHeartbeatResponse) map[string][]int32 {
+	// A success response can only legitimately carry a negative member
+	// epoch as the echo of a leave (-1, or -2 static), which this loop
+	// never sends; the broker rejects requests below -2 outright. If a
+	// buggy or hostile broker hands us a negative epoch here and we
+	// store it, our next heartbeat would BE a leave: the member silently
+	// exits the group while fetches continue. Ignore the response
+	// entirely, like the Java client does.
+	if resp.MemberEpoch < 0 {
+		g.g.cfg.logger.Log(LogLevelWarn, "ignoring consumer group heartbeat response with an invalid negative member epoch",
+			"group", g.g.cfg.group,
+			"epoch", resp.MemberEpoch,
+		)
+		return nil
+	}
+
 	id2t := g.g.cl.id2tMap()
+	tps := g.g.tps.load()
 	newAssigned := make(map[string][]int32)
+
+	// resolve maps an assigned topic ID to a name we can fetch from,
+	// returning empty if we cannot yet. When the broker resolves our
+	// regex (no excludes), it can assign a topic that is not in tps: we
+	// never match internal topics, but the broker does. We adopt such a
+	// topic and wait for metadata to load it before assigning it.
+	resolve := func(id [16]byte) string {
+		name := id2t[id]
+		if name == "" || !g.g.cl.cfg.regex {
+			return name
+		}
+		tp, ok := tps[name]
+		if !ok {
+			g.g.adoptAssignedTopic(name)
+			tps = g.g.tps.load() // so we adopt once per response
+			return ""
+		}
+		if len(tp.load().partitions) == 0 {
+			return ""
+		}
+		return name
+	}
 
 	// Only update the last-sent fields when Topics was actually
 	// included in the request. When the request was a keepalive
@@ -481,16 +636,16 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 		// Fresh assignment from server - replace unresolved state.
 		g.unresolvedAssigned = nil
 		for _, t := range resp.Assignment.Topics {
-			name := id2t[t.TopicID]
+			ps := sanitizePartitions(t.Partitions)
+			name := resolve(t.TopicID)
 			if name == "" {
 				if g.unresolvedAssigned == nil {
 					g.unresolvedAssigned = make(map[topicID][]int32)
 				}
-				g.unresolvedAssigned[topicID(t.TopicID)] = slices.Clone(t.Partitions)
+				g.unresolvedAssigned[topicID(t.TopicID)] = ps
 				continue
 			}
-			slices.Sort(t.Partitions)
-			newAssigned[name] = t.Partitions
+			newAssigned[name] = ps
 		}
 	}
 
@@ -500,8 +655,7 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 	// resolve immediately - waiting for the next heartbeat is
 	// simpler and only costs one heartbeat interval (~5s).
 	for id, ps := range g.unresolvedAssigned {
-		if name := id2t[[16]byte(id)]; name != "" {
-			slices.Sort(ps)
+		if name := resolve([16]byte(id)); name != "" {
 			newAssigned[name] = ps
 			delete(g.unresolvedAssigned, id)
 		}
@@ -510,13 +664,11 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 		g.g.cl.triggerUpdateMetadataNow("consumer group heartbeat has unresolved topic IDs in assignment")
 	}
 
-	// storeMember publishes the new memberGen. We defer it so it runs AFTER
-	// any nowAssigned.store below. Atomic stores in Go are sequentially
-	// consistent, so concurrent readers (e.g. the commit() STALE retry
-	// filter at consumer_group.go) cannot observe new memberGen with
-	// stale nowAssigned: seeing the new gen happens-after seeing the new
-	// assignment. This closes the race that would otherwise leak revoked
-	// partitions into a retried commit.
+	// storeMember publishes the new memberGen. We defer it so it runs
+	// after any nowAssigned.store below: concurrent readers (e.g. the
+	// commit STALE retry filter) then cannot observe the new memberGen
+	// with stale nowAssigned, which would leak revoked partitions into
+	// a retried commit.
 	storeMember := func() {
 		if resp.MemberID != nil {
 			g.g.memberGen.store(*resp.MemberID, resp.MemberEpoch)
@@ -559,7 +711,7 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 		}
 	}
 
-	if !mapi32sDeepEq(current, newAssigned) {
+	if !mapi32sDeepEq(current, newAssigned) || g.g.needsReassign(newAssigned) {
 		// Store BEFORE the deferred storeMember runs, so an observer that
 		// sees new memberGen via memberGen.load() is guaranteed to also
 		// see the matching nowAssigned via nowAssigned.read().
@@ -596,30 +748,28 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 	req.ServerAssignor = &g.serverAssignor
 
 	tps := g.g.tps.load()
-	if g.g.cl.cfg.regex && len(g.g.cl.cfg.excludeTopics) > 0 {
-		// KIP-848's SubscribedTopicRegex is include-only with no exclude
-		// counterpart. When excludes are configured, fall back to sending
-		// the already-resolved topic names from g.tps (which
-		// filterMetadataAllTopics populates with excludes applied).
-		// New topics are picked up on the next metadata refresh.
-		subscribedTopics := make([]string, 0, len(tps))
-		for t := range tps {
-			subscribedTopics = append(subscribedTopics, t)
-		}
-		slices.Sort(subscribedTopics)
-		req.SubscribedTopicNames = subscribedTopics
-	} else if g.g.cl.cfg.regex {
+	if g.g.cl.cfg.regex && len(g.g.cl.cfg.excludeTopics) == 0 {
+		// The broker matches the regex against the entire topic name,
+		// while we match anywhere in the name (Go's MatchString). We
+		// wrap the regex in .* on both sides so that the broker
+		// resolves the same topics we would.
 		topics := g.g.cl.cfg.topics
 		patterns := make([]string, 0, len(topics))
 		for topic := range topics {
 			patterns = append(patterns, "(?:"+topic+")")
 		}
 		slices.Sort(patterns)
-		pattern := strings.Join(patterns, "|")
+		pattern := ".*(?:" + strings.Join(patterns, "|") + ").*"
 		req.SubscribedTopicRegex = &pattern
 	} else {
 		// SubscribedTopics must always exist when epoch == 0.
 		// We specifically 'make' the slice to ensure it is non-nil.
+		//
+		// KIP-848's SubscribedTopicRegex is include-only with no exclude
+		// counterpart. When excludes are configured, we send the
+		// already-resolved topic names from g.tps (which
+		// filterMetadataAllTopics populates with excludes applied).
+		// New topics are picked up on the next metadata refresh.
 		subscribedTopics := make([]string, 0, len(tps))
 		for t := range tps {
 			subscribedTopics = append(subscribedTopics, t)
@@ -640,7 +790,7 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 	// from tps above) signals the unsubscribe and the server revokes
 	// on the next response.
 	nowAssigned := g.g.nowAssigned.read()
-	req.Topics = []kmsg.ConsumerGroupHeartbeatRequestTopic{} // ALWAYS initialize: len 0 is significantly different than nil (nil means same as last time)
+	req.Topics = []kmsg.ConsumerGroupHeartbeatRequestTopic{} // always initialize: len 0 means empty assignment, nil means same as last time
 	for t, ps := range nowAssigned {
 		tp, ok := tps[t]
 		if !ok {

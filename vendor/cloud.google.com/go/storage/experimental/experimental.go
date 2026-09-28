@@ -103,3 +103,12 @@ func WithOtelMetrics() option.ClientOption {
 func WithOtelDebugMetrics() option.ClientOption {
 	return internal.WithOtelDebugMetrics.(func() option.ClientOption)()
 }
+
+// WithBufferPool provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+// It sets the buffer pool used to allocate memory for parallel uploads.
+//
+// This option is not supported at the moment.
+func WithBufferPool(pool BufferPool) option.ClientOption {
+	return internal.WithBufferPool.(func(BufferPool) option.ClientOption)(pool)
+}

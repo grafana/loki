@@ -1,0 +1,19 @@
+version: 2
+
+project_name: hyperloglog
+
+git:
+  prerelease_suffix: "-"
+
+builds:
+  - skip: true
+
+changelog:
+  use: github-native
+
+release:
+  github:
+    owner: axiomhq
+    name: hyperloglog
+  prerelease: auto
+  name_template: "{{ .Tag }}"
