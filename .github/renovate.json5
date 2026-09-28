@@ -133,7 +133,7 @@
     },
     {
       // Pin franz-go to 1.21.x; warpstream does not yet support the Kafka protocols
-      // introduced in later versions. See #24783.
+      // introduced in later versions. See #24790.
       matchPackageNames: [
         'github.com/twmb/franz-go',
       ],
@@ -141,7 +141,7 @@
       enabled: true,
     },
     {
-      // Pin kadm to 1.18.x, matching the franz-go pin above. See #24783.
+      // Pin kadm to 1.18.x, matching the franz-go pin above. See #24790.
       matchPackageNames: [
         'github.com/twmb/franz-go/pkg/kadm',
       ],
@@ -149,7 +149,7 @@
       enabled: true,
     },
     {
-      // Pin kmsg to 1.13.x, matching the franz-go pin above. See #24783.
+      // Pin kmsg to 1.13.x, matching the franz-go pin above. See #24790.
       matchPackageNames: [
         'github.com/twmb/franz-go/pkg/kmsg',
       ],
