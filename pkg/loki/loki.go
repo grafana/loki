@@ -125,8 +125,8 @@ type Config struct {
 	// TODO(segflow): restore `yaml:"logline,omitempty"` once the logline
 	// configuration is settled. Until then the section is flags-only and left
 	// out of the config reference. Every field is reachable through
-	// -logline-index.*, -logline-store.*, -logline-builder.* and
-	// -logline-query.*.
+	// -logline-index.*, -logline-store.*, -logline-builder.*,
+	// -logline-query.* and -logline-correctness.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
@@ -372,6 +372,12 @@ func (c *Config) Validate() error {
 	// break every deployment that does not run logline.
 	if c.isTarget(LoglineIndexBuilder) {
 		if err := c.Logline.ValidateBuilder(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
+	if c.isTarget(LoglineCorrectness) {
+		c.Logline.Correctness.QueryIngestersWithin = c.Querier.QueryIngestersWithin
+		if err := c.Logline.ValidateCorrectness(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
 	}
@@ -830,6 +836,7 @@ func (t *Loki) setupModuleManager() error {
 	// Logline: keep the target invisible while it is experimental.
 	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineCorrectness, t.initLoglineCorrectness, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
@@ -887,6 +894,7 @@ func (t *Loki) setupModuleManager() error {
 		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},
 		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
 		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
+		LoglineCorrectness:              {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

@@ -56,6 +56,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -155,6 +156,7 @@ const (
 	LoglineIndexBuilder             = "logline-index-builder"
 	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
 	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
+	LoglineCorrectness              = "logline-correctness"
 	UIRing                          = "ui-ring"
 	UI                              = "ui"
 	All                             = "all"
@@ -2657,5 +2659,34 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	return svc, nil
+}
+
+func (t *Loki) initLoglineCorrectness() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	svc, err := loglinecorrectness.New(
+		indexStore,
+		t.Cfg.Logline.Correctness,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
 }
