@@ -354,7 +354,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -456,10 +456,19 @@ func (s *LokiStore) lazyChunks(
 	from, through model.Time,
 	predicate chunk.Predicate,
 	storeChunksOverride *logproto.ChunkRefGroup,
+	hintRanges iter.HintTimeRanges,
 ) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if hintRanges.Enabled() {
+		hintFrom, hintThrough, ok := hintRanges.Bounds()
+		if !ok {
+			return nil, nil
+		}
+		from, through = util.RoundToMilliseconds(hintFrom, hintThrough)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -478,6 +487,7 @@ func (s *LokiStore) lazyChunks(
 		prefiltered += len(chks[i])
 		stats.AddChunksRef(int64(len(chks[i])))
 		chks[i] = filterChunksByTime(from, through, chks[i])
+		chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
 		filtered += len(chks[i])
 	}
 
@@ -556,7 +566,8 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
+	hintRanges := iter.NewHintTimeRanges(req.GetHintRanges(), req.Start, req.End)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks(), hintRanges)
 	if err != nil {
 		return nil, err
 	}
@@ -594,7 +605,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
+	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer, hintRanges)
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -603,7 +614,8 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
+	hintRanges := iter.NewHintTimeRanges(req.GetHintRanges(), req.Start, req.End)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks(), hintRanges)
 	if err != nil {
 		return nil, err
 	}
@@ -651,18 +663,40 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newTimestampFirstSampleBatchIterator(
-		ctx,
-		s.schemaCfg,
-		s.chunkMetrics,
-		lazyChunks,
-		s.cfg.MaxChunkBatchSize,
-		matchers,
-		req.Start,
-		req.End,
-		chunkFilterer,
-		extractor,
-	)
+	switch req.Order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return newTimestampFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			extractor,
+			hintRanges,
+		)
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return newStreamFirstSampleBatchIterator(
+			ctx,
+			s.schemaCfg,
+			s.chunkMetrics,
+			lazyChunks,
+			s.cfg.MaxChunkBatchSize,
+			matchers,
+			req.Start,
+			req.End,
+			chunkFilterer,
+			streamFirstPrefetchConcurrency(s.cfg.MaxParallelGetChunk, s.cfg.MaxChunkBatchSize),
+			fetchLazyChunks,
+			extractor,
+			hintRanges,
+		)
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", req.Order)
+	}
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {
@@ -676,6 +710,20 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 			continue
 		}
 		filtered = append(filtered, chunk)
+	}
+	return filtered
+}
+
+func filterChunksByHintRanges(chunks []chunk.Chunk, hintRanges iter.HintTimeRanges) []chunk.Chunk {
+	if !hintRanges.Enabled() {
+		return chunks
+	}
+
+	filtered := make([]chunk.Chunk, 0, len(chunks))
+	for _, chk := range chunks {
+		if hintRanges.OverlapsClosed(chk.From.Time(), chk.Through.Time()) {
+			filtered = append(filtered, chk)
+		}
 	}
 	return filtered
 }

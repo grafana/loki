@@ -80,7 +80,7 @@ func (m *PartitionRingDesc) tokens() Tokens {
 	return allTokens
 }
 
-// partitionByToken returns a map where they key is a registered token and the value is ID of the partition
+// partitionByToken returns a map where the key is a registered token and the value is ID of the partition
 // that registered that token.
 func (m *PartitionRingDesc) partitionByToken() map[Token]int32 {
 	out := make(map[Token]int32, len(m.Partitions)*optimalTokensPerInstance)

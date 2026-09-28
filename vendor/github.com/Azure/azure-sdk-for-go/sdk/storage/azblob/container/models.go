@@ -103,23 +103,6 @@ type CreateOptions struct {
 	CPKScopeInfo *CPKScopeInfo
 }
 
-func (o *CreateOptions) format() *generated.ContainerClientCreateOptions {
-	if o == nil {
-		return nil
-	}
-
-	opts := &generated.ContainerClientCreateOptions{
-		Access:   o.Access,
-		Metadata: o.Metadata,
-	}
-	if o.CPKScopeInfo != nil {
-		opts.DefaultEncryptionScope = o.CPKScopeInfo.DefaultEncryptionScope
-		opts.PreventEncryptionScopeOverride = o.CPKScopeInfo.PreventEncryptionScopeOverride
-	}
-
-	return opts
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 
 // DeleteOptions contains the optional parameters for the Client.Delete method.
@@ -127,24 +110,13 @@ type DeleteOptions struct {
 	AccessConditions *AccessConditions
 }
 
-func (o *DeleteOptions) format() *generated.ContainerClientDeleteOptions {
+func (o *DeleteOptions) format() (*generated.ContainerClientDeleteOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil, nil
 	}
 
-	opts := &generated.ContainerClientDeleteOptions{}
-	if o.AccessConditions != nil {
-		if o.AccessConditions.LeaseAccessConditions != nil {
-			opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
-		}
-		if o.AccessConditions.ModifiedAccessConditions != nil {
-			opts.IfModifiedSince = o.AccessConditions.ModifiedAccessConditions.IfModifiedSince
-			opts.IfUnmodifiedSince = o.AccessConditions.ModifiedAccessConditions.IfUnmodifiedSince
-		}
-	}
-
-	// IfMatch and IfNoneMatch are intentionally not mapped: Delete Container supports only If-Modified-Since and If-Unmodified-Since.
-	return opts
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatContainerAccessConditions(o.AccessConditions)
+	return nil, leaseAccessConditions, modifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -162,17 +134,12 @@ type GetPropertiesOptions struct {
 }
 
 // ContainerClientGetPropertiesOptions contains the optional parameters for the ContainerClient.GetProperties method.
-func (o *GetPropertiesOptions) format() *generated.ContainerClientGetPropertiesOptions {
+func (o *GetPropertiesOptions) format() (*generated.ContainerClientGetPropertiesOptions, *generated.LeaseAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil
 	}
 
-	opts := &generated.ContainerClientGetPropertiesOptions{}
-	if o.LeaseAccessConditions != nil {
-		opts.LeaseID = o.LeaseAccessConditions.LeaseID
-	}
-
-	return opts
+	return nil, o.LeaseAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -196,13 +163,13 @@ func (l ListBlobsInclude) format() []generated.ListBlobsIncludeItem {
 		include = append(include, generated.ListBlobsIncludeItemDeleted)
 	}
 	if l.DeletedWithVersions {
-		include = append(include, generated.ListBlobsIncludeItemDeletedWithVersions)
+		include = append(include, generated.ListBlobsIncludeItemDeletedwithversions)
 	}
 	if l.ImmutabilityPolicy {
-		include = append(include, generated.ListBlobsIncludeItemImmutabilityPolicy)
+		include = append(include, generated.ListBlobsIncludeItemImmutabilitypolicy)
 	}
 	if l.LegalHold {
-		include = append(include, generated.ListBlobsIncludeItemLegalHold)
+		include = append(include, generated.ListBlobsIncludeItemLegalhold)
 	}
 	if l.Metadata {
 		include = append(include, generated.ListBlobsIncludeItemMetadata)
@@ -214,7 +181,7 @@ func (l ListBlobsInclude) format() []generated.ListBlobsIncludeItem {
 		include = append(include, generated.ListBlobsIncludeItemTags)
 	}
 	if l.UncommittedBlobs {
-		include = append(include, generated.ListBlobsIncludeItemUncommittedBlobs)
+		include = append(include, generated.ListBlobsIncludeItemUncommittedblobs)
 	}
 	if l.Versions {
 		include = append(include, generated.ListBlobsIncludeItemVersions)
@@ -224,22 +191,6 @@ func (l ListBlobsInclude) format() []generated.ListBlobsIncludeItem {
 	}
 	return include
 }
-
-// StorageResponseFormat specifies the format the service should use to return list results.
-type StorageResponseFormat = exported.StorageResponseFormat
-
-const (
-	// StorageResponseFormatAuto lets the SDK choose the response format.
-	// For the current release this resolves to XML; a future release will resolve to Arrow.
-	StorageResponseFormatAuto = exported.StorageResponseFormatAuto
-
-	// StorageResponseFormatXML forces XML-only responses. Use when you need raw XML responses (e.g. debugging).
-	StorageResponseFormatXML = exported.StorageResponseFormatXML
-
-	// StorageResponseFormatArrow sends both Arrow and XML in the Accept header; the service returns Arrow
-	// when Photon is enabled, otherwise falls back to XML. The SDK handles both transparently.
-	StorageResponseFormatArrow = exported.StorageResponseFormatArrow
-)
 
 // ListBlobsFlatOptions contains the optional parameters for the ContainerClient.ListBlobFlatSegment method.
 type ListBlobsFlatOptions struct {
@@ -262,26 +213,6 @@ type ListBlobsFlatOptions struct {
 	// Specifies the relative path to list paths from. For non-recursive list, only one entity level is supported; For recursive
 	// list, multiple entity levels are supported. (Inclusive)
 	StartFrom *string
-	// End listing before this blob name (exclusive). Can be combined with StartFrom for range listing.
-	// Only supported when ResponseFormat is StorageResponseFormatArrow.
-	EndBefore *string
-	// ResponseFormat specifies the format the service should use to return list results.
-	// Defaults to StorageResponseFormatAuto, which resolves to XML for the current release.
-	ResponseFormat StorageResponseFormat
-}
-
-func (o *ListBlobsFlatOptions) formatArrow() generated.ContainerClientListBlobFlatSegmentApacheArrowOptions {
-	if o == nil {
-		return generated.ContainerClientListBlobFlatSegmentApacheArrowOptions{}
-	}
-	return generated.ContainerClientListBlobFlatSegmentApacheArrowOptions{
-		Include:    o.Include.format(),
-		Marker:     o.Marker,
-		Maxresults: o.MaxResults,
-		Prefix:     o.Prefix,
-		StartFrom:  o.StartFrom,
-		EndBefore:  o.EndBefore,
-	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -307,14 +238,9 @@ type ListBlobsHierarchyOptions struct {
 	// Specifies the relative path to list paths from. For non-recursive list, only one entity level is supported; For recursive
 	// list, multiple entity levels are supported. (Inclusive)
 	StartFrom *string
-	// End listing before this blob name (exclusive). Can be combined with StartFrom for range listing.
-	// Only supported when ResponseFormat is StorageResponseFormatArrow.
-	EndBefore *string
-	// ResponseFormat specifies the format the service should use to return list results.
-	// Defaults to StorageResponseFormatAuto, which resolves to XML for the current release.
-	ResponseFormat StorageResponseFormat
 }
 
+// ContainerClientListBlobHierarchySegmentOptions contains the optional parameters for the ContainerClient.ListBlobHierarchySegment method.
 func (o *ListBlobsHierarchyOptions) format() generated.ContainerClientListBlobHierarchySegmentOptions {
 	if o == nil {
 		return generated.ContainerClientListBlobHierarchySegmentOptions{}
@@ -325,21 +251,6 @@ func (o *ListBlobsHierarchyOptions) format() generated.ContainerClientListBlobHi
 		Marker:     o.Marker,
 		Maxresults: o.MaxResults,
 		Prefix:     o.Prefix,
-		StartFrom:  o.StartFrom,
-	}
-}
-
-func (o *ListBlobsHierarchyOptions) formatArrow() generated.ContainerClientListBlobHierarchySegmentApacheArrowOptions {
-	if o == nil {
-		return generated.ContainerClientListBlobHierarchySegmentApacheArrowOptions{}
-	}
-	return generated.ContainerClientListBlobHierarchySegmentApacheArrowOptions{
-		Include:    o.Include.format(),
-		Marker:     o.Marker,
-		Maxresults: o.MaxResults,
-		Prefix:     o.Prefix,
-		StartFrom:  o.StartFrom,
-		EndBefore:  o.EndBefore,
 	}
 }
 
@@ -373,23 +284,12 @@ type SetMetadataOptions struct {
 	ModifiedAccessConditions *ModifiedAccessConditions
 }
 
-func (o *SetMetadataOptions) format() *generated.ContainerClientSetMetadataOptions {
+func (o *SetMetadataOptions) format() (*generated.ContainerClientSetMetadataOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil, nil
 	}
 
-	opts := &generated.ContainerClientSetMetadataOptions{
-		Metadata: o.Metadata,
-	}
-	if o.LeaseAccessConditions != nil {
-		opts.LeaseID = o.LeaseAccessConditions.LeaseID
-	}
-	if o.ModifiedAccessConditions != nil {
-		opts.IfModifiedSince = o.ModifiedAccessConditions.IfModifiedSince
-	}
-
-	// Only IfModifiedSince is mapped: Set Container Metadata does not support the other conditional headers.
-	return opts
+	return &generated.ContainerClientSetMetadataOptions{Metadata: o.Metadata}, o.LeaseAccessConditions, o.ModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -399,17 +299,12 @@ type GetAccessPolicyOptions struct {
 	LeaseAccessConditions *LeaseAccessConditions
 }
 
-func (o *GetAccessPolicyOptions) format() *generated.ContainerClientGetAccessPolicyOptions {
+func (o *GetAccessPolicyOptions) format() (*generated.ContainerClientGetAccessPolicyOptions, *LeaseAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil
 	}
 
-	opts := &generated.ContainerClientGetAccessPolicyOptions{}
-	if o.LeaseAccessConditions != nil {
-		opts.LeaseID = o.LeaseAccessConditions.LeaseID
-	}
-
-	return opts
+	return nil, o.LeaseAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -423,33 +318,25 @@ type SetAccessPolicyOptions struct {
 	ContainerACL     []*SignedIdentifier
 }
 
-func (o *SetAccessPolicyOptions) format() *generated.ContainerClientSetAccessPolicyOptions {
+func (o *SetAccessPolicyOptions) format() (*generated.ContainerClientSetAccessPolicyOptions, *LeaseAccessConditions, *ModifiedAccessConditions, []*SignedIdentifier, error) {
 	if o == nil {
-		return nil
+		return nil, nil, nil, nil, nil
 	}
-
-	opts := &generated.ContainerClientSetAccessPolicyOptions{
+	if o.ContainerACL != nil {
+		for _, c := range o.ContainerACL {
+			err := formatTime(c)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+		}
+	}
+	lac, mac := exported.FormatContainerAccessConditions(o.AccessConditions)
+	return &generated.ContainerClientSetAccessPolicyOptions{
 		Access: o.Access,
-	}
-	if o.AccessConditions != nil {
-		if o.AccessConditions.LeaseAccessConditions != nil {
-			opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
-		}
-		if o.AccessConditions.ModifiedAccessConditions != nil {
-			opts.IfModifiedSince = o.AccessConditions.ModifiedAccessConditions.IfModifiedSince
-			opts.IfUnmodifiedSince = o.AccessConditions.ModifiedAccessConditions.IfUnmodifiedSince
-		}
-	}
-
-	// IfMatch and IfNoneMatch are intentionally not mapped: Set Container ACL supports only If-Modified-Since and If-Unmodified-Since.
-	return opts
+	}, lac, mac, o.ContainerACL, nil
 }
 
 func formatTime(c *SignedIdentifier) error {
-	if c == nil {
-		return nil
-	}
-
 	if c.AccessPolicy == nil {
 		return nil
 	}
@@ -492,31 +379,20 @@ type BatchDeleteOptions struct {
 	Snapshot  *string
 }
 
-func (o *BatchDeleteOptions) format() *generated.BlobClientDeleteOptions {
+func (o *BatchDeleteOptions) format() (*generated.BlobClientDeleteOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil, nil
 	}
 
-	opts := &generated.BlobClientDeleteOptions{
+	basics := generated.BlobClientDeleteOptions{
 		DeleteSnapshots: o.DeleteSnapshots,
-		BlobDeleteType:  o.BlobDeleteType, // None by default
+		DeleteType:      o.BlobDeleteType, // None by default
 		Snapshot:        o.Snapshot,
 		VersionID:       o.VersionID,
 	}
-	if o.AccessConditions != nil {
-		if o.AccessConditions.LeaseAccessConditions != nil {
-			opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
-		}
-		if o.AccessConditions.ModifiedAccessConditions != nil {
-			opts.IfMatch = o.AccessConditions.ModifiedAccessConditions.IfMatch
-			opts.IfModifiedSince = o.AccessConditions.ModifiedAccessConditions.IfModifiedSince
-			opts.IfNoneMatch = o.AccessConditions.ModifiedAccessConditions.IfNoneMatch
-			opts.IfUnmodifiedSince = o.AccessConditions.ModifiedAccessConditions.IfUnmodifiedSince
-			opts.IfTags = o.AccessConditions.ModifiedAccessConditions.IfTags
-		}
-	}
 
-	return opts
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
+	return &basics, leaseAccessConditions, modifiedAccessConditions
 }
 
 // BatchSetTierOptions contains the optional parameters for the BatchBuilder.SetTier method.
@@ -526,25 +402,19 @@ type BatchSetTierOptions struct {
 	Snapshot  *string
 }
 
-func (o *BatchSetTierOptions) format() *generated.BlobClientSetTierOptions {
+func (o *BatchSetTierOptions) format() (*generated.BlobClientSetTierOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
 	if o == nil {
-		return nil
+		return nil, nil, nil
 	}
 
-	opts := &generated.BlobClientSetTierOptions{
+	basics := generated.BlobClientSetTierOptions{
 		RehydratePriority: o.RehydratePriority,
 		Snapshot:          o.Snapshot,
 		VersionID:         o.VersionID,
 	}
-	if o.AccessConditions != nil && o.AccessConditions.LeaseAccessConditions != nil {
-		opts.LeaseID = o.AccessConditions.LeaseAccessConditions.LeaseID
-	}
 
-	if o.AccessConditions != nil && o.AccessConditions.ModifiedAccessConditions != nil {
-		opts.IfTags = o.AccessConditions.ModifiedAccessConditions.IfTags
-	}
-
-	return opts
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
+	return &basics, leaseAccessConditions, modifiedAccessConditions
 }
 
 // SubmitBatchOptions contains the optional parameters for the Client.SubmitBatch method.

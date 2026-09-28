@@ -1,6 +1,6 @@
 # Loki Nomad examples
 
-There are example [Nomad jobs](./nomad) that can be used to deploy Loki with [Nomad](https://www.nomadproject.io/) - simple and powerful workload orchestrator from HashiCorp.
+There are example [Nomad jobs](.) that can be used to deploy Loki with [Nomad](https://www.nomadproject.io/) - simple and powerful workload orchestrator from HashiCorp.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ For use in production it is recommended to:
 - secure GRPC communication with mTLS - can be achived with Vault's
   [PKI secret engine](https://www.vaultproject.io/docs/secrets/pki)
 
-See [loki-distributed](./loki-distributed) README for more info.
+See [loki-microservices](./loki-microservices) README for more info.
 
 ## Service discovery when scaling
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -148,6 +149,139 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestDownstreamAccumulatorFreeRoom verifies that the stream accumulator
+// returns `limit` entries when more than `limit` entries are available,
+// independent of how the downstream entries are grouped into streams.
+//
+// The two shapes model the same downstream data with and without the
+// X-Loki-Response-Encoding-Flags: categorize-labels header:
+//
+//   - "collapsed": structured metadata is stripped from the series labels, so
+//     all entries of a shard arrive as one stream with many entries.
+//   - "per-entry": structured metadata makes every series label string unique,
+//     so each entry arrives as its own single-entry stream.
+func TestDownstreamAccumulatorFreeRoom(t *testing.T) {
+	const limit = 500
+	start := time.Unix(1700000000, 0)
+
+	// Entries are returned by the downstream best-first: oldest first for
+	// FORWARD, newest first for BACKWARD.
+	orderForDirection := func(entries []logproto.Entry, dir logproto.Direction) []logproto.Entry {
+		if dir == logproto.BACKWARD {
+			for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+		return entries
+	}
+
+	// batch builds one downstream result holding n entries starting at
+	// start+offset, either as a single stream or as one stream per entry.
+	batch := func(shape string, dir logproto.Direction, id, n int, offset, step time.Duration) logqlmodel.Result {
+		entries := make([]logproto.Entry, 0, n)
+		for i := range n {
+			entries = append(entries, logproto.Entry{
+				Timestamp: start.Add(offset + time.Duration(i)*step),
+				Line:      fmt.Sprintf("batch-%d-entry-%d", id, i),
+			})
+		}
+		entries = orderForDirection(entries, dir)
+
+		if shape == "per-entry" {
+			streams := make(logqlmodel.Streams, 0, len(entries))
+			for i, e := range entries {
+				streams = append(streams, logproto.Stream{
+					Labels:  fmt.Sprintf(`{app="foo", __stream_shard__="%d", trace_id="%d"}`, id, i),
+					Entries: []logproto.Entry{e},
+				})
+			}
+			return logqlmodel.Result{Data: streams}
+		}
+
+		return logqlmodel.Result{Data: logqlmodel.Streams{{
+			Labels:  fmt.Sprintf(`{app="foo", __stream_shard__="%d"}`, id),
+			Entries: entries,
+		}}}
+	}
+
+	allEntries := func(results []logqlmodel.Result) []logproto.Entry {
+		var entries []logproto.Entry
+		for _, res := range results {
+			for _, s := range res.Data.(logqlmodel.Streams) {
+				entries = append(entries, s.Entries...)
+			}
+		}
+		return entries
+	}
+
+	// bestFirst sorts entries in the order the query returns them, so that the
+	// first `limit` entries are the expected result.
+	bestFirst := func(entries []logproto.Entry, dir logproto.Direction) []logproto.Entry {
+		sort.Slice(entries, func(i, j int) bool {
+			if dir == logproto.BACKWARD {
+				return entries[i].Timestamp.After(entries[j].Timestamp)
+			}
+			return entries[i].Timestamp.Before(entries[j].Timestamp)
+		})
+		return entries
+	}
+
+	lines := func(entries []logproto.Entry) []string {
+		res := make([]string, 0, len(entries))
+		for _, e := range entries {
+			res = append(res, e.Line)
+		}
+		sort.Strings(res)
+		return res
+	}
+
+	for _, dir := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
+		for _, shape := range []string{"collapsed", "per-entry"} {
+			t.Run(fmt.Sprintf("%s/%s", dir, shape), func(t *testing.T) {
+				params, err := NewLiteralParams(`{app="foo"}`, start, start.Add(time.Hour), 0, 0, dir, limit, nil, nil)
+				require.NoError(t, err)
+				acc := NewStreamAccumulator(params)
+
+				// The first batch is small and holds the best entries, so it
+				// establishes `worst` while the accumulator is nearly empty.
+				// The following batches hold only entries that are worse than
+				// that, while the accumulator still has room for 487 entries.
+				var (
+					results []logqlmodel.Result
+					total   int
+				)
+				if dir == logproto.FORWARD {
+					results = append(results, batch(shape, dir, 0, 13, 0, time.Second))
+					total += 13
+					for id := 1; id <= 4; id++ {
+						results = append(results, batch(shape, dir, id, 200, time.Duration(id)*10*time.Minute, 100*time.Millisecond))
+						total += 200
+					}
+				} else {
+					results = append(results, batch(shape, dir, 0, 13, 59*time.Minute, time.Second))
+					total += 13
+					for id := 1; id <= 4; id++ {
+						results = append(results, batch(shape, dir, id, 200, time.Duration(5-id)*10*time.Minute, 100*time.Millisecond))
+						total += 200
+					}
+				}
+
+				downstream := allEntries(results)
+				for i, res := range results {
+					require.NoError(t, acc.Accumulate(context.Background(), res, i))
+				}
+
+				require.Greater(t, total, limit)
+				got := allEntries(acc.Result())
+				require.Len(t, got, limit)
+				// the accumulator must keep the best `limit` entries
+				expected := bestFirst(downstream, dir)[:limit]
+				require.Equal(t, lines(expected), lines(got))
+			})
+		}
 	}
 }
 

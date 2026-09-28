@@ -88,6 +88,22 @@ Before configuring any v14 period, upgrade all components to a version that can
 read the v14 index format. Rolling back after v14 data has been written requires
 stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
+### TSDB head WAL chunk records use a new binary format
+
+The ingester writes chunk records to the TSDB head write-ahead log (WAL) in a new format that stores each chunk's ingestion timestamp to support [TSDB schema v14](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#tsdb-schema-v14).
+Upgrading needs no action, because Loki still reads the old format.
+Once upgraded, previously released Loki versions (3.7.x and earlier) cannot read the new format:
+The WAL replay fails with `error recovering head from TSDB WAL: unknown record type`, Loki does not treat this as WAL corruption, and the ingester fails to start.
+
+To roll back after the new format was written, remove the WAL data before you start the older binary:
+
+1. Stop each ingester gracefully. A successful shutdown flushes chunks, builds the in-memory head into index files, and truncates the head WAL, so the older binary starts with an empty WAL directory.
+1. If an ingester crashed or was killed before finishing that work, delete its head WAL directory, the `wal` subdirectory of `storage_config.tsdb_shipper.active_index_directory`.
+
+Deleting the WAL discards index entries for chunks flushed since the ingester last built an index from its head, which can cover up to one index period.
+Those chunks stay in object storage but no index references them, so their logs are not queryable.
+Index entries from the other replicas still cover the same log data, unless you delete the WAL on every replica.
+
 ### Breaking change: Thanos storage clients are used by default
 
 The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.

@@ -77,7 +77,7 @@ func parseAddress(socketAddress *v3corepb.SocketAddress) string {
 	return net.JoinHostPort(socketAddress.GetAddress(), strconv.Itoa(int(socketAddress.GetPortValue())))
 }
 
-func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropOverload) OverloadDropConfig {
+func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropOverload) (OverloadDropConfig, error) {
 	percentage := dropPolicy.GetDropPercentage()
 	var (
 		numerator   = percentage.GetNumerator()
@@ -90,12 +90,14 @@ func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropO
 		denominator = 10000
 	case v3typepb.FractionalPercent_MILLION:
 		denominator = 1000000
+	default:
+		return OverloadDropConfig{}, fmt.Errorf("EDS response contains a drop policy with unsupported denominator: %v", percentage.GetDenominator())
 	}
 	return OverloadDropConfig{
 		Category:    dropPolicy.GetCategory(),
 		Numerator:   numerator,
 		Denominator: denominator,
-	}
+	}, nil
 }
 
 func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs map[string]bool) ([]Endpoint, error) {
@@ -179,7 +181,11 @@ func hashKeyFromMetadata(metadata map[string]any) string {
 func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, error) {
 	ret := EndpointsUpdate{}
 	for _, dropPolicy := range m.GetPolicy().GetDropOverloads() {
-		ret.Drops = append(ret.Drops, parseDropPolicy(dropPolicy))
+		drop, err := parseDropPolicy(dropPolicy)
+		if err != nil {
+			return EndpointsUpdate{}, err
+		}
+		ret.Drops = append(ret.Drops, drop)
 	}
 	priorities := make(map[uint32]map[string]bool)
 	sumOfWeights := make(map[uint32]uint64)

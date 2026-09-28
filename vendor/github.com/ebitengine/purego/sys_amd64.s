@@ -127,6 +127,8 @@ TEXT syscallX(SB), NOSPLIT, $STACK_SIZE
 	MOVQ PTR_ADDRESS(SP), DI      // reload (DI clobbered by call)
 	MOVQ (AX), AX
 	MOVQ AX, syscallArgs_a3(DI) // save errno
+#else
+	MOVQ $0, syscallArgs_a3(DI) // no errno here: clear the input argument
 #endif
 
 	XORL AX, AX          // no error (it's ignored anyway)

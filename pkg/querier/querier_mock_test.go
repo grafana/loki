@@ -222,6 +222,8 @@ func (c *queryClientMock) Context() context.Context {
 type querySampleClientMock struct {
 	util.ExtendedMock
 	logproto.Querier_QueryClient
+
+	closeSendCalls int
 }
 
 func newQuerySampleClientMock() *querySampleClientMock {
@@ -246,6 +248,7 @@ func (c *querySampleClientMock) Trailer() grpc_metadata.MD {
 }
 
 func (c *querySampleClientMock) CloseSend() error {
+	c.closeSendCalls++
 	return nil
 }
 

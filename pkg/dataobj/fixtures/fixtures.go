@@ -5,12 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -184,4 +187,17 @@ func DataObject(t *testing.T, sections ...dataobj.SectionBuilder) (*dataobj.Obje
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
 	return obj, closer
+}
+
+// StoredDataObject builds a data object from the given sections, writes it to bucket, and returns
+// the path it was written to.
+func StoredDataObject(t *testing.T, bucket objstore.Bucket, sections ...dataobj.SectionBuilder) string {
+	t.Helper()
+
+	obj, closer := DataObject(t, sections...)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	path, err := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger()).Upload(t.Context(), obj)
+	require.NoError(t, err)
+	return path
 }

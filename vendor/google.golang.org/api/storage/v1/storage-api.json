@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3138323634323934313536353633333331373333\"",
+  "etag": "\"35383135343338383530313436313234313131\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4731,7 +4731,7 @@
       }
     }
   },
-  "revision": "20260821",
+  "revision": "20260911",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -6522,6 +6522,10 @@
         "createTime": {
           "description": "The time at which the object context was created in RFC 3339 format.",
           "format": "date-time",
+          "type": "string"
+        },
+        "extendedDataTypeUrl": {
+          "description": "The type URL of the object context's extended data.",
           "type": "string"
         },
         "updateTime": {

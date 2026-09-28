@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
-func TestDecode(t *testing.T) {
+func TestDecodeRow(t *testing.T) {
 	tests := []struct {
 		name     string
 		columns  []*Column
@@ -201,4 +201,31 @@ func TestDecode(t *testing.T) {
 			require.Equal(t, tt.expected, record)
 		})
 	}
+}
+
+func TestDecodeRow_ResetsFieldsWithoutColumn(t *testing.T) {
+	record := Record{
+		StreamID:    42,
+		Timestamp:   time.Unix(0, 999),
+		Metadata:    labels.FromStrings("stale", "yes"),
+		Line:        []byte("stale line"),
+		SchemaKey:   "stale",
+		ShardBucket: 7,
+		StreamHash:  8,
+	}
+
+	// Only the stream ID is read, as it would be under a narrow projection.
+	err := DecodeRow(
+		[]*Column{{Type: ColumnTypeStreamID}},
+		dataset.Row{Values: []dataset.Value{dataset.Int64Value(123)}},
+		&record,
+		nil,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, Record{
+		StreamID: 123,
+		Metadata: labels.EmptyLabels(),
+		Line:     []byte{},
+	}, record)
 }

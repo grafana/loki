@@ -37,14 +37,13 @@ func resolveProfilesReferences(profiles Profiles) {
 func resolveKeyValueReferences(dict ProfilesDictionary, kvs []internal.KeyValue) {
 	for i := range kvs {
 		kv := &kvs[i]
-		// Resolve key_ref if set
-		if kv.KeyStrindex >= 0 {
+		// Resolve key_strindex if set. Guard against illegal input where both
+		// KeyStrindex and Key are set by only resolving when Key is empty.
+		if kv.KeyStrindex > 0 && kv.Key == "" {
 			idx := int(kv.KeyStrindex)
 			if idx < dict.StringTable().Len() {
 				kv.Key = dict.StringTable().At(idx)
-				// N.b. keep KeyStrindex set to optimize re-marshaling. This is
-				// technically a violation of the proto spec, but acceptable
-				// for the in-memory pdata API since keys are immutable.
+				kv.KeyStrindex = 0
 			}
 		}
 		// Resolve string_value_ref if set

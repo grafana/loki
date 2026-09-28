@@ -52,7 +52,10 @@ type coordinator struct {
 	metastoreWriter tocReplacer
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
-	clock   func() time.Time
+	clock func() time.Time
+	// sleep blocks for the given duration or until ctx is cancelled. Injected
+	// so tests can make per-tenant backoff waits instant and deterministic.
+	sleep   func(ctx context.Context, d time.Duration)
 	metrics *coordinatorMetrics
 	limits  Limits
 }
@@ -79,8 +82,23 @@ func newCoordinator(
 		},
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
+		sleep:           sleepUntil,
 		metrics:         newCoordinatorMetrics(reg),
 		limits:          limits,
+	}
+}
+
+// sleepUntil blocks for d or returns early when ctx is cancelled. A
+// non-positive d returns immediately.
+func sleepUntil(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
 	}
 }
 
@@ -904,14 +922,17 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 }
 
 // runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
-// is cancelled. It never returns an error and never sleeps: on error it retries
+// is cancelled. It never returns an error: on error it retries
 // the same phase, otherwise it flips. It re-reads the per-tenant phase
 // enablement each iteration and skips the LogMerge phase when log compaction is
 // disabled, so an index-only tenant runs IndexMerge exclusively. Each phase runs
 // against every window returned by c.windows(); the phase flips only when no
-// window errored so a single failing window retries the whole phase.
+// window errored so a single failing window retries the whole phase. Between
+// phases it waits at least MinBackoff; consecutive no-work or failing phases
+// grow the wait exponentially up to MaxBackoff.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	backoff := c.cfg.MinBackoff
 	for {
 		if ctx.Err() != nil {
 			return
@@ -938,7 +959,26 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		if outcome != phaseOutcomeError {
 			p = p.flip()
 		}
+
+		var wait time.Duration
+		wait, backoff = nextBackoff(outcome, backoff, c.cfg.MinBackoff, c.cfg.MaxBackoff)
+		c.metrics.observeBackoff(wait)
+		c.sleep(ctx, wait)
 	}
+}
+
+// nextBackoff returns the wait after a phase and the backoff carried into the
+// next iteration. Productive phases reset to the floor; no-work and error
+// phases apply the current backoff and double it toward the ceiling.
+func nextBackoff(outcome phaseOutcome, current, minWait, maxWait time.Duration) (wait, next time.Duration) {
+	if outcome == phaseOutcomeSwapped {
+		return minWait, minWait
+	}
+	next = current * 2
+	if next <= 0 || next > maxWait {
+		next = maxWait
+	}
+	return current, next
 }
 
 // runMultiplePhasesForAllWindows runs phase p for the tenant against each compacted window, iterations times,

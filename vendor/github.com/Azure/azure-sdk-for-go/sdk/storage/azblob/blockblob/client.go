@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 	audience := base.GetAudience((*base.ClientOptions)(options))
 	conOptions := shared.GetClientOptions(options)
 	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
-	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -62,7 +63,7 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}}
+	plOpts := runtime.PipelineOptions{}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -82,7 +83,7 @@ func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client,
 func NewClientWithSharedKeyCredential(blobURL string, cred *blob.SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -180,21 +181,17 @@ func (bb *Client) Upload(ctx context.Context, body io.ReadSeekCloser, options *U
 		return UploadResponse{}, err
 	}
 
-	opts := options.format()
+	opts, httpHeaders, leaseInfo, cpkV, cpkN, accessConditions := options.format()
 
 	if options != nil && options.TransactionalValidation != nil {
 		body, err = options.TransactionalValidation.Apply(body, opts)
 		if err != nil {
 			return UploadResponse{}, err
 		}
-		// Re-compute count since Apply() may have changed the body size (e.g., structured message encoding).
-		count, err = shared.ValidateSeekableStreamAt0AndGetCount(body)
-		if err != nil {
-			return UploadResponse{}, err
-		}
 	}
 
-	return bb.generated().Upload(ctx, body, count, opts)
+	resp, err := bb.generated().Upload(ctx, count, body, opts, httpHeaders, leaseInfo, cpkV, cpkN, accessConditions)
+	return resp, err
 }
 
 // UploadBlobFromURL - The Put Blob from URL operation creates a new Block Blob where the contents of the blob are read from
@@ -203,7 +200,11 @@ func (bb *Client) Upload(ctx context.Context, body io.ReadSeekCloser, options *U
 // Block from URL API in conjunction with Put Block List.
 // For more information, see https://learn.microsoft.com/rest/api/storageservices/put-blob-from-url
 func (bb *Client) UploadBlobFromURL(ctx context.Context, copySource string, options *UploadBlobFromURLOptions) (UploadBlobFromURLResponse, error) {
-	return bb.generated().UploadBlobFromURL(ctx, copySource, options.format())
+	opts, httpHeaders, leaseAccessConditions, cpkInfo, cpkSourceInfo, modifiedAccessConditions, sourceModifiedConditions, sourceCPKInfo := options.format()
+
+	resp, err := bb.generated().PutBlobFromURL(ctx, int64(0), copySource, opts, httpHeaders, leaseAccessConditions, cpkInfo, cpkSourceInfo, modifiedAccessConditions, sourceModifiedConditions, sourceCPKInfo)
+
+	return resp, err
 }
 
 // StageBlock uploads the specified block to the block blob's "staging area" to be later committed by a call to CommitBlockList.
@@ -215,20 +216,16 @@ func (bb *Client) StageBlock(ctx context.Context, base64BlockID string, body io.
 		return StageBlockResponse{}, err
 	}
 
-	opts := options.format()
+	opts, leaseAccessConditions, cpkInfo, cpkScopeInfo := options.format()
 
 	if options != nil && options.TransactionalValidation != nil {
 		body, err = options.TransactionalValidation.Apply(body, opts)
 		if err != nil {
-			return StageBlockResponse{}, err
-		}
-		count, err = shared.ValidateSeekableStreamAt0AndGetCount(body)
-		if err != nil {
-			return StageBlockResponse{}, err
+			return StageBlockResponse{}, nil
 		}
 	}
 
-	resp, err := bb.generated().StageBlock(ctx, base64BlockID, count, body, opts)
+	resp, err := bb.generated().StageBlock(ctx, base64BlockID, count, body, opts, leaseAccessConditions, cpkInfo, cpkScopeInfo)
 	return resp, err
 }
 
@@ -236,7 +233,13 @@ func (bb *Client) StageBlock(ctx context.Context, base64BlockID string, body io.
 // If count is CountToEnd (0), then data is read from specified offset to the end.
 // For more information, see https://docs.microsoft.com/en-us/rest/api/storageservices/put-block-from-url.
 func (bb *Client) StageBlockFromURL(ctx context.Context, base64BlockID string, sourceURL string, options *StageBlockFromURLOptions) (StageBlockFromURLResponse, error) {
-	return bb.generated().StageBlockFromURL(ctx, base64BlockID, 0, sourceURL, options.format())
+
+	stageBlockFromURLOptions, cpkInfo, cpkScopeInfo, leaseAccessConditions, sourceModifiedAccessConditions, sourceCPKInfo := options.format()
+
+	resp, err := bb.generated().StageBlockFromURL(ctx, base64BlockID, 0, sourceURL, stageBlockFromURLOptions,
+		cpkInfo, cpkScopeInfo, leaseAccessConditions, sourceModifiedAccessConditions, sourceCPKInfo)
+
+	return resp, err
 }
 
 // CommitBlockList writes a blob by specifying the list of block IDs that make up the blob.
@@ -252,20 +255,52 @@ func (bb *Client) CommitBlockList(ctx context.Context, base64BlockIDs []string, 
 		blockIds[k] = to.Ptr(v)
 	}
 
+	blockLookupList := generated.BlockLookupList{Latest: blockIds}
+
+	var commitOptions *generated.BlockBlobClientCommitBlockListOptions
+	var headers *generated.BlobHTTPHeaders
+	var leaseAccess *blob.LeaseAccessConditions
+	var cpkInfo *generated.CPKInfo
+	var cpkScope *generated.CPKScopeInfo
+	var modifiedAccess *generated.ModifiedAccessConditions
+
 	if options != nil {
+		commitOptions = &generated.BlockBlobClientCommitBlockListOptions{
+			BlobTagsString:            shared.SerializeBlobTagsToStrPtr(options.Tags),
+			Metadata:                  options.Metadata,
+			RequestID:                 options.RequestID,
+			Tier:                      options.Tier,
+			Timeout:                   options.Timeout,
+			TransactionalContentCRC64: options.TransactionalContentCRC64,
+			TransactionalContentMD5:   options.TransactionalContentMD5,
+			LegalHold:                 options.LegalHold,
+			ImmutabilityPolicyMode:    options.ImmutabilityPolicyMode,
+			ImmutabilityPolicyExpiry:  options.ImmutabilityPolicyExpiryTime,
+		}
+
 		// If user attempts to pass in their own checksum, errors out.
 		if options.TransactionalContentMD5 != nil || options.TransactionalContentCRC64 != nil {
 			return CommitBlockListResponse{}, bloberror.UnsupportedChecksum
 		}
+
+		headers = options.HTTPHeaders
+		leaseAccess, modifiedAccess = exported.FormatBlobAccessConditions(options.AccessConditions)
+		cpkInfo = options.CPKInfo
+		cpkScope = options.CPKScopeInfo
 	}
 
-	return bb.generated().CommitBlockList(ctx, generated.BlockLookupList{Latest: blockIds}, options.format())
+	resp, err := bb.generated().CommitBlockList(ctx, blockLookupList, commitOptions, headers, leaseAccess, cpkInfo, cpkScope, modifiedAccess)
+	return resp, err
 }
 
 // GetBlockList returns the list of blocks that have been uploaded as part of a block blob using the specified block list filter.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/get-block-list.
 func (bb *Client) GetBlockList(ctx context.Context, listType BlockListType, options *GetBlockListOptions) (GetBlockListResponse, error) {
-	return bb.generated().GetBlockList(ctx, listType, options.format())
+	o, lac, mac := options.format()
+
+	resp, err := bb.generated().GetBlockList(ctx, listType, o, lac, mac)
+
+	return resp, err
 }
 
 // Redeclared APIs ----- Copy over to Append blob and Page blob as well.
@@ -502,10 +537,8 @@ func (bb *Client) UploadBuffer(ctx context.Context, buffer []byte, o *UploadBuff
 		uploadOptions = *o
 	}
 
-	// If user attempts to pass in their own pre-computed checksum, errors out.
-	// Structured message CRC64 is allowed because it computes per-block checksums on-the-fly.
-	if uploadOptions.TransactionalValidation != nil &&
-		!exported.SupportsMultiBlock(uploadOptions.TransactionalValidation) {
+	// If user attempts to pass in their own checksum, errors out.
+	if uploadOptions.TransactionalValidation != nil && reflect.TypeOf(uploadOptions.TransactionalValidation).Kind() != reflect.Func {
 		return UploadBufferResponse{}, bloberror.UnsupportedChecksum
 	}
 
@@ -523,10 +556,8 @@ func (bb *Client) UploadFile(ctx context.Context, file *os.File, o *UploadFileOp
 		uploadOptions = *o
 	}
 
-	// If user attempts to pass in their own pre-computed checksum, errors out.
-	// Structured message CRC64 is allowed because it computes per-block checksums on-the-fly.
-	if uploadOptions.TransactionalValidation != nil &&
-		!exported.SupportsMultiBlock(uploadOptions.TransactionalValidation) {
+	// If user attempts to pass in their own checksum, errors out.
+	if uploadOptions.TransactionalValidation != nil && reflect.TypeOf(uploadOptions.TransactionalValidation).Kind() != reflect.Func {
 		return UploadFileResponse{}, bloberror.UnsupportedChecksum
 	}
 
@@ -540,10 +571,8 @@ func (bb *Client) UploadStream(ctx context.Context, body io.Reader, o *UploadStr
 		o = &UploadStreamOptions{}
 	}
 
-	// If user attempts to pass in their own pre-computed checksum, errors out.
-	// Structured message CRC64 is allowed because it computes per-block checksums on-the-fly.
-	if o.TransactionalValidation != nil &&
-		!exported.SupportsMultiBlock(o.TransactionalValidation) {
+	// If user attempts to pass in their own checksum, errors out.
+	if o.TransactionalValidation != nil && reflect.TypeOf(o.TransactionalValidation).Kind() != reflect.Func {
 		return UploadStreamResponse{}, bloberror.UnsupportedChecksum
 	}
 

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -237,9 +238,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	span.AddEvent("opened dataobj")
 
 	var (
-		foundStreamsSection *dataobj.Section
-		foundLogsSection    *dataobj.Section
-
 		streamsSection *streams.Section
 		logsSection    *logs.Section
 	)
@@ -249,33 +247,16 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
 	}
 
-	var logsSectionIndex int
-	for _, sec := range obj.Sections() {
-		if sec.Tenant != tenant {
-			if logs.CheckSection(sec) {
-				logsSectionIndex++
-			}
-			continue
-		}
-
-		switch {
-		case streams.CheckSection(sec):
-			if foundStreamsSection != nil {
-				return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-			}
-			foundStreamsSection = sec
-
-		case logs.CheckSection(sec):
-			if logsSectionIndex == node.Section {
-				foundLogsSection = sec
-			}
-			logsSectionIndex++
-		}
+	tenantSections, err := sections.ForTenant(obj.Sections(), tenant)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("data object %q: %w", node.Location, err))
 	}
 
+	foundStreamsSection := tenantSections.Streams
+	foundLogsSection, ok := tenantSections.Logs[node.Section]
 	if foundStreamsSection == nil {
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
-	} else if foundLogsSection == nil {
+	} else if !ok {
 		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
 	}
 

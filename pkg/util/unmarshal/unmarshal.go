@@ -14,7 +14,9 @@ import (
 func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 	var request loghttp.PushRequest
 
-	if err := jsoniter.NewDecoder(b).Decode(&request); err != nil {
+	dec := jsoniter.NewDecoder(b)
+	dec.DisallowUnknownFields() // return error when parsing unknown field
+	if err := dec.Decode(&request); err != nil {
 		return err
 	}
 

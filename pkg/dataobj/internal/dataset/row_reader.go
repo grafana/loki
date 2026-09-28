@@ -795,6 +795,11 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 	case FalsePredicate:
 		return TruePredicate{}, nil
 
+	case TruePredicate, nil:
+		// A nil predicate keeps every row, the same as a TruePredicate, so negating either
+		// keeps none.
+		return FalsePredicate{}, nil
+
 	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
 		return OrPredicate{
 			Left:  LessThanPredicate(inner),

@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -651,6 +652,73 @@ func TestIngesterQuerier_DetectedLabels(t *testing.T) {
 			"cluster": {Values: []string{"ingester"}},
 			"foo":     {Values: []string{"abc", "ghi"}},
 		}}, detectedLabels)
+	})
+}
+
+func TestIngesterQuerier_SelectSample_ShouldHonorSampleOrder(t *testing.T) {
+	// One stream-first encoded batch: two complete streams, ascending in stream hash. Decoding it
+	// timestamp-first would re-sort it and interleave the two streams.
+	batch := &logproto.SampleQueryResponse{Series: []logproto.Series{
+		{Labels: `{a="1"}`, StreamHash: 10, Samples: []logproto.Sample{{Timestamp: 1, Value: 1}, {Timestamp: 3, Value: 1}}},
+		{Labels: `{a="2"}`, StreamHash: 20, Samples: []logproto.Sample{{Timestamp: 2, Value: 1}, {Timestamp: 4, Value: 1}}},
+	}}
+
+	newQuerier := func(t *testing.T) *IngesterQuerier {
+		t.Helper()
+
+		sampleClient := newQuerySampleClientMock()
+		sampleClient.On("Recv").Return(batch, nil).Once()
+		sampleClient.On("Recv").Return(nil, io.EOF)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(sampleClient, nil)
+
+		q, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{
+			mockInstanceDesc("1.1.1.1", ring.ACTIVE),
+		}, 0), ingesterClient)
+		require.NoError(t, err)
+
+		return q
+	}
+
+	collect := func(t *testing.T, order logproto.SampleOrder) []uint64 {
+		t.Helper()
+
+		iterators, err := newQuerier(t).SelectSample(context.Background(), logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{Order: order},
+		})
+		require.NoError(t, err)
+		require.Len(t, iterators, 1)
+
+		var hashes []uint64
+		for iterators[0].Next() {
+			hashes = append(hashes, iterators[0].StreamHash())
+		}
+		require.NoError(t, iterators[0].Err())
+
+		return hashes
+	}
+
+	t.Run("stream-first order keeps each stream contiguous", func(t *testing.T) {
+		require.Equal(t, []uint64{10, 10, 20, 20}, collect(t, logproto.SAMPLE_ORDER_BY_STREAM))
+	})
+
+	t.Run("timestamp-first order re-sorts the batch by timestamp", func(t *testing.T) {
+		require.Equal(t, []uint64{10, 20, 10, 20}, collect(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+	})
+
+	t.Run("an unknown order is rejected without reaching any ingester", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		q, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{
+			mockInstanceDesc("1.1.1.1", ring.ACTIVE),
+		}, 0), ingesterClient)
+		require.NoError(t, err)
+
+		_, err = q.SelectSample(context.Background(), logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{Order: logproto.SampleOrder(99)},
+		})
+		require.ErrorContains(t, err, "unknown sample order")
+		ingesterClient.AssertNotCalled(t, "QuerySample", mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 

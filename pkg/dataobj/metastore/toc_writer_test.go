@@ -29,7 +29,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
 			BufferSize:              tocBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
-		}, nil)
+		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		err = tocBuilder.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20), FileSize: 0, UncompressedLogsSize: 0})
@@ -61,7 +61,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
 			BufferSize:              tocBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
-		}, nil)
+		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		bucket := newInMemoryBucket(t, unixTime(0), nil)
@@ -104,7 +104,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
 			BufferSize:              tocBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
-		}, nil)
+		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		bucket := newInMemoryBucket(t, unixTime(0), nil)
@@ -133,7 +133,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 	})
 
 	t.Run("WriteEntry persists TimeRange sizes", func(t *testing.T) {
-		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil)
+		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		bucket := newInMemoryBucket(t, unixTime(0), nil)

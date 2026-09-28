@@ -84,13 +84,21 @@ type CreateDelegationToken struct {
 // This can return *AuthError.
 func (cl *Client) CreateDelegationToken(ctx context.Context, d CreateDelegationToken) (DelegationToken, error) {
 	req := kmsg.NewPtrCreateDelegationTokenRequest()
+	// The Principal docs promise an empty Type defaults to "User".
+	principalType := func(t string) string {
+		if t == "" {
+			return "User"
+		}
+		return t
+	}
 	if d.Owner != nil {
-		req.OwnerPrincipalType = &d.Owner.Type
+		ownerType := principalType(d.Owner.Type)
+		req.OwnerPrincipalType = &ownerType
 		req.OwnerPrincipalName = &d.Owner.Name
 	}
 	for _, renewer := range d.Renewers {
 		rr := kmsg.NewCreateDelegationTokenRequestRenewer()
-		rr.PrincipalType = renewer.Type
+		rr.PrincipalType = principalType(renewer.Type)
 		rr.PrincipalName = renewer.Name
 		req.Renewers = append(req.Renewers, rr)
 	}

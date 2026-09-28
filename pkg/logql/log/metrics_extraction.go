@@ -139,7 +139,7 @@ func (l *lineSampleExtractor) canUseConstantLabelsWithoutStructuredMetadata(stre
 
 	// Second, no stage reads a label the stream does not carry. The fast path never adds per-line structured
 	// metadata to the builder, so a stage that reads a non-stream label would see it missing and mis-filter.
-	for _, name := range l.Stage.RequiredLabelNames() {
+	for _, name := range l.RequiredLabelNames() {
 		if !streamLabels.Has(name) {
 			return false
 		}

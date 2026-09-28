@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
@@ -27,6 +29,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
@@ -34,10 +37,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
@@ -46,6 +52,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -151,6 +158,30 @@ func TestDistributor(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestDuplicateTimestampTracker(t *testing.T) {
+	var tracker duplicateTimestampTracker
+	var entry logproto.Entry
+	at := time.Unix(123456, 0)
+
+	for i, tc := range []struct {
+		line            string
+		timestamp, want time.Time
+	}{
+		{line: "first", timestamp: at, want: at},
+		{line: "", timestamp: at, want: at.Add(time.Nanosecond)},
+		{line: "third", timestamp: at, want: at.Add(2 * time.Nanosecond)},
+		{line: "third", timestamp: at.Add(2 * time.Nanosecond), want: at.Add(2 * time.Nanosecond)},
+		{line: "fourth", timestamp: at.Add(2 * time.Nanosecond), want: at.Add(3 * time.Nanosecond)},
+		{line: "later", timestamp: at.Add(time.Second), want: at.Add(time.Second)},
+	} {
+		// Reuse the input variable to verify the tracker retains its own previous state.
+		entry = logproto.Entry{Timestamp: tc.timestamp, Line: tc.line}
+		tracker.increment(&entry)
+		require.Equal(t, tc.want, entry.Timestamp, "entry %d", i)
+		require.Equal(t, tc.line, entry.Line, "entry %d", i)
 	}
 }
 
@@ -429,6 +460,837 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 }
 
+// Exercise multiple groups directly; parsers currently produce one group per stream.
+func Test_PushInternalRequest(t *testing.T) {
+	at := time.Unix(123456, 0)
+	group := func(attr string, entries ...logproto.Entry) logproto.ResourceLogs {
+		res := logproto.ResourceLogs{ScopeLogs: []logproto.ScopeLogs{{Entries: entries}}}
+		if attr != "" {
+			res.Attrs = []logproto.LabelAdapter{{Name: "service_name", Value: attr}}
+		}
+		return res
+	}
+
+	for _, tc := range []struct {
+		name       string
+		limits     func(*validation.Limits)
+		groups     []logproto.ResourceLogs
+		wantErr    bool
+		want       []logproto.Entry
+		wantScopes []int
+	}{
+		{
+			name:       "a duplicate timestamp across a group boundary",
+			wantScopes: []int{1, 1},
+			limits:     func(l *validation.Limits) { l.IncrementDuplicateTimestamp = true },
+			groups: []logproto.ResourceLogs{
+				group("first", logproto.Entry{Timestamp: at, Line: "hi"}),
+				group("second", logproto.Entry{Timestamp: at, Line: "hey"}),
+			},
+			want: []logproto.Entry{
+				{Timestamp: at, Line: "hi", StructuredMetadata: []logproto.LabelAdapter{{Name: "service_name", Value: "first"}}},
+				{Timestamp: at.Add(time.Nanosecond), Line: "hey", StructuredMetadata: []logproto.LabelAdapter{{Name: "service_name", Value: "second"}}},
+			},
+		},
+		{
+			name:       "a group emptied by validation keeps the rest",
+			wantScopes: []int{1},
+			limits: func(l *validation.Limits) {
+				l.MaxLineSize = 10
+				l.MaxLineSizeTruncate = false
+			},
+			groups: []logproto.ResourceLogs{
+				group("first", logproto.Entry{Timestamp: at, Line: "kept"}),
+				group("second", logproto.Entry{Timestamp: at, Line: "dropped because this line is far too long"}),
+			},
+			wantErr: true,
+			want:    []logproto.Entry{{Timestamp: at, Line: "kept", StructuredMetadata: []logproto.LabelAdapter{{Name: "service_name", Value: "first"}}}},
+		},
+		{
+			name:       "entry and scope metadata override shared names",
+			wantScopes: []int{2},
+			groups: []logproto.ResourceLogs{{
+				Attrs: []logproto.LabelAdapter{{Name: "resource", Value: "r"}, {Name: "overlap", Value: "resource"}},
+				ScopeLogs: []logproto.ScopeLogs{
+					{
+						Attrs: []logproto.LabelAdapter{{Name: "scope", Value: "first"}, {Name: "overlap", Value: "scope"}},
+						Entries: []logproto.Entry{
+							{Timestamp: at, Line: "entry wins", StructuredMetadata: []logproto.LabelAdapter{{Name: "overlap", Value: "entry"}}},
+							{Timestamp: at.Add(time.Second), Line: "scope wins"},
+						},
+					},
+					{
+						Attrs:   []logproto.LabelAdapter{{Name: "scope", Value: "second"}},
+						Entries: []logproto.Entry{{Timestamp: at.Add(2 * time.Second), Line: "resource wins"}},
+					},
+				},
+			}},
+			want: []logproto.Entry{
+				{Timestamp: at, Line: "entry wins", StructuredMetadata: []logproto.LabelAdapter{
+					{Name: "overlap", Value: "entry"}, {Name: "scope", Value: "first"}, {Name: "resource", Value: "r"},
+				}},
+				{Timestamp: at.Add(time.Second), Line: "scope wins", StructuredMetadata: []logproto.LabelAdapter{
+					{Name: "scope", Value: "first"}, {Name: "overlap", Value: "scope"}, {Name: "resource", Value: "r"},
+				}},
+				{Timestamp: at.Add(2 * time.Second), Line: "resource wins", StructuredMetadata: []logproto.LabelAdapter{
+					{Name: "scope", Value: "second"}, {Name: "resource", Value: "r"}, {Name: "overlap", Value: "resource"},
+				}},
+			},
+		},
+		{
+			name: "empty scopes and resources are removed without changing entry order",
+			limits: func(l *validation.Limits) {
+				l.MaxLineSize = 10
+				l.MaxLineSizeTruncate = false
+				l.IncrementDuplicateTimestamp = true
+			},
+			groups: []logproto.ResourceLogs{
+				group("dropped-first", logproto.Entry{Timestamp: at, Line: "this line is too long"}),
+				{
+					Attrs: []logproto.LabelAdapter{{Name: "service_name", Value: "first"}},
+					ScopeLogs: []logproto.ScopeLogs{
+						{Entries: []logproto.Entry{{Timestamp: at, Line: "this line is too long"}}},
+						{Attrs: []logproto.LabelAdapter{{Name: "scope", Value: "one"}}, Entries: []logproto.Entry{{Timestamp: at, Line: "one"}}},
+						{Entries: []logproto.Entry{{Timestamp: at, Line: "this line is too long"}}},
+						{Attrs: []logproto.LabelAdapter{{Name: "scope", Value: "two"}}, Entries: []logproto.Entry{{Timestamp: at, Line: "two"}}},
+						{Entries: []logproto.Entry{{Timestamp: at, Line: "this line is too long"}}},
+					},
+				},
+				group("dropped-middle", logproto.Entry{Timestamp: at, Line: "this line is too long"}),
+				group("second", logproto.Entry{Timestamp: at, Line: "three"}),
+				group("dropped-last", logproto.Entry{Timestamp: at, Line: "this line is too long"}),
+			},
+			wantErr:    true,
+			wantScopes: []int{2, 1},
+			want: []logproto.Entry{
+				{Timestamp: at, Line: "one", StructuredMetadata: []logproto.LabelAdapter{{Name: "scope", Value: "one"}, {Name: "service_name", Value: "first"}}},
+				{Timestamp: at.Add(time.Nanosecond), Line: "two", StructuredMetadata: []logproto.LabelAdapter{{Name: "scope", Value: "two"}, {Name: "service_name", Value: "first"}}},
+				{Timestamp: at.Add(2 * time.Nanosecond), Line: "three", StructuredMetadata: []logproto.LabelAdapter{{Name: "service_name", Value: "second"}}},
+			},
+		},
+		{
+			name: "discarded groups are not normalized",
+			limits: func(l *validation.Limits) {
+				l.MaxLineSize = 10
+				l.MaxLineSizeTruncate = false
+			},
+			groups: []logproto.ResourceLogs{
+				{Attrs: buildNestedAttrs("__", "invalid"), ScopeLogs: []logproto.ScopeLogs{{
+					Entries: []logproto.Entry{{Timestamp: at, Line: "this line is too long"}},
+				}}},
+				{Attrs: buildNestedAttrs("service_name", "kept"), ScopeLogs: []logproto.ScopeLogs{
+					{Attrs: buildNestedAttrs("__", "invalid"), Entries: []logproto.Entry{{Timestamp: at, Line: "this line is too long"}}},
+					{Entries: []logproto.Entry{{Timestamp: at, Line: "kept"}}},
+				}},
+			},
+			wantErr:    true,
+			wantScopes: []int{1},
+			want:       []logproto.Entry{{Timestamp: at, Line: "kept", StructuredMetadata: buildNestedAttrs("service_name", "kept")}},
+		},
+		{
+			name: "all entries discarded removes the stream",
+			limits: func(l *validation.Limits) {
+				l.MaxLineSize = 10
+				l.MaxLineSizeTruncate = false
+			},
+			groups: []logproto.ResourceLogs{
+				group("first", logproto.Entry{Timestamp: at, Line: "this line is too long"}),
+				group("second", logproto.Entry{Timestamp: at, Line: "this line is also too long"}),
+			},
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.RejectOldSamples = false
+			limits.DiscoverLogLevels = false
+			if tc.limits != nil {
+				tc.limits(limits)
+			}
+
+			ing := &mockIngester{}
+			distributors, _ := prepare(t, 1, 3, limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			d := distributors[0]
+
+			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+				Labels: `{job="internal"}`, ResourceLogs: tc.groups,
+			}}}
+			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			got := ing.Peek()
+			if len(tc.want) == 0 {
+				require.Empty(t, req.Streams)
+				require.Nil(t, got)
+				return
+			}
+			require.Len(t, req.Streams, 1)
+			require.Len(t, req.Streams[0].ResourceLogs, len(tc.wantScopes))
+			for i, resource := range req.Streams[0].ResourceLogs {
+				require.Len(t, resource.ScopeLogs, tc.wantScopes[i])
+				for _, scope := range resource.ScopeLogs {
+					require.NotEmpty(t, scope.Entries)
+				}
+			}
+
+			require.NotNil(t, got, "the stream still had an entry to send")
+			require.Len(t, got.Streams, 1)
+			require.Equal(t, tc.want, got.Streams[0].Entries)
+		})
+	}
+}
+
+func Test_DiscardAccounting(t *testing.T) {
+	now := time.Now()
+	firstEntry := logproto.Entry{Timestamp: now, Line: "first", StructuredMetadata: buildNestedAttrs("m", "one", "s", "first", "r", "resource")}
+	secondEntry := logproto.Entry{Timestamp: now, Line: "second", StructuredMetadata: buildNestedAttrs("m", "two", "s", "second", "r", "resource")}
+	thirdEntry := logproto.Entry{Timestamp: now, Line: "third", StructuredMetadata: buildNestedAttrs("m", "three", "s", "third", "r", "other")}
+	type discard struct {
+		flatBytes, nestedBytes float64
+		samples                float64
+	}
+	// The fixture has 16 line bytes, 14 entry-metadata bytes, and 34 shared bytes.
+	// Expanding the resource shared by two scopes adds another 9 bytes.
+	const flatStreamBytes, nestedStreamBytes = 73, 64
+	wholeStreamDiscard := discard{flatBytes: flatStreamBytes, nestedBytes: nestedStreamBytes, samples: 3}
+	rateLimitRemainingEntries := func(l *validation.Limits) {
+		l.MaxLineSize = 20
+		l.IngestionRateMB = 1.0 / (1024 * 1024)
+		l.IngestionBurstSizeMB = 1.0 / (1024 * 1024)
+	}
+	for _, tc := range []struct {
+		name            string
+		limits          func(*validation.Limits)
+		labels          string
+		policy          string
+		noEntryMetadata bool
+		timestamp       time.Time
+		oversizedLines  []string
+		streamLimit     bool
+		success         bool
+		wantDiscards    map[string]discard
+		wantEntries     []logproto.Entry
+	}{
+		{
+			name:         "invalid labels",
+			labels:       "{foo=",
+			wantDiscards: map[string]discard{validation.InvalidLabels: wholeStreamDiscard},
+		},
+		{
+			name:   "missing labels",
+			labels: "{}",
+			// Preserve the existing missing-label sample counter alongside invalid-label accounting.
+			wantDiscards: map[string]discard{
+				validation.MissingLabels: {samples: 1},
+				validation.InvalidLabels: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "too many labels",
+			labels: `{foo="bar", job="test"}`,
+			limits: func(l *validation.Limits) { l.MaxLabelNamesPerSeries = 1 },
+			wantDiscards: map[string]discard{
+				validation.MaxLabelNamesPerSeries: wholeStreamDiscard,
+				validation.InvalidLabels:          wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "label name too long",
+			limits: func(l *validation.Limits) { l.MaxLabelNameLength = 2 },
+			wantDiscards: map[string]discard{
+				validation.LabelNameTooLong: wholeStreamDiscard,
+				validation.InvalidLabels:    wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "label value too long",
+			limits: func(l *validation.Limits) { l.MaxLabelValueLength = 2 },
+			wantDiscards: map[string]discard{
+				validation.LabelValueTooLong: wholeStreamDiscard,
+				validation.InvalidLabels:     wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "duplicate labels",
+			labels: `{foo="bar", foo="baz"}`,
+			wantDiscards: map[string]discard{
+				validation.DuplicateLabelNames: wholeStreamDiscard,
+				validation.InvalidLabels:       wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "missing enforced labels",
+			limits: func(l *validation.Limits) { l.EnforcedLabels = []string{"app"} },
+			wantDiscards: map[string]discard{
+				validation.MissingEnforcedLabels: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "blocked ingestion",
+			limits: func(l *validation.Limits) { l.BlockIngestionUntil = flagext.Time(now.Add(time.Hour)) },
+			wantDiscards: map[string]discard{
+				validation.BlockedIngestion: wholeStreamDiscard,
+			},
+		},
+		{
+			name: "blocked ingestion with successful response",
+			limits: func(l *validation.Limits) {
+				l.BlockIngestionUntil = flagext.Time(now.Add(time.Hour))
+				l.BlockIngestionStatusCode = http.StatusOK
+			},
+			success: true,
+			wantDiscards: map[string]discard{
+				validation.BlockedIngestion: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "blocked policy",
+			policy: "accounting",
+			limits: func(l *validation.Limits) {
+				l.BlockIngestionPolicyUntil = map[string]flagext.Time{"accounting": flagext.Time(now.Add(time.Hour))}
+			},
+			wantDiscards: map[string]discard{
+				validation.BlockedIngestionPolicy: wholeStreamDiscard,
+			},
+		},
+		{
+			name: "blocked global policy",
+			limits: func(l *validation.Limits) {
+				l.BlockIngestionPolicyUntil = map[string]flagext.Time{validation.GlobalPolicy: flagext.Time(now.Add(time.Hour))}
+			},
+			wantDiscards: map[string]discard{
+				validation.BlockedIngestionPolicy: wholeStreamDiscard,
+			},
+		},
+		{
+			name:      "too old",
+			timestamp: now.Add(-2 * time.Hour),
+			limits: func(l *validation.Limits) {
+				l.RejectOldSamples = true
+				l.RejectOldSamplesMaxAge = model.Duration(time.Hour)
+			},
+			wantDiscards: map[string]discard{
+				validation.GreaterThanMaxSampleAge: wholeStreamDiscard,
+			},
+		},
+		{
+			name:      "too far in future",
+			timestamp: now.Add(2 * time.Hour),
+			wantDiscards: map[string]discard{
+				validation.TooFarInFuture: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "line too long",
+			limits: func(l *validation.Limits) { l.MaxLineSize = 4 },
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: wholeStreamDiscard,
+			},
+		},
+		{
+			name:           "one oversized entry empties the first scope, two entries ingested",
+			limits:         func(l *validation.Limits) { l.MaxLineSize = 20 },
+			oversizedLines: []string{"first"},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: {flatBytes: 59, nestedBytes: 50, samples: 1},
+			},
+			wantEntries: []logproto.Entry{secondEntry, thirdEntry},
+		},
+		{
+			name:           "one oversized entry empties the middle scope, two entries ingested",
+			limits:         func(l *validation.Limits) { l.MaxLineSize = 20 },
+			oversizedLines: []string{"second"},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: {flatBytes: 60, nestedBytes: 51, samples: 1},
+			},
+			wantEntries: []logproto.Entry{firstEntry, thirdEntry},
+		},
+		{
+			name:           "two oversized entries empty a resource, one entry ingested",
+			limits:         func(l *validation.Limits) { l.MaxLineSize = 20 },
+			oversizedLines: []string{"first", "second"},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: {flatBytes: 119, nestedBytes: 110, samples: 2},
+			},
+			wantEntries: []logproto.Entry{thirdEntry},
+		},
+		{
+			name:   "disallowed structured metadata",
+			limits: func(l *validation.Limits) { l.AllowStructuredMetadata = false },
+			wantDiscards: map[string]discard{
+				validation.DisallowedStructuredMetadata: wholeStreamDiscard,
+			},
+		},
+		{
+			name:            "disallowed shared metadata only",
+			limits:          func(l *validation.Limits) { l.AllowStructuredMetadata = false },
+			noEntryMetadata: true,
+			wantDiscards: map[string]discard{
+				validation.DisallowedStructuredMetadata: {flatBytes: 59, nestedBytes: 50, samples: 3},
+			},
+		},
+		{
+			name:   "structured metadata too large",
+			limits: func(l *validation.Limits) { l.MaxStructuredMetadataSize = 14 },
+			wantDiscards: map[string]discard{
+				validation.StructuredMetadataTooLarge: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "only the second entry exceeds the metadata size limit, two entries ingested",
+			limits: func(l *validation.Limits) { l.MaxStructuredMetadataSize = 19 },
+			// The entries have 19, 20, and 18 metadata bytes including shared attributes.
+			wantDiscards: map[string]discard{
+				validation.StructuredMetadataTooLarge: {flatBytes: 26, nestedBytes: 17, samples: 1},
+			},
+			wantEntries: []logproto.Entry{firstEntry, thirdEntry},
+		},
+		{
+			name:   "too many structured metadata entries",
+			limits: func(l *validation.Limits) { l.MaxStructuredMetadataEntriesCount = 2 },
+			wantDiscards: map[string]discard{
+				validation.StructuredMetadataTooMany: wholeStreamDiscard,
+			},
+		},
+		{
+			name:   "all three entries rate limited",
+			limits: rateLimitRemainingEntries,
+			wantDiscards: map[string]discard{
+				validation.RateLimited: wholeStreamDiscard,
+			},
+		},
+		// Validation discards oversized lines first; the one-byte burst rejects every remaining entry.
+		{
+			name:           "one oversized entry empties a scope, two entries rate limited",
+			limits:         rateLimitRemainingEntries,
+			oversizedLines: []string{"first"},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: {flatBytes: 59, nestedBytes: 50, samples: 1},
+				validation.RateLimited: {flatBytes: 49, nestedBytes: 49, samples: 2},
+			},
+		},
+		{
+			name:           "two oversized entries empty a resource, one entry rate limited",
+			limits:         rateLimitRemainingEntries,
+			oversizedLines: []string{"first", "second"},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong: {flatBytes: 119, nestedBytes: 110, samples: 2},
+				validation.RateLimited: {flatBytes: 23, nestedBytes: 23, samples: 1},
+			},
+		},
+		{
+			name:         "stream limit",
+			streamLimit:  true,
+			wantDiscards: map[string]discard{validation.StreamLimit: wholeStreamDiscard},
+		},
+	} {
+		for _, nested := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nested=%t", tc.name, nested), func(t *testing.T) {
+				validation.DiscardedBytes.Reset()
+				validation.DiscardedSamples.Reset()
+				defer validation.DiscardedBytes.Reset()
+				defer validation.DiscardedSamples.Reset()
+
+				ls := tc.labels
+				if ls == "" {
+					ls = `{foo="bar"}`
+				}
+				at := tc.timestamp
+				if at.IsZero() {
+					at = now
+				}
+				// Each scope holds one entry: "first" and "second" share a resource; "third" has its own.
+				stream := logproto.InternalStreamAdapter{Labels: ls, ResourceLogs: []logproto.ResourceLogs{
+					{Attrs: []logproto.LabelAdapter{{Name: "r", Value: "resource"}}, ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: []logproto.LabelAdapter{{Name: "s", Value: "first"}}, Entries: []logproto.Entry{{Timestamp: at, Line: "first", StructuredMetadata: []logproto.LabelAdapter{{Name: "m", Value: "one"}}}}},
+						{Attrs: []logproto.LabelAdapter{{Name: "s", Value: "second"}}, Entries: []logproto.Entry{{Timestamp: at, Line: "second", StructuredMetadata: []logproto.LabelAdapter{{Name: "m", Value: "two"}}}}},
+					}},
+					{Attrs: []logproto.LabelAdapter{{Name: "r", Value: "other"}}, ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: []logproto.LabelAdapter{{Name: "s", Value: "third"}}, Entries: []logproto.Entry{{Timestamp: at, Line: "third", StructuredMetadata: []logproto.LabelAdapter{{Name: "m", Value: "three"}}}}},
+					}},
+				}}
+				stream.EachEntryWithShared(func(entry *logproto.Entry, _, _ []logproto.LabelAdapter) {
+					if tc.noEntryMetadata {
+						entry.StructuredMetadata = nil
+					}
+					if slices.Contains(tc.oversizedLines, entry.Line) {
+						entry.Line = strings.Repeat("x", 40)
+					}
+				})
+
+				lim := &validation.Limits{}
+				flagext.DefaultValues(lim)
+				lim.RejectOldSamples = false
+				lim.DiscoverLogLevels = false
+				lim.MaxLineSizeTruncate = false
+				if tc.policy != "" {
+					lim.PolicyStreamMapping = validation.PolicyStreamMapping{tc.policy: {{Selector: ls, Priority: 1}}}
+				}
+				if tc.limits != nil {
+					tc.limits(lim)
+				}
+				distributors, ingesters := prepare(t, 1, 3, lim, nil)
+				d := distributors[0]
+				if tc.streamLimit {
+					streamBytes := uint64(flatStreamBytes)
+					if nested {
+						streamBytes = nestedStreamBytes
+					}
+					parsed, err := syntax.ParseLabels(ls)
+					require.NoError(t, err)
+					hash := labels.StableHash(parsed)
+					d.cfg.IngestLimitsEnabled = true
+					d.ingestLimits = newIngestLimits(&mockIngestLimitsFrontendClient{
+						t:                            t,
+						expectedExceedsLimitsRequest: &limitsproto.ExceedsLimitsRequest{Tenant: "test", Streams: []*limitsproto.StreamMetadata{{StreamHash: hash, TotalSize: streamBytes}}},
+						exceedsLimitsResponse:        &limitsproto.ExceedsLimitsResponse{Results: []*limitsproto.ExceedsLimitsResult{{StreamHash: hash, Reason: uint32(limits.ReasonMaxStreams)}}},
+					}, prometheus.NewRegistry())
+				}
+				var err error
+				if nested {
+					_, err = d.pushWithResolver(ctx, &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				} else {
+					var flat logproto.Stream
+					stream.ToStream(&flat)
+					_, err = d.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{flat}})
+				}
+				if tc.success {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+				}
+				for i := range ingesters {
+					if len(tc.wantEntries) == 0 {
+						require.Nil(t, ingesters[i].Peek())
+						continue
+					}
+					// Push returns after quorum; wait for the remaining replica too.
+					require.Eventually(t, func() bool { return ingesters[i].Peek() != nil }, time.Second, 10*time.Millisecond)
+					got := ingesters[i].Peek()
+					require.Len(t, got.Streams, 1)
+					require.Equal(t, ls, got.Streams[0].Labels)
+					require.Len(t, got.Streams[0].Entries, len(tc.wantEntries))
+					for j, want := range tc.wantEntries {
+						entry := got.Streams[0].Entries[j]
+						require.Equal(t, want.Timestamp, entry.Timestamp, "entry %d timestamp", j)
+						require.Equal(t, want.Line, entry.Line, "entry %d line", j)
+						require.ElementsMatch(t, want.StructuredMetadata, entry.StructuredMetadata, "entry %d metadata", j)
+					}
+				}
+				for reason, counts := range tc.wantDiscards {
+					wantBytes := counts.flatBytes
+					if nested {
+						wantBytes = counts.nestedBytes
+					}
+					require.Equal(t, wantBytes, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(reason, "test", "0", tc.policy, constants.Loki)), "%s bytes", reason)
+					require.Equal(t, counts.samples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(reason, "test", "0", tc.policy, constants.Loki)), "%s samples", reason)
+				}
+			})
+		}
+	}
+}
+
+func TestDistributor_PushRateLimitsOnlyValidatedStreams(t *testing.T) {
+	const validLine, rejectedLine = "valid", "rejected"
+	for _, tc := range []struct {
+		name           string
+		rejectedLabels string
+		reason         string
+		policy         string
+		limits         func(*validation.Limits)
+	}{
+		{
+			name:           "malformed labels",
+			rejectedLabels: `{app=`,
+			reason:         validation.InvalidLabels,
+		},
+		{
+			name:           "too many labels",
+			rejectedLabels: `{app="rejected", extra="label"}`,
+			reason:         validation.InvalidLabels,
+			limits:         func(l *validation.Limits) { l.MaxLabelNamesPerSeries = 1 },
+		},
+		{
+			name:           "missing enforced labels",
+			rejectedLabels: `{other="rejected"}`,
+			reason:         validation.MissingEnforcedLabels,
+			limits:         func(l *validation.Limits) { l.EnforcedLabels = []string{"app"} },
+		},
+		{
+			name:           "blocked policy",
+			rejectedLabels: `{app="blocked"}`,
+			reason:         validation.BlockedIngestionPolicy,
+			policy:         "blocked",
+			limits: func(l *validation.Limits) {
+				l.PolicyStreamMapping = validation.PolicyStreamMapping{
+					"blocked": {{Selector: `{app="blocked"}`, Priority: 1}},
+				}
+				l.BlockIngestionPolicyUntil = map[string]flagext.Time{"blocked": flagext.Time(time.Now().Add(time.Hour))}
+				l.BlockIngestionStatusCode = http.StatusBadRequest
+			},
+		},
+	} {
+		for _, rateLimited := range []bool{false, true} {
+			for _, rejectedFirst := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/rateLimited=%t/rejectedFirst=%t", tc.name, rateLimited, rejectedFirst), func(t *testing.T) {
+					validation.DiscardedBytes.Reset()
+					validation.DiscardedSamples.Reset()
+					defer validation.DiscardedBytes.Reset()
+					defer validation.DiscardedSamples.Reset()
+
+					lim := &validation.Limits{}
+					flagext.DefaultValues(lim)
+					lim.DiscoverLogLevels = false
+					lim.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+					lim.IngestionRateMB = datasize.ByteSize(1).MBytes()
+					burst := len(validLine)
+					if rateLimited {
+						burst--
+					}
+					lim.IngestionBurstSizeMB = datasize.ByteSize(burst).MBytes()
+					if tc.limits != nil {
+						tc.limits(lim)
+					}
+					require.NoError(t, lim.Validate())
+					distributors, ingesters := prepare(t, 1, 3, lim, nil)
+					now := time.Now()
+					valid := logproto.Stream{Labels: `{app="valid"}`, Entries: []logproto.Entry{{Timestamp: now, Line: validLine}}}
+					rejected := logproto.Stream{Labels: tc.rejectedLabels, Entries: []logproto.Entry{{Timestamp: now, Line: rejectedLine}}}
+					streams := []logproto.Stream{valid, rejected}
+					if rejectedFirst {
+						slices.Reverse(streams)
+					}
+
+					_, err := distributors[0].Push(ctx, &logproto.PushRequest{Streams: streams})
+					require.Error(t, err)
+					response, ok := httpgrpc.HTTPResponseFromError(err)
+					require.True(t, ok)
+					wantStatus := http.StatusBadRequest
+					var rateLimitedBytes, rateLimitedSamples float64
+					if rateLimited {
+						wantStatus = http.StatusTooManyRequests
+						rateLimitedBytes, rateLimitedSamples = float64(len(validLine)), 1
+					}
+					require.Equal(t, int32(wantStatus), response.Code)
+					require.Equal(t, float64(len(rejectedLine)), testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(tc.reason, "test", "0", tc.policy, constants.Loki)))
+					require.Equal(t, float64(1), testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(tc.reason, "test", "0", tc.policy, constants.Loki)))
+					require.Equal(t, rateLimitedBytes, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.RateLimited, "test", "0", "", constants.Loki)))
+					require.Equal(t, rateLimitedSamples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.RateLimited, "test", "0", "", constants.Loki)))
+					if tc.policy != "" {
+						require.Zero(t, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(validation.RateLimited, "test", "0", tc.policy, constants.Loki)))
+						require.Zero(t, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(validation.RateLimited, "test", "0", tc.policy, constants.Loki)))
+					}
+					for i := range ingesters {
+						ingester := &ingesters[i]
+						if rateLimited {
+							require.Nil(t, ingester.Peek())
+							continue
+						}
+						require.Eventually(t, func() bool { return ingester.Peek() != nil }, time.Second, 10*time.Millisecond)
+						got := ingester.Peek().Streams
+						require.Len(t, got, 1)
+						require.Equal(t, valid.Labels, got[0].Labels)
+						require.Equal(t, valid.Entries, got[0].Entries)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDistributor_ProcessStreamEntries(t *testing.T) {
+	now := time.Now()
+	entry := func(at time.Time, line string) logproto.Entry {
+		return logproto.Entry{Timestamp: at, Line: line, StructuredMetadata: buildNestedAttrs("m", "v")}
+	}
+	scope := func(entries ...logproto.Entry) logproto.ScopeLogs {
+		return logproto.ScopeLogs{Attrs: buildNestedAttrs("s", "scope"), Entries: entries}
+	}
+	resource := func(scopes ...logproto.ScopeLogs) logproto.ResourceLogs {
+		return logproto.ResourceLogs{Attrs: buildNestedAttrs("r", "resource"), ScopeLogs: scopes}
+	}
+	// Entry sizes include their own metadata: kept=4, tooLong=8, tooOld=5, future=5.
+	// Each scope adds 6 shared bytes; each resource adds 9.
+	kept := entry(now, "ok")
+	tooLong := entry(now, "123456")
+	tooOld := entry(now.Add(-2*time.Hour), "old")
+	future := entry(now.Add(2*time.Hour), "new")
+	type discard struct {
+		bytes, samples float64
+	}
+	for _, tc := range []struct {
+		name          string
+		resources     []logproto.ResourceLogs
+		wantDiscards  map[string]discard
+		wantKept      []string
+		wantKeptBytes int
+	}{
+		{
+			name:          "all entries kept",
+			resources:     []logproto.ResourceLogs{resource(scope(kept, kept))},
+			wantKept:      []string{"ok", "ok"},
+			wantKeptBytes: 23,
+		},
+		{
+			name:          "rejection before a kept entry retains all shared metadata",
+			resources:     []logproto.ResourceLogs{resource(scope(tooLong, kept))},
+			wantDiscards:  map[string]discard{validation.LineTooLong: {bytes: 8, samples: 1}},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name:          "rejection after a kept entry retains all shared metadata",
+			resources:     []logproto.ResourceLogs{resource(scope(kept, tooLong))},
+			wantDiscards:  map[string]discard{validation.LineTooLong: {bytes: 8, samples: 1}},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name:      "mixed rejections with a surviving entry charge only their own bytes",
+			resources: []logproto.ResourceLogs{resource(scope(tooLong, tooOld, future, kept))},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong:             {bytes: 8, samples: 1},
+				validation.GreaterThanMaxSampleAge: {bytes: 5, samples: 1},
+				validation.TooFarInFuture:          {bytes: 5, samples: 1},
+			},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name:      "last rejection in an emptied scope gets its shared bytes",
+			resources: []logproto.ResourceLogs{resource(scope(tooLong, tooOld), scope(kept))},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong:             {bytes: 8, samples: 1},
+				validation.GreaterThanMaxSampleAge: {bytes: 11, samples: 1},
+			},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name:      "last rejection in an emptied resource gets all remaining shared bytes",
+			resources: []logproto.ResourceLogs{resource(scope(tooLong, tooOld))},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong:             {bytes: 8, samples: 1},
+				validation.GreaterThanMaxSampleAge: {bytes: 20, samples: 1},
+			},
+		},
+		{
+			name:      "different reasons empty separate scopes and share resource bytes once",
+			resources: []logproto.ResourceLogs{resource(scope(tooOld), scope(), scope(tooLong), scope())},
+			wantDiscards: map[string]discard{
+				validation.GreaterThanMaxSampleAge: {bytes: 11, samples: 1},
+				validation.LineTooLong:             {bytes: 23, samples: 1},
+			},
+		},
+		{
+			name:          "surviving resource followed by a discarded resource",
+			resources:     []logproto.ResourceLogs{resource(scope(kept)), resource(scope(tooLong))},
+			wantDiscards:  map[string]discard{validation.LineTooLong: {bytes: 23, samples: 1}},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name:         "empty resources do not inherit an earlier rejection reason",
+			resources:    []logproto.ResourceLogs{resource(scope(tooLong)), resource(scope()), resource()},
+			wantDiscards: map[string]discard{validation.LineTooLong: {bytes: 23, samples: 1}},
+		},
+		{
+			name:          "groups that arrived empty do not count as discarded",
+			resources:     []logproto.ResourceLogs{resource(scope()), resource(), resource(scope(kept))},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 19,
+		},
+		{
+			name: "discard accounting stays raw after shared metadata normalization",
+			resources: []logproto.ResourceLogs{{
+				Attrs: buildNestedAttrs("1", "r"),
+				ScopeLogs: []logproto.ScopeLogs{
+					{Attrs: buildNestedAttrs("2", "s"), Entries: []logproto.Entry{kept}},
+					{Attrs: buildNestedAttrs("3", "s"), Entries: []logproto.Entry{tooLong, tooOld}},
+				},
+			}},
+			wantDiscards: map[string]discard{
+				validation.LineTooLong:             {bytes: 8, samples: 1},
+				validation.GreaterThanMaxSampleAge: {bytes: 7, samples: 1},
+			},
+			wantKept:      []string{"ok"},
+			wantKeptBytes: 16,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			validation.DiscardedBytes.Reset()
+			validation.DiscardedSamples.Reset()
+			t.Cleanup(validation.DiscardedBytes.Reset)
+			t.Cleanup(validation.DiscardedSamples.Reset)
+
+			// setup limits and other fixtures
+			lim := &validation.Limits{}
+			flagext.DefaultValues(lim)
+			lim.RejectOldSamples = true
+			lim.RejectOldSamplesMaxAge = model.Duration(time.Hour)
+			lim.CreationGracePeriod = model.Duration(time.Hour)
+			lim.MaxLineSize = 5
+			lim.DiscoverLogLevels = false
+			overrides, err := validation.NewOverrides(*lim, nil)
+			require.NoError(t, err)
+			tracker := &discardUsageTracker{bytesByReason: map[string]float64{}}
+			v, err := NewValidator(overrides, tracker)
+			require.NoError(t, err)
+			d := &Distributor{validator: v, m: newMetrics(prometheus.NewRegistry())}
+			vCtx := v.getValidationContextForTime(now, "test")
+			lbs := labels.FromStrings("app", "shared")
+			stream := logproto.InternalStreamAdapter{Labels: lbs.String(), ResourceLogs: tc.resources}
+			var validationErrors util.GroupedErrors
+
+			stats, err := d.processStreamEntries(ctx, vCtx, &stream, lbs, "24", "accounting", constants.OTLP, newFieldDetector(vCtx), &validationErrors)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantKeptBytes, stats.unexpandedSize)
+			require.Equal(t, tc.wantKeptBytes, nestedStreamSize(stream))
+			require.Equal(t, len(tc.wantKept), stats.entriesKept)
+			var keptLines []string
+			for _, resource := range stream.ResourceLogs {
+				require.NotEmpty(t, resource.ScopeLogs)
+				for _, scope := range resource.ScopeLogs {
+					require.NotEmpty(t, scope.Entries)
+					for _, entry := range scope.Entries {
+						keptLines = append(keptLines, entry.Line)
+					}
+				}
+			}
+			require.Equal(t, tc.wantKept, keptLines)
+
+			wantTrackedBytes := map[string]float64{}
+			var totalSamples float64
+			for reason, counts := range tc.wantDiscards {
+				require.Equal(t, counts.bytes, testutil.ToFloat64(validation.DiscardedBytes.WithLabelValues(reason, "test", "24", "accounting", constants.OTLP)), "%s bytes", reason)
+				require.Equal(t, counts.samples, testutil.ToFloat64(validation.DiscardedSamples.WithLabelValues(reason, "test", "24", "accounting", constants.OTLP)), "%s samples", reason)
+				wantTrackedBytes[reason] = counts.bytes
+				totalSamples += counts.samples
+			}
+			require.Equal(t, wantTrackedBytes, tracker.bytesByReason)
+			require.Equal(t, len(tc.wantDiscards), testutil.CollectAndCount(validation.DiscardedBytes))
+			require.Equal(t, len(tc.wantDiscards), testutil.CollectAndCount(validation.DiscardedSamples))
+			require.Len(t, validationErrors.MultiError, int(totalSamples))
+		})
+	}
+}
+
+type discardUsageTracker struct {
+	bytesByReason map[string]float64
+}
+
+func (*discardUsageTracker) ReceivedBytesAdd(context.Context, string, time.Duration, labels.Labels, float64, string) {
+}
+
+func (t *discardUsageTracker) DiscardedBytesAdd(_ context.Context, _, reason string, _ labels.Labels, value float64, _ string) {
+	t.bytesByReason[reason] += value
+}
+
 func Test_MissingEnforcedLabels(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -659,6 +1521,75 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Equal(t, uint64(1), kafkaWriter.pushes)
 	})
 
+	t.Run("shared metadata survives Kafka encoding", func(t *testing.T) {
+		for _, tc := range []struct {
+			name        string
+			maxSize     int
+			wantRecords int
+			wantErr     string
+		}{
+			{name: "one record", maxSize: 1024, wantRecords: 1},
+			{name: "split records", maxSize: 256, wantRecords: 2},
+			{name: "entry exceeds record limit", maxSize: 100, wantErr: "single entry size"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				lim := &validation.Limits{}
+				flagext.DefaultValues(lim)
+				lim.RejectOldSamples = false
+				lim.DiscoverLogLevels = false
+				distributors, _ := prepareButDontStart(t, 1, 0, lim, nil)
+				d := distributors[0]
+				producer := &mockKafkaProducer{}
+				d.cfg.KafkaEnabled = true
+				d.cfg.IngesterEnabled = false
+				d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = tc.maxSize
+				d.kafkaWriter = producer
+				startAndWaitRunningDistributors(t, distributors)
+
+				at := time.Unix(123456, 0).UTC()
+				first := logproto.Entry{Timestamp: at, Line: strings.Repeat("a", 100), StructuredMetadata: buildNestedAttrs("service_name", "entry")}
+				second := logproto.Entry{Timestamp: at.Add(time.Second), Line: strings.Repeat("b", 100)}
+				req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+					Labels: `{app="shared"}`,
+					ResourceLogs: []logproto.ResourceLogs{{Attrs: buildNestedAttrs("service.name", "resource"), ScopeLogs: []logproto.ScopeLogs{
+						{Attrs: buildNestedAttrs("scope.name", "first"), Entries: []logproto.Entry{first}},
+						{Attrs: buildNestedAttrs("scope.name", "second"), Entries: []logproto.Entry{second}},
+					}}},
+				}}}
+				_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				if tc.wantErr != "" {
+					require.ErrorContains(t, err, tc.wantErr)
+					require.Empty(t, producer.records)
+					return
+				}
+				require.NoError(t, err)
+				require.Len(t, producer.records, tc.wantRecords)
+
+				want := []logproto.Entry{
+					{Timestamp: first.Timestamp, Line: first.Line, StructuredMetadata: buildNestedAttrs("service_name", "entry", "scope_name", "first")},
+					{Timestamp: second.Timestamp, Line: second.Line, StructuredMetadata: buildNestedAttrs("scope_name", "second", "service_name", "resource")},
+				}
+				decoder, err := kafka.NewDecoder()
+				require.NoError(t, err)
+				decoded := 0
+				for _, record := range producer.records {
+					require.Equal(t, "test", string(record.Key))
+					require.LessOrEqual(t, len(record.Value), tc.maxSize)
+					stream, _, err := decoder.Decode(record.Value)
+					require.NoError(t, err)
+					require.Equal(t, `{app="shared"}`, stream.Labels)
+					require.NotEmpty(t, stream.Entries)
+					for _, entry := range stream.Entries {
+						require.Less(t, decoded, len(want))
+						require.Equal(t, want[decoded], entry)
+						decoded++
+					}
+				}
+				require.Equal(t, len(want), decoded)
+			})
+		}
+	})
+
 	t.Run("with kafka and ingesters, both must complete", func(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
@@ -864,59 +1795,72 @@ func TestStreamShard(t *testing.T) {
 		streamSize int
 
 		wantDerivedStreamSize int
+		wantShardCount        int
 	}{
 		{
 			name:                  "zero shard because no entries",
 			entries:               nil,
 			streamSize:            50,
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "one shard with one entry",
 			streamSize:            1,
 			entries:               totalEntries[0:1],
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "two shards with 3 entries",
 			streamSize:            desiredRate.Val() + 1, // pass the desired rate by 1 byte to force two shards.
 			entries:               totalEntries[0:3],
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "two shards with 5 entries",
 			entries:               totalEntries[0:5],
 			streamSize:            desiredRate.Val() + 1, // pass the desired rate for 1 byte to force two shards.
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "one shard with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            1,
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 		{
 			name:                  "two shards with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            desiredRate.Val() + 1, // pass desired rate by 1 to force two shards.
 			wantDerivedStreamSize: 2,
+			wantShardCount:        2,
 		},
 		{
 			name:                  "four shards with 20 entries",
 			entries:               totalEntries[0:20],
 			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
 			wantDerivedStreamSize: 4,
+			wantShardCount:        4,
 		},
 		{
+			// The recommendation stays at 4 even though only 2 physical
+			// shards are created, as shardNested limits the shards to the
+			// number of entries. Shadow mode compares the recommendation.
 			name:                  "size for four shards with 2 entries, ends up with 4 shards ",
 			streamSize:            1 + (desiredRate.Val() * 3), // force 4 shards.
 			entries:               totalEntries[0:2],
 			wantDerivedStreamSize: 2,
+			wantShardCount:        4,
 		},
 		{
 			name:                  "four shards with 1 entry, ends up with 1 shard only",
 			entries:               totalEntries[0:1],
 			wantDerivedStreamSize: 1,
+			wantShardCount:        1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -939,9 +1883,12 @@ func TestStreamShard(t *testing.T) {
 				shardTracker: NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
+			derivedStreams, shardCount := d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
+			require.Equal(t, tc.wantShardCount, shardCount)
 
+			// Each shard must have its own ring token.
+			ringKeys := map[uint32]struct{}{}
 			for _, s := range derivedStreams {
 				// Generate sorted labels
 				lbls, err := syntax.ParseLabels(s.Stream.Labels)
@@ -949,7 +1896,9 @@ func TestStreamShard(t *testing.T) {
 
 				require.Equal(t, labels.StableHash(lbls), s.Stream.Hash)
 				require.Equal(t, lbls.String(), s.Stream.Labels)
+				ringKeys[s.HashKey] = struct{}{}
 			}
+			require.Len(t, ringKeys, tc.wantDerivedStreamSize, "shards share a ring token")
 		})
 	}
 }
@@ -984,293 +1933,28 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker: NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams, _ := d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.Stream.Entries, 1)
+			require.Len(t, s.Stream.FlatView().Entries, 1)
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
+		derivedStreams, _ = d.shardStream(*logproto.FromStream(baseStream), mustParseLabels(baseStream.Labels), streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.Stream.Entries, 1)
+			require.Len(t, s.Stream.FlatView().Entries, 1)
 			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i+2))
 		}
 	})
-}
-
-func TestStreamShardByTime(t *testing.T) {
-	baseTimestamp := time.Date(2024, 10, 31, 12, 34, 56, 0, time.UTC)
-	t.Logf("Base timestamp: %s (unix %d)", baseTimestamp.Format(time.RFC3339Nano), baseTimestamp.Unix())
-
-	for _, tc := range []struct {
-		test         string
-		labels       string
-		entries      []logproto.Entry
-		timeShardLen time.Duration
-		ignoreFrom   time.Time
-		expResult    []streamWithTimeShard
-	}{
-		{
-			test:         "zero shard because no entries",
-			labels:       "{app='myapp'}",
-			entries:      nil,
-			timeShardLen: time.Hour,
-			expResult:    nil,
-		},
-		{
-			test:   "single shard with one entry",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(1 * time.Second),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-				}}, linesTotalLen: 3},
-			},
-		},
-		{
-			test:   "one entry that is ignored",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(-10 * time.Minute),
-			expResult:    nil,
-		},
-		{
-			test:   "single shard with two entries",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(2 * time.Second),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 6},
-			},
-		},
-		{
-			test:   "one shard and another stream with original labels",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp, Line: "foo"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(1 * time.Second),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-				}}, linesTotalLen: 3},
-				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 3},
-			},
-		},
-		{
-			test:   "single shard with two entries reversed",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp, Line: "foo"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(2 * time.Second),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 6},
-			},
-		},
-		{
-			test:   "two shards without a gap",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp.Add(time.Hour), Line: "baz"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(2 * time.Hour),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 6},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Add(time.Hour), Line: "baz"},
-				}}, linesTotalLen: 3},
-			},
-		},
-		{
-			test:   "two shards with a gap",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp.Add(4 * time.Hour), Line: "baz"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(5 * time.Hour),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 6},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730390400_1730394000", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Add(4 * time.Hour), Line: "baz"},
-				}}, linesTotalLen: 3},
-			},
-		},
-		{
-			test:   "bigger shard len",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
-			},
-			timeShardLen: 24 * time.Hour,
-			ignoreFrom:   baseTimestamp.Add(7 * time.Hour),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730332800_1730419200", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-					{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
-				}}, linesTotalLen: 9},
-			},
-		},
-		{
-			test:   "bigger shard len with some unsharded",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp, Line: "foo"},
-				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
-			},
-			timeShardLen: 24 * time.Hour,
-			ignoreFrom:   baseTimestamp.Add(5 * time.Hour),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730332800_1730419200", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp, Line: "foo"},
-					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
-				}}, linesTotalLen: 6},
-				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
-				}}, linesTotalLen: 3},
-			},
-		},
-		{
-			test:   "longer messy gaps",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
-				{Timestamp: baseTimestamp, Line: "13"},
-				{Timestamp: baseTimestamp, Line: "14"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
-				{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
-				{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Add(7 * time.Hour),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
-					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
-					{Timestamp: baseTimestamp, Line: "13"},
-					{Timestamp: baseTimestamp, Line: "14"},
-				}}, linesTotalLen: 8},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
-				}}, linesTotalLen: 2},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730383200_1730386800", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
-					{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
-				}}, linesTotalLen: 4},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730394000_1730397600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
-				}}, linesTotalLen: 2},
-			},
-		},
-		{
-			test:   "longer messy with a couple ofc unsharded",
-			labels: `{app="myapp"}`,
-			entries: []logproto.Entry{
-				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
-				{Timestamp: baseTimestamp, Line: "13"},
-				{Timestamp: baseTimestamp, Line: "14"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
-				{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
-				{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
-				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
-			},
-			timeShardLen: time.Hour,
-			ignoreFrom:   baseTimestamp.Truncate(time.Hour).Add(1*time.Hour + 35*time.Minute),
-			expResult: []streamWithTimeShard{
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
-					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
-					{Timestamp: baseTimestamp, Line: "13"},
-					{Timestamp: baseTimestamp, Line: "14"},
-				}}, linesTotalLen: 8},
-				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
-				}}, linesTotalLen: 2},
-				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
-					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
-					{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
-					{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
-				}}, linesTotalLen: 6},
-			},
-		},
-	} {
-		t.Run(tc.test, func(t *testing.T) {
-			lbls, err := syntax.ParseLabels(tc.labels)
-			require.NoError(t, err)
-			stream := logproto.Stream{
-				Labels:  tc.labels,
-				Hash:    labels.StableHash(lbls),
-				Entries: tc.entries,
-			}
-
-			shardedStreams, ok := shardStreamByTime(stream, lbls, tc.timeShardLen, tc.ignoreFrom)
-			if tc.expResult == nil {
-				assert.False(t, ok)
-				assert.Nil(t, shardedStreams)
-				return
-			}
-			require.True(t, ok)
-			require.Len(t, shardedStreams, len(tc.expResult))
-
-			for i, ss := range shardedStreams {
-				assert.Equal(t, tc.expResult[i].linesTotalLen, ss.linesTotalLen)
-				assert.Equal(t, tc.expResult[i].Labels, ss.Labels)
-				assert.EqualValues(t, tc.expResult[i].Entries, ss.Entries)
-			}
-		})
-	}
 }
 
 func generateEntries(n int) []logproto.Entry {
@@ -1323,7 +2007,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1333,7 +2017,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1343,7 +2027,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1353,7 +2037,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
+			d.shardStream(*logproto.FromStream(stream), mustParseLabels(stream.Labels), 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 }
@@ -1369,7 +2053,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, *logproto.FromStream(stream), streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1409,9 +2093,9 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, *logproto.FromStream(logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver, constants.Loki)
+			}), streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -1648,7 +2332,8 @@ func TestShardCountFor(t *testing.T) {
 			d := &Distributor{
 				rateStore: &fakeRateStore{tc.rate, tc.pushRate},
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.pushSize, "fake", limits.ShardStreams)
+			nested := *logproto.FromStream(*tc.stream)
+			got := d.shardCountFor(util_log.Logger, nested, tc.pushSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -2004,6 +2689,171 @@ func TestDistributor_PushBackfillBypassesRejectOldSamples(t *testing.T) {
 	}, time.Second, 10*time.Millisecond, "expected the backfill stream to reach the ingesters")
 }
 
+func TestDistributor_PushTimeSharding(t *testing.T) {
+	// prepare() uses a one-hour shard window and a 40-minute recent window.
+	old := time.Now().Add(-3 * time.Hour).Truncate(time.Hour).Add(10 * time.Minute)
+	recent := time.Now()
+	entry := func(at time.Time, line string) logproto.Entry {
+		return logproto.Entry{Timestamp: at, Line: line, StructuredMetadata: []logproto.LabelAdapter{{Name: "trace_id", Value: line}}}
+	}
+	stream := func(app string, entries []logproto.Entry, shardLabels ...string) logproto.Stream {
+		ls := labels.FromStrings(append([]string{"app", app}, shardLabels...)...)
+		return logproto.Stream{Labels: ls.String(), Hash: labels.StableHash(ls), Entries: entries}
+	}
+	window := func(at time.Time) string {
+		start := at.Truncate(time.Hour)
+		return fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())
+	}
+
+	for _, tc := range []struct {
+		name        string
+		app         string
+		entries     []logproto.Entry
+		rate        *fakeRateStore
+		maxChunkAge time.Duration
+		want        []logproto.Stream
+	}{
+		{
+			name: "old entries are bucketed by their window", app: "regular",
+			entries: []logproto.Entry{entry(old.Add(time.Hour), "b"), entry(old, "a")},
+			want: []logproto.Stream{
+				stream("regular", []logproto.Entry{entry(old, "a")}, timeShardLabel, window(old)),
+				stream("regular", []logproto.Entry{entry(old.Add(time.Hour), "b")}, timeShardLabel, window(old.Add(time.Hour))),
+			},
+		},
+		{
+			name: "recent entries are sorted before forwarding", app: "recent",
+			entries: []logproto.Entry{entry(recent.Add(-10*time.Second), "third"), entry(recent.Add(-30*time.Second), "first"), entry(recent.Add(-20*time.Second), "second")},
+			want:    []logproto.Stream{stream("recent", []logproto.Entry{entry(recent.Add(-30*time.Second), "first"), entry(recent.Add(-20*time.Second), "second"), entry(recent.Add(-10*time.Second), "third")})},
+		},
+		{
+			name: "recent entries spanning multiple time-shard intervals are sorted", app: "recent-wide-window",
+			maxChunkAge: time.Hour,
+			entries:     []logproto.Entry{entry(recent, "newest"), entry(recent.Add(-35*time.Minute), "older")},
+			want:        []logproto.Stream{stream("recent-wide-window", []logproto.Entry{entry(recent.Add(-35*time.Minute), "older"), entry(recent, "newest")})},
+		},
+		{
+			name: "old and recent entries retain their metadata", app: "mixed",
+			entries: []logproto.Entry{entry(recent, "newest"), entry(old, "old"), entry(recent.Add(-time.Minute), "recent")},
+			want: []logproto.Stream{
+				stream("mixed", []logproto.Entry{entry(old, "old")}, timeShardLabel, window(old)),
+				stream("mixed", []logproto.Entry{entry(recent.Add(-time.Minute), "recent"), entry(recent, "newest")}),
+			},
+		},
+		{
+			name: "rate sharding keeps the window it divides", app: "compose",
+			entries: []logproto.Entry{entry(old.Add(time.Second), "second"), entry(old, "first")},
+			rate:    &fakeRateStore{rate: 1000, pushRate: 1},
+			want: []logproto.Stream{
+				stream("compose", []logproto.Entry{entry(old, "first")}, timeShardLabel, window(old), ingester.ShardLbName, "0"),
+				stream("compose", []logproto.Entry{entry(old.Add(time.Second), "second")}, timeShardLabel, window(old), ingester.ShardLbName, "1"),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.RejectOldSamples = false
+			limits.DiscoverLogLevels = false
+			limits.ShardStreams.TimeShardingEnabled = true
+			if tc.rate != nil {
+				limits.ShardStreams.Enabled = true
+				limits.ShardStreams.DesiredRate = 100
+			}
+			require.NoError(t, limits.Validate())
+
+			ing := &mockIngester{}
+			distributors, _ := prepare(t, 1, 3, limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			d := distributors[0]
+			if tc.rate != nil {
+				d.rateStore = tc.rate
+			}
+			if tc.maxChunkAge != 0 {
+				d.ingesterCfg.MaxChunkAge = tc.maxChunkAge
+			}
+
+			_, err := d.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream(tc.app, tc.entries)}})
+			require.NoError(t, err)
+			got := ing.Peek()
+			require.NotNil(t, got, "nothing reached the ingesters")
+			require.ElementsMatch(t, tc.want, got.Streams)
+		})
+	}
+}
+
+func TestDistributor_SharedMetadataLimits(t *testing.T) {
+	at := time.Now().Add(-3 * time.Hour).Truncate(time.Hour).Add(10 * time.Minute)
+	for _, timeSharding := range []bool{false, true} {
+		for _, tc := range []struct {
+			name          string
+			burst         int
+			metadataSize  int
+			metadataCount int
+			wantErr       string
+		}{
+			{name: "at all limits", burst: 42, metadataSize: 22, metadataCount: 3},
+			{name: "over ingestion limit", burst: 41, metadataSize: 22, metadataCount: 3, wantErr: "ingestion rate limit exceeded"},
+			{name: "over metadata size", burst: 42, metadataSize: 21, metadataCount: 3, wantErr: "structured metadata too large"},
+			{name: "over metadata count", burst: 42, metadataSize: 22, metadataCount: 2, wantErr: "too many structured metadata labels"},
+		} {
+			t.Run(fmt.Sprintf("%s/time-sharding=%t", tc.name, timeSharding), func(t *testing.T) {
+				lim := &validation.Limits{}
+				flagext.DefaultValues(lim)
+				lim.RejectOldSamples = false
+				lim.DiscoverLogLevels = false
+				lim.IngestionRateMB = float64(tc.burst) / (1024 * 1024)
+				lim.IngestionBurstSizeMB = lim.IngestionRateMB
+				lim.MaxStructuredMetadataSize = loki_flagext.ByteSize(tc.metadataSize)
+				lim.MaxStructuredMetadataEntriesCount = tc.metadataCount
+				lim.ShardStreams.Enabled = true
+				lim.ShardStreams.DesiredRate = 50
+				lim.ShardStreams.TimeShardingEnabled = timeSharding
+				ing := &mockIngester{}
+				distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+				d := distributors[0]
+				d.rateStore = &fakeRateStore{rate: 1, pushRate: 1}
+
+				resourceAttrs := []logproto.LabelAdapter{{Name: "r", Value: "123456789"}}
+				scopeAttrs := []logproto.LabelAdapter{{Name: "s", Value: "123456789"}}
+				entry := func(line string) logproto.Entry {
+					return logproto.Entry{Timestamp: at, Line: line, StructuredMetadata: []logproto.LabelAdapter{{Name: "m", Value: "v"}}}
+				}
+				// 42 bytes before expansion and 92 after: two rate shards at 50 bytes each.
+				stream := logproto.InternalStreamAdapter{Labels: `{app="shared"}`, ResourceLogs: []logproto.ResourceLogs{{Attrs: resourceAttrs, ScopeLogs: []logproto.ScopeLogs{
+					{Attrs: scopeAttrs, Entries: []logproto.Entry{entry("a"), entry("b")}},
+					{Attrs: scopeAttrs, Entries: []logproto.Entry{entry("c"), entry("d")}},
+				}}}}
+				_, err := d.pushWithResolver(ctx, &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{stream}}, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				if tc.wantErr != "" {
+					require.ErrorContains(t, err, tc.wantErr)
+					require.Nil(t, ing.Peek())
+					return
+				}
+				require.NoError(t, err)
+				var want []logproto.Stream
+				for i, lines := range [][]string{{"a", "b"}, {"c", "d"}} {
+					ls := labels.FromStrings("app", "shared", ingester.ShardLbName, strconv.Itoa(i))
+					if timeSharding {
+						start := at.Truncate(time.Hour)
+						ls = labels.NewBuilder(ls).Set(timeShardLabel, fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())).Labels()
+					}
+					out := logproto.Stream{Labels: ls.String(), Hash: labels.StableHash(ls)}
+					for _, line := range lines {
+						e := entry(line)
+						e.StructuredMetadata = append(e.StructuredMetadata, scopeAttrs...)
+						e.StructuredMetadata = append(e.StructuredMetadata, resourceAttrs...)
+						out.Entries = append(out.Entries, e)
+					}
+					want = append(want, out)
+				}
+				got := ing.Peek()
+				require.NotNil(t, got)
+				require.ElementsMatch(t, want, got.Streams)
+			})
+		}
+	}
+}
+
 // TestDistributor_PushBackfillDisablesTimeSharding verifies that streams carrying the internal
 // backfill label are not time-sharded by Loki even when time sharding is enabled, because backfill
 // workers implement time sharding on the client side (via constants.BackfillShardLabel). A regular
@@ -2350,16 +3200,16 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, nil, "", log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
 		require.NoError(t, err)
 		distributors[i] = d
 	}
 
 	t.Cleanup(func() {
-		assert.NoError(t, closer.Close())
 		for _, d := range distributors {
 			assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
 		}
+		assert.NoError(t, closer.Close())
 		ingestersRing.StopAsync()
 	})
 
@@ -2640,7 +3490,7 @@ func TestDistributorTee(t *testing.T) {
 		require.NoError(t, err)
 
 		for j, streams := range td.Streams {
-			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
+			assert.Equal(t, tee.duplicated[i][j].Stream.FlatView().Entries, streams.Entries)
 		}
 
 		require.Equal(t, "test", tee.tenant)
@@ -2712,6 +3562,390 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
 		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+	}
+}
+
+func TestDistributor_NormalizeStructuredMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		metadata          []logproto.LabelAdapter
+		normalizeLevel    bool
+		want              labels.Labels
+		wantChanged       bool
+		wantSanitizations float64
+		wantErr           string
+	}{
+		{
+			name: "empty metadata",
+			want: labels.EmptyLabels(),
+		},
+		{
+			name:     "valid metadata remains unchanged",
+			metadata: buildNestedAttrs("z", "私", "a", "value"),
+			want:     labels.FromStrings("a", "value", "z", "私"),
+		},
+		{
+			name:              "invalid name characters",
+			metadata:          buildNestedAttrs("service.name", "loki"),
+			want:              labels.FromStrings("service_name", "loki"),
+			wantChanged:       true,
+			wantSanitizations: 1,
+		},
+		{
+			name:              "numeric name gains a prefix",
+			metadata:          buildNestedAttrs("1", "value"),
+			want:              labels.FromStrings("key_1", "value"),
+			wantChanged:       true,
+			wantSanitizations: 1,
+		},
+		{
+			name:              "invalid UTF-8 and replacement runes",
+			metadata:          buildNestedAttrs("value", "a\xffb�c"),
+			want:              labels.FromStrings("value", "a b c"),
+			wantChanged:       true,
+			wantSanitizations: 1,
+		},
+		{
+			name:              "name and value sanitized separately",
+			metadata:          buildNestedAttrs("service.name", "lo�ki"),
+			want:              labels.FromStrings("service_name", "lo ki"),
+			wantChanged:       true,
+			wantSanitizations: 2,
+		},
+		{
+			name:        "empty value removed",
+			metadata:    buildNestedAttrs("empty", "", "keep", "v"),
+			want:        labels.FromStrings("keep", "v"),
+			wantChanged: true,
+		},
+		{
+			name:              "normalized name replaces an existing name",
+			metadata:          buildNestedAttrs("a.b", "normalized", "a_b", "original"),
+			want:              labels.FromStrings("a_b", "normalized"),
+			wantChanged:       true,
+			wantSanitizations: 1,
+		},
+		{
+			name:     "level normalization disabled",
+			metadata: buildNestedAttrs(constants.LevelLabel, "WARNING"),
+			want:     labels.FromStrings(constants.LevelLabel, "WARNING"),
+		},
+		{
+			name:           "level normalization enabled",
+			metadata:       buildNestedAttrs(constants.LevelLabel, "WARNING"),
+			normalizeLevel: true,
+			want:           labels.FromStrings(constants.LevelLabel, "warn"),
+			wantChanged:    true,
+		},
+		{
+			name:              "level normalization after name sanitization",
+			metadata:          buildNestedAttrs("detected.level", "WARN"),
+			normalizeLevel:    true,
+			want:              labels.FromStrings(constants.LevelLabel, "warn"),
+			wantChanged:       true,
+			wantSanitizations: 1,
+		},
+		{
+			name:           "unknown level preserved",
+			metadata:       buildNestedAttrs(constants.LevelLabel, "CUSTOM"),
+			normalizeLevel: true,
+			want:           labels.FromStrings(constants.LevelLabel, "CUSTOM"),
+		},
+		{
+			name:     "empty name rejected",
+			metadata: buildNestedAttrs("", "value"),
+			want:     labels.EmptyLabels(),
+			wantErr:  "label name is empty",
+		},
+		{
+			name:              "invalid name rejected without returning partial results",
+			metadata:          buildNestedAttrs("service.name", "loki", "__", "value"),
+			want:              labels.EmptyLabels(),
+			wantSanitizations: 1,
+			wantErr:           "normalization for label name",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Distributor{m: newMetrics(prometheus.NewRegistry())}
+			before := append([]logproto.LabelAdapter(nil), tc.metadata...)
+
+			got, changed, err := d.normalizeStructuredMetadata(tc.metadata, "test", constants.Loki, tc.normalizeLevel)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.True(t, labels.Equal(tc.want, got), "want %s, got %s", tc.want, got)
+			require.Equal(t, tc.wantChanged, changed)
+			require.Equal(t, before, tc.metadata, "normalization must not mutate shared input")
+			require.Equal(t, tc.wantSanitizations, testutil.ToFloat64(d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+		})
+	}
+}
+
+func TestDistributor_NormalizeMetadataGroup(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		attrs              []logproto.LabelAdapter
+		normalizeLevel     bool
+		want               []logproto.LabelAdapter
+		wantOriginalSize   int
+		wantNormalizedSize int
+		wantSanitizations  float64
+	}{
+		{name: "empty group"},
+		{
+			name:               "unchanged attributes reuse their slice",
+			attrs:              buildNestedAttrs("keep", "v"),
+			want:               buildNestedAttrs("keep", "v"),
+			wantOriginalSize:   5,
+			wantNormalizedSize: 5,
+		},
+		{
+			name:               "name prefix increases normalized size",
+			attrs:              buildNestedAttrs("1", "v"),
+			want:               buildNestedAttrs("key_1", "v"),
+			wantOriginalSize:   2,
+			wantNormalizedSize: 6,
+			wantSanitizations:  1,
+		},
+		{
+			name:               "collisions and empty values reduce normalized size and count",
+			attrs:              buildNestedAttrs("a.b", "v", "a_b", "other", "empty", ""),
+			want:               buildNestedAttrs("a_b", "v"),
+			wantOriginalSize:   17,
+			wantNormalizedSize: 4,
+			wantSanitizations:  1,
+		},
+		{
+			name:               "detected level is excluded from size accounting",
+			attrs:              buildNestedAttrs(constants.LevelLabel, "WARNING"),
+			normalizeLevel:     true,
+			want:               buildNestedAttrs(constants.LevelLabel, "warn"),
+			wantOriginalSize:   0,
+			wantNormalizedSize: 0,
+		},
+		{
+			name:               "sanitized detected level is excluded from normalized size",
+			attrs:              buildNestedAttrs("detected.level", "WARNING"),
+			normalizeLevel:     true,
+			want:               buildNestedAttrs(constants.LevelLabel, "warn"),
+			wantOriginalSize:   21,
+			wantNormalizedSize: 0,
+			wantSanitizations:  1,
+		},
+		{
+			name:               "cached group is not normalized again",
+			attrs:              buildNestedAttrs(constants.LevelLabel, "WARNING"),
+			want:               buildNestedAttrs(constants.LevelLabel, "WARNING"),
+			wantOriginalSize:   0,
+			wantNormalizedSize: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &Distributor{m: newMetrics(prometheus.NewRegistry())}
+			attrs := tc.attrs
+			before := append([]logproto.LabelAdapter(nil), attrs...)
+			group := newMetadataGroup(&attrs)
+
+			require.NoError(t, d.normalizeMetadataGroup(&group, "test", constants.Loki, tc.normalizeLevel))
+			require.Equal(t, tc.want, attrs)
+			require.Equal(t, before, tc.attrs, "other groups can still reference the original attributes")
+			require.True(t, group.normalized)
+			require.True(t, labels.Equal(logproto.FromLabelAdaptersToLabels(tc.want), group.labels))
+			require.Equal(t, tc.wantOriginalSize, group.originalSize)
+			require.Equal(t, len(before), group.originalCount)
+			require.Equal(t, tc.wantNormalizedSize, group.normalizedSize)
+			if len(attrs) > 0 && labels.Equal(logproto.FromLabelAdaptersToLabels(before), group.labels) {
+				require.Same(t, &tc.attrs[0], &attrs[0])
+			}
+
+			// Reusing a group must not normalize it again or replace its attributes.
+			normalized := attrs
+			require.NoError(t, d.normalizeMetadataGroup(&group, "test", constants.Loki, !tc.normalizeLevel))
+			require.Equal(t, tc.want, attrs)
+			if len(attrs) > 0 {
+				require.Same(t, &normalized[0], &attrs[0])
+			}
+			require.Equal(t, tc.wantSanitizations, testutil.ToFloat64(d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+		})
+	}
+
+	t.Run("error leaves group unchanged", func(t *testing.T) {
+		d := &Distributor{m: newMetrics(prometheus.NewRegistry())}
+		attrs := buildNestedAttrs("service.name", "loki", "__", "invalid")
+		before := append([]logproto.LabelAdapter(nil), attrs...)
+		group := newMetadataGroup(&attrs)
+		beforeGroup := group
+
+		err := d.normalizeMetadataGroup(&group, "test", constants.Loki, true)
+		require.ErrorContains(t, err, "normalization for label name")
+		require.Equal(t, before, attrs)
+		require.Equal(t, beforeGroup, group, "failed normalization must not be cached")
+	})
+}
+
+func TestDistributor_SharedMetadataNormalization(t *testing.T) {
+	for _, discoverLevels := range []bool{false, true} {
+		t.Run(fmt.Sprintf("discover-levels=%t", discoverLevels), func(t *testing.T) {
+			lim := &validation.Limits{}
+			flagext.DefaultValues(lim)
+			lim.DiscoverLogLevels = discoverLevels
+			lim.DiscoverGenericFields.Fields = map[string][]string{"scope_id": {"scope_name"}, "resource_id": {"key_9resource_name"}}
+			ing := &mockIngester{}
+			distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			d := distributors[0]
+			resourceAttrs := buildNestedAttrs("9resource.name", "r�s", "detected.level", "WARN")
+			scopeAttrs := buildNestedAttrs("scope.name", "scope�")
+			resourceBefore := append([]logproto.LabelAdapter(nil), resourceAttrs...)
+			scopeBefore := append([]logproto.LabelAdapter(nil), scopeAttrs...)
+			at := time.Now()
+			entries := func() []logproto.Entry {
+				return []logproto.Entry{
+					{Timestamp: at, Line: "first", StructuredMetadata: buildNestedAttrs("entry.name", "entry")},
+					{Timestamp: at.Add(time.Second), Line: "second", StructuredMetadata: buildNestedAttrs("entry.name", "entry")},
+				}
+			}
+			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+				Labels: `{app="shared"}`,
+				ResourceLogs: []logproto.ResourceLogs{{Attrs: resourceAttrs, ScopeLogs: []logproto.ScopeLogs{
+					{Attrs: scopeAttrs, Entries: entries()},
+					{Attrs: scopeAttrs, Entries: entries()},
+				}}},
+			}}}
+			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			require.NoError(t, err)
+			require.Equal(t, resourceBefore, resourceAttrs, "resource attributes can be shared with other streams")
+			require.Equal(t, scopeBefore, scopeAttrs, "scope attributes can be shared with other groups")
+
+			level := "WARN"
+			if discoverLevels {
+				level = "warn"
+			}
+			wantResource := buildNestedAttrs("key_9resource_name", "r s", "detected_level", level)
+			wantScope := buildNestedAttrs("scope_name", "scope ")
+			wantOwn := buildNestedAttrs("entry_name", "entry", "scope_id", "scope ", "resource_id", "r s")
+			resource := req.Streams[0].ResourceLogs[0]
+			require.ElementsMatch(t, wantResource, resource.Attrs)
+			for _, scope := range resource.ScopeLogs {
+				require.ElementsMatch(t, wantScope, scope.Attrs)
+				for _, entry := range scope.Entries {
+					require.ElementsMatch(t, wantOwn, entry.StructuredMetadata, "shared attributes remain on their groups")
+				}
+			}
+			got := ing.Peek()
+			require.NotNil(t, got)
+			require.Len(t, got.Streams, 1)
+			require.Len(t, got.Streams[0].Entries, 4)
+			wantMetadata := append(append(append([]logproto.LabelAdapter(nil), wantOwn...), wantScope...), wantResource...)
+			for _, entry := range got.Streams[0].Entries {
+				require.ElementsMatch(t, wantMetadata, entry.StructuredMetadata)
+			}
+			// Three resource changes, two per scope, and one per entry.
+			require.Equal(t, float64(11), testutil.ToFloat64(d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+		})
+	}
+}
+
+func TestDistributor_SharedMetadataNormalizationLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		resourceName, scopeName string
+		entryName               string
+		maxMetadataSize         int
+		burst                   int
+		wantErr                 string
+	}{
+		{name: "validate raw size and meter normalized size", maxMetadataSize: 4, burst: 30},
+		{name: "reject raw metadata over the limit", maxMetadataSize: 3, burst: 30, wantErr: "structured metadata too large"},
+		{name: "normalized bytes exceed ingestion limit", maxMetadataSize: 4, burst: 29, wantErr: "ingestion rate limit exceeded"},
+		{name: "invalid resource name", resourceName: "__", maxMetadataSize: 32, burst: 100, wantErr: "normalization for label name"},
+		{name: "invalid scope name", scopeName: "__", maxMetadataSize: 32, burst: 100, wantErr: "normalization for label name"},
+		{name: "invalid entry name", entryName: "__", maxMetadataSize: 32, burst: 100, wantErr: "normalization for label name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lim := &validation.Limits{}
+			flagext.DefaultValues(lim)
+			lim.DiscoverLogLevels = false
+			lim.MaxStructuredMetadataSize = loki_flagext.ByteSize(tc.maxMetadataSize)
+			lim.IngestionRateMB = float64(tc.burst) / (1024 * 1024)
+			lim.IngestionBurstSizeMB = lim.IngestionRateMB
+			ing := &mockIngester{}
+			distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			d := distributors[0]
+			at := time.Now()
+			resourceName, scopeName := tc.resourceName, tc.scopeName
+			if resourceName == "" {
+				resourceName = "1"
+			}
+			if scopeName == "" {
+				scopeName = "2"
+			}
+			// Numeric names gain a four-byte prefix; validation must still use their original sizes.
+			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{Labels: `{app="shared"}`, ResourceLogs: []logproto.ResourceLogs{{
+				Attrs: buildNestedAttrs(resourceName, "r"),
+				ScopeLogs: []logproto.ScopeLogs{
+					{Attrs: buildNestedAttrs(scopeName, "s"), Entries: []logproto.Entry{{Timestamp: at, Line: "aaa"}, {Timestamp: at, Line: "bbb"}}},
+					{Attrs: buildNestedAttrs("3", "s"), Entries: []logproto.Entry{{Timestamp: at, Line: "ccc"}, {Timestamp: at, Line: "ddd"}}},
+				},
+			}}}}}
+			if tc.entryName != "" {
+				req.Streams[0].ResourceLogs[0].ScopeLogs[0].Entries[0].StructuredMetadata = buildNestedAttrs(tc.entryName, "entry")
+			}
+			_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.Nil(t, ing.Peek())
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, ing.Peek())
+			require.Len(t, ing.Peek().Streams[0].Entries, 4)
+		})
+	}
+}
+
+func TestDistributor_SharedMetadataCountAfterNormalization(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		attrs, normalized []logproto.LabelAdapter
+	}{
+		{name: "empty value removed", attrs: buildNestedAttrs("keep", "v", "empty", ""), normalized: buildNestedAttrs("keep", "v")},
+		{name: "names collide", attrs: buildNestedAttrs("a.b", "v", "a_b", "v"), normalized: buildNestedAttrs("a_b", "v")},
+	} {
+		for _, separateScopes := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/separate-scopes=%t", tc.name, separateScopes), func(t *testing.T) {
+				lim := &validation.Limits{}
+				flagext.DefaultValues(lim)
+				lim.DiscoverLogLevels = false
+				lim.MaxStructuredMetadataEntriesCount = 2
+				ing := &mockIngester{}
+				distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+				d := distributors[0]
+				at := time.Now()
+				first := logproto.Entry{Timestamp: at, Line: "kept"}
+				second := logproto.Entry{Timestamp: at, Line: "rejected", StructuredMetadata: buildNestedAttrs("own", "v")}
+				scopes := []logproto.ScopeLogs{{Entries: []logproto.Entry{first, second}}}
+				if separateScopes {
+					scopes = []logproto.ScopeLogs{{Entries: []logproto.Entry{first}}, {Entries: []logproto.Entry{second}}}
+				}
+				req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+					Labels: `{app="shared"}`, ResourceLogs: []logproto.ResourceLogs{{Attrs: tc.attrs, ScopeLogs: scopes}},
+				}}}
+
+				// Validation must count all three submitted attributes, even after normalization removes one.
+				_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+				require.ErrorContains(t, err, "too many structured metadata labels")
+				require.Len(t, req.Streams[0].ResourceLogs, 1)
+				require.Len(t, req.Streams[0].ResourceLogs[0].ScopeLogs, 1)
+				require.Equal(t, tc.normalized, req.Streams[0].ResourceLogs[0].Attrs)
+				got := ing.Peek()
+				require.NotNil(t, got)
+				require.Len(t, got.Streams, 1)
+				first.StructuredMetadata = tc.normalized
+				require.Equal(t, []logproto.Entry{first}, got.Streams[0].Entries)
+			})
+		}
 	}
 }
 
@@ -3124,6 +4358,277 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDistributor_NestedLimitsServiceShardShadow(t *testing.T) {
+	old := time.Now().Add(-3 * time.Hour).Truncate(time.Hour).Add(10 * time.Minute)
+	for _, timeSharding := range []bool{false, true} {
+		t.Run(fmt.Sprintf("time-sharding=%t", timeSharding), func(t *testing.T) {
+			lim := &validation.Limits{}
+			flagext.DefaultValues(lim)
+			lim.RejectOldSamples = false
+			lim.DiscoverLogLevels = false
+			lim.ShardStreams.Enabled = true
+			lim.ShardStreams.DesiredRate = 10
+			lim.ShardStreams.TimeShardingEnabled = timeSharding
+			lim.ShardStreams.TimeShardingIgnoreRecent = 40 * time.Minute
+			lim.ShardStreams.LimitsServiceStreamShardingMode = shardstreams.LimitsServiceStreamShardingModeShadow
+
+			ing := &mockIngester{}
+			distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			d := distributors[0]
+			d.cfg.IngestLimitsEnabled = true
+			d.rateStore = &fakeRateStore{rate: 30, pushRate: 1}
+
+			entries := []logproto.Entry{
+				{Timestamp: old, Line: "aa", StructuredMetadata: buildNestedAttrs("e", "ee")},
+				{Timestamp: old.Add(time.Second), Line: "bb", StructuredMetadata: buildNestedAttrs("e", "ee")},
+				{Timestamp: time.Now(), Line: "cc", StructuredMetadata: buildNestedAttrs("e", "ee")},
+			}
+			lbls := labels.FromStrings("job", "internal")
+			req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+				Labels: lbls.String(),
+				ResourceLogs: []logproto.ResourceLogs{{
+					Attrs: buildNestedAttrs("r", "rr"),
+					ScopeLogs: []logproto.ScopeLogs{{
+						Attrs: buildNestedAttrs("s", "ss"), Entries: entries,
+					}},
+				}},
+			}}}
+
+			// Each expanded entry is 11 bytes: 2 line bytes and 3 bytes at each metadata level.
+			metadata := []*limitsproto.StreamMetadata{{StreamHash: labels.StableHash(lbls), TotalSize: 33}}
+			results := []*limitsproto.StreamShardResult{{StreamHash: labels.StableHash(lbls), Shards: 7}}
+			entryLabels := []labels.Labels{lbls, lbls, lbls}
+			shardNumbers := []string{"0", "1", "2"}
+			if timeSharding {
+				start := old.Truncate(time.Hour)
+				window := fmt.Sprintf("%d_%d", start.Unix(), start.Add(time.Hour).Unix())
+				oldLabels := labels.NewBuilder(lbls).Set(timeShardLabel, window).Labels()
+				metadata = []*limitsproto.StreamMetadata{
+					{StreamHash: labels.StableHash(oldLabels), TotalSize: 22},
+					{StreamHash: labels.StableHash(lbls), TotalSize: 11},
+				}
+				results = []*limitsproto.StreamShardResult{
+					{StreamHash: labels.StableHash(oldLabels), Shards: 6},
+					{StreamHash: labels.StableHash(lbls), Shards: 5},
+				}
+				entryLabels = []labels.Labels{oldLabels, oldLabels, lbls}
+				shardNumbers[2] = "0"
+			}
+			mockClient := mockIngestLimitsFrontendClient{
+				t:                                  t,
+				expectedCheckLimitsAndShardRequest: &limitsproto.CheckLimitsAndShardRequest{Tenant: "test", Streams: metadata},
+				checkLimitsAndShardResponse:        &limitsproto.CheckLimitsAndShardResponse{Results: results},
+				exceedsLimitsResponse:              &limitsproto.ExceedsLimitsResponse{},
+			}
+			d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
+
+			pushCtx := user.InjectOrgID(context.Background(), "test")
+			_, err := d.pushWithResolver(pushCtx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+			require.NoError(t, err)
+			require.Equal(t, uint64(2), mockClient.calls.Load())
+			require.Equal(t, float64(len(results)), sumCounterVec(t, d.m.limitsServiceShardShadowCompared))
+			// Compare recommendations even when entry count limits the number of physical shards.
+			require.Zero(t, sumCounterVec(t, d.m.limitsServiceShardShadowDivergence))
+
+			want := make([]logproto.Stream, len(entries))
+			for i, e := range entries {
+				shardedLabels := labels.NewBuilder(entryLabels[i]).Set(ingester.ShardLbName, shardNumbers[i]).Labels()
+				e.StructuredMetadata = buildNestedAttrs("e", "ee", "s", "ss", "r", "rr")
+				want[i] = logproto.Stream{Labels: shardedLabels.String(), Hash: labels.StableHash(shardedLabels), Entries: []logproto.Entry{e}}
+			}
+			got := ing.Peek()
+			require.NotNil(t, got)
+			require.ElementsMatch(t, want, got.Streams)
+		})
+	}
+}
+
+func TestDistributor_ObserveLimitsServiceShardShadow(t *testing.T) {
+	// The hash of {foo="bar"}, the stream pushed below.
+	const streamHash = 0x90eb45def17f924
+
+	tests := []struct {
+		name string
+		// shardStreamsEnabled controls the local rate store's sharding. It has
+		// to be true for candidates to be collected at all, see
+		// maybeShardByRate: there is nothing to compare against otherwise.
+		shardStreamsEnabled            bool
+		checkLimitsAndShardResponse    *limitsproto.CheckLimitsAndShardResponse
+		checkLimitsAndShardResponseErr error
+		expectDivergence               bool
+		expectUnimplemented            bool
+		expectFailed                   bool
+		expectRejected                 bool
+		expectCompared                 bool
+		expectCapped                   bool
+	}{{
+		// Shadow mode must not change what is pushed: the push succeeds as it
+		// would with the mode disabled, whatever the RPC does.
+		name:                           "the whole call fails: the push still succeeds",
+		shardStreamsEnabled:            true,
+		checkLimitsAndShardResponseErr: errors.New("shadow RPC unavailable"),
+		// No candidate was observed, which still has to count against the
+		// coverage metrics rather than disappear from them.
+		expectFailed: true,
+	}, {
+		name:                           "the service does not support the RPC: reported separately",
+		shardStreamsEnabled:            true,
+		checkLimitsAndShardResponseErr: status.Error(codes.Unimplemented, "unknown method CheckLimitsAndShard"),
+		expectUnimplemented:            true,
+		expectFailed:                   true,
+	}, {
+		// The local rate store says one shard, as it has no history for this
+		// stream yet, and the service says three.
+		name:                "the service asks for a different shard count: recorded as a divergence",
+		shardStreamsEnabled: true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+			Results: []*limitsproto.StreamShardResult{{StreamHash: streamHash, Shards: 3}},
+		},
+		expectDivergence: true,
+		expectCompared:   true,
+	}, {
+		name:                        "the stream has no result: not compared",
+		shardStreamsEnabled:         true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{},
+		expectFailed:                true,
+	}, {
+		name:                "the service could not check the stream: not compared",
+		shardStreamsEnabled: true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+			Results: []*limitsproto.StreamShardResult{{
+				StreamHash: streamHash,
+				Shards:     1,
+				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
+			}},
+		},
+		expectFailed: true,
+	}, {
+		name:                "the answering instance does not own the partition: not compared",
+		shardStreamsEnabled: true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+			Results: []*limitsproto.StreamShardResult{{
+				StreamHash: streamHash,
+				Shards:     1,
+				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
+			}},
+		},
+		expectFailed: true,
+	}, {
+		// A difference in kind rather than in shard count, as the local rate
+		// store never rejects a stream.
+		name:                "the service rejects the stream: counted separately",
+		shardStreamsEnabled: true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+			Results: []*limitsproto.StreamShardResult{{
+				StreamHash:   streamHash,
+				Shards:       0,
+				RejectReason: limits.ReasonMaxStreams.String(),
+			}},
+		},
+		expectRejected: true,
+	}, {
+		// A capped count that still matches is a real observation: counted as
+		// compared and capped, but not as a divergence.
+		name:                "the service caps the count but still agrees: compared and capped",
+		shardStreamsEnabled: true,
+		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+			Results: []*limitsproto.StreamShardResult{{
+				StreamHash: streamHash,
+				Shards:     1,
+				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonStreamShardsCapped)},
+			}},
+		},
+		expectCompared: true,
+		expectCapped:   true,
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			validationLimits := &validation.Limits{}
+			flagext.DefaultValues(validationLimits)
+			validationLimits.ShardStreams.LimitsServiceStreamShardingMode = shardstreams.LimitsServiceStreamShardingModeShadow
+			validationLimits.ShardStreams.Enabled = test.shardStreamsEnabled
+			distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+			d := distributors[0]
+			// Shadow mode shares this switch with the ExceedsLimits check.
+			d.cfg.IngestLimitsEnabled = true
+
+			mockClient := mockIngestLimitsFrontendClient{
+				t: t,
+				// Non-nil so that the ExceedsLimits call, which the same
+				// switch enables, accepts every stream instead of failing on a
+				// nil response.
+				exceedsLimitsResponse:          &limitsproto.ExceedsLimitsResponse{},
+				checkLimitsAndShardResponse:    test.checkLimitsAndShardResponse,
+				checkLimitsAndShardResponseErr: test.checkLimitsAndShardResponseErr,
+			}
+			d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
+
+			ctx = user.InjectOrgID(context.Background(), "test")
+			resp, err := d.Push(ctx, &logproto.PushRequest{
+				Streams: []logproto.Stream{{
+					Labels: `{foo="bar"}`,
+					Entries: []logproto.Entry{{
+						Timestamp: time.Now(),
+						Line:      "baz",
+					}},
+				}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, success, resp)
+
+			// Every counter is asserted, not just the one this case expects to
+			// increment. A stream is failed, rejected or compared, never more
+			// than one, so double counting has to fail here.
+			want := func(b bool) float64 {
+				if b {
+					return 1
+				}
+				return 0
+			}
+			for _, c := range []struct {
+				name    string
+				counter *prometheus.CounterVec
+				expect  bool
+			}{
+				{"divergence", d.m.limitsServiceShardShadowDivergence, test.expectDivergence},
+				{"failed", d.m.limitsServiceShardShadowFailed, test.expectFailed},
+				{"rejected", d.m.limitsServiceShardShadowRejected, test.expectRejected},
+				{"compared", d.m.limitsServiceShardShadowCompared, test.expectCompared},
+				{"capped", d.m.limitsServiceShardShadowCapped, test.expectCapped},
+			} {
+				require.Equal(t, want(c.expect), sumCounterVec(t, c.counter), "counter %s", c.name)
+			}
+
+			// The shadow call records the latency it adds whatever its outcome,
+			// and the ExceedsLimits call is timed alongside it so the two can be
+			// compared. Once each per push.
+			var shard dto.Metric
+			require.NoError(t, d.m.limitsServiceShardDuration.Write(&shard))
+			require.Equal(t, uint64(1), shard.GetHistogram().GetSampleCount())
+			var exceeds dto.Metric
+			require.NoError(t, d.m.limitsServiceExceedsLimitsDuration.Write(&exceeds))
+			require.Equal(t, uint64(1), exceeds.GetHistogram().GetSampleCount())
+		})
+	}
+}
+
+// sumCounterVec sums a counter vector over all of its series, and returns 0
+// when none were incremented.
+func sumCounterVec(t *testing.T, c prometheus.Collector) float64 {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 16)
+	c.Collect(ch)
+	close(ch)
+	var total float64
+	for m := range ch {
+		var dm dto.Metric
+		require.NoError(t, m.Write(&dm))
+		total += dm.GetCounter().GetValue()
+	}
+	return total
 }
 
 func TestDistributorMaxInflightBytesLimit(t *testing.T) {

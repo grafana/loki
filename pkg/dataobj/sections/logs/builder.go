@@ -41,6 +41,20 @@ type Record struct {
 	StreamHash uint64
 }
 
+// Reset clears r so it can be reused for another row.
+//
+// The line is truncated rather than dropped, so it keeps its capacity and a reused Record
+// does not reallocate its buffer for every row.
+func (r *Record) Reset() {
+	r.StreamID = 0
+	r.Timestamp = time.Time{}
+	r.Metadata = labels.EmptyLabels()
+	r.Line = r.Line[:0]
+	r.SchemaKey = ""
+	r.ShardBucket = 0
+	r.StreamHash = 0
+}
+
 func (r *Record) Copy() Record {
 	return Record{
 		StreamID:    r.StreamID,

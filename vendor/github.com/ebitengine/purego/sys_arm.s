@@ -135,6 +135,8 @@ skipfpload:
 	// save R0, R1
 	MOVW R0, syscallArgs_a1(R8)
 	MOVW R1, syscallArgs_a2(R8)
+	MOVW $0, R1
+	MOVW R1, syscallArgs_a3(R8) // no errno here: clear the input argument
 
 	MOVB    runtime·goarmsoftfp(SB), R11
 	CMP     $0, R11

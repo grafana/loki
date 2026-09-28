@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 
-	"github.com/grafana/loki/v3/pkg/logproto" //lint:ignore faillint allowed to import other protobuf
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
