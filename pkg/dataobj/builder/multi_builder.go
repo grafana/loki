@@ -1,11 +1,11 @@
-package consumer
+package builder
 
 import (
 	"fmt"
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )

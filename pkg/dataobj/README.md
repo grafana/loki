@@ -371,18 +371,18 @@ Used in Table of Contents (toc) objects to point to index objects, via a time ra
 
 ## Operational Components
 
-### Consumer
+### Builder
 
-**Location**: `pkg/dataobj/consumer/`
+**Location**: `pkg/dataobj/builder/`
 
-The consumer reads log data from Kafka and builds data objects.
+The builder (the `dataobj-builder` target) reads log data from Kafka and builds data objects.
 
 **Key Features:**
 - Reads from Kafka partitions
 - Accumulates logs into data objects
 - Flushes based on size or idle timeout
 - Commits offsets after successful upload
-- Emits metadata events containing a reference to each successfully uploaded object.
+- Builds an index object for each uploaded data object and records it in the Table of Contents.
 
 ### Metastore
 
@@ -394,11 +394,11 @@ The metastore serves queries by the following:
 1. Fetch and scan relevant Table of Contents (toc) files from the query time range to resolve index objects.
 2. Fetches resolved index objects and utilises the contained indexes (stream sections, blooms, etc.) to resolve log objects & metadata such as size and number of log lines.
 
-### Index Builder
+### Index
 
 **Location**: `pkg/dataobj/index/`
 
-Creates index objects that contain indexes over data objects containing the logs.
+Creates index objects that contain indexes over data objects containing the logs. Used by the builder and by compaction.
 
 ### Explorer Service
 

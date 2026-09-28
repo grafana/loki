@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -25,15 +25,13 @@ import (
 
 var (
 	// A builder configuration to be used in tests.
-	testBuilderCfg = logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			MaxPageRows:             10,
-			TargetObjectSize:        1 << 22, // 4 MiB
-			TargetSectionSize:       1 << 22, // 4 MiB
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
+	testBuilderCfg = logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 22, // 4 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
 	}
 )
 

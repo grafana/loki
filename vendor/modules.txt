@@ -49,8 +49,8 @@ cloud.google.com/go/auth/internal/transport/headers
 # cloud.google.com/go/auth/oauth2adapt v0.2.8
 ## explicit; go 1.23.0
 cloud.google.com/go/auth/oauth2adapt
-# cloud.google.com/go/compute/metadata v0.9.1
-## explicit; go 1.25.0
+# cloud.google.com/go/compute/metadata v0.10.0
+## explicit; go 1.26.0
 cloud.google.com/go/compute/metadata
 # cloud.google.com/go/iam v1.13.0
 ## explicit; go 1.25.0
@@ -567,7 +567,7 @@ github.com/containerd/log
 # github.com/containerd/log/otel v0.1.0
 ## explicit; go 1.23
 github.com/containerd/log/otel
-# github.com/containerd/ttrpc v1.2.9
+# github.com/containerd/ttrpc v1.2.10
 ## explicit; go 1.25.0
 github.com/containerd/ttrpc
 # github.com/coreos/go-semver v0.3.1
@@ -1440,7 +1440,7 @@ github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
 github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
-# github.com/prometheus/client_golang/exp v0.0.0-20260921141911-45322d125bf0
+# github.com/prometheus/client_golang/exp v0.0.0-20260925091736-ae383cad8807
 ## explicit; go 1.25.0
 github.com/prometheus/client_golang/exp/api/remote
 github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff
@@ -1655,8 +1655,8 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.12.0
 ## explicit; go 1.25.0
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.22.0
-## explicit; go 1.26.0
+# github.com/twmb/franz-go v1.21.7 => github.com/twmb/franz-go v1.21.7
+## explicit; go 1.25.0
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
 github.com/twmb/franz-go/pkg/kgo
@@ -1665,13 +1665,13 @@ github.com/twmb/franz-go/pkg/kgo/internal/xsync
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.19.0
-## explicit; go 1.26.0
+# github.com/twmb/franz-go/pkg/kadm v1.18.0 => github.com/twmb/franz-go/pkg/kadm v1.18.0
+## explicit; go 1.25.0
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 ## explicit; go 1.25.0
 github.com/twmb/franz-go/pkg/kfake
-# github.com/twmb/franz-go/pkg/kmsg v1.14.0
+# github.com/twmb/franz-go/pkg/kmsg v1.13.1 => github.com/twmb/franz-go/pkg/kmsg v1.13.1
 ## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
@@ -2496,3 +2496,6 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+# github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
+# github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
+# github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.13.1

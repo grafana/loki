@@ -30,14 +30,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var testBuilderConfig = BuilderConfig{
-	BuilderBaseConfig: BuilderBaseConfig{
-		TargetPageSize:          2048,
-		TargetObjectSize:        1 << 20, // 1 MiB
-		TargetSectionSize:       8 << 10, // 8 KiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	},
+var testBuilderConfig = BuilderBaseConfig{
+	TargetPageSize:          2048,
+	TargetObjectSize:        1 << 20, // 1 MiB
+	TargetSectionSize:       8 << 10, // 8 KiB
+	BufferSize:              2048 * 8,
+	SectionStripeMergeLimit: 2,
 }
 
 func TestBuilder(t *testing.T) {
@@ -486,16 +484,13 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 
 	benchCases := []struct {
 		name      string
-		cfg       BuilderConfig
+		cfg       BuilderBaseConfig
 		overrides TenantOverrides
 		labels    func(tenant string, i int) string
 	}{
 		{
 			name: "default_sort_schema",
-			cfg: BuilderConfig{
-				BuilderBaseConfig:    benchBaseCfg,
-				AppendOrderedEnabled: true,
-			},
+			cfg:  benchBaseCfg,
 			labels: func(_ string, i int) string {
 				app := apps[i%len(apps)]
 				inst := instances[i%len(instances)]
@@ -504,10 +499,7 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 		},
 		{
 			name: "custom_sort_schema",
-			cfg: BuilderConfig{
-				BuilderBaseConfig:    benchBaseCfg,
-				AppendOrderedEnabled: true,
-			},
+			cfg:  benchBaseCfg,
 			overrides: tenantOverrides{
 				"tenant-a": {"label:app"},
 				"tenant-b": {"label:app"},
@@ -574,19 +566,17 @@ func (m limitsByTenant) AllByUserID() map[string]*validation.Limits    { return 
 func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 
-	makeCfg := func() BuilderConfig {
-		return BuilderConfig{
-			BuilderBaseConfig: BuilderBaseConfig{
-				TargetPageSize:          2048,
-				TargetObjectSize:        1 << 20,
-				TargetSectionSize:       8 << 10,
-				BufferSize:              2048 * 8,
-				SectionStripeMergeLimit: 2,
-			},
+	makeCfg := func() BuilderBaseConfig {
+		return BuilderBaseConfig{
+			TargetPageSize:          2048,
+			TargetObjectSize:        1 << 20,
+			TargetSectionSize:       8 << 10,
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
 		}
 	}
 
-	buildObj := func(t *testing.T, cfg BuilderConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
+	buildObj := func(t *testing.T, cfg BuilderBaseConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -607,7 +597,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		return obj
 	}
 
-	copyAndSort := func(t *testing.T, cfg BuilderConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
+	copyAndSort := func(t *testing.T, cfg BuilderBaseConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)

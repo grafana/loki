@@ -129,10 +129,10 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.8
 	github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7
 	github.com/tjhop/slog-gokit v0.2.0
-	github.com/twmb/franz-go v1.22.0
-	github.com/twmb/franz-go/pkg/kadm v1.19.0
+	github.com/twmb/franz-go v1.21.7
+	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
-	github.com/twmb/franz-go/pkg/kmsg v1.14.0
+	github.com/twmb/franz-go/pkg/kmsg v1.13.1
 	github.com/twmb/franz-go/plugin/kotel v1.7.1
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.67.0
@@ -150,7 +150,7 @@ require (
 
 require (
 	github.com/containerd/log/otel v0.1.0 // indirect
-	github.com/containerd/ttrpc v1.2.9 // indirect
+	github.com/containerd/ttrpc v1.2.10 // indirect
 	github.com/dlclark/regexp2/v2 v2.8.0 // indirect
 	github.com/go-openapi/swag/pools v0.29.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
@@ -252,7 +252,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
 	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
 	github.com/prometheus/alertmanager v0.34.1 // indirect
-	github.com/prometheus/client_golang/exp v0.0.0-20260921141911-45322d125bf0
+	github.com/prometheus/client_golang/exp v0.0.0-20260925091736-ae383cad8807
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -309,7 +309,7 @@ require (
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/compute/metadata v0.9.1 // indirect
+	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/iam v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.9.0 // indirect
@@ -449,3 +449,12 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+
+//  Latest Kafka protocols are not supported in Warpstream at this time.
+replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
+
+// See comment above for github.com/twmb/franz-go.
+replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
+
+// See comment above for github.com/twmb/franz-go.
+replace github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.13.1

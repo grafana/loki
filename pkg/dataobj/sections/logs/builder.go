@@ -127,7 +127,7 @@ type BuilderOptions struct {
 	// [EstimatedSize] to approximate compressed output size from uncompressed
 	// buffered records when using [AppendOrdered]. Only takes effect with
 	// AppendOrdered; ignored for AppendUnordered where stripes are already
-	// compressed. A value of 0 or 1 disables the adjustment.
+	// compressed. A value of either 0 or 1 disables the adjustment.
 	EstimatedCompressionRatio int
 
 	// SortOrder defines the order in which the rows of the logs sections are sorted.

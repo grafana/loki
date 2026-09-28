@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"context"
@@ -48,11 +48,11 @@ func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheu
 		uploader: uploader,
 		logger:   logger,
 		flushes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_flushes_total",
+			Name: "loki_dataobj_builder_flushes_total",
 			Help: "Total number of flushes.",
 		}, []string{"reason"}),
 		flushFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_flush_failures_total",
+			Name: "loki_dataobj_builder_flush_failures_total",
 			Help: "Total number of failed flushes.",
 		}),
 		releaseFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
@@ -60,7 +60,7 @@ func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheu
 			Help: "Total number of failures to release a flushed data object's scratch storage. The object is already uploaded at that point, so these do not fail the flush.",
 		}),
 		flushDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_consumer_flush_duration_seconds",
+			Name: "loki_dataobj_builder_flush_duration_seconds",
 			Help: "Time taken to flush a data object.",
 
 			Buckets:                         prometheus.DefBuckets,
