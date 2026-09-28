@@ -129,10 +129,10 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.8
 	github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7
 	github.com/tjhop/slog-gokit v0.2.0
-	github.com/twmb/franz-go v1.22.0
-	github.com/twmb/franz-go/pkg/kadm v1.19.0
+	github.com/twmb/franz-go v1.21.7
+	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
-	github.com/twmb/franz-go/pkg/kmsg v1.14.0
+	github.com/twmb/franz-go/pkg/kmsg v1.13.1
 	github.com/twmb/franz-go/plugin/kotel v1.7.1
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.67.0
@@ -450,7 +450,11 @@ replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
 
-//  Latest Kafka protocols are not supported in warpstream at this time.
+//  Latest Kafka protocols are not supported in Warpstream at this time.
 replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
 
+// See comment above for github.com/twmb/franz-go.
 replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
+
+// See comment above for github.com/twmb/franz-go.
+replace github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.13.1
