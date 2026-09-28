@@ -67,9 +67,7 @@ func (p *producer) Produce(ctx context.Context, tenant string, metadata *proto.S
 }
 
 // ProduceRecord pushes a prepared record to the metadata topic. The zone is
-// always set by the producer, as the consumer relies on it to tell its own
-// records apart from the other zones'. It does not wait for the push to
-// complete.
+// always set by the producer. It does not wait for the push to complete.
 func (p *producer) ProduceRecord(ctx context.Context, rec *proto.StreamMetadataRecord) error {
 	rec.Zone = p.zone
 	b, err := rec.Marshal()

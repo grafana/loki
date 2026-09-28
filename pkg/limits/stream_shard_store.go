@@ -53,8 +53,7 @@ type streamShardStore struct {
 	bucketSize    time.Duration
 	numBuckets    int
 	numPartitions int
-	// zone is this instance's zone. It tells a merged record apart from
-	// another zone's, see merge.
+	// zone tells this instance's records apart from other zones' in merge.
 	zone string
 	// durabilityEnabled makes checkAndShard return the records that keep the
 	// rate buckets across restarts, see [Config.StreamShardingDurabilityEnabled].
@@ -104,12 +103,8 @@ type streamShardUsage struct {
 	// remoteBuckets holds the rate buckets of the other zones, keyed by zone,
 	// as merged from their records. Rates are kept per zone rather than as a
 	// single aggregate so that merging a record is an assignment and not an
-	// addition, which is what makes replay idempotent.
-	//
-	// It is nil until another zone's record is merged. The frontend tries
-	// zones in a fixed order, so in steady state a stream is answered by one
-	// zone, which pays for the local ring only, while the other zones pay for
-	// one map entry each.
+	// addition, which is what makes replay idempotent. It is nil until another
+	// zone's record is merged.
 	remoteBuckets map[string][]shardRateBucket
 
 	// slots is the budget this stream consumes: one per live shard, with a
@@ -320,23 +315,11 @@ func (s *streamShardStore) checkAndShard(ctx context.Context, tenant string, met
 }
 
 // recordToProduce returns the record for the newest complete rate bucket the
-// stream has not published yet, or nil when there is nothing new to produce,
-// and marks that bucket as produced.
-//
-// A complete bucket is published rather than the one in flight, so that a
-// stream produces one record per bucket and the value it carries is final.
-// The cost is that a restart loses up to one bucket of the newest traffic,
-// which understates the rate by at most one bucket's share of the rate
-// window. Publishing the bucket in flight instead would either cost a record
-// per push or, throttled to one record per bucket, publish a value that
-// stops at the bucket's first push.
-//
-// The bucket published is the one holding the previous push, which is not
-// always the immediate predecessor of the current one: a stream pushed to
-// less often than once per bucket leaves gaps. Publishing only the immediate
-// predecessor would drop every bucket of such a stream, so it would never
-// restore any rate at all. Since a push publishes at most one bucket either
-// way, closing the gap costs no extra records.
+// stream has not published yet, and marks it produced. It publishes a
+// complete bucket rather than the one in flight, so the value is final and a
+// stream produces at most one record per bucket. A stream pushed to less
+// often than once per bucket leaves gaps, so the bucket published is the one
+// holding the previous push, not necessarily the immediate predecessor.
 func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant string, m *proto.StreamMetadata, seenAt time.Time) *proto.StreamMetadataRecord {
 	if !s.durabilityEnabled {
 		return nil
@@ -378,26 +361,16 @@ func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant stri
 	}
 }
 
-// merge applies a record produced by this or another zone, restoring the
-// rate history and the shard footprint the producing zone had when it wrote
-// the record. It is how a restarted instance, or an instance that has just
-// been assigned a partition, avoids the warm-up window in which every stream
-// looks brand new and gets a single shard.
+// merge applies a record from this or another zone, restoring the rate
+// history and shard footprint the producing zone had when it wrote the
+// record. This avoids the warm-up window after a restart or a partition
+// rebalance, in which every stream looks new and gets a single shard.
 //
-// The record states the producing zone's absolute totals for one rate bucket,
-// so merging is not additive and a record can be applied any number of times.
-// Where a bucket is already tracked for that zone, the larger totals win:
-// within a bucket a zone's totals only grow, so this is independent of the
-// order records arrive in, and it cannot regress a ring that holds fresher
-// pushes than the record does. That covers replaying our own records into a
-// store that is already serving, and a record produced by the previous owner
-// of a partition landing after the new owner's.
-//
-// Records older than the rate window are ignored: they carry no rate that
-// still counts, and tracking the stream for its footprint alone would keep
-// idle streams in memory for the rest of the active window. The cost is that
-// the stream count budget is not restored for streams that have been idle
-// for longer than a rate window.
+// A record states absolute totals for one bucket, so merging is an assignment,
+// not an addition, and applying a record more than once is a no-op. Within a
+// bucket a zone's totals only grow, so the larger totals win and out-of-order
+// records cannot regress a ring that holds fresher pushes. Records older than
+// the rate window are dropped; their footprint is not restored.
 func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord) {
 	if rec.Metadata == nil || rec.ShardRateBucket == nil {
 		return
@@ -447,8 +420,6 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 	})
 }
 
-// mergeRateBucket writes the record's bucket into the ring, allocating it if
-// needed, and returns it.
 func (s *streamShardStore) mergeRateBucket(buckets []shardRateBucket, in *proto.ShardRateBucket) []shardRateBucket {
 	if len(buckets) == 0 {
 		buckets = make([]shardRateBucket, s.numBuckets)
@@ -697,9 +668,8 @@ func (s streamShardUsage) currentRate(now time.Time, rateWindow time.Duration) (
 	return uint64(float64(totalBytes) / seconds), float64(totalPushes) / seconds
 }
 
-// sumRateBuckets sums the buckets that start at or after cutoff. The ring
-// buffer resets a slot when it is reused, so a slot not touched this window
-// still holds stale data that must be skipped rather than counted.
+// sumRateBuckets skips slots the ring buffer has not reused this window,
+// which still hold stale data.
 func sumRateBuckets(buckets []shardRateBucket, cutoff int64) (totalBytes, totalPushes uint64) {
 	for _, b := range buckets {
 		if b.timestamp >= cutoff {

@@ -312,10 +312,8 @@ func (m *StreamMetadata) GetIngestionPolicy() string {
 	return ""
 }
 
-// ShardRateBucket is the absolute total a single zone observed for a single
-// stream in a single rate bucket. It is not a delta: consumers merge it by
-// assignment, keyed by (stream, zone, bucketStart), so applying a record
-// more than once is a no-op and replay cannot double-count.
+// ShardRateBucket is a single zone's absolute total for a single stream in a
+// single rate bucket. It is not a delta.
 type ShardRateBucket struct {
 	// Start of the bucket in unix nanoseconds, truncated to the bucket size.
 	BucketStart int64  `protobuf:"varint,1,opt,name=bucketStart,proto3" json:"bucketStart,omitempty"`

@@ -43,8 +43,8 @@ type Config struct {
 	// EvictionInterval defines the interval at which old streams are evicted.
 	EvictionInterval time.Duration `yaml:"eviction_interval"`
 
-	// StreamShardingDurabilityEnabled enables writing the stream sharding
-	// rate buckets to the metadata topic and restoring them from it.
+	// StreamShardingDurabilityEnabled keeps the stream sharding rate buckets
+	// on the metadata topic.
 	StreamShardingDurabilityEnabled bool `yaml:"stream_sharding_durability_enabled"`
 
 	// The number of partitions for the Kafka topic used to read and write stream metadata.

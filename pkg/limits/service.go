@@ -168,8 +168,6 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-	// The consumer only merges stream sharding records when durability is
-	// enabled, see [Config.StreamShardingDurabilityEnabled].
 	var streamShardsConsumer *streamShardStore
 	if cfg.StreamShardingDurabilityEnabled {
 		streamShardsConsumer = s.streamShards

@@ -58,8 +58,6 @@ func push(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt tim
 	return results
 }
 
-// pushWithRecords sends one push and returns its result together with the
-// records the store wants produced.
 func pushWithRecords(t *testing.T, s *streamShardStore, streamHash, size uint64, seenAt time.Time) (*proto.StreamShardResult, []*proto.StreamMetadataRecord) {
 	t.Helper()
 	results, toProduce := s.checkAndShard(t.Context(), "test", []*proto.StreamMetadata{{
@@ -266,7 +264,6 @@ func TestStreamShardStore_SlotsFollowTheTrackedStreams(t *testing.T) {
 	require.Equal(t, uint64(0), bucketSlots())
 }
 
-// mergeRecord merges one record for the test tenant.
 func mergeRecord(s *streamShardStore, zone string, streamHash uint64, bucketStart time.Time, size, pushes uint64, shardCount uint32) {
 	s.merge("test", &proto.StreamMetadataRecord{
 		Zone:     zone,
@@ -281,8 +278,6 @@ func mergeRecord(s *streamShardStore, zone string, streamHash uint64, bucketStar
 	})
 }
 
-// trackedStream returns the state tracked for streamHash in the test
-// tenant's default policy bucket.
 func trackedStream(t *testing.T, s *streamShardStore, streamHash uint64) streamShardUsage {
 	t.Helper()
 	var stream streamShardUsage
