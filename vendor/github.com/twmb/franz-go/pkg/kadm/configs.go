@@ -462,7 +462,7 @@ func (l ListedConfigResources) FilterTypes(resourceType ...ConfigResourceType) [
 		for _, typ := range resourceType {
 			if r.Type == typ {
 				filtered = append(filtered, r)
-				continue
+				break // duplicate requested types must not duplicate results
 			}
 		}
 	}
