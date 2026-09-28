@@ -66,9 +66,9 @@ func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
 		SortSchema:       targetSchema,
 	})
 	require.NoError(t, err)
-	require.Len(t, artifacts, 1)
+	require.NoError(t, artifacts.Validate())
 
-	indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts[0].Path, 0)
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts.Path, 0)
 	require.NoError(t, err)
 	require.ElementsMatch(t, tenants, indexObj.Tenants(), "the replacement index must cover every source tenant")
 
