@@ -65,6 +65,11 @@ func (q *query) GetStoreChunks() *logproto.ChunkRefGroup {
 	panic("unimplemented")
 }
 
+// GetHintRanges implements logql.Params.
+func (q *query) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
 // Interval implements logql.Params.
 func (q *query) Interval() time.Duration {
 	return q.interval

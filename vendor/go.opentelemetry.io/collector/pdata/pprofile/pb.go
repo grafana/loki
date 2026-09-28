@@ -3,6 +3,8 @@
 
 package pprofile // import "go.opentelemetry.io/collector/pdata/pprofile"
 
+import "go.opentelemetry.io/collector/pdata/internal/otlp"
+
 var _ MarshalSizer = (*ProtoMarshaler)(nil)
 
 type ProtoMarshaler struct{}
@@ -52,6 +54,7 @@ func (d *ProtoUnmarshaler) UnmarshalProfiles(buf []byte) (Profiles, error) {
 	if err != nil {
 		return Profiles{}, err
 	}
+	otlp.MigrateProfiles(pd.getOrig().ResourceProfiles)
 
 	// Resolve all string_value_ref and key_ref to their actual strings
 	// so the pdata API works transparently

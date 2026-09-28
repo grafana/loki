@@ -4,13 +4,13 @@ package proto;
 
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
-  rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 service IngestLimits {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
-  rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
+  rpc CheckLimitsAndShard(CheckLimitsAndShardRequest) returns (CheckLimitsAndShardResponse) {}
 }
 
 message ExceedsLimitsRequest {
@@ -46,16 +46,41 @@ message StreamMetadataRecord {
   StreamMetadata metadata = 3;
 }
 
-message UpdateRatesRequest {
+message CheckLimitsAndShardRequest {
   string tenant = 1;
   repeated StreamMetadata streams = 2;
 }
 
-message UpdateRatesResponse {
-  repeated UpdateRatesResult results = 1;
+message CheckLimitsAndShardResponse {
+  repeated StreamShardResult results = 1;
 }
 
-message UpdateRatesResult {
+message StreamShardResult {
   uint64 streamHash = 1;
-  uint64 rate = 2;
+  // The total number of physical streams the distributor should write for
+  // this logical stream on this push, matching the semantics of the
+  // distributor's own rate-store shard count, so 1 means no sharding is
+  // needed. At least 1 when the stream was accepted. 0 is valid only
+  // together with rejectReason, as a rejected stream is not written at all;
+  // a result with neither carries no decision and the frontend replaces it
+  // with one shard.
+  uint32 shards = 2;
+  // Non-empty when the stream was rejected (only possible for a
+  // brand-new stream with no room left in the tenant's stream-count
+  // budget).
+  // Empty means the stream was accepted, regardless of shards.
+  string rejectReason = 3;
+  // Stats around the sharding decision
+  ShardStats stats = 4;
+}
+
+message ShardStats {
+  // Reason enum, see reason.go. Populated when shards was capped below the
+  // rate-justified ideal (ShardsCapped), when the decision could not be made
+  // (Failed), or when the receiving instance did not own the stream's
+  // partition (NotOwned).
+  uint32 shardDecisionContext = 1;
+  // The byte/s rate the backend evaluated for this stream when deciding the
+  // shard count.
+  uint64 evaluatedRate = 2;
 }

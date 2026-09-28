@@ -1799,6 +1799,493 @@ func TestMemChunk_Rewrite_WithFilter(t *testing.T) {
 	}
 }
 
+// lineFor names the entry at index i. Fixed width so no line is a prefix of
+// another and the removal sets below stay readable.
+func lineFor(i int) string { return fmt.Sprintf("line-%02d", i) }
+
+// distinctMetadata gives an entry metadata no other entry shares. Shared
+// metadata resolves to the same symbols and hides any renumbering.
+func distinctMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name_%02d", i), Value: fmt.Sprintf("value_%02d", i)}}
+}
+
+// unnormalizedMetadata uses names normalization rewrites, so the stored form
+// differs from what reads return.
+func unnormalizedMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name.%02d", i), Value: fmt.Sprintf("value_%02d", i)}}
+}
+
+// collidingMetadata uses two names that normalize alike, so one entry holds two
+// symbols that read back under a single name.
+func collidingMetadata(i int) []logproto.LabelAdapter {
+	return []logproto.LabelAdapter{
+		{Name: "a.b", Value: fmt.Sprintf("value_%02d", i)},
+		{Name: "a__b", Value: fmt.Sprintf("other_%02d", i)},
+	}
+}
+
+// valueNotALabelNameMetadata stores values that are not valid label names, so a
+// name symbol pointed at one fails the read outright rather than return the
+// wrong string.
+func valueNotALabelNameMetadata(i int) []logproto.LabelAdapter {
+	values := []string{"/", "-", "1", "", "a/b/c"}
+	return []logproto.LabelAdapter{{Name: fmt.Sprintf("name_%02d", i), Value: values[i%len(values)]}}
+}
+
+func buildMetadataChunk(t *testing.T, blockSize, numEntries int, metadata func(int) []logproto.LabelAdapter) *MemChunk {
+	t.Helper()
+
+	chk := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, testTargetSize)
+	for i := 0; i < numEntries; i++ {
+		_, err := chk.Append(&logproto.Entry{
+			Timestamp:          time.Unix(0, int64(i+1)),
+			Line:               lineFor(i),
+			StructuredMetadata: metadata(i),
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, chk.Close())
+
+	return chk
+}
+
+// reloadFromStorage round-trips a chunk the way the compactor receives one: the
+// symbolizer comes back read-only and without the symbolsMap add() dedupes
+// through, which is a different half of clone() than an in-memory chunk.
+func reloadFromStorage(t *testing.T, chk *MemChunk, blockSize int) *MemChunk {
+	t.Helper()
+
+	b, err := chk.Bytes()
+	require.NoError(t, err)
+
+	reloaded, err := NewByteChunk(b, blockSize, testTargetSize)
+	require.NoError(t, err)
+
+	// Pin the shape this is here to cover.
+	require.True(t, reloaded.symbolizer.readOnly, "a chunk read back from storage should have a read-only symbolizer")
+	require.Empty(t, reloaded.symbolizer.symbolsMap, "a chunk read back from storage should have no symbolsMap")
+
+	return reloaded
+}
+
+func readEntries(t *testing.T, chk Chunk) []logproto.Entry {
+	t.Helper()
+
+	entries, err := readEntriesErr(chk)
+	require.NoError(t, err)
+
+	return entries
+}
+
+// A chunk the buggy rewrite already touched cites positions past the end of its
+// own shrunken table. Rewriting one has to keep working -- those are the chunks
+// this fix exists for, and an error fails the delete request and the table's
+// retention pass, which no retry clears. A missing position resolves to the
+// empty string, which is what it already read back as.
+func TestMemChunk_Rewrite_SourceCitesPositionsPastItsTable(t *testing.T) {
+	// distinctMetadata puts entry i's name at position 2i and its value at 2i+1,
+	// so trimming an even number of positions loses whole pairs and an odd
+	// number leaves the last entry's name addressable but not its value.
+	for _, tc := range []struct {
+		name      string
+		blockSize int
+		metadata  func(int) []logproto.LabelAdapter
+		trim      int
+		// symbols the rewrite files for the empty string.
+		filed int
+	}{
+		{
+			// One block, so removing an entry re-encodes the rest.
+			name:      "whole pair lost, nothing interns the empty string",
+			blockSize: 1 << 20,
+			metadata:  distinctMetadata,
+			trim:      2,
+			filed:     1,
+		},
+		{
+			name:      "whole pair lost, empty string already interned",
+			blockSize: 1 << 20,
+			metadata: func(i int) []logproto.LabelAdapter {
+				if i == 0 {
+					return []logproto.LabelAdapter{{Name: "empty_valued", Value: ""}}
+				}
+				return distinctMetadata(i)
+			},
+			trim:  2,
+			filed: 0,
+		},
+		{
+			// One entry per block, so the damaged entry's block is copied over
+			// untouched and keeps citing the name. Blanking it would lose a name
+			// that still read back. The filed empty string lands exactly on the
+			// position that block cites for the lost value, so it reads the same.
+			name:      "half a pair lost, block copied verbatim",
+			blockSize: 1,
+			metadata:  distinctMetadata,
+			trim:      1,
+			filed:     1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			originalChunk := buildMetadataChunk(t, tc.blockSize, 5, tc.metadata)
+
+			// Stand in for the renumbering the old code did: drop the tail of the
+			// table while the blocks carry on citing it.
+			symbols := originalChunk.symbolizer.labels
+			require.Equal(t, []string{"name_04", "value_04"}, symbols[len(symbols)-2:])
+			originalChunk.symbolizer.labels = symbols[:len(symbols)-tc.trim]
+
+			originalChunk = reloadFromStorage(t, originalChunk, tc.blockSize)
+
+			var expected []logproto.Entry
+			for _, e := range readEntries(t, originalChunk) {
+				if e.Line != lineFor(0) {
+					expected = append(expected, e)
+				}
+			}
+			require.Len(t, expected, 4)
+
+			rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+				return s == lineFor(0)
+			})
+			require.NoError(t, err, "a chunk damaged by the old rewrite must still be rewritable")
+
+			requireEntriesEqual(t, expected, readEntries(t, rewritten))
+
+			// One symbol at most, and only ever the empty string.
+			rewrittenSymbols := rewritten.(*MemChunk).symbolizer.labels
+			require.Len(t, rewrittenSymbols, len(originalChunk.symbolizer.labels)+tc.filed)
+			if tc.filed == 1 {
+				require.Empty(t, rewrittenSymbols[len(rewrittenSymbols)-1])
+			}
+
+			// The result carries a blank per erased symbol plus, where one was
+			// filed, the empty string itself. Rewriting a table holding several
+			// has to work and leave the rest alone.
+			second := rewritten.(*MemChunk)
+			require.Greater(t, blankSymbols(second), 1, "expected the first rewrite to leave several empty symbols")
+
+			var expectedAgain []logproto.Entry
+			for _, e := range readEntries(t, second) {
+				if e.Line != lineFor(1) {
+					expectedAgain = append(expectedAgain, e)
+				}
+			}
+
+			rewrittenAgain, err := second.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+				return s == lineFor(1)
+			})
+			require.NoError(t, err)
+			requireEntriesEqual(t, expectedAgain, readEntries(t, rewrittenAgain))
+		})
+	}
+}
+
+// Rewriting again starts from a table holding blanks, where clone() maps the
+// empty string to the first of them. An undamaged chunk must not grow, and the
+// table has to survive each trip through storage.
+func TestMemChunk_Rewrite_RepeatedRewritesOfACleanChunk(t *testing.T) {
+	chk := reloadFromStorage(t, buildMetadataChunk(t, 1<<20, 8, distinctMetadata), 1<<20)
+	symbolCount := len(chk.symbolizer.labels)
+
+	for round := 1; round <= 4; round++ {
+		var expected []logproto.Entry
+		for _, e := range readEntries(t, chk) {
+			if e.Line != lineFor(round) {
+				expected = append(expected, e)
+			}
+		}
+
+		rewritten, err := chk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+			return s == lineFor(round)
+		})
+		require.NoError(t, err)
+		next := rewritten.(*MemChunk)
+
+		require.Len(t, next.symbolizer.labels, symbolCount, "round %d changed the size of the symbol table", round)
+		requireEntriesEqual(t, expected, readEntries(t, next))
+
+		seen := map[string]struct{}{}
+		for _, lbl := range liveSymbols(next) {
+			_, dup := seen[lbl]
+			require.False(t, dup, "round %d stored %q twice", round, lbl)
+			seen[lbl] = struct{}{}
+		}
+
+		// Round-trip the way the compactor would get it next time.
+		b, err := next.Bytes()
+		require.NoError(t, err)
+		reloaded, err := NewByteChunk(b, 1<<20, testTargetSize)
+		require.NoError(t, err)
+		require.Equal(t, next.symbolizer.labels, reloaded.symbolizer.labels, "round %d: the table changed through storage", round)
+		requireEntriesEqual(t, expected, readEntries(t, reloaded))
+
+		chk = reloaded
+	}
+}
+
+// requireEntriesEqual compares entry by entry: comparing the slices wholesale
+// makes a failure render a diff of every entry in the chunk.
+func requireEntriesEqual(t *testing.T, expected, actual []logproto.Entry) {
+	t.Helper()
+
+	require.Len(t, actual, len(expected))
+	for i := range expected {
+		require.Equal(t, expected[i].Timestamp, actual[i].Timestamp, "entry %d", i)
+		require.Equal(t, expected[i].Line, actual[i].Line, "entry %d", i)
+		require.Equal(t, expected[i].StructuredMetadata, actual[i].StructuredMetadata, "entry %d (%q)", i, expected[i].Line)
+	}
+}
+
+// Blocks Rewrite did not change are copied over still citing the positions they
+// were encoded with, so the new chunk has to number its symbols the same way.
+// Removing an entry used to drop the symbols only it cited, shifting every later
+// position down: entries came back with another entry's metadata, or none.
+func TestMemChunk_Rewrite_PreservesSurvivingStructuredMetadata(t *testing.T) {
+	// A block size of 1 cuts a block after every entry, so each one is either
+	// copied over untouched or dropped. Larger sizes pack several entries per
+	// block, so a block loses some of its entries and is re-encoded while its
+	// neighbours are still copied verbatim.
+	const (
+		blockPerEntry   = 1
+		entriesPerBlock = 60
+	)
+
+	for _, tc := range []struct {
+		name       string
+		blockSize  int
+		numEntries int
+		metadata   func(int) []logproto.LabelAdapter
+		remove     []int
+		minBlocks  int
+	}{
+		{
+			name:       "no removals",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			minBlocks:  5,
+		},
+		{
+			name:       "removal in the middle",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{2},
+			minBlocks:  5,
+		},
+		{
+			name:       "removal at the front",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0},
+			minBlocks:  5,
+		},
+		{
+			name:       "removal at the end",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{4},
+			minBlocks:  5,
+		},
+		{
+			name:       "adjacent removals",
+			blockSize:  blockPerEntry,
+			numEntries: 6,
+			remove:     []int{2, 3},
+			minBlocks:  6,
+		},
+		{
+			name:       "scattered removals",
+			blockSize:  blockPerEntry,
+			numEntries: 12,
+			remove:     []int{1, 4, 5, 9},
+			minBlocks:  12,
+		},
+		{
+			name:       "all but one removed",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0, 1, 2, 4},
+			minBlocks:  5,
+		},
+		{
+			name:       "everything removed",
+			blockSize:  blockPerEntry,
+			numEntries: 5,
+			remove:     []int{0, 1, 2, 3, 4},
+			minBlocks:  5,
+		},
+		{
+			name:       "partial removal from a block of several entries",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			remove:     []int{1},
+			minBlocks:  3,
+		},
+		{
+			name:       "partial removal from several blocks",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			remove:     []int{1, 8},
+			minBlocks:  3,
+		},
+		{
+			name:       "names that do not survive normalization untouched",
+			blockSize:  blockPerEntry,
+			numEntries: 12,
+			metadata:   unnormalizedMetadata,
+			remove:     []int{1, 4, 9},
+			minBlocks:  12,
+		},
+		{
+			name:       "names that normalize onto each other",
+			blockSize:  blockPerEntry,
+			numEntries: 8,
+			metadata:   collidingMetadata,
+			remove:     []int{1, 4},
+			minBlocks:  8,
+		},
+		{
+			name:       "values that are not valid label names",
+			blockSize:  blockPerEntry,
+			numEntries: 10,
+			metadata:   valueNotALabelNameMetadata,
+			remove:     []int{1, 3, 6},
+			minBlocks:  10,
+		},
+		{
+			name:       "values that are not valid label names, re-encoded blocks",
+			blockSize:  entriesPerBlock,
+			numEntries: 12,
+			metadata:   valueNotALabelNameMetadata,
+			remove:     []int{2, 7},
+			minBlocks:  3,
+		},
+	} {
+		for _, fromStorage := range []bool{false, true} {
+			name := tc.name
+			if fromStorage {
+				name += ", read back from storage"
+			}
+
+			t.Run(name, func(t *testing.T) {
+				metadata := tc.metadata
+				if metadata == nil {
+					metadata = distinctMetadata
+				}
+
+				originalChunk := buildMetadataChunk(t, tc.blockSize, tc.numEntries, metadata)
+				if fromStorage {
+					originalChunk = reloadFromStorage(t, originalChunk, tc.blockSize)
+				}
+				require.GreaterOrEqual(t, originalChunk.BlockCount(), tc.minBlocks, "chunk is not laid out the way this case assumes")
+
+				removed := make(map[string]bool, len(tc.remove))
+				for _, i := range tc.remove {
+					removed[lineFor(i)] = true
+				}
+
+				// Take what the chunk holds as the baseline rather than the metadata
+				// handed to Append, so whatever the write path did to it is already
+				// accounted for and this only measures what the rewrite changed.
+				var expected []logproto.Entry
+				for _, e := range readEntries(t, originalChunk) {
+					if !removed[e.Line] {
+						expected = append(expected, e)
+					}
+				}
+				require.Len(t, expected, tc.numEntries-len(tc.remove))
+
+				rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+					return removed[s]
+				})
+				if len(expected) == 0 {
+					require.Equal(t, chunk.ErrRewriteNoDataLeft, err)
+					return
+				}
+				require.NoError(t, err)
+				newChunk := rewritten.(*MemChunk)
+
+				requireEntriesEqual(t, expected, readEntries(t, newChunk))
+
+				// The rewritten chunk is what gets uploaded, so it has to survive the
+				// encoding too.
+				b, err := newChunk.Bytes()
+				require.NoError(t, err)
+				roundTripped, err := NewByteChunk(b, tc.blockSize, testTargetSize)
+				require.NoError(t, err)
+
+				actual := readEntries(t, roundTripped)
+				requireEntriesEqual(t, expected, actual)
+
+				// No surviving entry resolves a name to a blanked or out of range symbol.
+				for _, e := range actual {
+					for _, lbl := range e.StructuredMetadata {
+						require.NotEmpty(t, lbl.Name, "entry %q resolved a name to a blanked symbol", e.Line)
+					}
+				}
+
+				// Keeping the positions stable must not grow the table or file a second
+				// copy of a symbol: reads normalize label names, so re-encoding from
+				// what a read returns rather than from what is stored would do both.
+				require.Len(t, newChunk.symbolizer.labels, len(originalChunk.symbolizer.labels), "rewrite changed the size of the symbol table")
+
+				seen := map[string]struct{}{}
+				for _, lbl := range liveSymbols(newChunk) {
+					_, dup := seen[lbl]
+					require.False(t, dup, "symbol %q stored twice", lbl)
+					seen[lbl] = struct{}{}
+				}
+			})
+		}
+	}
+}
+
+// Keeping positions stable must not keep the removed entries' names and values
+// with them: a delete request has to erase those.
+func TestMemChunk_Rewrite_DropsStructuredMetadataOfRemovedEntries(t *testing.T) {
+	const secret = "alice@example.com"
+
+	// Uncompressed so the assertions below can look for the value in the bytes
+	// the compactor would upload.
+	originalChunk := NewMemChunk(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, 1, testTargetSize)
+	for i, sm := range [][]logproto.LabelAdapter{
+		{{Name: "aaa", Value: "0"}},
+		{{Name: "user_email", Value: secret}},
+		{{Name: "ccc", Value: "2"}},
+	} {
+		_, err := originalChunk.Append(&logproto.Entry{
+			Timestamp:          time.Unix(0, int64(i+1)),
+			Line:               lineFor(i),
+			StructuredMetadata: sm,
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, originalChunk.Close())
+	require.Greater(t, originalChunk.BlockCount(), 1)
+
+	originalBytes, err := originalChunk.Bytes()
+	require.NoError(t, err)
+	require.Contains(t, string(originalBytes), secret, "test needs the value to be findable before the rewrite")
+
+	rewritten, err := originalChunk.Rewrite(func(_ time.Time, s string, _ labels.Labels) bool {
+		return s == lineFor(1)
+	})
+	require.NoError(t, err)
+	newChunk := rewritten.(*MemChunk)
+
+	require.NotContains(t, liveSymbols(newChunk), secret, "removed entry's value is still in the symbol table")
+	require.NotContains(t, liveSymbols(newChunk), "user_email", "removed entry's name is still in the symbol table")
+
+	newBytes, err := newChunk.Bytes()
+	require.NoError(t, err)
+	require.NotContains(t, string(newBytes), secret, "removed entry's value is still in the chunk")
+	require.NotContains(t, string(newBytes), "user_email", "removed entry's name is still in the chunk")
+
+	// Symbols an entry that survived still refers to are left alone.
+	require.Contains(t, string(newBytes), "aaa")
+	require.Contains(t, string(newBytes), "ccc")
+}
+
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withStructuredMetadata bool) *MemChunk {
 	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	t.Logf("from   : %v", from.String())

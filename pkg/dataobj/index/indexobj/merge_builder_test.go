@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // TestMergeBuilder_Empty verifies that an empty merge builder returns ErrBuilderEmpty on flush.
@@ -530,4 +531,104 @@ func TestMergeBuilder_Reset(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, obj)
 	closer.Close()
+}
+
+func appendStatPerTenant(t *testing.T, b *MergeBuilder, tenants int) {
+	t.Helper()
+	for i := range tenants {
+		require.NoError(t, b.AppendStat(fmt.Sprintf("tenant-%04d", i), stats.Stat{
+			ObjectPath:       fmt.Sprintf("objects/%04d", i),
+			SectionIndex:     int64(i),
+			SortSchema:       "app",
+			Labels:           map[string]string{"app": fmt.Sprintf("v%d", i)},
+			MinTimestamp:     time.Unix(10, 0).UnixNano(),
+			MaxTimestamp:     time.Unix(20, 0).UnixNano(),
+			RowCount:         1,
+			UncompressedSize: 100,
+		}))
+	}
+}
+
+// A closer returned alongside an error is never closed by callers, since they
+// stop at the error, so Flush must hand back nothing when it fails.
+func TestMergeBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
+	t.Run("when the object cannot be built", func(t *testing.T) {
+		store := newFailingReadStore(false)
+		b, err := NewMergeBuilder(testBuilderConfig, store)
+		require.NoError(t, err)
+		appendStatPerTenant(t, b, 1)
+
+		obj, closer, err := b.Flush()
+		require.ErrorContains(t, err, "flushing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the buffered sections must be released")
+	})
+
+	t.Run("when the built object cannot be observed", func(t *testing.T) {
+		// See the equivalent Builder test: only the last section's metadata
+		// fails to read, and with this many sections the metadata outgrows the
+		// decoder's prefetch window, so the failure lands while observing.
+		store := newFailingReadStore(true)
+		b, err := NewMergeBuilder(testBuilderConfig, store)
+		require.NoError(t, err)
+		appendStatPerTenant(t, b, 64)
+
+		obj, closer, err := b.Flush()
+		require.ErrorContains(t, err, "observing object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed, "the object's scratch handles must be released")
+	})
+}
+
+// Flush resets the builder whether it succeeds or fails, so a failed flush
+// leaves nothing behind for the next one to pick up.
+func TestMergeBuilder_FlushResetsBuilder(t *testing.T) {
+	tests := []struct {
+		name    string
+		store   scratch.Store
+		tenants int
+		wantErr string
+	}{
+		{
+			name:    "when the object is built",
+			store:   scratch.NewMemory(),
+			tenants: 1,
+		},
+		{
+			name:    "when the object cannot be built",
+			store:   newFailingReadStore(false),
+			tenants: 1,
+			wantErr: "flushing object",
+		},
+		{
+			// See TestBuilder_FlushReturnsNoCloserOnError for why this many
+			// tenants are needed to fail while observing.
+			name:    "when the built object cannot be observed",
+			store:   newFailingReadStore(true),
+			tenants: 64,
+			wantErr: "observing object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := NewMergeBuilder(testBuilderConfig, tt.store)
+			require.NoError(t, err)
+			appendStatPerTenant(t, b, tt.tenants)
+
+			_, closer, err := b.Flush()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				defer closer.Close()
+			}
+
+			require.Zero(t, b.GetEstimatedSize())
+			_, _, err = b.Flush()
+			require.ErrorIs(t, err, ErrBuilderEmpty)
+		})
+	}
 }

@@ -1,6 +1,28 @@
 # Changes
 
-## Unreleased
+## 2.6.0 - 2026-09-07
+
+- Fixed a denial-of-service issue where a crafted database could use repeated
+  pointers to cause excessive CPU and memory use during reflection decoding.
+  The decoder now limits decoding work and decoded payload size.
+- Made search-tree verification visit shared subtrees only once, bounding work
+  while still rejecting cycles and overlong paths.
+- Added the `maxsize:N` struct-tag option to limit maps, arrays, strings, and
+  bytes in reflection and generated decoders, plus bounded cursor reads.
+  Field names containing commas must now be single-quoted.
+- Made generated decoders reject duplicate recognized map keys.
+- Added `mmdbdata.Cursor.Offset()` to retrieve a value's resolved control-byte
+  offset for caching within a database. It returns an error when resolution
+  fails; the legacy `Decoder.Offset()` retains its original-offset fallback.
+- Improved performance:
+  - Reduced 28-bit search-tree lookup overhead with single-word node reads.
+  - Extended bounded cursor string fast paths to wider data pointers.
+  - Avoided repeated reflection dispatch for pointer-backed strings.
+  - Inlined compact header reads when skipping values during budgeted decoding.
+  - Avoided repeated type dispatch for unsigned integers decoded into `any`.
+  - Cached validated struct-field matches to speed up repeated decoding.
+
+## 2.5.0 - 2026-08-08
 
 - Deprecated the legacy `mmdbdata.Unmarshaler` callback,
   `UnmarshalMaxMindDB(*mmdbdata.Decoder) error`. It remains supported throughout

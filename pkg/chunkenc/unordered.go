@@ -383,7 +383,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	for _, s := range series {
 		seriesRes = append(seriesRes, *s)
 	}
-	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+	return iter.SampleIteratorWithClose(iter.NewTimestampFirstMultiSeriesIterator(seriesRes), func() error {
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}

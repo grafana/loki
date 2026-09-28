@@ -183,7 +183,7 @@ subset using [Query.SetAttrSelection] may speed up the listing process:
 Both objects and buckets have ACLs (Access Control Lists). An ACL is a list of
 ACLRules, each of which specifies the role of a user, group or project. ACLs
 are suitable for fine-grained control, but you may prefer using IAM to control
-access at the project level (see [Cloud Storage IAM docs].
+access at the project level (see [Cloud Storage IAM docs]).
 
 To list the ACLs of a bucket or object, obtain an [ACLHandle] and call [ACLHandle.List]:
 
@@ -247,7 +247,7 @@ as the documentation of [BucketHandle.GenerateSignedPostPolicyV4].
 	if err != nil {
 	    // TODO: Handle error.
 	}
-	fmt.Printf("URL: %s\nFields; %v\n", pv4.URL, pv4.Fields)
+	fmt.Printf("URL: %s\nFields: %v\n", pv4.URL, pv4.Fields)
 
 # Credential requirements for signing
 
@@ -384,7 +384,7 @@ Requirements to use Direct Connectivity include:
 
   - Your application must be running inside Google Cloud.
   - Your Cloud Storage [bucket location] must overlap with your VM or compute
-    environment zone. For example, if your VM is in us-east1a, your bucket
+    environment zone. For example, if your VM is in us-east1-b, your bucket
     must be located in either us-east1 (single region), nam4 (dual region),
     or us (multi-region).
   - Your client must use service account authentication.
@@ -462,7 +462,7 @@ use this strategy:
     factors; therefore, you should experiment with your specific
     workload to determine if parallel uploads provide a benefit.
 
-**Note:** This feature is currently experimental and its API surface may change
+Note: This feature is currently experimental and its API surface may change
 in future releases. It is not yet recommended for production use.
 
 # Storage Control API

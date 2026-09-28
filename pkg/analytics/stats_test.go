@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"testing"
@@ -33,9 +34,10 @@ func Test_BuildReport(t *testing.T) {
 	NewFloat("size_mb").Set(100.1)
 	NewFloat("size_mb").Set(200.1)
 	NewCounter("lines_written").Inc(200)
-	s := NewStatistics("query_throughput")
+	s := NewStatistics("query_throughput_" + fmt.Sprint(now.UnixNano()))
+
 	s.Record(25)
-	s = NewStatistics("query_throughput")
+	s = NewStatistics("query_throughput_" + fmt.Sprint(now.UnixNano()))
 	s.Record(300)
 	s.Record(5)
 	w := NewWordCounter("active_tenants")
@@ -57,10 +59,10 @@ func Test_BuildReport(t *testing.T) {
 	require.Equal(t, r.Metrics["compression_ratio"], int64(100))
 	require.Equal(t, r.Metrics["size_mb"], 200.1)
 	require.Equal(t, r.Metrics["lines_written"].(map[string]interface{})["total"], int64(200))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["min"], float64(5))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["max"], float64(300))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["count"], int64(3))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["avg"], float64(25+300+5)/3)
+	require.Equal(t, r.Metrics["query_throughput_"+fmt.Sprint(now.UnixNano())].(map[string]interface{})["min"], float64(5))
+	require.Equal(t, r.Metrics["query_throughput_"+fmt.Sprint(now.UnixNano())].(map[string]interface{})["max"], float64(300))
+	require.Equal(t, r.Metrics["query_throughput_"+fmt.Sprint(now.UnixNano())].(map[string]interface{})["count"], int64(3))
+	require.Equal(t, r.Metrics["query_throughput_"+fmt.Sprint(now.UnixNano())].(map[string]interface{})["avg"], float64(25+300+5)/3)
 	require.Equal(t, r.Metrics["active_tenants"], int64(3))
 
 	out, _ := jsoniter.MarshalIndent(r, "", " ")
@@ -104,7 +106,7 @@ func TestCounter(t *testing.T) {
 }
 
 func TestStatistic(t *testing.T) {
-	s := NewStatistics("test_stats")
+	s := NewStatistics("test_stats_" + fmt.Sprint(time.Now().UnixNano()))
 	s.Record(100)
 	s.Record(200)
 	s.Record(300)

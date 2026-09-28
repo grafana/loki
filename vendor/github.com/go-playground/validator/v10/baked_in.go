@@ -3045,9 +3045,18 @@ func isHostnamePort(fl FieldLevel) bool {
 
 // IsPort validates if the current field's value represents a valid port
 func isPort(fl FieldLevel) bool {
-	val := fl.Field().Uint()
+	field := fl.Field()
 
-	return val >= 1 && val <= 65535
+	switch field.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		val := field.Int()
+		return val >= 1 && val <= 65535
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		val := field.Uint()
+		return val >= 1 && val <= 65535
+	default:
+		panic(fmt.Sprintf("Bad field type %s", field.Type()))
+	}
 }
 
 // isLowercase is the validation function for validating if the current field's value is a lowercase string.

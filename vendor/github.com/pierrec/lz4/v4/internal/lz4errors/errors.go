@@ -16,5 +16,6 @@ const (
 	ErrOptionInvalidBlockSize        Error = "lz4: invalid block size"
 	ErrOptionNotApplicable           Error = "lz4: option not applicable"
 	ErrWriterNotClosed               Error = "lz4: writer not closed"
+	ErrWriterClosed                  Error = "lz4: writer closed"
 	ErrEndOfStream                   Error = "lz4: end of stream reached"
 )

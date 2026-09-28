@@ -44,6 +44,7 @@ func init() {
 	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
 	storageinternal.WithOtelMetrics = withOtelMetrics
 	storageinternal.WithOtelDebugMetrics = withOtelDebugMetrics
+	storageinternal.WithBufferPool = withBufferPool
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -91,6 +92,7 @@ type storageConfig struct {
 	grpcBidiReads          bool
 	grpcAppendableUploads  bool
 	grpcDirectPathEnforced bool
+	bufferPool             experimental.BufferPool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -337,4 +339,21 @@ type withOtelDebugMetricsConfig struct {
 
 func (w *withOtelDebugMetricsConfig) ApplyStorageOpt(c *storageConfig) {
 	c.enableOtelDebugMetrics = true
+}
+
+// withBufferPool sets the buffer pool used to allocate memory for parallel
+// uploads. It backs [cloud.google.com/go/storage/experimental.WithBufferPool].
+//
+// This option is not supported at the moment.
+func withBufferPool(pool experimental.BufferPool) option.ClientOption {
+	return &withBufferPoolConfig{pool: pool}
+}
+
+type withBufferPoolConfig struct {
+	internaloption.EmbeddableAdapter
+	pool experimental.BufferPool
+}
+
+func (w *withBufferPoolConfig) ApplyStorageOpt(c *storageConfig) {
+	c.bufferPool = w.pool
 }

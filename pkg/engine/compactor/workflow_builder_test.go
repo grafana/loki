@@ -86,3 +86,18 @@ func TestBuildLogMergePlan(t *testing.T) {
 
 	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
 }
+
+func TestBuildSortObjectPlan(t *testing.T) {
+	plan := buildSortObjectPlan("objects/source", []string{"label:app"})
+	root, err := plan.Root()
+	require.NoError(t, err)
+
+	node, ok := root.(*physical.SortObject)
+	require.True(t, ok, "root is %T, want *physical.SortObject", root)
+	require.Equal(t, "objects/source", node.SourceObjectPath)
+	require.Equal(t, []string{"label:app"}, node.SortSchema)
+
+	second, err := buildSortObjectPlan("objects/source", []string{"label:app"}).Root()
+	require.NoError(t, err)
+	require.NotEqual(t, root.ID(), second.ID(), "every build must mint a fresh NodeID")
+}

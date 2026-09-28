@@ -63,6 +63,12 @@ func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 	return line, f.filterTy(line, f.ty)
 }
 
+// Hints implements Stage.
+func (f *IPLineFilter) Hints() StageHints {
+	// It matches the IP in the line, never touching labels.
+	return StageHints{CanModifyLabels: false}
+}
+
 // `RequiredLabelNames` implements `Stage` interface
 func (f *IPLineFilter) RequiredLabelNames() []string {
 	return []string{} // empty for line filter
@@ -105,6 +111,13 @@ func NewIPLabelFilter(pattern, label string, ty LabelFilterType) *IPLabelFilter 
 // `Process` implements `Stage` interface
 func (f *IPLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return line, f.filterTy(line, f.Ty, lbs)
+}
+
+// Hints implements Stage.
+func (f *IPLabelFilter) Hints() StageHints {
+	// It only reads a label value to match against the IP pattern, never writing a label. An invalid
+	// pattern is rejected when the stage is built, not here.
+	return StageHints{CanModifyLabels: false}
 }
 
 func (f *IPLabelFilter) isLabelFilterer() {}

@@ -14,12 +14,15 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -1041,6 +1044,264 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 	require.Equal(t, samples, []float64{1.})
 }
 
+func TestInstance_QuerySample_ShouldHonorSampleOrder(t *testing.T) {
+	// defaultInstance holds two streams, worker and dispatcher, whose entries interleave in time.
+	// So timestamp-first and stream-first produce genuinely different orders.
+	instance := defaultInstance(t)
+	start, end := time.Unix(0, 0), time.Unix(0, 10*1e6)
+
+	workerHash, dispatcherHash := defaultInstanceWorkerHash, defaultInstanceDispatcherHash
+
+	const query = `count_over_time({job="3"}[5m])`
+	byTimestamp := querySampleAt(t, instance, query, logproto.SAMPLE_ORDER_BY_TIMESTAMP, start, end)
+	byStream := querySampleAt(t, instance, query, logproto.SAMPLE_ORDER_BY_STREAM, start, end)
+
+	t.Run("both orders return the same samples", func(t *testing.T) {
+		// Compare labels and timestamps only. The two orders are free to report a different
+		// stream hash for the same sample, which is the whole point of the stream-first tag.
+		points := func(samples []receivedSample) [][2]any {
+			out := make([][2]any, 0, len(samples))
+			for _, s := range samples {
+				out = append(out, [2]any{s.labels, s.tsNanos})
+			}
+			return out
+		}
+
+		require.Len(t, byTimestamp, 10)
+		require.ElementsMatch(t, points(byTimestamp), points(byStream))
+	})
+
+	t.Run("timestamp-first order returns samples in global timestamp order", func(t *testing.T) {
+		for i := 1; i < len(byTimestamp); i++ {
+			require.LessOrEqual(t, byTimestamp[i-1].tsNanos, byTimestamp[i].tsNanos)
+		}
+	})
+
+	t.Run("stream-first order groups each stream contiguously by its stable label hash", func(t *testing.T) {
+		// The hashes must be labels.StableHash of the raw stream labels: the same identity the
+		// TSDB index gives the store's chunks, so ingester and store align on the merge.
+		require.Equal(t, map[uint64]struct{}{workerHash: {}, dispatcherHash: {}}, assertStreamFirstOrder(t, byStream))
+	})
+
+	t.Run("a grouping query keeps distinct streams on distinct hashes", func(t *testing.T) {
+		// `sum by (job)` pushes the grouping into the extractor, reducing both streams to
+		// {job="3"}. They become label-identical, so only the stable hash keeps them apart.
+		got := querySampleAt(t, instance, `sum by (job) (count_over_time({job="3"}[5m]))`, logproto.SAMPLE_ORDER_BY_STREAM, start, end)
+		require.Len(t, got, 10, "no sample dropped")
+
+		labelSets := map[string]struct{}{}
+		for _, s := range got {
+			labelSets[s.labels] = struct{}{}
+		}
+		require.Len(t, labelSets, 1, "the grouping must collapse both streams onto identical labels")
+		require.Equal(t, map[uint64]struct{}{workerHash: {}, dispatcherHash: {}}, assertStreamFirstOrder(t, got))
+	})
+
+	t.Run("an unknown order is rejected", func(t *testing.T) {
+		_, err := instance.QuerySample(t.Context(), logql.SelectSampleParams{
+			SampleQueryRequest: &logproto.SampleQueryRequest{
+				Selector: query,
+				Start:    start,
+				End:      end,
+				Plan:     testutil.MustPlan(query),
+				Order:    logproto.SampleOrder(99),
+			},
+		})
+		require.ErrorContains(t, err, "unknown sample order")
+	})
+}
+
+func TestCombineByStreamFirst(t *testing.T) {
+	// A series whose own StreamHash disagrees with the hash the stream was collected under. The
+	// output must report the collected hash, whatever the wrapped iterator says.
+	newTestSampleStream := func(hash uint64, reportedHash uint64, samples ...logproto.Sample) sampleStream {
+		return sampleStream{
+			it:         iter.NewSeriesIterator(logproto.Series{Labels: `{}`, StreamHash: reportedHash, Samples: samples}),
+			streamHash: hash,
+		}
+	}
+	sample := func(ts int64) logproto.Sample {
+		return logproto.Sample{Timestamp: ts, Hash: uint64(ts), Value: 1}
+	}
+	collect := func(t *testing.T, it iter.SampleIterator) []receivedSample {
+		t.Helper()
+
+		var got []receivedSample
+		for it.Next() {
+			got = append(got, receivedSample{labels: it.Labels(), streamHash: it.StreamHash(), tsNanos: it.At().Timestamp})
+		}
+		require.NoError(t, it.Err())
+		require.NoError(t, it.Close())
+
+		return got
+	}
+
+	t.Run("should order the runs by ascending stream hash, whatever order the streams arrive in", func(t *testing.T) {
+		got := collect(t, combineByStreamFirst([]sampleStream{
+			newTestSampleStream(30, 30, sample(1)),
+			newTestSampleStream(10, 10, sample(2)),
+			newTestSampleStream(20, 20, sample(3)),
+		}))
+
+		require.Equal(t, []receivedSample{
+			{labels: `{}`, streamHash: 10, tsNanos: 2},
+			{labels: `{}`, streamHash: 20, tsNanos: 3},
+			{labels: `{}`, streamHash: 30, tsNanos: 1},
+		}, got)
+	})
+
+	t.Run("should report the collected hash, not the wrapped iterator's own", func(t *testing.T) {
+		got := collect(t, combineByStreamFirst([]sampleStream{
+			newTestSampleStream(42, 999, sample(1), sample(2)),
+		}))
+
+		require.Equal(t, []receivedSample{
+			{labels: `{}`, streamHash: 42, tsNanos: 1},
+			{labels: `{}`, streamHash: 42, tsNanos: 2},
+		}, got)
+	})
+
+	t.Run("should interleave streams that share a hash by timestamp", func(t *testing.T) {
+		got := collect(t, combineByStreamFirst([]sampleStream{
+			newTestSampleStream(10, 10, sample(1), sample(3)),
+			newTestSampleStream(10, 10, sample(2), sample(4)),
+			newTestSampleStream(20, 20, sample(5)),
+		}))
+
+		require.Equal(t, []receivedSample{
+			{labels: `{}`, streamHash: 10, tsNanos: 1},
+			{labels: `{}`, streamHash: 10, tsNanos: 2},
+			{labels: `{}`, streamHash: 10, tsNanos: 3},
+			{labels: `{}`, streamHash: 10, tsNanos: 4},
+			{labels: `{}`, streamHash: 20, tsNanos: 5},
+		}, got)
+	})
+
+	t.Run("should keep every sample of two streams that share a hash and a timestamp", func(t *testing.T) {
+		got := collect(t, combineByStreamFirst([]sampleStream{
+			newTestSampleStream(10, 10, sample(1)),
+			newTestSampleStream(10, 10, sample(1)),
+		}))
+
+		require.Len(t, got, 2, "a sort must not deduplicate, unlike a merge")
+	})
+
+	t.Run("should return an empty iterator when no stream matches", func(t *testing.T) {
+		it := combineByStreamFirst(nil)
+
+		// The accessors must be safe before the first Next, which is what the empty case buys:
+		// a concatenation over no iterators dereferences a nil current iterator instead.
+		require.Zero(t, it.At())
+		require.Empty(t, it.Labels())
+		require.Zero(t, it.StreamHash())
+		require.Empty(t, collect(t, it))
+	})
+}
+
+func TestInstance_QuerySample_WithStreamFirstOrder(t *testing.T) {
+	t.Run("should keep a stream in one contiguous run when its output labels change from sample to sample", func(t *testing.T) {
+		entries := make([]logproto.Entry, 0, 6)
+		for i := 0; i < 6; i++ {
+			entries = append(entries, logproto.Entry{
+				Timestamp:          time.Unix(0, int64(i)*1e6),
+				Line:               fmt.Sprintf("line-%d", i),
+				StructuredMetadata: []logproto.LabelAdapter{{Name: "level", Value: []string{"info", "warn"}[i%2]}},
+			})
+		}
+		instance := instanceWithStreams(t, []logproto.Stream{{Labels: `{job="varying"}`, Entries: entries}})
+
+		const query = `sum by (level) (count_over_time({job="varying"}[5m]))`
+		got := querySampleAt(t, instance, query, logproto.SAMPLE_ORDER_BY_STREAM, time.Unix(0, 0), time.Unix(0, 10*1e6))
+		require.Len(t, got, 6)
+
+		labelSets := map[string]struct{}{}
+		for _, s := range got {
+			labelSets[s.labels] = struct{}{}
+		}
+		require.Len(t, labelSets, 2, "the output labels must really vary within the stream")
+
+		hash := labels.StableHash(labels.FromStrings("job", "varying"))
+		require.Equal(t, map[uint64]struct{}{hash: {}}, assertStreamFirstOrder(t, got))
+	})
+
+	t.Run("should exclude __name__ from the stream hash, because every chunk store path drops it before hashing", func(t *testing.T) {
+		streamLabels := labels.FromStrings("__name__", "boom", "job", "named")
+		instance := instanceWithStreams(t, []logproto.Stream{{
+			Labels:  streamLabels.String(),
+			Entries: []logproto.Entry{{Timestamp: time.Unix(0, 1*1e6), Line: "line"}},
+		}})
+
+		withoutNameLabel, _ := streamLabels.HashWithoutLabels(nil)
+		require.NotEqual(t, labels.StableHash(streamLabels), withoutNameLabel,
+			"the fixture must make the two hashes differ, or it proves nothing")
+
+		const query = `count_over_time({job="named"}[5m])`
+		got := querySampleAt(t, instance, query, logproto.SAMPLE_ORDER_BY_STREAM, time.Unix(0, 0), time.Unix(0, 10*1e6))
+
+		require.Len(t, got, 1)
+		require.Equal(t, withoutNameLabel, got[0].streamHash)
+	})
+
+	t.Run("given two streams whose labels collide on the stream hash", func(t *testing.T) {
+		const podA, podB = "39ae2fcfd732c147", "f35246e8ca75a99b"
+		collide := func(pod string) labels.Labels {
+			return labels.FromStrings("cluster", "prod", "namespace", "team", "pod", pod)
+		}
+
+		collideHash := labels.StableHash(collide(podA))
+		require.Equalf(t, collideHash, labels.StableHash(collide(podB)),
+			"the collision fixture no longer collides on StableHash, regenerate it")
+
+		// These labels carry no __name__, so HashWithoutLabels equals StableHash. collideHash is
+		// therefore the stream hash both streams report. Their raw fingerprints collide too, so
+		// the mapper must remap one to keep the two streams distinct.
+		rawA, _ := collide(podA).HashWithoutLabels(nil)
+		require.Equal(t, collideHash, rawA, "without __name__, HashWithoutLabels must equal StableHash")
+
+		instance := instanceWithStreams(t, []logproto.Stream{
+			{Labels: collide(podA).String(), Entries: []logproto.Entry{
+				{Timestamp: time.Unix(0, 1*1e6), Line: "a-1"},
+				{Timestamp: time.Unix(0, 3*1e6), Line: "a-3"},
+			}},
+			{Labels: collide(podB).String(), Entries: []logproto.Entry{
+				{Timestamp: time.Unix(0, 2*1e6), Line: "b-2"},
+				{Timestamp: time.Unix(0, 4*1e6), Line: "b-4"},
+			}},
+		})
+
+		t.Run("should keep them as two distinct in-memory streams", func(t *testing.T) {
+			fps := map[string]uint64{}
+			require.NoError(t, instance.streams.ForEach(func(s *stream) (bool, error) {
+				require.Equalf(t, collideHash, s.labelHash, "collision stream %s must expose the shared StableHash", s.labels)
+				fps[s.labels.String()] = uint64(s.fp)
+				return true, nil
+			}))
+			require.Len(t, fps, 2, "the two colliding streams must stay distinct")
+
+			fpA, fpB := fps[collide(podA).String()], fps[collide(podB).String()]
+			require.NotEqual(t, fpA, fpB)
+			// Exactly one keeps the raw colliding fp; the other is remapped into the reserved fp
+			// space. That proves the mapper resolved a real collision, rather than the two streams
+			// happening to differ.
+			require.True(t, (fpA <= maxMappedFP) != (fpB <= maxMappedFP),
+				"exactly one colliding stream must be remapped into the reserved fp space")
+		})
+
+		t.Run("should return them interleaved into one timestamp-ordered run", func(t *testing.T) {
+			const query = `count_over_time({cluster="prod"}[5m])`
+			got := querySampleAt(t, instance, query, logproto.SAMPLE_ORDER_BY_STREAM, time.Unix(0, 0), time.Unix(0, 10*1e6))
+
+			require.Equal(t, []receivedSample{
+				{labels: collide(podA).String(), streamHash: collideHash, tsNanos: 1 * 1e6},
+				{labels: collide(podB).String(), streamHash: collideHash, tsNanos: 2 * 1e6},
+				{labels: collide(podA).String(), streamHash: collideHash, tsNanos: 3 * 1e6},
+				{labels: collide(podB).String(), streamHash: collideHash, tsNanos: 4 * 1e6},
+			}, got)
+			require.Equal(t, map[uint64]struct{}{collideHash: {}}, assertStreamFirstOrder(t, got))
+		})
+	})
+}
+
 // Test_QuerySampleWithoutExtractor covers sample expressions that produce samples
 // without reading logs. Their Extractor() is nil, so querying them must yield an
 // empty iterator rather than dereferencing it. The query plan arrives over gRPC
@@ -1485,7 +1746,24 @@ func TestGetStats(t *testing.T) {
 	}, resp)
 }
 
+// instanceWithStreams returns an instance holding exactly the given streams.
+func instanceWithStreams(t *testing.T, streams []logproto.Stream) *instance {
+	t.Helper()
+
+	instance := newEmptyInstance(t)
+	require.NoError(t, instance.Push(context.Background(), &logproto.PushRequest{Streams: streams}))
+
+	return instance
+}
+
 func defaultInstance(t *testing.T) *instance {
+	instance := newEmptyInstance(t)
+	insertDefaultInstanceData(t, instance)
+
+	return instance
+}
+
+func newEmptyInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
 	overrides, err := validation.NewOverrides(defaultLimits, nil)
@@ -1509,13 +1787,19 @@ func defaultInstance(t *testing.T) *instance {
 		tenantsRetention,
 	)
 	require.Nil(t, err)
-	insertData(t, instance)
 
 	return instance
 }
 
+// defaultInstanceWorkerHash and defaultInstanceDispatcherHash are the stable label hashes of the
+// two streams insertDefaultInstanceData pushes, so a test can name an expected hash without recomputing it.
+var (
+	defaultInstanceWorkerHash     = labels.StableHash(labels.FromStrings("host", "agent", "log_stream", "worker", "job", "3"))
+	defaultInstanceDispatcherHash = labels.StableHash(labels.FromStrings("host", "agent", "log_stream", "dispatcher", "job", "3"))
+)
+
 // inserts 160 bytes into the instance. 90 for the dispatcher label and 70 for the worker label
-func insertData(t *testing.T, instance *instance) {
+func insertDefaultInstanceData(t *testing.T, instance *instance) {
 	for i := 0; i < 10; i++ {
 		// nolint
 		stream := "dispatcher"
@@ -1587,6 +1871,50 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 	})
 }
 
+func TestMemoryStreamShardsMetric(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	metrics := newIngesterMetrics(reg, constants.Loki)
+
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	tenantID := "loki"
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, tenantID, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreams), "metric needs to be instatiated with zero value")
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards), "metric needs to be instantiated with zero value")
+
+	now := time.Now().Add(-5 * time.Minute)
+	require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="foo"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="0", app="bar"}`, Entries: entries(1, now)},
+		{Labels: `{__stream_shard__="1", app="bar"}`, Entries: entries(1, now)},
+	}}))
+
+	require.Equal(t, 3.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
+
+	require.Equal(t, 3.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 2.0, promtestutil.ToFloat64(inst.memoryStreamShards))
+
+	require.NoError(t, inst.streams.ForEach(func(s *stream) (bool, error) {
+		if s.labels.Has(ShardLbName) {
+			inst.removeStream(s)
+		}
+		return true, nil
+	}))
+
+	require.Equal(t, 1.0, promtestutil.ToFloat64(metrics.instance.memoryStreams.WithLabelValues(tenantID)))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(metrics.instance.memoryStreamShards.WithLabelValues(tenantID)))
+
+	require.Equal(t, 1.0, promtestutil.ToFloat64(inst.memoryStreams))
+	require.Equal(t, 0.0, promtestutil.ToFloat64(inst.memoryStreamShards))
+}
+
 type fakeQueryServer func(*logproto.QueryResponse) error
 
 func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
@@ -1605,4 +1933,61 @@ func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ stri
 
 // ReceivedBytesAdd implements push.UsageTracker.
 func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64, _ string) {
+}
+
+// querySampleAt runs query over instance and flattens the result into the identity plus timestamp
+// of every sample, in the exact order the iterator produced them.
+func querySampleAt(t *testing.T, instance *instance, query string, order logproto.SampleOrder, start, end time.Time) []receivedSample {
+	t.Helper()
+
+	it, err := instance.QuerySample(t.Context(), logql.SelectSampleParams{
+		SampleQueryRequest: &logproto.SampleQueryRequest{
+			Selector: query,
+			Start:    start,
+			End:      end,
+			Plan:     testutil.MustPlan(query),
+			Order:    order,
+		},
+	})
+	require.NoError(t, err)
+
+	var got []receivedSample
+	for it.Next() {
+		got = append(got, receivedSample{labels: it.Labels(), streamHash: it.StreamHash(), tsNanos: it.At().Timestamp})
+	}
+	require.NoError(t, it.Err())
+	require.NoError(t, it.Close())
+
+	return got
+}
+
+// receivedSample is one sample flattened to its stream identity and timestamp.
+type receivedSample struct {
+	labels     string
+	streamHash uint64
+	tsNanos    int64
+}
+
+// assertStreamFirstOrder checks got is in stream-first order: one contiguous run per stream hash, in
+// ascending hash order, with non-decreasing timestamps inside a run. It returns the hashes seen.
+//
+// A hash that ascends on every change cannot recur, so ascent alone proves each run is contiguous.
+func assertStreamFirstOrder(t *testing.T, got []receivedSample) map[uint64]struct{} {
+	t.Helper()
+	require.NotEmpty(t, got, "an empty result satisfies any order, so it proves nothing")
+
+	seen := map[uint64]struct{}{}
+	for i, s := range got {
+		if i > 0 {
+			prev := got[i-1]
+			if s.streamHash == prev.streamHash {
+				require.LessOrEqualf(t, prev.tsNanos, s.tsNanos, "timestamps must not decrease within a stream, at index %d", i)
+			} else {
+				require.Greaterf(t, s.streamHash, prev.streamHash, "stream hash must ascend, at index %d", i)
+			}
+		}
+		seen[s.streamHash] = struct{}{}
+	}
+
+	return seen
 }

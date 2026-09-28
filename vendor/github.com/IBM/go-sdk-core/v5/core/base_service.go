@@ -791,7 +791,7 @@ type httpLogger struct{}
 func (l *httpLogger) Printf(format string, inserts ...any) {
 	if GetLogger().IsLogLevelEnabled(LevelDebug) {
 		msg := fmt.Sprintf(format, inserts...)
-		GetLogger().Log(LevelDebug, RedactSecrets(msg))
+		GetLogger().Log(LevelDebug, "%s", RedactSecrets(msg))
 	}
 }
 

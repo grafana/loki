@@ -7,6 +7,7 @@ import (
 )
 
 type Metrics struct {
+	reg                prometheus.Registerer
 	currentLimit       prometheus.Gauge
 	backoffSec         prometheus.Counter
 	requests           prometheus.Counter
@@ -16,19 +17,23 @@ type Metrics struct {
 }
 
 func (m Metrics) Unregister() {
-	prometheus.Unregister(m.currentLimit)
-	prometheus.Unregister(m.backoffSec)
-	prometheus.Unregister(m.requests)
-	prometheus.Unregister(m.retries)
-	prometheus.Unregister(m.nonRetryableErrors)
-	prometheus.Unregister(m.retriesExceeded)
+	if m.reg == nil {
+		return
+	}
+	m.reg.Unregister(m.currentLimit)
+	m.reg.Unregister(m.backoffSec)
+	m.reg.Unregister(m.requests)
+	m.reg.Unregister(m.retries)
+	m.reg.Unregister(m.nonRetryableErrors)
+	m.reg.Unregister(m.retriesExceeded)
 }
 
 // NewMetrics creates metrics to be used for monitoring congestion control.
-// It needs to accept a "name" because congestion control is used in object clients, and there can be many object clients
-// creates for the same store (multiple period configs, etc). It is the responsibility of the caller to ensure uniqueness,
-// otherwise a duplicate registration panic will occur.
-func NewMetrics(name string, cfg Config) *Metrics {
+// name must be unique per store/period because many object clients can exist
+// in one process. A second registration of the same name is ignored so tests
+// can construct clients more than once against a shared registerer.
+// If reg is nil, collectors are created but not registered.
+func NewMetrics(name string, cfg Config, reg prometheus.Registerer) *Metrics {
 	labels := map[string]string{
 		"strategy": cfg.Controller.Strategy,
 		"name":     name,
@@ -81,11 +86,23 @@ func NewMetrics(name string, cfg Config) *Metrics {
 		}),
 	}
 
-	prometheus.MustRegister(m.currentLimit)
-	prometheus.MustRegister(m.backoffSec)
-	prometheus.MustRegister(m.requests)
-	prometheus.MustRegister(m.retries)
-	prometheus.MustRegister(m.nonRetryableErrors)
-	prometheus.MustRegister(m.retriesExceeded)
+	m.reg = reg
+	registerCollector(reg, m.currentLimit)
+	registerCollector(reg, m.backoffSec)
+	registerCollector(reg, m.requests)
+	registerCollector(reg, m.retries)
+	registerCollector(reg, m.nonRetryableErrors)
+	registerCollector(reg, m.retriesExceeded)
 	return &m
+}
+
+func registerCollector(reg prometheus.Registerer, c prometheus.Collector) {
+	if reg == nil {
+		return
+	}
+	if err := reg.Register(c); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			panic(err)
+		}
+	}
 }

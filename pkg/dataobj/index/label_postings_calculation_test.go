@@ -567,7 +567,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 			b.ReportAllocs()
 
 			for range b.N {
-				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 				if err != nil {
 					b.Fatal(err)
 				}

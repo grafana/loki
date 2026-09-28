@@ -123,6 +123,9 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			s.Entries = entries
+		default:
+			// return error when parsing unknown field
+			return errors.New("found unknown field: " + string(key))
 		}
 		return nil
 	})

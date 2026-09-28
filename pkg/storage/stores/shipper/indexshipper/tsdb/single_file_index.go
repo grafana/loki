@@ -97,16 +97,56 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
+	return newShippableTSDBFile(id, opts, nil, "")
+}
+
+func postingsObjectIdentity(indexCacheLocation, filePath, storagePrefix string) (string, bool) {
+	relative, err := filepath.Rel(indexCacheLocation, filePath)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", false
+	}
+	dir, filename := filepath.Split(relative)
+	dir, tenant := filepath.Split(filepath.Clean(dir))
+	if tenant == "." || filename == "" {
+		return "", false
+	}
+	if dir == "" {
+		// Common files live directly under the table directory. Tenant isolation
+		// comes from the matcher injected by MultiTenantIndex, not the file path.
+		return objectIdentity(storagePrefix, tenant, "", filename), true
+	}
+	parent, table := filepath.Split(filepath.Clean(dir))
+	if parent != "" || table == "." {
+		return "", false
+	}
+	return objectIdentity(storagePrefix, table, tenant, filename), true
+}
+
+func openShippableTSDBWithPostingsCache(p string, opts index.ReaderOptions, postingsCache *postingsCache, storagePrefix, indexCacheLocation string) (shipperindex.Index, error) {
+	id, err := identifierFromPath(p)
+	if err != nil {
+		return nil, err
+	}
+	identity, ok := postingsObjectIdentity(indexCacheLocation, p, storagePrefix)
+	if !ok {
+		postingsCache = nil
+	}
+	return newShippableTSDBFile(id, opts, postingsCache, identity)
+}
+
+func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache *postingsCache, identity string) (*TSDBFile, error) {
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
 	if err != nil {
 		return nil, err
 	}
+	idx.setPostingsCache(postingsCache, identity)
 
-	return &TSDBFile{
+	file := &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
-	}, err
+	}
+	return file, err
 }
 
 func (f *TSDBFile) Close() error {
@@ -125,6 +165,13 @@ type TSDBIndex struct {
 	reader        IndexReader
 	chunkFilterMu sync.Mutex
 	chunkFilter   chunk.RequestChunkFilterer
+	postingsCache *postingsCache
+	postingsID    string
+}
+
+func (i *TSDBIndex) setPostingsCache(c *postingsCache, identity string) {
+	i.postingsCache = c
+	i.postingsID = identity
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -245,13 +292,23 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 }
 
 func (i *TSDBIndex) forPostings(
-	_ context.Context,
+	ctx context.Context,
 	fpFilter index.FingerprintFilter,
 	_, _ model.Time,
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	p, err := PostingsForMatchers(i.reader, fpFilter, matchers...)
+	compute := func() (index.Postings, error) {
+		return PostingsForMatchers(i.reader, fpFilter, matchers...)
+	}
+	var p index.Postings
+	var err error
+	postingsCache, postingsID := i.postingsCache, i.postingsID
+	if postingsCache != nil {
+		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, fpFilter, matchers), compute)
+	} else {
+		p, err = compute()
+	}
 	if err != nil {
 		return err
 	}

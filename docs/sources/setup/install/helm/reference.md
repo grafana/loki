@@ -631,12 +631,13 @@ Default settings applied to the Loki components only. Not applied to loki-canary
 | `defaults.service.ipFamilies` | list | ipFamilies for all services Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services | `[]` |
 | `defaults.service.ipFamilyPolicy` | string | ipFamilyPolicy for all services Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services | `""` |
 | `defaults.service.labels` | object | Common labels for all services | `{}` |
+| `defaults.service.publishNotReadyAddresses` | bool | publishNotReadyAddresses for all services. Set to false so a pod's Service endpoint is withdrawn as soon as it becomes unready, instead of staying routable for the full termination window. Overridable per component via &lt;component&gt;.service.publishNotReadyAddresses. | `true` |
 | `defaults.service.trafficDistribution` | string | trafficDistribution for services Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution | `""` |
 | `defaults.startupProbe` | object | Configures the startup probe for loki pods | `{}` |
 | `defaults.statefulSetRecreateJob.image.registry` | string |  | `"registry.k8s.io"` |
 | `defaults.statefulSetRecreateJob.image.repository` | string |  | `"kubectl"` |
 | `defaults.statefulSetRecreateJob.image.tag` | string | Overrides the image tag. Defaults to .Capabilities.KubeVersion.Version | `""` |
-| `defaults.statefulSetRecreateJob.patchPVC` | bool | Enable the PVC resize job for statefulsets. This job will be triggered when the storage size is increased and will recreate the statefulset to allow resizing of PVCs, which is not natively supported by Kubernetes. | `true` |
+| `defaults.statefulSetRecreateJob.patchPVC` | bool | When a component sets `*.statefulSetRecreateJob.enabled`, the pre-upgrade Job can patch PVC storage requests and recreate the StatefulSet for podManagementPolicy, serviceName, or volumeClaimTemplates count/name/size changes. It does not migrate storageClass, accessModes, selectors, or VCT labels. See the chart README section StatefulSet immutability. | `true` |
 | `defaults.terminationGracePeriodSeconds` | int | Grace period to allow the gateway to shutdown before it is killed | `30` |
 | `defaults.tolerations` | list | Tolerations for loki pods | `[]` |
 
@@ -781,7 +782,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.metrics.image.pullPolicy` | string |  | `"IfNotPresent"` |
 | `gateway.metrics.image.registry` | string |  | `"ghcr.io"` |
 | `gateway.metrics.image.repository` | string |  | `"jkroepke/access-log-exporter"` |
-| `gateway.metrics.image.tag` | string |  | `"0.4.10"` |
+| `gateway.metrics.image.tag` | string |  | `"0.4.13"` |
 | `gateway.metrics.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `gateway.metrics.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `gateway.metrics.resizePolicy` | list | Container resize policy for the gateway metrics exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -1009,7 +1010,7 @@ Configuration for the ingester
 | `ingester.podDisruptionBudget.maxUnavailable` | string | Pod Disruption Budget maxUnavailable | `nil` |
 | `ingester.podDisruptionBudget.minAvailable` | string | Pod Disruption Budget minAvailable | `nil` |
 | `ingester.podDisruptionBudget.unhealthyPodEvictionPolicy` | string | Pod Disruption Budget unhealthyPodEvictionPolicy | `nil` |
-| `ingester.podLabels` | object | Labels for ingester pods | `{}` |
+| `ingester.podLabels` | object | Labels for ingester pods. Keys used by the workload selectors (`app.kubernetes.io/name`, `app.kubernetes.io/instance`, `app.kubernetes.io/component` and, with zoneAwareReplication, `name` and `rollout-group`) are reserved and ignored here: the latter are also used by the per-zone headless Services and grafana/rollout-operator. | `{}` |
 | `ingester.podManagementPolicy` | string | PodManagementPolicy for the ingester StatefulSet. Only applicable if `compactor.kind` is StatefulSet. # OrderedReady and Parallel are supported. | `"Parallel"` |
 | `ingester.priorityClassName` | string | The name of the PriorityClass for ingester pods | `nil` |
 | `ingester.readinessProbe` | object | readiness probe settings for ingester pods. If empty, use `loki.readinessProbe` | `{}` |
@@ -1208,7 +1209,8 @@ Common configuration shared by the Memcached deployments backing Loki's caches. 
 | `memcached.containerSecurityContext` | object | The SecurityContext for memcached containers | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcached.enabled` | bool | Enable the built in memcached server provided by the chart | `true` |
 | `memcached.image.pullPolicy` | string | Memcached Docker image pull policy | `"IfNotPresent"` |
-| `memcached.image.repository` | string | Memcached Docker image repository | `"memcached"` |
+| `memcached.image.registry` | string | Memcached Docker image registry | `"docker.io"` |
+| `memcached.image.repository` | string | Memcached Docker image repository | `"library/memcached"` |
 | `memcached.image.tag` | string | Memcached Docker image tag | `"1.6.45-alpine"` |
 | `memcached.livenessProbe` | object | Liveness probe for memcached pods | `{"failureThreshold":3,"initialDelaySeconds":30,"periodSeconds":10,"tcpSocket":{"port":"client"},"timeoutSeconds":5}` |
 | `memcached.podSecurityContext` | object | The SecurityContext override for memcached pods | `{"fsGroup":11211,"runAsGroup":11211,"runAsNonRoot":true,"runAsUser":11211,"seccompProfile":{"type":"RuntimeDefault"}}` |
@@ -1231,9 +1233,10 @@ Configuration for the Prometheus Memcached exporter sidecar that exposes cache m
 | `memcachedExporter.containerSecurityContext` | object | The SecurityContext for memcached exporter containers | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcachedExporter.enabled` | bool | Whether memcached metrics should be exported | `true` |
 | `memcachedExporter.extraArgs` | object | Extra args to add to the exporter container. Example: extraArgs: memcached.tls.enable: true memcached.tls.cert-file: /certs/cert.crt memcached.tls.key-file: /certs/cert.key memcached.tls.ca-file: /certs/ca.crt memcached.tls.insecure-skip-verify: false memcached.tls.server-name: memcached | `{}` |
-| `memcachedExporter.image.pullPolicy` | string |  | `"IfNotPresent"` |
-| `memcachedExporter.image.repository` | string |  | `"prom/memcached-exporter"` |
-| `memcachedExporter.image.tag` | string |  | `"v0.16.0"` |
+| `memcachedExporter.image.pullPolicy` | string | Memcached exporter Docker image pull policy | `"IfNotPresent"` |
+| `memcachedExporter.image.registry` | string | Memcached exporter Docker image registry | `"docker.io"` |
+| `memcachedExporter.image.repository` | string | Memcached exporter Docker image repository | `"prom/memcached-exporter"` |
+| `memcachedExporter.image.tag` | string | Memcached exporter Docker image tag | `"v0.17.0"` |
 | `memcachedExporter.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/metrics","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `memcachedExporter.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/metrics","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `memcachedExporter.resizePolicy` | list | Container resize policy for the memcached exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -1937,7 +1940,7 @@ Configuration for the k8s-sidecar container that watches for ConfigMaps and Secr
 | `sidecar.image.registry` | string |  | `"docker.io"` |
 | `sidecar.image.repository` | string | The Docker registry and image for the k8s sidecar | `"kiwigrid/k8s-sidecar"` |
 | `sidecar.image.sha` | string | Docker image sha. If empty, no sha will be used | `""` |
-| `sidecar.image.tag` | string | Docker image tag | `"2.10.1"` |
+| `sidecar.image.tag` | string | Docker image tag | `"2.11.2"` |
 | `sidecar.livenessProbe` | object | Liveness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":30,"periodSeconds":30,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.readinessProbe` | object | Readiness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":3,"periodSeconds":10,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.resizePolicy` | list | Container resize policy for the sidecar Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -2159,6 +2162,8 @@ Configuration for the write pod(s) in SimpleScalable mode, which run the distrib
 | `write.persistence.storageClass` | string | Storage class to be used. If defined, storageClassName: &lt;storageClass&gt;. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack). | `nil` |
 | `write.persistence.volumeAttributesClassName` | string | Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31 | `nil` |
 | `write.persistence.volumeClaimsEnabled` | bool | Enable volume claims in pod spec | `true` |
+| `write.persistence.whenDeleted` | string | What to do with the volumes when the StatefulSet is deleted. | `"Delete"` |
+| `write.persistence.whenScaled` | string | What to do with the volume when the StatefulSet is scaled down. | `"Delete"` |
 | `write.podAnnotations` | object | Annotations for write pods | `{}` |
 | `write.podDisruptionBudget.annotations` | object | Annotations for Pod Disruption Budget | `{}` |
 | `write.podDisruptionBudget.enabled` | bool | Enable Pod Disruption Budget | `true` |

@@ -52,9 +52,6 @@ func (cfg *Config) Validate() error {
 	if err := cfg.Index.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.Metastore.Validate(); err != nil {
-		return err
-	}
 	if err := cfg.Compaction.Validate(); err != nil {
 		return err
 	}

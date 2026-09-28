@@ -74,6 +74,27 @@ type (
 	}
 )
 
+// NewConstPredicate returns a [TruePredicate] when keep is true and a [FalsePredicate]
+// otherwise.
+func NewConstPredicate(keep bool) Predicate {
+	if keep {
+		return TruePredicate{}
+	}
+	return FalsePredicate{}
+}
+
+// IsConstPredicate reports whether p always evaluates the same way, and what it evaluates
+// to. A nil predicate keeps every row.
+func IsConstPredicate(p Predicate) (keep, ok bool) {
+	switch p.(type) {
+	case nil, TruePredicate:
+		return true, true
+	case FalsePredicate:
+		return false, true
+	}
+	return false, false
+}
+
 func (AndPredicate) isPredicate()         {}
 func (OrPredicate) isPredicate()          {}
 func (NotPredicate) isPredicate()         {}

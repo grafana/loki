@@ -75,7 +75,7 @@ func (*CompressingReader) private() {}
 
 func (zrd *CompressingReader) init() error {
 	zrd.frame.InitW(&zrd.out, 1, false)
-	size := zrd.frame.Descriptor.Flags.BlockSizeIndex()
+	size := zrd.frame.BlockSizeIndex()
 	zrd.in = size.Get()
 	return zrd.frame.Descriptor.Write(zrd.frame, &zrd.out)
 }
