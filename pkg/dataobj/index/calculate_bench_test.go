@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -84,14 +84,12 @@ var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          128 * 1024,
-			TargetObjectSize:        1 << 30, // 1 GiB ceiling
-			TargetSectionSize:       flagext.Bytes(2 << 20),
-			BufferSize:              4 << 20,
-			SectionStripeMergeLimit: 2,
-		},
+	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          128 * 1024,
+		TargetObjectSize:        1 << 30, // 1 GiB ceiling
+		TargetSectionSize:       flagext.Bytes(2 << 20),
+		BufferSize:              4 << 20,
+		SectionStripeMergeLimit: 2,
 	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(tb, err)
 

@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -79,17 +79,14 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 func buildSourceLogObjectWithSectionSize(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream, sectionSize flagext.Bytes) {
 	t.Helper()
 
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:            2048,
-			MaxPageRows:               10000,
-			TargetObjectSize:          1 << 22, // 4 MiB
-			TargetSectionSize:         sectionSize,
-			BufferSize:                2048 * 8,
-			SectionStripeMergeLimit:   2,
-			EstimatedCompressionRatio: 8,
-		},
-		AppendOrderedEnabled: true,
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:            2048,
+		MaxPageRows:               10000,
+		TargetObjectSize:          1 << 22, // 4 MiB
+		TargetSectionSize:         sectionSize,
+		BufferSize:                2048 * 8,
+		SectionStripeMergeLimit:   2,
+		EstimatedCompressionRatio: 8,
 	}
 	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
 }
@@ -101,22 +98,19 @@ func buildSourceLogObjectWithSectionSize(t *testing.T, bucket objstore.Bucket, p
 func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:            128,
-			MaxPageRows:               10000,
-			TargetObjectSize:          1 << 22, // 4 MiB: stays one object
-			TargetSectionSize:         256,     // tiny: forces many logs sections
-			BufferSize:                2048 * 8,
-			SectionStripeMergeLimit:   2,
-			EstimatedCompressionRatio: 8,
-		},
-		AppendOrderedEnabled: true,
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:            128,
+		MaxPageRows:               10000,
+		TargetObjectSize:          1 << 22, // 4 MiB: stays one object
+		TargetSectionSize:         256,     // tiny: forces many logs sections
+		BufferSize:                2048 * 8,
+		SectionStripeMergeLimit:   2,
+		EstimatedCompressionRatio: 8,
 	}
 	buildSourceLogObjectWithConfig(t, bucket, path, cfg, sortSchema, byTenant)
 }
 
-func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path string, cfg logsobj.BuilderConfig, sortSchema []string, byTenant map[string][]testStream) {
+func buildSourceLogObjectWithConfig(t *testing.T, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))

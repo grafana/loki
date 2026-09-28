@@ -45,7 +45,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
@@ -148,7 +148,7 @@ const (
 	CacheGenerationLoader           = "cache-generation-loader"
 	PartitionRing                   = "partition-ring"
 	DataObjExplorer                 = "dataobj-explorer"
-	DataObjConsumer                 = "dataobj-consumer"
+	DataObjBuilder                  = "dataobj-builder"
 	DataObjCompactionPlanner        = "dataobj-compaction-planner"
 	DataObjCompactionWorker         = "dataobj-compaction-worker"
 	ScratchStore                    = "scratch-store"
@@ -2213,20 +2213,20 @@ func (t *Loki) initUI() (services.Service, error) {
 	return svc, nil
 }
 
-func (t *Loki) initDataObjConsumer() (services.Service, error) {
+func (t *Loki) initDataObjBuilder() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.getDataObjBucket("dataobj-consumer")
+	store, err := t.getDataObjBucket("dataobj-builder")
 	if err != nil {
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer")
-	dataObjConsumer, err := consumer.New(
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj builder")
+	dataObjBuilder, err := dataobjbuilder.New(
 		t.Cfg.KafkaConfig,
-		t.Cfg.DataObj.Consumer,
-		t.Cfg.DataObj.Index,
+		t.Cfg.DataObj.Builder,
+		t.Cfg.DataObj.Uploader,
 		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
@@ -2237,17 +2237,17 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.dataObjConsumer = dataObjConsumer
+	t.dataObjBuilder = dataObjBuilder
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
 	t.Server.HTTP.
 		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
-		Path("/dataobj-consumer/prepare-downscale").
-		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDownscaleHandler)))
+		Path("/dataobj-builder/prepare-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjBuilder.PrepareDownscaleHandler)))
 
-	return t.dataObjConsumer, nil
+	return t.dataObjBuilder, nil
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
@@ -2265,7 +2265,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-consumer uses so
+	// Wrap with the same IndexStoragePrefix the dataobj-builder uses so
 	// compactor outputs and ToC reads land alongside the existing multi-tenant
 	// indexes namespace.
 	indexBucket := store
@@ -2353,7 +2353,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		UploaderCfg:  t.Cfg.DataObj.Consumer.UploaderConfig,
+		UploaderCfg:  t.Cfg.DataObj.Uploader,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})

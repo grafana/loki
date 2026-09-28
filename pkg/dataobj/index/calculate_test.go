@@ -17,9 +17,9 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -101,14 +101,12 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	}
 	require.NotEmpty(t, second)
 
-	logBuilder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			TargetObjectSize:        1 << 22,
-			TargetSectionSize:       1 << 21,
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
+	logBuilder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 22,
+		TargetSectionSize:       1 << 21,
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), fakeLimits{})
 	require.NoError(t, err)
 
@@ -465,14 +463,12 @@ func tenantUncompressed(t *testing.T, ranges []multitenancy.TimeRange, tenant st
 }
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
-	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          128 * 1024,
-			TargetObjectSize:        4 * 1024 * 1024,
-			TargetSectionSize:       2 * 1024 * 1024,
-			BufferSize:              4 * 1024 * 1024,
-			SectionStripeMergeLimit: 2,
-		},
+	candidate, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          128 * 1024,
+		TargetObjectSize:        4 * 1024 * 1024,
+		TargetSectionSize:       2 * 1024 * 1024,
+		BufferSize:              4 * 1024 * 1024,
+		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 

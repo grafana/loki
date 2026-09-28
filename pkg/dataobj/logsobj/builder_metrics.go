@@ -79,8 +79,8 @@ func NewBuilderMetrics() *BuilderMetrics {
 	}
 }
 
-// ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *BuilderMetrics) ObserveConfig(cfg BuilderConfig) {
+// ObserveConfig updates config metrics based on the provided [BuilderBaseConfig].
+func (m *BuilderMetrics) ObserveConfig(cfg BuilderBaseConfig) {
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
 }

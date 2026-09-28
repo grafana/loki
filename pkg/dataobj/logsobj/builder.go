@@ -93,7 +93,7 @@ func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fla
 	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to 0 or 1 to disable.")
 }
 
-// Validate validates the BuilderConfig.
+// Validate validates the BuilderBaseConfig.
 func (cfg *BuilderBaseConfig) Validate() error {
 	var errs []error
 
@@ -122,37 +122,6 @@ func (cfg *BuilderBaseConfig) Validate() error {
 	return errors.Join(errs...)
 }
 
-// BuilderConfig configures a [Builder].
-type BuilderConfig struct {
-	BuilderBaseConfig `yaml:",inline"`
-
-	// AppendOrderedEnabled controls whether the builder uses the AppendOrdered
-	// strategy, which skips intermediate stripe sorting and merging for data
-	// that is already in sort order. When false, the classic
-	// AppendUnordered strategy is used.
-	//
-	// SortSchemaASC does not yet support AppendUnordered (stripe merging cannot
-	// use schema ordering), so the builder currently forces AppendOrdered.
-	AppendOrderedEnabled bool `yaml:"append_ordered_enabled" doc:"hidden"`
-}
-
-// RegisterFlagsWithPrefix registers flags with the given prefix.
-func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	// Set defaults for base builder configuration
-	_ = cfg.TargetPageSize.Set("1MB")
-	_ = cfg.TargetObjectSize.Set("512MB") // compressed
-	_ = cfg.BufferSize.Set("128MB")
-	_ = cfg.TargetSectionSize.Set("512MB") // uncompressed
-	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
-
-	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
-}
-
-// Validate validates the BuilderConfig.
-func (cfg *BuilderConfig) Validate() error {
-	return cfg.BuilderBaseConfig.Validate()
-}
-
 // TenantOverrides provides per-tenant configuration for the Builder.
 type TenantOverrides interface {
 	SortSchemaLabels(tenant string) []string
@@ -165,7 +134,7 @@ type TenantOverrides interface {
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
 type Builder struct {
-	cfg       BuilderConfig
+	cfg       BuilderBaseConfig
 	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
@@ -199,7 +168,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
+func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)

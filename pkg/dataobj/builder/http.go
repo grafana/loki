@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"net/http"
