@@ -821,6 +821,8 @@ The Loki service is unavailable or not listening on the expected port.
 
 Requests are timing out due to slow response times or network issues.
 
+One specific case is not covered by the `504` status below: if the distributor's own request context expires while it's still waiting on Kafka or ingester writes to complete, the error currently surfaces as an unclassified `500`, the same as the Kafka producer backpressure errors above.
+
 **Default configuration:**
 
 - Alloy default timeout: 10 seconds
@@ -837,7 +839,7 @@ Requests are timing out due to slow response times or network issues.
 
 - Enforced by: Client/Server
 - Retryable: Yes
-- HTTP status: 504 Gateway Timeout (or client-side timeout)
+- HTTP status: `504 Gateway Timeout` (or client-side timeout), except the distributor's own wait-on-write-path case noted above, which is `500`
 - Configurable per tenant: No
 
 ### Error: Client canceled request (Code 499)
@@ -915,6 +917,42 @@ On Grafana Cloud, push requests pass through a gateway/proxy layer in front of L
 - Enforced by: Grafana Cloud gateway (not part of `grafana/loki`)
 - Retryable: Yes
 - HTTP status: 502 Bad Gateway
+- Configurable per tenant: No
+
+### Error: Kafka producer backpressure
+
+These errors occur only when the distributor is configured to write to Kafka (`-distributor.kafka-writes-enabled=true`), and indicate that the Kafka producer could not keep up with the incoming write volume.
+
+**Error messages:**
+
+- `records have timed out before they were able to be produced`
+- `the maximum amount of records are buffered, cannot buffer more`
+
+**Cause:**
+
+The distributor's Kafka producer wasn't able to deliver records to the Kafka brokers within `kafka_config.write_timeout`, or the amount of unacknowledged, buffered data reached `kafka_config.producer_max_buffered_bytes`. Both are transient backpressure conditions: the Kafka brokers or the network path to them are slower than the rate at which the distributor is trying to produce records, for example during a broker rollout, a partition rebalance, or a broker-side incident.
+
+**Default configuration:**
+
+- `kafka_config.write_timeout` (`-kafka.write-timeout`): 10s
+- `kafka_config.producer_max_buffered_bytes` (`-kafka.producer-max-buffered-bytes`): 1 GiB (0 disables the limit)
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client. The underlying condition is transient, but as of this writing the distributor returns it as an unclassified `500`, which doesn't itself signal that the request is safe to retry — client logic gated purely on status code (for example, only retrying `429`/`503`/`504`) won't retry this automatically.
+* **Check Kafka broker health and load** (under-replicated partitions, broker CPU/disk/network saturation, ongoing rollouts).
+* **Increase `kafka_config.write_timeout`** if brokers are healthy but consistently slow to acknowledge writes:
+
+   ```yaml
+   kafka_config:
+     write_timeout: 20s
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor (Kafka producer)
+- Retryable: Yes, but not currently signalled by the HTTP status code
+- HTTP status: 500 Internal Server Error
 - Configurable per tenant: No
 
 ### Error: Service unavailable
