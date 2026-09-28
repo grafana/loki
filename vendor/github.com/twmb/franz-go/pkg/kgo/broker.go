@@ -179,14 +179,26 @@ type broker struct {
 	dead atomic.Bool
 }
 
-// brokerVersions is loaded once (and potentially a few times concurrently if
-// multiple connections are opening at once) and then forever stored for a
+// brokerVersions is loaded on every connection (and potentially a few times
+// concurrently if multiple connections are opening at once) and stored for a
 // broker.
 type brokerVersions struct {
 	maxVers  map[int16]int16
 	minVers  map[int16]int16
 	features map[string]int16
+
+	// learnedAt is when we last began ApiVersions at our own max version
+	// and learned this broker's from the reply. A connection that begins
+	// at the cached version instead carries the time over, so that we ask
+	// at our own max again once the cache is relearnVersionsAfter old.
+	learnedAt time.Time
 }
+
+// relearnVersionsAfter is how long a connection begins ApiVersions at the
+// max version a broker previously told us before we ask at our own max
+// again. A broker upgraded in place is asked to check the cluster and node
+// we expect (KIP-1242) within this long.
+const relearnVersionsAfter = time.Hour
 
 func (v *brokerVersions) maxVersion(key int16) int16 {
 	if version, ok := v.maxVers[key]; ok {
@@ -677,6 +689,13 @@ func (b *broker) loadConnection(ctx context.Context, req kmsg.Request) (*brokerC
 		return *pcxn, nil
 	}
 
+	// A stopped broker never comes back (stopForever is final): a metadata
+	// update or rebootstrap removed it. Fail fast rather than dial an
+	// address we no longer trust; the request retries on a live broker.
+	if b.dead.Load() {
+		return nil, errChosenBrokerDead
+	}
+
 	var tries int
 doConnect:
 	tries++
@@ -711,7 +730,7 @@ doConnect:
 		// retry twice. On the first and second attempt, we try our max
 		// version possible (as should be allowed). On the third try,
 		// we downgrade to v0 (see requestAPIVersions).
-		if er := (*errApiVersionsReset)(nil); errors.As(err, &er) && tries < 3 {
+		if _, ok := errors.AsType[*errApiVersionsReset](err); ok && tries < 3 {
 			cxn.die()
 			goto doConnect
 		}
@@ -989,7 +1008,7 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 }
 
 func (cxn *brokerCxn) requestAPIVersions(tries int) error {
-	maxVersion := int16(4)
+	maxVersion := int16(5)
 	if tries >= 3 { // on the third try, we pin to v0; see above in cxn initialization
 		maxVersion = 0
 	} else if cxn.cl.cfg.maxVersions != nil {
@@ -1003,11 +1022,32 @@ func (cxn *brokerCxn) requestAPIVersions(tries int) error {
 		}
 	}
 
+	// A broker we connected to before told us its ApiVersions max. If it
+	// is below ours, begin there: a request above the broker's max is
+	// answered UNSUPPORTED_VERSION and retried, one extra round trip per
+	// connection. Once the cache is old enough, we ask at our own max
+	// again in case the broker was upgraded.
+	learnedAt := time.Now()
+	if v := cxn.b.loadVersions(); v != nil && time.Since(v.learnedAt) < relearnVersionsAfter {
+		if cached := v.maxVersion(18); cached >= 0 && cached < maxVersion {
+			maxVersion = cached
+			learnedAt = v.learnedAt
+		}
+	}
+
 start:
 	req := kmsg.NewPtrApiVersionsRequest()
 	req.Version = maxVersion
 	req.ClientSoftwareName = cxn.cl.cfg.softwareName
 	req.ClientSoftwareVersion = cxn.cl.cfg.softwareVersion
+	// KIP-1242: name the cluster and node we expect to reach. Seeds have
+	// no node ID and get neither.
+	if maxVersion >= 5 && cxn.b.meta.NodeID >= 0 {
+		if clusterID := cxn.cl.clusterID.Load(); clusterID != nil {
+			req.ClusterID = clusterID
+			req.NodeID = cxn.b.meta.NodeID
+		}
+	}
 	cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing api versions request", "broker", logID(cxn.b.meta.NodeID), "version", maxVersion)
 	corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 	if writeErr != nil {
@@ -1019,8 +1059,7 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
-		var errno syscall.Errno
-		if errors.As(err, &errno) && isConnReset(errno) {
+		if errno, ok := errors.AsType[syscall.Errno](err); ok && isConnReset(errno) {
 			return &errApiVersionsReset{err}
 		} else if errors.Is(err, io.EOF) {
 			cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker received EOF during api versions discovery, which often happens when the broker requires TLS and the client is not using it (is TLS misconfigured?)", "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
@@ -1082,6 +1121,14 @@ start:
 	// Checked before ApiKeys below: an error can come with an empty key table.
 	if !sawUnsupportedVersion {
 		if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
+			// The broker is not who our metadata says it is. Drop
+			// every discovered broker and rediscover the cluster
+			// from the seeds; the request that opened this
+			// connection retries once metadata has refreshed.
+			if errors.Is(err, kerr.RebootstrapRequired) && req.ClusterID != nil {
+				cxn.cl.rebootstrapMisrouted(cxn.b, *req.ClusterID)
+				return errChosenBrokerDead
+			}
 			return err
 		}
 	}
@@ -1090,6 +1137,7 @@ start:
 	}
 
 	v := newBrokerVersions(len(resp.ApiKeys))
+	v.learnedAt = learnedAt
 	for _, key := range resp.ApiKeys {
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion

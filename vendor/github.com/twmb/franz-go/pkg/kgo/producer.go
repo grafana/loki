@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +24,10 @@ type producer struct {
 
 	bufferedRecords int64
 	bufferedBytes   int64
+
+	// mergeOff is set if a merged batch ever exceeds its limit, which
+	// means the merge bound is wrong for some codec; see mergeSpan.
+	mergeOff atomic.Bool
 
 	cl *Client
 
@@ -44,6 +50,12 @@ type producer struct {
 
 	id           atomic.Value
 	producingTxn atomic.Bool
+
+	// recreatedInTxn holds topics the current transaction produced to
+	// before they were deleted and recreated. The transaction cannot
+	// commit; see EndTransaction. BeginTransaction clears it.
+	recreatedInTxnMu xsync.Mutex
+	recreatedInTxn   map[string]struct{}
 
 	// We must have a producer field for flushing; we cannot just have a
 	// field on recBufs that is toggled on flush. If we did, then a new
@@ -277,38 +289,47 @@ func (p *producer) purgeTopics(topics []string) {
 
 	for _, d := range purged {
 		for _, p := range d.partitions {
-			r := p.records
-
-			// First we set purged, so that anything in the process
-			// of being buffered will immediately fail when it goes
-			// to buffer.
-			r.mu.Lock()
-			r.purged = true
-			r.mu.Unlock()
-
-			// Now we remove from the sink. When we do, the recBuf
-			// is effectively abandoned. Any active produces may
-			// finish before we fail the records; if they finish
-			// after they will no longer belong in the batch, but
-			// they may have been produced. This is the duplicate
-			// risk a user runs when purging.
-			//
-			// We do not need to lock for `r.sink` access because
-			// this is run in a blocking metadata fn, meaning the
-			// sink cannot change. We do not WANT to lock because
-			// r.mu => r.sink.recBufsMu would cause lock inversion.
-			r.sink.removeRecBuf(r)
-
-			// Once abandoned, we now need to fail anything that
-			// was buffered.
-			r.mu.Lock()
-			r.failAllRecords(errPurged)
-			r.mu.Unlock()
+			p.records.abandon(errPurged)
 		}
 	}
 }
 
 func (p *producer) isAborting() bool { return p.aborting.Load() > 0 }
+
+// noteRecreatedInTxn records that the current transaction produced to a
+// topic that was then recreated. A partition counts if it was added to the
+// transaction or has a request in flight: the buffer is abandoned, so the
+// response can no longer mark it added.
+func (p *producer) noteRecreatedInTxn(topic string, partitions []*topicPartition) {
+	for _, tp := range partitions {
+		recBuf := tp.records
+		recBuf.mu.Lock()
+		inflight := recBuf.inflight > 0
+		recBuf.mu.Unlock()
+		if !inflight && !recBuf.addedToTxn.Load() {
+			continue
+		}
+		p.recreatedInTxnMu.Lock()
+		if p.recreatedInTxn == nil {
+			p.recreatedInTxn = make(map[string]struct{})
+		}
+		p.recreatedInTxn[topic] = struct{}{}
+		p.recreatedInTxnMu.Unlock()
+		return
+	}
+}
+
+func (p *producer) topicsRecreatedInTxn() []string {
+	p.recreatedInTxnMu.Lock()
+	defer p.recreatedInTxnMu.Unlock()
+	return slices.Sorted(maps.Keys(p.recreatedInTxn))
+}
+
+func (p *producer) clearRecreatedInTxn() {
+	p.recreatedInTxnMu.Lock()
+	p.recreatedInTxn = nil
+	p.recreatedInTxnMu.Unlock()
+}
 
 func noPromise(*Record, error) {}
 
@@ -908,6 +929,23 @@ func (cl *Client) doPartition(parts *topicPartitions, partsData *topicPartitions
 		// with the partition's actual load error. The Java client
 		// falls back identically when no partition is available.
 		mapping = partsData.partitions
+	} else if cl.cfg.rackAwarePartitioning && cl.cfg.rack != "" {
+		// KIP-1123: prefer partitions whose leader is in our rack. We
+		// filter once per metadata update, which always stores a new
+		// partsData. If no leader is in our rack we use every writable
+		// partition, as the Java client does.
+		if parts.rackData != partsData {
+			racks := cl.brokerRacks()
+			parts.rackData, parts.rackParts = partsData, nil
+			for _, p := range mapping {
+				if racks[p.leader] == cl.cfg.rack {
+					parts.rackParts = append(parts.rackParts, p)
+				}
+			}
+		}
+		if len(parts.rackParts) > 0 {
+			mapping = parts.rackParts
+		}
 	}
 	if len(mapping) == 0 {
 		cl.producer.promiseRecord(pr, errors.New("unable to partition record due to no usable partitions"))

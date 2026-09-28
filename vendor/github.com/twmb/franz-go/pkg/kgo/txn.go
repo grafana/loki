@@ -230,9 +230,12 @@ func (s *GroupTransactSession) failed() bool {
 // This returns whether the transaction committed or any error that occurred.
 // No returned error is retryable. Either the transactional ID has entered a
 // failed state, or the client retried so much that the retry limit was hit,
-// and odds are you should not continue. While a context is allowed, canceling
-// it will likely leave the client in an invalid state. Canceling should only
-// be done if you want to shut down.
+// and odds are you should not continue. The exception is a transaction that
+// produced to or consumed from a topic which was then deleted and recreated:
+// this aborts and returns an error wrapping kerr.UnknownTopicID, and you can
+// continue once you purge the topic and add it back; see EndTransaction.
+// While a context is allowed, canceling it will likely leave the client in
+// an invalid state. Canceling should only be done if you want to shut down.
 func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry) (committed bool, err error) {
 	defer func() {
 		s.failMu.Lock()
@@ -268,7 +271,12 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 	var g *groupConsumer
 
 	kip447 := false
-	if wantCommit && !failed {
+	// The transaction cannot commit if a topic it produced to was
+	// recreated; see EndTransaction. We abort without committing offsets.
+	if topics := s.cl.producer.topicsRecreatedInTxn(); wantCommit && len(topics) > 0 {
+		commitErr = errRecreatedInTxn(topics)
+	}
+	if wantCommit && !failed && commitErr == nil {
 		isAbortableCommitErr := func(err error) bool {
 			// ILLEGAL_GENERATION: rebalance began and completed
 			// before we committed.
@@ -300,6 +308,13 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 			case errors.Is(err, kerr.IllegalGeneration),
 				errors.Is(err, kerr.UnknownMemberID),
 				errors.Is(err, kerr.StaleMemberEpoch),
+				// GROUP_ID_NOT_FOUND: TxnOffsetCommit v6+ (KIP-1319)
+				// returns this directly where older versions mapped it
+				// to ILLEGAL_GENERATION (already abortable above). The
+				// group state vanished; the manage loop recreates it
+				// by rejoining, so abort and let the caller retry on a
+				// fresh session.
+				errors.Is(err, kerr.GroupIDNotFound),
 				errors.Is(err, kerr.RebalanceInProgress),
 				errors.Is(err, kerr.CoordinatorNotAvailable),
 				errors.Is(err, kerr.CoordinatorLoadInProgress),
@@ -562,6 +577,7 @@ func (cl *Client) BeginTransaction() error {
 
 	cl.producer.inTxn = true
 	cl.producer.producedInTxn.Store(false)
+	cl.producer.clearRecreatedInTxn()
 	if !cl.producer.tx890p2.Load() && cl.supportsKIP890p2() {
 		cl.producer.tx890p2.Store(true)
 	}
@@ -681,6 +697,10 @@ func (cl *Client) UnsafeAbortBufferedRecords() {
 	cl.failBufferedRecords(ErrAborting)
 }
 
+func errRecreatedInTxn(topics []string) error {
+	return fmt.Errorf("the transaction produced to %v before the topic was deleted and recreated; the records the old topic acknowledged are gone, abort the transaction: %w, %w", topics, kerr.TransactionAbortable, kerr.UnknownTopicID)
+}
+
 // EndTransaction ends a transaction and resets the client's internal state to
 // not be in a transaction.
 //
@@ -712,6 +732,13 @@ func (cl *Client) UnsafeAbortBufferedRecords() {
 //   - UnknownProducerID is recoverable for Kafka 2.5+
 //   - TransactionAbortable is always recoverable (after aborting)
 //
+// A transaction that produced to a topic which was then deleted and
+// recreated cannot commit: the records the old topic acknowledged are gone
+// with it, while the offsets the transaction consumed would be committed.
+// TryCommit is refused with an error wrapping TransactionAbortable and
+// UnknownTopicID and the transaction stays open; abort it, and produce the
+// records again in a new transaction.
+//
 // Note that canceling the context will likely leave the client in an
 // undesirable state, because canceling the context may cancel the in-flight
 // EndTransaction request, making it impossible to know whether the commit or
@@ -722,6 +749,11 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 
 	if !cl.producer.inTxn {
 		return nil
+	}
+	if commit {
+		if topics := cl.producer.topicsRecreatedInTxn(); len(topics) > 0 {
+			return errRecreatedInTxn(topics)
+		}
 	}
 	cl.producer.inTxn = false
 
@@ -948,8 +980,7 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 	// producingTxn stays false: produces between the failure and the
 	// retry fail fast rather than buffering against a failed id.
 	if err != nil {
-		var ke *kerr.Error
-		if errors.As(err, &ke) && !ke.Retriable && ke.Code != kerr.UnknownServerError.Code {
+		if ke, ok := errors.AsType[*kerr.Error](err); ok && !ke.Retriable && ke.Code != kerr.UnknownServerError.Code {
 			cl.failProducerID(id, epoch, err)
 		} else {
 			cl.failProducerID(id, epoch, errReloadProducerID)
@@ -980,8 +1011,8 @@ func (cl *Client) maybeRecoverProducerID(ctx context.Context) (necessary, did bo
 		return false, false, nil
 	}
 
-	var ke *kerr.Error
-	if ok := errors.As(err, &ke); !ok {
+	ke, ok := errors.AsType[*kerr.Error](err)
+	if !ok {
 		// The stored PID error is not a kerr (broker-side) error -- most
 		// likely a transient network error wrapped in errProducerIDLoadFail
 		// (dial refused, EOF, etc.) from a broker restart or transient
@@ -1174,6 +1205,7 @@ func (cl *Client) commitTransactionOffsets(
 		onDone(req, kmsg.NewPtrTxnOffsetCommitResponse(), err)
 		return g
 	}
+
 	if len(req.Topics) == 0 {
 		onDone(kmsg.NewPtrTxnOffsetCommitRequest(), kmsg.NewPtrTxnOffsetCommitResponse(), nil)
 		return g
@@ -1249,8 +1281,7 @@ func (cl *Client) addOffsetsToTxn(ctx context.Context, group string) error {
 	// error. Some brokers send this when things fail internally, we can
 	// just abort our commit and see if things are still bad in
 	// EndTransaction.
-	var ke *kerr.Error
-	if errors.As(err, &ke) && !ke.Retriable && ke.Code != kerr.UnknownServerError.Code {
+	if ke, ok := errors.AsType[*kerr.Error](err); ok && !ke.Retriable && ke.Code != kerr.UnknownServerError.Code {
 		cl.failProducerID(id, epoch, err)
 	}
 
@@ -1263,6 +1294,51 @@ func (cl *Client) addOffsetsToTxn(ctx context.Context, group string) error {
 func (g *groupConsumer) commitTxn(ctx context.Context, tx890p2 bool, req *kmsg.TxnOffsetCommitRequest, onDone func(*kmsg.TxnOffsetCommitRequest, *kmsg.TxnOffsetCommitResponse, error)) {
 	if onDone == nil { // note we must always call onDone
 		onDone = func(_ *kmsg.TxnOffsetCommitRequest, _ *kmsg.TxnOffsetCommitResponse, _ error) {}
+	}
+
+	// The offsets of a recreated topic never go to the broker; we answer
+	// them with UNKNOWN_TOPIC_ID. Below v6, TxnOffsetCommit carries names
+	// only, so the broker cannot refuse them itself. See uncommittedFrom;
+	// g.mu is held here.
+	//
+	// As in commit, offsets are committed under the ID they were fetched
+	// under: if the topic is gone from our metadata, or our metadata has
+	// no ID for it, the ID the cursors loaded it under is what v6 sends.
+	var dropped []kmsg.TxnOffsetCommitResponseTopic
+	groupTopics := g.tps.load()
+	kept := req.Topics[:0:0]
+	for _, rt := range req.Topics {
+		if from, recreated := g.uncommittedFrom(groupTopics, rt.Topic); !recreated {
+			if from != noID {
+				rt.TopicID = from
+			}
+			kept = append(kept, rt)
+			continue
+		}
+		st := kmsg.NewTxnOffsetCommitResponseTopic()
+		st.Topic = rt.Topic
+		for _, rp := range rt.Partitions {
+			sp := kmsg.NewTxnOffsetCommitResponseTopicPartition()
+			sp.Partition = rp.Partition
+			sp.ErrorCode = kerr.UnknownTopicID.Code
+			st.Partitions = append(st.Partitions, sp)
+		}
+		dropped = append(dropped, st)
+	}
+	req.Topics = kept
+	if len(dropped) > 0 {
+		inner := onDone
+		onDone = func(req *kmsg.TxnOffsetCommitRequest, resp *kmsg.TxnOffsetCommitResponse, err error) {
+			if err == nil && resp != nil {
+				resp.Topics = append(resp.Topics, dropped...)
+			}
+			inner(req, resp, err)
+		}
+	}
+
+	if len(req.Topics) == 0 { // everything was answered above
+		onDone(req, kmsg.NewPtrTxnOffsetCommitResponse(), nil)
+		return
 	}
 
 	priorDone := g.commitDone
@@ -1296,11 +1372,65 @@ func (g *groupConsumer) commitTxn(ctx context.Context, tx890p2 bool, req *kmsg.T
 		ctx := ctx
 		if !tx890p2 {
 			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
+		} else {
+			// TxnOffsetCommit v6 switched Topic to TopicID (KIP-1319),
+			// like OffsetCommit v10. If any topic in the request has no
+			// TopicID, pin to v5 so the broker matches by name; a zero
+			// TopicID on a v6+ wire would commit to no topic. This is
+			// computed HERE, at send time, and not in
+			// prepareTxnOffsetCommit: the PreTxnCommitFnContext fn runs
+			// after the topic build and may add topics (with or without
+			// ids), and this commit is transactional -- an unnoticed
+			// id-less topic on a v6 wire is offset loss inside an
+			// otherwise-committed transaction. The pin is per-request
+			// and never recomputed lower mid-flight: both Topic and
+			// TopicID are always populated in the request, so whatever
+			// version an individual retry negotiates serializes
+			// correctly. Missing ids are near-unreachable against v6
+			// brokers (their metadata always supplies ids; see the
+			// OffsetCommit pinV9 precedent and #1312 for the class of
+			// broker that omits them, none of which serve v6), so this
+			// pin is expected to be dead safety.
+			var pinV5 bool
+			for i := range req.Topics {
+				if req.Topics[i].TopicID == noID {
+					pinV5 = true
+					break
+				}
+			}
+			if pinV5 {
+				ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 5})
+			}
 		}
 		resp, err := req.RequestWith(ctx, g.cl)
 		if err != nil {
 			onDone(req, nil, err)
 			return
+		}
+
+		// v6 responses carry TopicID with no topic name. Resolve names
+		// from the client's id2t, falling back to the request (which
+		// always carries both) for a topic the PreTxnCommitFnContext fn
+		// added or the old id of a recreated topic, so the response
+		// handed to onDone -- and the per-partition error messages End
+		// builds from it -- name the topics.
+		if resp.Version >= 6 {
+			id2t := g.cl.id2tMap()
+			for i := range resp.Topics {
+				rt := &resp.Topics[i]
+				if rt.Topic != "" {
+					continue
+				}
+				rt.Topic = id2t[rt.TopicID]
+				if rt.Topic == "" {
+					for j := range req.Topics {
+						if req.Topics[j].TopicID == rt.TopicID {
+							rt.Topic = req.Topics[j].Topic
+							break
+						}
+					}
+				}
+			}
 		}
 		g.cl.metrics.observeTime(&g.cl.metrics.cCommitLatency, time.Since(start).Milliseconds())
 
@@ -1327,9 +1457,13 @@ func (g *groupConsumer) prepareTxnOffsetCommit(ctx context.Context, uncommitted 
 	req.MemberID = memberID
 	req.InstanceID = g.cfg.instanceID
 
+	groupTopics := g.tps.load()
 	for topic, partitions := range uncommitted {
 		reqTopic := kmsg.NewTxnOffsetCommitRequestTopic()
 		reqTopic.Topic = topic
+		if td := groupTopics.loadTopic(topic); td != nil {
+			reqTopic.TopicID = td.id
+		}
 		for partition, eo := range partitions {
 			reqPartition := kmsg.NewTxnOffsetCommitRequestTopicPartition()
 			reqPartition.Partition = partition

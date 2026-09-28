@@ -2,15 +2,16 @@ package kgo
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"runtime"
 	"slices"
 	"sync"
 
+	"github.com/klauspost/compress/gzip" // same format as compress/gzip, faster in both directions
 	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
@@ -18,23 +19,12 @@ import (
 
 var byteBuffers = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 8<<10)) }}
 
-// maxDecompressedSize caps how much one batch may decompress to. Fetch
-// limits bound only the compressed bytes on the wire; nothing in the
-// protocol bounds the decompressed size, and the whole batch is
-// materialized contiguously while decompressing. Without a cap, a few-KB
-// malicious or corrupt batch can demand tens of GiB: zstd frames declare a
-// content size that is honored up to the decoder's configured limit (the
-// library default is 64 GiB), gzip expands up to ~1032x, lz4 up to ~255x,
-// and snappy headers claim up to 4 GiB. No legitimate batch can exceed
-// math.MaxInt32 decompressed: every known producer serializes a batch's
-// records into an int32-indexed buffer before compressing (this client's
-// own appendTo, the Java client, librdkafka),
-// so a batch claiming more is corrupt or hostile and is rejected like any
-// other corrupt batch: a loud, repeated fetch error with no offset advance.
-// A var only so tests can shrink it.
-var maxDecompressedSize = int64(math.MaxInt32)
-
-var errDecompressedTooLarge = errors.New("decompressed data exceeds the maximum allowed decompressed batch size (corrupt or malicious batch)")
+// ErrMaxDecompress is returned when a batch we consumed would decompress
+// larger than [MaxDecompressBatchBytes]. The client treats this error as
+// fatal for the partition and it can only be recovered via SetOffsets or by
+// you restarting your client with a higher limit. A custom decompressor that
+// returns this error fatally stops the partition the same way.
+var ErrMaxDecompress = errors.New("decompressed data would exceed MaxDecompressBatchBytes")
 
 // CompressionCodecType is a bitfield specifying a Kafka-defined compression
 // codec. Per spec, only four compression codecs are supported. However, if
@@ -255,14 +245,7 @@ func (c *compressor) Compress(dst *bytes.Buffer, src []byte, flags ...CompressFl
 		}
 	}
 
-	var use CompressionCodecType
-	for _, option := range c.options {
-		if option == CodecZstd && disableZstd {
-			continue
-		}
-		use = option
-		break
-	}
+	use := c.pickCodec(disableZstd)
 
 	var out []byte
 	switch use {
@@ -319,18 +302,148 @@ func (c *compressor) Compress(dst *bytes.Buffer, src []byte, flags ...CompressFl
 	return out, use
 }
 
+// pickCodec returns the first configured codec, skipping zstd if it is
+// disabled (produce versions before 7 cannot use it).
+func (c *compressor) pickCodec(disableZstd bool) CompressionCodecType {
+	for _, option := range c.options {
+		if option != CodecZstd || !disableZstd {
+			return option
+		}
+	}
+	return CodecNone
+}
+
+// streamWriter is a codec writer that can flush mid stream, which is what
+// lets us measure a batch's compressed size before adding one more record.
+type streamWriter interface {
+	io.Writer
+	Flush() error
+	Close() error
+	Reset(io.Writer)
+}
+
+// streamCompressor compresses records into dst. Records collect in buf and
+// reach the codec in chunks; after flush, dst.Len() is the exact compressed
+// size so far.
+type streamCompressor struct {
+	dst *bytes.Buffer
+	buf []byte
+	w   streamWriter
+	put func()
+}
+
+var (
+	streamPool = sync.Pool{New: func() any { return new(streamCompressor) }}
+	xerialPool = sync.Pool{New: func() any { return new(xerialWriter) }}
+)
+
+// newStream returns a streaming compressor writing into dst, or nil if the
+// codec cannot stream.
+func (c *compressor) newStream(codec CompressionCodecType, dst *bytes.Buffer) *streamCompressor {
+	sc := streamPool.Get().(*streamCompressor)
+	sc.dst, sc.buf = dst, sc.buf[:0]
+	switch codec {
+	case CodecGzip:
+		gz := c.gzPool.Get().(*gzip.Writer)
+		sc.w, sc.put = gz, func() { c.gzPool.Put(gz) }
+	case CodecLz4:
+		lz := c.lz4Pool.Get().(*lz4.Writer)
+		sc.w, sc.put = lz, func() { c.lz4Pool.Put(lz) }
+	case CodecZstd:
+		ze := c.zstdPool.Get().(*zstdEncoder)
+		sc.w, sc.put = ze.inner, func() { c.zstdPool.Put(ze) }
+	case CodecSnappy:
+		xw := xerialPool.Get().(*xerialWriter)
+		sc.w, sc.put = xw, func() { xerialPool.Put(xw) }
+	default:
+		streamPool.Put(sc)
+		return nil
+	}
+	sc.w.Reset(dst)
+	return sc
+}
+
+// worst bounds what n pending bytes can add to dst. gzip, lz4, and zstd
+// store a raw block when compressing would grow it, at worst 5 bytes per
+// 16KB, and their frames add under 30 bytes, so 1/1024 plus 64 covers all
+// three; that is measured from the codecs, so mergeSpan checks the finished
+// blob too. Snappy's format bounds a block at 32 + b + b/6, and we write
+// blocks of at most 32KB, each behind a 4 byte length, after a 16 byte
+// header.
+func (sc *streamCompressor) worst(n int) int {
+	if _, ok := sc.w.(*xerialWriter); ok {
+		return n + n/6 + 36*(n/xerialBlockSize+1) + 16
+	}
+	return n + n>>10 + 64
+}
+
+// streamChunk is how many record bytes collect before a codec Write. For
+// snappy and zstd, 4KB and 16KB measured slower (more codec calls), 32KB
+// through 128KB the same, and 256KB slower again (the chunk no longer sits
+// in cache next to the codec's own buffers); gzip does not care. 32KB is
+// the smallest size on that plateau and the xerial block size, so for
+// snappy one Write is one block.
+const streamChunk = 32 << 10
+
+// write hands whole chunks of buffered records to the codec, keeping the
+// remainder for the next write; forced, it hands over everything.
+func (sc *streamCompressor) write(force bool) error {
+	n := len(sc.buf)
+	if !force {
+		n -= n % streamChunk
+		if n == 0 {
+			return nil
+		}
+	}
+	_, err := sc.w.Write(sc.buf[:n])
+	sc.buf = append(sc.buf[:0], sc.buf[n:]...)
+	return err
+}
+
+// flush pushes everything through the codec, after which dst.Len() is the
+// exact compressed size so far.
+func (sc *streamCompressor) flush() error {
+	if err := sc.write(true); err != nil {
+		return err
+	}
+	return sc.w.Flush()
+}
+
+// finish closes the stream and returns the codec and the compressor to
+// their pools. On success, dst holds the complete compressed frame.
+func (sc *streamCompressor) finish() error {
+	err := sc.write(true)
+	if err == nil {
+		err = sc.w.Close()
+	}
+	sc.w.Reset(nil) // drop the codec's reference to dst before pooling it
+	sc.put()
+	sc.dst, sc.w, sc.put = nil, nil, nil
+	streamPool.Put(sc)
+	return err
+}
+
 type decompressor struct {
 	ungzPool   sync.Pool
 	unlz4Pool  sync.Pool
 	unzstdPool sync.Pool
 	pools      pools
+	max        int // how large a batch may decompress to
 }
 
 // DefaultDecompressor returns the default decompressor used by clients.
 // The first pool provided that implements PoolDecompressBytes will be
 // used where possible.
+//
+// The default decompressor bounds batches at math.MaxInt32; internally,
+// clients initialize decompressors with [MaxDecompressBatchBytes].
 func DefaultDecompressor(pools ...Pool) Decompressor {
+	return newDecompressor(math.MaxInt32, pools...)
+}
+
+func newDecompressor(max int, pools ...Pool) *decompressor {
 	d := &decompressor{
+		max: max,
 		ungzPool: sync.Pool{
 			New: func() any {
 				r := new(gzipDecoder)
@@ -350,7 +463,7 @@ func DefaultDecompressor(pools ...Pool) Decompressor {
 				zstdDec, _ := zstd.NewReader(nil,
 					zstd.WithDecoderLowmem(true),
 					zstd.WithDecoderConcurrency(1),
-					zstd.WithDecoderMaxMemory(uint64(maxDecompressedSize)),
+					zstd.WithDecoderMaxMemory(uint64(max)),
 				)
 				r := &zstdDecoder{zstdDec}
 				runtime.SetFinalizer(r, func(r *zstdDecoder) {
@@ -384,6 +497,7 @@ type lz4Decoder struct {
 }
 
 func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) (_ []byte, err error) {
+	max := d.max
 	if codecType == CodecNone {
 		return src, nil
 	}
@@ -432,7 +546,7 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) (_
 	var lim *io.LimitedReader
 	switch codecType {
 	case CodecSnappy:
-		return decompressSnappy(dst, src)
+		return decompressSnappy(dst, src, max)
 	case CodecZstd:
 		return d.decompressZstd(dst, src)
 	case CodecGzip:
@@ -458,7 +572,7 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) (_
 	// before the deferred Put.
 	if userPooled {
 		out := bytes.NewBuffer(dst)
-		if err := readBounded(out, lim); err != nil {
+		if err := readBounded(out, lim, max); err != nil {
 			return nil, err
 		}
 		return out.Bytes(), nil
@@ -466,53 +580,106 @@ func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) (_
 	out := byteBuffers.Get().(*bytes.Buffer)
 	out.Reset()
 	defer byteBuffers.Put(out)
-	if err := readBounded(out, lim); err != nil {
+	if err := readBounded(out, lim, max); err != nil {
 		return nil, err
 	}
 	return slices.Clone(out.Bytes()), nil
 }
 
-// readBounded streams lim into out, rejecting more than
-// maxDecompressedSize. We call ReadFrom directly rather than io.Copy so
-// that a stack allocated out does not escape through the io.Writer
-// interface.
-func readBounded(out *bytes.Buffer, lim *io.LimitedReader) error {
-	lim.N = maxDecompressedSize + 1
+// readBounded streams lim into out, rejecting more than max bytes. We call
+// ReadFrom directly rather than io.Copy so that a stack allocated out does
+// not escape through the io.Writer interface.
+func readBounded(out *bytes.Buffer, lim *io.LimitedReader, max int) error {
+	lim.N = int64(max) + 1
 	if n, err := out.ReadFrom(lim); err != nil {
 		return err
-	} else if n > maxDecompressedSize {
-		return errDecompressedTooLarge
+	} else if n > int64(max) {
+		return ErrMaxDecompress
 	}
 	return nil
 }
 
-func decompressSnappy(dst, src []byte) ([]byte, error) {
+func decompressSnappy(dst, src []byte, max int) ([]byte, error) {
 	if len(src) > 16 && bytes.HasPrefix(src, xerialPfx) {
-		return xerialDecode(dst, src)
+		return xerialDecode(dst, src, max)
 	}
 	// The decoded length is read from the header and allocated up
 	// front; check the claim before decoding.
 	if l, err := s2.DecodedLen(src); err != nil {
 		return nil, err
-	} else if int64(l) > maxDecompressedSize {
-		return nil, errDecompressedTooLarge
+	} else if l > max {
+		return nil, ErrMaxDecompress
 	}
 	return s2.Decode(dst, src)
 }
 
+// decompressZstd relies on the decoder's WithDecoderMaxMemory bound: the
+// decoder rejects a frame declaring a content size over the bound before
+// allocating, errors when a frame outgrows its declared size or the bound
+// while decoding, and counts every frame of src against the bound.
 func (d *decompressor) decompressZstd(dst, src []byte) ([]byte, error) {
 	unzstd := d.unzstdPool.Get().(*zstdDecoder)
 	defer d.unzstdPool.Put(unzstd)
-	return unzstd.inner.DecodeAll(src, dst)
+	out, err := unzstd.inner.DecodeAll(src, dst)
+	if errors.Is(err, zstd.ErrDecoderSizeExceeded) {
+		return nil, fmt.Errorf("%w: %w", ErrMaxDecompress, err)
+	}
+	return out, err
 }
 
 var xerialPfx = []byte{130, 83, 78, 65, 80, 80, 89, 0}
+
+// xerialHeader is the prefix followed by the version and the minimum
+// compatible version, both 1: the Java reader rejects a lower version.
+var xerialHeader = append(append([]byte{}, xerialPfx...), 0, 0, 0, 1, 0, 0, 0, 1)
+
+// xerialBlockSize is the block size the Java stream writes.
+const xerialBlockSize = 32 << 10
+
+// xerialWriter frames snappy the way the Java producer does: the header,
+// then per block a big endian length and a raw snappy block. Blocks are
+// independent, so there is nothing to flush or close.
+type xerialWriter struct {
+	dst     io.Writer
+	buf     []byte
+	started bool
+}
+
+func (w *xerialWriter) Reset(dst io.Writer) { w.dst, w.started = dst, false }
+func (*xerialWriter) Flush() error          { return nil }
+func (*xerialWriter) Close() error          { return nil }
+
+func (w *xerialWriter) Write(p []byte) (int, error) {
+	w.buf = w.buf[:0]
+	if !w.started {
+		w.buf = append(w.buf, xerialHeader...)
+		w.started = true
+	}
+	w.buf = appendXerialBlocks(w.buf, p, xerialBlockSize)
+	_, err := w.dst.Write(w.buf)
+	return len(p), err
+}
+
+// appendXerialBlocks appends in as xerial framed blocks of at most
+// chunkSize bytes: a big endian length, then a raw snappy block.
+func appendXerialBlocks(dst, in []byte, chunkSize int) []byte {
+	for len(in) > 0 {
+		n := min(chunkSize, len(in))
+		dst = slices.Grow(dst, 4+s2.MaxEncodedLen(n))
+		at := len(dst)
+		block := s2.EncodeSnappy(dst[at+4:cap(dst)], in[:n]) // encodes in place, given the room
+		dst = binary.BigEndian.AppendUint32(dst, uint32(len(block)))
+		dst = dst[:at+4+len(block)]
+		in = in[n:]
+	}
+	return dst
+}
 
 var errMalformedXerial = errors.New("malformed xerial framing")
 
 // xerialDecode appends the decoded chunks to dst (commonly a len-0 pooled
 // slice, or nil) and returns the result.
-func xerialDecode(dst, src []byte) ([]byte, error) {
+func xerialDecode(dst, src []byte, max int) ([]byte, error) {
 	// bytes 0-8: xerial header
 	// bytes 8-16: xerial version
 	// everything after: uint32 chunk size, snappy chunk
@@ -536,8 +703,8 @@ func xerialDecode(dst, src []byte) ([]byte, error) {
 			return nil, err
 		}
 		total += int64(l)
-		if total > maxDecompressedSize-int64(len(dst)) {
-			return nil, errDecompressedTooLarge
+		if total > int64(max-len(dst)) {
+			return nil, ErrMaxDecompress
 		}
 		rem = rem[size:]
 	}

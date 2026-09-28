@@ -18,8 +18,13 @@ import (
 
 // Versions is a list of versions, with each item corresponding to a Kafka key
 // and each item's value corresponding to the max version supported.
+//
+// Versions from 3.3 on also carry the KIP-584 features a broker of that
+// release advertises; see EachSupportedFeature and EachFinalizedFeature.
 type Versions struct {
-	reqs map[int16]req
+	reqs      map[int16]req
+	supported map[string]featureRange
+	finalized map[string]int16
 }
 
 func (vs *Versions) lazyInit() {
@@ -76,14 +81,18 @@ func FromString(v string) *Versions {
 	b := btip()
 	for b != nil && b.major >= 4 {
 		if n := b.name(); n == v || n == withv {
-			return &Versions{reqs: b.reqs}
+			vs := &Versions{reqs: b.reqs}
+			vs.setFeatures(featuresFor(b.major, b.minor))
+			return vs
 		}
 		b = b.prior
 	}
 	zk := ztip()
 	for zk != nil {
 		if n := zk.name(); n == v || n == withv {
-			return &Versions{reqs: zk.reqs}
+			vs := &Versions{reqs: zk.reqs}
+			vs.setFeatures(featuresFor(zk.major, zk.minor))
+			return vs
 		}
 		zk = zk.prior
 	}
@@ -91,8 +100,23 @@ func FromString(v string) *Versions {
 }
 
 // FromApiVersionsResponse returns a Versions from a kmsg.ApiVersionsResponse.
+// The features are what the response advertised; a response before v3
+// carries none.
 func FromApiVersionsResponse(r *kmsg.ApiVersionsResponse) *Versions {
-	return &Versions{reqs: reqsFromApiVersions(r)}
+	vs := &Versions{reqs: reqsFromApiVersions(r)}
+	if len(r.SupportedFeatures) > 0 {
+		vs.supported = make(map[string]featureRange, len(r.SupportedFeatures))
+		for _, f := range r.SupportedFeatures {
+			vs.supported[f.Name] = featureRange{f.MinVersion, f.MaxVersion}
+		}
+	}
+	if r.FinalizedFeaturesEpoch >= 0 && len(r.FinalizedFeatures) > 0 {
+		vs.finalized = make(map[string]int16, len(r.FinalizedFeatures))
+		for _, f := range r.FinalizedFeatures {
+			vs.finalized[f.Name] = f.MaxVersionLevel
+		}
+	}
+	return vs
 }
 
 // HasKey returns true if the versions contains the given key.
@@ -126,7 +150,7 @@ func (vs *Versions) SetMaxKeyVersion(k, v int16) {
 	vs.reqs[k] = req
 }
 
-// Equal returns whether two versions are equal.
+// Equal returns whether two versions are equal. Features are ignored.
 func (vs *Versions) Equal(other *Versions) bool {
 	vs.lazyInit()
 	mereqs := maps.Clone(vs.reqs)
@@ -150,6 +174,27 @@ func (vs *Versions) EachMaxKeyVersion(fn func(k, v int16)) {
 	slices.Sort(keys)
 	for _, k := range keys {
 		fn(k, vs.reqs[k].vmax)
+	}
+}
+
+// EachSupportedFeature calls fn for each feature this version supports,
+// with the lowest and highest level a broker can run. If this is from
+// FromApiVersionsResponse, the levels are what the broker advertised.
+func (vs *Versions) EachSupportedFeature(fn func(name string, min, max int16)) {
+	for _, name := range slices.Sorted(maps.Keys(vs.supported)) {
+		r := vs.supported[name]
+		fn(name, r.min, r.max)
+	}
+}
+
+// EachFinalizedFeature calls fn for each feature and its finalized level.
+// A release finalizes the levels a new cluster is formatted with. If this
+// is from FromApiVersionsResponse, the levels are the cluster's levels.
+// This is empty for a broker that has not learned of finalized cluster
+// features yet.
+func (vs *Versions) EachFinalizedFeature(fn func(name string, level int16)) {
+	for _, name := range slices.Sorted(maps.Keys(vs.finalized)) {
+		fn(name, vs.finalized[name])
 	}
 }
 
@@ -290,11 +335,14 @@ func (vs *Versions) String() string {
 func relversion(fns ...func() *release) *Versions {
 	// For 4.0+, we merge the Raft broker, Raft controller, and Zk broker
 	// requests. We merge *in order*: any key that exists is kept, any key
-	// that does not exist is merged.
+	// that does not exist is merged. The first release names the feature
+	// table.
+	var first *release
 	var reqs map[int16]req
 	for _, fn := range fns {
 		if reqs == nil {
-			reqs = fn().reqs
+			first = fn()
+			reqs = first.reqs
 			continue
 		}
 		merge := fn().reqs
@@ -305,7 +353,9 @@ func relversion(fns ...func() *release) *Versions {
 			reqs[k] = req
 		}
 	}
-	return &Versions{reqs: reqs}
+	vs := &Versions{reqs: reqs}
+	vs.setFeatures(featuresFor(first.major, first.minor))
+	return vs
 }
 
 // Stable is a shortcut for the latest _released_ Kafka versions.
@@ -313,10 +363,14 @@ func relversion(fns ...func() *release) *Versions {
 // This is the default version used in kgo to avoid breaking tip changes.
 // The stable version is only bumped once kgo internally supports all
 // features in the release.
-func Stable() *Versions { return relversion(b42, c42, z39) }
+func Stable() *Versions { return relversion(b44, c44, z39) }
 
 // Tip is the latest defined Kafka key versions; this may be slightly out of date.
-func Tip() *Versions { return relversion(ztip) }
+func Tip() *Versions {
+	vs := relversion(ztip)
+	vs.setFeatures(ftip())
+	return vs
+}
 
 func V0_8_0() *Versions  { return relversion(z080) }
 func V0_8_1() *Versions  { return relversion(z081) }
@@ -350,3 +404,5 @@ func V3_9_0() *Versions  { return relversion(z39) }
 func V4_0_0() *Versions  { return relversion(b40) }
 func V4_1_0() *Versions  { return relversion(b41) }
 func V4_2_0() *Versions  { return relversion(b42) }
+func V4_3_0() *Versions  { return relversion(b43) }
+func V4_4_0() *Versions  { return relversion(b44) }
