@@ -45,7 +45,7 @@ func newTableOfContentsMetrics() *tocMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		tocWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_metastore_writes_total",
+			Name: "loki_metastore_toc_writes_total",
 			Help: "Total number of metastore writes",
 		}, []string{"status"}),
 	}

@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -34,29 +34,29 @@ func newTestMockBuilder(t *testing.T) *mockBuilder {
 func TestFlusher_Flush(t *testing.T) {
 	const (
 		expectSuccessMetrics = `
-		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
-		# TYPE loki_dataobj_consumer_flushes_total counter
-		loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
-		loki_dataobj_consumer_flushes_total{reason="idle"} 0
-		loki_dataobj_consumer_flushes_total{reason="max_age"} 0
-		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
-		# TYPE loki_dataobj_consumer_flush_failures_total counter
-		loki_dataobj_consumer_flush_failures_total 0
+		# HELP loki_dataobj_builder_flushes_total Total number of flushes.
+		# TYPE loki_dataobj_builder_flushes_total counter
+		loki_dataobj_builder_flushes_total{reason="builder_full"} 1
+		loki_dataobj_builder_flushes_total{reason="idle"} 0
+		loki_dataobj_builder_flushes_total{reason="max_age"} 0
+		# HELP loki_dataobj_builder_flush_failures_total Total number of failed flushes.
+		# TYPE loki_dataobj_builder_flush_failures_total counter
+		loki_dataobj_builder_flush_failures_total 0
 		`
 		expectFailureMetrics = `
-		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
-		# TYPE loki_dataobj_consumer_flushes_total counter
-		loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
-		loki_dataobj_consumer_flushes_total{reason="idle"} 0
-		loki_dataobj_consumer_flushes_total{reason="max_age"} 0
-		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
-		# TYPE loki_dataobj_consumer_flush_failures_total counter
-		loki_dataobj_consumer_flush_failures_total 1
+		# HELP loki_dataobj_builder_flushes_total Total number of flushes.
+		# TYPE loki_dataobj_builder_flushes_total counter
+		loki_dataobj_builder_flushes_total{reason="builder_full"} 1
+		loki_dataobj_builder_flushes_total{reason="idle"} 0
+		loki_dataobj_builder_flushes_total{reason="max_age"} 0
+		# HELP loki_dataobj_builder_flush_failures_total Total number of failed flushes.
+		# TYPE loki_dataobj_builder_flush_failures_total counter
+		loki_dataobj_builder_flush_failures_total 1
 		`
 	)
 	flushMetricNames := []string{
-		"loki_dataobj_consumer_flushes_total",
-		"loki_dataobj_consumer_flush_failures_total",
+		"loki_dataobj_builder_flushes_total",
+		"loki_dataobj_builder_flush_failures_total",
 	}
 
 	t.Run("should succeed", func(t *testing.T) {

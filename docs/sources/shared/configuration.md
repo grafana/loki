@@ -1291,104 +1291,104 @@ kafka_config:
   [tracing_enabled: <boolean> | default = false]
 
 dataobj:
-  consumer:
-    builderconfig:
+  builder:
+    logsobj_builder:
       # The target maximum amount of uncompressed data to hold in data pages
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
-      # CLI flag: -dataobj-consumer.target-page-size
+      # CLI flag: -dataobj.builder.logsobj-builder.target-page-size
       [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
-      # CLI flag: -dataobj-consumer.max-page-rows
+      # CLI flag: -dataobj.builder.logsobj-builder.max-page-rows
       [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
-      # CLI flag: -dataobj-consumer.target-builder-memory-limit
+      # CLI flag: -dataobj.builder.logsobj-builder.target-builder-memory-limit
       [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
-      # CLI flag: -dataobj-consumer.target-section-size
+      # CLI flag: -dataobj.builder.logsobj-builder.target-section-size
       [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
-      # CLI flag: -dataobj-consumer.buffer-size
+      # CLI flag: -dataobj.builder.logsobj-builder.buffer-size
       [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
-      # CLI flag: -dataobj-consumer.section-stripe-merge-limit
+      # CLI flag: -dataobj.builder.logsobj-builder.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
-      # CLI flag: -dataobj-consumer.estimated-compression-ratio
+      # ordered append. Set to either 0 or 1 to disable.
+      # CLI flag: -dataobj.builder.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
-    uploader:
-      # The size of the SHA prefix to use for generating object storage keys for
-      # data objects.
-      # CLI flag: -dataobj-consumer.sha-prefix-size
-      [shaprefixsize: <int> | default = 2]
+    indexobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-page-size
+      [target_page_size: <int> | default = 128KiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.builder.indexobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.builder.indexobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.builder.indexobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to either 0 or 1 to disable.
+      # CLI flag: -dataobj.builder.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 1]
 
     # The maximum amount of time to wait in seconds before flushing an object
     # that is no longer receiving new writes.
-    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    # CLI flag: -dataobj.builder.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
     # The maximum amount of time to accumulate data in a builder before flushing
     # it. Defaults to 1 hour.
-    # CLI flag: -dataobj-consumer.max-builder-age
+    # CLI flag: -dataobj.builder.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
     # The name of the Kafka topic.
-    # CLI flag: -dataobj-consumer.topic
+    # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
-  index:
-    # The target maximum amount of uncompressed data to hold in data pages (for
-    # columnar sections). Uncompressed size is used for consistent I/O and
-    # planning.
-    # CLI flag: -dataobj-index-builder.target-page-size
-    [target_page_size: <int> | default = 128KiB]
-
-    # The maximum row count for pages to use for the data object builder. A
-    # value of 0 means no limit.
-    # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 10000]
-
-    # The target maximum size of the encoded object and all of its encoded
-    # sections (after compression), to limit memory usage of a builder.
-    # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 512MiB]
-
-    # The target maximum amount of uncompressed data to hold in sections, for
-    # sections that support being limited by size. Uncompressed size is used for
-    # consistent I/O and planning.
-    # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 512MiB]
-
-    # The size of logs to buffer in memory before adding into columnar builders,
-    # used to reduce CPU load of sorting.
-    # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 128MiB]
-
-    # The maximum number of dataobj section stripes to merge into a section at
-    # once. Must be greater than 1.
-    # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
-    [section_stripe_merge_limit: <int> | default = 2]
-
-    # Expected compression ratio for log data, used to estimate compressed
-    # output size from uncompressed buffered records. Only takes effect with
-    # ordered append. Set to 0 or 1 to disable.
-    # CLI flag: -dataobj-index-builder.estimated-compression-ratio
-    [estimated_compression_ratio: <int> | default = 1]
+  uploader:
+    # The size of the SHA prefix to use for generating object storage keys for
+    # data objects.
+    # CLI flag: -dataobj.uploader.sha-prefix-size
+    [sha_prefix_size: <int> | default = 2]
 
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
@@ -1543,7 +1543,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
@@ -1582,7 +1582,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 

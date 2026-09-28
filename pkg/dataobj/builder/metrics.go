@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"time"
@@ -21,35 +21,35 @@ type metrics struct {
 func newMetrics(r prometheus.Registerer) *metrics {
 	return &metrics{
 		lastOffset: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_consumer_last_offset",
+			Name: "loki_dataobj_builder_last_offset",
 			Help: "The last consumed offset.",
 		}),
 		consumptionLag: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_consumer_consumption_lag_seconds",
+			Name: "loki_dataobj_builder_consumption_lag_seconds",
 			Help: "The time difference between the last consumed offset and the current time in seconds.",
 		}),
 		receivedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_received_bytes_total",
+			Name: "loki_dataobj_builder_received_bytes_total",
 			Help: "The sum of bytes in all Kafka records.",
 		}),
 		discardedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_discarded_bytes_total",
+			Name: "loki_dataobj_builder_discarded_bytes_total",
 			Help: "The sum of discarded bytes from corrupted or unprocessable Kafka records.",
 		}),
 		records: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_records_total",
+			Name: "loki_dataobj_builder_records_total",
 			Help: "Total number of records received.",
 		}),
 		recordFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_record_failures_total",
+			Name: "loki_dataobj_builder_record_failures_total",
 			Help: "Total number of records that failed to be processed.",
 		}),
 		timePartitionEstimate: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_time_partition_estimate_total",
+			Name: "loki_dataobj_builder_time_partition_estimate_total",
 			Help: "The number of data objects we would build with 12 hour windows.",
 		}),
 		sizeEstimate: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_size_estimate_bytes",
+			Name: "loki_dataobj_builder_size_estimate_bytes",
 			Help: "Current estimated size in bytes buffered across all window-specific builders for the partition.",
 		}),
 	}

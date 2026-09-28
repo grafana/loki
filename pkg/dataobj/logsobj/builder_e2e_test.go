@@ -30,7 +30,7 @@ import (
 //
 // TODO(ashwanth): SortSchemaASC does not support AppendUnordered because
 // stripe merging cannot use schema-based ordering. Once that is fixed, this
-// test should be updated to also run with AppendOrderedEnabled=false for
+// test should be updated to also run with AppendUnordered for
 // schema sort cases.
 func TestBuilder_EndToEnd(t *testing.T) {
 	tenants := []string{"t1", "t2", "t10"}
@@ -41,15 +41,12 @@ func TestBuilder_EndToEnd(t *testing.T) {
 	// Local config: bigger sections so each holds many records with real
 	// internal disorder. AppendOrdered is used because SortSchemaASC does
 	// not yet support stripe merging (AppendUnordered).
-	baseCfg := BuilderConfig{
-		BuilderBaseConfig: BuilderBaseConfig{
-			TargetPageSize:          2048,
-			TargetObjectSize:        1 << 20,
-			TargetSectionSize:       64 << 10, // 64 KiB
-			BufferSize:              16 << 10, // 16 KiB
-			SectionStripeMergeLimit: 2,
-		},
-		AppendOrderedEnabled: true,
+	baseCfg := BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 20,
+		TargetSectionSize:       64 << 10, // 64 KiB
+		BufferSize:              16 << 10, // 16 KiB
+		SectionStripeMergeLimit: 2,
 	}
 
 	makeOverrides := func() TenantOverrides {

@@ -9,24 +9,31 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 func (c *Context) executeSortObject(node *physical.SortObject) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		artifacts, err := c.doSortObject(ctx, node)
+		artifact, err := c.doSortObject(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, artifacts))
+		if artifact == nil {
+			return errorPipeline(ctx, errors.New("SortObject: missing result artifact"))
+		}
+		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return NewBufferedPipeline(rec)
 	}, nil)
 }
 
-func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) ([]v2.ResultArtifact, error) {
+func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (*v2.ResultArtifact, error) {
 	if c.bucket == nil {
 		return nil, errors.New("no index object store bucket configured")
 	}
@@ -43,10 +50,7 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	}
 
 	builder, err := logsobj.NewBuilder(
-		logsobj.BuilderConfig{
-			BuilderBaseConfig:    c.logsobjCfg,
-			AppendOrderedEnabled: true,
-		},
+		c.logsobjCfg,
 		c.scratchStore,
 		c.builderMetrics,
 		c.logger,
@@ -81,5 +85,5 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 		return nil, fmt.Errorf("SortObject: writing index: %w", err)
 	}
 
-	return []v2.ResultArtifact{{Path: indexPath}}, nil
+	return &v2.ResultArtifact{Path: indexPath}, nil
 }

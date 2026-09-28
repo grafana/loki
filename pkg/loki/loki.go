@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -474,7 +474,7 @@ type Loki struct {
 	indexGatewayRingManager   *lokiring.RingManager
 	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	dataObjConsumer           *consumer.Service
+	dataObjBuilder            *dataobjbuilder.Service
 	loglinePartitionRing      *loglinebuilder.PartitionRingWatcher
 	dataObjCompactionPlanner  *enginecompactor.Planner
 	dataObjCompactionWorker   *enginecompactor.Worker
@@ -829,7 +829,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 
 	// Thor related modules: keep targets invisible
-	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjBuilder, t.initDataObjBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
 
@@ -886,7 +886,7 @@ func (t *Loki) setupModuleManager() error {
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
 		DataObjExplorer:          {Server, UIRing},
-		DataObjConsumer:          {ScratchStore, Server, UIRing, Overrides},
+		DataObjBuilder:           {ScratchStore, Server, UIRing, Overrides},
 		DataObjCompactionPlanner: {Server, UIRing, Overrides},
 		DataObjCompactionWorker:  {ScratchStore, Server, UIRing},
 		ScratchStore:             {},
