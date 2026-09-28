@@ -449,3 +449,8 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+
+//  Latest Kafka protocols are not supported in warpstream at this time.
+replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
+
+replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
