@@ -92,6 +92,69 @@ func TestService_CheckLimitsAndShard_ProducesRateBuckets(t *testing.T) {
 	require.Empty(t, toProduce)
 }
 
+func TestService_CheckLimitsAndShard_DoesNotProduceUntrackedStreams(t *testing.T) {
+	const bucketSize = 10 * time.Second
+	limits := &mockLimits{
+		MaxGlobalStreams:   1,
+		ShardStreamsConfig: shardstreams.Config{Enabled: true},
+	}
+	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+	s, clock := newTestService(t, limits, 1)
+	s.partitionManager.Assign([]int32{0})
+	kafka := s.producer.client.(*mockKafka)
+
+	// Another stream uses up the tenant's stream budget in the usage store.
+	// The shard store keeps its own state and has not seen that stream, so it
+	// still has room for the stream under test.
+	_, accepted, _, err := s.usage.UpdateCond("test", []*proto.StreamMetadata{{
+		StreamHash: 0x2,
+		TotalSize:  100,
+	}}, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 100}},
+	}
+	resp, err := s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, []*proto.StreamShardResult{{
+		StreamHash: 0x1,
+		Shards:     1,
+		Stats:      &proto.ShardStats{},
+	}}, resp.Results)
+
+	// ExceedsLimits rejects the same stream, so it is not written and the
+	// usage store does not track it.
+	_, _, rejected, err := s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, req.Streams, rejected)
+
+	// The stream now has a complete rate bucket, which is what the sharding
+	// path publishes, but no record is written for it: the consumers in the
+	// other zones would count a stream that does not exist.
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Empty(t, kafka.produced)
+
+	// Once the usage store does track the stream, its bucket is published.
+	// The record was withheld for the stream not being tracked, not for
+	// having nothing to publish.
+	limits.MaxGlobalStreams = 2
+	_, accepted, _, err = s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Len(t, kafka.produced, 1)
+	var rec proto.StreamMetadataRecord
+	require.NoError(t, rec.Unmarshal(kafka.produced[0].Value))
+	require.Equal(t, uint64(0x1), rec.Metadata.StreamHash)
+}
+
 func TestService_CheckLimitsAndShard(t *testing.T) {
 	limits := &mockLimits{
 		ShardStreamsConfig: shardstreams.Config{Enabled: true},

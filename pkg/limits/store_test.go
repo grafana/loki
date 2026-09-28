@@ -350,8 +350,8 @@ func TestUsageStore_MarkProduced(t *testing.T) {
 	}}
 
 	// An unknown stream is not tracked just because a record was produced for
-	// it elsewhere.
-	s.markProduced("tenant", metadata[0], clock.Now())
+	// it elsewhere, and the caller is told so.
+	require.False(t, s.markProduced("tenant", metadata[0], clock.Now()))
 	var tracked int
 	for range s.TenantActiveStreams("tenant") {
 		tracked++
@@ -364,7 +364,7 @@ func TestUsageStore_MarkProduced(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, metadata, toProduce)
 	clock.Advance(time.Minute)
-	s.markProduced("tenant", metadata[0], clock.Now())
+	require.True(t, s.markProduced("tenant", metadata[0], clock.Now()))
 	toProduce, _, _, err = s.UpdateCond("tenant", metadata, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, toProduce)
