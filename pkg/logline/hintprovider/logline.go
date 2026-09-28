@@ -175,9 +175,9 @@ func (p *LoglineHintProvider) startCacheInvalidationLoop() {
 }
 
 // aggregateShardRanges combines per-shard results with the correct semantics:
-//   - Within each shard value (same algorithm/count/value): UNION time ranges
-//   - Across shard values in the same group (same algorithm/count): INTERSECT
-//   - Across shard groups (different algorithm or count): UNION
+//   - Within each shard value (same version/algorithm/count/value): UNION time ranges
+//   - Across shard values in the same group (same version/algorithm/count): INTERSECT
+//   - Across shard groups (different version, algorithm or count): UNION
 //   - Unsharded indexes: UNION with the final result
 func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 	if len(byKey) == 0 {
