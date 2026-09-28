@@ -895,6 +895,68 @@ Common triggers include:
 - HTTP status: 499 (non-standard, client closed request)
 - Configurable per tenant: No
 
+### Error: Gateway keepalive failure
+
+**Error message:**
+
+`rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout`
+
+**Cause:**
+
+A frontend gateway/proxy layer in front of Loki has missed a gRPC keepalive ping. This indicated a transient
+connectivity problem between the gateway and its backend.
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client.
+
+**Properties:**
+
+- Enforced by: Grafana Cloud gateway
+- Retryable: Yes
+- HTTP status: 502 Bad Gateway
+- Configurable per tenant: No
+
+### Error: Kafka producer backpressure
+
+These errors occur only when the distributor is configured to write to Kafka (`-distributor.kafka-writes-enabled=true`),
+and indicate that the Kafka producer could not keep up with the incoming write volume.
+
+**Error messages:**
+
+- `records have timed out before they were able to be produced`
+- `the maximum amount of records are buffered, cannot buffer more`
+
+**Cause:**
+
+The distributor's Kafka producer wasn't able to deliver records to the Kafka brokers within `kafka_config.write_timeout`,
+or the amount of unacknowledged, buffered data reached `kafka_config.producer_max_buffered_bytes`. Both are transient
+backpressure conditions: the Kafka brokers or the network path to them are slower than the rate at which the distributor
+is trying to produce records, for example during a broker rollout, a partition rebalance, or a broker-side incident.
+
+**Default configuration:**
+
+- `kafka_config.write_timeout` (`-kafka.write-timeout`): 10s
+- `kafka_config.producer_max_buffered_bytes` (`-kafka.producer-max-buffered-bytes`): 1 GiB (0 disables the limit)
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client.
+* **Check Kafka broker health and load** (under-replicated partitions, broker CPU/disk/network saturation, ongoing rollouts).
+* **Increase `kafka_config.write_timeout`** if brokers are healthy but consistently slow to acknowledge writes:
+
+   ```yaml
+   kafka_config:
+     write_timeout: 20s
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor (Kafka producer)
+- Retryable: Yes
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
 ### Error: Service unavailable
 
 **Error message:**
