@@ -1600,12 +1600,6 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
-    # Experimental: The ratio of log partitions to metastore partitions. For
-    # example, a value of 10 means there is 1 metastore partition for every 10
-    # log partitions.
-    # CLI flag: -dataobj-metastore.partition-ratio
-    [partition_ratio: <int> | default = 10]
-
     # Experimental: When enabled, reads from new-format postings sections in
     # index objects instead of the streams sections. Defaults to false.
     # CLI flag: -dataobj-metastore.read-postings-sections
