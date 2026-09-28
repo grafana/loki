@@ -1665,8 +1665,8 @@ github.com/twmb/franz-go/pkg/kgo/internal/xsync
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.19.0 => github.com/twmb/franz-go/pkg/kadm v1.19.0
-## explicit; go 1.26.0
+# github.com/twmb/franz-go/pkg/kadm v1.19.0 => github.com/twmb/franz-go/pkg/kadm v1.18.0
+## explicit; go 1.25.0
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 ## explicit; go 1.25.0
@@ -2497,5 +2497,5 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
 # github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
-# github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.19.0
+# github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
 # github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.13.1
