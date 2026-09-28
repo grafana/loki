@@ -250,9 +250,9 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.sizeEstimate.Set(0)
 	}()
 
-	timeWindowedBuilders := p.builder.GetBuilders()
-	p.metrics.timePartitionEstimate.Add(float64(len(timeWindowedBuilders)))
-	err := p.flushCommitter.Flush(ctx, timeWindowedBuilders, reason, p.lastOffset)
+	builders := p.builder.GetBuilders()
+	p.metrics.timePartitionEstimate.Add(float64(len(builders)))
+	err := p.flushCommitter.Flush(ctx, builders, reason, p.lastOffset)
 	if err == nil {
 		return nil
 	}

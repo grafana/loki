@@ -46,7 +46,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		}),
 		timePartitionEstimate: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_time_partition_estimate_total",
-			Help: "The number of data objects we would build with 12 hour windows.",
+			Help: "The number of data objects built, one per tenant and 12 hour window.",
 		}),
 		sizeEstimate: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_size_estimate_bytes",

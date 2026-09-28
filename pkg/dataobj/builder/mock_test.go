@@ -188,7 +188,7 @@ func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason
 type testBuilderFactory struct {
 	metrics *logsobj.BuilderMetrics
 	// created counts how many builders have been handed out. Tests use it to
-	// assert that builders are reused per window rather than recreated.
+	// assert that builders are reused per scope rather than recreated.
 	created int
 	// failAt, when non-negative, makes NewBuilder fail once created reaches
 	// this value. A value of -1 (the default) never fails.
@@ -207,25 +207,25 @@ func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
 	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
 }
 
-// mockMultiBuilder wraps the production [TOCAlignedMultiBuilder] so processor
+// mockMultiBuilder wraps the production [MultiObjectBuilder] so processor
 // tests can drive real builder behaviour while still being able to force the
 // group to report itself as full.
 type mockMultiBuilder struct {
-	*TOCAlignedMultiBuilder
+	*MultiObjectBuilder
 	forceFull bool
 }
 
 var _ multiBuilder = (*mockMultiBuilder)(nil)
 
 func (m *mockMultiBuilder) IsFull() bool {
-	return m.forceFull || m.TOCAlignedMultiBuilder.IsFull()
+	return m.forceFull || m.MultiObjectBuilder.IsFull()
 }
 
-// newTestMultiBuilder returns a multiBuilder backed by real per-window
+// newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
-		TOCAlignedMultiBuilder: NewTOCAlignedMultiBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
 	}
 }
 
