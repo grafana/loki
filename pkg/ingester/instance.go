@@ -132,6 +132,8 @@ type instance struct {
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
+	// memoryPolicyStreams counts all in-memory streams per policy, regardless of ownership.
+	memoryPolicyStreams *policyStreamCounts
 
 	configs *runtime.TenantConfigs
 
@@ -178,6 +180,7 @@ func newInstance(
 	}
 	streams := newStreamsMap()
 	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
+	memoryPolicyStreams := &policyStreamCounts{}
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -192,11 +195,12 @@ func newInstance(
 		memoryStreams:       metrics.instance.memoryStreams.WithLabelValues(instanceID),
 		memoryStreamShards:  metrics.instance.memoryStreamShards.WithLabelValues(instanceID),
 
-		tailers:            map[uint32]*tailer{},
-		limiter:            limiter,
-		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
-		ownedStreamsSvc:    ownedStreamsSvc,
-		configs:            configs,
+		tailers:             map[uint32]*tailer{},
+		limiter:             limiter,
+		streamCountLimiter:  newStreamCountLimiter(instanceID, streams.Len, memoryPolicyStreams, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
+		ownedStreamsSvc:     ownedStreamsSvc,
+		memoryPolicyStreams: memoryPolicyStreams,
+		configs:             configs,
 
 		wal:                   wal,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
@@ -388,6 +392,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	i.metrics.instance.streamsCountStats.Add(1)
+	i.memoryPolicyStreams.inc(s.policy)
 	// we count newly created stream as owned
 	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
 	if i.configs.LogStreamCreation(i.instanceID) {
@@ -460,6 +465,7 @@ func (i *instance) removeStream(s *stream) {
 		}
 		i.metrics.instance.memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		i.metrics.instance.streamsCountStats.Add(-1)
+		i.memoryPolicyStreams.dec(s.policy)
 		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
 	}
 }

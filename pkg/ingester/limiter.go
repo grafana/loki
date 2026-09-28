@@ -112,6 +112,27 @@ func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculate
 	return
 }
 
+// policyBucket returns the policy whose stream count and stream limit apply to a stream resolved
+// to the given policy. A policy gets its own bucket only when it overrides a stream limit;
+// otherwise its streams share the tenant's default bucket (noPolicy). This mirrors the bucketing
+// done by the ingest-limits service (see pkg/limits/store.go).
+func (l *Limiter) policyBucket(tenantID, policy string) string {
+	if policy != noPolicy && l.hasPolicyStreamBucket(tenantID, policy) {
+		return policy
+	}
+	return noPolicy
+}
+
+// hasPolicyStreamBucket reports whether the policy overrides a stream limit and therefore tracks
+// its streams separately from the tenant's default bucket.
+func (l *Limiter) hasPolicyStreamBucket(tenantID, policy string) bool {
+	if _, ok := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy); ok {
+		return true
+	}
+	_, ok := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy)
+	return ok
+}
+
 func (l *Limiter) minNonZero(first, second int) int {
 	if first == 0 || (second != 0 && first > second) {
 		return second
@@ -195,19 +216,23 @@ type streamCountLimiter struct {
 	tenantID                   string
 	limiter                    *Limiter
 	defaultStreamCountSupplier supplier[int]
-	ownedStreamSvc             *ownedStreamService
-	delegateStreamLimits       bool
+	// memoryPolicyStreams counts all in-memory streams per policy. Together with
+	// defaultStreamCountSupplier it is used when owned stream counting is disabled.
+	memoryPolicyStreams  *policyStreamCounts
+	ownedStreamSvc       *ownedStreamService
+	delegateStreamLimits bool
 }
 
 var noopFixedLimitSupplier = func() int {
 	return 0
 }
 
-func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
+func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], memoryPolicyStreams *policyStreamCounts, limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
 	return &streamCountLimiter{
 		tenantID:                   tenantID,
 		limiter:                    limiter,
 		defaultStreamCountSupplier: defaultStreamCountSupplier,
+		memoryPolicyStreams:        memoryPolicyStreams,
 		ownedStreamSvc:             service,
 		delegateStreamLimits:       delegateStreamLimits,
 	}
@@ -217,8 +242,9 @@ func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy stri
 	if l.delegateStreamLimits {
 		return nil
 	}
-	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, policy)
-	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
+	bucket := l.limiter.policyBucket(tenantID, policy)
+	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, bucket)
+	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, bucket, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()
 	if actualStreamsCount < calculatedLimit {
 		return nil
@@ -242,19 +268,41 @@ func (l *streamCountLimiter) getCurrentLimit(tenantID, policy string, fixedLimit
 	return
 }
 
-func (l *streamCountLimiter) getSuppliers(tenant string, policy string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
+// getSuppliers returns the stream count supplier for the given policy bucket (see
+// Limiter.policyBucket). The default bucket (noPolicy) excludes streams of policies that have
+// their own bucket, so they don't consume the tenant's default stream budget.
+func (l *streamCountLimiter) getSuppliers(tenant string, bucket string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
+	hasOwnBucket := func(policy string) bool {
+		return l.limiter.hasPolicyStreamBucket(tenant, policy)
+	}
+
 	if l.limiter.limits.UseOwnedStreamCount(tenant) {
 		streamCountSupplier := func() int {
-			return l.ownedStreamSvc.getOwnedStreamCount()
+			return defaultBucketStreamCount(l.ownedStreamSvc.getOwnedStreamCount(), &l.ownedStreamSvc.policyStreams, hasOwnBucket)
 		}
-		if policy != noPolicy {
+		if bucket != noPolicy {
 			streamCountSupplier = func() int {
-				return l.ownedStreamSvc.getPolicyStreamCount(policy)
+				return l.ownedStreamSvc.getPolicyStreamCount(bucket)
 			}
 		}
 		return streamCountSupplier, l.ownedStreamSvc.getFixedLimit
 	}
-	return l.defaultStreamCountSupplier, noopFixedLimitSupplier
+
+	streamCountSupplier = func() int {
+		return defaultBucketStreamCount(l.defaultStreamCountSupplier(), l.memoryPolicyStreams, hasOwnBucket)
+	}
+	if bucket != noPolicy {
+		streamCountSupplier = func() int {
+			return l.memoryPolicyStreams.get(bucket)
+		}
+	}
+	return streamCountSupplier, noopFixedLimitSupplier
+}
+
+// defaultBucketStreamCount returns the number of streams in the tenant's default bucket: the
+// total minus the streams of policies that have their own bucket.
+func defaultBucketStreamCount(total int, policyStreams *policyStreamCounts, hasOwnBucket func(string) bool) int {
+	return max(0, total-policyStreams.sum(hasOwnBucket))
 }
 
 type RateLimiterStrategy interface {
