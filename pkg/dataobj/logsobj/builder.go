@@ -78,7 +78,7 @@ type BuilderBaseConfig struct {
 	// used to approximate compressed output size from uncompressed buffered
 	// records. This only takes effect when using the AppendOrdered strategy.
 	// Higher values allow more data to accumulate before the builder reports
-	// full, producing larger objects. Set to 0 or 1 to disable.
+	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 }
 
@@ -90,7 +90,7 @@ func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fla
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
-	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to 0 or 1 to disable.")
+	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to either 0 or 1 to disable.")
 }
 
 // Validate validates the BuilderBaseConfig.

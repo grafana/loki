@@ -1327,7 +1327,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.builder.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
@@ -1366,7 +1366,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.builder.indexobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 1]
 
@@ -1543,7 +1543,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
@@ -1582,7 +1582,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
