@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +54,8 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
 	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 	// Add test data spanning multiple metastore windows
@@ -115,20 +117,20 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			name:     "within single window",
 			start:    now,
 			end:      now.Add(1 * time.Hour),
-			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z/tenant.toc"},
 		},
 		{
 			name:     "same start and end",
 			start:    now,
 			end:      now,
-			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z/tenant.toc"},
 		},
 		{
 			name:  "begin at start of window",
 			start: now.Add(-3 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tocs/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant.toc",
 			},
 		},
 		{
@@ -136,8 +138,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-4 * time.Hour),
 			end:   now.Add(-3 * time.Hour),
 			expected: []string{
-				"tocs/2025-01-01T00_00_00Z.toc",
-				"tocs/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z/tenant.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant.toc",
 			},
 		},
 		{
@@ -145,8 +147,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-12 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tocs/2025-01-01T00_00_00Z.toc",
-				"tocs/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z/tenant.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant.toc",
 			},
 		},
 		{
@@ -154,11 +156,11 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now,
 			end:   now.Add(48 * time.Hour),
 			expected: []string{
-				"tocs/2025-01-01T12_00_00Z.toc",
-				"tocs/2025-01-02T00_00_00Z.toc",
-				"tocs/2025-01-02T12_00_00Z.toc",
-				"tocs/2025-01-03T00_00_00Z.toc",
-				"tocs/2025-01-03T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant.toc",
+				"tocs/2025-01-02T00_00_00Z/tenant.toc",
+				"tocs/2025-01-02T12_00_00Z/tenant.toc",
+				"tocs/2025-01-03T00_00_00Z/tenant.toc",
+				"tocs/2025-01-03T12_00_00Z/tenant.toc",
 			},
 		},
 		{
@@ -166,14 +168,14 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: time.Date(2024, 12, 31, 3, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC),
 			expected: []string{
-				"tocs/2024-12-31T00_00_00Z.toc",
-				"tocs/2024-12-31T12_00_00Z.toc",
-				"tocs/2025-01-01T00_00_00Z.toc",
+				"tocs/2024-12-31T00_00_00Z/tenant.toc",
+				"tocs/2024-12-31T12_00_00Z/tenant.toc",
+				"tocs/2025-01-01T00_00_00Z/tenant.toc",
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			iter := IterTableOfContentsPaths(tc.start, tc.end)
+			iter := IterTableOfContentsPaths("tenant", tc.start, tc.end)
 			actual := []string{}
 			for path := range iter {
 				actual = append(actual, path)
@@ -181,6 +183,40 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func TestTableOfContentsPath(t *testing.T) {
+	window := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, "tocs/2025-01-01T12_00_00Z/", TableOfContentsWindowPrefix(window))
+	require.Equal(t, "tocs/2025-01-01T12_00_00Z/tenant.toc", TableOfContentsPath("tenant", window))
+}
+
+func TestListTableOfContentsTenants(t *testing.T) {
+	var (
+		ctx    = t.Context()
+		window = time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+		other  = window.Add(MetastoreWindowSize)
+		bucket = objstore.NewInMemBucket()
+	)
+	for _, name := range []string{
+		TableOfContentsPath("tenant-b", window),
+		TableOfContentsPath("tenant-a", window),
+		TableOfContentsPath("tenant-c", other),
+		TableOfContentsWindowPrefix(window) + "not-a-toc.txt",
+		TableOfContentsWindowPrefix(window) + "nested/tenant-d.toc",
+		// A shared ToC from before ToCs were split per tenant.
+		"tocs/2025-01-01T12_00_00Z.toc",
+	} {
+		require.NoError(t, bucket.Upload(ctx, name, strings.NewReader("")))
+	}
+
+	tenants, err := ListTableOfContentsTenants(ctx, bucket, window)
+	require.NoError(t, err)
+	require.Equal(t, []string{"tenant-a", "tenant-b"}, tenants)
+
+	tenants, err = ListTableOfContentsTenants(ctx, bucket, window.Add(-MetastoreWindowSize))
+	require.NoError(t, err)
+	require.Empty(t, tenants)
 }
 
 type flushStats struct {

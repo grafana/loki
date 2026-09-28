@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"maps"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +41,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { closer.Close() })
 
-		bucket := newInMemoryBucket(t, unixTime(0), obj)
+		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
 		tocBuilder.Reset()
 
 		writer := NewTableOfContentsWriter(bucket, log.NewNopLogger())
@@ -64,7 +66,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		bucket := newInMemoryBucket(t, unixTime(0), nil)
+		bucket := objstore.NewInMemBucket()
 
 		writer := newTableOfContentsWriter(t, bucket, builder)
 
@@ -87,7 +89,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), TableOfContentsPath(boundary))
+		reader, err := bucket.Get(context.Background(), TableOfContentsPath(tenantID, boundary))
 		require.NoError(t, err)
 		object, err := io.ReadAll(reader)
 		require.NoError(t, err)
@@ -107,7 +109,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		bucket := newInMemoryBucket(t, unixTime(0), nil)
+		bucket := objstore.NewInMemBucket()
 
 		writer := newTableOfContentsWriter(t, bucket, builder)
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
@@ -119,7 +121,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), TableOfContentsPath(unixTime(0)))
+		reader, err := bucket.Get(context.Background(), TableOfContentsPath(tenantID, unixTime(0)))
 		require.NoError(t, err)
 
 		object, err := io.ReadAll(reader)
@@ -130,6 +132,45 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 		err = writer.copyFromExistingToc(context.Background(), dobj)
 		require.NoError(t, err)
+	})
+
+	t.Run("WriteEntry writes one ToC per tenant and window", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket, builder)
+
+		var (
+			w1         = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+			w2         = w1.Add(MetastoreWindowSize)
+			objectPath = "indexes/multi-window"
+		)
+		// tenant-a spans two windows, tenant-b only the first one.
+		require.NoError(t, writer.WriteEntry(context.Background(), objectPath, []multitenancy.TimeRange{
+			{Tenant: "tenant-b", MinTime: w1.Add(time.Hour), MaxTime: w1.Add(2 * time.Hour)},
+			{Tenant: "tenant-a", MinTime: w1.Add(time.Hour), MaxTime: w2.Add(time.Hour)},
+		}))
+
+		require.ElementsMatch(t, []string{
+			"tocs/2025-01-01T00_00_00Z/tenant-a.toc",
+			"tocs/2025-01-01T12_00_00Z/tenant-a.toc",
+			"tocs/2025-01-01T00_00_00Z/tenant-b.toc",
+		}, slices.Collect(maps.Keys(bucket.Objects())))
+
+		for _, tc := range []struct {
+			tenant string
+			window time.Time
+		}{
+			{"tenant-a", w1},
+			{"tenant-a", w2},
+			{"tenant-b", w1},
+		} {
+			rows := readToC(context.Background(), t, bucket, TableOfContentsPath(tc.tenant, tc.window))
+			require.Len(t, rows, 1)
+			require.Equal(t, tc.tenant, rows[0].Tenant, "a ToC must only hold its own tenant")
+			require.Equal(t, objectPath, rows[0].Path)
+		}
 	})
 }
 
@@ -151,12 +192,12 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *
 	return updater
 }
 
-func newInMemoryBucket(t *testing.T, window time.Time, obj *dataobj.Object) objstore.Bucket {
+func newInMemoryBucket(t *testing.T, tenant string, window time.Time, obj *dataobj.Object) objstore.Bucket {
 	t.Helper()
 
 	var (
 		bucket = objstore.NewInMemBucket()
-		path   = TableOfContentsPath(window)
+		path   = TableOfContentsPath(tenant, window)
 	)
 
 	if obj != nil && obj.Size() > 0 {

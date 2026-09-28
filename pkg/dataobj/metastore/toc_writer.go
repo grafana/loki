@@ -5,6 +5,8 @@ import (
 	"context"
 	stderrors "errors"
 	"io"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -35,7 +37,7 @@ var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular time range.
+// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular tenant and time range.
 // The Table of Contents files are used to look up other objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
 type TableOfContentsWriter struct {
 	tocBuilder *indexobj.Builder // New index pointer based builder.
@@ -82,9 +84,11 @@ func (m *TableOfContentsWriter) initBuilder() error {
 	return initErr
 }
 
-// WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
+// WriteEntry adds the provided path to the Table of Contents file of every
+// tenant in tenantTimeRanges, for every window the tenant's time range
+// overlaps. The min/max timestamps are stored as metastore for the new entry
+// can be accessed by time.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
-	var err error
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
@@ -93,19 +97,38 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 		return err
 	}
 
-	var globalMinTime, globalMaxTime time.Time
+	rangesByTenant := make(map[string][]multitenancy.TimeRange)
 	for _, timeRange := range tenantTimeRanges {
-		if globalMinTime.IsZero() || timeRange.MinTime.Before(globalMinTime) {
-			globalMinTime = timeRange.MinTime
+		rangesByTenant[timeRange.Tenant] = append(rangesByTenant[timeRange.Tenant], timeRange)
+	}
+
+	for _, tenant := range slices.Sorted(maps.Keys(rangesByTenant)) {
+		if err := m.writeTenantEntry(ctx, tenant, dataobjPath, rangesByTenant[tenant]); err != nil {
+			return err
 		}
-		if globalMaxTime.IsZero() || timeRange.MaxTime.After(globalMaxTime) {
-			globalMaxTime = timeRange.MaxTime
+	}
+	return nil
+}
+
+// writeTenantEntry adds dataobjPath to the tenant's Table of Contents file for
+// every window that tenantTimeRanges overlap. All of tenantTimeRanges must
+// belong to tenant.
+func (m *TableOfContentsWriter) writeTenantEntry(ctx context.Context, tenant string, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
+	var err error
+
+	var minTime, maxTime time.Time
+	for _, timeRange := range tenantTimeRanges {
+		if minTime.IsZero() || timeRange.MinTime.Before(minTime) {
+			minTime = timeRange.MinTime
+		}
+		if maxTime.IsZero() || timeRange.MaxTime.After(maxTime) {
+			maxTime = timeRange.MaxTime
 		}
 	}
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range IterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+	for tocPath, tocTimeRange := range IterTableOfContentsPaths(tenant, minTime, maxTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,

@@ -2,8 +2,11 @@ package metastore
 
 import (
 	"context"
+	"io"
 	"os"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -76,7 +79,9 @@ type testDataBuilder struct {
 	uploader *uploader.Uploader
 }
 
-func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) {
+// addStreamAndFlush flushes stream into its own object, records it in the
+// tenant's ToCs and returns the object's path.
+func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) string {
 	err := b.builder.Append(tenant, stream, now)
 	require.NoError(b.t, err)
 
@@ -89,6 +94,115 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	require.NoError(b.t, err)
 
 	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
+	return path
+}
+
+// getRecordingBucket records the names of every object read through Get.
+type getRecordingBucket struct {
+	objstore.Bucket
+
+	mtx   sync.Mutex
+	names []string
+}
+
+func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	b.mtx.Lock()
+	b.names = append(b.names, name)
+	b.mtx.Unlock()
+	return b.Bucket.Get(ctx, name)
+}
+
+func (b *getRecordingBucket) tocReads() []string {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	var out []string
+	for _, name := range b.names {
+		if strings.HasPrefix(name, TocPrefix) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
+	const (
+		tenantA = "tenant-a"
+		tenantB = "tenant-b"
+	)
+
+	builder := newTestDataBuilder(t)
+	var pathsA, pathsB []string
+	for _, stream := range testStreams {
+		pathsA = append(pathsA, builder.addStreamAndFlush(tenantA, stream))
+		pathsB = append(pathsB, builder.addStreamAndFlush(tenantB, logproto.Stream{
+			Labels:  `{app="only-in-b"}`,
+			Entries: stream.Entries,
+		}))
+	}
+
+	var (
+		start = now.Add(-24 * time.Hour)
+		end   = now.Add(24 * time.Hour)
+	)
+
+	// Tenant B's objects are reachable through its own ToCs, so tenant A not
+	// seeing them below is down to ToC isolation rather than missing data.
+	gotB, err := newTestObjectMetastore(builder.bucket).DataObjects(user.InjectOrgID(context.Background(), tenantB), start, end)
+	require.NoError(t, err)
+	require.ElementsMatch(t, pathsB, gotB)
+
+	for _, tc := range []struct {
+		name  string
+		query func(ctx context.Context, t *testing.T, mstore *ObjectMetastore)
+	}{
+		{
+			name: "GetIndexes",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				resp, err := mstore.GetIndexes(ctx, GetIndexesRequest{Start: start, End: end})
+				require.NoError(t, err)
+				require.NotEmpty(t, resp.TableOfContentsPaths)
+				for _, path := range resp.TableOfContentsPaths {
+					require.True(t, strings.HasSuffix(path, "/"+tenantA+".toc"), "unexpected ToC path %s", path)
+				}
+				var got []string
+				for _, idx := range resp.Indexes {
+					got = append(got, idx.Path)
+				}
+				require.ElementsMatch(t, pathsA, got)
+			},
+		},
+		{
+			name: "DataObjects",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				got, err := mstore.DataObjects(ctx, start, end)
+				require.NoError(t, err)
+				require.ElementsMatch(t, pathsA, got)
+			},
+		},
+		{
+			name: "Values",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				got, err := mstore.Values(ctx, start, end)
+				require.NoError(t, err)
+				require.NotContains(t, got, "only-in-b")
+				require.Contains(t, got, "foo")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := &getRecordingBucket{Bucket: builder.bucket}
+			mstore := newTestObjectMetastore(bucket)
+			ctx := user.InjectOrgID(context.Background(), tenantA)
+
+			tc.query(ctx, t, mstore)
+
+			tocReads := bucket.tocReads()
+			require.NotEmpty(t, tocReads)
+			for _, name := range tocReads {
+				require.True(t, strings.HasSuffix(name, "/"+tenantA+".toc"), "read ToC %s of another tenant", name)
+			}
+		})
+	}
 }
 
 func TestLabels(t *testing.T) {

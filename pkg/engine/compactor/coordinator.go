@@ -153,9 +153,9 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	}
 
 	// Starting a worker for a discovered tenant is always safe, even when a
-	// window's ToC failed to load (allOK=false): a tenant present in any
-	// successfully-read window has real work. This is what lets a populated
-	// older window run while the current window's ToC does not yet exist.
+	// window's ToCs failed to list (allOK=false): a tenant present in any
+	// successfully-listed window has real work. This is what lets a populated
+	// older window run while the current window has no ToCs yet.
 	for tenant := range discovered {
 		if _, running := workers[tenant]; running {
 			continue
@@ -185,10 +185,11 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	}
 }
 
-// discoverUniqueTenants unions the tenant sets of every compacted window's ToC. allOK is
-// true only when every window read cleanly (a missing ToC or transient error on
-// any window clears it); reconcile uses allOK to gate absence-driven
-// cancellation so an unread window never causes a spurious cancel.
+// discoverUniqueTenants unions the tenants with a ToC in every compacted window.
+// allOK is true only when every window listed cleanly (a window without ToCs
+// or a transient error on any window clears it); reconcile uses allOK to gate
+// absence-driven cancellation so an unread window never causes a spurious
+// cancel.
 func (c *coordinator) discoverUniqueTenants(ctx context.Context) (map[string]struct{}, bool) {
 	discovered := make(map[string]struct{})
 	allOK := true
@@ -217,25 +218,25 @@ func (c *coordinator) startWorker(ctx context.Context, workers map[string]contex
 	})
 }
 
-// discover reads one window's ToC and returns the set of tenants it references.
-// ok is false on any read error (missing ToC or transient); discoverAll folds
-// that into its allOK result so reconcile can leave the running set untouched
-// when the picture is incomplete. Only a successfully read ToC is authoritative
-// enough to conclude a tenant was removed. Membership is by map key.
+// discover lists one window's ToCs and returns the set of tenants that have
+// one. ok is false on a listing error or when the window has no ToCs yet;
+// discoverUniqueTenants folds that into its allOK result so reconcile can
+// leave the running set untouched when the picture is incomplete. Only a
+// successfully listed, populated window is authoritative enough to conclude a
+// tenant was removed. Membership is by map key.
 func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+	tenants, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
 	if err != nil {
-		if c.bucket.IsObjNotFoundErr(err) {
-			level.Debug(c.logger).Log("msg", "no ToC for window; leaving workers as-is",
-				"window", window, "err", err)
-		} else {
-			level.Warn(c.logger).Log("msg", "discover: load tenant indexes failed; leaving workers as-is",
-				"window", window, "err", err)
-		}
+		level.Warn(c.logger).Log("msg", "discover: list ToCs failed; leaving workers as-is",
+			"window", window, "err", err)
 		return nil, false
 	}
-	out := make(map[string]struct{}, len(indexes))
-	for tenant := range indexes {
+	if len(tenants) == 0 {
+		level.Debug(c.logger).Log("msg", "no ToCs for window; leaving workers as-is", "window", window)
+		return nil, false
+	}
+	out := make(map[string]struct{}, len(tenants))
+	for _, tenant := range tenants {
 		out[tenant] = struct{}{}
 	}
 	return out, true
@@ -673,11 +674,11 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 	return phaseOutcomeSwapped
 }
 
-// tenantEntries reads the current-window ToC and returns the tenant's entries.
+// tenantEntries reads the tenant's ToC for the window and returns its entries.
 // A missing ToC yields (nil, true) — no work, not an error. Any other read
 // error yields (nil, false).
 func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexEntry, bool) {
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for window",
@@ -688,7 +689,7 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 			"tenant", tenant, "window", window, "err", err)
 		return nil, false
 	}
-	return indexes[tenant], true
+	return entries, true
 }
 
 // runLogMergePhase schedules one LogMerge task per index file for the [tenant]

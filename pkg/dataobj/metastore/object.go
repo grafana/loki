@@ -44,8 +44,11 @@ const (
 	// compactor) can iterate over the same time windows used internally.
 	MetastoreWindowSize = 12 * time.Hour
 
-	// TocPrefix is the prefix under which ToC files are stored in the object storage.
+	// TocPrefix is the prefix under which ToC files are stored in the object
+	// storage, laid out as tocs/<window>/<tenant>.toc.
 	TocPrefix = "tocs/"
+
+	tocSuffix = ".toc"
 )
 
 var tracer = otel.Tracer("pkg/dataobj/metastore")
@@ -178,17 +181,49 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	}
 }
 
-// TableOfContentsPath returns the object-storage path of the ToC file that
-// covers the given window-aligned time. The path layout is part of the
-// metastore's on-disk contract; callers must align window to MetastoreWindowSize.
-func TableOfContentsPath(window time.Time) string {
-	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
+// TableOfContentsPath returns the object-storage path of the tenant's ToC file
+// that covers the given window-aligned time. Each ToC holds the index
+// pointers of a single tenant. The path layout is part of the metastore's
+// on-disk contract; callers must align window to MetastoreWindowSize.
+func TableOfContentsPath(tenant string, window time.Time) string {
+	return TableOfContentsWindowPrefix(window) + tenant + tocSuffix
+}
+
+// TableOfContentsWindowPrefix returns the object-storage prefix under which
+// the ToC files of every tenant for the given window-aligned time are stored.
+// Callers must align window to MetastoreWindowSize.
+func TableOfContentsWindowPrefix(window time.Time) string {
+	return TocPrefix + strings.ReplaceAll(window.Format(time.RFC3339), ":", "_") + "/"
+}
+
+// ListTableOfContentsTenants returns the tenants that have a ToC file for the
+// given window-aligned time, sorted by tenant ID. A window without any ToC
+// files yields no tenants and no error.
+func ListTableOfContentsTenants(ctx context.Context, bucket objstore.BucketReader, window time.Time) ([]string, error) {
+	prefix := TableOfContentsWindowPrefix(window)
+
+	var tenants []string
+	err := bucket.Iter(ctx, prefix, func(name string) error {
+		tenant, ok := strings.CutSuffix(strings.TrimPrefix(name, prefix), tocSuffix)
+		// Iter also reports nested directories; ToC files are only ever stored
+		// directly under the window prefix.
+		if ok && tenant != "" && !strings.Contains(tenant, "/") {
+			tenants = append(tenants, tenant)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing ToCs under %s: %w", prefix, err)
+	}
+	slices.Sort(tenants)
+	return tenants, nil
 }
 
 // IterTableOfContentsPaths returns a sequence of (path, time-range) pairs
-// covering every ToC window that overlaps [start, end]. start and end may
-// be unaligned; the iterator truncates them to MetastoreWindowSize boundaries.
-func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+// covering the tenant's ToC for every window that overlaps [start, end].
+// start and end may be unaligned; the iterator truncates them to
+// MetastoreWindowSize boundaries.
+func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
 	minTocWindow := start.Truncate(MetastoreWindowSize).UTC()
 	maxTocWindow := end.Truncate(MetastoreWindowSize).UTC()
 
@@ -198,7 +233,7 @@ func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 				MinTime: tocWindow,
 				MaxTime: tocWindow.Add(MetastoreWindowSize),
 			}
-			if !yield(TableOfContentsPath(tocWindow), tocTimeRange) {
+			if !yield(TableOfContentsPath(tenant, tocWindow), tocTimeRange) {
 				return
 			}
 		}
@@ -249,7 +284,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	var (
 		tablePaths []string
 	)
-	for path := range IterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(tenantID, start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -277,7 +312,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 
 	// Get all metastore paths for the time range
 	var tablePaths []string
-	for path := range IterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(tenantID, start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -734,10 +769,15 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
 
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return GetIndexesResponse{}, err
+	}
+
 	resp := GetIndexesResponse{}
 
 	// Get all metastore paths for the time range
-	for path := range IterTableOfContentsPaths(req.Start, req.End) {
+	for path := range IterTableOfContentsPaths(tenantID, req.Start, req.End) {
 		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
 	}
 	span.Record(StatMetastoreTocTables.Observe(int64(len(resp.TableOfContentsPaths))))

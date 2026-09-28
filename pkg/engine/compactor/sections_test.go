@@ -25,7 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
+func TestLoadTenantIndexes_ReadsTenantToC(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -40,15 +40,14 @@ func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
 		},
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
+	// Each tenant's entries come from its own ToC, never another tenant's.
+	gotA, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.NoError(t, err)
-	require.Len(t, got, 2, "two tenants written")
+	requireIndexPaths(t, gotA, "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
 
-	require.Len(t, got["tenant-a"], 2)
-	require.Len(t, got["tenant-b"], 1)
-
-	requireIndexPaths(t, got["tenant-a"], "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
-	requireIndexPaths(t, got["tenant-b"], "indexes/cc/idx-b-0")
+	gotB, err := loadTenantIndexes(ctx, bucket, window, "tenant-b")
+	require.NoError(t, err)
+	requireIndexPaths(t, gotB, "indexes/cc/idx-b-0")
 }
 
 // TestLoadTenantIndexes_MissingToCReturnsNotFound verifies the no-ToC case
@@ -59,7 +58,7 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
-	_, err := loadTenantIndexes(ctx, bucket, window)
+	_, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.Error(t, err)
 	require.True(t, bucket.IsObjNotFoundErr(err),
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
@@ -74,7 +73,7 @@ type testIndex struct {
 	uncompressedLogsSize uint64
 }
 
-// writeToCWithIndexes writes a synthetic ToC containing one index pointer per
+// writeToCWithIndexes writes synthetic per-tenant ToCs containing one index pointer per
 // (tenant, path) entry. Each entry's time range must fall inside the
 // MetastoreWindowSize window the ToC covers (otherwise WriteEntry will route
 // it to a different ToC file).
