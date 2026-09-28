@@ -2665,11 +2665,17 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
 
+	// Store.QueryIngestersWithin is yaml:"-" and has no store flag. Copy the
+	// same querier window the query frontend uses so IndexesForRange and
+	// IndexesExcludedByIngesterWindow match production narrowing.
+	storeCfg := t.Cfg.Logline.Store
+	storeCfg.QueryIngestersWithin = t.Cfg.Logline.Correctness.QueryIngestersWithin
+
 	indexStore, err := loglinestore.New(
 		context.Background(),
 		t.Cfg.SchemaConfig,
 		t.Cfg.StorageConfig.ObjectStore,
-		t.Cfg.Logline.Store,
+		storeCfg,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -2687,6 +2693,8 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		return nil, err
 	}
 
-	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
+	if err := loglinecorrectness.RegisterHandlers(t.Server, svc, logger); err != nil {
+		return nil, err
+	}
 	return svc, nil
 }

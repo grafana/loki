@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"math/rand"
+	"math/rand" //#nosec G404 -- Test sampling is not security-sensitive. -- nosemgrep: math-random-used
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,13 +15,14 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
@@ -245,7 +246,7 @@ func TestPickHintQuery_LongValueCanUseLabelFilter(t *testing.T) {
 	logs := []queryEntry{{Entry: logproto.Entry{Line: "request trace=9fA81cD2Ef0077aa completed"}}}
 	value := "checkout-service"
 	sawLabel, sawLine := false, false
-	for seed := int64(0); seed < 50 && !(sawLabel && sawLine); seed++ {
+	for seed := int64(0); seed < 50 && (!sawLabel || !sawLine); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -291,7 +292,7 @@ func TestPickHintQuery_FourWayWhenAllEligible(t *testing.T) {
 	require.True(t, ok)
 
 	sawSM, sawLabel, sawJSON, sawLine := false, false, false, false
-	for seed := int64(0); seed < 100 && !(sawSM && sawLabel && sawJSON && sawLine); seed++ {
+	for seed := int64(0); seed < 100 && (!sawSM || !sawLabel || !sawJSON || !sawLine); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -335,7 +336,7 @@ func TestPickHintQuery_CanUseJSONLabelFilter(t *testing.T) {
 	}}
 
 	sawJSON, sawLine := false, false
-	for seed := int64(0); seed < 80 && !(sawJSON && sawLine); seed++ {
+	for seed := int64(0); seed < 80 && (!sawJSON || !sawLine); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -377,7 +378,7 @@ func TestPickHintQuery_CanUseStructuredMetadata(t *testing.T) {
 
 	// Stream label value is short, so the stream-label path falls back to line.
 	sawSM, sawLine := false, false
-	for seed := int64(0); seed < 50 && !(sawSM && sawLine); seed++ {
+	for seed := int64(0); seed < 50 && (!sawSM || !sawLine); seed++ {
 		svc.randMu.Lock()
 		svc.rand = rand.New(rand.NewSource(seed))
 		svc.randMu.Unlock()
@@ -620,14 +621,14 @@ func newTestLokiServer(t *testing.T, witnessTS time.Time, needle string) *httpte
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "test-tenant", r.Header.Get("X-Scope-OrgID"))
 
-		switch {
-		case r.URL.Path == "/loki/api/v1/labels":
+		switch r.URL.Path {
+		case "/loki/api/v1/labels":
 			writeEnvelope(w, []string{"job"})
 			return
-		case r.URL.Path == "/loki/api/v1/label/job/values":
+		case "/loki/api/v1/label/job/values":
 			writeEnvelope(w, []string{"api"})
 			return
-		case r.URL.Path == "/loki/api/v1/query_range":
+		case "/loki/api/v1/query_range":
 			startNS, err := strconv.ParseInt(r.URL.Query().Get("start"), 10, 64)
 			require.NoError(t, err)
 			endNS, err := strconv.ParseInt(r.URL.Query().Get("end"), 10, 64)

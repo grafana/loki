@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand" //#nosec G404 -- Cycle sampling is not security-sensitive. -- nosemgrep: math-random-used
 	"net/http"
 	"regexp"
 	"strconv"
@@ -19,13 +19,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+
 	lokiclient "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
@@ -128,7 +129,7 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		lokiClients:  newLokiEndpointClients(cfg),
 		startedAt:    startedAt,
 		nowFn:        time.Now,
-		rand:         rand.New(rand.NewSource(time.Now().UnixNano())),
+		rand:         rand.New(rand.NewSource(time.Now().UnixNano())), //#nosec G404 -- Cycle sampling is not security-sensitive. -- nosemgrep: math-random-used
 	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
@@ -785,22 +786,22 @@ func (r *cancelOnCloseReadCloser) Close() error {
 	return err
 }
 
-func (s *Service) randInt63n(max int64) int64 {
-	if max <= 0 {
+func (s *Service) randInt63n(limit int64) int64 {
+	if limit <= 0 {
 		return 0
 	}
 	s.randMu.Lock()
 	defer s.randMu.Unlock()
-	return s.rand.Int63n(max)
+	return s.rand.Int63n(limit)
 }
 
-func (s *Service) randIntn(max int) int {
-	if max <= 0 {
+func (s *Service) randIntn(limit int) int {
+	if limit <= 0 {
 		return 0
 	}
 	s.randMu.Lock()
 	defer s.randMu.Unlock()
-	return s.rand.Intn(max)
+	return s.rand.Intn(limit)
 }
 
 func (s *Service) shuffleStrings(values []string) {

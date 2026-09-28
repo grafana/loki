@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/verification"
