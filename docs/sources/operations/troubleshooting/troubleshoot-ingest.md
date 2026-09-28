@@ -950,6 +950,8 @@ is trying to produce records, for example during a broker rollout, a partition r
      write_timeout: 20s
    ```
 
+   Ensure that this remains less than the distributor's `-distributor.write-timeout` (default: 30s) to avoid distributor-level timeouts.
+
 **Properties:**
 
 - Enforced by: Distributor (Kafka producer)
