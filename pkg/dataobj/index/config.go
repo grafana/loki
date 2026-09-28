@@ -3,17 +3,12 @@ package index
 import (
 	"errors"
 	"flag"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
 type Config struct {
 	logsobj.BuilderBaseConfig `yaml:",inline"`
-	EventsPerIndex            int           `yaml:"events_per_index" experimental:"true"`
-	FlushInterval             time.Duration `yaml:"flush_interval" experimental:"true"`
-	MaxIdleTime               time.Duration `yaml:"max_idle_time" experimental:"true"`
-	MaxAge                    time.Duration `yaml:"max_age" experimental:"true"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -32,11 +27,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		// Hack to set the default value for the flag only for the index builder.
 		ecr.DefValue = "1"
 	}
-
-	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
-	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 1*time.Minute, "Experimental: How often to check for idle partitions and old events to flush")
-	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Minute, "Experimental: Maximum time between events before a partition is considered idle and flushed")
-	f.DurationVar(&cfg.MaxAge, prefix+"max-age", 60*time.Minute, "Experimental: Maximum age of a buffered event before it will be flushed")
 }
 
 // Validate validates the BuilderConfig.

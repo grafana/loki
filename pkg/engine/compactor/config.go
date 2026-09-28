@@ -53,7 +53,7 @@ type Config struct {
 	// WindowLookback is the number of older metastore windows the coordinator
 	// compacts in addition to the current window. Zero (the default) compacts
 	// only the current window; 1 also compacts the immediately-preceding
-	// window, and so on. Raise it when the index-builder lags behind wall-clock
+	// window, and so on. Raise it when indexing lags behind wall-clock
 	// so a ToC for the current window may not exist yet: the preceding
 	// window(s) still have populated ToCs and would otherwise never be
 	// compacted. Each extra window is an independent per-pass read + plan, so
