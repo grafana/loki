@@ -18,6 +18,7 @@ type Options struct {
 	Name                   string
 	Namespace              string
 	Image                  string
+	OperatorImage          string
 	GatewayImage           string
 	GatewayBaseDomain      string
 	ConfigSHA1             string

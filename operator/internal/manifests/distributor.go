@@ -52,7 +52,7 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name); err != nil {
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name, opts.OperatorImage); err != nil {
 		return nil, err
 	}
 
