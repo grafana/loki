@@ -2665,11 +2665,15 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
 
-	// Store.QueryIngestersWithin is yaml:"-" and has no store flag. Copy the
+	// Borrowed fields with no correctness flags. QueryIngestersWithin is the
 	// same querier window the query frontend uses so IndexesForRange and
-	// IndexesExcludedByIngesterWindow match production narrowing.
+	// IndexesExcludedByIngesterWindow match production narrowing. NgramLength
+	// is owned by logline.index; the index does not record it, so a reader
+	// must use the value the builder did.
 	storeCfg := t.Cfg.Logline.Store
 	storeCfg.QueryIngestersWithin = t.Cfg.Logline.Correctness.QueryIngestersWithin
+	cfg := t.Cfg.Logline.Correctness
+	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
 
 	indexStore, err := loglinestore.New(
 		context.Background(),
@@ -2685,7 +2689,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 
 	svc, err := loglinecorrectness.New(
 		indexStore,
-		t.Cfg.Logline.Correctness,
+		cfg,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -2693,8 +2697,6 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		return nil, err
 	}
 
-	if err := loglinecorrectness.RegisterHandlers(t.Server, svc, logger); err != nil {
-		return nil, err
-	}
+	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
 }
