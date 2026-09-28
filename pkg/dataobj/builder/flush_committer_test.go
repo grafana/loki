@@ -92,7 +92,7 @@ func TestFlushCommitter(t *testing.T) {
 			committer      = &mockCommitter{}
 			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
 		)
-		// Build a slice of builders, mimicking a partition split across windows.
+		// Build a slice of builders, mimicking a partition split across tenants and windows.
 		var builders []builder
 		for i := 0; i < 3; i++ {
 			builders = append(builders, newTestFlushBuilder(t, prometheus.NewRegistry()))
@@ -100,7 +100,7 @@ func TestFlushCommitter(t *testing.T) {
 
 		require.NoError(t, flushCommitter.Flush(t.Context(), builders, "test", 7))
 		// Each builder is flushed and indexed separately, keeping one index
-		// object per window.
+		// object per tenant and window.
 		require.Equal(t, 3, flusher.flushes)
 		require.Equal(t, []string{"object_001", "object_002", "object_003"}, indexer.paths)
 		require.Equal(t, []string{"index/object_001", "index/object_002", "index/object_003"}, tocWriter.paths)

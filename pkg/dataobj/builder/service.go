@@ -139,7 +139,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		wrapped,
 	)
 	s.processor = newProcessor(
-		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,
