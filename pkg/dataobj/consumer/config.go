@@ -5,21 +5,15 @@ import (
 	"flag"
 	"time"
 
-	"github.com/grafana/dskit/ring"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Config struct {
 	logsobj.BuilderConfig
-	LifecyclerConfig    ring.LifecyclerConfig   `yaml:"lifecycler,omitempty"`
-	PartitionRingConfig partitionring.Config    `yaml:"partition_ring" category:"experimental"`
-	UploaderConfig      dataobj_uploader.Config `yaml:"uploader"`
-	IdleFlushTimeout    time.Duration           `yaml:"idle_flush_timeout"`
-	MaxBuilderAge       time.Duration           `yaml:"max_builder_age"`
+	UploaderConfig   dataobj_uploader.Config `yaml:"uploader"`
+	IdleFlushTimeout time.Duration           `yaml:"idle_flush_timeout"`
+	MaxBuilderAge    time.Duration           `yaml:"max_builder_age"`
 
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`
@@ -27,9 +21,6 @@ type Config struct {
 
 func (cfg *Config) Validate() error {
 	if err := cfg.BuilderConfig.Validate(); err != nil {
-		return err
-	}
-	if err := cfg.LifecyclerConfig.Validate(); err != nil {
 		return err
 	}
 	if err := cfg.UploaderConfig.Validate(); err != nil {
@@ -47,8 +38,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix, f, util_log.Logger)
-	cfg.PartitionRingConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.StringVar(
 		&cfg.Topic,

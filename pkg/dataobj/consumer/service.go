@@ -3,14 +3,13 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -29,27 +28,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-const (
-	RingKey           = "dataobj-consumer"
-	RingName          = "dataobj-consumer"
-	PartitionRingKey  = "dataobj-consumer-partitions-key"
-	PartitionRingName = "dataobj-consumer-partitions"
-)
-
 type Service struct {
 	services.Service
-	cfg                         Config
-	lifecycler                  *ring.Lifecycler
-	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
-	consumer                    *kafkav2.SinglePartitionConsumer
-	offsetReader                *kafkav2.OffsetReader
-	partition                   int32
-	processor                   *processor
-	flusher                     *flusherImpl
-	downscalePermitted          downscalePermittedFunc
-	watcher                     *services.FailureWatcher
-	logger                      log.Logger
-	reg                         prometheus.Registerer
+	cfg                Config
+	consumer           *kafkav2.SinglePartitionConsumer
+	offsetReader       *kafkav2.OffsetReader
+	partition          int32
+	processor          *processor
+	flusher            *flusherImpl
+	downscalePermitted downscalePermittedFunc
+	logger             log.Logger
+	reg                prometheus.Registerer
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
@@ -61,55 +50,18 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 		reg:    reg,
 	}
 
-	// Set up the ring.
-	lifecycler, err := ring.NewLifecycler(
-		cfg.LifecyclerConfig,
-		s,
-		RingName,
-		RingKey,
-		false,
-		logger,
-		prometheus.WrapRegistererWithPrefix("dataobj-consumer_", reg),
-	)
+	// Each instance consumes exactly one partition, taken from the ordinal
+	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3).
+	// The hostname is also used as the Kafka consumer group.
+	instanceID, err := os.Hostname()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
+		return nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
-	s.lifecycler = lifecycler
-
-	// Set up the partition ring. Each instance of a dataobj consumer is responsible
-	// for consuming exactly one partition, determined by its partition ID.
-	// Once ready, the instance will declare its partition as active in the partition
-	// ring. This is how distributors know which partitions can receive records and
-	// which partitions can not (for example, we dont' want to send new records to
-	// a dataobj consumer that is about to scale down).
-	instanceID := cfg.LifecyclerConfig.ID
 	partitionID, err := partitionring.ExtractPartitionID(instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract partition ID from lifecycler configuration: %w", err)
+		return nil, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
 	}
 	s.partition = partitionID
-	// The mock KV is used in tests. If this is not a test then we must initialize
-	// a real kv.
-	partitionRingKV := cfg.PartitionRingConfig.KVStore.Mock
-	if partitionRingKV == nil {
-		partitionRingKV, err = kv.NewClient(
-			cfg.PartitionRingConfig.KVStore,
-			ring.GetPartitionRingCodec(),
-			kv.RegistererWithKVName(reg, "dataobj-consumer-lifecycler"),
-			logger,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set up partition ring: %w", err)
-		}
-	}
-	partitionInstanceLifecycler := ring.NewPartitionInstanceLifecycler(
-		cfg.PartitionRingConfig.ToLifecyclerConfig(partitionID, instanceID),
-		PartitionRingName,
-		PartitionRingKey,
-		partitionRingKV,
-		logger,
-		prometheus.WrapRegistererWithPrefix("loki_", reg))
-	s.partitionInstanceLifecycler = partitionInstanceLifecycler
 
 	// Set up the Kafka client that receives log entries. These entries are used to build
 	// data objects.
@@ -197,11 +149,6 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 	)
 	s.downscalePermitted = newOffsetCommittedDownscaleFunc(s.offsetReader, partitionID, logger)
 
-	watcher := services.NewFailureWatcher()
-	watcher.WatchService(lifecycler)
-	watcher.WatchService(partitionInstanceLifecycler)
-	s.watcher = watcher
-
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
 }
@@ -211,12 +158,6 @@ func (s *Service) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "starting")
 	if err := s.initResumeOffset(ctx); err != nil {
 		return fmt.Errorf("failed to initialize offset for consumer: %w", err)
-	}
-	if err := services.StartAndAwaitRunning(ctx, s.lifecycler); err != nil {
-		return fmt.Errorf("failed to start lifecycler: %w", err)
-	}
-	if err := services.StartAndAwaitRunning(ctx, s.partitionInstanceLifecycler); err != nil {
-		return fmt.Errorf("failed to start partition instance lifecycler: %w", err)
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.processor); err != nil {
 		return fmt.Errorf("failed to start partition processor: %w", err)
@@ -243,22 +184,8 @@ func (s *Service) stopping(failureCase error) error {
 	if err := services.StopAndAwaitTerminated(ctx, s.processor); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop partition processor", "err", err)
 	}
-	if err := services.StopAndAwaitTerminated(ctx, s.partitionInstanceLifecycler); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop partition instance lifecycler", "err", err)
-	}
-	if err := services.StopAndAwaitTerminated(ctx, s.lifecycler); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop lifecycler", "err", err)
-	}
 	level.Info(s.logger).Log("msg", "stopped")
 	return failureCase
-}
-
-// Flush implements the [ring.FlushTransferer] interface.
-func (s *Service) Flush() {}
-
-// TransferOut implements the [ring.FlushTransferer] interface.
-func (s *Service) TransferOut(_ context.Context) error {
-	return nil
 }
 
 // initResumeOffset fetches and sets the resume offset (often the last committed
