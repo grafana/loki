@@ -121,13 +121,13 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	c.indexDispatcher.limit = 4
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
-	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
+	initial := mustLoadTenantsIndexes(ctx, t, bucket, window)
 	require.Equal(t, []string{"indexes/aa/src-0", "indexes/dd/idx-d-0"}, pathsOf(initial["untouched"]))
 	require.Len(t, initial["acme"], 3, "sanity: 3 source indexes seeded")
 	_, runErr := c.compactTenantIndexes(ctx, "acme", window, initial["acme"])
 	require.NoError(t, runErr)
 
-	postCycle1 := mustLoadTenantIndexes(ctx, t, bucket, window)
+	postCycle1 := mustLoadTenantsIndexes(ctx, t, bucket, window)
 	require.Less(t, len(postCycle1["acme"]), 3,
 		"cycle 1 must reduce acme's index count from 3 to fewer")
 	require.Equal(t, initial["untouched"], postCycle1["untouched"],
@@ -147,17 +147,17 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 
 	// Drive subsequent cycles from persisted state, bounded to prevent hangs.
 	for cycle := range 6 {
-		before := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		before := mustLoadTenantsIndexes(ctx, t, bucket, window)["acme"]
 		if len(before) <= 1 {
 			break
 		}
 		_, runErr := c.compactTenantIndexes(ctx, "acme", window, before)
 		require.NoError(t, runErr)
-		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		after := mustLoadTenantsIndexes(ctx, t, bucket, window)["acme"]
 		require.LessOrEqual(t, len(after), len(before), "cycle %d must not increase index count", cycle+2)
 		t.Logf("cycle %d: acme went from %d → %d indexes", cycle+2, len(before), len(after))
 	}
-	final := mustLoadTenantIndexes(ctx, t, bucket, window)
+	final := mustLoadTenantsIndexes(ctx, t, bucket, window)
 	require.Equal(t, len(final["acme"]), 1,
 		"after multiple cycles, acme tenant must converge to 1 covering index")
 	require.Equal(t, initial["untouched"], final["untouched"],
@@ -257,12 +257,12 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
 			c.limits = integrationSortSchema(targetSchema)
 
-			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+			before := mustLoadTenantsIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
 			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
 
-			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+			after := mustLoadTenantsIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
 			stored := &compactortest.Scenario{Bucket: bucket, Window: window}
 			contents := stored.ReadReachableContents(ctx, t, tenant)
@@ -556,9 +556,21 @@ func (integrationSortSchema) CompactionPhases(string) (bool, bool) {
 	return true, true
 }
 
-func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
+// mustLoadTenants loads the ToC of every tenant in the window, keyed by tenant.
+func mustLoadTenantsIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexEntry {
 	t.Helper()
-	got, err := loadTenantIndexes(ctx, b, window)
+	tenants, err := metastore.ListTableOfContentsTenants(ctx, b, window)
+	require.NoError(t, err)
+	out := make(map[string][]indexEntry, len(tenants))
+	for _, tenant := range tenants {
+		out[tenant] = mustLoadTenant(ctx, t, b, window, tenant)
+	}
+	return out
+}
+
+func mustLoadTenant(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time, tenant string) []indexEntry {
+	t.Helper()
+	got, err := loadTenantIndexes(ctx, b, window, tenant)
 	require.NoError(t, err)
 	return got
 }
