@@ -1458,7 +1458,7 @@ func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
 	require.ElementsMatch(t, []string{"acme", "bravo"}, keys(discovered))
 }
 
-// TestDiscoverAll_CurrentMissingPreviousPresent reproduces the index-builder-lag
+// TestDiscoverAll_CurrentMissingPreviousPresent reproduces the indexing-lag
 // scenario: the current window has no ToC yet, but the previous window does.
 // The previous window's tenant is still discovered, and allOK is false so
 // reconcile will start-but-not-cancel.

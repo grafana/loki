@@ -1594,24 +1594,6 @@ dataobj:
     # CLI flag: -dataobj-index-builder.estimated-compression-ratio
     [estimated_compression_ratio: <int> | default = 1]
 
-    # Experimental: The number of events to batch before building an index
-    # CLI flag: -dataobj-index-builder.events-per-index
-    [events_per_index: <int> | default = 32]
-
-    # Experimental: How often to check for idle partitions and old events to
-    # flush
-    # CLI flag: -dataobj-index-builder.flush-interval
-    [flush_interval: <duration> | default = 1m]
-
-    # Experimental: Maximum time between events before a partition is considered
-    # idle and flushed
-    # CLI flag: -dataobj-index-builder.max-idle-time
-    [max_idle_time: <duration> | default = 30m]
-
-    # Experimental: Maximum age of a buffered event before it will be flushed
-    # CLI flag: -dataobj-index-builder.max-age
-    [max_age: <duration> | default = 1h]
-
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # for testing only.

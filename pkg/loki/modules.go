@@ -47,7 +47,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
-	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
@@ -152,7 +151,6 @@ const (
 	DataObjConsumer                 = "dataobj-consumer"
 	DataObjConsumerRing             = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing    = "dataobj-consumer-partition-ring"
-	DataObjIndexBuilder             = "dataobj-index-builder"
 	DataObjCompactionPlanner        = "dataobj-compaction-planner"
 	DataObjCompactionWorker         = "dataobj-compaction-worker"
 	ScratchStore                    = "scratch-store"
@@ -2332,30 +2330,6 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	return t.dataObjConsumer, nil
 }
 
-func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
-	if !t.Cfg.DataObj.Enabled {
-		return nil, nil
-	}
-	store, err := t.getDataObjBucket("dataobj-index-builder")
-	if err != nil {
-		return nil, err
-	}
-
-	level.Info(util_log.Logger).Log("msg", "initializing dataobj index builder", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
-	t.dataObjIndexBuilder, err = dataobjindex.NewIndexBuilder(
-		t.Cfg.DataObj.Index,
-		t.Cfg.DataObj.Metastore,
-		t.Cfg.KafkaConfig,
-		util_log.Logger,
-		t.Cfg.Ingester.LifecyclerConfig.ID,
-		store,
-		t.scratchStore,
-		prometheus.DefaultRegisterer,
-	)
-
-	return t.dataObjIndexBuilder, err
-}
-
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
@@ -2371,7 +2345,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-index-builder uses so
+	// Wrap with the same IndexStoragePrefix the dataobj-consumer uses so
 	// compactor outputs and ToC reads land alongside the existing multi-tenant
 	// indexes namespace.
 	indexBucket := store
