@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 func TestRunVerificationCycle_Correct(t *testing.T) {
@@ -448,6 +449,7 @@ func (unsupportedHintProvider) ProvideHints(
 	syntax.Expr,
 	model.Time,
 	model.Time,
+	queryrangebase.Handler,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	return nil, nil, hintprovider.ErrUnsupported
 }
