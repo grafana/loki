@@ -166,14 +166,14 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go/auth v0.23.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
-	cloud.google.com/go/monitoring v1.30.0 // indirect
+	cloud.google.com/go/monitoring v1.31.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.38.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
 	github.com/alibabacloud-go/tea v1.5.3 // indirect
-	github.com/andybalholm/brotli v1.2.4 // indirect
+	github.com/andybalholm/brotli v1.2.5 // indirect
 	github.com/apache/thrift v0.24.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
@@ -310,7 +310,7 @@ require (
 require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
-	cloud.google.com/go/iam v1.13.0 // indirect
+	cloud.google.com/go/iam v1.14.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
