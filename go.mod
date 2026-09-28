@@ -453,4 +453,4 @@ replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-2026
 //  Latest Kafka protocols are not supported in warpstream at this time.
 replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
 
-replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
+replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.19.0
