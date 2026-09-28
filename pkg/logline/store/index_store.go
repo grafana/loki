@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
@@ -372,6 +373,26 @@ func (s *Store) StartPolling(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// NewPollingService runs StartPolling for the lifetime of a dskit service.
+// starting does the initial poll; running waits until stop cancels the context
+// so background polls keep going. stopping is optional.
+func NewPollingService(s *Store, name string, stopping services.StoppingFn) services.Service {
+	svc := services.NewBasicService(
+		func(ctx context.Context) error {
+			return s.StartPolling(ctx)
+		},
+		func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		},
+		stopping,
+	)
+	if name != "" {
+		return svc.WithName(name)
+	}
+	return svc
 }
 
 // IndexesForRange returns active indexes whose time range overlaps [start, end].

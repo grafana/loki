@@ -137,19 +137,10 @@ func WrapMiddleware(
 		})
 	}
 
-	storeSvc := services.NewBasicService(
-		func(ctx context.Context) error {
-			return indexStore.StartPolling(ctx)
-		},
-		func(ctx context.Context) error {
-			<-ctx.Done()
-			return nil
-		},
-		func(_ error) error {
-			cleanup()
-			return nil
-		},
-	)
+	storeSvc := store.NewPollingService(indexStore, "", func(_ error) error {
+		cleanup()
+		return nil
+	})
 
 	return wrapped, storeSvc, cleanup, nil
 }
