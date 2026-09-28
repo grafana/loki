@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -386,4 +387,77 @@ func BenchmarkContainsLower(b *testing.B) {
 		})
 	}
 	res = m // Avoid compiler optimization
+}
+
+func BenchmarkContains(b *testing.B) {
+	record := []byte(`level=info ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms" status=200 path=/api/v1/query `)
+	base := bytes.Repeat(record, (16<<10)/len(record)+1)[:16<<10]
+	rare := []byte("e5e650e85685")
+	if bytes.Contains(base, rare) || bytes.Contains(base, []byte("error")) || bytes.Contains(base, []byte{'Q'}) {
+		b.Fatal("fixture contains a benchmark needle")
+	}
+	atEnd := append(append([]byte{}, base[:len(base)-len(rare)]...), rare...)
+	needle32 := append(bytes.Repeat([]byte{'e'}, packedPairMaxLen-1), 'Q')
+	needle33 := append(bytes.Repeat([]byte{'e'}, packedPairMaxLen), 'Q')
+
+	cases := []struct {
+		name   string
+		line   []byte
+		needle []byte
+	}{
+		{"rare_absent", base, rare},
+		{"rare_at_end", atEnd, rare},
+		{"common_absent", base, []byte("error")},
+		{"common_at_start", base, []byte("level")},
+		{"len32_absent", base, needle32},
+		{"len33_absent", base, needle33},
+	}
+	for _, tc := range cases {
+		f := newContainsFilter(tc.needle, false).(*containsFilter)
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(tc.line)))
+			var m bool
+			for i := 0; i < b.N; i++ {
+				m = f.Filter(tc.line)
+			}
+			res = m
+		})
+		b.Run(tc.name+"_bytesContains", func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(tc.line)))
+			var m bool
+			for i := 0; i < b.N; i++ {
+				m = bytes.Contains(tc.line, tc.needle)
+			}
+			res = m
+		})
+	}
+
+	// Loki filters one log line at a time. Repeat a 1 KiB line so the per-line call is visible.
+	line := base[:1024]
+	const lines = 64
+	b.Run("rare_absent_1KiB", func(b *testing.B) {
+		f := newContainsFilter(rare, false).(*containsFilter)
+		b.ReportAllocs()
+		b.SetBytes(int64(len(line) * lines))
+		var m bool
+		for i := 0; i < b.N; i++ {
+			for range lines {
+				m = f.Filter(line)
+			}
+		}
+		res = m
+	})
+	b.Run("rare_absent_1KiB_bytesContains", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(line) * lines))
+		var m bool
+		for i := 0; i < b.N; i++ {
+			for range lines {
+				m = bytes.Contains(line, rare)
+			}
+		}
+		res = m
+	})
 }

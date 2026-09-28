@@ -416,10 +416,16 @@ func newEqualFilter(match []byte, caseInsensitive bool) MatcherFilterer {
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
+	// finder is the case-sensitive substring searcher. Case-insensitive
+	// filters ignore it and use containsLower.
+	finder substrFinder
 }
 
 func (l *containsFilter) Filter(line []byte) bool {
-	return contains(line, l.match, l.caseInsensitive)
+	if l.caseInsensitive {
+		return containsLower(line, l.match)
+	}
+	return l.finder.contains(line)
 }
 
 func contains(line, substr []byte, caseInsensitive bool) bool {
@@ -543,10 +549,14 @@ func newContainsFilter(match []byte, caseInsensitive bool) MatcherFilterer {
 	}
 	if caseInsensitive {
 		match = bytes.ToLower(match)
+		return &containsFilter{
+			match:           match,
+			caseInsensitive: true,
+		}
 	}
 	return &containsFilter{
-		match:           match,
-		caseInsensitive: caseInsensitive,
+		match:  match,
+		finder: newSubstrFinder(match),
 	}
 }
 
@@ -563,8 +573,8 @@ func (f *containsAllFilter) Empty() bool {
 }
 
 func (f containsAllFilter) Filter(line []byte) bool {
-	for _, m := range f.matches {
-		if !contains(line, m.match, m.caseInsensitive) {
+	for i := range f.matches {
+		if !f.matches[i].Filter(line) {
 			return false
 		}
 	}
