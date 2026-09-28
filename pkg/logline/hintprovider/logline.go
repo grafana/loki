@@ -81,7 +81,11 @@ func (p *LoglineHintProvider) QueryHints(
 		snap := stats.Snapshot()
 		return &logproto.HintResponse{Stats: &snap}, ErrUnsupported
 	}
+	started := time.Now()
 	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
+	// Snapshot only derives EffectiveConcurrency when wall is set. That
+	// value is what the query-frontend restores; work nanos are not on the proto.
+	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
 	if err != nil {
 		return &logproto.HintResponse{Stats: &snap}, err

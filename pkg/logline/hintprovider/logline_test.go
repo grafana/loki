@@ -219,6 +219,31 @@ func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
 	require.Empty(t, resp.TimeRanges)
 }
 
+func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T) {
+	indexStore := newTestStore(t)
+	needle := "9fA81cD2Ef0077aa"
+	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, t0, t0.Add(5*time.Minute))
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
+	require.Len(t, active, 1)
+
+	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
+	resp, err := provider.QueryHints(context.Background(), expr, active)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Stats)
+	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
+
+	// Query-frontend restores from proto then overwrites wall; work nanos are not on the wire.
+	restored := fromProtoStats(resp.Stats)
+	restored.SetWallTime(5 * time.Second)
+	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
+}
+
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {
 	indexStore := newTestStore(t)
 	needle := "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec"
