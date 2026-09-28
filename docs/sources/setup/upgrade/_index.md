@@ -37,39 +37,6 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Breaking change: `dataobj-consumer` renamed to `dataobj-builder`
-
-The experimental `dataobj-consumer` target is renamed to `dataobj-builder`. It builds data objects and, since the `dataobj-index-builder` target was removed, the index object for each of them. Run it with `-target=dataobj-builder`. The prepare-downscale endpoint moves from `/dataobj-consumer/prepare-downscale` to `/dataobj-builder/prepare-downscale`.
-
-The builder no longer joins a ring. Each instance consumes the partition given by the ordinal suffix of its hostname, for example `dataobj-builder-3` consumes partition 3, and uses its hostname as the Kafka consumer group. The following are removed:
-
-- The `/dataobj-consumer/ring`, `/dataobj-consumer/partition-ring`, and `/dataobj-consumer/prepare-delayed-downscale` endpoints. Remove the `grafana.com/rollout-delayed-downscale` and `grafana.com/rollout-prepare-delayed-downscale-url` annotations from the builder StatefulSet before you upgrade, otherwise the rollout-operator can't downscale it.
-- The `dataobj.consumer.lifecycler` and `dataobj.consumer.partition_ring` blocks and their `-dataobj-consumer.*` flags.
-- The hidden `-dataobj-consumer.append-ordered-enabled` flag, which had no effect.
-
-The remaining settings move as follows. Loki fails to start if it is passed an old flag or YAML key.
-
-| Old YAML key (flag prefix) | New YAML key (flag prefix) |
-|---|---|
-| `dataobj.consumer.builderconfig` (`-dataobj-consumer.`) | `dataobj.builder.logsobj_builder` (`-dataobj.builder.logsobj-builder.`) |
-| `dataobj.index` (`-dataobj-index-builder.`) | `dataobj.builder.indexobj_builder` (`-dataobj.builder.indexobj-builder.`) |
-| `dataobj.consumer.topic`, `idle_flush_timeout`, `max_builder_age` (`-dataobj-consumer.`) | `dataobj.builder.topic`, `idle_flush_timeout`, `max_builder_age` (`-dataobj.builder.`) |
-| `dataobj.consumer.uploader.shaprefixsize` (`-dataobj-consumer.sha-prefix-size`) | `dataobj.uploader.sha_prefix_size` (`-dataobj.uploader.sha-prefix-size`) |
-
-The `dataobj-compaction-worker` target now reads its uploader settings from `dataobj.uploader` too.
-
-The following metrics are renamed:
-
-| Old name | New name |
-|---|---|
-| `loki_dataobj_consumer_*` emitted by the builder | `loki_dataobj_builder_*` |
-| `loki_dataobj_size_estimate_bytes` | `loki_dataobj_builder_size_estimate_bytes` |
-| `loki_dataobj_consumer_upload_*` | `loki_dataobj_upload_*` |
-| `loki_dataobj_consumer_sha_prefix_size` | `loki_dataobj_upload_sha_prefix_size` |
-| `loki_dataobj_consumer_metastore_writes_total` | `loki_metastore_toc_writes_total` |
-
-The Kafka client metrics of the builder carry `component="loki.dataobj_builder"` instead of `component="loki.dataobj_consumer"`.
-
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
