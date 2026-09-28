@@ -608,12 +608,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			rateStoreRate:   rateStoreRate,
 			totalSize:       uint64(pushSize),
 		}
-		if mode == shardstreams.LimitsServiceStreamShardingModeLive {
+
+		switch mode {
+		case shardstreams.LimitsServiceStreamShardingModeLive:
 			liveCandidates = append(liveCandidates, candidate)
-			return
+		case shardstreams.LimitsServiceStreamShardingModeShadow:
+			streams = append(streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
+			shadowCandidates = append(shadowCandidates, candidate)
 		}
-		streams = append(streams, d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, candidate.rateStoreShards)...)
-		shadowCandidates = append(shadowCandidates, candidate)
 	}
 
 	maybeShardStreams := func(stream logproto.InternalStreamAdapter, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
@@ -1287,6 +1289,7 @@ type limitsServiceShardCandidate struct {
 
 // limitsServiceShardTimeout bounds the synchronous CheckLimitsAndShard call
 // on the push path.
+// TODO(chaudum): Is a 2s timeout too long? Running it in production will tell...
 const limitsServiceShardTimeout = 2 * time.Second
 
 // limitsServiceShardCounts asks the ingest-limits service for a shard count
@@ -1314,6 +1317,7 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 
 	callCtx, cancel := context.WithTimeout(ctx, limitsServiceShardTimeout)
 	defer cancel()
+
 	results, err := d.ingestLimits.CheckLimitsAndShard(callCtx, tenantID, candidates)
 	if err != nil {
 		// None of the candidates were answered, so count them all as failed
