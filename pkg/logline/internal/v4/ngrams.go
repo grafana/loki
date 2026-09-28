@@ -90,6 +90,26 @@ func ExtractFeatures(n int, line string, structuredMetadata push.LabelsAdapter, 
 	return ngrams
 }
 
+// FormatTerm renders a key produced by ExtractFeatures as the term string to
+// look up in the index.
+//
+// A packed numeric key spreads its value over the dictionary's full six bytes,
+// so it is passed whole: slicing it to n would cut off the low value bytes and
+// the lookup would miss. Text grams keep v3 behaviour and are sliced to n.
+func FormatTerm(key [8]byte, n int) string {
+	if isPackedKey(key) {
+		return string(key[:])
+	}
+	return string(key[:n])
+}
+
+// isPackedKey reports whether key came from packNumeric rather than from the
+// text sliding window. Text grams only ever contain the transformed alphabet
+// (space, '.', '0'-'9', 'A'-'Z'), so a leading byte below 0x20 can only be a tag.
+func isPackedKey(key [8]byte) bool {
+	return key[0] < 0x20
+}
+
 func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 	if n <= 0 || n > 8 || len(text) < n {
 		return ngrams

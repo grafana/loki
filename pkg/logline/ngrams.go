@@ -16,25 +16,42 @@ import (
 // both sources ignore them.
 type ExtractFunc func(n int, line string, structuredMetadata push.LabelsAdapter, labelValues []string, ngrams [][8]byte) [][8]byte
 
-// IsPackedTermKey reports whether an extracted key was packed into the full term
-// key width rather than being a plain text n-gram.
+// TermFormatFunc renders an extracted key as the term string to look up in the
+// index. Implementations must be stateless and safe for concurrent use.
+// ngramLength must be in [1, 8].
 //
-// Text n-grams only ever contain the transformed alphabet: space, '.', '0'-'9'
-// and 'A'-'Z'. Any byte below 0x20 (space) is therefore impossible in a text gram.
-func IsPackedTermKey(key [8]byte) bool {
-	return key[0] < 0x20
+// A key is 8 bytes wide but a version decides how many of them carry the term.
+type TermFormatFunc func(key [8]byte, ngramLength int) string
+
+// ngramsByVersion pairs each index version's extraction and formatting
+// functions. They are registered together because: a version whose
+// extractor emits a new kind of key needs the formatter that renders it.
+var ngramsByVersion = map[string]struct {
+	extract ExtractFunc
+	format  TermFormatFunc
+}{
+	"v3": {extract: v3.ExtractFeatures, format: v3.FormatTerm},
+	"v4": {extract: v4.ExtractFeatures, format: v4.FormatTerm},
 }
 
 // ExtractorForVersion returns the extraction function paired with the given
 // index format version. Extraction is part of the index version contract: a v3
 // index is queried with the v3 extractor.
 func ExtractorForVersion(version string) (ExtractFunc, error) {
-	switch version {
-	case "v3":
-		return v3.ExtractFeatures, nil
-	case "v4":
-		return v4.ExtractFeatures, nil
-	default:
+	fns, ok := ngramsByVersion[version]
+	if !ok {
 		return nil, fmt.Errorf("no extractor registered for index version %q", version)
 	}
+	return fns.extract, nil
+}
+
+// FormatterForVersion returns the term formatter paired with the given index
+// format version. Keys extracted with a version's extractor must be rendered
+// with that same version's formatter.
+func FormatterForVersion(version string) (TermFormatFunc, error) {
+	fns, ok := ngramsByVersion[version]
+	if !ok {
+		return nil, fmt.Errorf("no term formatter registered for index version %q", version)
+	}
+	return fns.format, nil
 }

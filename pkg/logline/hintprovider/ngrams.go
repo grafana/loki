@@ -7,12 +7,16 @@ import (
 )
 
 // ExtractQueryNgrams converts query text into sorted unique n-gram terms using
-// the extraction algorithm paired with indexVersion.
+// the extraction and term formatting paired with indexVersion.
 //
 // Returns (nil, nil) when the query is too short to produce ngrams; returns a
 // non-nil error only when indexVersion is not a recognised version.
 func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]string, error) {
-	fn, err := logline.ExtractorForVersion(indexVersion)
+	extract, err := logline.ExtractorForVersion(indexVersion)
+	if err != nil {
+		return nil, err
+	}
+	formatTerm, err := logline.FormatterForVersion(indexVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -20,18 +24,14 @@ func ExtractQueryNgrams(query string, ngramLength int, indexVersion string) ([]s
 		return nil, nil
 	}
 
-	ngrams := fn(ngramLength, query, nil, nil, nil)
+	ngrams := extract(ngramLength, query, nil, nil, nil)
 	if len(ngrams) == 0 {
 		return nil, nil
 	}
 
 	terms := make([]string, 0, len(ngrams))
 	for _, key := range ngrams {
-		if logline.IsPackedTermKey(key) {
-			terms = append(terms, string(key[:]))
-			continue
-		}
-		terms = append(terms, string(key[:ngramLength]))
+		terms = append(terms, formatTerm(key, ngramLength))
 	}
 	sort.Strings(terms)
 

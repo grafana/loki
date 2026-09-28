@@ -49,3 +49,52 @@ func TestExtractorForVersion_UnknownVersionReturnsError(t *testing.T) {
 	require.Nil(t, fn)
 	require.Contains(t, err.Error(), "v99")
 }
+
+// TestFormatterForVersion_AllVersions verifies that every version an extractor
+// is registered for also has a formatter. They are two halves of one contract:
+// a key emitted by one version's extractor is only meaningful when rendered by
+// the same version's formatter.
+func TestFormatterForVersion_AllVersions(t *testing.T) {
+	for _, v := range AllVersions() {
+		t.Run(v, func(t *testing.T) {
+			extract, err := ExtractorForVersion(v)
+			require.NoError(t, err)
+			format, err := FormatterForVersion(v)
+			require.NoError(t, err)
+			require.NotNil(t, format)
+
+			// A text gram is the ngram-length prefix of the key under every version.
+			keys := extract(6, "abcdefg", nil, nil, nil)
+			require.NotEmpty(t, keys)
+			require.Equal(t, "ABCDEF", format(keys[0], 6))
+		})
+	}
+}
+
+// TestFormatterForVersion_V4PacksNumericWhole verifies that a v4 numeric key is
+// rendered whole rather than sliced to the ngram length, which would cut off
+// the low bytes of the packed value.
+func TestFormatterForVersion_V4PacksNumericWhole(t *testing.T) {
+	extract, err := ExtractorForVersion("v4")
+	require.NoError(t, err)
+	format, err := FormatterForVersion("v4")
+	require.NoError(t, err)
+
+	keys := extract(6, "385634291", nil, nil, nil)
+	require.Len(t, keys, 1)
+
+	term := format(keys[0], 6)
+	require.Len(t, term, 8)
+	require.Equal(t, string(keys[0][:]), term)
+
+	// The term is the same at any ngram length, so a numeric lookup does not
+	// depend on how the deployment configured -logline-index.ngram-length.
+	require.Equal(t, term, format(keys[0], 8))
+}
+
+func TestFormatterForVersion_UnknownVersionReturnsError(t *testing.T) {
+	format, err := FormatterForVersion("v99")
+	require.Error(t, err)
+	require.Nil(t, format)
+	require.Contains(t, err.Error(), "v99")
+}
