@@ -1,4 +1,4 @@
-package consumer
+package builder
 
 import (
 	"context"
@@ -16,9 +16,9 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -41,8 +41,8 @@ type Service struct {
 	reg                prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
-	logger = log.With(logger, "component", "dataobj-consumer")
+func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+	logger = log.With(logger, "component", "dataobj-builder")
 
 	s := &Service{
 		cfg:    cfg,
@@ -67,7 +67,7 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 	// data objects.
 	readerCfg := kafkaCfg
 	readerCfg.Topic = cfg.Topic
-	readerClient, err := client.NewReaderClient("loki.dataobj_consumer", readerCfg, logger, reg)
+	readerClient, err := client.NewReaderClient("loki.dataobj_builder", readerCfg, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
@@ -82,9 +82,9 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 		kafkav2.OffsetStart, // We fetch the real initial offset before starting the service.
 		records,
 		logger,
-		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
+		prometheus.WrapRegistererWithPrefix("loki_dataobj_builder_", reg),
 	)
-	uploader := dataobj_uploader.New(cfg.UploaderConfig, bucket, logger)
+	uploader := dataobj_uploader.New(uploaderCfg, bucket, logger)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
@@ -103,7 +103,7 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
-	builderFactory, err := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, builderMetrics, logger, overrides)
+	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
 	}
@@ -112,7 +112,7 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 
 	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
 	indexer, err := index.NewSimpleIndexer(
-		idxCfg.BuilderBaseConfig,
+		cfg.IndexobjBuilder,
 		scratchStore,
 		logger,
 		idxBucket,
@@ -139,7 +139,7 @@ func New(kafkaCfg kafka.Config, cfg Config, idxCfg index.Config, mCfg metastore.
 		wrapped,
 	)
 	s.processor = newProcessor(
-		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.TargetObjectSize)),
+		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

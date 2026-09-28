@@ -1,6 +1,6 @@
 // Package sortmerge provides a k-way merge iterator over dataobj logs sections.
 //
-// It is a small primitive shared between the dataobj consumer (which uses it
+// It is a small primitive shared between the dataobj builder (which uses it
 // to merge sorted sections during a flush) and the dataobj-compactor executor
 // (which uses it to merge sorted sections from multiple source data objects).
 package sortmerge

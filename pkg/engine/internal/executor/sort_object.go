@@ -9,9 +9,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -43,10 +43,7 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	}
 
 	builder, err := logsobj.NewBuilder(
-		logsobj.BuilderConfig{
-			BuilderBaseConfig:    c.logsobjCfg,
-			AppendOrderedEnabled: true,
-		},
+		c.logsobjCfg,
 		c.scratchStore,
 		c.builderMetrics,
 		c.logger,

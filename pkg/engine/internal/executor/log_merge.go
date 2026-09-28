@@ -13,9 +13,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
@@ -414,10 +414,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.Mul
 }
 
 func (w *logObjectWriter) startNewObject() error {
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig:    w.c.logsobjCfg,
-		AppendOrderedEnabled: true,
-	}
+	cfg := w.c.logsobjCfg
 	overrides := fixedSortSchema(w.node.SortSchema)
 
 	var err error

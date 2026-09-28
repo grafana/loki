@@ -371,11 +371,11 @@ Used in Table of Contents (toc) objects to point to index objects, via a time ra
 
 ## Operational Components
 
-### Consumer
+### Builder
 
-**Location**: `pkg/dataobj/consumer/`
+**Location**: `pkg/dataobj/builder/`
 
-The consumer reads log data from Kafka and builds data objects.
+The builder (the `dataobj-builder` target) reads log data from Kafka and builds data objects.
 
 **Key Features:**
 - Reads from Kafka partitions
@@ -398,7 +398,7 @@ The metastore serves queries by the following:
 
 **Location**: `pkg/dataobj/index/`
 
-Creates index objects that contain indexes over data objects containing the logs. Used by the consumer and by compaction.
+Creates index objects that contain indexes over data objects containing the logs. Used by the builder and by compaction.
 
 ### Explorer Service
 

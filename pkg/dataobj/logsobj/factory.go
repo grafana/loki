@@ -9,7 +9,7 @@ import (
 
 // A BuilderFactory is used to create builders.
 type BuilderFactory struct {
-	cfg          BuilderConfig
+	cfg          BuilderBaseConfig
 	scratchStore scratch.Store
 	overrides    TenantOverrides
 	logger       log.Logger
@@ -19,7 +19,7 @@ type BuilderFactory struct {
 // NewBuilderFactory validates the config, reports related metrics, and returns a factory that is prepared to create new
 // builders.
 func NewBuilderFactory(
-	cfg BuilderConfig,
+	cfg BuilderBaseConfig,
 	scratchStore scratch.Store,
 	metrics *BuilderMetrics,
 	logger log.Logger,
