@@ -507,10 +507,9 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 
 	arts, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
-	require.NotEmpty(t, arts, "merge must return artifacts")
-	require.Len(t, arts, 1, "log-merge produces one index artifact")
+	require.NoError(t, arts.Validate())
 
-	indexPath := arts[0].Path
+	indexPath := arts.Path
 	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
 	require.GreaterOrEqual(t, len(objs), 2, "output must be split into multiple objects")
 
@@ -589,9 +588,9 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 
 	arts, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
-	require.Len(t, arts, 1)
+	require.NoError(t, arts.Validate())
 
-	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant)
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts.Path, tenant)
 	require.Len(t, objs, 1)
 	require.Len(t, objs[0].streamApp, 2, "two full-label streams must remain after cross-object deduplication")
 	require.Len(t, objs[0].records, 4)
@@ -681,7 +680,7 @@ func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
 
 	arts, err := c.doLogObjectMerge(ctx, node)
 	require.ErrorContains(t, err, "sort layout does not match target")
-	require.Empty(t, arts, "mismatched sort layout must not produce an output")
+	require.Nil(t, arts, "mismatched sort layout must not produce an output")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
@@ -710,9 +709,9 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 
 	arts, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
-	require.Len(t, arts, 1, "produce one index")
+	require.NoError(t, arts.Validate())
 
-	indexPath := arts[0].Path
+	indexPath := arts.Path
 
 	// Index exists at the content-hash path in the index bucket
 	ok, err := indexBucket.Exists(ctx, indexPath)
@@ -776,9 +775,9 @@ func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
 
 	arts, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
-	require.Len(t, arts, 1, "produce one index")
+	require.NoError(t, arts.Validate())
 
-	indexPath := arts[0].Path
+	indexPath := arts.Path
 	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
 
 	// With small TargetObjectSize, the merge should split into multiple objects
@@ -894,11 +893,11 @@ func TestExecuteLogMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, rec, "pipeline must yield a result record")
 
 	// Deserialize the result artifacts
-	arts, err := v2.ReadResultRecord(rec)
-	require.NoError(t, err)
-	require.Len(t, arts, 1, "produce one index artifact")
+	var arts v2.ResultArtifact
+	require.NoError(t, arts.FromRecordBatch(rec))
+	require.NoError(t, arts.Validate())
 
-	indexPath := arts[0].Path
+	indexPath := arts.Path
 	// Index path follows content-hash format: indexes/tenants/<tenant>/<h2>/<hrest>
 	require.Contains(t, indexPath, "indexes/tenants/T/", "index path must follow content-hash format")
 
@@ -1031,10 +1030,10 @@ func TestDoLogObjectMerge_HonorsPerTaskSectionSelection(t *testing.T) {
 		}
 		arts, err := c.doLogObjectMerge(ctx, node)
 		require.NoError(t, err)
-		require.Len(t, arts, 1)
+		require.NoError(t, arts.Validate())
 
 		got := make(map[appTS]int)
-		for _, o := range readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant) {
+		for _, o := range readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts.Path, tenant) {
 			for _, r := range o.records {
 				got[appTS{app: r.app, ts: r.ts.UnixNano()}]++
 			}
@@ -1228,9 +1227,9 @@ func TestDoLogObjectMerge_StreamMetadataMatchesMergedRecords(t *testing.T) {
 		}
 		arts, err := c.doLogObjectMerge(ctx, node)
 		require.NoError(t, err)
-		require.Len(t, arts, 1)
+		require.NoError(t, arts.Validate())
 
-		declared, actual := readCompactedStreamAggs(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant)
+		declared, actual := readCompactedStreamAggs(ctx, t, dataBucket, indexBucket, arts.Path, tenant)
 		require.NotEmpty(t, declared, "expected at least one output stream")
 		require.Equal(t, actual, declared,
 			"streams section metadata must match the records actually merged, not the full source stream")
@@ -1274,8 +1273,8 @@ func TestDoLogObjectMerge_PlannedRuns(t *testing.T) {
 	c := newTestExecutorContext(t, bucket)
 	arts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant, SortSchema: schema, Runs: refs})
 	require.NoError(t, err)
-	require.Len(t, arts, 1)
-	objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts[0].Path, tenant)
+	require.NoError(t, arts.Validate())
+	objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
 	require.Len(t, objects, 1)
 	require.Len(t, objects[0].records, 10)
 	require.Len(t, objects[0].streamLabels, 4)
@@ -1320,7 +1319,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 	t.Run("merge selected section once", func(t *testing.T) {
 		arts, err := c.doLogObjectMerge(ctx, node)
 		require.NoError(t, err)
-		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts[0].Path, tenant)
+		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
 		require.Len(t, objects, 1)
 		require.NotEmpty(t, objects[0].records)
 		require.Less(t, len(objects[0].records), 160)
@@ -1329,7 +1328,7 @@ func TestLogMergeInputs_SectionReferences(t *testing.T) {
 		all := &physical.LogMerge{Tenant: tenant, SortSchema: schema, Runs: sourceLogRuns(t, bucket, tenant, "source")}
 		arts, err := c.doLogObjectMerge(ctx, all)
 		require.NoError(t, err)
-		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts[0].Path, tenant)
+		objects := readCompactedObjectsFromIndex(ctx, t, bucket, bucket, arts.Path, tenant)
 		require.Len(t, objects, 1)
 		require.Len(t, objects[0].records, 160)
 	})

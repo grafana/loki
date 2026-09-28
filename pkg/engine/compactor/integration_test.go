@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +19,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -96,7 +95,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		},
 		logger: log.NewNopLogger(),
 		bucket: bucket,
-		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
+		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			return runPlan(rpCtx, log.NewNopLogger(), sched, opts, plan)
 		},
 		metastoreWriter: tocWriter,
@@ -299,7 +298,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				},
 				logger: log.NewNopLogger(),
 				bucket: bucket,
-				runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
+				runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 					return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 				},
 				metastoreWriter: tocWriter,
