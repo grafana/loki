@@ -103,11 +103,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStac
 		}
 	}
 
-	// Warn when schema removal succeeds
-	if len(allErrs) == 0 && schemasRemoved(newStack.Spec.Storage.Schemas, storageStatus.Schemas) {
-		warnings = append(warnings, lokiv1.WarnSchemaRemoval)
-	}
-
 	if len(allErrs) == 0 {
 		return warnings, nil
 	}
