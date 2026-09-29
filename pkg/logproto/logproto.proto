@@ -451,6 +451,11 @@ message LoglineIndexRequest {
   ];
   string expr = 3;
   repeated IndexMeta indexes = 4 [(gogoproto.nullable) = false];
+  // NgramLength and MaxParallel are the query-frontend's settings for this
+  // lookup so the querier does not need matching logline config. Zero means
+  // use the querier's configured defaults.
+  int32 ngram_length = 5 [(gogoproto.jsontag) = "ngram_length"];
+  int32 max_parallel = 6 [(gogoproto.jsontag) = "max_parallel"];
 }
 
 // IndexMeta is the slim index descriptor on LoglineIndexRequest. Catalog identity is

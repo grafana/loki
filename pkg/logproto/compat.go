@@ -381,6 +381,8 @@ func (m *LoglineIndexRequest) LogToSpan(sp trace.Span) {
 		attribute.String("query", m.GetQuery()),
 		attribute.String("start", timestamp.Time(int64(m.From)).String()),
 		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
+		attribute.Int("ngram_length", int(m.NgramLength)),
+		attribute.Int("max_parallel", int(m.MaxParallel)),
 	)
 }
 

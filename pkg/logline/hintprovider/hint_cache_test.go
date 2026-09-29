@@ -152,6 +152,42 @@ func (s *stubHintProvider) MinDate() time.Time {
 	return s.minDate
 }
 
+// inclusivePassthroughHintProvider mirrors unconstrained QueryHints: a
+// zero-Start sentinel whose End is exclusive of the inclusive through bound.
+type inclusivePassthroughHintProvider struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *inclusivePassthroughHintProvider) ProvideHints(
+	_ context.Context,
+	_ string,
+	_ syntax.Expr,
+	_,
+	through model.Time,
+	_ queryrangebase.Handler,
+) (*Hints, *QueryStats, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return &Hints{TimeRanges: []HintTimeRange{passthroughForInclusiveThrough(through.Time())}}, NewQueryStats(), nil
+}
+
+func (s *inclusivePassthroughHintProvider) Calls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+func coversTimestamp(ranges []HintTimeRange, ts time.Time) bool {
+	for _, r := range ranges {
+		if !r.Start.After(ts) && ts.Before(r.End) {
+			return true
+		}
+	}
+	return false
+}
+
 func cloneHints(h *Hints) *Hints {
 	if h == nil {
 		return nil
@@ -337,6 +373,7 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 		{"ends exactly at midnight", HintTimeRange{Start: d11.Add(-time.Minute), End: d11}},
 		{"starts exactly at midnight", HintTimeRange{Start: d11, End: d11.Add(time.Minute)}},
 		{"final millisecond of the day", HintTimeRange{Start: d11.Add(-time.Millisecond), End: d11}},
+		{"unconstrained passthrough covering last millisecond", passthroughForInclusiveThrough(d11.Add(-time.Millisecond))},
 		{"spans a whole day", HintTimeRange{Start: d10.Add(23 * time.Hour), End: d12.Add(time.Hour)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -366,6 +403,28 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestCachingHintProvider_UnconstrainedPassthroughCoversLastMillisecond(t *testing.T) {
+	backend := newMockHintCacheBackend()
+	delegate := &inclusivePassthroughHintProvider{}
+	provider := NewCachingHintProvider(delegate, backend, prometheus.NewRegistry())
+
+	dayStart := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	lastMs := dayStart.Add(24*time.Hour - time.Millisecond)
+	expr := mustParseExpr(t, `{job="api"} |= "12345678"`)
+	from := model.TimeFromUnixNano(dayStart.UnixNano())
+	through := model.TimeFromUnixNano(lastMs.UnixNano())
+
+	miss, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	require.NoError(t, err)
+	require.True(t, coversTimestamp(miss.TimeRanges, lastMs))
+
+	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, delegate.Calls())
+	require.True(t, coversTimestamp(hit.TimeRanges, lastMs),
+		"cached day payload must still cover the inclusive through bound; got %v", hit.TimeRanges)
 }
 
 func TestBuildDayWindows_SplitsAcrossUTCMidnight(t *testing.T) {

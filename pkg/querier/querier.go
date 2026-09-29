@@ -628,7 +628,7 @@ func (q *SingleTenantQuerier) LoglineIndexes(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
-	return q.loglineHintProvider.QueryHints(ctx, expr, req.GetStart(), req.GetEnd(), req.Indexes)
+	return q.loglineHintProvider.QueryHints(ctx, expr, req)
 }
 
 func (q *SingleTenantQuerier) IndexShards(

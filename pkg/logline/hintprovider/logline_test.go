@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {
@@ -135,7 +135,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats, 6, 64)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -212,11 +212,37 @@ func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
+	through := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
-	resp, err := provider.QueryHints(context.Background(), expr, time.Time{}, time.Time{}, nil)
-	require.ErrorIs(t, err, ErrUnsupported)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		Through: model.TimeFromUnixNano(through.UnixNano()),
+	})
+	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Empty(t, resp.TimeRanges)
+	require.Len(t, resp.TimeRanges, 1)
+	require.True(t, resp.TimeRanges[0].Start.IsZero())
+	require.Equal(t, through.Add(time.Millisecond).UnixMilli(), resp.TimeRanges[0].End.UnixMilli())
+}
+
+func TestLoglineHintProvider_QueryHints_UnconstrainedQuery(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	through := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	expr := mustParseExpr(t, `{job="api"} |= "12345678"`)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		Through: model.TimeFromUnixNano(through.UnixNano()),
+		Indexes: []logproto.IndexMeta{{
+			ID:      "2026-03-10/aaaaaaaaaaaaaaaa",
+			Version: "v4",
+		}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.TimeRanges, 1)
+	require.True(t, resp.TimeRanges[0].Start.IsZero())
+	require.Equal(t, through.Add(time.Millisecond).UnixMilli(), resp.TimeRanges[0].End.UnixMilli())
 }
 
 func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T) {
@@ -232,7 +258,11 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.Len(t, active, 1)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
-	resp, err := provider.QueryHints(context.Background(), expr, t0, t0.Add(5*time.Minute), active)
+	resp, err := provider.QueryHints(context.Background(), expr, &logproto.LoglineIndexRequest{
+		From:    model.TimeFromUnixNano(t0.UnixNano()),
+		Through: model.TimeFromUnixNano(t0.Add(5 * time.Minute).UnixNano()),
+		Indexes: active,
+	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Stats)
@@ -242,6 +272,20 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	restored := fromProtoStats(resp.Stats)
 	restored.SetWallTime(5 * time.Second)
 	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
+}
+
+func TestLoglineHintProvider_LookupParams(t *testing.T) {
+	indexStore := newTestStore(t)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	ngram, parallel := provider.lookupParams(&logproto.LoglineIndexRequest{})
+	require.Equal(t, 6, ngram)
+	require.Equal(t, 32, parallel)
+
+	ngram, parallel = provider.lookupParams(&logproto.LoglineIndexRequest{NgramLength: 3, MaxParallel: 8})
+	require.Equal(t, 3, ngram)
+	require.Equal(t, 8, parallel)
 }
 
 func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T) {
@@ -1014,7 +1058,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats)
+	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats, 6, 64)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 

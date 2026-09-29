@@ -74,22 +74,31 @@ func NewLoglineHintProvider(
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
-	from, through time.Time,
-	overlapping []logproto.IndexMeta,
+	req *logproto.LoglineIndexRequest,
 ) (*logproto.LoglineIndexResponse, error) {
-	filters := SupportedQuery(expr, p.ngramLength)
+	if req == nil {
+		req = &logproto.LoglineIndexRequest{}
+	}
+	ngramLength, maxParallel := p.lookupParams(req)
+	filters := SupportedQuery(expr, ngramLength)
 	stats := NewQueryStats()
+	through := req.GetEnd()
 	if len(filters) == 0 {
+		// The query-frontend already decided this lookup was worth sending.
+		// Returning ErrUnsupported here becomes a 500 after the RPC hop.
 		snap := stats.Snapshot()
-		return &logproto.LoglineIndexResponse{Stats: &snap}, ErrUnsupported
+		return &logproto.LoglineIndexResponse{
+			TimeRanges: toProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
+			Stats:      &snap,
+		}, nil
 	}
 	started := time.Now()
-	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(overlapping), stats)
+	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel)
 	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
 	if errors.Is(err, ErrUnconstrained) {
 		return &logproto.LoglineIndexResponse{
-			TimeRanges: []logproto.HintTimeRange{{End: through}},
+			TimeRanges: toProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
 			Stats:      &snap,
 		}, nil
 	}
@@ -97,6 +106,17 @@ func (p *LoglineHintProvider) QueryHints(
 		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
 	return &logproto.LoglineIndexResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+}
+
+func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
+	ngramLength, maxParallel = p.ngramLength, p.maxParallel
+	if req.NgramLength > 0 {
+		ngramLength = int(req.NgramLength)
+	}
+	if req.MaxParallel > 0 {
+		maxParallel = int(req.MaxParallel)
+	}
+	return
 }
 
 type hintPlan struct {
@@ -160,10 +180,12 @@ func (p *LoglineHintProvider) provideHintsRemote(
 	}
 
 	resp, err := next.Do(ctx, &logproto.LoglineIndexRequest{
-		From:    from,
-		Through: through,
-		Expr:    expr.String(),
-		Indexes: toProtoIndexMetas(plan.indexes),
+		From:        from,
+		Through:     through,
+		Expr:        expr.String(),
+		Indexes:     toProtoIndexMetas(plan.indexes),
+		NgramLength: int32(p.ngramLength),
+		MaxParallel: int32(p.maxParallel),
 	})
 	if err != nil {
 		return nil, plan.stats, err
@@ -193,9 +215,9 @@ func (p *LoglineHintProvider) ProvideHints(
 		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
 	}
 
-	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats)
+	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats, p.ngramLength, p.maxParallel)
 	if errors.Is(err, ErrUnconstrained) {
-		return &Hints{TimeRanges: []HintTimeRange{{End: through.Time()}}}, plan.stats, nil
+		return &Hints{TimeRanges: []HintTimeRange{passthroughForInclusiveThrough(through.Time())}}, plan.stats, nil
 	}
 	if err != nil {
 		return nil, plan.stats, err

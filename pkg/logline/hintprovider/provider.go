@@ -57,6 +57,13 @@ func (h HintTimeRange) IsPassthrough() bool {
 	return h.Start.IsZero()
 }
 
+// passthroughForInclusiveThrough covers an inclusive ProvideHints/LoglineIndex
+// through bound as a half-open hint. Zero Start is the passthrough sentinel;
+// End is the next millisecond so a log at through stays inside [Start, End).
+func passthroughForInclusiveThrough(through time.Time) HintTimeRange {
+	return HintTimeRange{End: through.UTC().Add(time.Millisecond)}
+}
+
 // Hints contains narrowed ranges derived from index lookups.
 type Hints struct {
 	TimeRanges []HintTimeRange
