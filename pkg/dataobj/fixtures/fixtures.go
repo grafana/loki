@@ -116,13 +116,14 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 	}
 	ts := time.Unix(int64(tsSeconds), 0).UTC()
 	key := stream.String()
+	streamHash := labels.StableHash(stream)
 	index, ok := b.streamIndexes[key]
 	if !ok {
 		index = len(b.streams)
 		b.streamIndexes[key] = index
 		b.streams = append(b.streams, streams.Stream{
 			ID: int64(index + 1), Labels: stream,
-			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.ShardBucket(stream)),
+			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.ShardBucketFromHash(streamHash)),
 		})
 	}
 	s := &b.streams[index]
@@ -143,10 +144,9 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 		schemaKey, err = logsobj.ComputeSchemaKey(stream, b.schemaLabels)
 		require.NoError(b.t, err)
 	}
-	streamHash := labels.StableHash(stream)
 	b.logs = append(b.logs, logs.Record{
 		StreamID: s.ID, Timestamp: ts, Metadata: smLabels, Line: []byte(logMessage),
-		SchemaKey: schemaKey, ShardBucket: streams.ShardBucketFromHash(streamHash), StreamHash: streamHash,
+		SchemaKey: schemaKey, ShardBucket: uint32(s.ShardBucket), StreamHash: streamHash,
 	})
 }
 
