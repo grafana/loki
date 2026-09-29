@@ -45,10 +45,10 @@ const (
 	MetastoreWindowSize = 12 * time.Hour
 
 	// TocPrefix is the prefix under which ToC files are stored in the object
-	// storage, laid out as tocs/<window>/<tenant>.toc.
+	// storage, laid out as tocs/<window>/<tenant>/toc.toc.
 	TocPrefix = "tocs/"
 
-	tocSuffix = ".toc"
+	tocFileName = "toc.toc"
 )
 
 var tracer = otel.Tracer("pkg/dataobj/metastore")
@@ -184,7 +184,7 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 // TableOfContentsPath returns the path of the tenant's ToC for window.
 // window must be aligned to MetastoreWindowSize.
 func TableOfContentsPath(tenant string, window time.Time) string {
-	return TableOfContentsWindowPrefix(window) + tenant + tocSuffix
+	return TableOfContentsWindowPrefix(window) + tenant + "/" + tocFileName
 }
 
 // TableOfContentsWindowPrefix returns the folder holding every tenant's ToC for window.
@@ -200,8 +200,8 @@ func ListTableOfContentsTenants(ctx context.Context, bucket objstore.BucketReade
 
 	var tenants []string
 	err := bucket.Iter(ctx, prefix, func(name string) error {
-		tenant, ok := strings.CutSuffix(strings.TrimPrefix(name, prefix), tocSuffix)
-		// Skip folders and other files; ToCs sit directly in the window folder.
+		// Each tenant's ToC sits in its own folder; skip anything else.
+		tenant, ok := strings.CutSuffix(strings.TrimPrefix(name, prefix), "/")
 		if ok && tenant != "" && !strings.Contains(tenant, "/") {
 			tenants = append(tenants, tenant)
 		}

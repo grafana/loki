@@ -162,7 +162,7 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 				require.NoError(t, err)
 				require.NotEmpty(t, resp.TableOfContentsPaths)
 				for _, path := range resp.TableOfContentsPaths {
-					require.True(t, strings.HasSuffix(path, "/"+tenantA+".toc"), "unexpected ToC path %s", path)
+					require.True(t, strings.HasSuffix(path, "/"+tenantA+"/toc.toc"), "unexpected ToC path %s", path)
 				}
 				var got []string
 				for _, idx := range resp.Indexes {
@@ -199,7 +199,7 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 			tocReads := bucket.tocReads()
 			require.NotEmpty(t, tocReads)
 			for _, name := range tocReads {
-				require.True(t, strings.HasSuffix(name, "/"+tenantA+".toc"), "read ToC %s of another tenant", name)
+				require.True(t, strings.HasSuffix(name, "/"+tenantA+"/toc.toc"), "read ToC %s of another tenant", name)
 			}
 		})
 	}

@@ -152,9 +152,9 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}))
 
 		require.ElementsMatch(t, []string{
-			"tocs/2025-01-01T00_00_00Z/tenant-a.toc",
-			"tocs/2025-01-01T12_00_00Z/tenant-a.toc",
-			"tocs/2025-01-01T00_00_00Z/tenant-b.toc",
+			"tocs/2025-01-01T00_00_00Z/tenant-a/toc.toc",
+			"tocs/2025-01-01T12_00_00Z/tenant-a/toc.toc",
+			"tocs/2025-01-01T00_00_00Z/tenant-b/toc.toc",
 		}, slices.Collect(maps.Keys(bucket.Objects())))
 
 		for _, tc := range []struct {
