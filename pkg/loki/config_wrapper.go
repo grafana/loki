@@ -121,6 +121,8 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
+		applyLoglineKafkaConfig(r)
+		applyLoglineIndexConfig(r)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -368,24 +370,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.UI.Ring.KVStore = rc.KVStore
 		r.UI.Ring.EnableIPv6 = rc.EnableIPv6
 	}
-
-	// DataObjConsumer
-	if mergeWithExisting || reflect.DeepEqual(r.DataObj.Consumer.LifecyclerConfig.RingConfig, defaults.DataObj.Consumer.LifecyclerConfig.RingConfig) {
-		r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.DataObj.Consumer.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.DataObj.Consumer.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.DataObj.Consumer.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.DataObj.Consumer.LifecyclerConfig.ID = rc.InstanceID
-		r.DataObj.Consumer.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.DataObj.Consumer.LifecyclerConfig.Port = rc.InstancePort
-		r.DataObj.Consumer.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.DataObj.Consumer.LifecyclerConfig.Zone = rc.InstanceZone
-		r.DataObj.Consumer.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.DataObj.Consumer.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-		r.DataObj.Consumer.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
-		r.DataObj.Consumer.PartitionRingConfig.KVStore = rc.KVStore
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -444,13 +428,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.UI.Ring.TokensFilePath = f
-
-	// Dataobj Consumer
-	f, err = tokensFile(cfg, "dataobjconsumer.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.DataObj.Consumer.LifecyclerConfig.TokensFilePath = f
 
 	return nil
 }
@@ -551,10 +528,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, defaults.DataObj.Consumer.LifecyclerConfig.InfNames) {
-		cfg.DataObj.Consumer.LifecyclerConfig.InfNames = append(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, loopbackIface)
-	}
-
 	if reflect.DeepEqual(cfg.QueryEngine.InterfaceNames, defaults.QueryEngine.InterfaceNames) {
 		cfg.QueryEngine.InterfaceNames = append(cfg.QueryEngine.InterfaceNames, loopbackIface)
 	}
@@ -575,7 +548,6 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 	r.UI.Ring.KVStore.Store = memberlistStr
-	r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -802,4 +774,16 @@ func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
+}
+
+// applyLoglineIndexConfig copies the shared logline.index section into the
+// index builder.
+func applyLoglineIndexConfig(r *ConfigWrapper) {
+	r.Logline.Builder.Index = r.Logline.Index
+}
+
+// applyLoglineKafkaConfig fills the logline index builder's unset Kafka fields
+// from the root kafka_config.
+func applyLoglineKafkaConfig(r *ConfigWrapper) {
+	r.Logline.Builder.Kafka.ApplyDefaultsFrom(r.KafkaConfig)
 }

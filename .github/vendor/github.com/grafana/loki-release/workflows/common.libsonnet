@@ -1,3 +1,6 @@
+local checkoutAction = 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262';  // v4
+local setupNodeAction = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';  // v4
+
 {
   step: {
     new: function(name, uses=null) {
@@ -79,7 +82,7 @@
                                             $.step.withWorkingDirectory('lib'),
 
   checkout:
-    $.step.new('checkout', 'actions/checkout@v4')
+    $.step.new('checkout', checkoutAction)
     + $.step.with({
       'persist-credentials': false,
     }),
@@ -89,14 +92,14 @@
     + $.step.withRun('rm -rf /opt/hostedtoolcache'),
 
   fetchReleaseRepo:
-    $.step.new('pull code to release', 'actions/checkout@v4')
+    $.step.new('pull code to release', checkoutAction)
     + $.step.with({
       repository: '${{ env.RELEASE_REPO }}',
       path: 'release',
       'persist-credentials': false,
     }),
   fetchReleaseLib:
-    $.step.new('pull release library code', 'actions/checkout@v4')
+    $.step.new('pull release library code', checkoutAction)
     + $.step.with({
       repository: 'grafana/loki-release',
       path: 'lib',
@@ -104,7 +107,7 @@
       'persist-credentials': false,
     }),
 
-  setupNode: $.step.new('setup node', 'actions/setup-node@v4')
+  setupNode: $.step.new('setup node', setupNodeAction)
              + $.step.with({
                'node-version': 24,
                'package-manager-cache': false,

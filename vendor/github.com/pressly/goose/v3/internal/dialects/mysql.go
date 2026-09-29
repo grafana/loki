@@ -20,7 +20,7 @@ func (m *mysql) CreateTable(tableName string) string {
 		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 		version_id bigint NOT NULL,
 		is_applied boolean NOT NULL,
-		tstamp timestamp NULL default now(),
+		tstamp datetime NULL default CURRENT_TIMESTAMP,
 		PRIMARY KEY(id)
 	)`
 	return fmt.Sprintf(q, tableName)

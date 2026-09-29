@@ -1873,6 +1873,9 @@ certificates is missing.</p>
 <td><p>ReasonMissingObjectStorageSecret when the required secret to store logs to object
 storage is missing.</p>
 </td>
+</tr><tr><td><p>&#34;MissingPassthroughConfiguration&#34;</p></td>
+<td><p>ReasonMissingPassthroughConfiguration when the passthrough configuration is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingRulerSecret&#34;</p></td>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>

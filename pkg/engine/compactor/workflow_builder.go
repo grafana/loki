@@ -7,10 +7,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -57,17 +57,27 @@ func buildLogMergePlan(
 	return physical.FromGraph(g)
 }
 
+func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
+	node := &physical.SortObject{
+		NodeID:           ulid.Make(),
+		SourceObjectPath: sourceObjectPath,
+		SortSchema:       sortSchema,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
-// and drains the pipeline. A compaction job emits exactly one record batch
-// reporting the artifacts it produced. Returns the record batch or nil,nil
-// if the pipeline was empty.
+// and drains the pipeline. Success requires exactly one artifact followed by
+// successful pipeline completion.
 func runPlan(
 	ctx context.Context,
 	logger log.Logger,
 	runner workflow.Runner,
 	opts workflow.Options,
 	plan *physical.Plan,
-) (arrow.RecordBatch, error) {
+) (*v2.ResultArtifact, error) {
 	wf, err := workflow.New(ctx, opts, logger, runner, plan)
 	if err != nil {
 		return nil, fmt.Errorf("workflow.New: %w", err)
@@ -78,6 +88,12 @@ func runPlan(
 	if err != nil {
 		return nil, fmt.Errorf("workflow.Run: %w", err)
 	}
+	return readCompactionResult(ctx, pipeline)
+}
+
+// readCompactionResult owns the pipeline and returned records. It decodes the
+// artifact before releasing its record, but does not return it until EOF.
+func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) (*v2.ResultArtifact, error) {
 	reader := executor.TranslateEOF(pipeline)
 	defer reader.Close()
 
@@ -85,18 +101,41 @@ func runPlan(
 		return nil, fmt.Errorf("pipeline.Open: %w", err)
 	}
 
-	var result arrow.RecordBatch
+	var result v2.ResultArtifact
+	haveResult := false
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		rec, err := reader.Read(ctx)
+		if err != nil && rec != nil {
+			rec.Release()
+		}
 		if errors.Is(err, io.EOF) {
-			return result, nil
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !haveResult {
+				return nil, fmt.Errorf("compaction job produced no result record")
+			}
+			return &result, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("pipeline.Read: %w", err)
 		}
-		if result != nil {
+		if haveResult {
+			if rec != nil {
+				rec.Release()
+			}
 			return nil, fmt.Errorf("compaction job produced more than one result record")
 		}
-		result = rec
+		err = result.FromRecordBatch(rec)
+		if rec != nil {
+			rec.Release()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decode compaction result: %w", err)
+		}
+		haveResult = true
 	}
 }

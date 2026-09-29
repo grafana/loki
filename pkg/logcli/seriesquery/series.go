@@ -2,7 +2,6 @@ package seriesquery
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"sort"
 	"text/tabwriter"
@@ -28,8 +27,11 @@ type labelDetails struct {
 }
 
 // DoSeries prints out series results
-func (q *SeriesQuery) DoSeries(c client.Client) {
-	streams := q.GetSeries(c)
+func (q *SeriesQuery) DoSeries(c client.Client) error {
+	streams, err := q.GetSeries(c)
+	if err != nil {
+		return err
+	}
 
 	if q.AnalyzeLabels {
 		labelMap := map[string]*labelDetails{}
@@ -73,14 +75,14 @@ func (q *SeriesQuery) DoSeries(c client.Client) {
 			fmt.Println(value)
 		}
 	}
-
+	return nil
 }
 
 // GetSeries returns an array of label sets
-func (q *SeriesQuery) GetSeries(c client.Client) []loghttp.LabelSet {
+func (q *SeriesQuery) GetSeries(c client.Client) ([]loghttp.LabelSet, error) {
 	seriesResponse, err := c.Series([]string{q.Matcher}, q.Start, q.End, q.Quiet)
 	if err != nil {
-		log.Fatalf("Error doing request: %+v", err)
+		return nil, err
 	}
-	return seriesResponse.Data
+	return seriesResponse.Data, nil
 }

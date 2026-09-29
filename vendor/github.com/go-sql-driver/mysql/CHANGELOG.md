@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.10.1 (2026-09-02)
+
+* Fix `Config.FormatDSN()` dropping `Addr` when `Net` is empty.
+  It now uses the default `tcp` network so configs with only `Addr` round-trip correctly. (#1770)
+
+* Fix typed-nil `json.RawMessage` with `interpolateParams=true` being interpolated as an empty string.
+  It is now interpolated as SQL `NULL`, matching server-side prepared statements. (#1782)
+
+* Add MariaDB 11.8 and 12.3 to the test matrix. (#1774)
+
 ## v1.10.0 (2026-04-28)
 
 * Fix `getSystemVar("max_allowed_packet")` potentially returned wrong value. (#1754)

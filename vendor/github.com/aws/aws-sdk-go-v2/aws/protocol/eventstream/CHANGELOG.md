@@ -1,3 +1,19 @@
+# v1.7.20 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+
+# v1.7.19 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+
+# v1.7.18 (2026-08-14)
+
+* **Dependency Update**: Update to smithy-go v1.27.8.
+
+# v1.7.17 (2026-08-10)
+
+* **Dependency Update**: Update to smithy-go v1.27.7.
+
 # v1.7.16 (2026-07-31.2)
 
 * **Dependency Update**: Upgrade to smithy-go v1.27.6 to fix various serde issues in HTTP binding services.

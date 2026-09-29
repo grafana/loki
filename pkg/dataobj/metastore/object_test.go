@@ -16,8 +16,8 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -225,7 +225,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -372,7 +372,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{
@@ -490,7 +490,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
@@ -650,7 +650,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a stream with label app=foo
@@ -817,14 +817,12 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          1024 * 1024,      // 1MB
-			TargetObjectSize:        10 * 1024 * 1024, // 10MB
-			TargetSectionSize:       1024 * 1024,      // 1MB
-			BufferSize:              1024 * 1024,      // 1MB
-			SectionStripeMergeLimit: 2,
-		},
+	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          1024 * 1024,      // 1MB
+		TargetObjectSize:        10 * 1024 * 1024, // 10MB
+		TargetSectionSize:       1024 * 1024,      // 1MB
+		BufferSize:              1024 * 1024,      // 1MB
+		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
@@ -872,7 +870,7 @@ func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	_, err = builder.AppendStream(tenantID, streams.Stream{

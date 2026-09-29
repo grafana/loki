@@ -1,0 +1,470 @@
+package queryfrontend
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	"go.yaml.in/yaml/v3"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
+
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+)
+
+func defaultShardPlanningTestConfig() Config {
+	return Config{
+		RequireOptInHeader: true,
+		NgramLength:        3,
+		HintTimeout:        time.Second,
+		ShardPlanning: ShardPlanningConfig{
+			Enabled:               true,
+			MinTimeReductionRatio: 0.75,
+		},
+	}
+}
+
+func TestShardPlanningConfigValidationAndFlags(t *testing.T) {
+	cfg := Config{}
+	require.NoError(t, cfg.Validate())
+	require.True(t, cfg.ShardPlanning.Enabled)
+	require.Equal(t, 0.75, cfg.ShardPlanning.MinTimeReductionRatio)
+
+	flagCfg := Config{}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	flagCfg.RegisterFlagsWithPrefix("logline-query", fs)
+	require.NotNil(t, fs.Lookup("logline-query.shard-planning.enabled"))
+	require.NotNil(t, fs.Lookup("logline-query.shard-planning.min-time-reduction-ratio"))
+	require.True(t, flagCfg.ShardPlanning.Enabled)
+	require.Equal(t, 0.75, flagCfg.ShardPlanning.MinTimeReductionRatio)
+
+	invalid := defaultShardPlanningTestConfig()
+	invalid.ShardPlanning.MinTimeReductionRatio = -0.1
+	require.ErrorContains(t, invalid.Validate(), "min_time_reduction_ratio")
+}
+
+func TestShardPlanningConfigYAMLDefaultsAndOptOut(t *testing.T) {
+	var cfg Config
+	require.NoError(t, yaml.Unmarshal([]byte("{}"), &cfg))
+	require.NoError(t, cfg.Validate())
+	require.True(t, cfg.ShardPlanning.Enabled)
+	require.Equal(t, 0.75, cfg.ShardPlanning.MinTimeReductionRatio)
+
+	cfg = Config{}
+	require.NoError(t, yaml.Unmarshal([]byte("shard_planning:\n  enabled: false\n"), &cfg))
+	require.NoError(t, cfg.Validate())
+	require.False(t, cfg.ShardPlanning.Enabled)
+	require.Equal(t, 0.75, cfg.ShardPlanning.MinTimeReductionRatio)
+}
+
+func TestShardPlanning_FirstQueryWinsReturnsUnchangedResponse(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: now.Add(-40 * time.Minute), End: now.Add(-35 * time.Minute)},
+		}},
+		delay: 100 * time.Millisecond,
+	}
+
+	want := streamResponseWithEntries(logproto.Entry{Timestamp: now.Add(-10 * time.Minute), Line: "first"})
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		calls.Add(1)
+		require.Nil(t, querylimits.ExtractQueryLimitsFromContext(ctx))
+		return want, nil
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	resp, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Same(t, want, resp)
+	require.Equal(t, int64(1), calls.Load())
+}
+
+func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	reqEnd := now
+	hintRange := hintprovider.HintTimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
+		delay: 100 * time.Millisecond,
+	}
+
+	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
+	var gotOuterStart, gotOuterEnd time.Time
+	var gotInnerStart, gotInnerEnd time.Time
+	var gotHints []logproto.HintTimeRange
+	var gotStrategy string
+	var sawQueryLimits bool
+	firstCanceled := make(chan struct{})
+
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		lokiReq := req.(*queryrange.LokiRequest)
+		gotInnerStart = lokiReq.StartTs
+		gotInnerEnd = lokiReq.EndTs
+		gotHints = lokiReq.HintRanges
+		return emptyStreamResponse(), nil
+	})
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		c := calls.Add(1)
+		if c == 1 {
+			<-ctx.Done()
+			close(firstCanceled)
+			return nil, ctx.Err()
+		}
+
+		lokiReq := req.(*queryrange.LokiRequest)
+		gotOuterStart = lokiReq.StartTs
+		gotOuterEnd = lokiReq.EndTs
+		limits := querylimits.ExtractQueryLimitsFromContext(ctx)
+		sawQueryLimits = limits != nil
+		if limits != nil {
+			gotStrategy = limits.TSDBShardingStrategy
+		}
+		return filterMW.Wrap(querier).Do(ctx, req)
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, reqStart, reqEnd)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		select {
+		case <-firstCanceled:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, int64(2), calls.Load())
+	require.Equal(t, 1, hp.Calls(), "rerun must reuse the existing hint prefetch")
+	require.Equal(t, shardPlanningStrategyPowerOfTwo, gotStrategy)
+	require.True(t, sawQueryLimits)
+	require.Equal(t, reqStart, gotOuterStart, "rerun should preserve the original request start")
+	require.Equal(t, reqEnd, gotOuterEnd, "rerun should preserve the original request end")
+	require.Equal(t, reqStart, gotInnerStart)
+	require.Equal(t, reqEnd, gotInnerEnd)
+	require.Equal(t, []logproto.HintTimeRange{{Start: hintRange.Start, End: hintRange.End}}, gotHints)
+}
+
+func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: now.Add(-3 * time.Hour), End: now.Add(-2 * time.Hour)},
+		}},
+		delay: 100 * time.Millisecond,
+	}
+
+	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
+	querierCalls := 0
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		querierCalls++
+		return emptyStreamResponse(), nil
+	})
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		c := calls.Add(1)
+		if c == 1 {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return filterMW.Wrap(querier).Do(ctx, req)
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	resp, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), calls.Load())
+	require.Equal(t, 0, querierCalls, "empty result should still be produced by the filter middleware")
+	lokiResp := resp.(*queryrange.LokiResponse)
+	require.Empty(t, lokiResp.Data.Result)
+}
+
+func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	r1 := hintprovider.HintTimeRange{Start: now.Add(-50 * time.Minute), End: now.Add(-48 * time.Minute)}
+	r2 := hintprovider.HintTimeRange{Start: now.Add(-20 * time.Minute), End: now.Add(-18 * time.Minute)}
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{r1, r2}},
+		delay: 100 * time.Millisecond,
+	}
+
+	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
+	var mu sync.Mutex
+	var got []*queryrange.LokiRequest
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		lokiReq := req.(*queryrange.LokiRequest)
+		mu.Lock()
+		got = append(got, lokiReq)
+		mu.Unlock()
+		return emptyStreamResponse(), nil
+	})
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		c := calls.Add(1)
+		if c == 1 {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		limits := querylimits.ExtractQueryLimitsFromContext(ctx)
+		require.NotNil(t, limits)
+		require.Equal(t, shardPlanningStrategyPowerOfTwo, limits.TSDBShardingStrategy)
+		return filterMW.Wrap(querier).Do(ctx, req)
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), calls.Load())
+	require.Len(t, got, 1)
+	require.Equal(t, req.StartTs, got[0].StartTs)
+	require.Equal(t, req.EndTs, got[0].EndTs)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: r1.Start, End: r1.End},
+		{Start: r2.Start, End: r2.End},
+	}, got[0].HintRanges)
+}
+
+func TestShardPlanningDecision_UsesRawHintCoverage(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	h := &loglinePrefetchHandler{
+		shardPlanning: ShardPlanningConfig{
+			Enabled:               true,
+			MinTimeReductionRatio: 0.75,
+		},
+	}
+
+	t.Run("bookend hints on a 15m range stay eligible", func(t *testing.T) {
+		end := start.Add(15 * time.Minute)
+		result := &hintPrefetchResult{
+			ranges: []hintprovider.HintTimeRange{
+				{Start: start.Add(time.Minute), End: start.Add(2 * time.Minute)},
+				{Start: end.Add(-2 * time.Minute), End: end.Add(-time.Minute)},
+			},
+			ingesterCutoff: end,
+		}
+		// Raw hints cover 2m (ratio 0.867). Envelope fill used to cover 12m.
+		got := h.shardPlanningDecision(result, start, end)
+		require.True(t, got.eligible)
+		require.Equal(t, "eligible", got.reason)
+	})
+
+	t.Run("distant clusters on a 1h range stay eligible", func(t *testing.T) {
+		end := start.Add(time.Hour)
+		result := &hintPrefetchResult{
+			ranges: []hintprovider.HintTimeRange{
+				{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
+				{Start: start.Add(50 * time.Minute), End: start.Add(51 * time.Minute)},
+			},
+			ingesterCutoff: end,
+		}
+		got := h.shardPlanningDecision(result, start, end)
+		require.True(t, got.eligible)
+		require.Equal(t, "eligible", got.reason)
+	})
+
+	t.Run("sparse hints on an 8h range stay eligible", func(t *testing.T) {
+		end := start.Add(8 * time.Hour)
+		var ranges []hintprovider.HintTimeRange
+		for i := 0; i < 16; i++ {
+			hintStart := start.Add(time.Duration(i) * 30 * time.Minute)
+			ranges = append(ranges, hintprovider.HintTimeRange{
+				Start: hintStart,
+				End:   hintStart.Add(time.Minute),
+			})
+		}
+		result := &hintPrefetchResult{ranges: ranges, ingesterCutoff: end}
+		require.Equal(t, 16*time.Minute, hintCoverageDuration(ranges, start, end))
+		got := h.shardPlanningDecision(result, start, end)
+		require.True(t, got.eligible)
+		require.Equal(t, "eligible", got.reason)
+	})
+}
+
+func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	baseCfg := defaultShardPlanningTestConfig()
+	firstResp := streamResponseWithEntries(logproto.Entry{Timestamp: now.Add(-10 * time.Minute), Line: "first"})
+
+	tests := []struct {
+		name string
+		cfg  Config
+		hp   *mockHintProvider
+		req  *queryrange.LokiRequest
+	}{
+		{
+			name: "time reduction too small falls back",
+			cfg:  baseCfg,
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-50 * time.Minute), End: now.Add(-20 * time.Minute)},
+			}}},
+			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
+		},
+		{
+			name: "hint provider error falls back",
+			cfg:  baseCfg,
+			hp:   &mockHintProvider{err: errors.New("hint backend down")},
+			req:  newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
+		},
+		{
+			name: "unsupported query falls back",
+			cfg:  baseCfg,
+			hp:   &mockHintProvider{err: hintprovider.ErrUnsupported},
+			req:  newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
+		},
+		{
+			name: "passthrough range falls back",
+			cfg:  baseCfg,
+			hp: &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+				{Start: time.Time{}, End: now.Add(-30 * time.Minute), Source: hintprovider.HintSourcePreMinDate},
+			}}},
+			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now),
+		},
+		{
+			name: "ingester window request falls back",
+			cfg: func() Config {
+				cfg := baseCfg
+				cfg.QueryIngestersWithin = 3 * time.Hour
+				return cfg
+			}(),
+			hp:  &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: nil}},
+			req: newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-30*time.Minute), now),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int64
+			next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				calls.Add(1)
+				require.Nil(t, querylimits.ExtractQueryLimitsFromContext(ctx))
+				time.Sleep(20 * time.Millisecond)
+				return firstResp, nil
+			})
+
+			prefetchMW := NewLoglinePrefetchMiddleware(tc.hp, tc.cfg, mockLimits{}, newTestMetrics(), nil)
+			handler := prefetchMW.Wrap(next)
+			resp, err := handler.Do(testTenantContextWithLive(), tc.req)
+			require.NoError(t, err)
+			require.Same(t, firstResp, resp)
+			require.Equal(t, int64(1), calls.Load())
+		})
+	}
+}
+
+func TestShardPlanning_DryRunModeNeverReruns(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	cfg := defaultShardPlanningTestConfig()
+	cfg.DryRun = true
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+		{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
+	}}}
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		calls.Add(1)
+		require.Nil(t, querylimits.ExtractQueryLimitsFromContext(ctx))
+		time.Sleep(20 * time.Millisecond)
+		return streamResponseWithEntries(logproto.Entry{Timestamp: now.Add(-33 * time.Minute), Line: "error"}), nil
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	_, err := handler.Do(testTenantContextWithDryRun(), req)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), calls.Load())
+	require.Equal(t, 1, hp.Calls())
+}
+
+func TestShardPlanning_RerunGuardPreventsRecursion(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+		{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
+	}}}
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		calls.Add(1)
+		return emptyStreamResponse(), nil
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	ctx := withShardPlanningRerunGuard(testTenantContextWithLive())
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	_, err := handler.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), calls.Load())
+	require.Equal(t, 0, hp.Calls())
+}
+
+func TestShardPlanning_PreservesExistingQueryLimitsOnRerun(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+			{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)},
+		}},
+		delay: 100 * time.Millisecond,
+	}
+
+	var calls atomic.Int64
+	var gotLimits *querylimits.QueryLimits
+	var gotStrategy string
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		c := calls.Add(1)
+		if c == 1 {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		gotLimits = querylimits.ExtractQueryLimitsFromContext(ctx)
+		if gotLimits != nil {
+			gotStrategy = gotLimits.TSDBShardingStrategy
+		}
+		return emptyStreamResponse(), nil
+	})
+
+	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(next)
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	ctx := querylimits.InjectQueryLimitsIntoContext(testTenantContextWithLive(), querylimits.QueryLimits{MaxEntriesLimitPerQuery: 123})
+	_, err := handler.Do(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, gotLimits)
+	require.Equal(t, 123, gotLimits.MaxEntriesLimitPerQuery)
+	require.Equal(t, shardPlanningStrategyPowerOfTwo, gotStrategy)
+}
+
+func TestShardPlanningMetricDoesNotRequireRegisterer(t *testing.T) {
+	metrics := NewMetrics(prometheus.NewRegistry())
+	require.NotNil(t, metrics.shardPlanningTotal)
+}

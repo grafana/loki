@@ -1,6 +1,13 @@
 ## Changelog
 
 
+## v2.39.0
+
+- support GEOSEARCH (thanks @fl4metf)
+- support HPERSIST, HTTL, HPTTL, and HSETEX (thanks @adamrothman)
+- support BZPOPMIN and BZPOPMAX (thanks @ChrisJr404)
+
+
 ## v2.38.0
 
 - XADD TRIM (thanks @evan-choi)

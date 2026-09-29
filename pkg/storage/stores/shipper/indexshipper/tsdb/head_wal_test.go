@@ -47,34 +47,50 @@ func Test_Encoding_SeriesWithFingerprint(t *testing.T) {
 }
 
 func Test_Encoding_Chunks(t *testing.T) {
-	record := &WALRecord{
-		UserID: "foo",
-		Chks: ChunkMetasRecord{
-			Ref: 1,
-			Chks: index.ChunkMetas{
-				{
-					Checksum: 1,
-					MinTime:  1,
-					MaxTime:  4,
-					KB:       5,
-					Entries:  6,
-				},
-				{
-					Checksum: 2,
-					MinTime:  5,
-					MaxTime:  10,
-					KB:       7,
-					Entries:  8,
-				},
+	chks := index.ChunkMetas{
+		{Checksum: 1, MinTime: 1, MaxTime: 4, KB: 5, Entries: 6, IngestedAt: 1234},
+		{Checksum: 2, MinTime: 5, MaxTime: 10, KB: 7, Entries: 8},
+	}
+
+	for _, tc := range []struct {
+		name    string
+		version RecordType
+		want    index.ChunkMetas
+	}{
+		{
+			name:    "WalRecordChunksV2 round-trips the ingestion timestamps",
+			version: WalRecordChunksV2,
+			want:    chks,
+		},
+		{
+			// WALs written by binaries predating WalRecordChunksV2 must keep
+			// decoding; their chunks have no ingestion timestamp.
+			name:    "WalRecordChunks drops the ingestion timestamps",
+			version: WalRecordChunks,
+			want: index.ChunkMetas{
+				{Checksum: 1, MinTime: 1, MaxTime: 4, KB: 5, Entries: 6},
+				{Checksum: 2, MinTime: 5, MaxTime: 10, KB: 7, Entries: 8},
 			},
 		},
-	}
-	buf := record.encodeChunks(nil)
-	decoded := &WALRecord{}
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			record := &WALRecord{
+				UserID: "foo",
+				Chks: ChunkMetasRecord{
+					Ref:  1,
+					Chks: chks,
+				},
+			}
+			buf := record.encodeChunks(tc.version, nil)
+			require.Equal(t, tc.version, RecordType(buf[0]))
 
-	err := decodeWALRecord(buf, decoded)
-	require.Nil(t, err)
-	require.Equal(t, record, decoded)
+			decoded := &WALRecord{}
+			require.NoError(t, decodeWALRecord(buf, decoded))
+			require.Equal(t, record.UserID, decoded.UserID)
+			require.Equal(t, record.Chks.Ref, decoded.Chks.Ref)
+			require.Equal(t, tc.want, decoded.Chks.Chks)
+		})
+	}
 }
 
 func Test_HeadWALLog(t *testing.T) {

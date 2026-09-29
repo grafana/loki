@@ -12,9 +12,10 @@ import (
 type decodedInput struct {
 	runes      []rune
 	pooled     *[]rune
-	runeStart  int // index in runes of the requested startAt; -1 if not a rune boundary
-	runeOffset int // original-string rune index of runes[0]
-	byteOffset int // original-string byte index of runes[0]
+	runeStart  int  // index in runes of the requested startAt; -1 if not a rune boundary
+	runeOffset int  // original-string rune index of runes[0]
+	byteOffset int  // original-string byte index of runes[0]
+	ascii      bool // every decoded rune is ASCII; invalid UTF-8 is not ASCII
 }
 
 // decodeFrom is the first original-string byte that must be decoded. 0 means
@@ -38,6 +39,19 @@ func (re *Regexp) decodeLeftContextRunes() int {
 		return re.code.LeftContextRunes
 	}
 	return re.leftContextRunes
+}
+
+// stringSearchOrigin preserves the caller's origin when \G may observe it.
+// Such patterns retain the whole input, so no decode offset is needed.
+// Otherwise the origin is unobservable and the candidate is sufficient.
+func (re *Regexp) stringSearchOrigin(input string, startAt, candidate int) int {
+	if !re.RightToLeft() && re.decodeLeftContextRunes() < 0 {
+		if startAt <= 0 {
+			return 0
+		}
+		return utf8.RuneCountInString(input[:startAt])
+	}
+	return candidate
 }
 
 // decodeString converts s to []rune for the MatchString startAt<=0 path.
@@ -85,6 +99,7 @@ func decodeInput(s string, startAt, decodeFrom, maxCachedLength int, needOffsets
 		runes:      runes,
 		pooled:     pooledBuffer,
 		byteOffset: decodeFrom,
+		ascii:      ascii,
 		runeStart:  startRuneIndex(s, startAt, decodeFrom, n, ascii),
 	}
 

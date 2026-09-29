@@ -46,6 +46,7 @@ func (f fakeParams) Direction() logproto.Direction           { return logproto.B
 func (f fakeParams) Shards() []string                        { return nil }
 func (f fakeParams) GetExpression() syntax.Expr              { return nil }
 func (f fakeParams) GetStoreChunks() *logproto.ChunkRefGroup { return nil }
+func (f fakeParams) GetHintRanges() []logproto.HintTimeRange { return nil }
 func (f fakeParams) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }

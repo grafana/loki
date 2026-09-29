@@ -17,10 +17,10 @@ import (
 )
 
 type SpanContext struct {
-	TraceState string
-	TraceFlags uint32
 	TraceID    TraceID
 	SpanID     SpanID
+	TraceFlags uint32
+	TraceState string
 	Remote     bool
 }
 

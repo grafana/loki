@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 7.4.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.14 (updated `enterprise.version`, and `enterprise.image.tag`).
+- [CHANGE] Update bundled minio subchart images to the renamed Pigsty fork: `docker.io/pgsty/minio` -> `docker.io/pgsty/silo:RELEASE.2026-09-03T13-18-01Z`, and bump `docker.io/pgsty/mc` to `RELEASE.2026-09-13T00-00-00Z`.
+
 ## 7.3.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.12 (updated `enterprise.version`, and `enterprise.image.tag`).

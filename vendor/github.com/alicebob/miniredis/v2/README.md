@@ -101,6 +101,7 @@ Implemented commands:
  - Hash keys
    - HDEL
    - HEXISTS
+   - HEXPIRE
    - HGET
    - HGETALL
    - HINCRBY
@@ -109,10 +110,14 @@ Implemented commands:
    - HLEN
    - HMGET
    - HMSET
+   - HPERSIST
+   - HPTTL
    - HRANDFIELD
    - HSET
+   - HSETEX
    - HSETNX
    - HSTRLEN
+   - HTTL
    - HVALS
    - HSCAN
  - List keys
@@ -161,6 +166,8 @@ Implemented commands:
    - SUNION
    - SUNIONSTORE
  - Sorted Set keys
+   - BZPOPMAX
+   - BZPOPMIN
    - ZADD
    - ZCARD
    - ZCOUNT
@@ -222,6 +229,7 @@ Implemented commands:
    - GEORADIUS_RO
    - GEORADIUSBYMEMBER
    - GEORADIUSBYMEMBER_RO
+   - GEOSEARCH
  - Cluster
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT

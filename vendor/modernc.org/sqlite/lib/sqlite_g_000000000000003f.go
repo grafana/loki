@@ -1304,6 +1304,11 @@ func _unixLock(tls *libc.TLS, id uintptr, eFileLock int32) (r int32) {
 			(*TunixFile)(unsafe.Pointer(pFile)).FeFileLock = uint8(SHARED_LOCK)
 			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock = (*TunixInodeInfo)(unsafe.Pointer(pInode)).FnLock + 1
 			(*TunixInodeInfo)(unsafe.Pointer(pInode)).FnShared = int32(1)
+			if (*TunixInodeInfo)(unsafe.Pointer(pInode)).FhLock == 0 {
+				/* First lock on this inode: pFile->h now holds the kernel locks */
+				(*TunixInodeInfo)(unsafe.Pointer(pInode)).FhLock = (*TunixFile)(unsafe.Pointer(pFile)).Fh
+				(*TunixInodeInfo)(unsafe.Pointer(pInode)).FbLockIsReadOnly = libc.BoolUint8(libc.Int32FromUint16((*TunixFile)(unsafe.Pointer(pFile)).FctrlFlags)&int32(UNIXFILE_RDONLY) != 0)
+			}
 		}
 	} else {
 		if eFileLock == int32(EXCLUSIVE_LOCK) && (*TunixInodeInfo)(unsafe.Pointer(pInode)).FnShared > int32(1) {
@@ -1412,7 +1417,7 @@ func _unixTruncate(tls *libc.TLS, id uintptr, nByte Ti64) (r int32) {
 	rc = _robust_ftruncate(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, nByte)
 	if rc != 0 {
 		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__error(tls))))
-		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3576, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44176))
+		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3576, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44321))
 	} else {
 		/* If the file was just truncated to a size smaller than the currently
 		 ** mapped region, reduce the effective mapping size as well. SQLite will

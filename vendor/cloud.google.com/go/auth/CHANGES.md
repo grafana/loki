@@ -1,5 +1,13 @@
 # Changes
 
+## [0.23.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.2...auth/v0.23.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* Handle secureconnect helper failures gracefully ([c2794c6](https://github.com/googleapis/google-cloud-go/commit/c2794c6bdf267278489af42591f3c3549ae8fcba))
+* Handle secureconnect helper failures gracefully ([#20443](https://github.com/googleapis/google-cloud-go/issues/20443)) ([c2794c6](https://github.com/googleapis/google-cloud-go/commit/c2794c6bdf267278489af42591f3c3549ae8fcba))
+
 ## [0.23.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.1...auth/v0.23.2) (2026-08-20)
 
 

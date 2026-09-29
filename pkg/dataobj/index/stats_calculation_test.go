@@ -22,9 +22,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
+var fakeSchema = []string{"label:service_name"}
+
 func newTestIndexBuilder(t *testing.T) *indexobj.Builder {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 	return builder
 }
@@ -38,6 +40,7 @@ func makeTestStreamLabels() map[int64]labels.Labels {
 		1: labels.FromStrings("service_name", "svcA", "env", "prod"),
 		2: labels.FromStrings("service_name", "svcB", "env", "dev"),
 		3: labels.FromStrings("env", "staging"),
+		4: labels.FromStrings("env", "dev"),
 	}
 }
 
@@ -181,7 +184,7 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 		},
 		builder: builder,
 	}
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 	records := []logs.Record{
 		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("a")},
 		{StreamID: 2, Timestamp: time.Unix(150, 0).UTC(), Line: []byte("c")},
@@ -206,7 +209,7 @@ func TestStatsCalculation_MissingShardBucket(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
 	ctx.streamShardBuckets = map[int64]uint32{}
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	err := calc.ProcessBatch(context.Background(), ctx, []logs.Record{
@@ -228,7 +231,7 @@ func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
 func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -299,7 +302,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 func TestStatsCalculation_MetadataFields(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -330,7 +333,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -358,7 +361,7 @@ func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -376,7 +379,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -414,7 +417,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{schema: defaultSortSchema}
+	calc := &statsCalculation{schema: fakeSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))

@@ -439,7 +439,7 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples()), nil
+	return iter.NewTimestampFirstSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -815,7 +815,7 @@ func (q *querierRecorder) SelectSamples(
 ) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
-			return iter.NewMultiSeriesIterator(s), nil
+			return iter.NewTimestampFirstMultiSeriesIterator(s), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -826,7 +826,7 @@ func (q *querierRecorder) SelectSamples(
 	if !ok {
 		return nil, fmt.Errorf("no series found for id: %s has: %+v", recordID, q.series)
 	}
-	return iter.NewMultiSeriesIterator(series), nil
+	return iter.NewTimestampFirstMultiSeriesIterator(series), nil
 }
 
 func paramsID(p interface{}) string {

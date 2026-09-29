@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Optional index gateway client request limits
+
+Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
+
+Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to limit the number of further instances a failed request is retried against. The default of `-1` preserves up to two retries for `GetShards` and retries across all candidate instances for other requests. A value of `0` disables retries. Non-negative values apply to all requests, including `GetShards`. Each candidate instance is tried at most once. Enabling a retry limit bounds how long a request can occupy a goroutine when many instances are slow or unreachable.
+
+The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
+
+Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, doubled when the shadow index gateway client is enabled, so the process-wide limit is this value multiplied by the number of clients.
+
 ### `frontend.encoding` default changed to `protobuf`
 
 The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
@@ -57,6 +67,10 @@ The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
 
+### Optional chunk fetch error propagation
+
+`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
+
 ### Breaking change: Removal of the `row_shards` schema setting
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
@@ -73,6 +87,22 @@ with a future `from` date and `schema: v14`; existing v13 periods are unaffected
 Before configuring any v14 period, upgrade all components to a version that can
 read the v14 index format. Rolling back after v14 data has been written requires
 stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
+
+### TSDB head WAL chunk records use a new binary format
+
+The ingester writes chunk records to the TSDB head write-ahead log (WAL) in a new format that stores each chunk's ingestion timestamp to support [TSDB schema v14](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#tsdb-schema-v14).
+Upgrading needs no action, because Loki still reads the old format.
+Once upgraded, previously released Loki versions (3.7.x and earlier) cannot read the new format:
+The WAL replay fails with `error recovering head from TSDB WAL: unknown record type`, Loki does not treat this as WAL corruption, and the ingester fails to start.
+
+To roll back after the new format was written, remove the WAL data before you start the older binary:
+
+1. Stop each ingester gracefully. A successful shutdown flushes chunks, builds the in-memory head into index files, and truncates the head WAL, so the older binary starts with an empty WAL directory.
+1. If an ingester crashed or was killed before finishing that work, delete its head WAL directory, the `wal` subdirectory of `storage_config.tsdb_shipper.active_index_directory`.
+
+Deleting the WAL discards index entries for chunks flushed since the ingester last built an index from its head, which can cover up to one index period.
+Those chunks stay in object storage but no index references them, so their logs are not queryable.
+Index entries from the other replicas still cover the same log data, unless you delete the WAL on every replica.
 
 ### Breaking change: Thanos storage clients are used by default
 

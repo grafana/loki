@@ -7,8 +7,6 @@ import (
 	metro "github.com/dgryski/go-metro"
 )
 
-var hash = hashFunc
-
 func alpha(m float64) float64 {
 	switch m {
 	case 16:
@@ -41,6 +39,6 @@ func bextr32(v uint32, start, length uint8) uint32 {
 	return (v >> start) & ((1 << length) - 1)
 }
 
-func hashFunc(e []byte) uint64 {
+func hash(e []byte) uint64 {
 	return metro.Hash64(e, 1337)
 }

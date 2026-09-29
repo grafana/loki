@@ -22,7 +22,7 @@ import (
 func TestRulerShutdown(t *testing.T) {
 	ctx := context.Background()
 
-	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	config := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 
 	m := storage.NewClientMetrics()
 	defer m.Unregister()
@@ -58,7 +58,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	const heartbeatTimeout = time.Minute
 
 	ctx := context.Background()
-	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	config := defaultRulerConfig(t, newMockRuleStore(cloneMockRules(mockRules)))
 	m := storage.NewClientMetrics()
 	defer m.Unregister()
 	r := buildRuler(t, config, nil, m, nil)

@@ -96,7 +96,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -159,7 +159,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -217,7 +217,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		partitionID,
 	)
 
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
@@ -279,7 +279,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -341,7 +341,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -402,7 +402,7 @@ func TestKafkaReaderWithHeaderExtractor(t *testing.T) {
 	reader.SetOffsetForConsumption(int64(KafkaStartOffset))
 
 	// Produce records with ingestion policy headers
-	writerClient, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	writerClient, err := client.NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer := client.NewProducer("test-producer", writerClient, 1024*1024, prometheus.NewRegistry())

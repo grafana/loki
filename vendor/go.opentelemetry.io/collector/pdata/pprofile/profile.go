@@ -5,15 +5,13 @@ package pprofile // import "go.opentelemetry.io/collector/pdata/pprofile"
 
 import (
 	"fmt"
-
-	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 // switchDictionary updates the Profile, switching its indices from one
 // dictionary to another.
 func (ms Profile) switchDictionary(src, dst ProfilesDictionary) error {
 	for i, v := range ms.AttributeIndices().All() {
-		if src.AttributeTable().Len() <= int(v) {
+		if v < 0 || src.AttributeTable().Len() <= int(v) {
 			return fmt.Errorf("invalid attribute index %d", v)
 		}
 
@@ -42,17 +40,4 @@ func (ms Profile) switchDictionary(src, dst ProfilesDictionary) error {
 	}
 
 	return nil
-}
-
-// Duration returns the duration associated with this Profile.
-//
-// Deprecated: Use Profile.DurationNano instead.
-func (ms Profile) Duration() pcommon.Timestamp {
-	return pcommon.Timestamp(0)
-}
-
-// SetDuration replaces the duration associated with this Profile.
-//
-// Deprecated: Use Profile.SetDurationNano instead.
-func (ms Profile) SetDuration(_ pcommon.Timestamp) {
 }

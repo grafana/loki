@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -69,7 +69,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				TargetSectionSize:       128,
 				BufferSize:              1024 * 1024,
 				SectionStripeMergeLimit: 2,
-			}, nil)
+			}, nil, indexobj.NewBuilderMetrics(nil))
 			require.NoError(b, err)
 
 			// Determine which streams to add to this index file
@@ -186,7 +186,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 				TargetSectionSize:       128,
 				BufferSize:              1024 * 1024,
 				SectionStripeMergeLimit: 2,
-			}, nil)
+			}, nil, indexobj.NewBuilderMetrics(nil))
 			require.NoError(b, err)
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})

@@ -605,6 +605,10 @@ func _fts5SegIterNextInit(tls *libc.TLS, p uintptr, pTerm uintptr, nTerm int32, 
 		**(**int32)(__ccgo_up(bp)) = 0
 		(*TFts5SegIter)(unsafe.Pointer(pIter)).FiPgidxOff = (*TFts5Data)(unsafe.Pointer((*TFts5SegIter)(unsafe.Pointer(pIter)).FpLeaf)).FszLeaf
 		**(**int32)(__ccgo_up(pIter + 64)) += _sqlite3Fts5GetVarint32(tls, a+uintptr((*TFts5SegIter)(unsafe.Pointer(pIter)).FiPgidxOff), bp)
+		if **(**int32)(__ccgo_up(bp)) > (*TFts5Data)(unsafe.Pointer((*TFts5SegIter)(unsafe.Pointer(pIter)).FpLeaf)).FszLeaf {
+			(*TFts5Index)(unsafe.Pointer(p)).Frc = libc.Int32FromInt32(SQLITE_CORRUPT) | libc.Int32FromInt32(1)<<libc.Int32FromInt32(8)
+			return
+		}
 		(*TFts5SegIter)(unsafe.Pointer(pIter)).FiLeafOffset = int64(**(**int32)(__ccgo_up(bp)))
 		_fts5SegIterLoadTerm(tls, p, pIter, 0)
 		_fts5SegIterLoadNPos(tls, p, pIter)

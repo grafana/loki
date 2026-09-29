@@ -148,14 +148,14 @@ func Test_markerProcessor_availablePath(t *testing.T) {
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano())))
 			_, _ = os.Create(filepath.Join(dir, fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano())))
 			return []string{
-					fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano()), // oldest should be first
-					fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano()),
-					fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano()),
-				}, []time.Time{
-					time.Unix(0, now.Add(-48*time.Hour).UnixNano()),
-					time.Unix(0, now.Add(-3*time.Hour).UnixNano()),
-					time.Unix(0, now.Add(-2*time.Hour).UnixNano()),
-				}
+				fmt.Sprintf("%d", now.Add(-48*time.Hour).UnixNano()), // oldest should be first
+				fmt.Sprintf("%d", now.Add(-3*time.Hour).UnixNano()),
+				fmt.Sprintf("%d", now.Add(-2*time.Hour).UnixNano()),
+			}, []time.Time{
+				time.Unix(0, now.Add(-48*time.Hour).UnixNano()),
+				time.Unix(0, now.Add(-3*time.Hour).UnixNano()),
+				time.Unix(0, now.Add(-2*time.Hour).UnixNano()),
+			}
 		}},
 	} {
 		t.Run("", func(t *testing.T) {

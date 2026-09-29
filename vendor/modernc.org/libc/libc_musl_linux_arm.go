@@ -22,7 +22,12 @@ var (
 type RawMem [1<<31 - 1]byte
 
 // void *memcpy(void *dest, const void *src, size_t n);
-func Xmemcpy(t *TLS, dest, src uintptr, n Tsize_t) (r uintptr) {
+//
+// musl implements memcpy in assembly on arm, so ccgo never transpiled one
+// and this hand-written version used to be Xmemcpy. Xmemcpy now lives in
+// native_musl.go; this stays under the ___musl_ name generator.go gives
+// the transpiled originals, for native_musl_test.go.
+func ___musl_memcpy(t *TLS, dest, src uintptr, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
 		trc("t=%v src=%v n=%v, (%v:)", t, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()

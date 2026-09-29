@@ -23,7 +23,7 @@ func (c *clickhouse) CreateTable(tableName string) string {
 		tstamp DateTime default now()
 	  )
 	  ENGINE = MergeTree()
-		ORDER BY (date)`
+		ORDER BY (version_id)`
 	return fmt.Sprintf(q, tableName)
 }
 

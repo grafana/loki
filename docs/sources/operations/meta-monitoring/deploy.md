@@ -13,6 +13,10 @@ The primary method for collecting and monitoring a Loki cluster is to use the [K
 We recommend running a production cluster of Loki in distributed mode using Kubernetes. This procedure assumes you have a running Kubernetes cluster and a running Loki deployment. There are other methods for deploying Loki, such as using Docker or VM installations. meta-monitoring is still possible when using these deployment methods but not covered in this procedure. If you run Loki in monolithic mode outside of this Helm chart, refer to [Single binary meta-monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/single-binary/) instead.
 {{< /admonition >}}
 
+{{< admonition type="note" >}}
+This page covers chart version 4.x, the current line. If you need to stay on the maintained 3.8.x stable line instead, use [Deploy Loki meta-monitoring with chart version 3](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/deploy-chart-v3/).
+{{< /admonition >}}
+
 ## Prerequisites
 
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/)
@@ -96,11 +100,11 @@ Now that you have prepared your environment and collected the necessary credenti
    curl -O https://raw.githubusercontent.com/grafana/loki/main/production/helm/meta-monitoring/values.yaml
    ```
 
-1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints.
+1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints. Chart 4.x configures destinations as a map keyed by name, rather than a list:
 
    ```yaml
    destinations:
-     - name: prometheus
+     prometheus:
        type: prometheus
        url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
        auth:
@@ -112,7 +116,7 @@ Now that you have prepared your environment and collected the necessary credenti
          name: metrics
          namespace: meta
 
-     - name: loki
+     loki:
        type: loki
        url: https://<LOKI-ENDPOINT>/loki/api/v1/push
        auth:
@@ -134,20 +138,48 @@ Now that you have prepared your environment and collected the necessary credenti
      name: loki-meta-monitoring-cluster
    ```
 
-1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, you will need to update `namespaces` in the `values.yaml` file to match the namespace where Loki is deployed. Here is an example:
+1. Confirm that at least one collector is defined under `collectors:`. Chart 4.x requires this; the install fails if `collectors:` is empty or missing. The default `values.yaml` already defines the `alloy-singleton` collector that every feature in this file is assigned to:
 
-    ```yaml
-    namespaces:
-        - loki
-    ```
+   ```yaml
+   collectors:
+     alloy-singleton:
+       presets: [singleton]
+   ```
 
-    Note if you would like to collect from all available namespaces, you can remove the `namespaces` key from the `values.yaml` file.
+   If you add or rename a collector, update every `collector: alloy-singleton` reference in the file to match, or the install fails with an error naming the missing collector.
 
-1. Deploy the Kubernetes Monitoring Helm chart using the modified `values.yaml` file:
+1. The default values file assumes that you have deployed Loki in the `loki` namespace and will deploy the Kubernetes monitoring stack in the `meta` namespace. If you have deployed Loki in a different namespace, or the monitoring stack in a namespace other than `meta`, you will need to update several keys in `values.yaml`. There is no single `namespaces` key; namespace scoping is set independently for each feature:
+
+   | Key | Format | Purpose |
+   | --- | --- | --- |
+   | `integrations.loki.instances[0].namespaces` | list | Namespace(s) to discover Loki instances in. |
+   | `integrations.alloy.instances[0].namespaces` | list | Namespace(s) to discover the monitoring stack's own Alloy collectors in. |
+   | `clusterEvents.namespaces` | list | Namespace(s) to capture Kubernetes events from. |
+   | `clusterMetrics.cadvisor.metricsTuning.includeNamespaces` | list | Namespace(s) to keep cadvisor metrics for. This is a metric filter, not a discovery scope. |
+   | `telemetryServices.kube-state-metrics.namespaces` | list, or comma-separated string | Namespace(s) to collect Kubernetes resource state from. In chart 4.x this key must be set under `telemetryServices`, not under `clusterMetrics`. |
+   | `podLogsViaKubernetesApi.namespaces` | list | Namespace(s) to collect pod logs from. |
+
+   For example, to add a namespace to the Loki discovery scope:
+
+   ```yaml
+   integrations:
+     loki:
+       instances:
+         - name: loki
+           namespaces:
+             - loki
+   ```
+
+   Each of these keys defaults to an empty list, which means "collect from all namespaces". Removing a key restores that default for that feature only; it does not affect the other keys in this table.
+
+   Also note that `destinations.prometheus.secret.namespace` and `destinations.loki.secret.namespace` must match the namespace where you created the `metrics` and `logs` secrets, which is `meta` by default. Update them if you installed the monitoring stack into a different namespace.
+
+1. Deploy the Kubernetes Monitoring Helm chart using the modified `values.yaml` file, pinning the chart to the 4.x line:
 
    ```bash
    helm install meta-loki grafana/k8s-monitoring \
     --namespace meta \
+    --version "^4" \
     -f values.yaml
    ```
 
@@ -157,14 +189,15 @@ Now that you have prepared your environment and collected the necessary credenti
     kubectl get pods -n meta
     ```
 
-    You should see a list of pods running in the `meta` namespace.
+    You should see a list of pods running in the `meta` namespace, similar to the following. Exact pod names and counts depend on your cluster size and which features you have enabled:
 
     ```console
-    NAME                                           READY   STATUS    RESTARTS ...        
-    meta-loki-alloy-singleton-6d7f8d8b86-sg4wx     2/2     Running   0        ...       
-    meta-loki-kube-state-metrics-64bdcfcbd-5snqz   1/1     Running   0        ...       
-    meta-loki-node-exporter-855l5                  1/1     Running   0        ...       
-    meta-loki-node-exporter-b976b                  1/1     Running   0        ...       
+    NAME                                           READY   STATUS    RESTARTS ...
+    meta-loki-alloy-operator-7d8f9c6b5d-x2k9p      1/1     Running   0        ...
+    meta-loki-alloy-singleton-6d7f8d8b86-sg4wx     2/2     Running   0        ...
+    meta-loki-kube-state-metrics-64bdcfcbd-5snqz   1/1     Running   0        ...
+    meta-loki-node-exporter-855l5                  1/1     Running   0        ...
+    meta-loki-node-exporter-b976b                  1/1     Running   0        ...
     meta-loki-node-exporter-vsm4s                  1/1     Running   0        ...
     ```
 

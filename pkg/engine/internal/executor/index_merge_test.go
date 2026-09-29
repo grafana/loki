@@ -20,11 +20,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -295,12 +296,12 @@ func TestMerge_ClosesAllSequencesOnEarlyStop(t *testing.T) {
 	ctx := context.Background()
 
 	// Create tracking sequences
-	seq1 := newTrackingSequence(newTestSequence(
+	seq1 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 		intRecord{Key: 5, Val: "e"},
 	))
-	seq2 := newTrackingSequence(newTestSequence(
+	seq2 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 		intRecord{Key: 6, Val: "f"},
@@ -335,10 +336,10 @@ func TestMerge_ClosesAllSequencesOnReadError(t *testing.T) {
 
 	// Create a sequence that returns an error
 	errorSeq := &errorSequence[intRecord]{}
-	trackingErrorSeq := newTrackingSequence(errorSeq)
+	trackingErrorSeq := newTrackingSequence[intRecord](errorSeq)
 
 	// Create a normal tracking sequence
-	trackingNormalSeq := newTrackingSequence(newTestSequence(
+	trackingNormalSeq := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 	))
 
@@ -367,11 +368,11 @@ func TestMerge_ClosesAllSequencesOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create tracking sequences
-	seq1 := newTrackingSequence(newTestSequence(
+	seq1 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 	))
-	seq2 := newTrackingSequence(newTestSequence(
+	seq2 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 	))
@@ -464,8 +465,8 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Verify an artifact was produced and contains both section kinds.
-	require.Len(t, artifacts, 1, "merge must produce exactly one artifact")
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	exists, err := bucket.Exists(ctx, outputPath)
 	require.NoError(t, err)
@@ -538,8 +539,8 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 	require.NoError(t, err, "merge should succeed despite legacy sections")
 
 	// Verify the output exists.
-	require.Len(t, artifacts, 1, "merge must produce exactly one artifact")
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	exists, err := bucket.Exists(ctx, outputPath)
 	require.NoError(t, err)
@@ -590,7 +591,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		SectionStripeMergeLimit: 2,
 	}
 
-	builder, err := indexobj.NewBuilder(cfg, nil)
+	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err, "failed to create indexobj.Builder")
 
 	// Append a stream to get a streams section.
@@ -727,10 +728,12 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	}
 
 	return &Context{
-		bucket:       bucket,
-		scratchStore: scratch.NewMemory(),
-		indexobjCfg:  testBuilderCfg,
-		logsobjCfg:   testBuilderCfg,
+		bucket:         bucket,
+		scratchStore:   scratch.NewMemory(),
+		indexobjCfg:    testBuilderCfg,
+		logsobjCfg:     testBuilderCfg,
+		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
+		builderMetrics: logsobj.NewBuilderMetrics(),
 
 		logger: log.NewNopLogger(),
 	}
@@ -884,8 +887,8 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readAllPostingsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1006,8 +1009,8 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Read and verify output.
 	rows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
@@ -1103,8 +1106,8 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1182,8 +1185,8 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Verify output contains both kinds.
 	exists, err := bucket.Exists(ctx, outputPath)
@@ -1266,8 +1269,8 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1302,10 +1305,8 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 
 	execCtx := newTestExecutorContext(t, bucket)
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
-	require.NoError(t, err)
-
-	// Empty input produces no artifact.
-	require.Len(t, artifacts, 0, "empty input should produce no artifact")
+	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
+	require.Nil(t, artifacts)
 }
 
 // TestStatsRowReader_DottedLabelNames tests that label names containing dots
@@ -1532,8 +1533,8 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Only the target tenant's rows must appear: 2 sources × 3 rows = 6.
 	statsRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
@@ -1601,12 +1602,12 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, resultRec, "result record must not be nil")
 
 	// Read the artifacts from the record.
-	artifacts, err := v2.ReadResultRecord(resultRec)
-	require.NoError(t, err)
-	require.Len(t, artifacts, 1, "result record must contain exactly one artifact")
+	var artifacts v2.ResultArtifact
+	require.NoError(t, artifacts.FromRecordBatch(resultRec))
+	require.NoError(t, artifacts.Validate())
 
 	// Verify the artifact path matches the content-hash naming scheme.
-	path := artifacts[0].Path
+	path := artifacts.Path
 	require.True(t, strings.HasPrefix(path, "indexes/tenants/"+tenant+"/"),
 		"artifact path must start with indexes/tenants/<tenant>/, got %q", path)
 

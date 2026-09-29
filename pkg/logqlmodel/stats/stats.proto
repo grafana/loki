@@ -198,6 +198,11 @@ message Store {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "dataobj"
   ];
+
+  // Total number of chunks that failed to be fetched or decoded for the query,
+  // counted even when propagateChunkFetchErrors tolerated the failure instead
+  // of failing the query outright.
+  int64 chunkFetchFailures = 15 [(gogoproto.jsontag) = "chunkFetchFailures"];
 }
 
 message Dataobj {

@@ -82,6 +82,15 @@ func (s SelectLogParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) 
 	return SelectLogParams{&cpy}
 }
 
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectLogParams) WithTimeRange(start, end time.Time) SelectLogParams {
+	cpy := *s.QueryRequest
+	cpy.Start = start
+	cpy.End = end
+	return SelectLogParams{&cpy}
+}
+
 func (s SelectLogParams) String() string {
 	if s.QueryRequest != nil {
 		return fmt.Sprintf("selector=%s, direction=%s, start=%s, end=%s, limit=%d, shards=%s",
@@ -110,6 +119,15 @@ type SelectSampleParams struct {
 func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
 	cpy := *s.SampleQueryRequest
 	cpy.StoreChunks = chunkRefGroup
+	return SelectSampleParams{&cpy}
+}
+
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectSampleParams) WithTimeRange(start, end time.Time) SelectSampleParams {
+	cpy := *s.SampleQueryRequest
+	cpy.Start = start
+	cpy.End = end
 	return SelectSampleParams{&cpy}
 }
 

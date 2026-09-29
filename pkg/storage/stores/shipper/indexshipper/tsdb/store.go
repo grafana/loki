@@ -13,7 +13,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	chunkcache "github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -22,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type IndexWriter interface {
@@ -30,10 +33,23 @@ type IndexWriter interface {
 
 type store struct {
 	index.Reader
-	indexShipper indexshipper.IndexShipper
-	indexWriter  IndexWriter
-	logger       log.Logger
-	stopOnce     sync.Once
+	indexShipper  indexshipper.IndexShipper
+	indexWriter   IndexWriter
+	logger        log.Logger
+	stopOnce      sync.Once
+	postingsCache *postingsCache
+}
+
+type storeInitParams struct {
+	name            string
+	prefix          string
+	indexShipperCfg indexshipper.Config
+	schemaCfg       config.SchemaConfig
+	objectClient    client.ObjectClient
+	limits          downloads.Limits
+	tableRange      config.TableRange
+	reg             prometheus.Registerer
+	cacheReg        prometheus.Registerer
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -46,6 +62,7 @@ func NewStore(
 	limits downloads.Limits,
 	tableRange config.TableRange,
 	reg prometheus.Registerer,
+	cacheReg prometheus.Registerer,
 	logger log.Logger,
 ) (
 	index.ReaderWriter,
@@ -57,32 +74,52 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(storeInitParams{
+		name:            name,
+		prefix:          prefix,
+		indexShipperCfg: indexShipperCfg,
+		schemaCfg:       schemaCfg,
+		objectClient:    objectClient,
+		limits:          limits,
+		tableRange:      tableRange,
+		reg:             reg,
+		cacheReg:        cacheReg,
+	}); err != nil {
+		storeInstance.Stop()
 		return nil, nil, err
 	}
 
 	return storeInstance, storeInstance.Stop, nil
 }
 
-func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+func (s *store) init(params storeInitParams) error {
+	var err error
+	if (params.indexShipperCfg.Mode == indexshipper.ModeReadOnly || params.indexShipperCfg.Mode == indexshipper.ModeReadWrite) && chunkcache.IsCacheConfigured(params.indexShipperCfg.PostingsCache) {
+		postingsCfg := params.indexShipperCfg.PostingsCache
+		postingsCfg.Prefix = "tsdb-postings-" + params.name
+		cache, err := chunkcache.New(postingsCfg, params.cacheReg, s.logger, stats.IndexCache, constants.Loki)
+		if err != nil {
+			return err
+		}
+		s.postingsCache = newPostingsCache(cache, postingsCfg.Prefix, params.cacheReg, s.logger)
+	}
 
-	readerOpts, err := indexShipperCfg.IndexReaderOptions()
+	readerOpts, err := params.indexShipperCfg.IndexReaderOptions()
 	if err != nil {
 		return err
 	}
 
 	s.indexShipper, err = indexshipper.NewIndexShipper(
-		prefix,
-		indexShipperCfg,
-		objectClient,
-		limits,
+		params.prefix,
+		params.indexShipperCfg,
+		params.objectClient,
+		params.limits,
 		nil,
 		func(p string) (shipperindex.Index, error) {
-			return OpenShippableTSDB(p, readerOpts)
+			return openShippableTSDBWithPostingsCache(p, readerOpts, s.postingsCache, params.prefix, params.indexShipperCfg.CacheLocation)
 		},
-		tableRange,
-		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
+		params.tableRange,
+		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", params.reg),
 		s.logger,
 	)
 	if err != nil {
@@ -93,13 +130,13 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 	opts := DefaultIndexClientOptions()
 
 	// early return in case index shipper is disabled.
-	if indexShipperCfg.Mode == indexshipper.ModeDisabled {
+	if params.indexShipperCfg.Mode == indexshipper.ModeDisabled {
 		s.indexWriter = noopIndexWriter{}
-		s.Reader = NewIndexClient(NoopIndex{}, opts, limits)
+		s.Reader = NewIndexClient(NoopIndex{}, opts, params.limits)
 		return nil
 	}
 
-	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
+	if params.indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
 		// for the Stats() methods as it's of relatively little
 		// benefit when compared to the memory cost. The bloom filters
@@ -109,28 +146,28 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		opts.UseBloomFilters = false
 	}
 
-	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-		nodeName, err := indexShipperCfg.GetUniqueUploaderName()
+	if params.indexShipperCfg.Mode != indexshipper.ModeReadOnly {
+		nodeName, err := params.indexShipperCfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
 		}
 
-		tsdbMetrics := NewMetrics(reg)
+		tsdbMetrics := NewMetrics(params.reg)
 		tsdbManager := NewTSDBManager(
-			name,
+			params.name,
 			nodeName,
-			indexShipperCfg.ActiveIndexDirectory,
+			params.indexShipperCfg.ActiveIndexDirectory,
 			s.indexShipper,
-			tableRange,
-			schemaCfg,
+			params.tableRange,
+			params.schemaCfg,
 			s.logger,
 			tsdbMetrics,
 		)
 
 		headManager := NewHeadManager(
-			name,
+			params.name,
 			s.logger,
-			indexShipperCfg.ActiveIndexDirectory,
+			params.indexShipperCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
 		)
@@ -144,10 +181,10 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, params.tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts, limits)
+	s.Reader = NewIndexClient(multiIndex, opts, params.limits)
 
 	return nil
 }
@@ -159,7 +196,12 @@ func (s *store) Stop() {
 				level.Error(s.logger).Log("msg", "failed to stop head manager", "err", err)
 			}
 		}
-		s.indexShipper.Stop()
+		if s.indexShipper != nil {
+			s.indexShipper.Stop()
+		}
+		if s.postingsCache != nil {
+			s.postingsCache.Stop()
+		}
 	})
 }
 

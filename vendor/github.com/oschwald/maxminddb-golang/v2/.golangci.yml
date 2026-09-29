@@ -12,6 +12,7 @@ linters:
     - err113
     - exhaustive
     - exhaustruct
+    - exhaustruct_v5
     - forcetypeassert
     - funlen
     - gochecknoglobals
@@ -156,6 +157,24 @@ linters:
   exclusions:
     warn-unused: true
     rules:
+      # Generator fixtures intentionally use field/type pairs such as
+      # `Local Local` and `Bytes Bytes` to exercise name-collision handling.
+      - linters:
+          - dupword
+        path: maxminddb-gen/generate_test.go
+        text: "^Duplicate words \\((Local|Nested|Bytes|ByteSlice)\\) found"
+      # DecoderOption follows the package's established option naming pattern.
+      # A config-level exclusion avoids a cache-sensitive nolint directive.
+      - linters:
+          - revive
+        path: internal/decoder/decoder.go
+        text: "^exported: type name will be used as decoder\\.DecoderOption"
+      # emitInteger's explicit emission context is clearer than an arguments
+      # struct. A config-level exclusion avoids a cache-sensitive directive.
+      - linters:
+          - revive
+        path: maxminddb-gen/generate.go
+        text: "^argument-limit: maximum number of arguments per function exceeded; max 8 but got 9"
       # These decoders intentionally keep compact string and pointer cases
       # inline. nestif remains enabled and explicitly suppressed at each hot
       # function; exclude revive's overlapping nesting and switch-style rules
@@ -184,4 +203,7 @@ formatters:
         - default
         - prefix(github.com/oschwald/maxminddb-golang)
     gofumpt:
-      extra-rules: true
+      extra:
+        balance-calls: true
+        clothe-returns: true
+        group-params: true

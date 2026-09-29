@@ -188,6 +188,12 @@ type KVConfig struct {
 	// Size of the buffer for key watchers.
 	WatchPrefixBufferSize int `yaml:"watch_prefix_buffer_size" category:"advanced"`
 
+	// CasRetryMinBackoff and CasRetryMaxBackoff add a delay between CAS retries after
+	// a version mismatch. MinBackoff is the on/off toggle: 0 (its default) disables
+	// the delay regardless of MaxBackoff.
+	CasRetryMinBackoff time.Duration `yaml:"cas_retry_min_backoff" category:"experimental"`
+	CasRetryMaxBackoff time.Duration `yaml:"cas_retry_max_backoff" category:"experimental"`
+
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
 	// Zone-aware routing configuration.
@@ -250,6 +256,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
 	f.DurationVar(&cfg.BroadcastTimeoutForLocalUpdatesOnShutdown, prefix+"memberlist.broadcast-timeout-for-local-updates-on-shutdown", 10*time.Second, "Timeout for broadcasting all remaining locally-generated updates to other nodes when shutting down. Only used if there are nodes left in the memberlist cluster, and only applies to locally-generated updates, not to broadcast messages that are result of incoming gossip updates. 0 = no timeout, wait until all locally-generated updates are sent.")
 	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
+	f.DurationVar(&cfg.CasRetryMinBackoff, prefix+"memberlist.cas-retry-min-backoff", 0, "Minimum delay between CAS retries after a version mismatch. 0 disables the delay.")
+	f.DurationVar(&cfg.CasRetryMaxBackoff, prefix+"memberlist.cas-retry-max-backoff", 10*time.Second, "Maximum delay between CAS retries after a version mismatch. Only takes effect if cas-retry-min-backoff is also set.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
@@ -1305,6 +1313,11 @@ func (m *KV) Delete(key string) error {
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var lastError error
 
+	var retryBackoff *backoff.Backoff
+	if m.cfg.CasRetryMinBackoff > 0 {
+		retryBackoff = backoff.New(ctx, backoff.Config{MinBackoff: m.cfg.CasRetryMinBackoff, MaxBackoff: m.cfg.CasRetryMaxBackoff})
+	}
+
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
 		m.casAttempts.Inc()
@@ -1318,6 +1331,12 @@ outer:
 			case <-time.After(noChangeDetectedRetrySleep):
 				// ok
 			case <-ctx.Done():
+				lastError = ctx.Err()
+				break outer
+			}
+		} else if lastError != nil && retryBackoff != nil {
+			retryBackoff.Wait()
+			if ctx.Err() != nil {
 				lastError = ctx.Err()
 				break outer
 			}

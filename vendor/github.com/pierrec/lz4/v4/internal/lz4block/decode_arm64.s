@@ -56,45 +56,43 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 	ADD dict, dictlen, dictend
 
 loop:
-	// Read token. Extract literal length.
+	// Read token; >= 0xF0 means literal length 15, slow path.
 	MOVBU.P 1(src), token
-	LSR     $4, token, len
-	CMP     $15, len
-	BEQ     readLitlenLoop        // len == 15: extended read, slow path.
+	CMP     $0xF0, token
+	BHS     readLitlenExt
 
 	// Shortcut: literal length is 0..14. If we also have at least 32 bytes
 	// of dst and 16 bytes of src remaining, copy 16 literal bytes in one
 	// shot, then try to finish the token's match with an 18-byte copy.
 	// Falls back to the slow path on any guard failure. Mirrors the
 	// "copy shortcut" in decode_amd64.s.
-	CMP dstend32, dst
-	BHS readLitlenDone            // <32 bytes left in dst: slow path.
-	CMP srcend16, src
-	BHS readLitlenDone            // <16 bytes left in src: slow path.
+	CMP  dstend32, dst
+	CCMP LO, src, srcend16, $0b0010 // dst >= dstend-32: 0010 sets C (HS).
+	BHS  readLitlenShort            // <32 bytes left in dst or <16 in src: slow path.
 
-	// 16-byte literal copy (bytes past len get overwritten next iter).
+	// 16-byte literal copy (bytes past the literal get overwritten next iter).
 	LDP (src), (tmp1, tmp2)
 	STP (tmp1, tmp2), (dst)
-	ADD len, src
-	ADD len, dst
+	ADD token>>4, src, src
+	ADD token>>4, dst, dst
 
-	// Derive initial matchlen from token's low nibble.
-	AND $15, token, len
-
-	// Read 2-byte offset (src has >=2 bytes left by the guard above).
-	MOVHU (src), offset
-	ADD   $2, src
-	CBZ   offset, corrupt
+	// Initial matchlen from the token's low nibble, then the 2-byte
+	// offset (src has >= 2 bytes left by the guard above).
+	AND     $15, token, len
+	MOVHU.P 2(src), offset
 
 	// Fast-match preconditions: matchlen != 15, offset >= 8, match is
 	// within the current block (>= dstorig -- not a dict reference).
+	// Branches, not a CCMP chain: matchlen == 15 data must leave at the
+	// first test. offset == 0 fails offset >= 8 and is rejected at
+	// readMatchlenChk.
 	CMP $15, len
-	BEQ readMatchlen              // extended matchlen: slow path.
+	BEQ readMatchlenChk
 	CMP $8, offset
-	BLO readMatchlen              // small offset: use existing <8 path.
+	BLO readMatchlenChk
 	SUB offset, dst, match
 	CMP dstorig, match
-	BLO readMatchlen              // dict reference: use existing dict path.
+	BLO readMatchlenChk
 
 	// 18-byte match copy as sequenced 8+8+2 (like the C decoder).
 	// dst-space is guaranteed: dst < dstend-32 and matchlen+minMatch
@@ -110,8 +108,15 @@ loop:
 	MOVH  tmp3, 16(dst)
 	ADD   $const_minMatch, len
 	ADD   len, dst
-	B     copyMatchDone
+	// src < srcend: the guard left >= 17 bytes, the shortcut used <= 16.
+	B     loop
 
+readLitlenShort:
+	LSR $4, token, len
+	B   readLitlenDone
+
+readLitlenExt:
+	MOVD $15, len
 readLitlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
@@ -188,7 +193,9 @@ copyLiteralDone:
 	CMP   srcend, src
 	BHI   shortSrc
 	MOVHU -2(src), offset
-	CBZ   offset, corrupt
+
+readMatchlenChk:
+	CBZ offset, corrupt
 
 readMatchlen:
 	// Read rest of match length.
@@ -296,8 +303,7 @@ copyMatchTry8Narrow:
 
 	CMP  $32, len
 	BLO  copyMatchLoop8Setup        // short match: 8-byte loop.
-	CMP  $32, offset
-	BHS  copyMatchLoop8Setup        // offset >= 32 only via the dict remainder path.
+	// offset is 8..31 here (entered with len < 16 or offset <= 31).
 	CMP  $8, offset
 	BEQ  copyMatchTile8
 	CMP  $16, offset
@@ -440,29 +446,18 @@ copyMatchTile24Loop:
 	B    copyMatchTile24Loop
 
 copyMatchTile32:
-	// offset in 17..23, 25..31: prefill one period (8-byte copies never
-	// read ahead of the writes since offset >= 8), so [dst-2*offset, dst)
-	// holds two periods (>= 34 bytes) and dst is phase-aligned; then
-	// store a 32-byte tile from there, advancing by offset. The overlap
-	// between consecutive stores is rewritten with identical bytes.
-	MOVD offset, tmp4
-copyMatchTile32Pre8:
-	MOVD.P 8(match), tmp1
-	MOVD.P tmp1, 8(dst)
-	SUB    $8, tmp4
-	CMP    $8, tmp4
-	BHS    copyMatchTile32Pre8
-	CBZ    tmp4, copyMatchTile32Load
-copyMatchTile32Pre1:
-	MOVBU.P 1(match), tmp1
-	MOVB.P  tmp1, 1(dst)
-	SUBS    $1, tmp4
-	BNE     copyMatchTile32Pre1
-copyMatchTile32Load:
+	// 17..23, 25..31: prefill one period with two 16-byte copies (bytes
+	// 0..15 from match, offset-16..offset-1 from before dst), then store
+	// the 32-byte tile at match every offset bytes.
+	LDP (match), (tmp1, tmp2)
+	LDP -16(dst), (tmp3, tmp4)
+	STP (tmp1, tmp2), (dst)
+	SUB $16, offset, lenRem
+	ADD lenRem, dst, lenRem         // dst + offset - 16
+	STP (tmp3, tmp4), (lenRem)
+	ADD offset, dst
 	SUB offset, len
-	SUB offset<<1, dst, lenRem     // lenRem = dst - 2*offset: tile source.
-	LDP (lenRem), (tmp1, tmp2)
-	LDP 16(lenRem), (tmp3, tmp4)
+	LDP 16(match), (tmp3, tmp4)
 copyMatchTile32Loop:
 	CMP $32, len
 	BLO copyMatchTileTail

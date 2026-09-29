@@ -164,7 +164,6 @@ common:
 			assert.EqualValues(t, defaults.Ingester.LifecyclerConfig.RingConfig.KVStore.Store, config.Ingester.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, defaults.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, defaults.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, defaults.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store, config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("when top-level memberlist join_members are provided, all applicable rings are defaulted to use memberlist", func(t *testing.T) {
@@ -180,7 +179,6 @@ memberlist:
 			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, memberlistStr, config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via config file are preserved", func(t *testing.T) {
@@ -201,7 +199,6 @@ distributor:
 			assert.EqualValues(t, memberlistStr, config.Ruler.Ring.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, memberlistStr, config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 
 		t.Run("explicit ring configs provided via command line are preserved", func(t *testing.T) {
@@ -219,7 +216,6 @@ memberlist:
 			assert.EqualValues(t, memberlistStr, config.Distributor.DistributorRing.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
 			assert.EqualValues(t, memberlistStr, config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
-			assert.EqualValues(t, memberlistStr, config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 		})
 	})
 
@@ -1463,7 +1459,6 @@ common:
 		assert.Equal(t, "", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "", config.IndexGateway.Ring.TokensFilePath)
-		assert.Equal(t, "", config.DataObj.Consumer.LifecyclerConfig.TokensFilePath)
 	})
 
 	t.Run("tokens files should be set from common config when persist_tokens is true and path_prefix is defined", func(t *testing.T) {
@@ -1481,7 +1476,6 @@ common:
 		assert.Equal(t, "/loki/compactor.tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/loki/scheduler.tokens", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "/loki/indexgateway.tokens", config.IndexGateway.Ring.TokensFilePath)
-		assert.Equal(t, "/loki/dataobjconsumer.tokens", config.DataObj.Consumer.LifecyclerConfig.TokensFilePath)
 	})
 
 	t.Run("ingester config not applied to other rings if actual values set", func(t *testing.T) {
@@ -1504,10 +1498,6 @@ query_scheduler:
 index_gateway:
   ring:
     tokens_file_path: /looki/tookens
-dataobj:
-  consumer:
-    lifecycler:
-      tokens_file_path: /dataobjconsumer/tokens
 common:
   persist_tokens: true
   path_prefix: /loki
@@ -1521,7 +1511,6 @@ common:
 		assert.Equal(t, "/foo/tokens", config.CompactorConfig.CompactorRing.TokensFilePath)
 		assert.Equal(t, "/sched/tokes", config.QueryScheduler.SchedulerRing.TokensFilePath)
 		assert.Equal(t, "/looki/tookens", config.IndexGateway.Ring.TokensFilePath)
-		assert.Equal(t, "/dataobjconsumer/tokens", config.DataObj.Consumer.LifecyclerConfig.TokensFilePath)
 	})
 
 	t.Run("ingester ring configuration is used for other rings when no common ring or memberlist config is provided", func(t *testing.T) {
@@ -1543,7 +1532,6 @@ ingester:
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
-		assert.Equal(t, "etcd", config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 	})
 
 	t.Run("memberlist configuration takes precedence over copying ingester config", func(t *testing.T) {
@@ -1569,7 +1557,6 @@ ingester:
 		assert.Equal(t, "memberlist", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "memberlist", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, "memberlist", config.IndexGateway.Ring.KVStore.Store)
-		assert.Equal(t, "memberlist", config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 	})
 }
 
@@ -1589,7 +1576,6 @@ func TestRingInterfaceNames(t *testing.T) {
 		assert.Contains(t, config.Distributor.DistributorRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, defaultIface)
 		assert.Contains(t, config.Ruler.Ring.InstanceInterfaceNames, defaultIface)
-		assert.Contains(t, config.DataObj.Consumer.LifecyclerConfig.InfNames, defaultIface)
 	})
 
 	t.Run("if ingester interface is set, it overrides other rings default interfaces", func(t *testing.T) {
@@ -1606,7 +1592,6 @@ func TestRingInterfaceNames(t *testing.T) {
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"ingesteriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ingesteriface"})
 		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, []string{"ingesteriface"})
-		assert.Equal(t, config.DataObj.Consumer.LifecyclerConfig.InfNames, []string{"ingesteriface"})
 	})
 
 	t.Run("if all rings have different net interface sets, doesn't override any of them", func(t *testing.T) {
@@ -1633,12 +1618,7 @@ query_scheduler:
 ingester:
   lifecycler:
     interface_names:
-    - ingesteriface
-dataobj:
-  consumer:
-    lifecycler:
-      interface_names:
-      - dataobjconsumeriface`
+    - ingesteriface`
 
 		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
 		assert.NoError(t, err)
@@ -1648,7 +1628,6 @@ dataobj:
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
-		assert.Equal(t, config.DataObj.Consumer.LifecyclerConfig.InfNames, []string{"dataobjconsumeriface"})
 	})
 
 	t.Run("if all rings except ingester have net interface sets, doesn't override them with ingester default value", func(t *testing.T) {
@@ -1671,12 +1650,7 @@ ruler:
 query_scheduler:
   scheduler_ring:
     instance_interface_names:
-    - scheduleriface
-dataobj:
-  consumer:
-    lifecycler:
-      interface_names:
-        - dataobjconsumeriface`
+    - scheduleriface`
 
 		config, _, err := configWrapperFromYAML(t, yamlContent, []string{})
 		assert.NoError(t, err)
@@ -1685,7 +1659,6 @@ dataobj:
 		assert.Equal(t, config.Distributor.DistributorRing.InstanceInterfaceNames, []string{"distributoriface"})
 		assert.Equal(t, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames, []string{"scheduleriface"})
 		assert.Equal(t, config.Ruler.Ring.InstanceInterfaceNames, []string{"ruleriface"})
-		assert.Equal(t, config.DataObj.Consumer.LifecyclerConfig.InfNames, []string{"dataobjconsumeriface"})
 		expectedInterfaces := netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 		expectedInterfaces = append(expectedInterfaces, defaultIface)
 		assert.Equal(t, config.Ingester.LifecyclerConfig.InfNames, expectedInterfaces)
@@ -1761,7 +1734,6 @@ func TestCommonRingConfigSection(t *testing.T) {
 		assert.Equal(t, "etcd", config.QueryScheduler.SchedulerRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.CompactorConfig.CompactorRing.KVStore.Store)
 		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
-		assert.Equal(t, "etcd", config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 	})
 
 	t.Run("if common ring is provided, reuse it for all rings that aren't explicitly set", func(t *testing.T) {
@@ -1786,7 +1758,6 @@ ingester:
 		assert.Equal(t, "etcd", config.IndexGateway.Ring.KVStore.Store)
 		assert.Equal(t, "etcd", config.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store)
 		assert.Equal(t, "etcd", config.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store)
-		assert.Equal(t, "etcd", config.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store)
 	})
 
 	t.Run("if only ingester ring is provided, reuse it for all rings", func(t *testing.T) {

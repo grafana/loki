@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -27,12 +28,14 @@ func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *logsCalculation
 }
 
 func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
-	var batchErr error
 	for _, log := range batch {
-		if batchErr != nil {
-			break
+		streamLbls, labelsOK := calcCtx.streamLabels[log.StreamID]
+		shardBucket, shardOK := calcCtx.streamShardBuckets[log.StreamID]
+
+		if !labelsOK || !shardOK {
+			return fmt.Errorf("unknown stream ID %d in log record", log.StreamID)
 		}
-		streamLbls := calcCtx.streamLabels[log.StreamID]
+
 		// The uncompressed byte contract is line bytes plus structured metadata
 		// value bytes, matching streams.Stream.UncompressedSize and the stats
 		// calculation so every producer reports the same quantity.
@@ -41,9 +44,6 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			uncompressedSize += int64(len(md.Value))
 		})
 		streamLbls.Range(func(lbl labels.Label) {
-			if batchErr != nil {
-				return
-			}
 			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
 				ShardBuckets:     int64(streams.ShardFactor),
@@ -53,10 +53,11 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 				StreamID:         log.StreamID,
 				Timestamp:        log.Timestamp,
 				UncompressedSize: uncompressedSize,
+				ShardBucket:      shardBucket,
 			})
 		})
 	}
-	return batchErr
+	return nil
 }
 
 func (c *labelPostingsCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {

@@ -10,6 +10,9 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
+
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
 var (
@@ -424,6 +427,39 @@ func TestYamlFormatting(t *testing.T) {
 `
 
 	require.Equal(t, expected, string(data))
+}
+
+// A stored expression whose first line begins with whitespace used to be written to the
+// rule file as YAML that no parser could read. Prometheus' Manager.Update loads every
+// file of a tenant and swaps in nothing if any one of them fails, so a single such rule
+// froze that tenant's entire rule set on its last good snapshot.
+func Test_mapper_MapRulesWithLeadingWhitespaceInExpr(t *testing.T) {
+	m := &mapper{
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: log.NewNopLogger(),
+	}
+
+	const expr = "sum by (level) (\n    count_over_time({job=~\".+\"}[1m])\n  )"
+
+	stored := rulespb.RuleGroupList{{
+		Name:      "rulegroup_one",
+		Namespace: "file /one",
+		User:      testUser,
+		Rules:     []*rulespb.RuleDesc{{Record: "example_rule", Expr: "   " + expr + "\n"}},
+	}}
+
+	updated, files, err := m.MapRules(testUser, stored.Formatted())
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.Equal(t, []string{fileOnePath}, files)
+
+	data, err := afero.ReadFile(m.FS, fileOnePath)
+	require.NoError(t, err)
+
+	var groups rulefmt.RuleGroups
+	require.NoError(t, yaml.Unmarshal(data, &groups), "rule file must be loadable: %s", data)
+	require.Equal(t, expr, groups.Groups[0].Rules[0].Expr)
 }
 
 func Test_mapper_CleanupShouldNotFailIfPathDoesNotExist(t *testing.T) {

@@ -105,7 +105,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		agg.rowCount++
 		// The uncompressed_logs_size byte contract is line bytes plus structured
 		// metadata value bytes, matching streams.Stream.UncompressedSize recorded
-		// during initial indexing (see consumer/logsobj Builder.Append). Counting
+		// during initial indexing (see logsobj Builder.Append). Counting
 		// only the line here would make compaction output disagree with the ToC
 		// values written on the initial index flush.
 		size := int64(len(log.Line))

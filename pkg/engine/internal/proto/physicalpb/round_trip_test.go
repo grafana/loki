@@ -36,6 +36,7 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 		new(physical.Projection),
 		new(physical.RangeAggregation),
 		new(physical.ScanSet),
+		new(physical.SortObject),
 		new(physical.TopK),
 		new(physical.VectorAggregation),
 		//new(physical.LogMerge),
@@ -119,4 +120,17 @@ func newPhysicalFiller() *testutils.Filler {
 	})
 
 	return f
+}
+
+func TestSortObjectMarshalPhysicalIsDeepCopy(t *testing.T) {
+	original := &physicalpb.SortObject{
+		SourceObjectPath: "objects/aa/bb",
+		SortSchema:       []string{"label:app"},
+	}
+
+	marshaled, err := original.MarshalPhysical(ulid.Make())
+	require.NoError(t, err)
+	marshaled.(*physical.SortObject).SortSchema[0] = "label:cluster"
+
+	require.Equal(t, "label:app", original.SortSchema[0])
 }
