@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// TableOfContentsEntry describes an index-pointer row to add to a ToC for a
-// given tenant. Used by ReplaceIndexPointers as the "to add" set.
+// TableOfContentsEntry describes an index-pointer row to add to a tenant's ToC.
+// Used by WriteEntry and as the "to add" set of ReplaceIndexPointers.
 type TableOfContentsEntry struct {
 	// Path is the object-storage path of the index object.
 	Path string

@@ -57,11 +57,32 @@ func TestFlushCommitter(t *testing.T) {
 		require.Equal(t, []*dataobj.Object{flusher.obj}, indexer.objs)
 		// The built index is recorded in the ToC before the offset is committed.
 		require.Equal(t, []string{"index/object_001"}, tocWriter.paths)
-		require.Equal(t, [][]multitenancy.TimeRange{{{Tenant: "test"}}}, tocWriter.timeRanges)
+		require.Equal(t, []string{"test"}, tocWriter.tenants)
 		require.Equal(t, []int64{1}, committer.offsets)
 		// The object is released once indexing is done with it.
 		require.Equal(t, 1, flusher.closer.closed)
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
+	})
+
+	t.Run("should fail when the index covers more than one tenant", func(t *testing.T) {
+		var (
+			reg     = prometheus.NewRegistry()
+			flusher = &mockFlusher{obj: &dataobj.Object{}}
+			indexer = &mockIndexer{timeRanges: []multitenancy.TimeRange{
+				{Tenant: "tenant-a"},
+				{Tenant: "tenant-b"},
+			}}
+			tocWriter      = &mockTOCWriter{}
+			committer      = &mockCommitter{}
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+		)
+		b := newTestFlushBuilder(t, reg)
+		err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
+		require.EqualError(t, err, "index index/object_001 covers 2 tenants, want exactly 1")
+		// ToCs are single-tenant, so nothing is recorded or committed.
+		require.Empty(t, tocWriter.paths)
+		require.Empty(t, committer.offsets)
+		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
 	})
 
 	t.Run("should fail when the flush fails", func(t *testing.T) {

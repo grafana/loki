@@ -5,8 +5,6 @@ import (
 	"context"
 	stderrors "errors"
 	"io"
-	"maps"
-	"slices"
 	"sync"
 	"time"
 
@@ -20,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -84,11 +81,9 @@ func (m *TableOfContentsWriter) initBuilder() error {
 	return initErr
 }
 
-// WriteEntry adds the provided path to the Table of Contents file of every
-// tenant in tenantTimeRanges, for every window the tenant's time range
-// overlaps. The min/max timestamps are stored as metastore for the new entry
-// can be accessed by time.
-func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
+// WriteEntry adds entry to the tenant's ToC of every window the entry overlaps.
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
+	var err error
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
@@ -97,38 +92,9 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 		return err
 	}
 
-	rangesByTenant := make(map[string][]multitenancy.TimeRange)
-	for _, timeRange := range tenantTimeRanges {
-		rangesByTenant[timeRange.Tenant] = append(rangesByTenant[timeRange.Tenant], timeRange)
-	}
-
-	for _, tenant := range slices.Sorted(maps.Keys(rangesByTenant)) {
-		if err := m.writeTenantEntry(ctx, tenant, dataobjPath, rangesByTenant[tenant]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeTenantEntry adds dataobjPath to the tenant's Table of Contents file for
-// every window that tenantTimeRanges overlap. All of tenantTimeRanges must
-// belong to tenant.
-func (m *TableOfContentsWriter) writeTenantEntry(ctx context.Context, tenant string, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
-	var err error
-
-	var minTime, maxTime time.Time
-	for _, timeRange := range tenantTimeRanges {
-		if minTime.IsZero() || timeRange.MinTime.Before(minTime) {
-			minTime = timeRange.MinTime
-		}
-		if maxTime.IsZero() || timeRange.MaxTime.After(maxTime) {
-			maxTime = timeRange.MaxTime
-		}
-	}
-
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range IterTableOfContentsPaths(tenant, minTime, maxTime) {
+	for tocPath := range IterTableOfContentsPaths(tenant, entry.StartTime, entry.EndTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -163,18 +129,13 @@ func (m *TableOfContentsWriter) writeTenantEntry(ctx context.Context, tenant str
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				// Append all the tenant time ranges that overlap with the current Table of Contents window.
-				for _, timeRange := range tenantTimeRanges {
-					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
-							Path:    dataobjPath,
-							StartTs: timeRange.MinTime,
-							EndTs:   timeRange.MaxTime,
-						})
-						if err != nil {
-							return nil, errors.Wrap(err, "appending index pointer")
-						}
-					}
+				err := m.tocBuilder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+					Path:    entry.Path,
+					StartTs: entry.StartTime,
+					EndTs:   entry.EndTime,
+				})
+				if err != nil {
+					return nil, errors.Wrap(err, "appending index pointer")
 				}
 
 				var (

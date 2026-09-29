@@ -93,7 +93,7 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
+	require.NoError(b.t, writeTimeRanges(context.Background(), b.meta, path, timeRanges))
 	return path
 }
 
@@ -389,7 +389,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -528,7 +528,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -660,7 +660,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)

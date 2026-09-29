@@ -303,7 +303,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		})
 	}
 	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
-	return testIndex{path: path, start: ts, end: ts.Add(time.Second), uncompressedLogsSize: uint64(len(sourcePaths) * 100)}
+	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
 }
 
 func TestE2ECompactionConvergence(t *testing.T) {

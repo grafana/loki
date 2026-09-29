@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -138,7 +139,7 @@ func (s *DataObjStore) flush() error {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	if err = s.logsMetastoreToc.WriteEntry(context.Background(), path, timeRanges); err != nil {
+	if err = writeToCEntries(context.Background(), s.logsMetastoreToc, path, timeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -190,7 +191,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
+		err = writeToCEntries(context.Background(), s.indexMetastoreToc, key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}
@@ -243,6 +244,20 @@ func (s *DataObjStore) buildIndex() error {
 	if cnt%objectsPerIndex != 0 {
 		if err := flushAndUpload(calculator); err != nil {
 			return fmt.Errorf("failed to flush and upload index: %w", err)
+		}
+	}
+	return nil
+}
+
+// writeToCEntries records path in the ToC of every tenant in timeRanges.
+func writeToCEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []multitenancy.TimeRange) error {
+	for _, tr := range timeRanges {
+		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
+			Path:      path,
+			StartTime: tr.MinTime,
+			EndTime:   tr.MaxTime,
+		}); err != nil {
+			return err
 		}
 	}
 	return nil

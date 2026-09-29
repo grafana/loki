@@ -97,12 +97,13 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 
 	require.NoError(t, bucket.Upload(ctx, indexPath, reader))
 	require.NotEmpty(t, ranges)
-	attrs, err := bucket.Attributes(ctx, indexPath)
-	require.NoError(t, err)
-	for i := range ranges {
-		ranges[i].FileSize = uint64(attrs.Size)
+	for _, r := range ranges {
+		require.NoError(t, tocWriter.WriteEntry(ctx, r.Tenant, metastore.TableOfContentsEntry{
+			Path:      indexPath,
+			StartTime: r.MinTime,
+			EndTime:   r.MaxTime,
+		}))
 	}
-	require.NoError(t, tocWriter.WriteEntry(ctx, indexPath, ranges))
 }
 
 func closeFixture(t *testing.T, closer io.Closer) {
