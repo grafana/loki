@@ -33,7 +33,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -97,6 +96,10 @@ type Config struct {
 	// RateStore customizes the rate storing used by stream sharding.
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
+	// GlobalThrottler configures the external, distributed rate throttler used by the
+	// "exact" ingestion rate strategy (see validation.ExactIngestionRateStrategy).
+	GlobalThrottler GlobalThrottlerConfig `yaml:"global_throttler"`
+
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
@@ -125,6 +128,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	cfg.GlobalThrottler.RegisterFlagsWithPrefix("distributor.global-throttler", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
@@ -207,19 +211,24 @@ type Distributor struct {
 	rateStore    RateStore
 	shardTracker *ShardTracker
 
-	// The global rate limiter requires a distributors ring to count
-	// the number of healthy instances.
+	// The ring-divided global rate limiter requires a distributors ring to
+	// count the number of healthy instances.
 	distributorsLifecycler *ring.BasicLifecycler
 	distributorsRing       *ring.Ring
 	healthyInstancesCount  *atomic.Uint32
+
+	// globalThrottler is non-nil only when rateLimitStrat is
+	// validation.ExactIngestionRateStrategy.
+	globalThrottler *globalThrottler
 
 	rateLimitStrat string
 
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
-	// Per-user rate limiter.
-	ingestionRateLimiter *limiter.RateLimiter
-	labelCache           *lru.Cache[string, labelData]
+	// Per-user rate limit admission, backed by whichever mechanism
+	// rateLimitStrat selected -- see ingestionRateEnforcer.
+	rateLimitEnforcer ingestionRateEnforcer
+	labelCache        *lru.Cache[string, labelData]
 
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
@@ -369,7 +378,20 @@ func New(
 		d.circuitBreaker = circuitBreaker
 	}
 
-	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+	switch overrides.IngestionRateStrategy() {
+	case validation.ExactIngestionRateStrategy:
+		d.rateLimitStrat = validation.ExactIngestionRateStrategy
+
+		var gt *globalThrottler
+		gt, err = newGlobalThrottler(cfg.GlobalThrottler, logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+		d.globalThrottler = gt
+		servs = append(servs, gt)
+
+		d.rateLimitEnforcer = newThrottlerEnforcer(overrides, gt)
+	case validation.GlobalIngestionRateStrategy:
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
 		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
@@ -380,11 +402,11 @@ func New(
 		servs = append(servs, distributorsLifecycler, distributorsRing)
 
 		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, d)
-	} else {
+		d.rateLimitEnforcer = newReservationEnforcer(limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second))
+	default:
 		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
+		d.rateLimitEnforcer = newReservationEnforcer(limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second))
 	}
-
-	d.ingestionRateLimiter = limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second)
 	d.distributorsRing = distributorsRing
 	d.distributorsLifecycler = distributorsLifecycler
 
@@ -1108,11 +1130,7 @@ type rateLimitBucket struct {
 // at the same "now" used for the reservation decision.
 func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []*rateLimitBucket) error {
 	limitOf := func(b *rateLimitBucket) int {
-		key := tenantID
-		if b.hasOverride {
-			key = encodeRateLimitKey(tenantID, b.policy)
-		}
-		return int(d.ingestionRateLimiter.Limit(now, key))
+		return d.rateLimitEnforcer.limit(now, tenantID, b)
 	}
 
 	if len(exceeded) == 1 {
@@ -1135,15 +1153,14 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 }
 
 // enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
-// decision. A bucket with a per-policy override is metered independently from the tenant-wide
-// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
-// immediately, cancel every reservation (returning the tokens) and reject the whole request.
-// Using reservations rather than AllowN keeps the buckets independent: a request rejected
-// because one bucket is over its limit does not consume tokens from the others, so an
-// over-limit policy can't drain the budgets of unrelated policies across client retries.
+// decision, via whichever mechanism d.rateLimitEnforcer wraps for the configured strategy (see
+// ingestionRateEnforcer). A bucket with a per-policy override is metered independently from the
+// tenant-wide bucket -- exceeded reflects exactly the buckets that individually caused rejection,
+// not every bucket that happened to share the request, so an over-limit policy can't drain the
+// budgets of unrelated policies across client retries.
 //
-// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
-// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+// It returns a non-nil 429 error if any bucket is over its limit; nil means the request was
+// admitted.
 func (d *Distributor) enforceIngestionRateLimits(
 	ctx context.Context,
 	now time.Time,
@@ -1154,35 +1171,13 @@ func (d *Distributor) enforceIngestionRateLimits(
 	streamResolver push.StreamResolver,
 	format string,
 ) error {
-	type bucketReservation struct {
-		bucket      *rateLimitBucket
-		reservation *rate.Reservation
-	}
-	reservations := make([]bucketReservation, 0, len(rlBuckets))
-	var exceeded []*rateLimitBucket
-	for _, b := range rlBuckets {
-		limiterKey := tenantID
-		if b.hasOverride {
-			limiterKey = encodeRateLimitKey(tenantID, b.policy)
-		}
-		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
-		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
-		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
-		// bucket (rather than stopping at the first failure) so the rejection error can
-		// deterministically report all exceeded buckets.
-		if !r.OK() || r.DelayFrom(now) > 0 {
-			exceeded = append(exceeded, b)
-		}
+	exceeded, err := d.rateLimitEnforcer.enforce(ctx, now, tenantID, rlBuckets)
+	if err != nil {
+		level.Warn(d.logger).Log("msg", "rate limit enforcement error", "tenant", tenantID, "err", err)
 	}
 
 	if len(exceeded) == 0 {
 		return nil
-	}
-
-	// Roll back every reservation so no tokens are consumed for a rejected request.
-	for _, br := range reservations {
-		br.reservation.CancelAt(now)
 	}
 
 	// The whole request is dropped, so attribute every stream as discarded (each under its
@@ -1202,10 +1197,10 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return strings.Compare(a.policy, b.policy)
 	})
 
-	err := d.rateLimitError(now, tenantID, exceeded)
-	d.writeFailuresManager.Log(tenantID, err)
+	rateLimitErr := d.rateLimitError(now, tenantID, exceeded)
+	d.writeFailuresManager.Log(tenantID, rateLimitErr)
 	// Return a 429 to indicate to the client they are being rate limited
-	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", rateLimitErr.Error())
 }
 
 // trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
