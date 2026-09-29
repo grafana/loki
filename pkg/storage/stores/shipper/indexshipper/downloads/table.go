@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
@@ -170,6 +171,7 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 		// sending to goroutine
 		uid := users[i]
 
+		endDispatch := timing.Track(ctx, timing.DispatchWait)
 		g.Go(func() error {
 			indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
 			if err != nil {
@@ -194,6 +196,7 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 			}
 			return err
 		})
+		endDispatch()
 	}
 	return g.Wait()
 }

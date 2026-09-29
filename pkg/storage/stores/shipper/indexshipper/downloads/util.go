@@ -67,7 +67,9 @@ func (m *mtxWithReadiness) rLock(ctx context.Context) error {
 		return err
 	}
 
+	endWait := timing.Track(ctx, timing.LockWait)
 	m.mtx.RLock()
+	endWait()
 	return nil
 }
 
