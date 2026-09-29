@@ -181,32 +181,27 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	}
 }
 
-// TableOfContentsPath returns the object-storage path of the tenant's ToC file
-// that covers the given window-aligned time. Each ToC holds the index
-// pointers of a single tenant. The path layout is part of the metastore's
-// on-disk contract; callers must align window to MetastoreWindowSize.
+// TableOfContentsPath returns the path of the tenant's ToC for window.
+// window must be aligned to MetastoreWindowSize.
 func TableOfContentsPath(tenant string, window time.Time) string {
 	return TableOfContentsWindowPrefix(window) + tenant + tocSuffix
 }
 
-// TableOfContentsWindowPrefix returns the object-storage prefix under which
-// the ToC files of every tenant for the given window-aligned time are stored.
-// Callers must align window to MetastoreWindowSize.
+// TableOfContentsWindowPrefix returns the folder holding every tenant's ToC for window.
+// window must be aligned to MetastoreWindowSize.
 func TableOfContentsWindowPrefix(window time.Time) string {
 	return TocPrefix + strings.ReplaceAll(window.Format(time.RFC3339), ":", "_") + "/"
 }
 
-// ListTableOfContentsTenants returns the tenants that have a ToC file for the
-// given window-aligned time, sorted by tenant ID. A window without any ToC
-// files yields no tenants and no error.
+// ListTableOfContentsTenants returns the tenants that have a ToC for window, sorted.
+// An empty window returns no tenants and no error.
 func ListTableOfContentsTenants(ctx context.Context, bucket objstore.BucketReader, window time.Time) ([]string, error) {
 	prefix := TableOfContentsWindowPrefix(window)
 
 	var tenants []string
 	err := bucket.Iter(ctx, prefix, func(name string) error {
 		tenant, ok := strings.CutSuffix(strings.TrimPrefix(name, prefix), tocSuffix)
-		// Iter also reports nested directories; ToC files are only ever stored
-		// directly under the window prefix.
+		// Skip folders and other files; ToCs sit directly in the window folder.
 		if ok && tenant != "" && !strings.Contains(tenant, "/") {
 			tenants = append(tenants, tenant)
 		}
