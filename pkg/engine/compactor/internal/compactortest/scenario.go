@@ -3,9 +3,10 @@ package compactortest
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -53,28 +53,17 @@ func New(ctx context.Context, t *testing.T, window time.Time, sources []Source) 
 	t.Helper()
 	require.Equal(t, window.Truncate(metastore.MetastoreWindowSize), window, "scenario window must be aligned")
 	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
 	seen := make(map[string]struct{}, len(sources))
-	for _, source := range sources {
+	for i, source := range sources {
 		require.NotContains(t, seen, source.Path, "duplicate log object path")
 		require.NotNil(t, source.Object)
 		seen[source.Path] = struct{}{}
 		reader, err := source.Object.Reader(ctx)
 		require.NoError(t, err)
-		require.NoError(t, bucket.Upload(ctx, source.Path, reader))
-		require.NoError(t, reader.Close())
-	}
+		require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
 
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	for i, source := range sources {
-		indexPath := IndexPath(i)
-		ranges := buildAndUploadIndexFile(ctx, t, bucket, indexPath, source.Path)
-		require.NotEmpty(t, ranges)
-		attrs, err := bucket.Attributes(ctx, indexPath)
-		require.NoError(t, err)
-		for j := range ranges {
-			ranges[j].FileSize = uint64(attrs.Size)
-		}
-		require.NoError(t, tocWriter.WriteEntry(ctx, indexPath, ranges))
+		seedSourceIndex(ctx, t, bucket, tocWriter, IndexPath(i), source.Path)
 	}
 	return &Scenario{Bucket: bucket, Window: window}
 }
@@ -82,15 +71,14 @@ func New(ctx context.Context, t *testing.T, window time.Time, sources []Source) 
 // IndexPath returns the ToC index path for the source at position i.
 func IndexPath(i int) string { return fmt.Sprintf("indexes/source-%d", i) }
 
-func buildAndUploadIndexFile(ctx context.Context, t *testing.T, bucket objstore.Bucket, indexPath, sourcePath string) []multitenancy.TimeRange {
+func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tocWriter *metastore.TableOfContentsWriter, indexPath, sourcePath string) {
 	t.Helper()
 
-	var cfg logsobj.BuilderBaseConfig
-	cfg.RegisterFlagsWithPrefix("", flag.NewFlagSet("scenario-index", flag.PanicOnError))
-	require.NoError(t, cfg.TargetPageSize.Set("2KB"))
-	require.NoError(t, cfg.TargetSectionSize.Set("4MB"))
-	require.NoError(t, cfg.TargetObjectSize.Set("4MB"))
-	require.NoError(t, cfg.BufferSize.Set("16KB"))
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize: 2 * 1024, TargetSectionSize: 4 * 1024 * 1024,
+		TargetObjectSize: 4 * 1024 * 1024, BufferSize: 16 * 1024,
+		MaxPageRows: 10000, SectionStripeMergeLimit: 2, EstimatedCompressionRatio: 8,
+	}
 	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
@@ -101,40 +89,40 @@ func buildAndUploadIndexFile(ctx context.Context, t *testing.T, bucket objstore.
 
 	indexObj, closer, ranges, err := calculator.Flush()
 	require.NoError(t, err)
-	defer func() { require.NoError(t, closer.Close()) }()
+	defer closeFixture(t, closer)
 
 	reader, err := indexObj.Reader(ctx)
 	require.NoError(t, err)
-	defer func() { require.NoError(t, reader.Close()) }()
+	defer closeFixture(t, reader)
 
 	require.NoError(t, bucket.Upload(ctx, indexPath, reader))
-	return ranges
+	require.NotEmpty(t, ranges)
+	attrs, err := bucket.Attributes(ctx, indexPath)
+	require.NoError(t, err)
+	for i := range ranges {
+		ranges[i].FileSize = uint64(attrs.Size)
+	}
+	require.NoError(t, tocWriter.WriteEntry(ctx, indexPath, ranges))
+}
+
+func closeFixture(t *testing.T, closer io.Closer) {
+	t.Helper()
+	require.NoError(t, closer.Close())
 }
 
 // Indexes returns the persisted ToC pointers belonging to tenant, in ToC order.
 func (s *Scenario) Indexes(ctx context.Context, t *testing.T, tenant string) []indexpointers.IndexPointer {
 	t.Helper()
-	obj, err := dataobj.FromBucket(ctx, s.Bucket, metastore.TableOfContentsPath(s.Window), 0)
-	require.NoError(t, err)
+	sections := s.tenantSections(ctx, t, metastore.TableOfContentsPath(s.Window), tenant)
 	var entries []indexpointers.IndexPointer
-	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
+	for _, section := range sections.Filter(indexpointers.CheckSection) {
 		opened, err := indexpointers.Open(ctx, section)
 		require.NoError(t, err)
-		reader := indexpointers.NewRowReader(opened)
-		require.NoError(t, reader.Open(ctx))
-		buf := make([]indexpointers.IndexPointer, 128)
-		for {
-			n, err := reader.Read(ctx, buf)
-			entries = append(entries, buf[:n]...)
-			if err == io.EOF {
-				break
-			}
+		for result := range indexpointers.IterSection(ctx, opened) {
+			entry, err := result.Value()
 			require.NoError(t, err)
+			entries = append(entries, entry)
 		}
-		require.NoError(t, reader.Close())
 	}
 	return entries
 }
@@ -149,12 +137,8 @@ func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string
 		SortSchemas:         make(map[string]bool),
 	}
 	for _, index := range indexes {
-		indexObj, err := dataobj.FromBucket(ctx, s.Bucket, index.Path, 0)
-		require.NoError(t, err)
-		for _, section := range indexObj.Sections().Filter(stats.CheckSection) {
-			if section.Tenant != tenant {
-				continue
-			}
+		sections := s.tenantSections(ctx, t, index.Path, tenant)
+		for _, section := range sections.Filter(stats.CheckSection) {
 			opened, err := stats.Open(ctx, section)
 			require.NoError(t, err)
 			rows := stats.NewRowReader(ctx, opened)
@@ -164,13 +148,9 @@ func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string
 				contents.SortSchemas[row.SortSchema] = true
 				contents.StatsRowCount += row.RowCount
 			}
-			require.NoError(t, rows.Err())
-			require.NoError(t, rows.Close())
+			require.NoError(t, errors.Join(rows.Err(), rows.Close()))
 		}
-		for _, section := range indexObj.Sections().Filter(postings.CheckSection) {
-			if section.Tenant != tenant {
-				continue
-			}
+		for _, section := range sections.Filter(postings.CheckSection) {
 			opened, err := postings.Open(ctx, section)
 			require.NoError(t, err)
 			inner := postings.NewReader(postings.ReaderOptions{Columns: opened.Columns()})
@@ -179,17 +159,12 @@ func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string
 			for rows.Next() {
 				contents.PostingsObjectPaths[rows.At().ObjectPath] = true
 			}
-			require.NoError(t, rows.Err())
-			require.NoError(t, rows.Close())
+			require.NoError(t, errors.Join(rows.Err(), rows.Close()))
 		}
 	}
 	for path := range contents.StatsObjectPaths {
-		logObj, err := dataobj.FromBucket(ctx, s.Bucket, path, 0)
-		require.NoError(t, err)
-		for _, section := range logObj.Sections().Filter(logs.CheckSection) {
-			if section.Tenant != tenant {
-				continue
-			}
+		sections := s.tenantSections(ctx, t, path, tenant)
+		for _, section := range sections.Filter(logs.CheckSection) {
 			opened, err := logs.Open(ctx, section)
 			require.NoError(t, err)
 			contents.Layouts = append(contents.Layouts, opened.SortLayout())
@@ -201,4 +176,13 @@ func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string
 		}
 	}
 	return contents
+}
+
+func (s *Scenario) tenantSections(ctx context.Context, t *testing.T, path, tenant string) dataobj.Sections {
+	t.Helper()
+	obj, err := dataobj.FromBucket(ctx, s.Bucket, path, 0)
+	require.NoError(t, err)
+	return slices.DeleteFunc(slices.Clone(obj.Sections()), func(section *dataobj.Section) bool {
+		return section.Tenant != tenant
+	})
 }

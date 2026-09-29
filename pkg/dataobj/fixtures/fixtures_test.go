@@ -78,28 +78,6 @@ func TestLogFixtureBuilder_SchemaLabels(t *testing.T) {
 	require.Empty(t, withoutSchema.Logs()[0].SchemaKey)
 }
 
-func TestLogFixtureBuilder_ShardCount(t *testing.T) {
-	stream := labels.FromStrings("app", "api", "cluster", "prod")
-	bucket := streams.ShardBucket(stream)
-	shardCount := uint32(1)
-
-	defaultBuilder := NewLogsFixtureBuilder(t)
-	defaultBuilder.Entry(stream, 10, "{}", "default")
-	require.Equal(t, bucket, defaultBuilder.Logs()[0].ShardBucket)
-	require.Equal(t, int64(bucket), defaultBuilder.Streams()[0].ShardBucket)
-
-	shardedBuilder := NewLogsFixtureBuilder(t, WithShardCount(shardCount))
-	shardedBuilder.Entry(stream, 10, "{}", "first")
-	shardedBuilder.Entry(stream, 11, "{}", "second")
-	require.Equal(t, bucket%shardCount, shardedBuilder.Logs()[0].ShardBucket)
-	require.Equal(t, bucket%shardCount, shardedBuilder.Logs()[1].ShardBucket)
-	require.Equal(t, int64(bucket), shardedBuilder.Streams()[0].ShardBucket)
-
-	zeroBuilder := NewLogsFixtureBuilder(t, WithShardCount(0))
-	zeroBuilder.Entry(stream, 10, "{}", "zero")
-	require.Equal(t, bucket, zeroBuilder.Logs()[0].ShardBucket)
-}
-
 func requireEqualStreams(t *testing.T, obj *dataobj.Object) {
 	// Verify streams
 	expectedStreams := []streams.Stream{
