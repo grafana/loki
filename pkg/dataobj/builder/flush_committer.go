@@ -137,27 +137,21 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error only if the context is canceled, otherwise it
-	// retries indefinitely.
+	// index returns an error only if the context is canceled or the object
+	// isn't single-tenant, otherwise it retries indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
-	// Builders are scoped to a single tenant, so their index must be too.
-	if len(res.TimeRanges) != 1 {
-		return fmt.Errorf("index %s covers %d tenants, want exactly 1", res.Path, len(res.TimeRanges))
-	}
-	timeRange := res.TimeRanges[0]
-
 	// WriteEntry retries each ToC window until it succeeds, so it returns an
 	// error only if the context is canceled.
-	if err := c.tocWriter.WriteEntry(ctx, timeRange.Tenant, metastore.TableOfContentsEntry{
+	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
 		Path:                 res.Path,
-		StartTime:            timeRange.MinTime,
-		EndTime:              timeRange.MaxTime,
-		FileSize:             timeRange.FileSize,
-		UncompressedLogsSize: timeRange.UncompressedLogsSize,
+		StartTime:            res.TimeRange.MinTime,
+		EndTime:              res.TimeRange.MaxTime,
+		FileSize:             res.TimeRange.FileSize,
+		UncompressedLogsSize: res.TimeRange.UncompressedLogsSize,
 	}); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
@@ -185,7 +179,7 @@ func earliestRecordTime(builders []builder) time.Time {
 // index builds and uploads the index for the object, retrying with exponential
 // backoff until successful or the context is canceled. Retrying is safe because
 // the index is not referenced from the metastore until it is recorded in the
-// ToC.
+// ToC. [index.ErrNotSingleTenant] is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -197,6 +191,9 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 		res, err := c.indexer.Index(ctx, obj, objPath)
 		if err == nil {
 			return res, nil
+		}
+		if errors.Is(err, index.ErrNotSingleTenant) {
+			return index.Result{}, err
 		}
 		lastErr = err
 		level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
