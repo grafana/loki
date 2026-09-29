@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"math"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -592,7 +591,7 @@ func newIntegrationCoordinatorWithLogsobjConfig(ctx context.Context, t *testing.
 			ToCConsolidateTimeout:        10 * time.Second,
 			LogMaxRunningCompactionTasks: 1,
 		},
-		logger: log.NewLogfmtLogger(os.Stderr),
+		logger: log.NewNopLogger(),
 		bucket: bucket,
 		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
