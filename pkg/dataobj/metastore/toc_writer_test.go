@@ -45,12 +45,10 @@ func TestTableOfContentsWriter(t *testing.T) {
 		tocBuilder.Reset()
 
 		writer := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: unixTime(20),
-				MaxTime: unixTime(30),
-			},
+		err = writer.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
+			Path:      "testdata/metastore.obj",
+			StartTime: unixTime(20),
+			EndTime:   unixTime(30),
 		})
 		require.NoError(t, err)
 	})
@@ -80,12 +78,10 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		err = writer.WriteEntry(ctx, "testdata/metastore.obj", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: boundary,
-				MaxTime: boundary,
-			},
+		err = writer.WriteEntry(ctx, tenantID, TableOfContentsEntry{
+			Path:      "testdata/metastore.obj",
+			StartTime: boundary,
+			EndTime:   boundary,
 		})
 		require.NoError(t, err)
 
@@ -112,12 +108,10 @@ func TestTableOfContentsWriter(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 
 		writer := newTableOfContentsWriter(t, bucket, builder)
-		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: unixTime(0),
-				MaxTime: unixTime(30),
-			},
+		err = writer.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
+			Path:      "testdata/metastore.obj",
+			StartTime: unixTime(0),
+			EndTime:   unixTime(30),
 		})
 		require.NoError(t, err)
 
@@ -141,14 +135,19 @@ func TestTableOfContentsWriter(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket, builder)
 
 		var (
-			w1         = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-			w2         = w1.Add(MetastoreWindowSize)
-			objectPath = "indexes/multi-window"
+			w1 = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+			w2 = w1.Add(MetastoreWindowSize)
 		)
 		// tenant-a spans two windows, tenant-b only the first one.
-		require.NoError(t, writer.WriteEntry(context.Background(), objectPath, []multitenancy.TimeRange{
-			{Tenant: "tenant-b", MinTime: w1.Add(time.Hour), MaxTime: w1.Add(2 * time.Hour)},
-			{Tenant: "tenant-a", MinTime: w1.Add(time.Hour), MaxTime: w2.Add(time.Hour)},
+		require.NoError(t, writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: w1.Add(time.Hour),
+			EndTime:   w2.Add(time.Hour),
+		}))
+		require.NoError(t, writer.WriteEntry(context.Background(), "tenant-b", TableOfContentsEntry{
+			Path:      "indexes/b",
+			StartTime: w1.Add(time.Hour),
+			EndTime:   w1.Add(2 * time.Hour),
 		}))
 
 		require.ElementsMatch(t, []string{
@@ -158,19 +157,33 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, slices.Collect(maps.Keys(bucket.Objects())))
 
 		for _, tc := range []struct {
-			tenant string
-			window time.Time
+			tenant, path string
+			window       time.Time
 		}{
-			{"tenant-a", w1},
-			{"tenant-a", w2},
-			{"tenant-b", w1},
+			{"tenant-a", "indexes/a", w1},
+			{"tenant-a", "indexes/a", w2},
+			{"tenant-b", "indexes/b", w1},
 		} {
 			rows := readToC(context.Background(), t, bucket, TableOfContentsPath(tc.tenant, tc.window))
 			require.Len(t, rows, 1)
 			require.Equal(t, tc.tenant, rows[0].Tenant, "a ToC must only hold its own tenant")
-			require.Equal(t, objectPath, rows[0].Path)
+			require.Equal(t, tc.path, rows[0].Path)
 		}
 	})
+}
+
+// writeTimeRanges records path in the ToC of every tenant in timeRanges.
+func writeTimeRanges(ctx context.Context, w *TableOfContentsWriter, path string, timeRanges []multitenancy.TimeRange) error {
+	for _, tr := range timeRanges {
+		if err := w.WriteEntry(ctx, tr.Tenant, TableOfContentsEntry{
+			Path:      path,
+			StartTime: tr.MinTime,
+			EndTime:   tr.MaxTime,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *indexobj.Builder) *TableOfContentsWriter {

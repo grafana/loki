@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // A committer allows mocking of certain [kgo.Client] methods in tests.
@@ -30,7 +30,7 @@ type indexer interface {
 
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
 type tocWriter interface {
-	WriteEntry(ctx context.Context, idxPath string, tenantTimeRanges []multitenancy.TimeRange) error
+	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
 }
 
 // A flusher allows mocking of flushes in tests.
@@ -144,9 +144,21 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
+	// Builders are scoped to a single tenant, so their index must be too.
+	if len(res.TimeRanges) != 1 {
+		return fmt.Errorf("index %s covers %d tenants, want exactly 1", res.Path, len(res.TimeRanges))
+	}
+	timeRange := res.TimeRanges[0]
+
 	// WriteEntry retries each ToC window until it succeeds, so it returns an
 	// error only if the context is canceled.
-	if err := c.tocWriter.WriteEntry(ctx, res.Path, res.TimeRanges); err != nil {
+	if err := c.tocWriter.WriteEntry(ctx, timeRange.Tenant, metastore.TableOfContentsEntry{
+		Path:                 res.Path,
+		StartTime:            timeRange.MinTime,
+		EndTime:              timeRange.MaxTime,
+		FileSize:             timeRange.FileSize,
+		UncompressedLogsSize: timeRange.UncompressedLogsSize,
+	}); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
 

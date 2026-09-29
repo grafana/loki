@@ -9,8 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 )
 
 func BenchmarkWriteMetastores(b *testing.B) {
@@ -36,12 +34,10 @@ func BenchmarkWriteMetastores(b *testing.B) {
 		ctx, cancel := context.WithTimeout(b.Context(), time.Second)
 		// Test writing metastores
 		stats := stats[i%len(stats)]
-		err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: stats.MinTimestamp,
-				MaxTime: stats.MaxTimestamp,
-			},
+		err := toc.WriteEntry(ctx, tenantID, TableOfContentsEntry{
+			Path:      "path",
+			StartTime: stats.MinTimestamp,
+			EndTime:   stats.MaxTimestamp,
 		})
 		require.NoError(b, err)
 		cancel()
@@ -69,12 +65,10 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err := toc.WriteEntry(ctx, "test-dataobj-path", []multitenancy.TimeRange{
-		{
-			Tenant:  tenantID,
-			MinTime: stats.MinTimestamp,
-			MaxTime: stats.MaxTimestamp,
-		},
+	err := toc.WriteEntry(ctx, tenantID, TableOfContentsEntry{
+		Path:      "test-dataobj-path",
+		StartTime: stats.MinTimestamp,
+		EndTime:   stats.MaxTimestamp,
 	})
 	require.NoError(t, err)
 
@@ -89,12 +83,10 @@ func TestWriteMetastores(t *testing.T) {
 		MaxTimestamp: now,
 	}
 
-	err = toc.WriteEntry(ctx, "different-dataobj-path", []multitenancy.TimeRange{
-		{
-			Tenant:  tenantID,
-			MinTime: flushResult2.MinTimestamp,
-			MaxTime: flushResult2.MaxTimestamp,
-		},
+	err = toc.WriteEntry(ctx, tenantID, TableOfContentsEntry{
+		Path:      "different-dataobj-path",
+		StartTime: flushResult2.MinTimestamp,
+		EndTime:   flushResult2.MaxTimestamp,
 	})
 	require.NoError(t, err)
 

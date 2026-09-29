@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -82,13 +81,13 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	w := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
 	for tenant, paths := range entries {
 		for _, e := range paths {
-			require.NoError(t, w.WriteEntry(ctx, e.path, []multitenancy.TimeRange{{
-				Tenant:               tenant,
-				MinTime:              e.start,
-				MaxTime:              e.end,
+			require.NoError(t, w.WriteEntry(ctx, tenant, metastore.TableOfContentsEntry{
+				Path:                 e.path,
+				StartTime:            e.start,
+				EndTime:              e.end,
 				FileSize:             e.fileSize,
 				UncompressedLogsSize: e.uncompressedLogsSize,
-			}}))
+			}))
 		}
 	}
 }
