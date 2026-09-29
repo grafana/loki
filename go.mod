@@ -110,7 +110,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/afero v1.15.0
-	github.com/spiridonov/deadhorse v0.0.0-00010101000000-000000000000
+	github.com/spiridonov/deadhorse v0.0.0-20260929183300-42548f09eaae
 	github.com/stretchr/testify v1.12.1
 	github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7
 	github.com/tjhop/slog-gokit v0.2.0
@@ -436,9 +436,6 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
-
-// Not yet published/tagged -- local sibling checkout for the hackathon global-throttler work.
-replace github.com/spiridonov/deadhorse => ../yellowstone/deadhorse
 
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0

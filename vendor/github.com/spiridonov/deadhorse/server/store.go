@@ -72,6 +72,13 @@ func (s *stripe) size() int {
 	return len(s.hot) + len(s.cold)
 }
 
+// sizes is size split by generation, for the keysGauge metric.
+func (s *stripe) sizes() (hot, cold int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.hot), len(s.cold)
+}
+
 // store is the striped, self-expiring key/bucket map behind InMemoryThrottler.
 // Striping here is purely an in-process concurrency detail -- unrelated to,
 // and much finer-grained than, sharding a fleet of DeadHorse processes by key
@@ -103,19 +110,38 @@ func newStore(numStripes int, gcInterval time.Duration) *store {
 	return st
 }
 
-func (st *store) gcLoop(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+// metricsUpdateInterval is how often keysGauge is refreshed, independent of
+// gcInterval: the two are unrelated (one is about state freshness, the other
+// about metrics freshness), and gcInterval is often much larger than is
+// useful for a dashboard to poll at.
+const metricsUpdateInterval = 5 * time.Second
+
+func (st *store) gcLoop(gcInterval time.Duration) {
+	gcTicker := time.NewTicker(gcInterval)
+	defer gcTicker.Stop()
+	metricsTicker := time.NewTicker(metricsUpdateInterval)
+	defer metricsTicker.Stop()
+
+	st.updateKeyMetrics()
 	for {
 		select {
-		case <-ticker.C:
+		case <-gcTicker.C:
 			for _, s := range st.stripes {
 				s.rotate()
 			}
+			st.updateKeyMetrics()
+		case <-metricsTicker.C:
+			st.updateKeyMetrics()
 		case <-st.done:
 			return
 		}
 	}
+}
+
+func (st *store) updateKeyMetrics() {
+	hot, cold := st.keyCounts()
+	keysGauge.WithLabelValues("hot").Set(float64(hot))
+	keysGauge.WithLabelValues("cold").Set(float64(cold))
 }
 
 // close stops the GC loop. It's safe to call more than once -- a double
@@ -136,6 +162,17 @@ func (st *store) keyCountEstimate() int {
 		total += s.size()
 	}
 	return total
+}
+
+// keyCounts is keyCountEstimate split by generation, for the keysGauge
+// metric -- see updateKeyMetrics.
+func (st *store) keyCounts() (hot, cold int) {
+	for _, s := range st.stripes {
+		h, c := s.sizes()
+		hot += h
+		cold += c
+	}
+	return
 }
 
 func fnv1a(s string) uint64 {

@@ -140,6 +140,9 @@ func (s *TextServer) Close() error {
 func (s *TextServer) handleConn(conn net.Conn) {
 	defer conn.Close()
 
+	connectionsGauge.Inc()
+	defer connectionsGauge.Dec()
+
 	r := bufio.NewReaderSize(conn, 4096)
 	w := bufio.NewWriter(conn)
 
@@ -147,6 +150,7 @@ func (s *TextServer) handleConn(conn net.Conn) {
 		conn.SetReadDeadline(time.Now().Add(idleReadTimeout))
 		line, err := readLine(r, s.maxLineSize)
 		if errors.Is(err, errLineTooLong) {
+			lineTooLongTotal.Inc()
 			w.WriteString("ERROR line too long\n")
 			w.Flush()
 			return
@@ -154,6 +158,7 @@ func (s *TextServer) handleConn(conn net.Conn) {
 		if err != nil {
 			return
 		}
+		lineLength.Observe(float64(len(line)))
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -198,6 +203,17 @@ func readLine(r *bufio.Reader, maxSize int) (string, error) {
 
 func (s *TextServer) dispatch(line string) (response string, closeConn bool) {
 	cmd, rest, _ := strings.Cut(line, " ")
+
+	// Labeled by the normalized command, never the raw one: cmd is whatever
+	// token a client sent first, and labeling with it verbatim would let a
+	// client hand the metrics registry unbounded label cardinality.
+	label := normalizeCommand(cmd)
+	requestsTotal.WithLabelValues(label).Inc()
+	start := time.Now()
+	defer func() {
+		requestDuration.WithLabelValues(label).Observe(time.Since(start).Seconds())
+	}()
+
 	switch cmd {
 	case "HELLO":
 		return s.handleHello(rest), false
@@ -211,6 +227,17 @@ func (s *TextServer) dispatch(line string) (response string, closeConn bool) {
 		return "", true
 	default:
 		return "ERROR unknown command", false
+	}
+}
+
+// normalizeCommand maps an arbitrary first token to one of the known DHP/1
+// commands, or "unknown" -- see dispatch's requestsTotal/requestDuration.
+func normalizeCommand(cmd string) string {
+	switch cmd {
+	case "HELLO", "THROTTLE", "PING", "STATS", "QUIT":
+		return cmd
+	default:
+		return "unknown"
 	}
 }
 
@@ -236,6 +263,7 @@ func (s *TextServer) handleStats() string {
 
 func (s *TextServer) handleThrottle(rest string) string {
 	tokens := strings.Fields(rest)
+	throttleBatchSize.Observe(float64(len(tokens)))
 
 	entries := make([]deadhorse.RequestEntry, 0, len(tokens))
 	entryOK := make([]bool, len(tokens))
@@ -246,6 +274,8 @@ func (s *TextServer) handleThrottle(rest string) string {
 		if ok {
 			entries = append(entries, e)
 			entryIdx = append(entryIdx, i)
+		} else {
+			throttleEntriesTotal.WithLabelValues("unknown", "err").Inc()
 		}
 	}
 
@@ -264,9 +294,13 @@ func (s *TextServer) handleThrottle(rest string) string {
 			for _, idx := range entryIdx {
 				results[idx] = "ERR"
 			}
+			for _, e := range entries {
+				throttleEntriesTotal.WithLabelValues(modeLabel(e.Peek), "err").Inc()
+			}
 		default:
 			for j, resp := range responses {
 				results[entryIdx[j]] = formatResult(resp)
+				throttleEntriesTotal.WithLabelValues(modeLabel(entries[j].Peek), resultLabel(resp)).Inc()
 			}
 		}
 	}
@@ -280,6 +314,24 @@ func (s *TextServer) handleThrottle(rest string) string {
 		return "RESULT"
 	}
 	return "RESULT " + strings.Join(results, " ")
+}
+
+func modeLabel(peek bool) string {
+	if peek {
+		return "peek"
+	}
+	return "real"
+}
+
+func resultLabel(r deadhorse.ResponseEntry) string {
+	switch {
+	case r.Err != nil:
+		return "err"
+	case r.Throttled:
+		return "throttled"
+	default:
+		return "admitted"
+	}
 }
 
 func parseEntry(tok string) (deadhorse.RequestEntry, bool) {

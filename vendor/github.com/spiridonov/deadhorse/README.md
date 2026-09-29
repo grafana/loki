@@ -193,13 +193,28 @@ deadhorse
 |---|---|---|
 | `-host` | (all interfaces) | DHP/1 text protocol listen host |
 | `-port` | 9000 | DHP/1 text protocol port |
-| `-prometheus-port` | 9090 | Serves `/metrics` (Go runtime/process stats, even with no application metrics registered) |
+| `-prometheus-port` | 9090 | Serves `/metrics` (Go runtime/process stats plus DeadHorse's own -- see [Metrics](#metrics)) |
 | `-stripes` | 256 | Concurrency stripes in the in-memory store |
 | `-gc-interval` | 60s | How often idle keys are dropped |
 | `-max-line-size` | 64KiB | Longest protocol line accepted before the connection is closed |
 
 Each server is a single static binary with no external dependencies of its own — no database, no
 coordination service, nothing to run besides the process itself.
+
+### Metrics
+
+`-prometheus-port` serves Go runtime/process stats plus these, all under a `deadhorse_` prefix:
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `keys{generation}` | Gauge | Keys held by the store, `generation="hot"` or `"cold"` (refreshed every 5s, independent of `-gc-interval`) |
+| `connections` | Gauge | Currently open DHP/1 connections |
+| `requests_total{command}` | Counter | Command lines handled, by command (`HELLO`/`THROTTLE`/`PING`/`STATS`/`QUIT`/`unknown`) |
+| `request_duration_seconds{command}` | Histogram | Time to handle one command line, by command |
+| `throttle_entries_total{mode,result}` | Counter | `THROTTLE` entries evaluated, by `mode` (`real`/`peek`/`unknown`) and `result` (`admitted`/`throttled`/`err`) |
+| `throttle_batch_size` | Histogram | Entries per `THROTTLE` line |
+| `line_length_bytes` | Histogram | Length of each protocol line read |
+| `line_too_long_total` | Counter | Connections dropped for exceeding `-max-line-size` |
 
 ## Client libraries
 

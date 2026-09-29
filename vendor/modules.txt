@@ -1618,7 +1618,7 @@ github.com/spiffe/go-spiffe/v2/internal/jwtutil
 github.com/spiffe/go-spiffe/v2/internal/pemutil
 github.com/spiffe/go-spiffe/v2/internal/x509util
 github.com/spiffe/go-spiffe/v2/spiffeid
-# github.com/spiridonov/deadhorse v0.0.0-00010101000000-000000000000 => ../yellowstone/deadhorse
+# github.com/spiridonov/deadhorse v0.0.0-20260929183300-42548f09eaae
 ## explicit; go 1.27.0
 github.com/spiridonov/deadhorse
 github.com/spiridonov/deadhorse/client
@@ -2499,7 +2499,6 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20260515134459-1798cf41aca7
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 # github.com/grafana/loki/pkg/push => ./pkg/push
-# github.com/spiridonov/deadhorse => ../yellowstone/deadhorse
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
 # github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7

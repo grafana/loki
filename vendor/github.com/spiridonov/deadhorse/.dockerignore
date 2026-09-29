@@ -1,0 +1,8 @@
+*
+!go.mod
+!go.sum
+!client/
+!cmd/
+!deadhorsetest/
+!server/
+!types.go
