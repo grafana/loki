@@ -38,10 +38,10 @@ type QueryHintProvider interface {
 }
 
 type HintPlan struct {
-	Filters []string
-	Ranges  []HintTimeRange // pre-min-date passthrough, if any
-	Indexes []store.Meta
-	Stats   *QueryStats
+	Filters     []string
+	Ranges      []HintTimeRange // pre-min-date passthrough, if any
+	Indexes     []store.Meta
+	Stats       *QueryStats
 	NgramLength int32
 	MaxParallel int32
 }

@@ -36,7 +36,7 @@ func (a *frontendHintAdapter) ProvideHints(
 		Through:     through,
 		Expr:        expr.String(),
 		Indexes:     hintprovider.ToProtoIndexMetas(plan.Indexes), // export or keep toProto in this pkg via a helper on HintPlan
-		NgramLength: plan.NgramLength,                 // or pass from cfg
+		NgramLength: plan.NgramLength,                             // or pass from cfg
 		MaxParallel: plan.MaxParallel,
 	})
 
