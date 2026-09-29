@@ -483,22 +483,6 @@ func getRetentionDays(limits *lokiv1.LimitsSpec) int {
 	return maxRetention
 }
 
-// schemasRemoved checks if any schemas from status are missing in the spec
-func schemasRemoved(specSchemas []lokiv1.ObjectStorageSchema, statusSchemas []lokiv1.ObjectStorageSchema) bool {
-	specDates := make(map[lokiv1.StorageSchemaEffectiveDate]bool)
-	for _, schema := range specSchemas {
-		specDates[schema.EffectiveDate] = true
-	}
-
-	for _, schema := range statusSchemas {
-		if !specDates[schema.EffectiveDate] {
-			return true
-		}
-	}
-
-	return false
-}
-
 // retentionUpdated checks if retention configuration has changed by comparing current spec to prior state.
 // It looks for changes in global retention or any tenant retention settings.
 func retentionUpdated(currentLimits, priorLimits *lokiv1.LimitsSpec) bool {
