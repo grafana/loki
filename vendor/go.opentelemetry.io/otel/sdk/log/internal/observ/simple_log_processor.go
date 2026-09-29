@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package observ // import "go.opentelemetry.io/otel/sdk/log/internal/observ"
+package observ
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk"
 	"go.opentelemetry.io/otel/sdk/log/internal/x"
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
-	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/otelconv"
 )
 
 const (
@@ -115,6 +115,7 @@ func (slp *SLP) addOption(err error) []metric.AddOption {
 	}
 	attrs := measureAttrsPool.Get().(*[]attribute.KeyValue)
 	defer func() {
+		clear(*attrs)
 		*attrs = (*attrs)[:0] // reset the slice
 		measureAttrsPool.Put(attrs)
 	}()
