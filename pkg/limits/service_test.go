@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/coder/quartz"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -22,20 +23,136 @@ func newTestService(t *testing.T, limits Limits, numPartitions int) (*Service, *
 	require.NoError(t, err)
 	usage, err := newUsageStore(activeWindow, time.Minute, 10*time.Second, numPartitions, limits, reg)
 	require.NoError(t, err)
-	streamShards, err := newStreamShardStore(activeWindow, time.Minute, 10*time.Second, numPartitions, limits, reg)
+	streamShards, err := newStreamShardStore(activeWindow, time.Minute, 10*time.Second, numPartitions, "zone1", true, limits, reg)
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	usage.clock = clock
 	streamShards.clock = clock
+	logger := log.NewNopLogger()
 	return &Service{
 		cfg:              Config{NumPartitions: numPartitions, ActiveWindow: activeWindow},
 		limits:           limits,
 		partitionManager: partitionManager,
 		usage:            usage,
 		streamShards:     streamShards,
+		producer:         newProducer(&mockKafka{}, "topic", numPartitions, "zone1", logger, reg),
 		metrics:          newMetrics(reg),
+		logger:           logger,
 		clock:            clock,
 	}, clock
+}
+
+func TestService_CheckLimitsAndShard_ProducesRateBuckets(t *testing.T) {
+	const bucketSize = 10 * time.Second
+	limits := &mockLimits{
+		ShardStreamsConfig: shardstreams.Config{Enabled: true},
+	}
+	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+	s, clock := newTestService(t, limits, 1)
+	s.partitionManager.Assign([]int32{0})
+	kafka := s.producer.client.(*mockKafka)
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 100}},
+	}
+	// Have the usage store track the stream, as it would in shadow mode where
+	// both endpoints are called for the same push.
+	toProduce, _, _, err := s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, toProduce, 1)
+
+	// Nothing is produced while the first bucket is still in flight.
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Empty(t, kafka.produced)
+
+	// The first push of the next bucket publishes the complete one.
+	bucketStart := clock.Now().Truncate(bucketSize)
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Len(t, kafka.produced, 1)
+	var rec proto.StreamMetadataRecord
+	require.NoError(t, rec.Unmarshal(kafka.produced[0].Value))
+	require.Equal(t, "zone1", rec.Zone)
+	require.Equal(t, uint64(0x1), rec.Metadata.StreamHash)
+	require.Equal(t, uint32(1), rec.ShardCount)
+	require.Equal(t, &proto.ShardRateBucket{
+		BucketStart: bucketStart.UnixNano(),
+		Size_:       100,
+		Pushes:      1,
+	}, rec.ShardRateBucket)
+
+	// That record carries the stream's metadata, so the usage store does not
+	// produce a second one for it.
+	clock.Advance(time.Minute)
+	toProduce, _, _, err = s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Empty(t, toProduce)
+}
+
+func TestService_CheckLimitsAndShard_DoesNotProduceUntrackedStreams(t *testing.T) {
+	const bucketSize = 10 * time.Second
+	limits := &mockLimits{
+		MaxGlobalStreams:   1,
+		ShardStreamsConfig: shardstreams.Config{Enabled: true},
+	}
+	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+	s, clock := newTestService(t, limits, 1)
+	s.partitionManager.Assign([]int32{0})
+	kafka := s.producer.client.(*mockKafka)
+
+	// Another stream uses up the tenant's stream budget in the usage store.
+	// The shard store keeps its own state and has not seen that stream, so it
+	// still has room for the stream under test.
+	_, accepted, _, err := s.usage.UpdateCond("test", []*proto.StreamMetadata{{
+		StreamHash: 0x2,
+		TotalSize:  100,
+	}}, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 100}},
+	}
+	resp, err := s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, []*proto.StreamShardResult{{
+		StreamHash: 0x1,
+		Shards:     1,
+		Stats:      &proto.ShardStats{},
+	}}, resp.Results)
+
+	// ExceedsLimits rejects the same stream, so it is not written and the
+	// usage store does not track it.
+	_, _, rejected, err := s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Equal(t, req.Streams, rejected)
+
+	// The stream now has a complete rate bucket, which is what the sharding
+	// path publishes, but no record is written for it: the consumers in the
+	// other zones would count a stream that does not exist.
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Empty(t, kafka.produced)
+
+	// Once the usage store does track the stream, its bucket is published.
+	// The record was withheld for the stream not being tracked, not for
+	// having nothing to publish.
+	limits.MaxGlobalStreams = 2
+	_, accepted, _, err = s.usage.UpdateCond("test", req.Streams, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Len(t, kafka.produced, 1)
+	var rec proto.StreamMetadataRecord
+	require.NoError(t, rec.Unmarshal(kafka.produced[0].Value))
+	require.Equal(t, uint64(0x1), rec.Metadata.StreamHash)
 }
 
 func TestService_CheckLimitsAndShard(t *testing.T) {
