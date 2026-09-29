@@ -31,7 +31,7 @@ type ownedStreamService struct {
 	notOwnedStreams  map[model.Fingerprint]any
 
 	// Track owned streams by policy for policy-specific limit enforcement
-	policyStreams policyStreamCounts
+	policyStreams *policyStreamCounts
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
@@ -41,6 +41,7 @@ func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamServic
 		fixedLimit:       atomic.NewInt32(0),
 		ownedStreamCount: atomic.NewInt64(0),
 		notOwnedStreams:  make(map[model.Fingerprint]any),
+		policyStreams:    newPolicyStreamCounts(),
 	}
 
 	svc.updateFixedLimit()
@@ -118,10 +119,14 @@ func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {
 }
 
 // policyStreamCounts tracks the number of streams per policy. Streams without a policy are not
-// tracked. The zero value is ready to use.
+// tracked.
 type policyStreamCounts struct {
 	mtx    sync.RWMutex
 	counts map[string]int
+}
+
+func newPolicyStreamCounts() *policyStreamCounts {
+	return &policyStreamCounts{counts: make(map[string]int)}
 }
 
 func (c *policyStreamCounts) inc(policy string) {
@@ -130,9 +135,6 @@ func (c *policyStreamCounts) inc(policy string) {
 	}
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	if c.counts == nil {
-		c.counts = make(map[string]int)
-	}
 	c.counts[policy]++
 }
 
@@ -183,5 +185,5 @@ func (c *policyStreamCounts) sum(include func(policy string) bool) int {
 func (c *policyStreamCounts) reset() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	c.counts = nil
+	c.counts = make(map[string]int)
 }

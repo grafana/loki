@@ -2051,6 +2051,12 @@ func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
 			require.Equal(t, 5, inst.memoryPolicyStreams.get("finance"))
 			require.Equal(t, 1, inst.memoryPolicyStreams.get("debug"))
 			require.Equal(t, 8, inst.streams.Len())
+			if useOwnedStreamCount {
+				// With owned stream counting, the owned counts are the ones enforcing the limits.
+				require.Equal(t, 5, inst.ownedStreamsSvc.getPolicyStreamCount("finance"))
+				require.Equal(t, 1, inst.ownedStreamsSvc.getPolicyStreamCount("debug"))
+				require.Equal(t, 8, inst.ownedStreamsSvc.getOwnedStreamCount())
+			}
 		})
 	}
 }

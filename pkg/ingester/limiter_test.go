@@ -132,13 +132,14 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
 				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
+				policyStreams:    newPolicyStreamCounts(),
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
-			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, &policyStreamCounts{}, limiter, ownedStreamSvc, false)
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc, false)
 			actual := streamCountLimiter.AssertNewStreamAllowed("test", noPolicy)
 
 			assert.Equal(t, testData.expected, actual)
@@ -161,9 +162,10 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 	ownedStreamSvc := &ownedStreamService{
 		fixedLimit:       atomic.NewInt32(0),
 		ownedStreamCount: atomic.NewInt64(0),
+		policyStreams:    newPolicyStreamCounts(),
 	}
 
-	scl := newStreamCountLimiter("test", defaultCountSupplier, &policyStreamCounts{}, limiter, ownedStreamSvc, true)
+	scl := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc, true)
 	err = scl.AssertNewStreamAllowed("test", noPolicy)
 
 	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")

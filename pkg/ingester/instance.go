@@ -180,7 +180,7 @@ func newInstance(
 	}
 	streams := newStreamsMap()
 	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
-	memoryPolicyStreams := &policyStreamCounts{}
+	memoryPolicyStreams := newPolicyStreamCounts()
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
