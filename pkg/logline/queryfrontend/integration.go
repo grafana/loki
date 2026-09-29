@@ -209,7 +209,7 @@ func WrapMiddlewareWithStore(
 		}
 	}
 
-	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, cfg.MaxHintDaysParallel, reg)
+	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = deps.QueryIngestersWithin
 	}
