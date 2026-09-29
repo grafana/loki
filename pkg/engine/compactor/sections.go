@@ -105,8 +105,10 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 
 	var out []indexEntry
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
+		// ToCs are written per tenant, so another tenant's section means the
+		// metastore is corrupt. Compacting it could merge indexes across tenants.
 		if section.Tenant != tenant {
-			continue
+			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, section.Tenant))
 		}
 		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
 		if err != nil {

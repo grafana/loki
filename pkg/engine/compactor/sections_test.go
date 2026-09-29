@@ -63,6 +63,23 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
 }
 
+func TestLoadTenantIndexes_PanicsOnAnotherTenantsSection(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-b": {{path: "indexes/aa/idx-b-0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
+	})
+	// Put tenant-b's ToC where tenant-a's belongs.
+	r, err := bucket.Get(ctx, metastore.TableOfContentsPath("tenant-b", window))
+	require.NoError(t, err)
+	defer r.Close()
+	require.NoError(t, bucket.Upload(ctx, metastore.TableOfContentsPath("tenant-a", window), r))
+
+	require.Panics(t, func() { _, _ = loadTenantIndexes(ctx, bucket, window, "tenant-a") })
+}
+
 // testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
 type testIndex struct {
 	path  string
