@@ -1,3 +1,11 @@
+# v1.11.5 (2026-09-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.4 (2026-09-23)
+
+* **Bug Fix**: Checksum non-200 http responses
+
 # v1.11.3 (2026-09-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions
