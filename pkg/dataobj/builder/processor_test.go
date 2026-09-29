@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -298,7 +297,6 @@ func TestPartitionProcessor_FlushSplitsAcrossTenantsAndWindows(t *testing.T) {
 		require.Equal(t, 1, flushCommitter.flushes)
 		require.Equal(t, 5, flushCommitter.lastBuilderCount)
 		require.Equal(t, rec.Offset, flushCommitter.lastOffset)
-		require.Equal(t, 5.0, testutil.ToFloat64(proc.metrics.timePartitionEstimate))
 
 		// The multi-builder is reset after a successful flush.
 		require.Empty(t, m.GetBuilders())
