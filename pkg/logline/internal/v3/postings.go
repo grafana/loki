@@ -47,6 +47,13 @@ type PostingsReader interface {
 	Close() error
 }
 
+// Postings block compression, recorded in the header's PostingsCompression.
+// It is independent of the postings encoding.
+const (
+	postingsCompressionNone uint32 = 0
+	postingsCompressionZstd uint32 = 1
+)
+
 // OpenPostingsReader creates a section reader for a specific encoding.
 func OpenPostingsReader(
 	encoding format.PostingsEncoding,
@@ -57,11 +64,11 @@ func OpenPostingsReader(
 	dir []postingsBlockDirEntry,
 	termCount uint64,
 	_ uint32, // documentCount, unused
-	_ uint32, // compressionType, unused
+	compressionType uint32,
 ) (PostingsReader, error) {
 	switch encoding {
-	case format.PostingsEncodingFastDeltaVarIntBlocked:
-		return openFastPostingsReaderFromDir(encoding, reader, dataOffset, dataSize, termCount, dir)
+	case format.PostingsEncodingFastDeltaVarIntBlocked, format.PostingsEncodingFastEliasFanoBlocked:
+		return openFastPostingsReaderFromDir(encoding, compressionType, reader, dataOffset, dataSize, termCount, dir)
 	default:
 		return nil, fmt.Errorf("unsupported postings encoding: %d", encoding)
 	}
@@ -125,7 +132,8 @@ func decodeDeltaVarIntInto(dst []uint32, payload []byte) ([]uint32, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Fast postings encoder (zstd-compressed blocks of delta-varint payloads)
+// Fast postings encoder (blocks of per-term payloads). Delta-varint blocks are
+// zstd-compressed; Elias-Fano blocks are already compact and written as-is.
 // ---------------------------------------------------------------------------
 
 const (
@@ -146,7 +154,7 @@ type FastPostingsEncoder struct {
 // encode. Lifted from the local variables in streamPostingsData so that the
 // same logic can be driven term-by-term via beginStream/writeTerm/endStream.
 type fastStreamingSession struct {
-	encoder        *zstd.Encoder
+	encoder        *zstd.Encoder // nil when blocks are written uncompressed
 	w              io.Writer
 	bytesWritten   int64
 	dir            []postingsBlockDirEntry
@@ -155,12 +163,12 @@ type fastStreamingSession struct {
 	blockTermCount int
 	nextTermID     uint32
 	documentCount  uint32
-	varintBuf      []byte
+	payloadBuf     []byte
 }
 
 func NewFastPostingsEncoder(encoding format.PostingsEncoding, blockTarget int) (*FastPostingsEncoder, error) {
 	switch encoding {
-	case format.PostingsEncodingFastDeltaVarIntBlocked:
+	case format.PostingsEncodingFastDeltaVarIntBlocked, format.PostingsEncodingFastEliasFanoBlocked:
 	default:
 		return nil, fmt.Errorf("invalid fast encoding: %d", encoding)
 	}
@@ -182,19 +190,26 @@ func (e *FastPostingsEncoder) PackingFactor() uint8 {
 }
 
 func (e *FastPostingsEncoder) CompressionType() uint32 {
-	return 1
+	if e.encoding == format.PostingsEncodingFastEliasFanoBlocked {
+		return postingsCompressionNone
+	}
+	return postingsCompressionZstd
 }
 
-// beginStream initialises a streaming session writing compressed postings to w.
+// beginStream initialises a streaming session writing postings to w.
 // documentCount is stored for encodings that need it (bitset, hybrid-bitset).
 // Returns an error if a session is already open.
 func (e *FastPostingsEncoder) beginStream(w io.Writer, documentCount uint32) error {
 	if e.session != nil {
 		return fmt.Errorf("streaming session already open")
 	}
-	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(fastPostingsZstdLevel))
-	if err != nil {
-		return fmt.Errorf("create zstd encoder: %w", err)
+	var enc *zstd.Encoder
+	if e.CompressionType() == postingsCompressionZstd {
+		var err error
+		enc, err = zstd.NewWriter(nil, zstd.WithEncoderLevel(fastPostingsZstdLevel))
+		if err != nil {
+			return fmt.Errorf("create zstd encoder: %w", err)
+		}
 	}
 	e.session = &fastStreamingSession{
 		encoder:       enc,
@@ -218,6 +233,11 @@ func (e *FastPostingsEncoder) writeTerm(_ [8]byte, bm format.Bitmap) error {
 	switch e.encoding {
 	case format.PostingsEncodingFastDeltaVarIntBlocked:
 		payload = appendDeltaVarInt(nil, bm.Roaring.ToArray())
+	case format.PostingsEncodingFastEliasFanoBlocked:
+		var err error
+		if payload, err = appendEliasFano(nil, bm.Roaring.ToArray()); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported fast postings encoding: %d", e.encoding)
 	}
@@ -233,11 +253,16 @@ func (e *FastPostingsEncoder) writeTermDocIDs(_ [8]byte, docIDs []uint32, matche
 	}
 	switch e.encoding {
 	case format.PostingsEncodingFastDeltaVarIntBlocked:
-		e.session.varintBuf = appendDeltaVarInt(e.session.varintBuf[:0], docIDs)
-		return e.appendPayload(e.session.varintBuf)
+		e.session.payloadBuf = appendDeltaVarInt(e.session.payloadBuf[:0], docIDs)
+	case format.PostingsEncodingFastEliasFanoBlocked:
+		var err error
+		if e.session.payloadBuf, err = appendEliasFano(e.session.payloadBuf[:0], docIDs); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported fast postings encoding: %d", e.encoding)
 	}
+	return e.appendPayload(e.session.payloadBuf)
 }
 
 // endStream finalises the streaming session: flushes the last partial block,
@@ -245,7 +270,9 @@ func (e *FastPostingsEncoder) writeTermDocIDs(_ [8]byte, docIDs []uint32, matche
 func (e *FastPostingsEncoder) endStream() (int64, []postingsBlockDirEntry, error) {
 	s := e.session
 	e.session = nil
-	defer s.encoder.Close()
+	if s.encoder != nil {
+		defer s.encoder.Close()
+	}
 
 	if err := e.flushBlock(s); err != nil {
 		return 0, nil, err
@@ -288,23 +315,26 @@ func (e *FastPostingsEncoder) flushBlock(s *fastStreamingSession) error {
 		return fmt.Errorf("write block data: %w", err)
 	}
 
-	compressed := s.encoder.EncodeAll(raw.Bytes(), nil)
+	stored := raw.Bytes()
+	if s.encoder != nil {
+		stored = s.encoder.EncodeAll(stored, nil)
+	}
 	entry := postingsBlockDirEntry{
 		FirstTermID:    s.nextTermID,
 		NumTerms:       uint32(s.blockTermCount),
 		BlockOffset:    uint64(s.bytesWritten),
-		CompressedSize: uint32(4 + len(compressed)),
+		CompressedSize: uint32(4 + len(stored)),
 	}
 	if entry.CompressedSize > format.MaxQueryRequestBytes {
 		return fmt.Errorf("compressed postings block exceeds request cap: %d", entry.CompressedSize)
 	}
 
 	var lenBuf [4]byte
-	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(compressed)))
+	binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(stored)))
 	if err := writeFull(s.w, &s.bytesWritten, lenBuf[:]); err != nil {
 		return fmt.Errorf("write compressed block length: %w", err)
 	}
-	if err := writeFull(s.w, &s.bytesWritten, compressed); err != nil {
+	if err := writeFull(s.w, &s.bytesWritten, stored); err != nil {
 		return fmt.Errorf("write compressed block payload: %w", err)
 	}
 	s.dir = append(s.dir, entry)
@@ -361,7 +391,7 @@ func (e *FastPostingsEncoder) Encode(postings []format.TermBitmapPostings, _ uin
 }
 
 // ---------------------------------------------------------------------------
-// Fast postings reader (zstd-compressed blocks with LRU cache)
+// Fast postings reader (optionally zstd-compressed blocks with LRU cache)
 // ---------------------------------------------------------------------------
 
 type decodedFastBlock struct {
@@ -383,7 +413,7 @@ type fastPostingsReader struct {
 	encoding   format.PostingsEncoding
 	termCount  uint64
 	dir        []postingsBlockDirEntry
-	decoder    *zstd.Decoder
+	decoder    *zstd.Decoder // nil when blocks are stored uncompressed
 
 	cacheMu  sync.Mutex
 	cache    map[int]*decodedFastBlock
@@ -392,6 +422,7 @@ type fastPostingsReader struct {
 
 func openFastPostingsReaderFromDir(
 	expectedEncoding format.PostingsEncoding,
+	compressionType uint32,
 	reader io.ReaderAt,
 	dataOffset int64,
 	dataSize uint64,
@@ -399,13 +430,21 @@ func openFastPostingsReaderFromDir(
 	dir []postingsBlockDirEntry,
 ) (PostingsReader, error) {
 	switch expectedEncoding {
-	case format.PostingsEncodingFastDeltaVarIntBlocked:
+	case format.PostingsEncodingFastDeltaVarIntBlocked, format.PostingsEncodingFastEliasFanoBlocked:
 	default:
 		return nil, fmt.Errorf("invalid fast postings encoding: %d", expectedEncoding)
 	}
-	decoder, err := zstd.NewReader(nil)
-	if err != nil {
-		return nil, fmt.Errorf("create zstd decoder: %w", err)
+	var decoder *zstd.Decoder
+	switch compressionType {
+	case postingsCompressionNone:
+	case postingsCompressionZstd:
+		var err error
+		decoder, err = zstd.NewReader(nil)
+		if err != nil {
+			return nil, fmt.Errorf("create zstd decoder: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported postings compression: %d", compressionType)
 	}
 	return &fastPostingsReader{
 		reader:     reader,
@@ -479,6 +518,12 @@ func (r *fastPostingsReader) GetDocIDs(termIndex int, buf []uint32) ([]uint32, b
 			return nil, false, fmt.Errorf("decode delta-varint payload: %w", err)
 		}
 		return docIDs, false, nil
+	case format.PostingsEncodingFastEliasFanoBlocked:
+		docIDs, err := decodeEliasFanoInto(buf, payload)
+		if err != nil {
+			return nil, false, fmt.Errorf("decode elias-fano payload: %w", err)
+		}
+		return docIDs, false, nil
 	default:
 		return nil, false, fmt.Errorf("unsupported fast postings encoding in reader: %d", r.encoding)
 	}
@@ -511,9 +556,12 @@ func (r *fastPostingsReader) loadBlock(blockIdx int, entry postingsBlockDirEntry
 	if int(compressedLen)+4 > len(blockBytes) {
 		return nil, fmt.Errorf("invalid postings block compressed length")
 	}
-	raw, err := r.decoder.DecodeAll(blockBytes[4:4+compressedLen], nil)
-	if err != nil {
-		return nil, fmt.Errorf("decompress postings block: %w", err)
+	raw := blockBytes[4 : 4+compressedLen]
+	if r.decoder != nil {
+		var err error
+		if raw, err = r.decoder.DecodeAll(raw, nil); err != nil {
+			return nil, fmt.Errorf("decompress postings block: %w", err)
+		}
 	}
 	if len(raw) < 4 {
 		return nil, fmt.Errorf("invalid postings raw block")
