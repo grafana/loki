@@ -502,7 +502,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
-	case *logproto.HintRequest:
+	case *logproto.LoglineIndexRequest:
 		logQueryExecution(ctx, logger,
 			"type", "hints",
 			"query", op.Expr,

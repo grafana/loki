@@ -23,7 +23,7 @@ const (
 	hintCacheDayLayout  = "2006-01-02"
 	// defaultHintsDayParallel is how many missed days ProvideHints may
 	// fetch at once. All missing days still run; only in-flight count is
-	// capped. This is not MaxHintParallel (index workers per HintRequest).
+	// capped. This is not MaxHintParallel (index workers per LoglineIndexRequest).
 	defaultHintsDayParallel = 7
 )
 

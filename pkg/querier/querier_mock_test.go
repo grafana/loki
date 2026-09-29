@@ -634,7 +634,7 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
-func (q *querierMock) Hints(_ context.Context, _ *logproto.HintRequest) (*logproto.HintResponse, error) {
+func (q *querierMock) Hints(_ context.Context, _ *logproto.LoglineIndexRequest) (*logproto.HintResponse, error) {
 	return &logproto.HintResponse{}, nil
 }
 

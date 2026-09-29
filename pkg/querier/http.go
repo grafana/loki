@@ -262,7 +262,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
-func (q *QuerierAPI) HintsHandler(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
+func (q *QuerierAPI) HintsHandler(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.HintResponse, error) {
 	return q.querier.Hints(ctx, req)
 }
 

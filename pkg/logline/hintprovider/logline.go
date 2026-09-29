@@ -168,7 +168,7 @@ func (p *LoglineHintProvider) provideHintsRemote(
 		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
 	}
 
-	resp, err := next.Do(ctx, &logproto.HintRequest{
+	resp, err := next.Do(ctx, &logproto.LoglineIndexRequest{
 		From:    from,
 		Through: through,
 		Expr:    expr.String(),

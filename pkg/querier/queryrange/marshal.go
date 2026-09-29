@@ -459,7 +459,7 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
 	case *logproto.IndexStatsRequest:
 		result.Request = &QueryRequest_Stats{Stats: req}
-	case *logproto.HintRequest:
+	case *logproto.LoglineIndexRequest:
 		result.Request = &QueryRequest_Hints{Hints: req}
 	case *logproto.VolumeRequest:
 		result.Request = &QueryRequest_Volume{Volume: req}

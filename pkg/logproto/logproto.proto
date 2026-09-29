@@ -440,7 +440,7 @@ message IndexStatsResponse {
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
 }
 
-message HintRequest {
+message LoglineIndexRequest {
   int64 from = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
@@ -453,7 +453,7 @@ message HintRequest {
   repeated HintIndex indexes = 4 [(gogoproto.nullable) = false];
 }
 
-// HintIndex is the slim index descriptor on HintRequest. Catalog identity is
+// HintIndex is the slim index descriptor on LoglineIndexRequest. Catalog identity is
 // a single id ("date/object_id"); the index object is "{id}/index".
 message HintIndex {
   string id = 1 [

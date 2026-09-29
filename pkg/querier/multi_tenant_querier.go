@@ -239,7 +239,7 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	return logproto.MergeSeriesResponses(responses)
 }
 
-func (q *MultiTenantQuerier) Hints(ctx context.Context, req *logproto.HintRequest) (*logproto.HintResponse, error) {
+func (q *MultiTenantQuerier) Hints(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.HintResponse, error) {
 	return q.Querier.Hints(ctx, req)
 }
 
