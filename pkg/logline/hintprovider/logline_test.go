@@ -1114,7 +1114,7 @@ func hintIndexFromMeta(m store.Meta) logproto.HintIndex {
 		ShardCount:     int64(m.ShardCount),
 		ShardAlgorithm: m.ShardAlgorithm,
 		ShardValue:     int64(m.ShardValue),
-		IndexHeader:    m.IndexHeader,
+		IndexHeader:    toProtoHeader(m.IndexHeader),
 	}
 }
 

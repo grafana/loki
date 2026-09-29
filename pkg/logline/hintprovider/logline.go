@@ -155,7 +155,7 @@ func (p *LoglineHintProvider) getHintPlan(
 			ShardCount:     int64(m.ShardCount),
 			ShardAlgorithm: m.ShardAlgorithm,
 			ShardValue:     int64(m.ShardValue),
-			IndexHeader:    m.IndexHeader,
+			IndexHeader:    toProtoHeader(m.IndexHeader),
 		}
 	}
 
@@ -255,14 +255,15 @@ func (p *LoglineHintProvider) openIndexReader(
 	}
 
 	trackedReader := newTrackingReaderAt(storeReader, stats)
-	reader, cachedState, err := logline.OpenReader(idx.Version, trackedReader, 0, idx.SizeBytes, *idx.IndexHeader)
+	info := fromProtoHeader(idx.IndexHeader)
+	reader, cachedState, err := logline.OpenReader(idx.Version, trackedReader, 0, idx.SizeBytes, info)
 	if err != nil {
 		return nil, fmt.Errorf("open reader: %w", err)
 	}
 	trackedReader.SetClassifier(reader)
 	if p.cache != nil && cachedState != nil {
 		p.cache.put(idx.ID, cachedMetadata{
-			headerInfo: *idx.IndexHeader,
+			headerInfo: info,
 			state:      cachedState,
 		})
 	}

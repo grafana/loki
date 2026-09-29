@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // TermIterator iterates over all terms in an index.
@@ -168,5 +166,19 @@ type WriterConfig struct {
 	DocumentInterval time.Duration
 }
 
-// HeaderInfo is the in-process name for the wire index-header summary.
-type HeaderInfo = logproto.HeaderInfo
+// HeaderInfo is the meta.json index_header schema: a summary of the on-disk
+// index file header. It is not the wire type; convert at the HintIndex boundary.
+type HeaderInfo struct {
+	Version              uint32 `json:"version"`
+	Flags                uint32 `json:"flags"`
+	DocumentCount        uint32 `json:"document_count"`
+	TermBlockCount       uint32 `json:"term_block_count"`
+	PostingsBlockCount   uint32 `json:"postings_block_count"`
+	PostingsCompression  uint32 `json:"postings_compression"`
+	TermCount            uint64 `json:"term_count"`
+	PostingsDataSize     uint64 `json:"postings_data_size"`
+	TermDataSize         uint64 `json:"term_data_size"`
+	DocMetadataSize      uint64 `json:"doc_metadata_size"`
+	TermBlockDirSize     uint64 `json:"term_block_dir_size"`
+	PostingsBlockDirSize uint64 `json:"postings_block_dir_size"`
+}
