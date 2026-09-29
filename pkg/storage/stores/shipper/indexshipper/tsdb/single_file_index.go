@@ -318,6 +318,7 @@ func (i *TSDBIndex) forPostings(
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	defer timing.Track(ctx, timing.IndexScan)()
+	defer func() { timing.AddRefs(ctx, len(res)) }()
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}

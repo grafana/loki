@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -44,7 +45,8 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 		// Ensure we query both per tenant and multitenant TSDBs
 		idxBuckets := IndexBuckets(from, through, []config.TableRange{i.tableRange})
 		for _, bkt := range idxBuckets {
-			if err := i.shipper.ForEachConcurrent(ctx, bkt.Prefix, user, func(multitenant bool, idx shipperindex.Index) error {
+			endTable := timing.Track(ctx, timing.Table)
+			err := i.shipper.ForEachConcurrent(ctx, bkt.Prefix, user, func(multitenant bool, idx shipperindex.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
@@ -54,7 +56,9 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 				}
 
 				return f(ctx, impl)
-			}); err != nil {
+			})
+			endTable()
+			if err != nil {
 				return err
 			}
 		}

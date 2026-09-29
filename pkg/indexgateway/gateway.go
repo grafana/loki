@@ -443,16 +443,14 @@ func (g *Gateway) boundedShards(
 	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
 	defer sp.End()
 
-	ctx = timing.WithObservers(ctx,
-		g.metrics.shardPlanningDuration.WithLabelValues("ready_wait"),
-		g.metrics.shardPlanningDuration.WithLabelValues("index_scan"),
-	)
+	ctx = timing.WithObservers(ctx, g.metrics.shardPlanningDuration)
 	start := time.Now()
 
 	// For all bounds, get chunk refs
 	lookupStart := time.Now()
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	g.metrics.shardPlanningDuration.WithLabelValues("lookup").Observe(time.Since(lookupStart).Seconds())
+	g.metrics.observeLookup(timing.Snapshot(ctx), len(refs), err)
 	if err != nil {
 		return err
 	}
