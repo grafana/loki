@@ -17,11 +17,7 @@ type builderFactory interface {
 	NewBuilder() (*logsobj.Builder, error)
 }
 
-// MultiObjectBuilder manages a set of [logsobj.Builder] instances, one per
-// tenant and 12-hour UTC window (see [metastore.MetastoreWindowSize]). Each
-// builder only contains entries of a single tenant whose timestamps fall into
-// a single window, so every data object, and the index built from it, holds
-// exactly one tenant and stays aligned with that tenant's metastore ToC.
+// MultiObjectBuilder keeps one [logsobj.Builder] per tenant and ToC window.
 type MultiObjectBuilder struct {
 	builders         map[builderScope]builder
 	builderFactory   builderFactory
