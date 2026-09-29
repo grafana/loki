@@ -1681,8 +1681,8 @@ github.com/twmb/franz-go/plugin/kotel
 # github.com/twmb/franz-go/plugin/kprom v1.2.1
 ## explicit; go 1.21
 github.com/twmb/franz-go/plugin/kprom
-# github.com/twpayne/go-geom v1.6.1
-## explicit; go 1.22
+# github.com/twpayne/go-geom v1.7.0
+## explicit; go 1.26.3
 github.com/twpayne/go-geom
 github.com/twpayne/go-geom/encoding/wkb
 github.com/twpayne/go-geom/encoding/wkbcommon
