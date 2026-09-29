@@ -2130,3 +2130,7 @@ func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
 		}
 	}
 }
+
+func TestProcessAccountsCompletedUnconsumedSplits(t *testing.T) {
+	testProcessAccountsCompletedUnconsumedSplits(t, false)
+}

@@ -124,10 +124,13 @@ func (h *splitByInterval) Process(
 	threshold int64,
 	input []*lokiResult,
 	maxSeries int,
-) ([]queryrangebase.Response, error) {
-	var responses []queryrangebase.Response
+) (responses []queryrangebase.Response, err error) {
 	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errors.New("split by interval process canceled"))
+	usage := &completedSplitUsage{}
+	defer func() {
+		cancel(errors.New("split by interval process canceled"))
+		responses = usage.finishResponses(ctx, responses, err)
+	}()
 
 	ch := h.Feed(ctx, input)
 
@@ -144,7 +147,7 @@ func (h *splitByInterval) Process(
 	// per request wrapped handler for limiting the amount of series.
 	next := newSeriesLimiter(maxSeries).Wrap(h.next)
 	for i := 0; i < p; i++ {
-		go h.loop(ctx, ch, next)
+		go h.loop(ctx, ch, next, usage)
 	}
 
 	for _, x := range input {
@@ -156,6 +159,7 @@ func (h *splitByInterval) Process(
 			joinPartialFromResponses(ctx, responses)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
+			usage.consumed(x)
 			if data.err != nil {
 				// Keep the usage of the intervals that completed before the failure.
 				joinPartialFromResponses(ctx, responses)
@@ -195,7 +199,7 @@ func (h *splitByInterval) Process(
 	return responses, nil
 }
 
-func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
+func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler, usage *completedSplitUsage) {
 	for data := range ch {
 
 		ctx, sp := tracer.Start(ctx, "interval")
@@ -204,6 +208,9 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		}
 
 		resp, err := next.Do(ctx, data.req)
+		if err == nil {
+			usage.record(data, resp)
+		}
 		sp.End()
 
 		select {

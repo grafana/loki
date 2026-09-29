@@ -67,6 +67,17 @@ The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
 
+### Query usage includes completed splits discarded on early return
+
+Log-query byte statistics now include successful parallel splits that completed
+before the frontend returned, even when their entries were discarded because the
+query reached its line limit. Failed-query usage also includes these completed
+splits. Returned entries and their limits are unchanged.
+
+This does not recover usage from workers that finish after frontend cancellation
+or response finalization. That usage still requires a separate execution usage
+report or a cancellation-independent result delivery protocol.
+
 ### Optional chunk fetch error propagation
 
 `chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.

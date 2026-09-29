@@ -386,3 +386,7 @@ func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
 		})
 	})
 }
+
+func TestEngineRouterAccountsCompletedUnconsumedSplits(t *testing.T) {
+	testProcessAccountsCompletedUnconsumedSplits(t, true)
+}

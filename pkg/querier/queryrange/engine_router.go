@@ -260,7 +260,7 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
-func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
+func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp, usage *completedSplitUsage) {
 	var resp packedResp
 	if r.isV2Engine {
 		resp.resp, resp.err = e.v2Next.Do(ctx, r.req)
@@ -271,6 +271,10 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 		}
 	} else {
 		resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
+	}
+
+	if resp.err == nil {
+		usage.record(&r.lokiResult, resp.resp)
 	}
 
 	select {
@@ -292,16 +296,19 @@ func isUnsupportedError(err error) bool {
 }
 
 // process executes the inputs in parallel and collects the responses.
-func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, limit uint32) ([]queryrangebase.Response, error) {
+func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, limit uint32) (responses []queryrangebase.Response, err error) {
 	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errors.New("engine router process cancelled"))
+	usage := &completedSplitUsage{}
+	defer func() {
+		cancel(errors.New("engine router process cancelled"))
+		responses = usage.finishResponses(ctx, responses, err)
+	}()
 
 	// Run all requests in parallel as we only get a max of 3 splits.
 	for _, r := range inputs {
-		go e.handleReq(ctx, r)
+		go e.handleReq(ctx, r, usage)
 	}
 
-	var responses []queryrangebase.Response
 	var count int64
 	for _, x := range inputs {
 		select {
@@ -312,6 +319,7 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, lim
 			joinPartialFromResponses(ctx, responses)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
+			usage.consumed(&x.lokiResult)
 			if data.err != nil {
 				// Keep the usage of the splits that completed before the failure.
 				joinPartialFromResponses(ctx, responses)
