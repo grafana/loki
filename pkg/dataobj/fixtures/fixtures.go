@@ -3,6 +3,7 @@ package fixtures
 import (
 	"context"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -52,15 +53,7 @@ type logSectionConfig struct {
 // stream labels. Without this option, SchemaKey is left unset.
 func WithSchemaLabels(schemaLabels ...string) LogFixtureOpt {
 	return func(b *LogFixtureBuilder) {
-		b.schemaLabels = append([]string(nil), schemaLabels...)
-	}
-}
-
-// WithShardCount sets the number of buckets used to assign log records their
-// physical shard bucket. Zero retains the default bucket assignment.
-func WithShardCount(shardCount uint32) LogFixtureOpt {
-	return func(b *LogFixtureBuilder) {
-		b.shardCount = shardCount
+		b.schemaLabels = slices.Clone(schemaLabels)
 	}
 }
 
@@ -69,10 +62,10 @@ type LogFixtureOpt func(*LogFixtureBuilder)
 
 // LogFixtureBuilder builds matching stream and log records for section fixtures.
 // IDs are assigned in first-seen stream order; log records retain insertion order.
+// Sort keys are computed while building each record; they are used to define order but are not persisted.
 type LogFixtureBuilder struct {
 	t             *testing.T
 	schemaLabels  []string
-	shardCount    uint32
 	streamIndexes map[string]int
 	streams       []streams.Stream
 	logs          []logs.Record
@@ -82,8 +75,8 @@ type LogFixtureBuilder struct {
 // IDs are assigned in first-seen stream order and log records are returned in insertion order.
 //
 // Callers may use either the ForStream(labelString).Entry(ts, md, msg) syntax or the more verbose Entry(stream, ts, md, msg) syntax.
-// WithSchemaLabels computes SchemaKey from each entry's stream labels; by default it is unset.
-// WithShardCount assigns each record to a bucket within the given shard count.
+// Use WithSchemaLabels to choose the schema key used while building records.
+// The physical shard bucket always comes from the stable hash of stream labels.
 func NewLogsFixtureBuilder(t *testing.T, opts ...LogFixtureOpt) *LogFixtureBuilder {
 	b := &LogFixtureBuilder{
 		t: t,
@@ -144,18 +137,16 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 	smLabels, err := syntax.ParseLabels(structuredMetadata)
 	require.NoError(b.t, err)
 	smLabels.Range(func(l labels.Label) { s.UncompressedSize += int64(len(l.Value)) })
+
 	var schemaKey string
-	if len(b.schemaLabels) > 0 {
+	if b.schemaLabels != nil {
 		schemaKey, err = logsobj.ComputeSchemaKey(stream, b.schemaLabels)
 		require.NoError(b.t, err)
 	}
-	shardBucket := uint32(s.ShardBucket)
-	if b.shardCount > 0 {
-		shardBucket %= b.shardCount
-	}
+	streamHash := labels.StableHash(stream)
 	b.logs = append(b.logs, logs.Record{
 		StreamID: s.ID, Timestamp: ts, Metadata: smLabels, Line: []byte(logMessage),
-		StreamHash: labels.StableHash(s.Labels), ShardBucket: shardBucket, SchemaKey: schemaKey,
+		SchemaKey: schemaKey, ShardBucket: streams.ShardBucketFromHash(streamHash), StreamHash: streamHash,
 	})
 }
 
