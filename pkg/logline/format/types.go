@@ -167,7 +167,7 @@ type WriterConfig struct {
 }
 
 // HeaderInfo is the meta.json index_header schema: a summary of the on-disk
-// index file header. It is not the wire type; convert at the HintIndex boundary.
+// index file header. It is not the wire type; convert at the IndexMeta boundary.
 type HeaderInfo struct {
 	Version              uint32 `json:"version"`
 	Flags                uint32 `json:"flags"`

@@ -450,12 +450,12 @@ message LoglineIndexRequest {
     (gogoproto.nullable) = false
   ];
   string expr = 3;
-  repeated HintIndex indexes = 4 [(gogoproto.nullable) = false];
+  repeated IndexMeta indexes = 4 [(gogoproto.nullable) = false];
 }
 
-// HintIndex is the slim index descriptor on LoglineIndexRequest. Catalog identity is
+// IndexMeta is the slim index descriptor on LoglineIndexRequest. Catalog identity is
 // a single id ("date/object_id"); the index object is "{id}/index".
-message HintIndex {
+message IndexMeta {
   string id = 1 [
     (gogoproto.customname) = "ID",
     (gogoproto.jsontag) = "id"

@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline/shard"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
 func TestFilterNgramsForShard_Unsharded(t *testing.T) {
 	ngrams := []string{"AAAAAA", "BBBBBB"}
-	idx := logproto.HintIndex{ShardCount: 0}
-	got := filterNgramsForShard(ngrams, idx)
+	m := store.Meta{ShardCount: 0}
+	got := filterNgramsForShard(ngrams, m)
 	require.Equal(t, ngrams, got, "unsharded returns all ngrams")
 }
 
@@ -23,24 +23,24 @@ func TestFilterNgramsForShard_MatchingShard(t *testing.T) {
 	// A=0x41=65, 65%4=1 → shard 1
 	// B=0x42=66, 66%4=2 → shard 2
 	ngrams := []string{"AAAAAA", "BBBBBB"}
-	idx := logproto.HintIndex{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 1}
-	got := filterNgramsForShard(ngrams, idx)
+	m := store.Meta{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 1}
+	got := filterNgramsForShard(ngrams, m)
 	require.Equal(t, []string{"AAAAAA"}, got, "only AAAAAA maps to shard 1")
 }
 
 func TestFilterNgramsForShard_NoMatch(t *testing.T) {
 	// shard 3: neither A (shard 1) nor B (shard 2) maps here
 	ngrams := []string{"AAAAAA", "BBBBBB"}
-	idx := logproto.HintIndex{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 3}
-	got := filterNgramsForShard(ngrams, idx)
+	m := store.Meta{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 3}
+	got := filterNgramsForShard(ngrams, m)
 	require.Empty(t, got)
 }
 
 func TestFilterNgramsForShard_UnknownAlgorithm(t *testing.T) {
 	// Unknown algorithm returns all ngrams (safe fallback).
 	ngrams := []string{"AAAAAA"}
-	idx := logproto.HintIndex{ShardCount: 4, ShardAlgorithm: "future_v99", ShardValue: 0}
-	got := filterNgramsForShard(ngrams, idx)
+	m := store.Meta{ShardCount: 4, ShardAlgorithm: "future_v99", ShardValue: 0}
+	got := filterNgramsForShard(ngrams, m)
 	require.Equal(t, ngrams, got)
 }
 
@@ -48,8 +48,8 @@ func TestFilterNgramsForShard_PreservesInputOrder(t *testing.T) {
 	// A=0x41=65, 65%4=1
 	// E=0x45=69, 69%4=1
 	ngrams := []string{"CCCCCC", "AAAAAA", "BBBBBB", "EEEEEE"}
-	idx := logproto.HintIndex{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 1}
-	got := filterNgramsForShard(ngrams, idx)
+	m := store.Meta{ShardCount: 4, ShardAlgorithm: "first_byte", ShardValue: 1}
+	got := filterNgramsForShard(ngrams, m)
 	require.Equal(t, []string{"AAAAAA", "EEEEEE"}, got, "matching terms should retain original order")
 }
 
@@ -376,16 +376,16 @@ func TestAggregateShardRanges_MixedVersionsAreUnioned(t *testing.T) {
 		require.NotEmpty(t, terms)
 
 		for shardValue := 0; shardValue < 10; shardValue++ {
-			idx := logproto.HintIndex{
+			meta := store.Meta{
 				Version:        period.version,
 				ShardCount:     10,
 				ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-				ShardValue:     int64(shardValue),
+				ShardValue:     shardValue,
 			}
-			if len(filterNgramsForShard(terms, idx)) == 0 {
+			if len(filterNgramsForShard(terms, meta)) == 0 {
 				continue
 			}
-			key := shardKeyOf(idx)
+			key := shardKeyOf(meta)
 			byKey[key] = append(byKey[key], HintTimeRange{Start: period.start, End: period.end})
 		}
 	}

@@ -343,7 +343,7 @@ func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeade
 	return nil
 }
 
-func (m HintIndex) IndexPath() string {
+func (m IndexMeta) IndexPath() string {
 	return m.ID + "/index"
 }
 

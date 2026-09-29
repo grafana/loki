@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -133,7 +132,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	require.NoError(t, err)
 
 	stats := NewQueryStats()
-	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
+	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
 	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats)
@@ -163,7 +162,7 @@ func TestLoglineHintProvider_OpenIndexReader(t *testing.T) {
 
 	metas := indexStore.IndexesForRange(docMin, docMax)
 	require.Len(t, metas, 1)
-	reader, err := provider.openIndexReader(context.Background(), hintIndexFromMeta(metas[0]), NewQueryStats())
+	reader, err := provider.openIndexReader(context.Background(), metas[0], NewQueryStats())
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 	require.NoError(t, reader.Close())
@@ -175,8 +174,9 @@ func TestLoglineHintProvider_OpenIndexReader_ErrorWhenHeaderMissing(t *testing.T
 	require.NoError(t, err)
 
 	stats := NewQueryStats()
-	_, err = provider.openIndexReader(context.Background(), logproto.HintIndex{
-		ID:        "2026-02-26/eeeeffffffffeeee",
+	_, err = provider.openIndexReader(context.Background(), store.Meta{
+		Date:      "2026-02-26",
+		StorageID: "eeeeffffffffeeee",
 		Version:   "v3",
 		SizeBytes: 1,
 	}, stats)
@@ -228,7 +228,7 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
+	active := toProtoIndexMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
@@ -808,12 +808,12 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 
 	byShard := make(map[int][]string)
 	for shardValue := range 10 {
-		idx := logproto.HintIndex{
+		meta := store.Meta{
 			ShardCount:     10,
 			ShardAlgorithm: shard.AlgorithmMurmur3Mix,
-			ShardValue:     int64(shardValue),
+			ShardValue:     shardValue,
 		}
-		if terms := filterNgramsForShard(ngrams, idx); len(terms) > 0 {
+		if terms := filterNgramsForShard(ngrams, meta); len(terms) > 0 {
 			byShard[shardValue] = terms
 		}
 	}
@@ -891,7 +891,7 @@ func TestLoglineHintProvider_ProvideHints_MixedVersionShards(t *testing.T) {
 		for shardValue := range 10 {
 			meta := store.Meta{ShardCount: 10, ShardAlgorithm: shard.AlgorithmMurmur3Mix, ShardValue: shardValue}
 			postings := make(map[string][]uint32)
-			for _, term := range filterNgramsForShard(terms, hintIndexFromMeta(meta)) {
+			for _, term := range filterNgramsForShard(terms, meta) {
 				postings[term] = []uint32{0}
 			}
 			if len(postings) == 0 {
@@ -1010,7 +1010,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	active := hintIndexesFromMetas(indexStore.Snapshot().Active())
+	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
@@ -1060,10 +1060,8 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 
 	metas := indexStore.Snapshot().Active()
 	require.Len(t, metas, 2)
-	active := hintIndexesFromMetas(metas)
-
-	for _, idx := range active {
-		reader, err := provider.openIndexReader(context.Background(), idx, nil)
+	for _, meta := range metas {
+		reader, err := provider.openIndexReader(context.Background(), meta, nil)
 		require.NoError(t, err)
 		require.NoError(t, reader.Close())
 	}
@@ -1071,10 +1069,10 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.Equal(t, 2, provider.cache.len())
 
 	ids := map[string]struct{}{
-		active[0].ID: {},
-		active[1].ID: {},
+		metas[0].ID(): {},
+		metas[1].ID(): {},
 	}
-	deletedID := active[0].ID
+	deletedID := metas[0].ID()
 
 	require.NoError(t, indexStore.DeleteIndex(context.Background(), metas[0]))
 	require.NoError(t, indexStore.Poll(context.Background()))
@@ -1094,36 +1092,15 @@ func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	require.True(t, ok)
 }
 
-// minimalHintIndex returns a HintIndex suitable for buildTermJobs tests that
-// don't need real index data. Only Version and ID are set; ShardCount=0 so
+// minimalMeta returns a Meta suitable for buildTermJobs tests that don't need
+// real index data. Only Version, Date, and StorageID are set; ShardCount=0 so
 // filterNgramsForShard passes all ngrams through unchanged.
-func minimalHintIndex(hash, date, indexVersion string) logproto.HintIndex {
-	return logproto.HintIndex{
-		ID:      date + "/" + hash,
-		Version: indexVersion,
+func minimalMeta(hash, date, indexVersion string) store.Meta {
+	return store.Meta{
+		Date:      date,
+		StorageID: hash,
+		Version:   indexVersion,
 	}
-}
-
-func hintIndexFromMeta(m store.Meta) logproto.HintIndex {
-	return logproto.HintIndex{
-		ID:             m.ID(),
-		Version:        m.Version,
-		SizeBytes:      m.SizeBytes,
-		MinLogTs:       m.MinLogTs,
-		MaxLogTs:       m.MaxLogTs,
-		ShardCount:     int64(m.ShardCount),
-		ShardAlgorithm: m.ShardAlgorithm,
-		ShardValue:     int64(m.ShardValue),
-		IndexHeader:    toProtoHeader(m.IndexHeader),
-	}
-}
-
-func hintIndexesFromMetas(metas []store.Meta) []logproto.HintIndex {
-	out := make([]logproto.HintIndex, len(metas))
-	for i, m := range metas {
-		out[i] = hintIndexFromMeta(m)
-	}
-	return out
 }
 
 // TestBuildTermJobs_SingleVersionCache verifies that two blocks sharing the same
@@ -1131,18 +1108,18 @@ func hintIndexesFromMetas(metas []store.Meta) []logproto.HintIndex {
 // doesn't accidentally drop the second block.
 func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	indexes := []logproto.HintIndex{
-		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
+	metas := []store.Meta{
+		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
 
-	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
+	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in indexesByID (each produced at least one job).
-	require.Contains(t, indexesByID, indexes[0].ID)
-	require.Contains(t, indexesByID, indexes[1].ID)
+	// Both blocks should appear in metasByID (each produced at least one job).
+	require.Contains(t, metasByID, metas[0].ID())
+	require.Contains(t, metasByID, metas[1].ID())
 }
 
 // TestBuildTermJobs_MixedVersions verifies that blocks with different index
@@ -1158,31 +1135,31 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 	}
 
 	filter := "abcdefg" // produces 2 six-grams: ABCDEF, BCDEFG
-	indexes := []logproto.HintIndex{
-		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
-		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
+	metas := []store.Meta{
+		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", versions[0]),
+		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
 
-	jobs, indexesByID, err := buildTermJobs([]string{filter}, indexes, 6)
+	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
-	// Both blocks should appear in indexesByID even though they carry different
+	// Both blocks should appear in metasByID even though they carry different
 	// index versions.
-	require.Contains(t, indexesByID, indexes[0].ID)
-	require.Contains(t, indexesByID, indexes[1].ID)
+	require.Contains(t, metasByID, metas[0].ID())
+	require.Contains(t, metasByID, metas[1].ID())
 }
 
 // TestBuildTermJobs_UnknownVersionReturnsError verifies that a block with an
 // unrecognised index version causes the query to fail with an error.
 func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	filter := "abcdefg"
-	indexes := []logproto.HintIndex{
-		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
-		minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
+	metas := []store.Meta{
+		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
+	_, _, err := buildTermJobs([]string{filter}, metas, 6)
 	require.Error(t, err)
 }
 
@@ -1191,27 +1168,27 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 // any ngrams for a known index version.
 func TestBuildTermJobs_FilterTooShortReturnsUnconstrained(t *testing.T) {
 	filter := "ab" // too short for n=6
-	indexes := []logproto.HintIndex{
-		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
+	metas := []store.Meta{
+		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
+	_, _, err := buildTermJobs([]string{filter}, metas, 6)
 	require.ErrorIs(t, err, ErrUnconstrained)
 }
 
 func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testing.T) {
-	idx := minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v4")
+	meta := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v4")
 
 	// v4 can look up the text filter, but emits no term for an 8-digit number:
 	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
-	jobs, indexesByID, err := buildTermJobs(
+	jobs, metasByID, err := buildTermJobs(
 		[]string{"abcdefg", "12345678"},
-		[]logproto.HintIndex{idx},
+		[]store.Meta{meta},
 		6,
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
-	require.Contains(t, indexesByID, idx.ID)
+	require.Contains(t, metasByID, meta.ID())
 }
 
 // TestBuildTermJobs_FiltersWithoutTerms pins what happens to a filter that has
@@ -1220,13 +1197,13 @@ func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testin
 // Skipping that version's blocks instead would leave them without ranges and
 // hide their matches.
 func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
-	v3 := minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
-	v4 := minimalHintIndex("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
+	v3 := minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3")
+	v4 := minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-02", "v4")
 
 	tests := []struct {
 		name    string
 		filters []string
-		indexes []logproto.HintIndex
+		metas   []store.Meta
 		wantErr error
 		// wantTerms maps a block ID to the terms looked up in it.
 		wantTerms map[string][]string
@@ -1234,28 +1211,28 @@ func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
 		{
 			name:    "v4 cannot narrow a number shorter than 9 digits",
 			filters: []string{"12345678"},
-			indexes: []logproto.HintIndex{v4},
+			metas:   []store.Meta{v4},
 			wantErr: ErrUnconstrained,
 		},
 		{
 			name:    "one version without terms fails a mixed window",
 			filters: []string{"12345678"},
-			indexes: []logproto.HintIndex{v3, v4},
+			metas:   []store.Meta{v3, v4},
 			wantErr: ErrUnconstrained,
 		},
 		{
 			name:    "each version narrows on the filters it has terms for",
 			filters: []string{"abcdefg", "12345678"},
-			indexes: []logproto.HintIndex{v3, v4},
+			metas:   []store.Meta{v3, v4},
 			wantTerms: map[string][]string{
-				v3.ID: {"ABCDEF", "BCDEFG", "123456", "234567", "345678"},
-				v4.ID: {"ABCDEF", "BCDEFG"},
+				v3.ID(): {"ABCDEF", "BCDEFG", "123456", "234567", "345678"},
+				v4.ID(): {"ABCDEF", "BCDEFG"},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobs, indexesByID, err := buildTermJobs(tt.filters, tt.indexes, 6)
+			jobs, metasByID, err := buildTermJobs(tt.filters, tt.metas, 6)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				return
@@ -1269,7 +1246,7 @@ func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
 			require.Len(t, got, len(tt.wantTerms))
 			for id, want := range tt.wantTerms {
 				require.ElementsMatch(t, want, got[id], "terms for block %s", id)
-				require.Contains(t, indexesByID, id)
+				require.Contains(t, metasByID, id)
 			}
 		})
 	}
