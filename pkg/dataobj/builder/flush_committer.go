@@ -137,8 +137,8 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error only if the context is canceled or the object
-	// isn't single-tenant, otherwise it retries indefinitely.
+	// index returns an error only if the context is canceled, otherwise it
+	// retries indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
 		return fmt.Errorf("failed to index data object: %w", err)
@@ -177,7 +177,10 @@ func earliestRecordTime(builders []builder) time.Time {
 // index builds and uploads the index for the object, retrying with exponential
 // backoff until successful or the context is canceled. Retrying is safe because
 // the index is not referenced from the metastore until it is recorded in the
-// ToC. [index.ErrNotSingleTenant] is returned right away, as retrying can't fix it.
+// ToC.
+//
+// Builders hold a single tenant, so [index.ErrNotSingleTenant] means that
+// invariant is broken. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
