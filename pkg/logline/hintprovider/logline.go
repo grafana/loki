@@ -77,23 +77,25 @@ func (p *LoglineHintProvider) QueryHints(
 	if req == nil {
 		req = &logproto.LoglineIndexRequest{}
 	}
+
 	ngramLength, maxParallel := p.lookupParams(req)
 	filters := SupportedQuery(expr, ngramLength)
 	stats := NewQueryStats()
 	through := req.GetEnd()
+
 	if len(filters) == 0 {
-		// The query-frontend already decided this lookup was worth sending.
-		// Returning ErrUnsupported here becomes a 500 after the RPC hop.
 		snap := stats.Snapshot()
 		return &logproto.LoglineIndexResponse{
 			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
 			Stats:      &snap,
 		}, nil
 	}
+
 	started := time.Now()
 	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel)
 	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
+
 	if errors.Is(err, ErrUnconstrained) {
 		return &logproto.LoglineIndexResponse{
 			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
@@ -103,6 +105,7 @@ func (p *LoglineHintProvider) QueryHints(
 	if err != nil {
 		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
+
 	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
 }
 
@@ -211,10 +214,12 @@ func (p *LoglineHintProvider) openIndexReader(
 	meta store.Meta,
 	stats *QueryStats,
 ) (logline.Reader, error) {
+	indexID := meta.ID()
+
 	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())
 
 	if p.cache != nil {
-		if cached, ok := p.cache.get(meta.ID()); ok {
+		if cached, ok := p.cache.get(indexID); ok {
 			trackedReader := newTrackingReaderAt(storeReader, stats)
 			reader, err := logline.OpenReaderCached(meta.Version, trackedReader, 0, meta.SizeBytes, cached.state)
 			if err == nil {
@@ -222,13 +227,13 @@ func (p *LoglineHintProvider) openIndexReader(
 				return reader, nil
 			}
 			// Cache entry may be stale/corrupt; evict it before uncached reopen.
-			p.cache.delete(meta.ID())
+			p.cache.delete(indexID)
 		}
 		stats.ObserveMetadataCacheMiss()
 	}
 
 	if meta.IndexHeader == nil {
-		return nil, fmt.Errorf("index %s is missing required index_header", meta.ID())
+		return nil, fmt.Errorf("index %s is missing required index_header", indexID)
 	}
 
 	trackedReader := newTrackingReaderAt(storeReader, stats)
@@ -238,7 +243,7 @@ func (p *LoglineHintProvider) openIndexReader(
 	}
 	trackedReader.SetClassifier(reader)
 	if p.cache != nil && cachedState != nil {
-		p.cache.put(meta.ID(), cachedMetadata{
+		p.cache.put(indexID, cachedMetadata{
 			headerInfo: *meta.IndexHeader,
 			state:      cachedState,
 		})
