@@ -2,6 +2,7 @@ package hintprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -73,6 +74,7 @@ func NewLoglineHintProvider(
 func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
 	expr syntax.Expr,
+	from, through time.Time,
 	overlapping []logproto.HintIndex,
 ) (*logproto.HintResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
@@ -83,10 +85,14 @@ func (p *LoglineHintProvider) QueryHints(
 	}
 	started := time.Now()
 	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
-	// Snapshot only derives EffectiveConcurrency when wall is set. That
-	// value is what the query-frontend restores; work nanos are not on the proto.
 	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
+	if errors.Is(err, ErrUnconstrained) {
+		return &logproto.HintResponse{
+			TimeRanges: []logproto.HintTimeRange{{End: through}},
+			Stats:      &snap,
+		}, nil
+	}
 	if err != nil {
 		return &logproto.HintResponse{Stats: &snap}, err
 	}
@@ -203,6 +209,9 @@ func (p *LoglineHintProvider) ProvideHints(
 	}
 
 	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats)
+	if errors.Is(err, ErrUnconstrained) {
+		return &Hints{TimeRanges: []HintTimeRange{{End: through.Time()}}}, plan.stats, nil
+	}
 	if err != nil {
 		return nil, plan.stats, err
 	}

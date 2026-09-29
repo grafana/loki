@@ -213,7 +213,7 @@ func TestLoglineHintProvider_QueryHints_UnsupportedQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	expr := mustParseExpr(t, `{job="api"} |~ "error.*"`)
-	resp, err := provider.QueryHints(context.Background(), expr, nil)
+	resp, err := provider.QueryHints(context.Background(), expr, time.Time{}, time.Time{}, nil)
 	require.ErrorIs(t, err, ErrUnsupported)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.TimeRanges)
@@ -232,7 +232,7 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.Len(t, active, 1)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
-	resp, err := provider.QueryHints(context.Background(), expr, active)
+	resp, err := provider.QueryHints(context.Background(), expr, t0, t0.Add(5*time.Minute), active)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Stats)
@@ -1186,17 +1186,17 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestBuildTermJobs_FilterTooShortReturnsUnsupported verifies that ErrUnsupported
-// is returned when the filter string is too short to produce any ngrams for a
-// known index version.
-func TestBuildTermJobs_FilterTooShortReturnsUnsupported(t *testing.T) {
+// TestBuildTermJobs_FilterTooShortReturnsUnconstrained verifies that
+// ErrUnconstrained is returned when the filter string is too short to produce
+// any ngrams for a known index version.
+func TestBuildTermJobs_FilterTooShortReturnsUnconstrained(t *testing.T) {
 	filter := "ab" // too short for n=6
 	indexes := []logproto.HintIndex{
 		minimalHintIndex("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
 	_, _, err := buildTermJobs([]string{filter}, indexes, 6)
-	require.ErrorIs(t, err, ErrUnsupported)
+	require.ErrorIs(t, err, ErrUnconstrained)
 }
 
 func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testing.T) {
@@ -1216,7 +1216,7 @@ func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testin
 
 // TestBuildTermJobs_FiltersWithoutTerms pins what happens to a filter that has
 // no terms under a block's version. It drops out of that version's AND, but a
-// version that no filter can narrow makes the whole lookup unsupported.
+// version that no filter can narrow makes the whole lookup unconstrained.
 // Skipping that version's blocks instead would leave them without ranges and
 // hide their matches.
 func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
@@ -1235,13 +1235,13 @@ func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
 			name:    "v4 cannot narrow a number shorter than 9 digits",
 			filters: []string{"12345678"},
 			indexes: []logproto.HintIndex{v4},
-			wantErr: ErrUnsupported,
+			wantErr: ErrUnconstrained,
 		},
 		{
 			name:    "one version without terms fails a mixed window",
 			filters: []string{"12345678"},
 			indexes: []logproto.HintIndex{v3, v4},
-			wantErr: ErrUnsupported,
+			wantErr: ErrUnconstrained,
 		},
 		{
 			name:    "each version narrows on the filters it has terms for",

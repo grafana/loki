@@ -266,7 +266,7 @@ func buildTermJobs(
 	// the whole query passes through to a full Loki scan.
 	for _, ok := range hasTerms {
 		if !ok {
-			return nil, nil, ErrUnsupported
+			return nil, nil, ErrUnconstrained
 		}
 	}
 	return jobs, indexesByID, nil

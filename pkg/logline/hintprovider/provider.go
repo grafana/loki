@@ -15,8 +15,12 @@ import (
 )
 
 // ErrUnsupported is returned when the query shape cannot be handled by the
-// logline index hint provider.
-var ErrUnsupported = errors.New("query not supported by logline index")
+// logline index hint provider. ErrUnconstrained is returned when the query
+// cannot be narrowed by logline.
+var (
+	ErrUnsupported   = errors.New("query not supported by logline index")
+	ErrUnconstrained = errors.New("logline index cannot narrow this query")
+)
 
 const maxLoggedHintRanges = 10
 
