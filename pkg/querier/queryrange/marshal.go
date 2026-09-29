@@ -308,7 +308,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
-	case *HintResponse:
+	case *LoglineIndexResponse:
 		p.Response = &QueryResponse_Hints{response}
 	case *VolumeResponse:
 		p.Response = &QueryResponse_Volume{response}

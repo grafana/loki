@@ -170,18 +170,18 @@ func (m *IndexStatsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHe
 	return m
 }
 
-func (m *HintResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+func (m *LoglineIndexResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func (m *HintResponse) SetHeader(name, value string) {
+func (m *LoglineIndexResponse) SetHeader(name, value string) {
 	m.Headers = setHeader(m.Headers, name, value)
 }
 
-func (m *HintResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+func (m *LoglineIndexResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
 }

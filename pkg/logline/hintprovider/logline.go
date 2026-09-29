@@ -76,27 +76,27 @@ func (p *LoglineHintProvider) QueryHints(
 	expr syntax.Expr,
 	from, through time.Time,
 	overlapping []logproto.HintIndex,
-) (*logproto.HintResponse, error) {
+) (*logproto.LoglineIndexResponse, error) {
 	filters := SupportedQuery(expr, p.ngramLength)
 	stats := NewQueryStats()
 	if len(filters) == 0 {
 		snap := stats.Snapshot()
-		return &logproto.HintResponse{Stats: &snap}, ErrUnsupported
+		return &logproto.LoglineIndexResponse{Stats: &snap}, ErrUnsupported
 	}
 	started := time.Now()
 	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
 	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
 	if errors.Is(err, ErrUnconstrained) {
-		return &logproto.HintResponse{
+		return &logproto.LoglineIndexResponse{
 			TimeRanges: []logproto.HintTimeRange{{End: through}},
 			Stats:      &snap,
 		}, nil
 	}
 	if err != nil {
-		return &logproto.HintResponse{Stats: &snap}, err
+		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
-	return &logproto.HintResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+	return &logproto.LoglineIndexResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
 }
 
 type hintPlan struct {
@@ -184,7 +184,7 @@ func (p *LoglineHintProvider) provideHintsRemote(
 		return nil, plan.stats, err
 	}
 
-	hr, ok := resp.(*queryrange.HintResponse)
+	hr, ok := resp.(*queryrange.LoglineIndexResponse)
 	if !ok || hr == nil || hr.Response == nil {
 		return nil, plan.stats, fmt.Errorf("unexpected hint response type %T", resp)
 	}

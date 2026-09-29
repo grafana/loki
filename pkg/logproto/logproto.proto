@@ -521,7 +521,7 @@ message HintQueryStats {
   int64 hint_cache_days_hit = 21;
 }
 
-message HintResponse {
+message LoglineIndexResponse {
   repeated HintTimeRange time_ranges = 1 [(gogoproto.nullable) = false];
   HintQueryStats stats = 2;
 }

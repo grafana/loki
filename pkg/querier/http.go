@@ -262,14 +262,14 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
-func (q *QuerierAPI) HintsHandler(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.HintResponse, error) {
+func (q *QuerierAPI) LoglineIndexesHandler(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeLoglineIndex))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
-	resp, err := q.querier.Hints(ctx, req)
+	resp, err := q.querier.LoglineIndexes(ctx, req)
 	resLength := 0
 	if resp != nil {
 		resLength = len(resp.TimeRanges)

@@ -158,8 +158,8 @@ message IndexStatsResponse {
   ];
 }
 
-message HintResponse {
-  logproto.HintResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.HintResponse"];
+message LoglineIndexResponse {
+  logproto.LoglineIndexResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LoglineIndexResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
@@ -262,7 +262,7 @@ message QueryResponse {
     DetectedLabelsResponse detectedLabels = 13;
     CountMinSketchResponse countMinSketches = 14;
     CountDistinctSketchResponse countDistinctSketches = 15;
-    HintResponse hints = 16;
+    LoglineIndexResponse hints = 16;
   }
 }
 

@@ -634,8 +634,8 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
-func (q *querierMock) Hints(_ context.Context, _ *logproto.LoglineIndexRequest) (*logproto.HintResponse, error) {
-	return &logproto.HintResponse{}, nil
+func (q *querierMock) LoglineIndexes(_ context.Context, _ *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+	return &logproto.LoglineIndexResponse{}, nil
 }
 
 func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) ([]logproto.Shard, error) {
