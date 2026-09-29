@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -291,10 +292,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			for i, sourcePath := range sourcePaths {
 				layout := test.sourceLayouts[i]
-				entries := fixtures.NewLogsFixtureBuilder(t,
-					fixtures.WithSchemaLabels(layout.SchemaLabels...),
-					fixtures.WithShardCount(layout.ShardCount),
-				)
+				entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(layout.SchemaLabels...))
 				entries.ForStream(`{app="api",cluster="prod"}`).
 					Entry(int(base.Add(time.Second).Unix()), "{}", sourcePath+"/second").
 					Entry(int(base.Unix()), "{}", sourcePath+"/first")
@@ -377,7 +375,7 @@ func TestCompactionScenario_WrongSortSchemaConverges(t *testing.T) {
 }
 
 func TestCompactionScenario_WrongShardCountConverges(t *testing.T) {
-	t.Skipf("Customizing the number of shard buckets is not yet supported in the indexer")
+	t.Skipf("Customizing the number of shard buckets is not yet supported")
 	mismatchedShardBuckets := func(file int) uint32 {
 		if file == 2 {
 			return streams.ShardFactor / 2
@@ -425,7 +423,7 @@ func runFiveFileConvergence(t *testing.T, schemaForFile func(int) []string, shar
 		}
 
 		entries := fixtures.NewLogsFixtureBuilder(t,
-			fixtures.WithSchemaLabels(sourceSchema...), fixtures.WithShardCount(shardCount),
+			fixtures.WithSchemaLabels(sourceSchema...),
 		)
 		for app := 'a'; app <= 'z'; app++ {
 			stream := entries.ForStream(fmt.Sprintf(`{app=%q}`, string(app)))
@@ -594,7 +592,7 @@ func newIntegrationCoordinatorWithLogsobjConfig(ctx context.Context, t *testing.
 			ToCConsolidateTimeout:        10 * time.Second,
 			LogMaxRunningCompactionTasks: 1,
 		},
-		logger: log.NewNopLogger(),
+		logger: log.NewLogfmtLogger(os.Stderr),
 		bucket: bucket,
 		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
