@@ -125,9 +125,6 @@ type mockIndexer struct {
 	// errs is consumed one entry per call so tests can drive retries. Once it
 	// is exhausted, indexing succeeds.
 	errs []error
-	// timeRanges, when set, is reported for every index in place of a single
-	// range for tenant "test".
-	timeRanges []multitenancy.TimeRange
 }
 
 func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
@@ -138,13 +135,9 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 		m.errs = m.errs[1:]
 		return index.Result{}, err
 	}
-	timeRanges := m.timeRanges
-	if timeRanges == nil {
-		timeRanges = []multitenancy.TimeRange{{Tenant: "test"}}
-	}
 	return index.Result{
-		Path:       "index/" + objPath,
-		TimeRanges: timeRanges,
+		Path:      "index/" + objPath,
+		TimeRange: multitenancy.TimeRange{Tenant: "test"},
 	}, nil
 }
 

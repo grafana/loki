@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -64,22 +64,20 @@ func TestFlushCommitter(t *testing.T) {
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
 	})
 
-	t.Run("should fail when the index covers more than one tenant", func(t *testing.T) {
+	t.Run("should fail without retrying when the object is not single-tenant", func(t *testing.T) {
 		var (
-			reg     = prometheus.NewRegistry()
-			flusher = &mockFlusher{obj: &dataobj.Object{}}
-			indexer = &mockIndexer{timeRanges: []multitenancy.TimeRange{
-				{Tenant: "tenant-a"},
-				{Tenant: "tenant-b"},
-			}}
+			reg            = prometheus.NewRegistry()
+			flusher        = &mockFlusher{obj: &dataobj.Object{}}
+			indexer        = &mockIndexer{errs: []error{fmt.Errorf("%w: found 2 tenants", index.ErrNotSingleTenant)}}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
 			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
-		require.EqualError(t, err, "index index/object_001 covers 2 tenants, want exactly 1")
-		// ToCs are single-tenant, so nothing is recorded or committed.
+		require.ErrorIs(t, err, index.ErrNotSingleTenant)
+		// A retry would have succeeded, as the mock only fails once.
+		require.Len(t, indexer.paths, 1)
 		require.Empty(t, tocWriter.paths)
 		require.Empty(t, committer.offsets)
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
