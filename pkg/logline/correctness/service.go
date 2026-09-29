@@ -348,7 +348,6 @@ func (s *Service) runVerificationCycle(ctx context.Context) (CycleReport, error)
 		hq.expr,
 		model.TimeFromUnixNano(rangeStart.UnixNano()),
 		model.TimeFromUnixNano(rangeEnd.UnixNano()),
-		nil,
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {

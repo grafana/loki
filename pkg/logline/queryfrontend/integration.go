@@ -209,12 +209,11 @@ func WrapMiddlewareWithStore(
 		}
 	}
 
-	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = deps.QueryIngestersWithin
 	}
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, limits, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(baseHintProvider, hintCache, cfg, limits, metrics, logger, reg)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)
 
 	if existing == nil {

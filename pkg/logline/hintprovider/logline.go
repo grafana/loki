@@ -16,8 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 const (
@@ -88,7 +86,7 @@ func (p *LoglineHintProvider) QueryHints(
 		// Returning ErrUnsupported here becomes a 500 after the RPC hop.
 		snap := stats.Snapshot()
 		return &logproto.LoglineIndexResponse{
-			TimeRanges: toProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
+			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
 			Stats:      &snap,
 		}, nil
 	}
@@ -98,14 +96,14 @@ func (p *LoglineHintProvider) QueryHints(
 	snap := stats.Snapshot()
 	if errors.Is(err, ErrUnconstrained) {
 		return &logproto.LoglineIndexResponse{
-			TimeRanges: toProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
+			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
 			Stats:      &snap,
 		}, nil
 	}
 	if err != nil {
 		return &logproto.LoglineIndexResponse{Stats: &snap}, err
 	}
-	return &logproto.LoglineIndexResponse{TimeRanges: toProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
 }
 
 func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
@@ -119,25 +117,24 @@ func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (n
 	return
 }
 
-type hintPlan struct {
-	filters []string
-	ranges  []HintTimeRange
-	indexes []store.Meta
-	stats   *QueryStats
-}
-
-func (p *LoglineHintProvider) getHintPlan(
+func (p *LoglineHintProvider) PlanHints(
+	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
-	tenant string,
-) (hintPlan, error) {
+) (HintPlan, error) {
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
+	plan := HintPlan{
+		Stats:       stats,
+		NgramLength: int32(p.ngramLength),
+		MaxParallel: int32(p.maxParallel),
+	}
 
 	filters := SupportedQuery(expr, p.ngramLength)
 	if len(filters) == 0 {
-		return hintPlan{filters, nil, nil, stats}, ErrUnsupported
+		return plan, ErrUnsupported
 	}
+	plan.Filters = filters
 
 	start := from.Time().UTC()
 	end := through.Time().UTC()
@@ -155,49 +152,18 @@ func (p *LoglineHintProvider) getHintPlan(
 		})
 		// Entire query window is pre-min-date: passthrough hint already fully covers it.
 		if !end.After(minDate) {
-			return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
+			plan.Ranges = NormalizeRanges(ranges)
+			return plan, nil
 		}
 	}
 
 	overlapping := p.store.IndexesForRange(start, end)
+	plan.Indexes = overlapping
+	plan.Ranges = ranges
 	if len(overlapping) == 0 {
-		return hintPlan{filters, normalizeRanges(ranges), nil, stats}, nil
+		plan.Ranges = NormalizeRanges(ranges)
 	}
-
-	return hintPlan{filters, ranges, overlapping, stats}, nil
-}
-
-func (p *LoglineHintProvider) provideHintsRemote(
-	ctx context.Context,
-	tenant string,
-	expr syntax.Expr,
-	from, through model.Time,
-	next queryrangebase.Handler,
-) (*Hints, *QueryStats, error) {
-	plan, err := p.getHintPlan(expr, from, through, tenant)
-	if err != nil || len(plan.indexes) == 0 {
-		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
-	}
-
-	resp, err := next.Do(ctx, &logproto.LoglineIndexRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     toProtoIndexMetas(plan.indexes),
-		NgramLength: int32(p.ngramLength),
-		MaxParallel: int32(p.maxParallel),
-	})
-	if err != nil {
-		return nil, plan.stats, err
-	}
-
-	hr, ok := resp.(*queryrange.LoglineIndexResponse)
-	if !ok || hr == nil || hr.Response == nil {
-		return nil, plan.stats, fmt.Errorf("unexpected hint response type %T", resp)
-	}
-
-	ranges := append(plan.ranges, fromProtoRanges(hr.Response.TimeRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, fromProtoStats(hr.Response.Stats), nil
+	return plan, nil
 }
 
 func (p *LoglineHintProvider) ProvideHints(
@@ -205,26 +171,30 @@ func (p *LoglineHintProvider) ProvideHints(
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
-	next queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
-	if next != nil {
-		return p.provideHintsRemote(ctx, tenant, expr, from, through, next)
+	plan, err := p.PlanHints(tenant, expr, from, through)
+	if err != nil || len(plan.Indexes) == 0 {
+		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
 	}
-	plan, err := p.getHintPlan(expr, from, through, tenant)
-	if err != nil || len(plan.indexes) == 0 {
-		return &Hints{TimeRanges: plan.ranges}, plan.stats, err
-	}
-
-	shardRanges, err := p.executeQuery(ctx, plan.filters, plan.indexes, plan.stats, p.ngramLength, p.maxParallel)
-	if errors.Is(err, ErrUnconstrained) {
-		return &Hints{TimeRanges: []HintTimeRange{passthroughForInclusiveThrough(through.Time())}}, plan.stats, nil
-	}
+	resp, err := p.QueryHints(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
 	if err != nil {
-		return nil, plan.stats, err
+		return nil, plan.Stats, err
 	}
+	ranges := append(plan.Ranges, FromProtoRanges(resp.TimeRanges)...)
+	return &Hints{TimeRanges: NormalizeRanges(ranges)}, FromProtoStats(resp.Stats), nil
+}
 
-	ranges := append(plan.ranges, aggregateShardRanges(shardRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, plan.stats, nil
+func loglineIndexRequest(
+	expr syntax.Expr, from, through model.Time, plan HintPlan, ngram, parallel int,
+) *logproto.LoglineIndexRequest {
+	return &logproto.LoglineIndexRequest{
+		From:        from,
+		Through:     through,
+		Expr:        expr.String(),
+		Indexes:     ToProtoIndexMetas(plan.Indexes),
+		NgramLength: int32(ngram),
+		MaxParallel: int32(parallel),
+	}
 }
 
 // MinDate returns the configured minimum trusted date boundary used by the
@@ -319,7 +289,7 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 	for _, byValue := range groups {
 		var groupResult []HintTimeRange
 		for _, ranges := range byValue {
-			normalized := normalizeRanges(ranges)
+			normalized := NormalizeRanges(ranges)
 			if groupResult == nil {
 				groupResult = normalized
 			} else {
@@ -333,13 +303,13 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 		allRanges = append(allRanges, groupResult...)
 	}
 
-	return normalizeRanges(allRanges)
+	return NormalizeRanges(allRanges)
 }
 
-// normalizeRanges sorts, drops empty [start, end) windows, and merges
+// NormalizeRanges sorts, drops empty [start, end) windows, and merges
 // overlapping or abutting ranges. Abutting ranges (a.End == b.Start) merge
 // because they form a contiguous half-open cover.
-func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
+func NormalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -377,7 +347,7 @@ func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 }
 
 // maxMergedSourceLen caps merged source strings. Source is diagnostic-only
-// provenance; during normalizeRanges and intersectRanges across many indexes
+// provenance; during NormalizeRanges and intersectRanges across many indexes
 // the string would grow quadratically without a cap. 32 KiB keeps enough
 // detail for false-negative diagnosis while staying well under the multi-MiB
 // sizes that caused OOM in production.

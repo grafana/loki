@@ -13,7 +13,6 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -107,7 +106,6 @@ func (p *CachingHintProvider) fetchDays(
 	expr syntax.Expr,
 	queryString string,
 	days []dayWindow,
-	next queryrangebase.Handler,
 	writeCache bool,
 ) (*Hints, *QueryStats, error) {
 	results := make([]provideHintsResult, len(days))
@@ -122,7 +120,7 @@ func (p *CachingHintProvider) fetchDays(
 			dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 			sfKey := singleflightKey(tenant, queryString, day.day)
 			value, _, shared := p.flight.Do(sfKey, func() (any, error) {
-				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough, next)
+				hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
 				if provideErr != nil {
 					return &provideHintsResult{hints: hints, stats: stats, err: provideErr}, nil
 				}
@@ -164,7 +162,6 @@ func (p *CachingHintProvider) ProvideHints(
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
-	next queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	if p.delegate == nil {
 		return nil, nil, fmt.Errorf("caching hint provider delegate cannot be nil")
@@ -176,7 +173,7 @@ func (p *CachingHintProvider) ProvideHints(
 
 	if SkipCache(ctx) {
 		p.requestsTotal.WithLabelValues(hintCacheResultSkip).Inc()
-		hints, stats, err := p.fetchDays(ctx, tenant, expr, queryString, dayWindows, next, false)
+		hints, stats, err := p.fetchDays(ctx, tenant, expr, queryString, dayWindows, false)
 		if stats != nil {
 			stats.ObserveHintCache(hintCacheResultSkip, 0, 0)
 		}
@@ -184,7 +181,7 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	if p.cache == nil {
-		hints, stats, err := p.fetchDays(ctx, tenant, expr, queryString, dayWindows, next, false)
+		hints, stats, err := p.fetchDays(ctx, tenant, expr, queryString, dayWindows, false)
 		return filterHintsByWindow(hints, from, through), stats, err
 	}
 
@@ -209,7 +206,7 @@ func (p *CachingHintProvider) ProvideHints(
 	}
 
 	p.requestsTotal.WithLabelValues(hintCacheResultMiss).Inc()
-	fetched, stats, err := p.fetchDays(ctx, tenant, expr, queryString, missingDays, next, true)
+	fetched, stats, err := p.fetchDays(ctx, tenant, expr, queryString, missingDays, true)
 	if err != nil {
 		return nil, stats, err
 	}
@@ -295,7 +292,7 @@ func decodeCachedAndMissingDays(days []dayWindow, found []string, bufs [][]byte,
 		decodedRanges = append(decodedRanges, decoded...)
 	}
 
-	return normalizeRanges(decodedRanges), missingDays
+	return NormalizeRanges(decodedRanges), missingDays
 }
 
 func cacheKeyMinDate(delegate QueryHintProvider) string {
@@ -357,7 +354,7 @@ func filterRangesByWindow(ranges []HintTimeRange, from, through time.Time) []Hin
 		}
 		filtered = append(filtered, r)
 	}
-	return normalizeRanges(filtered)
+	return NormalizeRanges(filtered)
 }
 
 func truncateToUTCDay(t time.Time) time.Time {
@@ -391,7 +388,7 @@ func clipRangesToDay(ranges []HintTimeRange, dayStart, dayEndExclusive time.Time
 		out = append(out, clipped)
 	}
 
-	return normalizeRanges(out)
+	return NormalizeRanges(out)
 }
 
 func marshalCachedHints(ranges []HintTimeRange) ([]byte, error) {
@@ -434,7 +431,7 @@ func unmarshalCachedHints(encoded []byte) ([]HintTimeRange, error) {
 			End:   end,
 		})
 	}
-	return normalizeRanges(ranges), nil
+	return NormalizeRanges(ranges), nil
 }
 
 func maxTime(a, b time.Time) time.Time {

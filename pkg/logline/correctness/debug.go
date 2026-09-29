@@ -93,7 +93,6 @@ func (s *Service) handleDebug(w http.ResponseWriter, r *http.Request) {
 		hq.expr,
 		model.TimeFromUnixNano(req.start.UnixNano()),
 		model.TimeFromUnixNano(req.end.UnixNano()),
-		nil,
 	)
 	hintDuration := time.Since(hintStart)
 	if err != nil {

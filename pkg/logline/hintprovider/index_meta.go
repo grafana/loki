@@ -22,7 +22,7 @@ func toProtoIndexMeta(m store.Meta) logproto.IndexMeta {
 	}
 }
 
-func toProtoIndexMetas(ms []store.Meta) []logproto.IndexMeta {
+func ToProtoIndexMetas(ms []store.Meta) []logproto.IndexMeta {
 	out := make([]logproto.IndexMeta, len(ms))
 	for i, m := range ms {
 		out[i] = toProtoIndexMeta(m)

@@ -9,9 +9,9 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // ErrUnsupported is returned when the query shape cannot be handled by the
@@ -34,7 +34,16 @@ const HintSourcePreMinDate = "pre_min_date"
 
 // QueryHintProvider inspects a query and returns narrowed scan hints.
 type QueryHintProvider interface {
-	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time, next queryrangebase.Handler) (*Hints, *QueryStats, error)
+	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)
+}
+
+type HintPlan struct {
+	Filters []string
+	Ranges  []HintTimeRange // pre-min-date passthrough, if any
+	Indexes []store.Meta
+	Stats   *QueryStats
+	NgramLength int32
+	MaxParallel int32
 }
 
 // HintTimeRange is a half-open time window [Start, End) that may contain
@@ -69,7 +78,7 @@ type Hints struct {
 	TimeRanges []HintTimeRange
 }
 
-func toProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
+func ToProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
 	out := make([]logproto.HintTimeRange, len(in))
 	for i, r := range in {
 		out[i] = logproto.HintTimeRange{Start: r.Start, End: r.End}
@@ -77,7 +86,7 @@ func toProtoRanges(in []HintTimeRange) []logproto.HintTimeRange {
 	return out
 }
 
-func fromProtoRanges(in []logproto.HintTimeRange) []HintTimeRange {
+func FromProtoRanges(in []logproto.HintTimeRange) []HintTimeRange {
 	out := make([]HintTimeRange, len(in))
 	for i, r := range in {
 		out[i] = HintTimeRange{Start: r.Start, End: r.End}

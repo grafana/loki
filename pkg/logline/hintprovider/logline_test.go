@@ -23,8 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 func TestLoglineHintProvider_ProvideHints(t *testing.T) {
@@ -44,183 +42,12 @@ func TestLoglineHintProvider_ProvideHints(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
 	require.Len(t, hints.TimeRanges, 1)
 	require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
-	require.Contains(t, hints.TimeRanges[0].Source, "index=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",doc=0")
-	require.Contains(t, hints.TimeRanges[0].Source, ",min=")
-	require.Contains(t, hints.TimeRanges[0].Source, ",max=")
-}
-
-func TestLoglineHintProvider_ProvideHints_Remote(t *testing.T) {
-	needle := "9fA81cD2Ef0077aa"
-	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
-	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
-	from := model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano())
-	through := model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano())
-	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
-
-	t.Run("packs request and uses remote ranges and stats", func(t *testing.T) {
-		indexStore := newTestStore(t)
-		writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		remoteStart := time.Date(2026, 2, 26, 10, 0, 55, 0, time.UTC)
-		remoteEnd := time.Date(2026, 2, 26, 10, 1, 0, 0, time.UTC)
-		var gotReq *logproto.LoglineIndexRequest
-		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			var ok bool
-			gotReq, ok = req.(*logproto.LoglineIndexRequest)
-			require.True(t, ok)
-			return &queryrange.LoglineIndexResponse{
-				Response: &logproto.LoglineIndexResponse{
-					TimeRanges: []logproto.HintTimeRange{{Start: remoteStart, End: remoteEnd}},
-					Stats:      &logproto.HintQueryStats{PeakConcurrency: 7, IndexQueriesPositive: 3},
-				},
-			}, nil
-		})
-
-		hints, stats, err := provider.ProvideHints(context.Background(), "test-tenant", expr, from, through, next)
-		require.NoError(t, err)
-		require.NotNil(t, gotReq)
-		require.Equal(t, from, gotReq.From)
-		require.Equal(t, through, gotReq.Through)
-		require.Equal(t, expr.String(), gotReq.Expr)
-		require.Equal(t, int32(6), gotReq.NgramLength)
-		require.Equal(t, int32(32), gotReq.MaxParallel)
-		require.Equal(t, toProtoIndexMetas(indexStore.Snapshot().Active()), gotReq.Indexes)
-		require.Equal(t, []HintTimeRange{{Start: remoteStart, End: remoteEnd}}, hints.TimeRanges)
-		require.Equal(t, int32(7), stats.Snapshot().PeakConcurrency)
-		require.Equal(t, int64(3), stats.Snapshot().IndexQueriesPositive)
-	})
-
-	t.Run("skips next when the query is unsupported", func(t *testing.T) {
-		indexStore := newTestStore(t)
-		writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			t.Fatal("next should not run for an unsupported query")
-			return nil, nil
-		})
-		hints, _, err := provider.ProvideHints(
-			context.Background(),
-			"test-tenant",
-			mustParseExpr(t, `{job="api"} |~ "error.*"`),
-			from,
-			through,
-			next,
-		)
-		require.ErrorIs(t, err, ErrUnsupported)
-		require.NotNil(t, hints)
-		require.Empty(t, hints.TimeRanges)
-	})
-
-	t.Run("skips next when no indexes overlap", func(t *testing.T) {
-		indexStore := newTestStore(t)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			t.Fatal("next should not run when the plan has no indexes")
-			return nil, nil
-		})
-		hints, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, from, through, next)
-		require.NoError(t, err)
-		require.NotNil(t, hints)
-		require.Empty(t, hints.TimeRanges)
-	})
-
-	t.Run("errors on unexpected response type", func(t *testing.T) {
-		indexStore := newTestStore(t)
-		writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-			return &queryrange.LokiResponse{}, nil
-		})
-		_, _, err = provider.ProvideHints(context.Background(), "test-tenant", expr, from, through, next)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unexpected hint response type")
-	})
-
-	t.Run("keeps pre-min-date passthrough with remote ranges", func(t *testing.T) {
-		minDate := "2026-02-26"
-		indexStore := newTestStoreWithMinDate(t, minDate)
-		writeTestIndex(t, indexStore, "cccccccccccccccc", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		remoteStart := time.Date(2026, 2, 26, 10, 0, 55, 0, time.UTC)
-		remoteEnd := time.Date(2026, 2, 26, 10, 1, 0, 0, time.UTC)
-		next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			got, ok := req.(*logproto.LoglineIndexRequest)
-			require.True(t, ok)
-			require.NotEmpty(t, got.Indexes)
-			return &queryrange.LoglineIndexResponse{
-				Response: &logproto.LoglineIndexResponse{
-					TimeRanges: []logproto.HintTimeRange{{Start: remoteStart, End: remoteEnd}},
-				},
-			}, nil
-		})
-
-		windowFrom := time.Date(2026, 2, 25, 18, 0, 0, 0, time.UTC)
-		windowThrough := time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC)
-		hints, _, err := provider.ProvideHints(
-			context.Background(),
-			"test-tenant",
-			expr,
-			model.TimeFromUnixNano(windowFrom.UnixNano()),
-			model.TimeFromUnixNano(windowThrough.UnixNano()),
-			next,
-		)
-		require.NoError(t, err)
-		require.Len(t, hints.TimeRanges, 2)
-		require.True(t, hints.TimeRanges[0].IsPassthrough())
-		require.Equal(t, time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC), hints.TimeRanges[0].End)
-		require.Equal(t, remoteStart, hints.TimeRanges[1].Start)
-		require.Equal(t, remoteEnd, hints.TimeRanges[1].End)
-	})
-
-	t.Run("runs QueryHints through next like the querier handler", func(t *testing.T) {
-		indexStore := newTestStore(t)
-		writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		local, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, from, through, nil)
-		require.NoError(t, err)
-
-		remote, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, from, through, queryHintsNext(t, provider))
-		require.NoError(t, err)
-		requireEqualHintBounds(t, local.TimeRanges, remote.TimeRanges)
-	})
-
-	t.Run("QueryHints next keeps pre-min-date passthrough with looked-up ranges", func(t *testing.T) {
-		minDate := "2026-02-26"
-		indexStore := newTestStoreWithMinDate(t, minDate)
-		writeTestIndex(t, indexStore, "cccccccccccccccc", needle, docMin, docMax)
-		provider, err := NewLoglineHintProvider(indexStore, 6, 32, nil, log.NewNopLogger(), nil)
-		require.NoError(t, err)
-
-		windowFrom := model.TimeFromUnixNano(time.Date(2026, 2, 25, 18, 0, 0, 0, time.UTC).UnixNano())
-		windowThrough := model.TimeFromUnixNano(time.Date(2026, 2, 26, 11, 0, 0, 0, time.UTC).UnixNano())
-		local, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, windowFrom, windowThrough, nil)
-		require.NoError(t, err)
-
-		remote, _, err := provider.ProvideHints(context.Background(), "test-tenant", expr, windowFrom, windowThrough, queryHintsNext(t, provider))
-		require.NoError(t, err)
-		requireEqualHintBounds(t, local.TimeRanges, remote.TimeRanges)
-		require.True(t, remote.TimeRanges[0].IsPassthrough())
-	})
 }
 
 func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *testing.T) {
@@ -243,7 +70,6 @@ func TestLoglineHintProvider_ProvideHints_MatchesAllPreservesSingleTimestamp(t *
 		expr,
 		model.TimeFromUnixNano(logTS.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(logTS.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -269,7 +95,6 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, stats)
@@ -368,7 +193,6 @@ func TestLoglineHintProvider_UnsupportedQuery(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Now().Add(-time.Hour).UnixNano()),
 		model.TimeFromUnixNano(time.Now().UnixNano()),
-		nil,
 	)
 	require.NotNil(t, hints)
 	require.Empty(t, hints.TimeRanges)
@@ -422,7 +246,7 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
-	active := toProtoIndexMetas(indexStore.Snapshot().Active())
+	active := ToProtoIndexMetas(indexStore.Snapshot().Active())
 	require.Len(t, active, 1)
 
 	expr := mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`)
@@ -437,7 +261,7 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
 
 	// Query-frontend restores from proto then overwrites wall; work nanos are not on the wire.
-	restored := fromProtoStats(resp.Stats)
+	restored := FromProtoStats(resp.Stats)
 	restored.SetWallTime(5 * time.Second)
 	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
 }
@@ -473,7 +297,6 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -499,7 +322,6 @@ func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -525,7 +347,6 @@ func TestLoglineHintProvider_ProvideHints_LabelFilterNoMatches(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -556,7 +377,6 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -572,7 +392,6 @@ func TestLoglineHintProvider_ProvideHints_LineAndLabelFilterAND(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -596,7 +415,6 @@ func TestLoglineHintProvider_NoMatches(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -623,7 +441,6 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -861,7 +678,7 @@ func TestNormalizeRanges(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeRanges(tc.input)
+			got := NormalizeRanges(tc.input)
 			require.Equal(t, tc.expected, got)
 		})
 	}
@@ -872,34 +689,6 @@ func mustParseExpr(t *testing.T, query string) syntax.Expr {
 	expr, err := syntax.ParseExpr(query)
 	require.NoError(t, err)
 	return expr
-}
-
-// queryHintsNext mirrors the querier handler: parse the packed request, run
-// QueryHints, and wrap the proto response for provideHintsRemote.
-func queryHintsNext(t *testing.T, p *LoglineHintProvider) queryrangebase.Handler {
-	t.Helper()
-	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		indexReq, ok := req.(*logproto.LoglineIndexRequest)
-		require.True(t, ok)
-		parsed, err := syntax.ParseExpr(indexReq.Expr)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := p.QueryHints(ctx, parsed, indexReq)
-		if err != nil {
-			return nil, err
-		}
-		return &queryrange.LoglineIndexResponse{Response: resp}, nil
-	})
-}
-
-func requireEqualHintBounds(t *testing.T, want, got []HintTimeRange) {
-	t.Helper()
-	require.Len(t, got, len(want))
-	for i := range want {
-		require.Equal(t, want[i].Start, got[i].Start, "range %d start", i)
-		require.Equal(t, want[i].End, got[i].End, "range %d end", i)
-	}
 }
 
 func newTestStore(t *testing.T) *store.Store {
@@ -1029,7 +818,6 @@ func TestLoglineHintProvider_ProvideHints_CrossShardIntersection(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(31*time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -1094,7 +882,6 @@ func TestLoglineHintProvider_ProvideHints_EmptyShardAnnihilatesIntersection(t *t
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -1152,7 +939,6 @@ func TestLoglineHintProvider_ProvideHints_MixedVersionShards(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t1.Add(time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -1187,7 +973,6 @@ func TestLoglineHintProvider_ProvideHints_ShardedPlusUnsharded(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(61*time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -1223,7 +1008,6 @@ func TestLoglineHintProvider_ProvideHints_CrossIndexBatchingFillsSharedBatches(t
 		expr,
 		model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
 		model.TimeFromUnixNano(t0.Add(16*time.Minute).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)

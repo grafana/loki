@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
@@ -124,7 +123,6 @@ func (s *stubHintProvider) ProvideHints(
 	_ syntax.Expr,
 	_,
 	_ model.Time,
-	_ queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	s.mu.Lock()
 	s.calls++
@@ -165,7 +163,6 @@ func (s *inclusivePassthroughHintProvider) ProvideHints(
 	_ syntax.Expr,
 	_,
 	through model.Time,
-	_ queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	s.mu.Lock()
 	s.calls++
@@ -246,7 +243,6 @@ func TestCachingHintProvider_FullHitAcrossAllDays(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, hints)
@@ -307,7 +303,6 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls(), "partial miss should call delegate")
@@ -321,7 +316,6 @@ func TestCachingHintProvider_PartialMissFetchesDelegateAndBackfillsDays(t *testi
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls(), "full hit should avoid additional delegate calls")
@@ -347,11 +341,11 @@ func TestCachingHintProvider_DayPayloadsAbutAtMidnight(t *testing.T) {
 	through := model.TimeFromUnixNano(midnight.Add(2 * time.Hour).UnixNano())
 
 	// Fill both day entries.
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.NoError(t, err)
 
 	// Serve the same window from cache.
-	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{spanning}, hit.TimeRanges)
 }
@@ -399,7 +393,7 @@ func TestClipRangesToDay_PayloadsStayWithinTheirDayAndRejoin(t *testing.T) {
 			// whole span at once. Any gap or spill at midnight shows up here.
 			require.Equal(t,
 				clipRangesToDay([]HintTimeRange{tc.input}, d10, d12),
-				normalizeRanges(union),
+				NormalizeRanges(union),
 			)
 		})
 	}
@@ -416,11 +410,11 @@ func TestCachingHintProvider_UnconstrainedPassthroughCoversLastMillisecond(t *te
 	from := model.TimeFromUnixNano(dayStart.UnixNano())
 	through := model.TimeFromUnixNano(lastMs.UnixNano())
 
-	miss, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	miss, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.NoError(t, err)
 	require.True(t, coversTimestamp(miss.TimeRanges, lastMs))
 
-	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	hit, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls())
 	require.True(t, coversTimestamp(hit.TimeRanges, lastMs),
@@ -497,7 +491,7 @@ func TestCachingHintProvider_SingleflightDeduplicatesConcurrentMisses(t *testing
 	errCh := make(chan error, workers)
 	for range workers {
 		wg.Go(func() {
-			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through, nil)
+			_, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
 			errCh <- err
 		})
 	}
@@ -546,7 +540,7 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 	tenant := "tenant-a"
 	from := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
 	through := time.Date(2026, 6, 4, 0, 5, 0, 0, time.UTC)
-	// Non-zero duration required: normalizeRanges drops empty [start, end) ranges.
+	// Non-zero duration required: NormalizeRanges drops empty [start, end) ranges.
 	inWindow := HintTimeRange{
 		Start: time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC),
 		End:   time.Date(2026, 6, 4, 0, 3, 21, 0, time.UTC).Add(time.Millisecond),
@@ -574,7 +568,6 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
-			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 0, delegate.Calls(), "delegate should not be called on full cache hit")
@@ -592,7 +585,6 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
-			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -609,7 +601,6 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
-			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -627,7 +618,6 @@ func TestCachingHintProvider_FiltersOutOfWindowRanges(t *testing.T) {
 			expr,
 			model.TimeFromUnixNano(from.UnixNano()),
 			model.TimeFromUnixNano(through.UnixNano()),
-			nil,
 		)
 		require.NoError(t, err)
 		require.Equal(t, 1, delegate.Calls())
@@ -657,7 +647,6 @@ func TestCachingHintProvider_NilCachePassthrough(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 6, 0, 0, 0, time.UTC).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls())
@@ -673,9 +662,9 @@ func TestCachingHintProvider_ErrUnsupportedNotCached(t *testing.T) {
 	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
 	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 1, 0, 0, 0, time.UTC).UnixNano())
 
-	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	_, _, err := provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.ErrorIs(t, err, ErrUnsupported)
-	_, _, err = provider.ProvideHints(context.Background(), "tenant-a", expr, from, through, nil)
+	_, _, err = provider.ProvideHints(context.Background(), "tenant-a", expr, from, through)
 	require.ErrorIs(t, err, ErrUnsupported)
 
 	require.Equal(t, 2, delegate.Calls(), "errors must not be cached")
@@ -713,7 +702,6 @@ func TestCachingHintProvider_FetchErrorFallsBackToDelegate(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err, "cache fetch failure should fall back to delegate")
 	require.Equal(t, 2, delegate.Calls(), "delegate should be called for each missed day")
@@ -745,7 +733,6 @@ func TestCachingHintProvider_SkipCacheBypassesFetchAndStore(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano()),
 		model.TimeFromUnixNano(time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC).UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, delegate.Calls())
@@ -781,7 +768,6 @@ func TestCachingHintProvider_SkipCacheFetchesDaysInParallelWithoutStore(t *testi
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 2, delegate.Calls(), "skip should still fetch each day")
@@ -815,7 +801,6 @@ func TestCachingHintProvider_CachesEmptyDays(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 2, delegate.Calls(), "all missed days should fetch independently")
@@ -859,7 +844,6 @@ func TestCachingHintProvider_UsesDelegateMinDateInCacheKeys(t *testing.T) {
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(through.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 
@@ -883,7 +867,6 @@ func (p *mutableWindowHintProvider) ProvideHints(
 	_ syntax.Expr,
 	from,
 	through model.Time,
-	_ queryrangebase.Handler,
 ) (*Hints, *QueryStats, error) {
 	p.mu.Lock()
 	p.calls++
@@ -902,7 +885,7 @@ func (p *mutableWindowHintProvider) ProvideHints(
 		}
 		out = append(out, r)
 	}
-	return &Hints{TimeRanges: normalizeRanges(out)}, NewQueryStats(), nil
+	return &Hints{TimeRanges: NormalizeRanges(out)}, NewQueryStats(), nil
 }
 
 func (p *mutableWindowHintProvider) Calls() int {
@@ -950,7 +933,6 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(narrowEnd.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, []HintTimeRange{oldRange}, firstHints.TimeRanges)
@@ -963,7 +945,6 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(widerEnd.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cachedStats)
@@ -976,7 +957,6 @@ func TestCachingHintProvider_WindowWideningShouldNotReturnStaleHints(t *testing.
 		expr,
 		model.TimeFromUnixNano(from.UnixNano()),
 		model.TimeFromUnixNano(widerEnd.UnixNano()),
-		nil,
 	)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []HintTimeRange{oldRange, newRange}, freshHints.TimeRanges)

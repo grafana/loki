@@ -231,7 +231,7 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	snap := stats.Snapshot()
 	require.Equal(t, 2.5, snap.EffectiveConcurrency)
 
-	restored := fromProtoStats(&snap)
+	restored := FromProtoStats(&snap)
 	// QF overwrites wall after the hop; work is not on the proto.
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
@@ -257,7 +257,7 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 }
 
 func TestFromProtoStatsNil(t *testing.T) {
-	got := fromProtoStats(nil)
+	got := FromProtoStats(nil)
 	require.NotNil(t, got)
 	require.Equal(t, logproto.HintQueryStats{}, got.Snapshot())
 }
