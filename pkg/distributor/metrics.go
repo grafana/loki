@@ -19,8 +19,12 @@ type metrics struct {
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
-	// metrics for shard shadowing
-	// so we can compare rateStore sharding with limit-service sharding
+	// metrics for limits service sharding, so rateStore sharding and
+	// limits-service sharding can be compared. They keep the shadow name they
+	// were introduced with, as they are all to be removed together with the
+	// rateStore. The mode label carries the tenant's
+	// shardstreams.Config.LimitsServiceStreamShardingMode, so shadow and live
+	// observations stay apart.
 	limitsServiceShardShadowDivergence          *prometheus.CounterVec
 	limitsServiceShardShadowDivergenceMagnitude *prometheus.HistogramVec
 	limitsServiceShardShadowStreamRate          *prometheus.HistogramVec
@@ -83,59 +87,59 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_divergence_total",
-			Help:      "For tenants in shadow mode, the total number of times the ingest-limits service's shard count differed from the shard count actually used, which the local rate store decided. Only counted for comparable observations; see distributor_limits_service_shard_shadow_compared_total for the denominator. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither.",
-		}, []string{"tenant", "sharding"}),
+			Help:      "The total number of times the ingest-limits service's shard count differed from the local rate store's. Only counted for comparable observations; see distributor_limits_service_shard_shadow_compared_total for the denominator. The mode label is the tenant's limits_service_stream_sharding_mode: in shadow mode the rate store's count is the one used, in live mode the service's. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither.",
+		}, []string{"tenant", "mode", "sharding"}),
 
 		limitsServiceShardShadowDivergenceMagnitude: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_divergence_magnitude",
-			Help:      "For tenants in shadow mode, the distribution of the absolute gap between the ingest-limits service's shard count and the local rate store's, observed only when the two differ. The direction label splits it into over, the limits service asking for more shards, and under, fewer, so each is a clean distribution of positive magnitudes. The total count across both directions equals distributor_limits_service_shard_shadow_divergence_total.",
+			Help:      "The distribution of the absolute gap between the ingest-limits service's shard count and the local rate store's, observed only when the two differ. The direction label splits it into over, the limits service asking for more shards, and under, fewer, so each is a clean distribution of positive magnitudes. The total count across both directions equals distributor_limits_service_shard_shadow_divergence_total.",
 			// Native only, as the exponential schema covers the whole range
 			// without hand-picked buckets.
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
-		}, []string{"tenant", "direction"}),
+		}, []string{"tenant", "mode", "direction"}),
 
 		limitsServiceShardShadowStreamRate: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_stream_rate_bytes",
-			Help:      "For tenants in shadow mode, the distribution of the per-stream byte rate that drove the shard decision, observed once per comparable stream. The source label splits it into rate_store, the distributor's local rate store, and limits, the ingest-limits service, so the two can be compared as heatmaps. Both are the sustained rate, before this push is amortized on top.",
+			Help:      "The distribution of the per-stream byte rate that drove the shard decision, observed once per comparable stream. The source label splits it into rate_store, the distributor's local rate store, and limits, the ingest-limits service, so the two can be compared as heatmaps. Both are the sustained rate, before this push is amortized on top.",
 			// Native only, as the byte rates span kilobytes to megabytes per
 			// second.
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
-		}, []string{"tenant", "source"}),
+		}, []string{"tenant", "mode", "source"}),
 
 		limitsServiceShardShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_failed_total",
-			Help:      "For tenants in shadow mode, the total number of observations that could not be compared because the ingest-limits service did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams the ingest-limits service returned no usable shard count for, because it did not answer for the stream, reported that it could not check it, or answered from an instance that does not own the stream's partition. In live mode these streams are sharded with the local rate store's count instead.",
+		}, []string{"tenant", "mode"}),
 
 		limitsServiceShardShadowRejected: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_rejected_total",
-			Help:      "For tenants in shadow mode, the total number of streams the ingest-limits service would have rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count.",
-		}, []string{"tenant"}),
+			Help:      "The total number of streams the ingest-limits service rejected, because a brand-new stream exhausted the tenant's stream count budget. The local rate store never rejects, so this is a difference in kind rather than in shard count. In live mode these streams are not sharded; whether they are written is decided by the ExceedsLimits check.",
+		}, []string{"tenant", "mode"}),
 
 		limitsServiceShardShadowCompared: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_compared_total",
-			Help:      "For tenants in shadow mode, the total number of observations with a comparable shard count from the ingest-limits service. The denominator for distributor_limits_service_shard_shadow_divergence_total. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither. Excluding neither restricts the divergence rate to comparisons where sharding was in play.",
-		}, []string{"tenant", "sharding"}),
+			Help:      "The total number of streams with a comparable shard count from the ingest-limits service. The denominator for distributor_limits_service_shard_shadow_divergence_total. The sharding label says which side sharded the stream, meaning a shard count above one: both, limits_only, rate_store_only, or neither. Excluding neither restricts the divergence rate to comparisons where sharding was in play.",
+		}, []string{"tenant", "mode", "sharding"}),
 
 		limitsServiceShardShadowCapped: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_limits_service_shard_shadow_capped_total",
-			Help:      "For tenants in shadow mode, the total number of comparable observations where the ingest-limits service capped the shard count below what the rate justified, to fit the tenant's remaining stream count budget. Capping is expected, and is not by itself a disagreement about the rate.",
-		}, []string{"tenant"}),
+			Help:      "The total number of comparable streams where the ingest-limits service capped the shard count below what the rate justified, to fit the tenant's remaining stream count budget. Capping is expected, and is not by itself a disagreement about the rate.",
+		}, []string{"tenant", "mode"}),
 
 		limitsServiceShardDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
 			Name:                            "distributor_limits_service_shard_duration_seconds",
-			Help:                            "The time the distributor spends in the synchronous CheckLimitsAndShard call on the push path, which is the latency shadow mode adds. Bounded by the call timeout.",
+			Help:                            "The time the distributor spends in the synchronous CheckLimitsAndShard call on the push path, which is the latency shadow and live mode add. Bounded by the call timeout.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
