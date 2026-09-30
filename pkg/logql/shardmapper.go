@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -549,7 +548,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		// divided by a count_over_time(). The count leg cannot reproduce a
 		// post filter on __error__, because only the unwrap conversion sets that
 		// label and the count_over_time() doesn't support unwrap.
-		if hasUnwrapPostFiltersOnError(expr.Left) {
+		if expr.Left.HasUnwrapPostFilterOnErrorLabel() {
 			return noOp(expr, m.shards.Resolver())
 		}
 
@@ -790,18 +789,4 @@ func convertUnwrapToLabelFilters(r *syntax.LogRangeExpr) (*syntax.LogRangeExpr, 
 		return nil, fmt.Errorf("unsupported log selector type %T", out.Left)
 	}
 	return out, nil
-}
-
-func hasUnwrapPostFiltersOnError(r *syntax.LogRangeExpr) bool {
-	if r.Unwrap == nil {
-		return false
-	}
-	for _, f := range r.Unwrap.PostFilters {
-		for _, name := range f.RequiredLabelNames() {
-			if name == logqlmodel.ErrorLabel || name == logqlmodel.ErrorDetailsLabel {
-				return true
-			}
-		}
-	}
-	return false
 }
