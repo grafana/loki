@@ -332,6 +332,11 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 
 	level.Debug(t.logger).Log("msg", "computed storage updates for table", "table", t.tableName, "to_download", toDownload, "to_delete", toDelete)
 
+	if len(toDownload) == 0 && len(toDelete) == 0 {
+		// nothing to be done, return early without acquiring a lock
+		return nil
+	}
+
 	downloadedFiles, err := t.doConcurrentDownload(ctx, toDownload)
 	if err != nil {
 		return err
