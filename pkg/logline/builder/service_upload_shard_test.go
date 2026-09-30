@@ -20,17 +20,47 @@ import (
 // TestService_UploadSetsShardMeta verifies that shard fields from fileInfo are
 // propagated into the Meta written to the store during uploadPartialIndexes.
 func TestService_UploadSetsShardMeta(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cluster, baseCfg := setupKafkaTest(t)
+	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
-	cfg := baseCfg
-	cfg.ScratchDir = tmpDir
 	cfg.Index.ShardCount = 4
 	cfg.Index.ShardAlgorithm = "first_byte"
 	cfg.Index.NgramLength = 6
 	cfg.Index.DocumentInterval = 100 * time.Millisecond
+
+	metas := uploadAndReadMetas(t, cfg)
+	for _, m := range metas {
+		require.Equal(t, 4, m.ShardCount)
+		require.Equal(t, "first_byte", m.ShardAlgorithm)
+		require.GreaterOrEqual(t, m.ShardValue, 0)
+		require.Less(t, m.ShardValue, 4)
+		require.Zero(t, m.DocumentShards, "v3 indexes are time-only")
+	}
+}
+
+// TestService_UploadSetsDocumentShardsMeta verifies that v5 uploads record the
+// resolved document shard count in meta.json.
+func TestService_UploadSetsDocumentShardsMeta(t *testing.T) {
+	cluster, cfg := setupKafkaTest(t)
+	defer cluster.Close()
+
+	cfg.Index.Version = "v5"
+	cfg.Index.DocumentInterval = 0
+	cfg.Index.DocumentShards = 0
+
+	metas := uploadAndReadMetas(t, cfg)
+	for _, m := range metas {
+		require.Equal(t, "v5", m.Version)
+		require.Equal(t, 16*time.Second, m.DocumentInterval)
+		require.Equal(t, 32, m.DocumentShards)
+	}
+}
+
+// uploadAndReadMetas validates cfg, indexes one stream, uploads the result,
+// and returns every meta.json written to the store.
+func uploadAndReadMetas(t *testing.T, cfg Config) []store.Meta {
+	t.Helper()
+	cfg.ScratchDir = t.TempDir()
 	require.NoError(t, cfg.Validate())
 
 	bucket := objstore.NewInMemBucket()
@@ -40,11 +70,11 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 	svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, svc.initKafkaClient())
-
 	defer svc.client.Close()
 
 	now := time.Now()
 	stream := &logproto.Stream{
+		Labels: `{app="api"}`,
 		Entries: []logproto.Entry{
 			{Timestamp: now, Line: "error: connection failed to primary database server"},
 		},
@@ -58,7 +88,6 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, svc.uploadPartialIndexes(ctx, files))
 
-	// Read back all meta.json files and check shard fields.
 	var metas []store.Meta
 	require.NoError(t, bucket.Iter(ctx, "", func(name string) error {
 		if !strings.HasSuffix(name, "meta.json") {
@@ -81,11 +110,5 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 		return nil
 	}, objstore.WithRecursiveIter()))
 	require.NotEmpty(t, metas)
-
-	for _, m := range metas {
-		require.Equal(t, 4, m.ShardCount)
-		require.Equal(t, "first_byte", m.ShardAlgorithm)
-		require.GreaterOrEqual(t, m.ShardValue, 0)
-		require.Less(t, m.ShardValue, 4)
-	}
+	return metas
 }

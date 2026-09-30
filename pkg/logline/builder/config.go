@@ -421,19 +421,19 @@ func validateIndexSettings(settings logline.IndexConfig) error {
 	if (24*time.Hour)%settings.DocumentInterval != 0 {
 		return fmt.Errorf("document_interval must evenly divide 24h, got %s", settings.DocumentInterval)
 	}
-	// The docID is an epoch tick: a uint32 count of document buckets from the
-	// FIXED docIDEpoch (2026-01-01), so the interval fixes the END of the
-	// representable window: epoch + 2^32 ticks. Timestamps outside the window
-	// PANIC at ingest, so the window end must stay comfortably ahead of the
-	// present: require epoch + 2^32 × interval ≥ now + minDocIDFutureRunway
-	// (1 year). This rule is deliberately time-DEPENDENT — with a fixed epoch
-	// the window consumes its headroom as calendar time passes, and the config
-	// must be rejected at startup well before live traffic starts panicking.
-	// At the default 100ms interval the window ends 2039-08-12, so the rule
-	// holds until ~2038-08.
-	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
-		return fmt.Errorf("document_interval %v yields a docID window ending %s (fixed epoch %s + 2^32 ticks), less than the required %v from now; use a larger interval",
-			settings.DocumentInterval, windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
+	// The docID is an epoch cell: a uint32 count of document cells from the
+	// FIXED docIDEpoch (2026-01-01), so the interval and document shard count
+	// fix the END of the representable window: epoch + (2^32 / shards) ×
+	// interval. Timestamps outside the window PANIC at ingest, so the window
+	// end must stay comfortably ahead of the present: require it to be ≥ now +
+	// minDocIDFutureRunway (1 year). This rule is deliberately time-DEPENDENT —
+	// with a fixed epoch the window consumes its headroom as calendar time
+	// passes, and the config must be rejected at startup well before live
+	// traffic starts panicking. At 100ms time-only the window ends 2039-08-12;
+	// at the v5 default of 16s × 32 shards it ends about 2094.
+	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval, settings.DocumentShards), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
+		return fmt.Errorf("document_interval %v with %d document_shards yields a docID window ending %s (fixed epoch %s + 2^32 cells), less than the required %v from now; use a larger interval or fewer document shards",
+			settings.DocumentInterval, max(settings.DocumentShards, 1), windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
 	}
 	// Shard values are carried as uint8 through the spill reorder
 	// (postingsBuffer.shardScratch), so 256 shards is a hard ceiling.

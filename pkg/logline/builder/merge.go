@@ -35,45 +35,48 @@ type mergedFile struct {
 	docs  int
 }
 
-// dateMapper derives dates and per-document time ranges from epoch ticks. All
-// math is in absolute buckets (baseBucket + tick): a document's time range is
-// absolute bucket × interval, and the merge assigns dense ranks in ascending
-// tick order. One per shard merge (its dateCache is not safe for concurrent
-// use).
+// dateMapper derives dates and per-document time ranges from epoch cells. All
+// math is in absolute cells (baseCell + tick): a document's time range is its
+// bucket (absolute cell / documentShards) × interval, and the merge assigns
+// dense ranks in ascending cell order. One per shard merge (its dateCache is
+// not safe for concurrent use).
 type dateMapper struct {
-	intervalNanos int64
-	ticksPerDay   uint64
-	baseBucket    uint64
-	dateCache     map[uint64]string
+	intervalNanos  int64
+	documentShards uint64
+	cellsPerDay    uint64
+	baseCell       uint64
+	dateCache      map[uint64]string
 }
 
 func (b *postingsBuffer) newDateMapper() *dateMapper {
 	return &dateMapper{
-		intervalNanos: b.intervalNanos,
-		ticksPerDay:   b.ticksPerDay,
-		baseBucket:    b.baseBucket,
-		dateCache:     map[uint64]string{},
+		intervalNanos:  b.intervalNanos,
+		documentShards: b.documentShards,
+		cellsPerDay:    b.cellsPerDay,
+		baseCell:       b.baseCell,
+		dateCache:      map[uint64]string{},
 	}
 }
 
 func (dm *dateMapper) dayIndex(tick uint32) uint64 {
-	return (dm.baseBucket + uint64(tick)) / dm.ticksPerDay
+	return (dm.baseCell + uint64(tick)) / dm.cellsPerDay
 }
 
 func (dm *dateMapper) dateOfDay(day uint64) string {
 	if s, ok := dm.dateCache[day]; ok {
 		return s
 	}
-	absBucket := day * dm.ticksPerDay
+	absBucket := day * dm.cellsPerDay / dm.documentShards
 	s := time.Unix(0, int64(absBucket)*dm.intervalNanos).UTC().Format("2006-01-02")
 	dm.dateCache[day] = s
 	return s
 }
 
-// docMeta returns {ID, MinTimeUnix, MaxTimeUnix} for an epoch-tick docID: the
-// document covers [absolute bucket × interval, (absolute bucket + 1) × interval).
+// docMeta returns {ID, MinTimeUnix, MaxTimeUnix} for an epoch-cell docID: the
+// document covers [bucket × interval, (bucket + 1) × interval). Cells of one
+// bucket in different document shards share those bounds.
 func (dm *dateMapper) docMeta(docID uint32, id uint32) format.DocumentMetadata {
-	absBucket := dm.baseBucket + uint64(docID)
+	absBucket := (dm.baseCell + uint64(docID)) / dm.documentShards
 	startNanos := int64(absBucket) * dm.intervalNanos
 	return format.DocumentMetadata{
 		ID:          id,
@@ -146,8 +149,8 @@ func (b *postingsBuffer) mergeShard(outDir, version string, cfg format.WriterCon
 		cfg:        cfg,
 		dm:         b.newDateMapper(),
 		refTicks:   b.refTicks,
-		perDay:     b.ticksPerDay,
-		baseBkt:    b.baseBucket,
+		perDay:     b.cellsPerDay,
+		baseCell:   b.baseCell,
 		writers:    map[uint64]logline.Writer{},
 		ranks:      map[uint64]map[uint32]uint32{},
 		termCounts: map[uint64]int{},
@@ -236,7 +239,7 @@ type shardMerger struct {
 	dm       *dateMapper
 	refTicks map[refKey][]uint64
 	perDay   uint64
-	baseBkt  uint64
+	baseCell uint64
 
 	writers    map[uint64]logline.Writer    // day -> writer
 	ranks      map[uint64]map[uint32]uint32 // day -> (epoch-tick docID -> dense rank)
@@ -299,7 +302,7 @@ func (sm *shardMerger) writerForDay(day uint64) (logline.Writer, map[uint32]uint
 		for bitsWord != 0 {
 			tod := uint(word)*64 + uint(bits.TrailingZeros64(bitsWord))
 			bitsWord &= bitsWord - 1
-			docID := uint32(dayStartAbs + uint64(tod) - sm.baseBkt)
+			docID := uint32(dayStartAbs + uint64(tod) - sm.baseCell)
 			ranks[docID] = rank
 			docs = append(docs, sm.dm.docMeta(docID, rank))
 			rank++

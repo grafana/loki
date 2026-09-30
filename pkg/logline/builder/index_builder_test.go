@@ -706,7 +706,7 @@ func TestBuilder_OutOfWindowTimestamps_Panic(t *testing.T) {
 		_ = builder.processStream(stream, parseLabelsOrNil(stream.Labels), time.Now(), ref)
 	}
 
-	windowEnd := docIDWindowEnd(cfg.Index.DocumentInterval)
+	windowEnd := docIDWindowEnd(cfg.Index.DocumentInterval, cfg.Index.DocumentShards)
 	require.Panics(t, func() { process(docIDEpoch.Add(-time.Second), recordRef{}) },
 		"pre-epoch timestamp must panic")
 	require.Panics(t, func() { process(windowEnd, recordRef{}) },

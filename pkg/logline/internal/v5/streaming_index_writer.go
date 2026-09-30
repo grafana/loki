@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
@@ -138,12 +137,10 @@ func (w *StreamingIndexWriter) WriteTermBitmap(term [8]byte, bm format.Bitmap) e
 
 	// Density filter: terms covering more than the threshold fraction of a full
 	// day's documents are stored as sentinels. The cutoff is computed from the
-	// document interval (24h / interval * threshold), not from this index's
-	// document count. Callers may also set MatchesAll directly.
-	if !bm.MatchesAll && bm.Roaring != nil && w.config.DensityThreshold > 0 && w.config.DocumentInterval > 0 {
-		docsPerDay := uint64(24 * time.Hour / w.config.DocumentInterval)
-		threshold := uint64(float32(docsPerDay) * w.config.DensityThreshold)
-		if bm.Roaring.GetCardinality() > threshold {
+	// document layout (see sentinelCutoff), not from this index's document
+	// count. Callers may also set MatchesAll directly.
+	if cutoff, ok := w.config.sentinelCutoff(); ok && !bm.MatchesAll && bm.Roaring != nil {
+		if bm.Roaring.GetCardinality() > cutoff {
 			bm = format.Bitmap{MatchesAll: true}
 		}
 	}
@@ -181,14 +178,8 @@ func (w *StreamingIndexWriter) WriteTermDocIDs(term [8]byte, docIDs []uint32, ca
 	w.terms = append(w.terms, key)
 
 	// Density filter: same logic as WriteTermBitmap.
-	matchesAll := false
-	if w.config.DensityThreshold > 0 && w.config.DocumentInterval > 0 {
-		docsPerDay := uint64(24 * time.Hour / w.config.DocumentInterval)
-		threshold := uint64(float32(docsPerDay) * w.config.DensityThreshold)
-		if uint64(cardinality) > threshold {
-			matchesAll = true
-		}
-	}
+	cutoff, ok := w.config.sentinelCutoff()
+	matchesAll := ok && uint64(cardinality) > cutoff
 
 	if err := w.encoder.writeTermDocIDs(term, docIDs, matchesAll); err != nil {
 		w.err = fmt.Errorf("write term postings: %w", err)
@@ -311,6 +302,10 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 		TermBlockDirSize:     uint64(len(termDirSection)),
 		PostingsBlockDirSize: uint64(len(postingsDirSection)),
 	}
+	w.footer.setDocumentLayout(documentLayout{
+		interval: w.config.DocumentInterval,
+		shards:   uint32(w.config.DocumentShards),
+	})
 
 	// v2: append footer at EOF (no seek needed).
 	if err := writeIndexHeader(w.w, w.footer); err != nil {

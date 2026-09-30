@@ -73,6 +73,57 @@ type IndexWriteConfig struct {
 	FastBlockTarget  int
 	DensityThreshold float32       // 0 = disabled; >0 = filter terms exceeding this fraction of a full day's docs
 	DocumentInterval time.Duration // time per document; used with DensityThreshold to compute day-based sentinel cutoff
+	DocumentShards   int           // stream shards per interval; 0 means 1
+}
+
+// sentinelCutoff returns the cardinality above which a term is stored as
+// MatchesAll: DensityThreshold of a full day's documents, which is
+// (24h / DocumentInterval) × DocumentShards. ok is false when the density
+// filter is disabled.
+func (c IndexWriteConfig) sentinelCutoff() (cutoff uint64, ok bool) {
+	if c.DensityThreshold <= 0 || c.DocumentInterval <= 0 {
+		return 0, false
+	}
+	docsPerDay := uint64(24*time.Hour/c.DocumentInterval) * uint64(max(c.DocumentShards, 1))
+	return uint64(float32(docsPerDay) * c.DensityThreshold), true
+}
+
+// documentLayout is the document interval and shard count a v5 footer
+// records in ReservedMid: bytes 0-8 hold the interval in nanoseconds and
+// bytes 8-12 the shard count. Files written without a layout leave them zero.
+type documentLayout struct {
+	interval time.Duration
+	shards   uint32
+}
+
+func (h IndexFooter) documentLayout() documentLayout {
+	return documentLayout{
+		interval: time.Duration(binary.LittleEndian.Uint64(h.ReservedMid[0:8])),
+		shards:   binary.LittleEndian.Uint32(h.ReservedMid[8:12]),
+	}
+}
+
+func (h *IndexFooter) setDocumentLayout(l documentLayout) {
+	binary.LittleEndian.PutUint64(h.ReservedMid[0:8], uint64(l.interval))
+	binary.LittleEndian.PutUint32(h.ReservedMid[8:12], l.shards)
+}
+
+// withLayout returns c with the document layout of merge inputs. Merged
+// postings keep the inputs' cells, so a configured interval or shard count
+// that disagrees with them is an error. Inputs without a layout keep c.
+func (c IndexWriteConfig) withLayout(l documentLayout) (IndexWriteConfig, error) {
+	if l == (documentLayout{}) {
+		return c, nil
+	}
+	if c.DocumentInterval != 0 && c.DocumentInterval != l.interval {
+		return c, fmt.Errorf("merge: configured document interval %v differs from the inputs' %v", c.DocumentInterval, l.interval)
+	}
+	if c.DocumentShards != 0 && uint32(c.DocumentShards) != l.shards {
+		return c, fmt.Errorf("merge: configured document shards %d differ from the inputs' %d", c.DocumentShards, l.shards)
+	}
+	c.DocumentInterval = l.interval
+	c.DocumentShards = int(l.shards)
+	return c, nil
 }
 
 // NewWriter creates a file-backed streaming writer with the given docs,
@@ -109,6 +160,9 @@ func applyWriterConfig(cfg *format.WriterConfig) IndexWriteConfig {
 	}
 	if cfg.DocumentInterval != 0 {
 		icfg.DocumentInterval = cfg.DocumentInterval
+	}
+	if cfg.DocumentShards != 0 {
+		icfg.DocumentShards = cfg.DocumentShards
 	}
 	return icfg
 }
