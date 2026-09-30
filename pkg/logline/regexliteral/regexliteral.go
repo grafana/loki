@@ -118,19 +118,19 @@ func (w *walker) literal(re *syntax.Regexp) {
 		return
 	}
 
+	// The index uppercases ASCII letters, so the lowercase needle finds every
+	// ASCII case variant. Non-ASCII runes are separators in the index, so
+	// their case does not matter, but they must stay non-ASCII.
+	// unicode.ToLower turns U+0130 into ASCII i, so that one is kept as parsed.
+	//
+	// A few non-ASCII runes also match an ASCII letter under (?i), for example
+	// U+017F for s and U+212A for k. Lines that spell a letter that way are
+	// missed. We accept that to keep needles whole.
 	for _, r := range re.Rune {
-		if mixesASCII(r) {
-			// (?i)k also matches U+212A KELVIN SIGN and (?i)s matches U+017F
-			// LATIN SMALL LETTER LONG S. The index treats those as separators,
-			// so a needle keeping the ASCII letter would look up n-grams the
-			// matching line never produced. End the run instead.
-			w.flush()
-			continue
+		if lower := unicode.ToLower(r); (lower < utf8.RuneSelf) == (r < utf8.RuneSelf) {
+			r = lower
 		}
-		// Every variant is ASCII, which the index uppercases, or every
-		// variant is non-ASCII, which the index treats as a separator. Either
-		// way any one of them is the same lookup.
-		w.run.WriteRune(unicode.ToLower(r))
+		w.run.WriteRune(r)
 	}
 }
 
@@ -143,18 +143,6 @@ func (w *walker) flush() {
 	if !slices.Contains(w.literals, lit) {
 		w.literals = append(w.literals, lit)
 	}
-}
-
-// mixesASCII reports whether the runes (?i) matches for r include both ASCII
-// and non-ASCII runes. The Unicode tables decide, not a fixed list.
-func mixesASCII(r rune) bool {
-	ascii := r < utf8.RuneSelf
-	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
-		if (f < utf8.RuneSelf) != ascii {
-			return true
-		}
-	}
-	return false
 }
 
 // dropContained removes literals contained in a longer one. Every n-gram of

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
@@ -63,16 +64,15 @@ func TestRequired(t *testing.T) {
 		{"factored prefix", `abcdefgh|abcdefxy`, []string{"abcdef"}},
 		{"alternation then literal", `(GET|POST) /api`, []string{" /api"}},
 
-		// Case folding. ASCII letters are lowercased, k and s end a run
-		// because they also match U+212A and U+017F.
+		// Case folding. ASCII letters are lowercased, non-ASCII runes are kept.
 		{"case-insensitive", `(?i)ERROR TIMEOUT`, []string{"error timeout"}},
 		{"case-insensitive wrapped", `(?i).*error.*`, []string{"error"}},
-		{"case-insensitive k and s", `(?i)kubelet_restarted`, []string{"ubelet_re", "tarted"}},
-		{"case-insensitive only k and s", `(?i)ks`, nil},
+		{"case-insensitive k and s", `(?i)kubelet_restarted`, []string{"kubelet_restarted"}},
 		{"case-insensitive scope", `abc(?i:DEF)ghi`, []string{"abcdefghi"}},
-		{"case-insensitive tail", `KS(?i)KS`, []string{"KS"}},
+		{"case-insensitive tail", `KS(?i)KS`, []string{"KSks"}},
 		{"case-insensitive char class", `[Aa]bcdef`, []string{"abcdef"}},
 		{"case-insensitive non-ASCII", `(?i)caféé`, []string{"caféé"}},
+		{"case-insensitive dotted I stays non-ASCII", "(?i)x\u0130stanbul", []string{"x\u0130stanbul"}},
 
 		// Nothing required.
 		{"dot plus", `.+`, nil},
@@ -128,21 +128,6 @@ func TestRequired_NoFalseNegatives(t *testing.T) {
 	require.Greater(t, checked, 1000)
 }
 
-// U+212A matches (?i)k, but the index splits tokens on it. A literal keeping
-// the ASCII k would miss this line.
-func TestRequired_KelvinSign(t *testing.T) {
-	pattern := `(?i)okay_status`
-	line := "o\u212Aay_\u017Ftatus"
-	require.True(t, regexp.MustCompile(pattern).MatchString(line))
-
-	literals := Required(pattern)
-	require.Equal(t, []string{"o", "ay_", "tatu"}, literals)
-	for _, version := range logline.AllVersions() {
-		require.Empty(t, missingNgram(t, version, 3, literals, line))
-		require.NotEmpty(t, missingNgram(t, version, 3, []string{"okay_status"}, line))
-	}
-}
-
 // missingNgram returns the first term a literal needs that the index does not
 // emit for line, or "" when all are present.
 func missingNgram(t *testing.T, version string, n int, literals []string, line string) string {
@@ -172,8 +157,8 @@ func isIndexed(indexed map[string]struct{}, term string) bool {
 }
 
 var (
-	atoms    = []string{"a", "b", "k", "s", "K", "S", "x", "1", "2", "9", "_", "-", ".", " ", ":", "é", "\u212A", "\u017F"}
-	textPool = []rune{'a', 'k', 's', 'Z', '0', '7', '_', '-', ' ', ',', '"', '\\', '\n', 'é', '\u212A', '\u017F', '\uFFFD'}
+	atoms    = []string{"a", "b", "k", "s", "K", "S", "x", "1", "2", "9", "_", "-", ".", " ", ":", "é", "\u212A", "\u017F", "\u0130"}
+	textPool = []rune{'a', 'k', 's', 'Z', '0', '7', '_', '-', ' ', ',', '"', '\\', '\n', 'é', '\u212A', '\u017F', '\u0130', '\uFFFD'}
 )
 
 func randomText(rng *rand.Rand) string {
@@ -214,7 +199,8 @@ func randomPattern(rng *rand.Rand, depth int) string {
 }
 
 // generateMatch appends a string re probably matches. Case-folded literals
-// pick any rune of the fold orbit, including U+212A and U+017F.
+// pick any rune of the fold orbit, except that an ASCII rune never becomes a
+// non-ASCII one such as U+212A or U+017F. Required accepts missing those.
 func generateMatch(rng *rand.Rand, re *syntax.Regexp, sb *strings.Builder) {
 	switch re.Op {
 	case syntax.OpLiteral:
@@ -222,7 +208,9 @@ func generateMatch(rng *rand.Rand, re *syntax.Regexp, sb *strings.Builder) {
 			if re.Flags&syntax.FoldCase != 0 {
 				orbit := []rune{r}
 				for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
-					orbit = append(orbit, f)
+					if (f < utf8.RuneSelf) == (r < utf8.RuneSelf) {
+						orbit = append(orbit, f)
+					}
 				}
 				r = orbit[rng.Intn(len(orbit))]
 			}
