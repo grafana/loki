@@ -98,8 +98,8 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			return runPlan(rpCtx, log.NewNopLogger(), sched, opts, plan)
 		},
-		metastoreWriter: tocWriter,
-		clock:           func() time.Time { return window.Add(1 * time.Hour) },
+		publisher: &tocPublisher{writer: tocWriter, bucket: bucket, logger: log.NewNopLogger(), timeout: 10 * time.Second},
+		clock:     func() time.Time { return window.Add(1 * time.Hour) },
 	}
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
@@ -301,10 +301,10 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 					return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 				},
-				metastoreWriter: tocWriter,
-				clock:           func() time.Time { return base },
-				metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
-				limits:          integrationSortSchema(targetSchema),
+				publisher: &tocPublisher{writer: tocWriter, bucket: bucket, logger: log.NewNopLogger(), timeout: 10 * time.Second},
+				clock:     func() time.Time { return base },
+				metrics:   newCoordinatorMetrics(prometheus.NewRegistry()),
+				limits:    integrationSortSchema(targetSchema),
 			}
 
 			before := mustLoadTenant(ctx, t, bucket, window, tenant)

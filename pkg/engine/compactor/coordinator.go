@@ -24,18 +24,6 @@ import (
 
 const indexMergeIterations = 3
 
-// tocReplacer is the subset of *metastore.TableOfContentsWriter the
-// coordinator needs.
-type tocReplacer interface {
-	ReplaceIndexPointers(
-		ctx context.Context,
-		window time.Time,
-		tenant string,
-		oldPaths []string,
-		newEntries []metastore.TableOfContentsEntry,
-	) (bool, error)
-}
-
 // runFunc executes one single-root physical.Plan as a workflow.
 // Injected via the coordinator's runPlan field so unit tests can swap in a
 // recorder without standing up a scheduler + worker pair.
@@ -44,11 +32,11 @@ type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Pla
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
 type coordinator struct {
-	cfg             Config
-	logger          log.Logger
-	bucket          objstore.Bucket
-	runPlan         runFunc
-	metastoreWriter tocReplacer
+	cfg       Config
+	logger    log.Logger
+	bucket    objstore.Bucket
+	runPlan   runFunc
+	publisher *tocPublisher
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
 	clock func() time.Time
@@ -72,6 +60,7 @@ func newCoordinator(
 	reg prometheus.Registerer,
 	limits Limits,
 ) *coordinator {
+	metrics := newCoordinatorMetrics(reg)
 	return &coordinator{
 		cfg:    cfg,
 		logger: logger,
@@ -79,11 +68,11 @@ func newCoordinator(
 		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
-		metastoreWriter: metastoreWriter,
-		clock:           time.Now,
-		sleep:           sleepUntil,
-		metrics:         newCoordinatorMetrics(reg),
-		limits:          limits,
+		publisher: newTocPublisher(cfg, metastoreWriter, bucket, logger, metrics),
+		clock:     time.Now,
+		sleep:     sleepUntil,
+		metrics:   metrics,
+		limits:    limits,
 	}
 }
 
@@ -316,32 +305,11 @@ func (c *coordinator) replaceLogIndex(
 		}
 	}
 
-	if c.cfg.DryRun {
-		return compactionStats{dispatched: dispatched}, nil
-	}
-
-	c.fillFileSizes(ctx, newEntries)
-	replaceCtx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(
-		replaceCtx,
-		window,
-		tenant,
-		[]string{sourceIndex.Path},
-		newEntries,
-	)
+	stats, err := c.publisher.replace(ctx, tenant, window, []string{sourceIndex.Path}, newEntries, dispatched)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("replace source log index %q: %w", sourceIndex.Path, err)
 	}
-	if !swapped {
-		return compactionStats{}, nil
-	}
-	return compactionStats{
-		removed:    1,
-		added:      len(newEntries),
-		dispatched: dispatched,
-	}, nil
+	return stats, nil
 }
 
 // compactTenantLogs processes one layout-homogeneous index. Objects matching
@@ -580,32 +548,17 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 
-	if c.cfg.DryRun {
-		return compactionStats{}, nil
-	}
-
-	c.fillFileSizes(ctx, newEntries)
-
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	stats, err := c.publisher.replace(ctx, tenant, window, oldPaths, newEntries, len(tasks))
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
-	if !swapped {
-		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace race-loss")
-		return compactionStats{}, nil
+	if stats.added > 0 {
+		level.Info(windowLogger).Log("msg", "tenant cycle complete",
+			"removed_indexes", stats.removed,
+			"added_indexes", stats.added,
+		)
 	}
-
-	level.Info(windowLogger).Log("msg", "tenant cycle complete",
-		"removed_indexes", len(oldPaths),
-		"added_indexes", len(newEntries),
-	)
-	return compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
-	}, nil
+	return stats, nil
 }
 
 func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
@@ -751,39 +704,6 @@ func makeIndexTocEntries(completed []completedIndexMerge, inputs []indexEntry) (
 		}
 	}
 	return entries, nil
-}
-
-// fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
-// filling in index FileSize before a ToC replace.
-const fileSizeStatConcurrency = 16
-
-// fillFileSizes stats each entry's object and sets FileSize. Best-effort: when
-// the stat fails (missing or not-yet-visible object) the entry keeps its zero
-// FileSize and is persisted as-is.
-//
-// Stats run concurrently (bounded by fileSizeStatConcurrency) because each
-// bucket.Attributes call can take tens of milliseconds; serializing hundreds
-// of entries would dominate the cycle. Each goroutine writes a distinct slice
-// element, so the concurrent writes do not race.
-func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(fileSizeStatConcurrency)
-	for i := range entries {
-		g.Go(func() error {
-			start := time.Now()
-			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
-			c.metrics.observeFileSizeStat(time.Since(start))
-			if err != nil {
-				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
-				return nil
-			}
-			if attrs.Size > 0 {
-				entries[i].FileSize = uint64(attrs.Size)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
 }
 
 // phase is the current step of a tenant's flip-flop worker.

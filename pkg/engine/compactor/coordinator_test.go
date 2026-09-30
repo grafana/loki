@@ -175,7 +175,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	if limits == nil {
 		limits = newFakeLimits() // enables nothing by default
 	}
-	return &coordinator{
+	c := &coordinator{
 		cfg: Config{
 			Enabled:                   true,
 			PollingInterval:           5 * time.Minute,
@@ -187,15 +187,16 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 			PlanVersion:               1,
 			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		},
-		logger:          log.NewNopLogger(),
-		bucket:          bucket,
-		runPlan:         runner.run,
-		metastoreWriter: replacer,
-		clock:           clock,
-		sleep:           sleepUntil,
-		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
-		limits:          limits,
+		logger:  log.NewNopLogger(),
+		bucket:  bucket,
+		runPlan: runner.run,
+		clock:   clock,
+		sleep:   sleepUntil,
+		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
+		limits:  limits,
 	}
+	c.publisher = newTocPublisher(c.cfg, replacer, bucket, c.logger, c.metrics)
+	return c
 }
 
 // fixedClock returns a clock function pinned to t.
@@ -688,7 +689,7 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 				defer runner.assertUniqueObjects(t)
 				replacer := &fakeReplacer{swapped: edge.swapped, err: edge.swapErr}
 				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-				c.cfg.DryRun = edge.dryRun
+				c.publisher.dryRun = edge.dryRun
 
 				stats, err := run(c)
 				if edge.wantErr {
@@ -2138,12 +2139,12 @@ func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
 		{Path: outputPath},
 	}
 
-	c := &coordinator{
+	p := &tocPublisher{
 		logger: log.NewNopLogger(),
 		bucket: bucket,
 	}
 
-	c.fillFileSizes(ctx, entries)
+	p.fillFileSizes(ctx, entries)
 
 	require.Equal(t, uint64(len(testData)), entries[0].FileSize)
 }
@@ -2156,12 +2157,12 @@ func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
 		{Path: "indexes/test/nonexistent"},
 	}
 
-	c := &coordinator{
+	p := &tocPublisher{
 		logger: log.NewNopLogger(),
 		bucket: bucket,
 	}
 
-	c.fillFileSizes(ctx, entries)
+	p.fillFileSizes(ctx, entries)
 
 	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
 }
