@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -475,6 +476,27 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if svc.Name == name.Name && svc.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&svc)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
 			k.SetClientObject(object, &stack)
@@ -720,6 +742,27 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if svc.Name == name.Name && svc.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&svc)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
 			k.SetClientObject(object, &stack)

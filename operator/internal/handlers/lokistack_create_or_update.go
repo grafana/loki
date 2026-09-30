@@ -13,6 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -167,7 +168,7 @@ func CreateOrUpdateLokiStack(
 	ll.Info("manifests built", "count", len(objects))
 
 	// Check for ownership conflicts before creating or updating resources
-	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects, s)
+	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +252,8 @@ func CreateOrUpdateLokiStack(
 	}, nil
 }
 
+var errConflictingOwner = errors.New("resource exists and is owned by a different controller")
+
 // checkResourceOwnership checks if any resources exist and are owned by other controllers
 func checkResourceOwnership(
 	ctx context.Context,
@@ -259,12 +262,8 @@ func checkResourceOwnership(
 	req ctrl.Request,
 	stack *lokiv1.LokiStack,
 	objects []client.Object,
-	s *runtime.Scheme,
 ) ([]string, error) {
-	var (
-		conflicts           []string
-		errConflictingOwner = errors.New("resource exists and is owned by a different controller")
-	)
+	var conflicts []string
 
 	// Check each namespaced resource in the manifests
 	for _, obj := range objects {
@@ -272,15 +271,12 @@ func checkResourceOwnership(
 			continue
 		}
 
-		// Create new empty object of the same type to avoid copying all fields
+		// Create minimal unstructured object to avoid copying all fields
 		gvk := obj.GetObjectKind().GroupVersionKind()
-		existing, err := s.New(gvk)
-		if err != nil {
-			return conflicts, err
-		}
-		existingObj := existing.(client.Object)
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(gvk)
 
-		err = k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existingObj)
+		err := k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existing)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -289,7 +285,7 @@ func checkResourceOwnership(
 		}
 
 		// Resource exists - check if it's owned by a different controller
-		existingOwner := metav1.GetControllerOf(existingObj)
+		existingOwner := metav1.GetControllerOf(existing)
 		if existingOwner != nil && existingOwner.UID != stack.UID {
 			resourceName := fmt.Sprintf("%s/%s (owned by %s/%s)", gvk.Kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
 			ll.Error(errConflictingOwner, "ownership conflict detected",
