@@ -237,11 +237,14 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 				for j, layout := range group.layouts {
 					sourcePath := fmt.Sprintf("objects/group-%d-source-%d", i, j)
 					groupSources[j] = sourcePath
-					sourceLines = append(sourceLines, sourcePath+"/first", sourcePath+"/second")
+					first, second := sourcePath+"/first", sourcePath+"/second"
+					sourceLines = append(sourceLines, first, second)
+
 					entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(layout.SchemaLabels...))
 					entries.ForStream(`{app="api",cluster="prod"}`).
-						Entry(int(base.Add(time.Second).Unix()), "{}", sourcePath+"/second").
-						Entry(int(base.Unix()), "{}", sourcePath+"/first")
+						Entry(int(base.Add(time.Second).Unix()), "{}", second).
+						Entry(int(base.Unix()), "{}", first)
+
 					source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
 					reader, err := source.Object.Reader(ctx)
 					require.NoError(t, err)
@@ -513,10 +516,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	if logsobjConfig != nil {
 		compactionCfg.LogsobjBuilder = *logsobjConfig
 	}
-	compactionCfg.MaxRunsPerTask = 2
-	compactionCfg.LogMaxRunsPerTask = 2
+	compactionCfg.LogMinCompactionSize = 0 // disabled
 	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
-	compactionCfg.LogMaxRunningCompactionTasks = 1
 	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
