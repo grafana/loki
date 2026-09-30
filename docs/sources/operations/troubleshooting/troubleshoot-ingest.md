@@ -895,28 +895,6 @@ Common triggers include:
 - HTTP status: 499 (non-standard, client closed request)
 - Configurable per tenant: No
 
-### Error: Gateway keepalive failure
-
-**Error message:**
-
-`rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout`
-
-**Cause:**
-
-A frontend gateway/proxy layer in front of Loki has missed a gRPC keepalive ping. This indicated a transient
-connectivity problem between the gateway and its backend.
-
-**Resolution:**
-
-* **Implement retry logic** with exponential backoff in your client.
-
-**Properties:**
-
-- Enforced by: Grafana Cloud gateway
-- Retryable: Yes
-- HTTP status: 502 Bad Gateway
-- Configurable per tenant: No
-
 ### Error: Kafka producer backpressure
 
 These errors occur only when the distributor is configured to write to Kafka (`-distributor.kafka-writes-enabled=true`),
