@@ -414,13 +414,32 @@ copy_match_tile_prefill:
 	MOVOU   (AX), X0
 
 copy_match_tile_loop:
-	// X0 tile, R10 step (16 for splats), CX bytes left.
+	// X0 tile, R10 step (16 for splats), CX bytes left. Splats store four
+	// tiles per iteration while at least 64 bytes are left: long runs such
+	// as zeros are bound by stores, not by loop overhead. (Unrolling the
+	// 12..15-byte steps too made them slower on Sapphire Rapids at 4MiB.)
+	CMPQ CX, $64
+	JB   copy_match_tile_loop1
+	CMPQ R10, $16
+	JNE  copy_match_tile_loop1
+
+copy_match_tile_loop4:
+	MOVOU X0, (DI)
+	MOVOU X0, 16(DI)
+	MOVOU X0, 32(DI)
+	MOVOU X0, 48(DI)
+	ADDQ  $64, DI
+	SUBQ  $64, CX
+	CMPQ  CX, $64
+	JAE   copy_match_tile_loop4
+
+copy_match_tile_loop1:
 	CMPQ  CX, $16
 	JB    copy_match_tile_tail
 	MOVOU X0, (DI)
 	ADDQ  R10, DI
 	SUBQ  R10, CX
-	JMP   copy_match_tile_loop
+	JMP   copy_match_tile_loop1
 
 copy_match_tile_tail:
 	// 0..15 left: one more tile if it fits in dst, else bytes.
@@ -475,8 +494,17 @@ copy_match_overlap17_tail:
 	JMP   loopcheck
 
 copy_match_overlap32:
-	// offset >= 32: loads never touch the previous iteration's store. The
-	// last chunk ends exactly at di+match_len and is loaded after the loop.
+	// offset >= 32. Long matches take copy_match_far, out of line, unless
+	// the offset is so large that its source is out of L1 anyway: there
+	// the loop below was as fast (Sapphire Rapids, 1MiB match at 64KiB).
+	CMPQ CX, $256
+	JB   copy_match_overlap32_short
+	CMPQ DX, $16384
+	JB   copy_match_far
+
+copy_match_overlap32_short:
+	// The last chunk ends exactly at di+match_len and is loaded after the
+	// loop; loads never touch the previous iteration's store.
 	LEAQ -16(DI)(CX*1), R10
 	LEAQ -16(BX)(CX*1), AX
 copy_match_overlap32_loop:
@@ -590,6 +618,10 @@ memmove_match:
 	MOVQ dict_len+56(FP), R15
 	XORL CX, CX
 
+	// Every sequence that does not take the shortcut ends here: keep this
+	// jump target aligned, so that code added above cannot shift it. Its
+	// placement moved short-match decoding by several percent.
+	PCALIGN $32
 loopcheck:
 	// for si < len(src)
 	CMPQ SI, R9
@@ -615,6 +647,94 @@ err_short_buf:
 err_short_dict:
 	MOVQ $-3, ret+72(FP)
 	RET
+
+	// Out-of-line blocks.
+copy_match_far:
+	// Overlapping match, 32 <= offset < 16KiB, len >= 256. First grow the copy
+	// distance: with P bytes of pattern before DI (P a multiple of the
+	// offset), copying [DI-P, DI) to DI doubles it. From P >= 512 on,
+	// stream 64 bytes per iteration from DI-P: those loads are of bytes
+	// stored long before, so they do not wait on store forwarding as loads
+	// from DI-offset do.
+	MOVQ DX, AX
+
+copy_match_grow:
+	// AX = P >= 32, CX > 0 bytes left.
+	CMPQ AX, $512
+	JAE  copy_match_stream
+	CMPQ CX, AX
+	JBE  copy_match_stream
+	MOVQ DI, BX
+	SUBQ AX, BX
+	MOVQ AX, R10
+copy_match_grow_loop:
+	MOVOU (BX), X0
+	MOVOU X0, (DI)
+	ADDQ  $16, BX
+	ADDQ  $16, DI
+	SUBQ  $16, R10
+	CMPQ  R10, $16
+	JAE   copy_match_grow_loop
+	// 0..15 left: the last 16 bytes of the source, which ends at the old DI.
+	MOVOU -16(BX)(R10*1), X0
+	MOVOU X0, -16(DI)(R10*1)
+	ADDQ  R10, DI
+	SUBQ  AX, CX
+	SHLQ  $1, AX
+	JMP   copy_match_grow
+
+copy_match_stream:
+	// P >= 512, or CX <= P: all loads are below DI. BX starts at the
+	// beginning of the pattern, so the end-aligned last copy below needs
+	// 16 bytes behind it: under 16 bytes left at the start, copy bytes.
+	MOVQ DI, BX
+	SUBQ AX, BX
+	CMPQ CX, $16
+	JB   copy_match_stream_bytes
+	CMPQ CX, $64
+	JB   copy_match_stream_tail
+copy_match_stream64:
+	MOVOU (BX), X0
+	MOVOU 16(BX), X1
+	MOVOU 32(BX), X2
+	MOVOU 48(BX), X3
+	MOVOU X0, (DI)
+	MOVOU X1, 16(DI)
+	MOVOU X2, 32(DI)
+	MOVOU X3, 48(DI)
+	ADDQ  $64, BX
+	ADDQ  $64, DI
+	SUBQ  $64, CX
+	CMPQ  CX, $64
+	JAE   copy_match_stream64
+
+copy_match_stream_tail:
+	// 0..63 left. The match is at least 256 bytes, so the last 16 bytes
+	// can be copied ending exactly at its end.
+	CMPQ  CX, $16
+	JBE   copy_match_stream_last
+	MOVOU (BX), X0
+	MOVOU X0, (DI)
+	ADDQ  $16, BX
+	ADDQ  $16, DI
+	SUBQ  $16, CX
+	JMP   copy_match_stream_tail
+
+copy_match_stream_last:
+	MOVOU -16(BX)(CX*1), X0
+	MOVOU X0, -16(DI)(CX*1)
+	ADDQ  CX, DI
+	XORL  CX, CX
+	JMP   loopcheck
+
+copy_match_stream_bytes:
+	MOVB (BX), R10
+	MOVB R10, (DI)
+	INCQ BX
+	INCQ DI
+	DECQ CX
+	JNZ  copy_match_stream_bytes
+	JMP  loopcheck
 
 // tileStep[offset] = (16/offset)*offset for offsets 3, 5, 6, 7, 9..15.
 DATA tileStep<>+0(SB)/8, $0x0e0c0f100f101000
