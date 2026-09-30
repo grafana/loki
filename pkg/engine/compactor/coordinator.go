@@ -415,10 +415,9 @@ func (c *coordinator) sortTenantLogObjects(
 	targetSortSchema []string,
 ) (compactionStats, error) {
 	type object struct {
-		path             string
-		minTimestamp     int64
-		maxTimestamp     int64
-		uncompressedSize uint64
+		path         string
+		minTimestamp int64
+		maxTimestamp int64
 	}
 
 	objectsByPath := make(map[string]*object)
@@ -435,7 +434,6 @@ func (c *coordinator) sortTenantLogObjects(
 		}
 		obj.minTimestamp = min(obj.minTimestamp, section.Ref.MinTimestamp)
 		obj.maxTimestamp = max(obj.maxTimestamp, section.Ref.MaxTimestamp)
-		obj.uncompressedSize += uint64(section.Ref.UncompressedSize)
 	}
 
 	resultEntries := make([]metastore.TableOfContentsEntry, len(objectsByPath))
@@ -631,23 +629,6 @@ func taskBounds(task *compactionv2pb.TaskSpec) (minTS, maxTS int64) {
 		}
 	}
 	return minTS, maxTS
-}
-
-// taskUncompressedLogsSize sums UncompressedSize across every section in the
-// task. A section size of 0 means "unknown" (e.g. a legacy ToC row written
-// before sizes were recorded); a single unknown input poisons the whole total,
-// so the result is 0 unless every contributing section is known.
-func taskUncompressedLogsSize(task *compactionv2pb.TaskSpec) uint64 {
-	var total uint64
-	for _, run := range task.Runs {
-		for _, sec := range run.Sections {
-			if sec.UncompressedSize == 0 {
-				return 0
-			}
-			total += uint64(sec.UncompressedSize)
-		}
-	}
-	return total
 }
 
 func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {

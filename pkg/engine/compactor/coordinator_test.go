@@ -2013,39 +2013,10 @@ func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
 	min1, max1 := taskBounds(tasks[0])
 	require.Equal(t, task1Min, min1, "first task StartTime = min across sections")
 	require.Equal(t, task1Max, max1, "first task EndTime = max across sections")
-	require.Equal(t, uint64(450), taskUncompressedLogsSize(tasks[0]), "first task sum: 100+200+150")
 
 	min2, max2 := taskBounds(tasks[1])
 	require.Equal(t, task2Min, min2, "second task StartTime = min across sections")
 	require.Equal(t, task2Max, max2, "second task EndTime = max across sections")
-	require.Equal(t, uint64(350), taskUncompressedLogsSize(tasks[1]), "second task sum: 300+50")
-}
-
-// TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
-// means "unknown", e.g. a legacy ToC row written before sizes were recorded)
-// poisons the whole task's sum. Publishing a partial sum would look exact even
-// though the true total is larger, so an unknown input must yield an unknown
-// (zero) output.
-func TestTaskUncompressedLogsSize_UnknownSizePropagates(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	minTS := window.UnixNano()
-	maxTS := window.Add(time.Hour).UnixNano()
-
-	tasks := []*compactionv2pb.TaskSpec{
-		{
-			Runs: []*compactionv2pb.RunRef{
-				{
-					Sections: []*compactionv2pb.SectionRef{
-						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 0},    // legacy: unknown
-						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 4096}, // known
-					},
-				},
-			},
-		},
-	}
-
-	require.Equal(t, uint64(0), taskUncompressedLogsSize(tasks[0]),
-		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
 }
 
 func TestMakeIndexTocEntries_UsesInputIndexes(t *testing.T) {
