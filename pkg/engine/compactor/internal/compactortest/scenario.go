@@ -42,7 +42,7 @@ type Contents struct {
 	StatsObjectPaths    map[string]bool
 	PostingsObjectPaths map[string]bool
 	SortSchemas         map[string]bool
-	Layouts             []logs.SortLayout
+	LogSectionLayouts   []logs.SortLayout
 	StatsRowCount       int64
 	Lines               []string
 }
@@ -127,16 +127,16 @@ func (s *Scenario) Indexes(ctx context.Context, t *testing.T, tenant string) []i
 	return entries
 }
 
-// ReadContents reads stats, postings, and tenant log lines reachable through
-// indexes; it does not inspect unrelated objects in the bucket.
-func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string, indexes []indexpointers.IndexPointer) Contents {
+// ReadReachableContents reads stats, postings, log lines & sort layouts reachable through
+// indexes for a given tenant; it does not inspect unrelated objects in the bucket.
+func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tenant string) Contents {
 	t.Helper()
 	contents := Contents{
 		StatsObjectPaths:    make(map[string]bool),
 		PostingsObjectPaths: make(map[string]bool),
 		SortSchemas:         make(map[string]bool),
 	}
-	for _, index := range indexes {
+	for _, index := range s.Indexes(ctx, t, tenant) {
 		sections := s.tenantSections(ctx, t, index.Path, tenant)
 		for _, section := range sections.Filter(stats.CheckSection) {
 			opened, err := stats.Open(ctx, section)
@@ -167,7 +167,7 @@ func (s *Scenario) ReadContents(ctx context.Context, t *testing.T, tenant string
 		for _, section := range sections.Filter(logs.CheckSection) {
 			opened, err := logs.Open(ctx, section)
 			require.NoError(t, err)
-			contents.Layouts = append(contents.Layouts, opened.SortLayout())
+			contents.LogSectionLayouts = append(contents.LogSectionLayouts, opened.SortLayout())
 			for result := range logs.IterSection(ctx, opened) {
 				record, err := result.Value()
 				require.NoError(t, err)

@@ -3,13 +3,14 @@ package compactor
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"math"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
@@ -83,14 +84,14 @@ func (s *compactionScenario) compactUntilIdle(tenant string) {
 	s.t.Fatal("compaction did not reach a no-work cycle")
 }
 
-// TestCoordinator_EndToEnd drives the coordinator against a real
+// TestCoordinator_IndexCompactionCycles drives the coordinator against a real
 // scheduler + worker pair wired in-process via wire.Local transport. Asserts:
 //
 //   - Merges create the expected number of index objects and report their paths.
 //   - The coordinator atomically swaps the ToC: source paths removed, output paths
 //     added with the right timestamps.
 //   - Other tenants' rows survive byte-equivalent across the swap.
-func TestCoordinator_EndToEnd(t *testing.T) {
+func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -120,13 +121,13 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	c.cfg.MaxRunningCompactionTasks = 4
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
-	initial := mustLoadTenants(ctx, t, bucket, window)
+	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
 	require.Equal(t, []string{"indexes/aa/src-0", "indexes/dd/idx-d-0"}, pathsOf(initial["untouched"]))
 	require.Len(t, initial["acme"], 3, "sanity: 3 source indexes seeded")
 	_, runErr := c.compactTenantIndexes(ctx, "acme", window, initial["acme"])
 	require.NoError(t, runErr)
 
-	postCycle1 := mustLoadTenants(ctx, t, bucket, window)
+	postCycle1 := mustLoadTenantIndexes(ctx, t, bucket, window)
 	require.Less(t, len(postCycle1["acme"]), 3,
 		"cycle 1 must reduce acme's index count from 3 to fewer")
 	require.Equal(t, initial["untouched"], postCycle1["untouched"],
@@ -146,19 +147,19 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 
 	// Drive subsequent cycles from persisted state, bounded to prevent hangs.
 	for cycle := range 6 {
-		before := mustLoadTenants(ctx, t, bucket, window)["acme"]
+		before := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
 		if len(before) <= 1 {
 			break
 		}
 		_, runErr := c.compactTenantIndexes(ctx, "acme", window, before)
 		require.NoError(t, runErr)
-		after := mustLoadTenants(ctx, t, bucket, window)["acme"]
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
 		require.LessOrEqual(t, len(after), len(before), "cycle %d must not increase index count", cycle+2)
 		t.Logf("cycle %d: acme went from %d → %d indexes", cycle+2, len(before), len(after))
 	}
-	final := mustLoadTenants(ctx, t, bucket, window)
-	require.LessOrEqual(t, len(final["acme"]), 1,
-		"after multiple cycles, acme must converge to ≤ 1 covering index")
+	final := mustLoadTenantIndexes(ctx, t, bucket, window)
+	require.Equal(t, len(final["acme"]), 1,
+		"after multiple cycles, acme tenant must converge to 1 covering index")
 	require.Equal(t, initial["untouched"], final["untouched"],
 		"other tenant's index entries must survive every cycle")
 }
@@ -253,15 +254,15 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
 			c.limits = integrationSortSchema(targetSchema)
 
-			before := mustLoadTenants(ctx, t, bucket, window)[tenant]
+			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
 			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
 
-			after := mustLoadTenants(ctx, t, bucket, window)[tenant]
+			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
 			stored := &compactortest.Scenario{Bucket: bucket, Window: window}
-			contents := stored.ReadContents(ctx, t, tenant, stored.Indexes(ctx, t, tenant))
+			contents := stored.ReadReachableContents(ctx, t, tenant)
 			requireLogContents(t, contents, targetSchema, sourceLines)
 			for _, entry := range after {
 				require.True(t, entry.Start.Equal(base))
@@ -309,14 +310,14 @@ func TestE2ECompactionConvergence(t *testing.T) {
 	}
 
 	t.Run("equal sort layouts", func(t *testing.T) {
-		runFiveFileConvergence(t, fiveSourceLayouts())
+		runConvergenceTest(t, fiveSourceLayouts())
 	})
 
 	t.Run("mismatched sort schemas", func(t *testing.T) {
 		// mismatched schemas will converge after sorting
 		layouts := fiveSourceLayouts()
 		layouts[2].SchemaLabels = []string{"label:cluster"}
-		runFiveFileConvergence(t, layouts)
+		runConvergenceTest(t, layouts)
 	})
 
 	t.Run("mismatched shard factor", func(t *testing.T) {
@@ -324,13 +325,13 @@ func TestE2ECompactionConvergence(t *testing.T) {
 		t.Skipf("Customizing the number of shard buckets is not yet supported")
 		layouts := fiveSourceLayouts()
 		layouts[2].ShardCount = streams.ShardFactor / 2
-		runFiveFileConvergence(t, layouts)
+		runConvergenceTest(t, layouts)
 	})
 }
 
-// runFiveFileConvergence creates five overlapping objects and expects them to
+// runConvergenceTest creates one overlapping object for every provided logs.SortLayout and expects them to
 // converge into a single sorted run after any necessary re-sorting.
-func runFiveFileConvergence(t *testing.T, layouts []logs.SortLayout) {
+func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -400,10 +401,9 @@ func runFiveFileConvergence(t *testing.T, layouts []logs.SortLayout) {
 
 	scenario.compactUntilIdle(tenant)
 
-	finalIndexes := scenario.stored.Indexes(ctx, t, tenant)
-	finalContents := scenario.stored.ReadContents(ctx, t, tenant, finalIndexes)
+	finalContents := scenario.stored.ReadReachableContents(ctx, t, tenant)
 	requireLogContents(t, finalContents, schema, sourceLines)
-	requireSingleSortedRun(t, ctx, scenario, finalIndexes, tenant, schema, len(sourceLines))
+	requireSingleSortedRun(t, ctx, scenario, scenario.stored.Indexes(ctx, t, tenant), tenant, schema, len(sourceLines))
 }
 
 func newScenarioLogSource(t *testing.T, path, tenant string, entries *fixtures.LogFixtureBuilder, layout logs.SortLayout) compactortest.Source {
@@ -428,9 +428,9 @@ func requireLogContents(t *testing.T, contents compactortest.Contents, schema []
 	require.Equal(t, int64(len(sourceLines)), contents.StatsRowCount, "index stats must account for every reachable log row")
 	require.Equal(t, contents.StatsObjectPaths, contents.PostingsObjectPaths, "stats and postings must reference the same log objects")
 	require.Equal(t, map[string]bool{strings.Join(schema, ","): true}, contents.SortSchemas)
-	require.NotEmpty(t, contents.Layouts)
-	expectedLayouts := slices.Repeat([]logs.SortLayout{logsobj.TargetSortLayout(schema)}, len(contents.Layouts))
-	require.True(t, slices.EqualFunc(expectedLayouts, contents.Layouts, logsobj.EqualSortLayout), "every section must use the target layout")
+	require.NotEmpty(t, contents.LogSectionLayouts)
+	expectedLayouts := slices.Repeat([]logs.SortLayout{logsobj.TargetSortLayout(schema)}, len(contents.LogSectionLayouts))
+	require.True(t, slices.EqualFunc(expectedLayouts, contents.LogSectionLayouts, logsobj.EqualSortLayout), "every section must use the target layout")
 }
 
 func requireSingleSortedRun(t *testing.T, ctx context.Context, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, schema []string, wantRows int) {
@@ -509,10 +509,15 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 
 	var compactionCfg Config
-	compactionCfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	flagext.DefaultValues(&compactionCfg)
 	if logsobjConfig != nil {
 		compactionCfg.LogsobjBuilder = *logsobjConfig
 	}
+	compactionCfg.MaxRunsPerTask = 2
+	compactionCfg.LogMaxRunsPerTask = 2
+	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
+	compactionCfg.LogMaxRunningCompactionTasks = 1
+	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
 		Logger:           log.NewNopLogger(),
@@ -533,12 +538,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	activeServices = append(activeServices, w.Service())
 
 	return &coordinator{
-		cfg: Config{
-			MaxRunsPerTask:               2,
-			LogMaxRunsPerTask:            2,
-			ToCConsolidateTimeout:        10 * time.Second,
-			LogMaxRunningCompactionTasks: 1,
-		},
+		cfg:    compactionCfg,
 		logger: log.NewNopLogger(),
 		bucket: bucket,
 		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
@@ -557,7 +557,7 @@ func (integrationSortSchema) CompactionPhases(string) (bool, bool) {
 	return true, true
 }
 
-func mustLoadTenants(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
+func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
 	t.Helper()
 	got, err := loadTenantIndexes(ctx, b, window)
 	require.NoError(t, err)
