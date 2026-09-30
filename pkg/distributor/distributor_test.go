@@ -4514,9 +4514,11 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 	}, {
 		name: "the answer has no shard count: the rate store's count is used",
 		response: &limitsproto.CheckLimitsAndShardResponse{
-			Results: []*limitsproto.StreamShardResult{{StreamHash: streamHash, Shards: 0}},
+			Results: []*limitsproto.StreamShardResult{
+				{StreamHash: streamHash, Shards: 0, RejectReason: limits.ReasonMaxStreams.String()},
+			},
 		},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		// The tenant has no stream count budget left for more shards. The
 		// stream is still written, as whether it is rejected is decided by the

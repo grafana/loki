@@ -1338,9 +1338,10 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// A difference in kind rather than in shard count: the local rate
 			// store never rejects a stream.
 			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode).Inc()
+			// TODO(chaudum): Return 0 shards as an indicator of a rejected stream
+			// once we skip the ExceedsLimits call for enforcing the limits.
 			shardCounts[i] = 1
 		case !ok,
-			result.GetShards() < 1,
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
 			// No usable answer: there was none, the service could not check the
