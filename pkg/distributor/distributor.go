@@ -1341,9 +1341,6 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// TODO(chaudum): Return 0 shards as an indicator of a rejected stream
 			// once we skip the ExceedsLimits call for enforcing the limits.
 			shardCounts[i] = 1
-		case result.GetShards() < 1 && result.GetRejectReason() == "":
-			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
-			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
 		case !ok,
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
@@ -1351,6 +1348,9 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// stream, or the instance that answered does not own its
 			// partition. Comparing it would report agreement or disagreement
 			// that does not exist.
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
+		case result.GetShards() < 1 && result.GetRejectReason() == "":
+			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
 		default:
 			resultShards := int(result.GetShards())
