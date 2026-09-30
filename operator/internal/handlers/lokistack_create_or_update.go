@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -166,7 +167,7 @@ func CreateOrUpdateLokiStack(
 	ll.Info("manifests built", "count", len(objects))
 
 	// Check for ownership conflicts before creating or updating resources
-	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
+	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects, s)
 	if err != nil {
 		return nil, err
 	}
@@ -258,18 +259,28 @@ func checkResourceOwnership(
 	req ctrl.Request,
 	stack *lokiv1.LokiStack,
 	objects []client.Object,
+	s *runtime.Scheme,
 ) ([]string, error) {
-	var conflicts []string
+	var (
+		conflicts           []string
+		errConflictingOwner = errors.New("resource exists and is owned by a different controller")
+	)
 
 	// Check each namespaced resource in the manifests
 	for _, obj := range objects {
 		if !isNamespacedResource(obj) {
 			continue
 		}
-		obj.SetNamespace(req.Namespace)
-		kind := obj.GetObjectKind().GroupVersionKind().Kind
-		existing := obj.DeepCopyObject().(client.Object)
-		err := k.Get(ctx, client.ObjectKeyFromObject(obj), existing)
+
+		// Create new empty object of the same type to avoid copying all fields
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		existing, err := s.New(gvk)
+		if err != nil {
+			return conflicts, err
+		}
+		existingObj := existing.(client.Object)
+
+		err = k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existingObj)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -278,10 +289,10 @@ func checkResourceOwnership(
 		}
 
 		// Resource exists - check if it's owned by a different controller
-		existingOwner := metav1.GetControllerOf(existing)
+		existingOwner := metav1.GetControllerOf(existingObj)
 		if existingOwner != nil && existingOwner.UID != stack.UID {
-			resourceName := fmt.Sprintf("%s/%s (owned by %s/%s)", kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
-			ll.Error(nil, "resource exists and is owned by a different controller",
+			resourceName := fmt.Sprintf("%s/%s (owned by %s/%s)", gvk.Kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
+			ll.Error(errConflictingOwner, "ownership conflict detected",
 				"resource", resourceName,
 				"namespace", req.Namespace,
 				"owner", existingOwner.Name)
