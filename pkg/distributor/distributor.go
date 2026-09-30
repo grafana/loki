@@ -1338,15 +1338,13 @@ const limitsServiceShardTimeout = 2 * time.Second
 // store's, and returns the shard count to use per candidate, in the order the
 // candidates were given.
 //
-// A candidate the whole call did not answer for -- the RPC itself failed --
-// keeps the local rate store's count, so an outage of the call degrades to
-// the previous behavior rather than stopping sharding.
-//
-// A candidate the service answered but could not decide on -- no result for
-// it, the service could not check it, or the answering instance does not own
-// its partition -- gets a count of 1: it is written unsharded rather than
-// rejected, since there is no decision from the service to enforce (fail
-// open).
+// Live mode never falls back to the local rate store's recommendation. A
+// candidate the service has no usable answer for -- the whole call failed,
+// there was no result for the stream, the service could not check it, or
+// the answering instance does not own its partition -- gets a count of 1:
+// it is written unsharded rather than rejected, since there is no decision
+// from the service to enforce (fail open). A limits-service outage removes
+// sharding until it recovers rather than stopping ingestion.
 //
 // A candidate the service rejected, for example for exceeding the stream
 // limit, gets a count of 0: the service has no budget for the stream at all,
@@ -1360,9 +1358,12 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 	// records the latency the call adds.
 	defer prometheus.NewTimer(d.m.limitsServiceShardDuration).ObserveDuration()
 
+	// Defaults to 1 (written unsharded, not rejected) for every candidate the
+	// service ends up with no usable answer for, whether the whole call fails
+	// or only a specific candidate does; see the fail-open cases below.
 	shardCounts := make([]int, len(candidates))
-	for i, c := range candidates {
-		shardCounts[i] = c.rateStoreShards
+	for i := range shardCounts {
+		shardCounts[i] = 1
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, limitsServiceShardTimeout)

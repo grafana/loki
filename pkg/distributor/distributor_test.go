@@ -4468,14 +4468,13 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 	lbls := labels.FromStrings("job", "internal")
 	streamHash := labels.StableHash(lbls)
 
-	// Four two-byte lines, so the local rate store recommends
-	// ceil((30 + 8) / 10) = 4 shards and the entry count does not limit the
-	// physical shards below any count used here.
+	// Four two-byte lines: enough that a multi-shard answer actually splits
+	// them, and enough to check that entries are neither dropped nor
+	// duplicated by it.
 	entries := make([]logproto.Entry, 4)
 	for i := range entries {
 		entries[i] = logproto.Entry{Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond), Line: "aa"}
 	}
-	const rateStoreShards = 4
 
 	tests := []struct {
 		name        string
@@ -4498,11 +4497,12 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 		},
 		wantShards: 1,
 	}, {
-		// Falling back keeps sharding working through a limits service outage,
-		// rather than collapsing hot streams onto one shard.
-		name:        "the whole call fails: the rate store's count is used",
+		// A limits-service outage has no decision to enforce, so the stream is
+		// written unsharded rather than falling back to the rate store's
+		// recommendation.
+		name:        "the whole call fails: it is written unsharded",
 		responseErr: errors.New("limits service unavailable"),
-		wantShards:  rateStoreShards,
+		wantShards:  1,
 	}, {
 		// No decision from the service means nothing to enforce, so the
 		// stream is written unsharded rather than dropped (fail open).
