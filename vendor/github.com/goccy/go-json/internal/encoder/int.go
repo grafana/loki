@@ -77,17 +77,17 @@ func numMask(numBitSize uint8) uint64 {
 	return 1<<numBitSize - 1
 }
 
-func AppendInt(_ *RuntimeContext, out []byte, p uintptr, code *Opcode) []byte {
+func AppendInt(_ *RuntimeContext, out []byte, p unsafe.Pointer, code *Opcode) []byte {
 	var u64 uint64
 	switch code.NumBitSize {
 	case 8:
-		u64 = (uint64)(**(**uint8)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint8)(p))
 	case 16:
-		u64 = (uint64)(**(**uint16)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint16)(p))
 	case 32:
-		u64 = (uint64)(**(**uint32)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint32)(p))
 	case 64:
-		u64 = **(**uint64)(unsafe.Pointer(&p))
+		u64 = *(*uint64)(p)
 	}
 	mask := numMask(code.NumBitSize)
 	n := u64 & mask
@@ -131,17 +131,17 @@ func AppendInt(_ *RuntimeContext, out []byte, p uintptr, code *Opcode) []byte {
 	return append(out, b[i:]...)
 }
 
-func AppendUint(_ *RuntimeContext, out []byte, p uintptr, code *Opcode) []byte {
+func AppendUint(_ *RuntimeContext, out []byte, p unsafe.Pointer, code *Opcode) []byte {
 	var u64 uint64
 	switch code.NumBitSize {
 	case 8:
-		u64 = (uint64)(**(**uint8)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint8)(p))
 	case 16:
-		u64 = (uint64)(**(**uint16)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint16)(p))
 	case 32:
-		u64 = (uint64)(**(**uint32)(unsafe.Pointer(&p)))
+		u64 = uint64(*(*uint32)(p))
 	case 64:
-		u64 = **(**uint64)(unsafe.Pointer(&p))
+		u64 = *(*uint64)(p)
 	}
 	mask := numMask(code.NumBitSize)
 	n := u64 & mask

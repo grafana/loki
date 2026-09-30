@@ -3,6 +3,7 @@ package encoder
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"unsafe"
@@ -11,6 +12,17 @@ import (
 )
 
 const uintptrSize = 4 << (^uintptr(0) >> 63)
+
+// The offsets of the opcodes are in bytes from the head of the frame.
+const (
+	slotSize      = 2 * uintptrSize // the size of Slot.
+	slotIntOffset = uintptrSize     // the offset of Slot.Int.
+)
+
+var (
+	_ = [1]struct{}{}[unsafe.Sizeof(Slot{})-slotSize]
+	_ = [1]struct{}{}[unsafe.Offsetof(Slot{}.Int)-slotIntOffset]
+)
 
 type OpFlags uint16
 
@@ -25,29 +37,37 @@ const (
 	IsNilableTypeFlags     OpFlags = 1 << 7
 	MarshalerContextFlags  OpFlags = 1 << 8
 	NonEmptyInterfaceFlags OpFlags = 1 << 9
+	MapStringKeyFlags      OpFlags = 1 << 10 // the key of the map is a string, written by OpMapKey itself
+	TailRecursiveFlags     OpFlags = 1 << 11 // the recursive value is the last field of a value of its own type, encoded in its frame
+	InterfaceMapKeyFlags   OpFlags = 1 << 12 // the key of a map of an interface type, whose name is of its dynamic value ( see appendInterfaceMapKey )
+	MapKeyFlags            OpFlags = 1 << 13 // the key of a map, whose name is "" for a nil pointer, while a nil pointer value is null
 )
 
 type Opcode struct {
-	Op         OpType  // operation type
-	Idx        uint32  // offset to access ptr
-	Next       *Opcode // next opcode
-	End        *Opcode // array/slice/struct/map end
-	NextField  *Opcode // next struct field
-	Key        string  // struct field key
-	Offset     uint32  // offset size from struct header
-	PtrNum     uint8   // pointer number: e.g. double pointer is 2.
+	Op         OpType    // operation type
+	EmptyKind  EmptyKind // what makes the value of the field empty for omitempty, for the generic field opcode
+	ZeroKind   ZeroKind  // what makes the value of the field zero for omitzero, for the generic field opcode
+	Idx        uint32    // offset to access ptr
+	Next       *Opcode   // next opcode
+	End        *Opcode   // array/slice/struct/map end
+	NextField  *Opcode   // next struct field
+	Key        string    // struct field key
+	Offset     uint32    // offset size from struct header
+	PtrNum     uint8     // pointer number: e.g. double pointer is 2.
 	NumBitSize uint8
 	Flags      OpFlags
 
-	Type       *runtime.Type // go type
-	Jmp        *CompiledCode // for recursive call
-	FieldQuery *FieldQuery   // field query for Interface / MarshalJSON / MarshalText
-	ElemIdx    uint32        // offset to access array/slice elem
-	Length     uint32        // offset to access slice length or array length
-	Indent     uint32        // indent number
-	Size       uint32        // array/slice elem size
-	DisplayIdx uint32        // opcode index
-	DisplayKey string        // key text to display
+	Type       unsafe.Pointer      // pointer to the type descriptor of go type
+	Jmp        *CompiledCode       // for recursive call
+	Marshaler  *MarshalerCall      // the method of the marshaler, for MarshalJSON and MarshalText
+	FieldQuery *FieldQuery         // field query for Interface / MarshalJSON / MarshalText
+	ElemIdx    uint32              // offset to access array/slice elem
+	Length     uint32              // offset to access slice length or array length
+	Indent     uint32              // indent number
+	Size       uint32              // array/slice elem size
+	DisplayIdx uint32              // opcode index
+	KeyChunk   *[KeyChunkSize]byte // the key and the padding after it, which the VM copies as a chunk
+	Map        *MapLayout          // how the entries of the map are read, for the opcode of a map
 }
 
 func (c *Opcode) Validate() error {
@@ -87,125 +107,60 @@ func (c *Opcode) IsEnd() bool {
 }
 
 func (c *Opcode) MaxIdx() uint32 {
-	max := uint32(0)
+	maxIdx := uint32(0)
 	for _, value := range []uint32{
 		c.Idx,
 		c.ElemIdx,
 		c.Length,
 		c.Size,
 	} {
-		if max < value {
-			max = value
+		if maxIdx < value {
+			maxIdx = value
 		}
 	}
-	return max
+	return maxIdx
 }
 
-func (c *Opcode) ToHeaderType(isString bool) OpType {
-	switch c.Op {
+// ToStringOp returns the opcode which encodes the value of t as a string, for the string option of a field.
+func (t OpType) ToStringOp() OpType {
+	switch t {
 	case OpInt:
-		if isString {
-			return OpStructHeadIntString
-		}
-		return OpStructHeadInt
-	case OpIntPtr:
-		if isString {
-			return OpStructHeadIntPtrString
-		}
-		return OpStructHeadIntPtr
+		return OpIntString
 	case OpUint:
-		if isString {
-			return OpStructHeadUintString
-		}
-		return OpStructHeadUint
-	case OpUintPtr:
-		if isString {
-			return OpStructHeadUintPtrString
-		}
-		return OpStructHeadUintPtr
+		return OpUintString
 	case OpFloat32:
-		if isString {
-			return OpStructHeadFloat32String
-		}
-		return OpStructHeadFloat32
-	case OpFloat32Ptr:
-		if isString {
-			return OpStructHeadFloat32PtrString
-		}
-		return OpStructHeadFloat32Ptr
+		return OpFloat32String
 	case OpFloat64:
-		if isString {
-			return OpStructHeadFloat64String
-		}
-		return OpStructHeadFloat64
-	case OpFloat64Ptr:
-		if isString {
-			return OpStructHeadFloat64PtrString
-		}
-		return OpStructHeadFloat64Ptr
-	case OpString:
-		if isString {
-			return OpStructHeadStringString
-		}
-		return OpStructHeadString
-	case OpStringPtr:
-		if isString {
-			return OpStructHeadStringPtrString
-		}
-		return OpStructHeadStringPtr
-	case OpNumber:
-		if isString {
-			return OpStructHeadNumberString
-		}
-		return OpStructHeadNumber
-	case OpNumberPtr:
-		if isString {
-			return OpStructHeadNumberPtrString
-		}
-		return OpStructHeadNumberPtr
+		return OpFloat64String
 	case OpBool:
-		if isString {
-			return OpStructHeadBoolString
-		}
-		return OpStructHeadBool
+		return OpBoolString
+	case OpString:
+		return OpStringString
+	case OpNumber:
+		return OpNumberString
+	case OpIntPtr:
+		return OpIntPtrString
+	case OpUintPtr:
+		return OpUintPtrString
+	case OpFloat32Ptr:
+		return OpFloat32PtrString
+	case OpFloat64Ptr:
+		return OpFloat64PtrString
 	case OpBoolPtr:
-		if isString {
-			return OpStructHeadBoolPtrString
-		}
-		return OpStructHeadBoolPtr
-	case OpBytes:
-		return OpStructHeadBytes
-	case OpBytesPtr:
-		return OpStructHeadBytesPtr
-	case OpMap:
-		return OpStructHeadMap
-	case OpMapPtr:
-		c.Op = OpMap
-		return OpStructHeadMapPtr
-	case OpArray:
-		return OpStructHeadArray
-	case OpArrayPtr:
-		c.Op = OpArray
-		return OpStructHeadArrayPtr
-	case OpSlice:
-		return OpStructHeadSlice
-	case OpSlicePtr:
-		c.Op = OpSlice
-		return OpStructHeadSlicePtr
-	case OpMarshalJSON:
-		return OpStructHeadMarshalJSON
-	case OpMarshalJSONPtr:
-		return OpStructHeadMarshalJSONPtr
-	case OpMarshalText:
-		return OpStructHeadMarshalText
-	case OpMarshalTextPtr:
-		return OpStructHeadMarshalTextPtr
+		return OpBoolPtrString
+	case OpStringPtr:
+		return OpStringPtrString
+	case OpNumberPtr:
+		return OpNumberPtrString
 	}
-	return OpStructHead
+	return t
 }
 
 func (c *Opcode) ToFieldType(isString bool) OpType {
 	switch c.Op {
+	case OpInterface:
+		// the string option is not for a value of interface{}.
+		return OpStructFieldInterface
 	case OpInt:
 		if isString {
 			return OpStructFieldIntString
@@ -307,12 +262,18 @@ func (c *Opcode) ToFieldType(isString bool) OpType {
 	return OpStructField
 }
 
-func newOpCode(ctx *compileContext, typ *runtime.Type, op OpType) *Opcode {
+func newOpCode(ctx *compileContext, typ reflect.Type, op OpType) *Opcode {
 	return newOpCodeWithNext(ctx, typ, op, newEndOp(ctx, typ))
 }
 
+// opcodeOffset returns the offset of the pointer of the slot.
 func opcodeOffset(idx int) uint32 {
-	return uint32(idx) * uintptrSize
+	return uint32(idx) * slotSize
+}
+
+// opcodeIntOffset returns the offset of the value of the slot which is not a pointer.
+func opcodeIntOffset(idx int) uint32 {
+	return opcodeOffset(idx) + slotIntOffset
 }
 
 func getCodeAddrByIdx(head *Opcode, idx uint32) *Opcode {
@@ -338,12 +299,16 @@ func copyOpcode(code *Opcode) *Opcode {
 			Type:       c.Type,
 			FieldQuery: c.FieldQuery,
 			DisplayIdx: c.DisplayIdx,
-			DisplayKey: c.DisplayKey,
+			KeyChunk:   c.KeyChunk,
+			Map:        c.Map,
+			EmptyKind:  c.EmptyKind,
+			ZeroKind:   c.ZeroKind,
 			ElemIdx:    c.ElemIdx,
 			Length:     c.Length,
 			Size:       c.Size,
 			Indent:     c.Indent,
 			Jmp:        c.Jmp,
+			Marshaler:  c.Marshaler,
 		}
 		if c.End != nil {
 			ptr.End = getCodeAddrByIdx(head, c.End.DisplayIdx)
@@ -365,7 +330,8 @@ func copyOpcode(code *Opcode) *Opcode {
 
 func setTotalLengthToInterfaceOp(code *Opcode) {
 	for c := code; !c.IsEnd(); {
-		if c.Op == OpInterface || c.Op == OpInterfacePtr {
+		switch c.Op {
+		case OpInterface, OpInterfacePtr, OpStructFieldInterface, OpStructFieldOmitEmptyInterface:
 			c.Length = uint32(code.TotalLength())
 		}
 		c = c.IterNext()
@@ -384,25 +350,34 @@ func copyToInterfaceOpcode(code *Opcode) *Opcode {
 	copied := copyOpcode(code)
 	c := copied
 	c = ToEndCode(c)
-	c.Idx += uintptrSize
-	c.ElemIdx = c.Idx + uintptrSize
-	c.Length = c.Idx + 2*uintptrSize
+	// the slots to return to the previous frame are after every slot of the code:
+	// the slot of the end code is not the last one, because the fields of a struct share the slots.
+	c.Idx = opcodeOffset(copied.TotalLength())
+	c.setEndSlots()
 	c.Op = OpInterfaceEnd
 	return copied
 }
 
-func newOpCodeWithNext(ctx *compileContext, typ *runtime.Type, op OpType, next *Opcode) *Opcode {
+// setEndSlots decides the slots of the opcode which returns to the previous frame from its Idx:
+// Idx is for the opcode to return to, ElemIdx is for the offset of the previous frame and
+// Length is for the indent to restore.
+func (c *Opcode) setEndSlots() {
+	c.ElemIdx = c.Idx + slotSize + slotIntOffset
+	c.Length = c.Idx + 2*slotSize + slotIntOffset
+}
+
+func newOpCodeWithNext(ctx *compileContext, typ reflect.Type, op OpType, next *Opcode) *Opcode {
 	return &Opcode{
 		Op:         op,
 		Idx:        opcodeOffset(ctx.ptrIndex),
 		Next:       next,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		DisplayIdx: ctx.opcodeIndex,
 		Indent:     ctx.indent,
 	}
 }
 
-func newEndOp(ctx *compileContext, typ *runtime.Type) *Opcode {
+func newEndOp(ctx *compileContext, typ reflect.Type) *Opcode {
 	return newOpCodeWithNext(ctx, typ, OpEnd, nil)
 }
 
@@ -410,7 +385,7 @@ func (c *Opcode) TotalLength() int {
 	var idx int
 	code := c
 	for !code.IsEnd() {
-		maxIdx := int(code.MaxIdx() / uintptrSize)
+		maxIdx := int(code.MaxIdx() / slotSize)
 		if idx < maxIdx {
 			idx = maxIdx
 		}
@@ -419,7 +394,7 @@ func (c *Opcode) TotalLength() int {
 		}
 		code = code.IterNext()
 	}
-	maxIdx := int(code.MaxIdx() / uintptrSize)
+	maxIdx := int(code.MaxIdx() / slotSize)
 	if idx < maxIdx {
 		idx = maxIdx
 	}
@@ -431,15 +406,15 @@ func (c *Opcode) dumpHead(code *Opcode) string {
 	if code.Op.CodeType() == CodeArrayHead {
 		length = code.Length
 	} else {
-		length = code.Length / uintptrSize
+		length = code.Length / slotSize
 	}
 	return fmt.Sprintf(
 		`[%03d]%s%s ([idx:%d][elemIdx:%d][length:%d])`,
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
-		code.ElemIdx/uintptrSize,
+		code.Idx/slotSize,
+		code.ElemIdx/slotSize,
 		length,
 	)
 }
@@ -450,7 +425,7 @@ func (c *Opcode) dumpMapHead(code *Opcode) string {
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
+		code.Idx/slotSize,
 	)
 }
 
@@ -460,7 +435,7 @@ func (c *Opcode) dumpMapEnd(code *Opcode) string {
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
+		code.Idx/slotSize,
 	)
 }
 
@@ -469,15 +444,15 @@ func (c *Opcode) dumpElem(code *Opcode) string {
 	if code.Op.CodeType() == CodeArrayElem {
 		length = code.Length
 	} else {
-		length = code.Length / uintptrSize
+		length = code.Length / slotSize
 	}
 	return fmt.Sprintf(
 		`[%03d]%s%s ([idx:%d][elemIdx:%d][length:%d][size:%d])`,
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
-		code.ElemIdx/uintptrSize,
+		code.Idx/slotSize,
+		code.ElemIdx/slotSize,
 		length,
 		code.Size,
 	)
@@ -489,8 +464,8 @@ func (c *Opcode) dumpField(code *Opcode) string {
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
-		code.DisplayKey,
+		code.Idx/slotSize,
+		code.Key,
 		code.Offset,
 	)
 }
@@ -501,7 +476,7 @@ func (c *Opcode) dumpKey(code *Opcode) string {
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
+		code.Idx/slotSize,
 	)
 }
 
@@ -511,7 +486,7 @@ func (c *Opcode) dumpValue(code *Opcode) string {
 		code.DisplayIdx,
 		strings.Repeat("-", int(code.Indent)),
 		code.Op,
-		code.Idx/uintptrSize,
+		code.Idx/slotSize,
 	)
 }
 
@@ -549,7 +524,7 @@ func (c *Opcode) Dump() string {
 				code.DisplayIdx,
 				strings.Repeat("-", int(code.Indent)),
 				code.Op,
-				code.Idx/uintptrSize,
+				code.Idx/slotSize,
 			))
 			code = code.Next
 		}
@@ -638,15 +613,16 @@ func (c *Opcode) DumpDOT() string {
 	return b.String()
 }
 
-func newSliceHeaderCode(ctx *compileContext, typ *runtime.Type) *Opcode {
+// newSliceHeaderCode takes two slots: the first one is for the address of the elements and the index,
+// and the next one is for the length.
+func newSliceHeaderCode(ctx *compileContext, typ reflect.Type) *Opcode {
 	idx := opcodeOffset(ctx.ptrIndex)
+	elemIdx := opcodeIntOffset(ctx.ptrIndex)
 	ctx.incPtrIndex()
-	elemIdx := opcodeOffset(ctx.ptrIndex)
-	ctx.incPtrIndex()
-	length := opcodeOffset(ctx.ptrIndex)
+	length := opcodeIntOffset(ctx.ptrIndex)
 	return &Opcode{
 		Op:         OpSlice,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        idx,
 		DisplayIdx: ctx.opcodeIndex,
 		ElemIdx:    elemIdx,
@@ -655,10 +631,10 @@ func newSliceHeaderCode(ctx *compileContext, typ *runtime.Type) *Opcode {
 	}
 }
 
-func newSliceElemCode(ctx *compileContext, typ *runtime.Type, head *Opcode, size uintptr) *Opcode {
+func newSliceElemCode(ctx *compileContext, typ reflect.Type, head *Opcode, size uintptr) *Opcode {
 	return &Opcode{
 		Op:         OpSliceElem,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        head.Idx,
 		DisplayIdx: ctx.opcodeIndex,
 		ElemIdx:    head.ElemIdx,
@@ -668,13 +644,13 @@ func newSliceElemCode(ctx *compileContext, typ *runtime.Type, head *Opcode, size
 	}
 }
 
-func newArrayHeaderCode(ctx *compileContext, typ *runtime.Type, alen int) *Opcode {
+// newArrayHeaderCode takes a slot, which is for the address of the array and the index.
+func newArrayHeaderCode(ctx *compileContext, typ reflect.Type, alen int) *Opcode {
 	idx := opcodeOffset(ctx.ptrIndex)
-	ctx.incPtrIndex()
-	elemIdx := opcodeOffset(ctx.ptrIndex)
+	elemIdx := opcodeIntOffset(ctx.ptrIndex)
 	return &Opcode{
 		Op:         OpArray,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        idx,
 		DisplayIdx: ctx.opcodeIndex,
 		ElemIdx:    elemIdx,
@@ -683,10 +659,10 @@ func newArrayHeaderCode(ctx *compileContext, typ *runtime.Type, alen int) *Opcod
 	}
 }
 
-func newArrayElemCode(ctx *compileContext, typ *runtime.Type, head *Opcode, length int, size uintptr) *Opcode {
+func newArrayElemCode(ctx *compileContext, typ reflect.Type, head *Opcode, length int, size uintptr) *Opcode {
 	return &Opcode{
 		Op:         OpArrayElem,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        head.Idx,
 		DisplayIdx: ctx.opcodeIndex,
 		ElemIdx:    head.ElemIdx,
@@ -696,42 +672,43 @@ func newArrayElemCode(ctx *compileContext, typ *runtime.Type, head *Opcode, leng
 	}
 }
 
-func newMapHeaderCode(ctx *compileContext, typ *runtime.Type) *Opcode {
+func newMapHeaderCode(ctx *compileContext, typ reflect.Type) *Opcode {
 	idx := opcodeOffset(ctx.ptrIndex)
 	ctx.incPtrIndex()
 	return &Opcode{
 		Op:         OpMap,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
+		Map:        NewMapLayout(typ),
 		Idx:        idx,
 		DisplayIdx: ctx.opcodeIndex,
 		Indent:     ctx.indent,
 	}
 }
 
-func newMapKeyCode(ctx *compileContext, typ *runtime.Type, head *Opcode) *Opcode {
+func newMapKeyCode(ctx *compileContext, typ reflect.Type, head *Opcode) *Opcode {
 	return &Opcode{
 		Op:         OpMapKey,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        head.Idx,
 		DisplayIdx: ctx.opcodeIndex,
 		Indent:     ctx.indent,
 	}
 }
 
-func newMapValueCode(ctx *compileContext, typ *runtime.Type, head *Opcode) *Opcode {
+func newMapValueCode(ctx *compileContext, typ reflect.Type, head *Opcode) *Opcode {
 	return &Opcode{
 		Op:         OpMapValue,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        head.Idx,
 		DisplayIdx: ctx.opcodeIndex,
 		Indent:     ctx.indent,
 	}
 }
 
-func newMapEndCode(ctx *compileContext, typ *runtime.Type, head *Opcode) *Opcode {
+func newMapEndCode(ctx *compileContext, typ reflect.Type, head *Opcode) *Opcode {
 	return &Opcode{
 		Op:         OpMapEnd,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        head.Idx,
 		DisplayIdx: ctx.opcodeIndex,
 		Indent:     ctx.indent,
@@ -739,10 +716,10 @@ func newMapEndCode(ctx *compileContext, typ *runtime.Type, head *Opcode) *Opcode
 	}
 }
 
-func newRecursiveCode(ctx *compileContext, typ *runtime.Type, jmp *CompiledCode) *Opcode {
+func newRecursiveCode(ctx *compileContext, typ reflect.Type, jmp *CompiledCode) *Opcode {
 	return &Opcode{
 		Op:         OpRecursive,
-		Type:       typ,
+		Type:       runtime.TypePtr(typ),
 		Idx:        opcodeOffset(ctx.ptrIndex),
 		Next:       newEndOp(ctx, typ),
 		DisplayIdx: ctx.opcodeIndex,
