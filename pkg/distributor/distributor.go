@@ -1338,15 +1338,20 @@ const limitsServiceShardTimeout = 2 * time.Second
 // store's, and returns the shard count to use per candidate, in the order the
 // candidates were given.
 //
-// A candidate the service did not answer for, or could not decide on, keeps
-// the local rate store's count, so a limits service outage degrades to the
-// previous behavior rather than stopping sharding.
+// A candidate the whole call did not answer for -- the RPC itself failed --
+// keeps the local rate store's count, so an outage of the call degrades to
+// the previous behavior rather than stopping sharding.
 //
-// A candidate the service rejected for exceeding the stream limit gets a
-// count of 0: the service has no budget for the stream at all, not even for
-// one shard, so it must not be written. A candidate rejected for any other
-// reason gets 1, as the stream is written but not sharded. The caller decides
-// what to do with a 0; shadow-mode callers discard the counts.
+// A candidate the service answered but could not decide on -- no result for
+// it, the service could not check it, or the answering instance does not own
+// its partition -- gets a count of 1: it is written unsharded rather than
+// rejected, since there is no decision from the service to enforce (fail
+// open).
+//
+// A candidate the service rejected, for example for exceeding the stream
+// limit, gets a count of 0: the service has no budget for the stream at all,
+// not even for one shard, so it must not be written. The caller decides what
+// to do with a 0; shadow-mode callers discard the counts.
 //
 // It runs synchronously, on the push path, with a short timeout. The mode is
 // only used to label the metrics.
@@ -1395,7 +1400,9 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
 			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
-			shardCounts[i] = 0
+			// Fail open: there is no decision from the service to enforce, so
+			// the stream is written unsharded rather than dropped.
+			shardCounts[i] = 1
 		case result.GetShards() < 1 && result.GetRejectReason() == "":
 			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
@@ -1418,12 +1425,12 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 				// Record the gap as a positive magnitude tagged by direction,
 				// so over- and under-sharding are separate distributions.
 				direction := "over"
-				magnitude := resultShards - c.rateStoreShards
-				if magnitude < 0 {
+				difference := resultShards - c.rateStoreShards
+				if difference < 0 {
 					direction = "under"
-					magnitude = -magnitude
+					difference = -difference
 				}
-				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, mode, direction).Observe(float64(magnitude))
+				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, mode, direction).Observe(float64(difference))
 				level.Debug(log.With(util_log.WithUserID(tenantID, d.logger), "stream", c.stream.Labels)).Log(
 					"msg", "shard count divergence",
 					"mode", mode,

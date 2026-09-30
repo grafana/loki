@@ -4504,13 +4504,16 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 		responseErr: errors.New("limits service unavailable"),
 		wantShards:  rateStoreShards,
 	}, {
-		name:       "the stream has no result: the rate store's count is used",
+		// No decision from the service means nothing to enforce, so the
+		// stream is written unsharded rather than dropped (fail open).
+		name:       "the stream has no result: it is written unsharded",
 		response:   &limitsproto.CheckLimitsAndShardResponse{},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		// The shard count of an answer the service could not decide on carries
-		// no decision, so it must not be used either.
-		name: "the service could not check the stream: the rate store's count is used",
+		// no decision, so it must not be used either; the rate store's count is
+		// not used here, only the service's.
+		name: "the service could not check the stream: it is written unsharded",
 		response: &limitsproto.CheckLimitsAndShardResponse{
 			Results: []*limitsproto.StreamShardResult{{
 				StreamHash: streamHash,
@@ -4518,7 +4521,7 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
 			}},
 		},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		name: "the answer has no shard count, and there is no reject reason: this should/must not happen",
 		response: &limitsproto.CheckLimitsAndShardResponse{
