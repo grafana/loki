@@ -29,7 +29,7 @@ jobs:
         cache-dependency-path: ./operator/go.sum
     - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
       with:
-        version: "v0.30.0"
+        version: "v0.33.0"
     - name: Run scorecard
       run: make scorecard
       working-directory: ./operator

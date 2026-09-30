@@ -100,7 +100,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 			return line, false
 		}
 
-		addErrLabel(errJSON, err, lbs)
+		lbs.SetErr(errJSON, err)
 
 		return line, true
 	}
@@ -451,7 +451,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	if l.strict && l.dec.Err() != nil {
-		addErrLabel(errLogfmt, l.dec.Err(), lbs)
+		lbs.SetErr(errLogfmt, l.dec.Err())
 
 		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
 			return line, false
@@ -642,7 +642,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	}
 
 	if l.strict && l.dec.Err() != nil {
-		addErrLabel(errLogfmt, l.dec.Err(), lbs)
+		lbs.SetErr(errLogfmt, l.dec.Err())
 		return line, true
 	}
 
@@ -708,14 +708,14 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	// the parser will pass an error if other
 	// parts of the line are malformed
 	if !isValidJSONStart(line) {
-		addErrLabel(errJSON, nil, lbs)
+		lbs.SetErr(errJSON, nil)
 		return line, true
 	}
 
 	var matches int
 	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
 		if err != nil {
-			addErrLabel(errJSON, err, lbs)
+			lbs.SetErr(errJSON, err)
 			return
 		}
 
@@ -798,7 +798,7 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 	// we only care about object and values.
 	if line[0] != '{' {
-		addErrLabel(errJSON, errUnexpectedJSONObject, lbs)
+		lbs.SetErr(errJSON, errUnexpectedJSONObject)
 		return line, true
 	}
 
@@ -808,23 +808,11 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		if errors.Is(err, errLabelDoesNotMatch) {
 			return entry, false
 		}
-		addErrLabel(errJSON, err, lbs)
+		lbs.SetErr(errJSON, err)
 		return line, true
 	}
 
 	return entry, true
-}
-
-func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
-	lbs.SetErr(msg)
-
-	if err != nil {
-		lbs.SetErrorDetails(err.Error())
-	}
-
-	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
-	}
 }
 
 func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {
