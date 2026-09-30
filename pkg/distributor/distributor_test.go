@@ -460,7 +460,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 }
 
-// Exercise multiple groups directly; parsers currently produce one group per stream.
+// Exercise validation and enrichment across multiple resource and scope groups.
 func Test_PushInternalRequest(t *testing.T) {
 	at := time.Unix(123456, 0)
 	group := func(attr string, entries ...logproto.Entry) logproto.ResourceLogs {
@@ -1502,23 +1502,52 @@ func TestDistributorPushToKafka(t *testing.T) {
 	})
 
 	t.Run("with kafka, no failures is successful", func(t *testing.T) {
-		kafkaWriter := &mockKafkaProducer{
-			failOnWrite: false,
-		}
-		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
-		for _, d := range distributors {
-			d.cfg.KafkaEnabled = true
-			d.cfg.IngesterEnabled = false
-			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
-			d.kafkaWriter = kafkaWriter
-		}
-		startAndWaitRunningDistributors(t, distributors)
+		for _, deferExpansion := range []bool{false, true} {
+			t.Run(fmt.Sprintf("deferExpansion=%t", deferExpansion), func(t *testing.T) {
+				kafkaWriter := &mockKafkaProducer{
+					failOnWrite: false,
+				}
+				distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
+				for _, d := range distributors {
+					d.cfg.OTLPConfig.DeferAttributeExpansion = deferExpansion
+					d.cfg.KafkaEnabled = true
+					d.cfg.IngesterEnabled = false
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+					d.kafkaWriter = kafkaWriter
+				}
+				startAndWaitRunningDistributors(t, distributors)
 
-		request := makeWriteRequest(10, 64)
-		_, err := distributors[0].Push(ctx, request)
-		require.NoError(t, err)
+				request := makeWriteRequest(10, 64)
+				_, err := distributors[0].Push(ctx, request)
+				require.NoError(t, err)
 
-		require.Equal(t, uint64(1), kafkaWriter.pushes)
+				require.Equal(t, uint64(1), kafkaWriter.pushes)
+				decoder, err := kafka.NewDecoder()
+				require.NoError(t, err)
+				var entries []logproto.Entry
+				for _, record := range kafkaWriter.records {
+					var nested logproto.InternalStreamAdapter
+					// ensure the records are encoded in nested form only when deferExpansion is true
+					if deferExpansion {
+						require.NoError(t, nested.Unmarshal(record.Value))
+					} else {
+						require.Error(t, nested.Unmarshal(record.Value))
+					}
+					// decoder should be able to decode both forms and return flat view
+					decoded, err := decoder.DecodeWithoutLabels(record.Value)
+					require.NoError(t, err)
+					require.Equal(t, request.Streams[0].Labels, decoded.Labels)
+					entries = append(entries, decoded.Entries...)
+				}
+				require.Len(t, entries, len(request.Streams[0].Entries))
+				for i, entry := range entries {
+					want := request.Streams[0].Entries[i]
+					require.True(t, want.Timestamp.Equal(entry.Timestamp))
+					require.Equal(t, want.Line, entry.Line)
+					require.ElementsMatch(t, want.StructuredMetadata, entry.StructuredMetadata)
+				}
+			})
+		}
 	})
 
 	t.Run("shared metadata survives Kafka encoding", func(t *testing.T) {
@@ -1530,63 +1559,84 @@ func TestDistributorPushToKafka(t *testing.T) {
 		}{
 			{name: "one record", maxSize: 1024, wantRecords: 1},
 			{name: "split records", maxSize: 256, wantRecords: 2},
-			{name: "entry exceeds record limit", maxSize: 100, wantErr: "single entry size"},
+			{name: "entry exceeds record limit", maxSize: 100, wantErr: "exceeds maximum allowed size"},
 		} {
-			t.Run(tc.name, func(t *testing.T) {
-				lim := &validation.Limits{}
-				flagext.DefaultValues(lim)
-				lim.RejectOldSamples = false
-				lim.DiscoverLogLevels = false
-				distributors, _ := prepareButDontStart(t, 1, 0, lim, nil)
-				d := distributors[0]
-				producer := &mockKafkaProducer{}
-				d.cfg.KafkaEnabled = true
-				d.cfg.IngesterEnabled = false
-				d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = tc.maxSize
-				d.kafkaWriter = producer
-				startAndWaitRunningDistributors(t, distributors)
+			for _, deferExpansion := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/deferExpansion=%t", tc.name, deferExpansion), func(t *testing.T) {
+					lim := &validation.Limits{}
+					flagext.DefaultValues(lim)
+					lim.RejectOldSamples = false
+					lim.DiscoverLogLevels = false
+					distributors, _ := prepareButDontStart(t, 1, 0, lim, nil)
+					d := distributors[0]
+					producer := &mockKafkaProducer{}
+					d.cfg.OTLPConfig.DeferAttributeExpansion = deferExpansion
+					d.cfg.KafkaEnabled = true
+					d.cfg.IngesterEnabled = false
+					d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = tc.maxSize
+					d.kafkaWriter = producer
+					startAndWaitRunningDistributors(t, distributors)
 
-				at := time.Unix(123456, 0).UTC()
-				first := logproto.Entry{Timestamp: at, Line: strings.Repeat("a", 100), StructuredMetadata: buildNestedAttrs("service_name", "entry")}
-				second := logproto.Entry{Timestamp: at.Add(time.Second), Line: strings.Repeat("b", 100)}
-				req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
-					Labels: `{app="shared"}`,
-					ResourceLogs: []logproto.ResourceLogs{{Attrs: buildNestedAttrs("service.name", "resource"), ScopeLogs: []logproto.ScopeLogs{
-						{Attrs: buildNestedAttrs("scope.name", "first"), Entries: []logproto.Entry{first}},
-						{Attrs: buildNestedAttrs("scope.name", "second"), Entries: []logproto.Entry{second}},
-					}}},
-				}}}
-				_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
-				if tc.wantErr != "" {
-					require.ErrorContains(t, err, tc.wantErr)
-					require.Empty(t, producer.records)
-					return
-				}
-				require.NoError(t, err)
-				require.Len(t, producer.records, tc.wantRecords)
-
-				want := []logproto.Entry{
-					{Timestamp: first.Timestamp, Line: first.Line, StructuredMetadata: buildNestedAttrs("service_name", "entry", "scope_name", "first")},
-					{Timestamp: second.Timestamp, Line: second.Line, StructuredMetadata: buildNestedAttrs("scope_name", "second", "service_name", "resource")},
-				}
-				decoder, err := kafka.NewDecoder()
-				require.NoError(t, err)
-				decoded := 0
-				for _, record := range producer.records {
-					require.Equal(t, "test", string(record.Key))
-					require.LessOrEqual(t, len(record.Value), tc.maxSize)
-					stream, _, err := decoder.Decode(record.Value)
-					require.NoError(t, err)
-					require.Equal(t, `{app="shared"}`, stream.Labels)
-					require.NotEmpty(t, stream.Entries)
-					for _, entry := range stream.Entries {
-						require.Less(t, decoded, len(want))
-						require.Equal(t, want[decoded], entry)
-						decoded++
+					at := time.Unix(123456, 0).UTC()
+					first := logproto.Entry{Timestamp: at, Line: strings.Repeat("a", 100), StructuredMetadata: buildNestedAttrs("service_name", "entry")}
+					second := logproto.Entry{Timestamp: at.Add(time.Second), Line: strings.Repeat("b", 100)}
+					req := &logproto.InternalPushRequest{Streams: []logproto.InternalStreamAdapter{{
+						Labels: `{app="shared"}`,
+						ResourceLogs: []logproto.ResourceLogs{{Attrs: buildNestedAttrs("service.name", "resource"), ScopeLogs: []logproto.ScopeLogs{
+							{Attrs: buildNestedAttrs("scope.name", "first"), Entries: []logproto.Entry{first}},
+							{Attrs: buildNestedAttrs("scope.name", "second"), Entries: []logproto.Entry{second}},
+						}}},
+					}}}
+					_, err := d.pushWithResolver(ctx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
+					if tc.wantErr != "" {
+						require.ErrorContains(t, err, tc.wantErr)
+						require.Empty(t, producer.records)
+						return
 					}
-				}
-				require.Equal(t, len(want), decoded)
-			})
+					require.NoError(t, err)
+					require.Len(t, producer.records, tc.wantRecords)
+
+					want := []logproto.Entry{
+						{Timestamp: first.Timestamp, Line: first.Line, StructuredMetadata: buildNestedAttrs("service_name", "entry", "scope_name", "first")},
+						{Timestamp: second.Timestamp, Line: second.Line, StructuredMetadata: buildNestedAttrs("scope_name", "second", "service_name", "resource")},
+					}
+					decoder, err := kafka.NewDecoder()
+					require.NoError(t, err)
+					decoded := 0
+					for _, record := range producer.records {
+						require.Equal(t, "test", string(record.Key))
+						require.LessOrEqual(t, len(record.Value), tc.maxSize)
+						var nested logproto.InternalStreamAdapter
+						if deferExpansion {
+							require.NoError(t, nested.Unmarshal(record.Value))
+							for _, resource := range nested.ResourceLogs {
+								require.Equal(t, buildNestedAttrs("service_name", "resource"), resource.Attrs)
+								for _, scope := range resource.ScopeLogs {
+									require.Len(t, scope.Attrs, 1)
+									require.Equal(t, "scope_name", scope.Attrs[0].Name)
+									for _, entry := range scope.Entries {
+										for _, attr := range entry.StructuredMetadata {
+											require.NotEqual(t, "scope_name", attr.Name)
+										}
+									}
+								}
+							}
+						} else {
+							require.Error(t, nested.Unmarshal(record.Value), "the default must retain the flat wire format")
+						}
+						stream, err := decoder.DecodeWithoutLabels(record.Value)
+						require.NoError(t, err)
+						require.Equal(t, `{app="shared"}`, stream.Labels)
+						require.NotEmpty(t, stream.Entries)
+						for _, entry := range stream.Entries {
+							require.Less(t, decoded, len(want))
+							require.Equal(t, want[decoded], entry)
+							decoded++
+						}
+					}
+					require.Equal(t, len(want), decoded)
+				})
+			}
 		}
 	})
 

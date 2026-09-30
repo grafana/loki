@@ -1562,21 +1562,23 @@ func (d *Distributor) recordsForStreams(
 ) ([]*kgo.Record, error) {
 	records := make([]*kgo.Record, 0, len(streams))
 
-	// TODO(shared-attrs): use nested encoding when delayed attribute expansion is enabled.
 	for _, stream := range streams {
-		// Encode reads the view synchronously without modifying it.
-		flat := stream.Stream.FlatView()
-
 		// TODO(grobinson): Check if this is still needed, I would have expected
 		// streams with no entries to have be removed when the request was validated.
-		if len(flat.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 		partition, err := subring.ActivePartitionForKey(stream.HashKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find partition for stream: %w", err)
 		}
-		streamRecords, err := kafka.Encode(partition, tenant, flat, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		var streamRecords []*kgo.Record
+		if d.cfg.OTLPConfig.DeferAttributeExpansion {
+			streamRecords, err = kafka.EncodeInternal(partition, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		} else {
+			// Encode reads the view synchronously without modifying it.
+			streamRecords, err = kafka.Encode(partition, tenant, stream.Stream.FlatView(), d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal streams to records: %w", err)
 		}

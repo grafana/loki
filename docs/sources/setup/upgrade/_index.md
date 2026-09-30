@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Optional nested push protos
+
+The distributor can now use nested push protos for OTLP processing and Kafka writes. This is disabled by default; no action is needed unless you enable it.
+
+To enable it, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). Nested protos keep OTLP resource and scope attributes shared across log entries during processing and in Kafka, avoiding a copy of those attributes on every entry.
+
+Before enabling this option, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) have been upgraded to a Loki version that supports nested push protos.
+
+Disabling this option restores the previous format for new Kafka writes, but these services must continue to support nested protos while records in that format remain in Kafka.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
