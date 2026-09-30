@@ -759,13 +759,31 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return nil, err
 	}
 
-	// Live-mode streams join streams only now, sharded with the count the
-	// limits service returns. Candidates are only collected while the limits
-	// service is enabled, see maybeShardByRate.
+	// Live-mode streams are sharded with the count the limits service returns,
+	// which also decides whether they are written at all. They join streams
+	// only after the limits have been enforced on the remaining streams, as
+	// CheckLimitsAndShard has already checked them. Candidates are only
+	// collected while the limits service is enabled, see maybeShardByRate.
+	var (
+		liveStreams  []KeyedStream
+		liveRejected []logproto.InternalStreamAdapter
+	)
 	if len(liveCandidates) > 0 {
 		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, liveCandidates)
 		for i, c := range liveCandidates {
-			streams = append(streams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, shardCounts[i])...)
+			count := shardCounts[i]
+			if count == 0 {
+				// The limits service has no stream budget left for this
+				// stream. Only this stream is rejected, the rest of the push
+				// is still written. In dry-run mode the rejection is recorded
+				// by the limits service but not acted on here.
+				if !d.cfg.IngestLimitsDryRunEnabled {
+					liveRejected = append(liveRejected, c.stream)
+					continue
+				}
+				count = 1
+			}
+			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
 		}
 	}
 
@@ -778,31 +796,54 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, shadowCandidates)
 		}
 
-		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
-		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-		enforceTimer.ObserveDuration()
-		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(rejected) > 0 {
-				discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
-				for _, stream := range rejected {
-					discardedStreams = append(discardedStreams, stream.Stream)
-				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+		// streams holds every stream but the live-mode ones, so shadow-mode
+		// streams are enforced as before. It is empty when the push consists of
+		// live-mode streams only.
+		if len(streams) > 0 {
+			enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+			accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+			enforceTimer.ObserveDuration()
+			if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+				if len(rejected) > 0 {
+					discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+					for _, stream := range rejected {
+						discardedStreams = append(discardedStreams, stream.Stream)
+					}
+					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
 
-				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-				d.writeFailuresManager.Log(tenantID, err)
-				// Set the validation error to the stream limit error so it is returned to the client.
-				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-				// If none of the streams were accepted, return early.
-				if len(accepted) == 0 {
-					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+					// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+					// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+					err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+					d.writeFailuresManager.Log(tenantID, err)
+					// Set the validation error to the stream limit error so it is returned to the client.
+					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+					// If none of the streams were accepted, and there are no
+					// live-mode streams to write either, return early.
+					if len(accepted) == 0 && len(liveStreams) == 0 {
+						return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+					}
 				}
+				streams = accepted
 			}
-			streams = accepted
+		}
+	}
+
+	streams = append(streams, liveStreams...)
+
+	if len(liveRejected) > 0 {
+		d.trackDiscardedData(ctx, liveRejected, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+
+		// Only one of the rejected streams is named, for the same reason as
+		// above.
+		rejectErr := fmt.Errorf(validation.StreamLimitErrorMsg, liveRejected[0].Labels, tenantID)
+		d.writeFailuresManager.Log(tenantID, rejectErr)
+		validationErr = httpgrpc.Error(http.StatusTooManyRequests, rejectErr.Error())
+		// The streams that were not rejected are still written, so only a push
+		// whose streams were all rejected returns the error instead.
+		if len(streams) == 0 {
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", rejectErr.Error())
 		}
 	}
 
@@ -1299,12 +1340,16 @@ const limitsServiceShardTimeout = 2 * time.Second
 //
 // A candidate the service did not answer for, or could not decide on, keeps
 // the local rate store's count, so a limits service outage degrades to the
-// previous behavior rather than stopping sharding. A rejected stream is not
-// sharded: the service has no stream count budget left for more shards.
-// Whether such a stream is written at all is decided by EnforceLimits.
+// previous behavior rather than stopping sharding.
+//
+// A candidate the service rejected for exceeding the stream limit gets a
+// count of 0: the service has no budget for the stream at all, not even for
+// one shard, so it must not be written. A candidate rejected for any other
+// reason gets 1, as the stream is written but not sharded. The caller decides
+// what to do with a 0; shadow-mode callers discard the counts.
 //
 // It runs synchronously, on the push path, with a short timeout. The mode is
-// only used to label the metrics; shadow-mode callers discard the counts.
+// only used to label the metrics.
 func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mode string, candidates []limitsServiceShardCandidate) []int {
 	// Deferred so that every path, success, failure and Unimplemented alike,
 	// records the latency the call adds.
@@ -1322,25 +1367,24 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 	if err != nil {
 		// None of the candidates were answered, so count them all as failed
 		// rather than leaving them out of the coverage metrics.
-		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Add(float64(len(candidates)))
+		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Add(float64(len(candidates)))
 		if status.Code(err) == codes.Unimplemented {
 			// The service predates the RPC, for instance during a rollout.
 			level.Warn(d.logger).Log("msg", "CheckLimitsAndShard call returned Unimplemented; the limits service may predate this RPC", "tenant", tenantID, "mode", mode)
-			return shardCounts
+		} else {
+			level.Debug(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		}
-		level.Debug(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		return shardCounts
 	}
+
 	for i, c := range candidates {
 		result, ok := results[c.stream.Hash]
 		switch {
 		case result.GetRejectReason() != "":
 			// A difference in kind rather than in shard count: the local rate
 			// store never rejects a stream.
-			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode).Inc()
-			// TODO(chaudum): Return 0 shards as an indicator of a rejected stream
-			// once we skip the ExceedsLimits call for enforcing the limits.
-			shardCounts[i] = 1
+			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
+			shardCounts[i] = 0
 		case !ok,
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
@@ -1349,9 +1393,13 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// partition. Comparing it would report agreement or disagreement
 			// that does not exist.
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
+			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
+			shardCounts[i] = 0
 		case result.GetShards() < 1 && result.GetRejectReason() == "":
 			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
+			shardCounts[i] = 0
 		default:
 			resultShards := int(result.GetShards())
 			shardCounts[i] = resultShards
