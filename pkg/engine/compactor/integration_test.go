@@ -322,14 +322,6 @@ func TestE2ECompactionConvergence(t *testing.T) {
 		layouts[2].SchemaLabels = []string{"label:cluster"}
 		runConvergenceTest(t, layouts)
 	})
-
-	t.Run("mismatched shard factor", func(t *testing.T) {
-		// mismatched shard factors will converge after sorting
-		t.Skipf("Customizing the number of shard buckets is not yet supported")
-		layouts := fiveSourceLayouts()
-		layouts[2].ShardCount = streams.ShardFactor / 2
-		runConvergenceTest(t, layouts)
-	})
 }
 
 // runConvergenceTest creates one overlapping object for every provided logs.SortLayout and expects them to
