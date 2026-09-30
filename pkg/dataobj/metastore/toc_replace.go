@@ -23,10 +23,6 @@ type TableOfContentsEntry struct {
 	// StartTime / EndTime bound the time range covered by the index.
 	StartTime time.Time
 	EndTime   time.Time
-	// FileSize is the encoded on-disk size of the index object, in bytes.
-	FileSize uint64
-	// UncompressedLogsSize is the uncompressed log volume the index references, in bytes.
-	UncompressedLogsSize uint64
 }
 
 // replaceBackoffConfig bounds ReplaceIndexPointers retries on conditional-write
@@ -168,11 +164,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			for _, e := range newEntries {
 				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
-					Path:                 e.Path,
-					StartTs:              e.StartTime,
-					EndTs:                e.EndTime,
-					FileSize:             e.FileSize,
-					UncompressedLogsSize: e.UncompressedLogsSize,
+					Path:    e.Path,
+					StartTs: e.StartTime,
+					EndTs:   e.EndTime,
 				}); err != nil {
 					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}

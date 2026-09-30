@@ -307,20 +307,10 @@ func (c *coordinator) replaceLogIndex(
 		return compactionStats{}, fmt.Errorf("replace source log index %q: got %d results for %d tasks", sourceIndex.Path, len(newEntries), dispatched)
 	}
 
-	// A source row of 0 uncompressed size means unknown. Legacy objects carry
-	// positive-but-wrong internal stats, so keep the replacement unknown until
-	// it can be backfilled without relying on those stats.
-	if sourceIndex.UncompressedLogsSize == 0 {
-		for i := range newEntries {
-			newEntries[i].UncompressedLogsSize = 0
-		}
-	}
-
 	if c.cfg.DryRun {
 		return compactionStats{dispatched: dispatched}, nil
 	}
 
-	c.fillFileSizes(ctx, newEntries)
 	replaceCtx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 
@@ -395,10 +385,9 @@ func (c *coordinator) compactTenantLogs(
 			}
 			minTS, maxTS := taskBounds(ts)
 			resultEntries[i] = metastore.TableOfContentsEntry{
-				Path:                 artifact.Path,
-				StartTime:            time.Unix(0, minTS).UTC(),
-				EndTime:              time.Unix(0, maxTS).UTC(),
-				UncompressedLogsSize: taskUncompressedLogsSize(ts),
+				Path:      artifact.Path,
+				StartTime: time.Unix(0, minTS).UTC(),
+				EndTime:   time.Unix(0, maxTS).UTC(),
 			}
 			return nil
 		})
@@ -466,10 +455,9 @@ func (c *coordinator) sortTenantLogObjects(
 
 			obj := objectsByPath[path]
 			resultEntries[resultIdx] = metastore.TableOfContentsEntry{
-				Path:                 artifact.Path,
-				StartTime:            time.Unix(0, obj.minTimestamp).UTC(),
-				EndTime:              time.Unix(0, obj.maxTimestamp).UTC(),
-				UncompressedLogsSize: obj.uncompressedSize,
+				Path:      artifact.Path,
+				StartTime: time.Unix(0, obj.minTimestamp).UTC(),
+				EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
 			}
 			return nil
 		})
@@ -584,8 +572,6 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	if c.cfg.DryRun {
 		return compactionStats{}, nil
 	}
-
-	c.fillFileSizes(ctx, newEntries)
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
@@ -707,12 +693,10 @@ func makeIndexTocEntries(completed []completedIndexMerge, inputs []indexEntry) (
 			return nil, fmt.Errorf("index merge result %d: missing assignment", i)
 		}
 		var (
-			start, end   time.Time
-			uncompressed uint64
+			start, end time.Time
 
-			first     = true
-			sizeKnown = true
-			seen      = make(map[string]struct{})
+			first = true
+			seen  = make(map[string]struct{})
 		)
 		for _, run := range result.task.Runs {
 			for _, section := range run.Sections {
@@ -732,59 +716,18 @@ func makeIndexTocEntries(completed []completedIndexMerge, inputs []indexEntry) (
 					end = input.End
 				}
 				first = false
-				if input.UncompressedLogsSize == 0 {
-					sizeKnown = false
-				}
-				uncompressed += input.UncompressedLogsSize
 			}
 		}
 		if first {
 			return nil, fmt.Errorf("index merge result %d: assignment has no source indexes", i)
 		}
-		if !sizeKnown {
-			uncompressed = 0
-		}
 		entries[i] = metastore.TableOfContentsEntry{
-			Path:                 result.artifact.Path,
-			StartTime:            start.UTC(),
-			EndTime:              end.UTC(),
-			UncompressedLogsSize: uncompressed,
+			Path:      result.artifact.Path,
+			StartTime: start.UTC(),
+			EndTime:   end.UTC(),
 		}
 	}
 	return entries, nil
-}
-
-// fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
-// filling in index FileSize before a ToC replace.
-const fileSizeStatConcurrency = 16
-
-// fillFileSizes stats each entry's object and sets FileSize. Best-effort: when
-// the stat fails (missing or not-yet-visible object) the entry keeps its zero
-// FileSize and is persisted as-is.
-//
-// Stats run concurrently (bounded by fileSizeStatConcurrency) because each
-// bucket.Attributes call can take tens of milliseconds; serializing hundreds
-// of entries would dominate the cycle. Each goroutine writes a distinct slice
-// element, so the concurrent writes do not race.
-func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(fileSizeStatConcurrency)
-	for i := range entries {
-		g.Go(func() error {
-			start := time.Now()
-			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
-			c.metrics.observeFileSizeStat(time.Since(start))
-			if err != nil {
-				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
-				return nil
-			}
-			if attrs.Size > 0 {
-				entries[i].FileSize = uint64(attrs.Size)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
 }
 
 // phase is the current step of a tenant's flip-flop worker.
