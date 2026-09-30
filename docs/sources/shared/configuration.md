@@ -1847,6 +1847,13 @@ ingest_limits:
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
 
+  # Enable durability for stream sharding. Rate buckets are written to the
+  # stream metadata topic and restored from it, which removes the warm-up period
+  # after a restart or a partition rebalance during which streams are not
+  # sharded. It adds one record per stream per bucket size.
+  # CLI flag: -ingest-limits.stream-sharding-durability-enabled
+  [stream_sharding_durability_enabled: <boolean> | default = false]
+
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
   # CLI flag: -ingest-limits.num-partitions
@@ -4934,9 +4941,13 @@ shard_streams:
   [desired_rate: <int> | default = 1536KB]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
-  # for this tenant. One of 'disabled' (default, unchanged behavior) or 'shadow'
-  # (ask the limits service and compare its answer against the local rate
-  # store's; the local rate store still decides how streams are sharded).
+  # for this tenant, and whether its answer is used. One of 'disabled' (default,
+  # unchanged behavior), 'shadow' (ask the limits service and compare its answer
+  # against the local rate store's; the local rate store still decides how
+  # streams are sharded) or 'live' (shard streams with the count the limits
+  # service returns, falling back to the local rate store for streams it does
+  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
+  # to be enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
