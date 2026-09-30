@@ -90,7 +90,7 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
 	case *logproto.LoglineIndexRequest:
-		result, err := h.api.LoglineIndexesHandler(ctx, concrete)
+		result, err := h.api.LoglineIndexHandler(ctx, concrete)
 		if err != nil {
 			return nil, err
 		}

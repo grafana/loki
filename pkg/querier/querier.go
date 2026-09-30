@@ -115,7 +115,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
-	LoglineIndexes(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error)
+	LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
@@ -620,7 +620,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	)
 }
 
-func (q *SingleTenantQuerier) LoglineIndexes(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+func (q *SingleTenantQuerier) LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
 	if q.loglineHintProvider == nil {
 		return nil, errors.New("logline hint provider is not configured")
 	}
