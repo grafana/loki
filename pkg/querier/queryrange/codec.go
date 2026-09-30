@@ -1318,16 +1318,21 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 }
 
 func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
-	if req.Header.Get("Accept") == ProtobufType {
-		return encodeResponseProtobuf(ctx, res)
-	} else if req.Header.Get("Accept") == ParquetType {
-		return encodeResponseParquet(ctx, res)
+	var response *http.Response
+	var err error
+	switch req.Header.Get("Accept") {
+	case ProtobufType:
+		response, err = encodeResponseProtobuf(ctx, res)
+	case ParquetType:
+		response, err = encodeResponseParquet(ctx, res)
+	default:
+		response, err = encodeResponseJSON(ctx, loghttp.GetVersion(req.RequestURI), res, httpreq.ExtractEncodingFlags(req))
 	}
-
-	// Default to JSON.
-	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := httpreq.ExtractEncodingFlags(req)
-	return encodeResponseJSON(ctx, version, res, encodingFlags)
+	if err != nil {
+		return nil, err
+	}
+	setQueryBytesProcessedHeader(response.Header, res)
+	return response, nil
 }
 
 func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
@@ -1592,7 +1597,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}, nil
 	case *DetectedFieldsResponse:
 		resp0 := responses[0].(*DetectedFieldsResponse)
-		headers := resp0.Headers
+		headers := mergeQueryBytesProcessed(responses)
 		limit := resp0.Response.GetLimit()
 
 		fields := []*logproto.DetectedField{}

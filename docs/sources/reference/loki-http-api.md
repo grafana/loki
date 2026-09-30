@@ -173,6 +173,18 @@ When using `/api/v1/push`, you must send the timestamp as a string and not a num
 
 Query endpoints such as `/loki/api/v1/query` and `/loki/api/v1/query_range` return a set of statistics about the query execution. Those statistics allow users to understand the amount of data processed and at which speed.
 
+Successful `/loki/api/v1/query` and `/loki/api/v1/query_range` responses also include
+`X-Loki-Query-Bytes-Processed`. Its value is the nonnegative decimal integer from
+`data.stats.summary.totalBytesProcessed`, including zero. It describes the query
+work represented by the response statistics, not the size of the response body.
+The header can be read without decoding JSON, protobuf, or Parquet, or decompressing
+a gzip response. JSON response statistics remain unchanged.
+
+The detected-fields and detected-field-values endpoints also expose their
+completed downstream query usage in this header. Older servers and metadata
+responses whose usage is unavailable can omit it. It does not include worker
+execution that completes after the response has been finalized.
+
 The example below show all possible statistics returned with their respective description.
 
 ```json

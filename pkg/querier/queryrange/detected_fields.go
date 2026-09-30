@@ -80,7 +80,7 @@ func NewDetectedFieldsHandler(
 					Fields: fields,
 					Values: values,
 				},
-				Headers: re.Headers,
+				Headers: withQueryBytesProcessed(re.Headers, strconv.FormatInt(re.Statistics.Summary.TotalBytesProcessed, 10)),
 			}
 
 			// Otherwise all they get is the field limit, which is a bit confusing

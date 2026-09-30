@@ -1,13 +1,19 @@
 package queryrange
 
 import (
+	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
@@ -15,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestResponseFormat(t *testing.T) {
@@ -199,4 +206,73 @@ func TestSerializeHTTPHandlerStripsClientHintRanges(t *testing.T) {
 	NewSerializeHTTPHandler(next, DefaultCodec).ServeHTTP(w, httpRequest)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Empty(t, got.HintRanges)
+}
+
+func TestQueryUsageHeaderHTTP(t *testing.T) {
+	for _, tc := range []struct{ name, path, query, kind string }{
+		{"range logs", "/loki/api/v1/query_range", `{app="test"}`, "logs"},
+		{"instant metrics", "/loki/api/v1/query", "vector(1)", "vector"},
+		{"range metrics", "/loki/api/v1/query_range", "vector(1)", "matrix"},
+		{"fields", "/loki/api/v1/detected_fields", `{app="test"}`, "fields"},
+		{"field values", "/loki/api/v1/detected_field/foo/values", `{app="test"}`, "fields"},
+	} {
+		for _, zipped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/gzip=%t", tc.name, zipped), func(t *testing.T) {
+				const n int64 = 123456789
+				response := usageHeaderResponse(tc.kind, n)
+				if tc.kind == "fields" {
+					response = &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{}, Headers: withQueryBytesProcessed(nil, strconv.FormatInt(n, 10))}
+				}
+				next := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) { return response, nil })
+				var handler http.Handler = NewSerializeHTTPHandler(next, DefaultCodec)
+				if zipped {
+					wrap, err := gziphandler.NewGzipLevelAndMinSize(gzip.DefaultCompression, 1)
+					require.NoError(t, err)
+					handler = wrap(handler)
+				}
+				req := httptest.NewRequest(http.MethodGet, tc.path+"?query="+url.QueryEscape(tc.query)+"&start=1&end=2&time=2&step=1", nil)
+				req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
+				req.Header.Set(queryBytesProcessedHeader, "999")
+				if zipped {
+					req.Header.Set("Accept-Encoding", "gzip")
+				}
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, req)
+				actual := recorder.Result()
+				defer actual.Body.Close()
+				require.Equal(t, http.StatusOK, actual.StatusCode, recorder.Body.String())
+				require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(queryBytesProcessedHeader), "must be present before headers are committed")
+				var reader io.Reader = actual.Body
+				if zipped {
+					require.Equal(t, "gzip", actual.Header.Get("Content-Encoding"))
+					gz, err := gzip.NewReader(reader)
+					require.NoError(t, err)
+					defer gz.Close()
+					reader = gz
+				}
+				actualBody, err := io.ReadAll(reader)
+				require.NoError(t, err)
+				expected, err := encodeResponseJSON(req.Context(), loghttp.VersionV1, response, httpreq.EncodingFlags{})
+				require.NoError(t, err)
+				defer expected.Body.Close()
+				expectedBody, err := io.ReadAll(expected.Body)
+				require.NoError(t, err)
+				require.JSONEq(t, string(expectedBody), string(actualBody))
+			})
+		}
+	}
+}
+
+func TestQueryFailureDoesNotInventUsageHeader(t *testing.T) {
+	next := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, errors.New("query failed")
+	})
+	handler := NewSerializeHTTPHandler(next, DefaultCodec)
+	req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query?query=vector(1)&time=2", nil)
+	req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
+	req.Header.Set("X-Loki-Query-Bytes-Processed", "999")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	require.GreaterOrEqual(t, recorder.Code, 500)
+	require.Empty(t, recorder.Result().Header.Get("X-Loki-Query-Bytes-Processed"))
 }

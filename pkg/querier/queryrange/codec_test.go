@@ -2984,3 +2984,72 @@ func generateSeries() (res []logproto.SeriesIdentifier) {
 	}
 	return res
 }
+
+func TestQueryUsageHeaderEncodings(t *testing.T) {
+	for _, kind := range []string{"logs", "vector", "matrix"} {
+		// Zero covers a response with no newly scanned bytes, including cache hits.
+		// Values above 2^53 must retain integer precision in the header.
+		for _, n := range []int64{0, 9007199254740993} {
+			for _, accept := range []string{JSONType, ProtobufType, ParquetType} {
+				t.Run(fmt.Sprintf("%s/%d/%s", kind, n, accept), func(t *testing.T) {
+					response := usageHeaderResponse(kind, n).WithHeaders([]queryrangebase.PrometheusResponseHeader{
+						{Name: queryBytesProcessedHeader, Values: []string{"999"}},
+					})
+					req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/query_range", nil)
+					req.Header.Set("Accept", accept)
+					req.Header.Set(queryBytesProcessedHeader, "888")
+					ctx := user.InjectOrgID(context.Background(), "test")
+					actual, err := DefaultCodec.EncodeResponse(ctx, req, response)
+					require.NoError(t, err)
+					defer actual.Body.Close()
+					require.Equal(t, strconv.FormatInt(n, 10), actual.Header.Get(queryBytesProcessedHeader))
+					// Compare with the underlying encoder: adding a header must not rewrite
+					// or remove the existing public response body or statistics.
+					var expected *http.Response
+					switch accept {
+					case ProtobufType:
+						expected, err = encodeResponseProtobuf(ctx, response)
+					case ParquetType:
+						expected, err = encodeResponseParquet(ctx, response)
+					default:
+						expected, err = encodeResponseJSON(ctx, loghttp.VersionV1, response, httpreq.EncodingFlags{})
+					}
+					require.NoError(t, err)
+					defer expected.Body.Close()
+					expectedBody, err := io.ReadAll(expected.Body)
+					require.NoError(t, err)
+					actualBody, err := io.ReadAll(actual.Body)
+					require.NoError(t, err)
+					require.Equal(t, expectedBody, actualBody)
+					require.Equal(t, expected.Header.Get("Content-Type"), actual.Header.Get("Content-Type"))
+				})
+			}
+		}
+	}
+}
+
+func TestMergeDetectedFieldsUsage(t *testing.T) {
+	for _, tc := range []struct{ name, a, b, want string }{
+		{"sum", "123", "456", "579"},
+		{"zero", "0", "0", "0"},
+		{"mixed versions", "123", "", ""},
+		{"malformed", "123", "invalid", ""},
+		{"negative", "123", "-1", ""},
+		{"overflow", "9223372036854775807", "1", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{Limit: 10}, Headers: withQueryBytesProcessed(nil, tc.a)}
+			b := &DetectedFieldsResponse{Response: &logproto.DetectedFieldsResponse{Limit: 10}, Headers: withQueryBytesProcessed(nil, tc.b)}
+			merged, err := DefaultCodec.MergeResponse(a, b)
+			require.NoError(t, err)
+			response, err := DefaultCodec.EncodeResponse(context.Background(), httptest.NewRequest("GET", "/loki/api/v1/detected_fields", nil), merged)
+			require.NoError(t, err)
+			defer response.Body.Close()
+			require.Equal(t, tc.want, response.Header.Get(queryBytesProcessedHeader))
+			body, err := io.ReadAll(response.Body)
+			require.NoError(t, err)
+			require.JSONEq(t, `{"limit":10}`, string(body))
+			require.Equal(t, withQueryBytesProcessed(nil, tc.a), a.Headers, "merging must not mutate inputs")
+		})
+	}
+}

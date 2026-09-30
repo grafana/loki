@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http/httptest"
 	runtime "runtime"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,14 +17,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 func Test_parseDetectedFields(t *testing.T) {
@@ -1646,4 +1648,46 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 			require.Equal(t, expectedPath, df[field].jsonPath, "Wrong json path for field %s", field)
 		}
 	})
+}
+
+func TestDetectedFieldsUsageSurvivesHTTPEncoding(t *testing.T) {
+	for _, values := range []bool{false, true} {
+		for _, n := range []int64{0, 1800000} {
+			for _, accept := range []string{"application/json", ProtobufType} {
+				t.Run(fmt.Sprintf("values=%t/bytes=%d/%s", values, n, accept), func(t *testing.T) {
+					originalHeaders := []base.PrometheusResponseHeader{{Name: "Other", Values: []string{"kept"}}}
+					downstream := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+						return &LokiResponse{Status: "success", Headers: originalHeaders,
+							Statistics: stats.Result{Summary: stats.Summary{TotalBytesProcessed: n}}}, nil
+					})
+					handler := NewDetectedFieldsHandler(downstream, downstream, fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1})
+					ctx := user.InjectOrgID(context.Background(), "test")
+					req := &DetectedFieldsRequest{DetectedFieldsRequest: logproto.DetectedFieldsRequest{
+						Start: time.Unix(0, 0), End: time.Unix(60, 0), Query: `{app="test"}`, Limit: 10, LineLimit: 10, Values: values, Name: "field",
+					}, path: "/loki/api/v1/detected_fields"}
+					result, err := handler.Do(ctx, req)
+					require.NoError(t, err)
+					require.Len(t, originalHeaders, 1)
+					got, ok := queryBytesProcessed(result.GetHeaders())
+					require.True(t, ok)
+					require.Equal(t, n, got)
+					httpReq := httptest.NewRequest("GET", req.Path(), nil)
+					httpReq.Header.Set("Accept", accept)
+					response, err := DefaultCodec.EncodeResponse(ctx, httpReq, result)
+					require.NoError(t, err)
+					defer response.Body.Close()
+					require.Equal(t, strconv.FormatInt(n, 10), response.Header.Get(queryBytesProcessedHeader))
+					if accept == ProtobufType {
+						return
+					}
+					// Decode the actual wire response to verify that usage survives the codec round trip.
+					decoded, err := DefaultCodec.DecodeResponse(ctx, response, req)
+					require.NoError(t, err)
+					got, ok = queryBytesProcessed(decoded.GetHeaders())
+					require.True(t, ok)
+					require.Equal(t, n, got)
+				})
+			}
+		}
+	}
 }

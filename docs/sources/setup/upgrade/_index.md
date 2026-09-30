@@ -37,6 +37,20 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Query usage response header
+
+Instant, range, detected-field, and detected-field-value query responses now
+include `X-Loki-Query-Bytes-Processed`, a nonnegative decimal byte count. For
+instant and range queries, it matches the final response statistic
+`summary.totalBytesProcessed`, including zero. The response body is unchanged.
+Clients and gateways can read this header without buffering or parsing the body.
+The header is part of the OSS HTTP response and may be forwarded to clients.
+
+Older servers do not emit the header. Consumers should retain a fallback for
+responses without it. For metadata queries, an aggregate response omits the
+header when any input lacks usage. This header does not include worker execution
+that completes after the frontend returns or cancels its downstream request.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
