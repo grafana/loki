@@ -8,11 +8,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-// The docID space: docID is an epoch tick — absDocBucket - epochBucket, a
-// uint32 count of document buckets from the fixed docIDEpoch. Everything
-// that reasons about that space — the postings buffer's base bucket
-// (epochBucket), Validate's window-coverage rule, the ingest out-of-window
-// panic — derives from the helpers here so the math cannot drift apart.
+// The docID space: docID is an epoch cell — absCell - epochCell, a uint32
+// count of document cells from the fixed docIDEpoch. A cell is one document
+// interval of one document shard: absCell = absBucket × documentShards +
+// documentShard, so time-only indexes (documentShards 1) have one cell per
+// bucket. Everything that reasons about that space — the postings buffer's
+// base cell (epochCell), Validate's window-coverage rule, the ingest
+// out-of-window panic — derives from the helpers here so the math cannot
+// drift apart.
 
 // docIDEpoch is the fixed epoch of the docID window:
 // 2026-01-01T00:00:00Z.
@@ -23,18 +26,19 @@ import (
 // it. (A per-cycle epoch of now − 365d was tried and reverted: it would push
 // replayed archive data behind the epoch as calendar time passes.)
 //
-// At the default 100ms document_interval the uint32 window runs from the
-// epoch to 2039-08-12 UTC (epoch + 2^32 × 100ms) — asserted by
-// TestDocIDWindowEndAtDefaultInterval. Timestamps outside the window PANIC at
-// ingest (processStream); Validate rejects intervals whose window ends less
-// than minDocIDFutureRunway from now, so the panic is reserved for genuinely
+// The uint32 window spans 2^32 cells, which is (2^32 / documentShards) ×
+// document_interval of time: at 100ms time-only it runs to 2039-08-12 UTC,
+// and at the v5 default of 16s × 32 shards to about 2094 — asserted by
+// TestDocIDWindowEnd. Timestamps outside the window PANIC at ingest
+// (processStream); Validate rejects settings whose window ends less than
+// minDocIDFutureRunway from now, so the panic is reserved for genuinely
 // anomalous timestamps, not window exhaustion.
 //
-// Midnight-UTC alignment keeps the epoch bucket an exact multiple of
-// ticksPerDay (the interval divides 24h evenly, per Validate), which the
-// merge's day/date math relies on: writerForDay's `dayStartAbs - baseBucket`
+// Midnight-UTC alignment keeps the epoch cell an exact multiple of
+// cellsPerDay (the interval divides 24h evenly, per Validate), which the
+// merge's day/date math relies on: writerForDay's `dayStartAbs - baseCell`
 // must not underflow, and formatDate (ingest) must agree with dateOfDay
-// (merge) on every representable tick.
+// (merge) on every representable cell.
 var docIDEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // minDocIDFutureRunway is the minimum headroom the docID window must extend
@@ -43,31 +47,32 @@ var docIDEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 // before live traffic starts panicking as the fixed-epoch window fills up.
 const minDocIDFutureRunway = 365 * 24 * time.Hour
 
-// epochBucket returns the epoch's absolute document bucket at the given
-// interval — the base subtracted from every absolute bucket to form a docID.
-func epochBucket(epoch time.Time, intervalNanos int64) uint64 {
-	return uint64(epoch.UnixNano()) / uint64(intervalNanos)
+// epochCell returns the epoch's absolute document cell at the given interval
+// and document shard count — the base subtracted from every absolute cell to
+// form a docID.
+func epochCell(epoch time.Time, intervalNanos int64, documentShards uint64) uint64 {
+	return uint64(epoch.UnixNano()) / uint64(intervalNanos) * documentShards
 }
 
-// docIDWindowLength returns the span of the uint32 docID window for
-// the given document interval: 2^32 ticks. Timestamps at or past the window's
-// end (epoch + this length) panic at ingest, so Validate requires the end to
-// be at least minDocIDFutureRunway away.
-func docIDWindowLength(interval time.Duration) time.Duration {
-	const windowTicks = 1 << 32
-	if interval > math.MaxInt64/windowTicks {
-		// 2^32 ticks overflow time.Duration (~292y); the window is effectively
+// docIDWindowLength returns the span of time the uint32 docID window covers:
+// 2^32 cells, or 2^32 / documentShards intervals. documentShards 0 means 1.
+// Timestamps at or past the window's end (epoch + this length) panic at
+// ingest, so Validate requires the end to be at least minDocIDFutureRunway
+// away.
+func docIDWindowLength(interval time.Duration, documentShards int) time.Duration {
+	windowBuckets := int64(1<<32) / int64(max(documentShards, 1))
+	if int64(interval) > math.MaxInt64/windowBuckets {
+		// The window overflows time.Duration (~292y); it is effectively
 		// unbounded for any realistic interval.
 		return math.MaxInt64
 	}
-	return windowTicks * interval
+	return time.Duration(windowBuckets) * interval
 }
 
-// docIDWindowEnd returns the exclusive end of the docID window for the
-// given document interval: docIDEpoch + 2^32 ticks. At 100ms this is
-// 2039-08-12 UTC.
-func docIDWindowEnd(interval time.Duration) time.Time {
-	return docIDEpoch.Add(docIDWindowLength(interval))
+// docIDWindowEnd returns the exclusive end of the docID window:
+// docIDEpoch + docIDWindowLength. At 100ms time-only this is 2039-08-12 UTC.
+func docIDWindowEnd(interval time.Duration, documentShards int) time.Time {
+	return docIDEpoch.Add(docIDWindowLength(interval, documentShards))
 }
 
 // recordRef identifies the Kafka record a stream was decoded from. It exists
@@ -100,14 +105,15 @@ func (r recordRef) String() string {
 // the crash to the Kafka record that carried the timestamp, making the panic
 // actionable: remediation is advancing the offset past that record (or fixing
 // the interval/epoch config).
-func panicOutOfWindow(ts time.Time, interval time.Duration, ref recordRef) {
+func panicOutOfWindow(ts time.Time, interval time.Duration, documentShards int, ref recordRef) {
 	panic(fmt.Sprintf(
-		"logline builder: log timestamp %s (record %s) is outside the docID window [%s, %s) (fixed epoch 2026-01-01 + 2^32 × %v document_interval); "+
+		"logline builder: log timestamp %s (record %s) is outside the docID window [%s, %s) (fixed epoch 2026-01-01 + 2^32 cells of %v document_interval × %d document_shards); "+
 			"out-of-window data must fail loudly rather than be silently unindexed (Adaptive Logs Archive/Replay can replay pre-window logs)",
 		ts.UTC().Format(time.RFC3339Nano),
 		ref,
 		docIDEpoch.Format(time.RFC3339),
-		docIDWindowEnd(interval).UTC().Format(time.RFC3339),
+		docIDWindowEnd(interval, documentShards).UTC().Format(time.RFC3339),
 		interval,
+		max(documentShards, 1),
 	))
 }

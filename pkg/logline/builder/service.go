@@ -1059,6 +1059,7 @@ func (s *Service) uploadPartialIndexes(ctx context.Context, files []fileInfo) er
 				ShardAlgorithm:   s.cfg.Index.ShardAlgorithm,
 				ShardValue:       f.shardValue,
 				DocumentInterval: s.cfg.Index.DocumentInterval,
+				DocumentShards:   s.cfg.Index.DocumentShards,
 			}
 			if err := meta.SetFileInfo(f.file); err != nil {
 				return fmt.Errorf("failed to populate file info: %w", err)

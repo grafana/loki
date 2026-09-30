@@ -90,6 +90,7 @@ type streamIngester struct {
 	// Reusable per-stream scratch — reset via [:0] to avoid allocs.
 	scratchNgrams      [][8]byte
 	scratchLabelValues []string
+	scratchHash        []byte
 
 	// Per-entry date cache to avoid time.Format allocations.
 	cachedYear  int
@@ -184,17 +185,19 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 	}
 	runDir := filepath.Join(cfg.ScratchDir, "flat_"+sid)
 
-	// The docID base bucket comes from the FIXED docIDEpoch (2026-01-01, the
+	// The docID base cell comes from the FIXED docIDEpoch (2026-01-01, the
 	// earliest Adaptive Logs archive date — see docid_window.go). Timestamps
 	// outside the uint32 window panic at ingest. In pipeline mode this config
 	// is computed ONCE and shared by every worker's buffer — all buffers of
-	// one cycle must agree on baseBucket or the merged docIDs would disagree.
+	// one cycle must agree on baseCell or the merged docIDs would disagree.
+	documentShards := uint64(max(cfg.Index.DocumentShards, 1))
 	pbCfg := postingsBufferConfig{
 		bufferPairs:    cfg.PostingsBufferPairs,
 		spillWatermark: cfg.PostingsSpillWatermark,
 		intervalNanos:  intervalNanos,
-		ticksPerDay:    uint64((24 * time.Hour) / cfg.Index.DocumentInterval),
-		baseBucket:     epochBucket(docIDEpoch, intervalNanos),
+		documentShards: documentShards,
+		cellsPerDay:    uint64((24*time.Hour)/cfg.Index.DocumentInterval) * documentShards,
+		baseCell:       epochCell(docIDEpoch, intervalNanos, documentShards),
 		shardCount:     cfg.Index.ShardCount,
 		shardFn:        shardFn,
 		scratchDir:     runDir,
@@ -311,6 +314,7 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 
 	postings := w.postings
 	ngramLength := w.ngramLength
+	documentShard := w.documentShard(parsedLabels)
 	for i := range stream.Entries {
 		entry := &stream.Entries[i]
 		entryTime := entry.Timestamp.UTC()
@@ -321,8 +325,7 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 			continue
 		}
 
-		absBucket := uint64(entryTime.UnixNano()) / uint64(postings.intervalNanos)
-		docID, ok := postings.tick(absBucket)
+		docID, ok := postings.tick(postings.absCell(entryTime.UnixNano(), documentShard))
 		if !ok {
 			// DELIBERATE never-panic override (see CLAUDE.md invariant #7): a
 			// timestamp outside the fixed-epoch docID window means replayed
@@ -336,7 +339,7 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 			// runs first, so pre-epoch entries never get here. That branch now
 			// defends only against future bugs that bypass the minDate filter
 			// (e.g. an empty minDate, or reordering the checks).
-			panicOutOfWindow(entryTime, time.Duration(postings.intervalNanos), ref)
+			panicOutOfWindow(entryTime, time.Duration(postings.intervalNanos), int(postings.documentShards), ref)
 		}
 		w.observeDate(date, entryTime, enqueuedAt)
 
@@ -365,6 +368,25 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 		w.metrics.linesPerBucket.WithLabelValues(date).Inc()
 	}
 	return nil
+}
+
+// documentShard returns the stream's document shard, computed once per
+// stream. The hash must be the ingester's stream fingerprint
+// (instance.getHashForLabels), because queriers match document shards
+// against chunk fingerprints. For stream labels, which never carry __name__,
+// it equals labels.StableHash.
+func (w *streamIngester) documentShard(parsedLabels *labels.Labels) uint32 {
+	shards := w.postings.documentShards
+	if shards <= 1 {
+		return 0
+	}
+	ls := labels.EmptyLabels()
+	if parsedLabels != nil {
+		ls = *parsedLabels
+	}
+	var fp uint64
+	fp, w.scratchHash = ls.HashWithoutLabels(w.scratchHash)
+	return logline.DocumentShard(fp, int(shards))
 }
 
 // observeDate widens the per-date time spans used for file metadata.
@@ -430,7 +452,7 @@ func (s *indexBuilder) unionDateRanges() map[string]*dateRange {
 // unionRefTicksInto ORs every other worker's referenced-tick bitsets into the
 // merge host's map so writerForDay sees the (shard, day) union across all
 // worker buffers. Bitset lengths always match: every buffer of a cycle shares
-// ticksPerDay. Idempotent by construction — OR-ing the same bits again is a
+// cellsPerDay. Idempotent by construction — OR-ing the same bits again is a
 // no-op — so a retried prepareIndexes can call it repeatedly.
 func unionRefTicksInto(host *postingsBuffer, workers []*streamIngester) {
 	for _, w := range workers {
@@ -518,6 +540,7 @@ func (s *indexBuilder) prepareIndexes() ([]fileInfo, error) {
 	writerCfg := format.WriterConfig{
 		DensityThreshold: float32(s.cfg.Index.DensityThreshold),
 		DocumentInterval: s.cfg.Index.DocumentInterval,
+		DocumentShards:   int(host.documentShards),
 	}
 	runCount := len(runPaths)
 	mergeStart := time.Now()

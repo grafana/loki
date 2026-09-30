@@ -16,11 +16,14 @@ import (
 // postingsBuffer buffers (ngram, docID) pairs in one flat SoA buffer, and on
 // fill radix-sorts + dedupes them and spills a sorted run to scratch disk.
 //
-// Time units used throughout this type and the merge:
+// Units used throughout this type and the merge:
 //   - Absolute bucket: wall-clock document bucket counted from Unix epoch
-//     (1970). Used for day/date math.
-//   - Tick (docID): absolute bucket minus baseBucket, packed into uint32 for
-//     storage. baseBucket is the fixed docIDEpoch (2026-01-01); see
+//     (1970).
+//   - Absolute cell: absolute bucket × documentShards + the stream's document
+//     shard. Used for day/date math. With documentShards 1 a cell is a
+//     bucket.
+//   - Tick (docID): absolute cell minus baseCell, packed into uint32 for
+//     storage. baseCell is the fixed docIDEpoch (2026-01-01); see
 //     docid_window.go.
 //
 // A pair's date and shard are both recoverable at merge time without any
@@ -46,11 +49,14 @@ type postingsBuffer struct {
 	bufferPairs    int
 	spillWatermark float64
 	intervalNanos  int64
-	ticksPerDay    uint64
-	// baseBucket is the absolute bucket of docIDEpoch. Stored ticks are
-	// relative: tick = absBucket - baseBucket (fits uint32). Day/date math
-	// converts back with abs = baseBucket + tick.
-	baseBucket uint64
+	// documentShards is the number of cells per document interval (at least
+	// 1). Distinct from shardCount, which splits files by n-gram.
+	documentShards uint64
+	cellsPerDay    uint64
+	// baseCell is the absolute cell of docIDEpoch. Stored ticks are relative:
+	// tick = absCell - baseCell (fits uint32). Day/date math converts back
+	// with abs = baseCell + tick.
+	baseCell   uint64
 	shardCount int
 	shardFn    shard.Func
 	scratchDir string
@@ -73,10 +79,10 @@ type postingsBuffer struct {
 	shardScratch []uint8
 	sortedHead   int // len of the sorted+deduped ngram-ordered prefix of keys/docs
 
-	// Referenced tick-of-day bitset per (shard, dayIndex), populated at spill.
-	// Each (date, shard) .lidx has a documents table: the set of time buckets
-	// that appear in that file. recordDocumentTick records those buckets as we
-	// spill so merge can build the table (and dense-rank postings into it).
+	// Referenced cell-of-day bitset per (shard, dayIndex), populated at spill.
+	// Each (date, shard) .lidx has a documents table: the set of document
+	// cells that appear in that file. recordDocumentTick records those cells as
+	// we spill so merge can build the table (and dense-rank postings into it).
 	refTicks map[refKey][]uint64
 	// refTicksBytes is the running total of bitset bytes allocated in refTicks,
 	// maintained on the allocation path of recordDocumentTick (once per
@@ -126,8 +132,9 @@ type postingsBufferConfig struct {
 	bufferPairs    int
 	spillWatermark float64
 	intervalNanos  int64
-	ticksPerDay    uint64
-	baseBucket     uint64
+	documentShards uint64
+	cellsPerDay    uint64
+	baseCell       uint64
 	shardCount     int
 	shardFn        shard.Func
 	scratchDir     string
@@ -144,8 +151,9 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		bufferPairs:    cfg.bufferPairs,
 		spillWatermark: cfg.spillWatermark,
 		intervalNanos:  cfg.intervalNanos,
-		ticksPerDay:    cfg.ticksPerDay,
-		baseBucket:     cfg.baseBucket,
+		documentShards: max(cfg.documentShards, 1),
+		cellsPerDay:    cfg.cellsPerDay,
+		baseCell:       cfg.baseCell,
 		shardCount:     cfg.shardCount,
 		shardFn:        cfg.shardFn,
 		scratchDir:     cfg.scratchDir,
@@ -160,16 +168,22 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 	}
 }
 
-// tick converts an absolute document bucket (from 1970) into a packed tick
-// relative to baseBucket, reporting whether it fits in the uint32 window.
-// Out-of-window entries (before the fixed docIDEpoch, or beyond 2^32 ticks
+// absCell returns the absolute document cell (from 1970) of a timestamp in
+// the given document shard.
+func (b *postingsBuffer) absCell(unixNano int64, documentShard uint32) uint64 {
+	return uint64(unixNano)/uint64(b.intervalNanos)*b.documentShards + uint64(documentShard)
+}
+
+// tick converts an absolute document cell (from 1970) into a packed tick
+// relative to baseCell, reporting whether it fits in the uint32 window.
+// Out-of-window entries (before the fixed docIDEpoch, or beyond 2^32 cells
 // past it) must never be silently wrapped into a wrong — possibly recent —
 // date's index; the caller panics on them (panicOutOfWindow).
-func (b *postingsBuffer) tick(absBucket uint64) (uint32, bool) {
-	if absBucket < b.baseBucket {
+func (b *postingsBuffer) tick(absCell uint64) (uint32, bool) {
+	if absCell < b.baseCell {
 		return 0, false
 	}
-	rel := absBucket - b.baseBucket
+	rel := absCell - b.baseCell
 	if rel > math.MaxUint32 {
 		return 0, false
 	}
@@ -315,17 +329,17 @@ func (b *postingsBuffer) shardSortAndTrack(n int) ([][8]byte, []uint32, []int32)
 }
 
 // recordDocumentTick notes that shardVal's .lidx for tick's calendar day must
-// include this document bucket. Converts the packed tick back to an absolute
-// bucket (baseBucket + tick) so day / tick-of-day land on real calendar
+// include this document cell. Converts the packed tick back to an absolute
+// cell (baseCell + tick) so day / cell-of-day land on real calendar
 // boundaries, then sets the bit in that (shard, day)'s bitset.
 func (b *postingsBuffer) recordDocumentTick(shardVal int, tick uint32) {
-	abs := b.baseBucket + uint64(tick)
-	day := abs / b.ticksPerDay
-	tod := abs % b.ticksPerDay
+	abs := b.baseCell + uint64(tick)
+	day := abs / b.cellsPerDay
+	tod := abs % b.cellsPerDay
 	k := refKey{shard: shardVal, day: day}
 	bs := b.refTicks[k]
 	if bs == nil {
-		bs = make([]uint64, (b.ticksPerDay+63)/64)
+		bs = make([]uint64, (b.cellsPerDay+63)/64)
 		b.refTicks[k] = bs
 		b.refTicksBytes.Add(uint64(len(bs)) * 8)
 	}
