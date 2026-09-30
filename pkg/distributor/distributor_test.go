@@ -4529,7 +4529,7 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 				{StreamHash: streamHash, Shards: 0},
 			},
 		},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		// The tenant has no stream count budget left, not even for a single
 		// shard, so the stream is not written at all. It is the only stream in

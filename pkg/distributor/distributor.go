@@ -1398,16 +1398,19 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// stream, or the instance that answered does not own its
 			// partition. Comparing it would report agreement or disagreement
 			// that does not exist.
-			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
 			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
 			// Fail open: there is no decision from the service to enforce, so
 			// the stream is written unsharded rather than dropped.
 			shardCounts[i] = 1
 		case result.GetShards() < 1 && result.GetRejectReason() == "":
+			// Should never happen: the frontend's completeShardResults
+			// normalizes a zero shard count without a reject reason away
+			// before it reaches the distributor. Fail open rather than drop
+			// the stream on a contract violation we did not expect.
 			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
-			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
-			shardCounts[i] = 0
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Inc()
+			shardCounts[i] = 1
 		default:
 			resultShards := int(result.GetShards())
 			shardCounts[i] = resultShards
