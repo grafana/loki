@@ -1,10 +1,6 @@
 package log
 
-import (
-	"strings"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-)
+import "strings"
 
 func NoParserHints() ParserHint {
 	return &Hints{}
@@ -48,7 +44,8 @@ type ParserHint interface {
 	// Resets the state of extracted labels
 	Reset()
 
-	// PreserveError returns true when parsing errors were specifically requested
+	// PreserveError returns true when a label filter on __error__ asks to keep the errored lines.
+	// It answers for every error a pipeline raises, not only a parser error.
 	PreserveError() bool
 
 	// ShouldContinueParsingLine returns true when there is no label matcher for the
@@ -142,7 +139,7 @@ func (p *Hints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) 
 }
 
 // NewParserHint creates a new parser hint using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string, stages []Stage) *Hints {
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string, stages Stages) *Hints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
@@ -155,12 +152,14 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	for _, s := range stages {
 		switch f := s.(type) {
 		case *BinaryLabelFilter:
-			// TODO: as long as each leg of the binary filter operates on the same (and only 1) label,
-			// we should be able to add this to our filters
+			// A binary filter reads a label per leg, so it has no single label to index it by.
+			// Collecting one would need each leg to read the same label.
 			continue
 		case LabelFilterer:
-			if len(f.RequiredLabelNames()) > 1 {
-				// Hints can only operate on one label at a time
+			// Hints can only operate on one label at a time. If there're no required label names
+			// we must skip it, otherwise labelFilters and labelNames parallel arrays wouldn't
+			// match anymore.
+			if len(f.RequiredLabelNames()) != 1 {
 				continue
 			}
 			labelFilters = append(labelFilters, f)
@@ -168,15 +167,17 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 		}
 	}
 
+	preserveError := stages.Hints().KeepsErroredLines
+
 	extracted := make(map[string]struct{}, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints), labelFilters: labelFilters, labelNames: labelNames}
+			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: preserveError, labelFilters: labelFilters, labelNames: labelNames}
 		}
-		return &Hints{noLabels: true}
+		return &Hints{noLabels: true, shouldPreserveError: preserveError}
 	}
 
-	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames}
+	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames, shouldPreserveError: preserveError}
 
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
@@ -185,16 +186,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 		return ph
 	}
 
-	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
-}
-
-func containsError(hints []string) bool {
-	for _, s := range hints {
-		if s == logqlmodel.ErrorLabel {
-			return true
-		}
-	}
-	return false
+	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: preserveError}
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
