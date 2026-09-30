@@ -1063,8 +1063,71 @@ eval instant at 60s count_over_time({app="a"} | __error__="" | logfmt | took > 1
 eval instant at 60s count_over_time({app="a"} | logfmt | __error_details__="" | took > 1s [1m])
   expect fail msg: LabelFilterErr
 # A string filter reads __error__, so it keeps the failing line and the error reaches the result.
+# The __error__ filter keeps only that line, and the label filter let all 3 of its entries through.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+# Every comparison that can match a non-empty value keeps the errored line. Every comparison that
+# matches only an empty value drops it, like __error__="" above.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="LabelFilterErr" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".+" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!~"^$" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+# Naming a different error type keeps every line: the errored line does not carry it, and a line that
+# parses carries no error at all.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="JSONParserErr" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~"^$" [1m])
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!~".+" [1m])
+  {app="a", took="2s", size="500KB"} 2
+# __error__=~".*" matches an empty value too (always true), so it keeps every line and reports both series.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" | size="3MB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+# In a binary filter, only a leg that asks to keep the errored lines keeps them.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" or size="500KB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | size="500KB" or __error__!="" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+# `or` gets no special treatment. The size="3MB" leg re-admits the errored line, and that leg names
+# no __error__, so nothing asks to keep it. The query fails on the line the filter let through.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" or size="3MB" [1m])
   expect fail msg: LabelFilterErr
+# An `and` applies both legs, so an __error__!="" leg keeps only the errored line.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" and size="3MB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", __preserve_error__="true", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" and size="3MB" [1m])
+  expect empty
+# A filter before the failing stage reads an empty __error__, so __error__!="" drops every line
+# rather than keeping the failing one.
+eval instant at 60s count_over_time({app="a"} | __error__!="" | logfmt | took > 1s [1m])
+  expect empty
+# Only a label filter keeps the errored line. A formatter that reads __error__ is not a filter, and
+# a grouping clause that names it is not one either.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | label_format e=__error__ [1m])
+  expect fail msg: LabelFilterErr
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | line_format `{{.__error__}}` [1m])
+  expect fail msg: LabelFilterErr
+eval instant at 60s sum by (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+eval instant at 60s max by (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+eval instant at 60s sum without (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+# With the filter in place, a by (__error__) grouping does break the lines down by error type.
+eval instant at 60s sum by (__error__) (count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m]))
+  {__error__="LabelFilterErr"} 3
+  {} 2
+eval instant at 60s max by (__error__) (count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m]))
+  {__error__="LabelFilterErr"} 3
+  {} 2
 # A converting filter cannot read __error__ or __error_details__ and is rejected at
 # parse time.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])

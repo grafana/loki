@@ -1,13 +1,15 @@
 version: "2"
 run:
-  go: "1.22"
+  go: "1.25"
 linters:
   enable:
+    - arangolint
     - asasalint
     - asciicheck
     - bidichk
     - bodyclose
     - canonicalheader
+    - clickhouselint
     - containedctx
     - contextcheck
     - copyloopvar
@@ -28,10 +30,11 @@ linters:
     - gochecknoinits
     - gochecksumtype
     - gocritic
+    - godoclint
     - godot
     - goheader
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - goprintffuncname
     - gosmopolitan
     - grouper
@@ -40,11 +43,13 @@ linters:
     - inamedparam
     - interfacebloat
     - intrange
+    - iotamixing
     - ireturn
     - loggercheck
     - makezero
     - mirror
     - misspell
+    - modernize
     - musttag
     - nakedret
     - nilerr
@@ -74,6 +79,7 @@ linters:
     - tparallel
     - unconvert
     - unparam
+    - unqueryvet
     - usestdlibvars
     - usetesting
     - wastedassign
@@ -82,9 +88,11 @@ linters:
   disable:
     - cyclop
     - depguard
+    - embeddedstructfieldcheck
     - errname
     - exhaustive
     - exhaustruct
+    - funcorder
     - funlen
     - gochecknoglobals
     - gocognit
@@ -97,12 +105,13 @@ linters:
     - mnd
     - nestif
     - nlreturn
+    - noinlineerr
     - nonamedreturns
     - paralleltest
     - testpackage
     - varnamelen
     - wrapcheck
-    - wsl
+    - wsl_v5
   settings:
     ireturn:
       allow:

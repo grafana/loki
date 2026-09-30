@@ -1,3 +1,11 @@
+# v1.113.4 (2026-09-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.113.3 (2026-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.113.2 (2026-09-21)
 
 * **Bug Fix**: Expand S3 operations that check for an error inside an HTTP 200 response (wave 4/4)

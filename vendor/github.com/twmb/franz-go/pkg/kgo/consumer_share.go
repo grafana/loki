@@ -55,13 +55,6 @@ type (
 		lastSentSubscribedTopics []string
 		lastSentRack             bool
 
-		// resubscribe makes the next heartbeat send the subscribed
-		// topics even if they did not change. A purge sets it: the
-		// broker returns the assignment only to a full heartbeat, and a
-		// topic purged and added back before the next heartbeat needs
-		// its new cursors assigned.
-		resubscribe atomic.Bool
-
 		// ackMu/ackC/pendingAcks: used by FlushAcks to wait for
 		// all in-flight acks to drain. pendingAcks is an
 		// atomic counter (free reads/writes on the Record.Ack
@@ -921,9 +914,10 @@ func (s *source) closeShareSession(ctx context.Context) {
 //  1. Local (here): revoke cursors, drain-and-close them (so
 //     post-purge Record.Ack returns errShareConsumerLeft), remove
 //     from tps and reSeen.
-//  2. Server (async): the next heartbeat sends SubscribedTopicNames;
-//     the coordinator revokes, or assigns anew what was added back;
-//     the heartbeat response drives assignPartitions.
+//  2. Server (async): the next heartbeat sends the updated
+//     SubscribedTopicNames; the coordinator revokes; the next
+//     heartbeat response drives assignPartitions to clean up
+//     nowAssigned.
 func (sc *shareConsumer) purgeTopics(topics []string) {
 	sc.cfg.logger.Log(LogLevelDebug, "purging share group topics",
 		"group", sc.cfg.shareGroup,
@@ -950,7 +944,6 @@ func (sc *shareConsumer) purgeTopics(topics []string) {
 		delete(sc.reSeen, topic)
 	}
 	sc.tps.purgeTopics(topics)
-	sc.resubscribe.Store(true)
 }
 
 ////////////
@@ -1103,9 +1096,6 @@ func (sc *shareConsumer) heartbeat() (time.Duration, error) {
 		req.RackID = &sc.cfg.rack
 	}
 
-	if sc.resubscribe.Swap(false) {
-		sc.lastSentSubscribedTopics = nil
-	}
 	tps := sc.tps.load()
 	subscribedTopics := slices.Sorted(maps.Keys(tps))
 	if sc.lastSentSubscribedTopics == nil || !slices.Equal(subscribedTopics, sc.lastSentSubscribedTopics) {

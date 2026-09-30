@@ -3,15 +3,16 @@ package config
 import (
 	"flag"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
-	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/compactor"
 )
 
 type Config struct {
-	Consumer  consumer.Config  `yaml:"consumer"`
-	Index     index.Config     `yaml:"index"`
+	Builder builder.Config `yaml:"builder"`
+	// Uploader is shared by every target that uploads data objects.
+	Uploader  uploader.Config  `yaml:"uploader"`
 	Metastore metastore.Config `yaml:"metastore"`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
@@ -23,8 +24,8 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Consumer.RegisterFlags(f)
-	cfg.Index.RegisterFlags(f)
+	cfg.Builder.RegisterFlags(f)
+	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
 	cfg.Metastore.RegisterFlags(f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(
@@ -46,13 +47,10 @@ func (cfg *Config) Validate() error {
 		// Do not validate configuration if disabled.
 		return nil
 	}
-	if err := cfg.Consumer.Validate(); err != nil {
+	if err := cfg.Builder.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.Index.Validate(); err != nil {
-		return err
-	}
-	if err := cfg.Metastore.Validate(); err != nil {
+	if err := cfg.Uploader.Validate(); err != nil {
 		return err
 	}
 	if err := cfg.Compaction.Validate(); err != nil {

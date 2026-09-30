@@ -104,6 +104,13 @@ func extractFromText(n int, text string, ngrams [][8]byte) [][8]byte {
 	return ngrams
 }
 
+// FormatTerm renders a key produced by ExtractFeatures as the term string to
+// look up in the index. Every v3 key is a text gram written into the low n
+// bytes, so the term is that prefix.
+func FormatTerm(key [8]byte, n int) string {
+	return string(key[:n])
+}
+
 func extractNgramsFromToken(n int, token string, ngrams [][8]byte) [][8]byte {
 	tokenLen := len(token)
 	for j := 0; j <= tokenLen-n; j++ {

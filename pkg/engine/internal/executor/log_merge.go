@@ -13,9 +13,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
@@ -27,14 +27,18 @@ var errNoSourceObjects = errors.New("no source objects found")
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		arts, err := c.doLogObjectMerge(ctx, node)
+		artifact, err := c.doLogObjectMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		if len(arts) == 0 {
-			return emptyPipeline()
+		if artifact == nil {
+			return errorPipeline(ctx, errors.New("LogMerge: missing result artifact"))
 		}
-		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
+		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return NewBufferedPipeline(rec)
 	}, nil)
 }
 
@@ -50,7 +54,7 @@ func (c *Context) dataObjectBucket() objstore.Bucket {
 	return c.bucket
 }
 
-func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
+func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) (*v2.ResultArtifact, error) {
 	start := time.Now()
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -129,7 +133,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 
 	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
-	return []v2.ResultArtifact{{Path: idxPath}}, nil
+	return &v2.ResultArtifact{Path: idxPath}, nil
 }
 
 const (
@@ -414,10 +418,7 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.Mul
 }
 
 func (w *logObjectWriter) startNewObject() error {
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig:    w.c.logsobjCfg,
-		AppendOrderedEnabled: true,
-	}
+	cfg := w.c.logsobjCfg
 	overrides := fixedSortSchema(w.node.SortSchema)
 
 	var err error
