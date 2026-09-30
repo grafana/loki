@@ -49,16 +49,16 @@ func TestReadTenantStreamsAndLogs(t *testing.T) {
 	)
 	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-	gotStreams := ReadTenantStreams(t, t.Context(), obj, "tenant")
+	gotStreams := ReadTenantStreams(t, obj, "tenant")
 	require.Len(t, gotStreams, 2)
 	require.Equal(t, "first", gotStreams[0].Labels.Get("app"))
 	require.Equal(t, "second", gotStreams[1].Labels.Get("app"))
 
-	gotLogs := ReadTenantLogs(t, t.Context(), obj, "tenant")
+	gotLogs := ReadTenantLogs(t, obj, "tenant")
 	require.Equal(t, []string{"one", "two"}, []string{string(gotLogs[0].Line), string(gotLogs[1].Line)})
-	require.Equal(t, "two", string(ReadTenantLogSection(t, t.Context(), obj, "tenant", 2)[0].Line))
+	require.Equal(t, "two", string(ReadTenantLogSection(t, obj, "tenant", 2)[0].Line))
 	gotLogs[0].Line[0] = 'X'
-	require.Equal(t, "one", string(ReadTenantLogSection(t, t.Context(), obj, "tenant", 0)[0].Line))
+	require.Equal(t, "one", string(ReadTenantLogSection(t, obj, "tenant", 0)[0].Line))
 }
 
 func TestLogFixtureBuilder_SchemaLabels(t *testing.T) {

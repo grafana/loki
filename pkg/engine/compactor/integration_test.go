@@ -388,7 +388,7 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 			require.NoError(t, err)
 			require.Equal(t, layouts[fileIdx], opened.SortLayout(), "source %q must preserve its complete sort layout", source.Path)
 		}
-		for _, record := range fixtures.ReadTenantLogs(t, ctx, obj, tenant) {
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
 			sourceLines = append(sourceLines, string(record.Line))
 		}
 	}
@@ -398,7 +398,7 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 
 	finalContents := scenario.stored.ReadReachableContents(ctx, t, tenant)
 	requireLogContents(t, finalContents, schema, sourceLines)
-	requireSingleSortedRun(t, ctx, scenario, scenario.stored.Indexes(ctx, t, tenant), tenant, schema, len(sourceLines))
+	requireSingleSortedRun(t, scenario, scenario.stored.Indexes(ctx, t, tenant), tenant, schema, len(sourceLines))
 }
 
 func newScenarioLogSource(t *testing.T, path, tenant string, entries *fixtures.LogFixtureBuilder, layout logs.SortLayout) compactortest.Source {
@@ -428,11 +428,11 @@ func requireLogContents(t *testing.T, contents compactortest.Contents, schema []
 	require.True(t, slices.EqualFunc(expectedLayouts, contents.LogSectionLayouts, logsobj.EqualSortLayout), "every section must use the target layout")
 }
 
-func requireSingleSortedRun(t *testing.T, ctx context.Context, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, schema []string, wantRows int) {
+func requireSingleSortedRun(t *testing.T, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, schema []string, wantRows int) {
 	t.Helper()
 	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
 
-	sections, indexedSchema, shardCount, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, indexes[0].Path)
+	sections, indexedSchema, shardCount, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
 	require.Equal(t, schema, indexedSchema)
 	require.Equal(t, int64(streams.ShardFactor), shardCount)
@@ -445,14 +445,14 @@ func requireSingleSortedRun(t *testing.T, ctx context.Context, scenario *compact
 	var orderedKeys []logSortPrefix
 	for _, sectionRef := range runs[0].Sections() {
 		outputPaths[sectionRef.ObjectPath] = struct{}{}
-		obj, err := dataobj.FromBucket(ctx, scenario.stored.Bucket, sectionRef.ObjectPath, 0)
+		obj, err := dataobj.FromBucket(t.Context(), scenario.stored.Bucket, sectionRef.ObjectPath, 0)
 		require.NoError(t, err)
 		streamKeys := make(map[int64]logSortPrefix)
-		for _, stream := range fixtures.ReadTenantStreams(t, ctx, obj, tenant) {
+		for _, stream := range fixtures.ReadTenantStreams(t, obj, tenant) {
 			streamKeys[stream.ID] = scenarioStreamSortKey(t, stream, schema)
 		}
 		require.GreaterOrEqual(t, sectionRef.SectionIndex, int64(0))
-		for _, record := range fixtures.ReadTenantLogSection(t, ctx, obj, tenant, int(sectionRef.SectionIndex)) {
+		for _, record := range fixtures.ReadTenantLogSection(t, obj, tenant, int(sectionRef.SectionIndex)) {
 			require.Contains(t, streamKeys, record.StreamID, "log stream must be present in %q", sectionRef.ObjectPath)
 			orderedKeys = append(orderedKeys, streamKeys[record.StreamID])
 		}

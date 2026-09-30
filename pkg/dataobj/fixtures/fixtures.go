@@ -1,7 +1,6 @@
 package fixtures
 
 import (
-	"context"
 	"io"
 	"slices"
 	"testing"
@@ -207,16 +206,16 @@ func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream) dat
 // ReadTenantStreams reads the tenant's streams across all streams sections in
 // object order. Returned labels are copied so the streams remain valid after
 // the iterator advances.
-func ReadTenantStreams(t *testing.T, ctx context.Context, obj *dataobj.Object, tenant string) []streams.Stream {
+func ReadTenantStreams(t *testing.T, obj *dataobj.Object, tenant string) []streams.Stream {
 	t.Helper()
 	var result []streams.Stream
 	for _, section := range obj.Sections().Filter(streams.CheckSection) {
 		if section.Tenant != tenant {
 			continue
 		}
-		opened, err := streams.Open(ctx, section)
+		opened, err := streams.Open(t.Context(), section)
 		require.NoError(t, err)
-		for item := range streams.IterSection(ctx, opened) {
+		for item := range streams.IterSection(t.Context(), opened) {
 			stream, err := item.Value()
 			require.NoError(t, err)
 			stream.Labels = stream.Labels.Copy()
@@ -229,14 +228,14 @@ func ReadTenantStreams(t *testing.T, ctx context.Context, obj *dataobj.Object, t
 // ReadTenantLogs reads the tenant's records across all logs sections in object
 // order, preserving their physical read order. Records are copied because the
 // logs iterator reuses its buffers.
-func ReadTenantLogs(t *testing.T, ctx context.Context, obj *dataobj.Object, tenant string) []logs.Record {
+func ReadTenantLogs(t *testing.T, obj *dataobj.Object, tenant string) []logs.Record {
 	t.Helper()
 	var result []logs.Record
 	for i, section := range obj.Sections().Filter(logs.CheckSection) {
 		if section.Tenant != tenant {
 			continue
 		}
-		result = append(result, ReadTenantLogSection(t, ctx, obj, tenant, i)...)
+		result = append(result, ReadTenantLogSection(t, obj, tenant, i)...)
 	}
 	return result
 }
@@ -244,17 +243,17 @@ func ReadTenantLogs(t *testing.T, ctx context.Context, obj *dataobj.Object, tena
 // ReadTenantLogSection reads one logs-relative section in physical row order.
 // The index counts every logs section in the object, including other tenants'.
 // Returned records are independent of the iterator's reused buffers.
-func ReadTenantLogSection(t *testing.T, ctx context.Context, obj *dataobj.Object, tenant string, sectionIndex int) []logs.Record {
+func ReadTenantLogSection(t *testing.T, obj *dataobj.Object, tenant string, sectionIndex int) []logs.Record {
 	t.Helper()
 	for i, section := range obj.Sections().Filter(logs.CheckSection) {
 		if i != sectionIndex {
 			continue
 		}
 		require.Equal(t, tenant, section.Tenant, "logs section %d belongs to another tenant", sectionIndex)
-		opened, err := logs.Open(ctx, section)
+		opened, err := logs.Open(t.Context(), section)
 		require.NoError(t, err)
 		var records []logs.Record
-		for item := range logs.IterSection(ctx, opened) {
+		for item := range logs.IterSection(t.Context(), opened) {
 			record, err := item.Value()
 			require.NoError(t, err)
 			records = append(records, record.Copy())
