@@ -1,5 +1,5 @@
 # include the bingo binary variables. This enables the bingo versions to be
-# referenced here as make variables. For example: $(GOLANGCI_LINT)
+# referenced here as make variables. For example: $(PROMTOOL)
 include .bingo/Variables.mk
 
 WEBSITE_DIR ?= website
@@ -89,6 +89,9 @@ PASSTHROUGH_GATEWAY_IMG ?= $(REGISTRY_BASE)/passthrough-gateway:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
+# Tools
+GOLANGCI_LINT := go tool -modfile=.tools/golangci-lint.mod golangci-lint
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -177,12 +180,12 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 	$(OPERATOR_SDK) scorecard -c ./bundle/openshift/tests/scorecard/config.yaml bundle/openshift
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
+lint: generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) config verify
 	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-fix
-lint-fix: $(GOLANGCI_LINT) ## Attempt to automatically fix lint issues in source code.
+lint-fix: ## Attempt to automatically fix lint issues in source code.
 	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
 
 .PHONY: lint-prometheus
