@@ -17,8 +17,14 @@ import (
 // (e.g. "100 writes/sec for this service") and reuse it across every
 // RequestEntry for that operation, rather than recomputing it per request.
 type Limit struct {
-	Capacity         int64         // bucket size, in cost units
-	EmissionInterval time.Duration // time to leak one cost unit
+	Capacity int64 // bucket size, in cost units
+	Rate     Rate  // how quickly the bucket drains
+}
+
+// Rate is a leak rate expressed as a ratio: Units cost units drain every Period.
+type Rate struct {
+	Units  int64
+	Period time.Duration
 }
 
 // RequestEntry is one leaky-bucket check: consume (or peek at) Cost units
@@ -86,4 +92,16 @@ func EffectiveCost(cost int64) int64 {
 		return 1
 	}
 	return cost
+}
+
+// EffectiveUnits normalizes a Rate's Units the same way EffectiveCost
+// normalizes a request's cost: zero/negative means "not specified," which
+// defaults to 1 (a plain "one unit per Period" rate). Both InMemoryThrottler
+// and the DHP/1 wire client apply this so an omitted Units means the same
+// thing everywhere.
+func EffectiveUnits(units int64) int64 {
+	if units <= 0 {
+		return 1
+	}
+	return units
 }

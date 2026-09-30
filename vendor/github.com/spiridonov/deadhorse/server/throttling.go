@@ -77,7 +77,7 @@ func (t *InMemoryThrottler) Throttle(ctx context.Context, entries []deadhorse.Re
 		cost := deadhorse.EffectiveCost(e.Cost)
 
 		b.mu.Lock()
-		throttled, remaining, retryAfter, _ := gcraCheck(b.tat, now, e.Limit.Capacity, e.Limit.EmissionInterval, cost)
+		throttled, remaining, retryAfter, _ := gcraCheck(b.tat, now, e.Limit.Capacity, deadhorse.EffectiveUnits(e.Limit.Rate.Units), e.Limit.Rate.Period, cost)
 		b.mu.Unlock()
 
 		result[i].Throttled = throttled
@@ -148,7 +148,7 @@ func (t *InMemoryThrottler) evaluateRealGroup(entries []deadhorse.RequestEntry, 
 	for _, i := range realIdx {
 		e := entries[i]
 		cost := deadhorse.EffectiveCost(e.Cost)
-		throttled, remaining, retryAfter, admittedTAT := gcraCheck(workingTAT[e.Key], now, e.Limit.Capacity, e.Limit.EmissionInterval, cost)
+		throttled, remaining, retryAfter, admittedTAT := gcraCheck(workingTAT[e.Key], now, e.Limit.Capacity, deadhorse.EffectiveUnits(e.Limit.Rate.Units), e.Limit.Rate.Period, cost)
 		if throttled {
 			admitAll = false
 		} else {

@@ -136,6 +136,9 @@ func (c *ShardedClient) Throttle(ctx context.Context, shardKey string, entries [
 }
 
 func (c *ShardedClient) shardFor(key string) int {
+	if len(c.shards) == 1 {
+		return 0
+	}
 	return int(fnv1a(key) % uint64(len(c.shards)))
 }
 

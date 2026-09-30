@@ -1,6 +1,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -36,10 +38,12 @@ var (
 	}, []string{"command"})
 
 	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "deadhorse",
-		Name:      "request_duration_seconds",
-		Help:      "Time to handle one DHP/1 command line, by command.",
-		Buckets:   latencyBuckets,
+		Namespace:                       "deadhorse",
+		Name:                            "request_duration_seconds",
+		Help:                            "Time to handle one DHP/1 command line, by command.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
 	}, []string{"command"})
 
 	throttleEntriesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -49,17 +53,21 @@ var (
 	}, []string{"mode", "result"})
 
 	throttleBatchSize = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "deadhorse",
-		Name:      "throttle_batch_size",
-		Help:      "Number of entries carried by one THROTTLE line.",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, 8), // 1..128
+		Namespace:                       "deadhorse",
+		Name:                            "throttle_batch_size",
+		Help:                            "Number of entries carried by one THROTTLE line.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
 	})
 
 	lineLength = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "deadhorse",
-		Name:      "line_length_bytes",
-		Help:      "Length in bytes of each protocol line read, excluding the terminator.",
-		Buckets:   prometheus.ExponentialBuckets(16, 4, 8), // 16..262144
+		Namespace:                       "deadhorse",
+		Name:                            "line_length_bytes",
+		Help:                            "Length in bytes of each protocol line read, excluding the terminator.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
 	})
 
 	lineTooLongTotal = promauto.NewCounter(prometheus.CounterOpts{
@@ -68,10 +76,3 @@ var (
 		Help:      "Number of connections dropped for exceeding the configured maximum line size.",
 	})
 )
-
-// latencyBuckets spans microseconds to a second: command handling here is
-// in-memory and lock-bound (see gcraCheck), so prometheus.DefBuckets --
-// which starts at 5ms -- would put nearly every observation in one bucket.
-var latencyBuckets = []float64{
-	1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 5e-1, 1,
-}

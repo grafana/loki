@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	throttler "github.com/spiridonov/deadhorse"
@@ -145,4 +147,172 @@ func TestThrottlerEnforcer_Limit(t *testing.T) {
 
 	require.Equal(t, int(1.0*float64(bytesInMB)), e.limit(time.Now(), "t1", &rateLimitBucket{}))
 	require.Equal(t, int(5.0*float64(bytesInMB)), e.limit(time.Now(), "t1", &rateLimitBucket{policy: "premium", hasOverride: true}))
+}
+
+// TestThrottlerEnforcer_HighRateNotTruncated guards against a real incident: a rate expressed
+// as "nanoseconds per unit" can't represent anything above 1 byte/ns (1e9 bytes/sec) -- above
+// that, the duration truncates to zero, which the throttler treats as a nonsensical Limit and
+// fails closed unconditionally, regardless of Capacity. deadhorse.Rate{Units, Period} exists
+// specifically to avoid that ceiling; this pins down that Loki actually uses it correctly for a
+// tenant whose configured rate exceeds it (4000MB/s, matching the tenant that hit this for
+// real).
+func TestThrottlerEnforcer_HighRateNotTruncated(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		IngestionRateMB:      4000.0,
+		IngestionBurstSizeMB: 5000.0,
+	}, nil)
+	require.NoError(t, err)
+
+	caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{
+		"t1": {Key: "t1", Throttled: false},
+	}}
+	e := newThrottlerEnforcer(limits, caller)
+
+	_, err = e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{"": {bytes: 100, lines: 1}})
+	require.NoError(t, err)
+
+	require.Len(t, caller.gotEntries, 1)
+	entry := caller.gotEntries[0]
+	require.EqualValues(t, int64(4000.0*float64(bytesInMB)), entry.Limit.Rate.Units, "Units must carry the exact configured rate, not a rounded-to-zero duration")
+	require.EqualValues(t, time.Second, entry.Limit.Rate.Period)
+	require.Greater(t, entry.Limit.Rate.Units, int64(0), "a zero Units value makes the throttler fail closed unconditionally, regardless of Capacity")
+}
+
+// fakeIngestionRateEnforcer is a controllable ingestionRateEnforcer double for testing
+// shadowEnforcer's composition -- it records what it was called with and returns whatever the
+// test configured, independent of whatever the shadow path decides.
+type fakeIngestionRateEnforcer struct {
+	exceeded []*rateLimitBucket
+	err      error
+	limitVal int
+	called   bool
+}
+
+func (f *fakeIngestionRateEnforcer) enforce(_ context.Context, _ time.Time, _ string, _ map[string]*rateLimitBucket) ([]*rateLimitBucket, error) {
+	f.called = true
+	return f.exceeded, f.err
+}
+
+func (f *fakeIngestionRateEnforcer) limit(_ time.Time, _ string, _ *rateLimitBucket) int {
+	return f.limitVal
+}
+
+func TestShadowEnforcer(t *testing.T) {
+	buckets := map[string]*rateLimitBucket{"": {bytes: 100, lines: 1}}
+
+	t.Run("enforce returns the wrapped enforcer's decision even when shadow disagrees", func(t *testing.T) {
+		enforcing := &fakeIngestionRateEnforcer{exceeded: nil} // enforcing admits
+		shadowCaller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{
+			"t1": {Key: "t1", Throttled: true, RetryAfter: time.Millisecond}, // shadow would deny
+		}}
+		limits, err := validation.NewOverrides(validation.Limits{IngestionRateMB: 1.0, IngestionBurstSizeMB: 2.0}, nil)
+		require.NoError(t, err)
+
+		reg := prometheus.NewPedanticRegistry()
+		m := newMetrics(reg)
+		e := newShadowEnforcer(enforcing, newThrottlerEnforcer(limits, shadowCaller), m)
+
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", buckets)
+		require.NoError(t, err)
+		require.Empty(t, exceeded, "enforcing admitted -- the real decision must be admit, regardless of what shadow says")
+		require.True(t, enforcing.called)
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(m.exactShadowDecisions.WithLabelValues("t1", "throttled")) == 1
+		}, time.Second, time.Millisecond, "shadow's own decision must still be recorded in the metric")
+	})
+
+	t.Run("enforce returns throttled from the wrapped enforcer even when shadow would admit", func(t *testing.T) {
+		exceededBucket := &rateLimitBucket{}
+		enforcing := &fakeIngestionRateEnforcer{exceeded: []*rateLimitBucket{exceededBucket}}
+		shadowCaller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{
+			"t1": {Key: "t1", Throttled: false},
+		}}
+		limits, err := validation.NewOverrides(validation.Limits{IngestionRateMB: 1.0, IngestionBurstSizeMB: 2.0}, nil)
+		require.NoError(t, err)
+
+		reg := prometheus.NewPedanticRegistry()
+		m := newMetrics(reg)
+		e := newShadowEnforcer(enforcing, newThrottlerEnforcer(limits, shadowCaller), m)
+
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", buckets)
+		require.NoError(t, err)
+		require.Equal(t, []*rateLimitBucket{exceededBucket}, exceeded)
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(m.exactShadowDecisions.WithLabelValues("t1", "admit")) == 1
+		}, time.Second, time.Millisecond)
+	})
+
+	t.Run("a shadow transport error is recorded without affecting enforcement", func(t *testing.T) {
+		enforcing := &fakeIngestionRateEnforcer{exceeded: nil}
+		shadowCaller := &fakeThrottleCaller{
+			byKey: map[string]throttler.ResponseEntry{"t1": {Key: "t1", Throttled: false}},
+			err:   errBoom,
+		}
+		limits, err := validation.NewOverrides(validation.Limits{IngestionRateMB: 1.0, IngestionBurstSizeMB: 2.0}, nil)
+		require.NoError(t, err)
+
+		reg := prometheus.NewPedanticRegistry()
+		m := newMetrics(reg)
+		e := newShadowEnforcer(enforcing, newThrottlerEnforcer(limits, shadowCaller), m)
+
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", buckets)
+		require.NoError(t, err)
+		require.Empty(t, exceeded)
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(m.exactShadowFailed.WithLabelValues("t1")) == 1
+		}, time.Second, time.Millisecond)
+	})
+
+	t.Run("limit delegates to the wrapped (enforcing) enforcer, never to shadow", func(t *testing.T) {
+		enforcing := &fakeIngestionRateEnforcer{limitVal: 42}
+		limits, err := validation.NewOverrides(validation.Limits{IngestionRateMB: 1.0}, nil)
+		require.NoError(t, err)
+
+		e := newShadowEnforcer(enforcing, newThrottlerEnforcer(limits, &fakeThrottleCaller{}), newMetrics(prometheus.NewPedanticRegistry()))
+		require.Equal(t, 42, e.limit(time.Now(), "t1", &rateLimitBucket{}))
+	})
+
+	t.Run("enforce does not block on the shadow call", func(t *testing.T) {
+		enforcing := &fakeIngestionRateEnforcer{exceeded: nil}
+		block := make(chan struct{})
+		shadowCaller := &blockingThrottleCaller{release: block}
+		limits, err := validation.NewOverrides(validation.Limits{IngestionRateMB: 1.0, IngestionBurstSizeMB: 2.0}, nil)
+		require.NoError(t, err)
+
+		e := newShadowEnforcer(enforcing, newThrottlerEnforcer(limits, shadowCaller), newMetrics(prometheus.NewPedanticRegistry()))
+
+		done := make(chan struct{})
+		go func() {
+			_, _ = e.enforce(context.Background(), time.Now(), "t1", buckets)
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("enforce blocked on the shadow call instead of returning immediately")
+		}
+		close(block) // let the shadow goroutine finish so it doesn't leak past the test
+	})
+}
+
+// blockingThrottleCaller blocks in Throttle until release is closed, used to prove enforce()
+// never waits on the shadow call.
+type blockingThrottleCaller struct {
+	release chan struct{}
+}
+
+func (b *blockingThrottleCaller) Throttle(ctx context.Context, _ string, entries []throttler.RequestEntry) ([]throttler.ResponseEntry, error) {
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+	}
+	results := make([]throttler.ResponseEntry, len(entries))
+	for i, e := range entries {
+		results[i] = throttler.ResponseEntry{Key: e.Key}
+	}
+	return results, nil
 }

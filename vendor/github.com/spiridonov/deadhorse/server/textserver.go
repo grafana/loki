@@ -336,7 +336,7 @@ func resultLabel(r deadhorse.ResponseEntry) string {
 
 func parseEntry(tok string) (deadhorse.RequestEntry, bool) {
 	parts := strings.Split(tok, "|")
-	if len(parts) != 5 {
+	if len(parts) != 6 {
 		return deadhorse.RequestEntry{}, false
 	}
 	key := parts[0]
@@ -344,13 +344,15 @@ func parseEntry(tok string) (deadhorse.RequestEntry, bool) {
 		return deadhorse.RequestEntry{}, false
 	}
 	capacity, err1 := strconv.ParseInt(parts[1], 10, 64)
-	emissionInterval, err2 := strconv.ParseInt(parts[2], 10, 64)
-	cost, err3 := strconv.ParseInt(parts[3], 10, 64)
-	if err1 != nil || err2 != nil || err3 != nil || capacity < 0 || emissionInterval < 0 || cost < 0 {
+	units, err2 := strconv.ParseInt(parts[2], 10, 64)
+	period, err3 := strconv.ParseInt(parts[3], 10, 64)
+	cost, err4 := strconv.ParseInt(parts[4], 10, 64)
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil ||
+		capacity < 0 || units < 0 || period < 0 || cost < 0 {
 		return deadhorse.RequestEntry{}, false
 	}
 	var peek bool
-	switch parts[4] {
+	switch parts[5] {
 	case "R":
 		peek = false
 	case "P":
@@ -361,8 +363,8 @@ func parseEntry(tok string) (deadhorse.RequestEntry, bool) {
 	return deadhorse.RequestEntry{
 		Key: key,
 		Limit: deadhorse.Limit{
-			Capacity:         capacity,
-			EmissionInterval: time.Duration(emissionInterval),
+			Capacity: capacity,
+			Rate:     deadhorse.Rate{Units: units, Period: time.Duration(period)},
 		},
 		Cost: cost,
 		Peek: peek,

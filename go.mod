@@ -110,7 +110,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/afero v1.15.0
-	github.com/spiridonov/deadhorse v0.0.0-20260929183300-42548f09eaae
+	github.com/spiridonov/deadhorse v0.0.0-20260930170545-f43e03c60aa9
 	github.com/stretchr/testify v1.12.1
 	github.com/thanos-io/objstore v0.0.0-20260907152334-44aca71316b7
 	github.com/tjhop/slog-gokit v0.2.0

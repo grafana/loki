@@ -464,7 +464,7 @@ func encodeThrottle(entries []deadhorse.RequestEntry) string {
 		if e.Peek {
 			mode = "P"
 		}
-		parts[i] = fmt.Sprintf("%s|%d|%d|%d|%s", e.Key, e.Limit.Capacity, int64(e.Limit.EmissionInterval), deadhorse.EffectiveCost(e.Cost), mode)
+		parts[i] = fmt.Sprintf("%s|%d|%d|%d|%d|%s", e.Key, e.Limit.Capacity, deadhorse.EffectiveUnits(e.Limit.Rate.Units), int64(e.Limit.Rate.Period), deadhorse.EffectiveCost(e.Cost), mode)
 	}
 	if len(parts) == 0 {
 		return "THROTTLE\n"

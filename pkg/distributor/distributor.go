@@ -391,6 +391,30 @@ func New(
 		servs = append(servs, gt)
 
 		d.rateLimitEnforcer = newThrottlerEnforcer(overrides, gt)
+	case validation.ShadowIngestionRateStrategy:
+		d.rateLimitStrat = validation.ShadowIngestionRateStrategy
+
+		// Enforcement is exactly the GlobalIngestionRateStrategy path below --
+		// same ring, same lifecycler, same local limiter -- wrapped so the
+		// exact/throttler path alongside it can only ever observe, never decide.
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
+		if err != nil {
+			return nil, err
+		}
+		servs = append(servs, distributorsLifecycler, distributorsRing)
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, d)
+		enforcingEnforcer := newReservationEnforcer(limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second))
+
+		var gt *globalThrottler
+		gt, err = newGlobalThrottler(cfg.GlobalThrottler, logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+		d.globalThrottler = gt
+		servs = append(servs, gt)
+
+		d.rateLimitEnforcer = newShadowEnforcer(enforcingEnforcer, newThrottlerEnforcer(overrides, gt), d.m)
 	case validation.GlobalIngestionRateStrategy:
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 

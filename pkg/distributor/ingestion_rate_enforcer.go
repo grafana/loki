@@ -133,11 +133,6 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 			}
 		}
 
-		var emission time.Duration
-		if rateBytes > 0 {
-			emission = time.Duration(1e9 / rateBytes)
-		}
-
 		key := tenantID
 		if b.hasOverride {
 			key = encodeRateLimitKey(tenantID, b.policy)
@@ -145,8 +140,16 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 
 		order = append(order, b)
 		entries = append(entries, throttler.RequestEntry{
-			Key:   key,
-			Limit: throttler.Limit{Capacity: int64(burstBytes), EmissionInterval: emission},
+			Key: key,
+			// Units/Period express the rate as an exact ratio (rateBytes
+			// bytes per second) rather than a "nanoseconds per byte"
+			// duration -- the latter can't represent anything above 1
+			// byte/ns (1e9 bytes/sec, ~954MiB/s): for any tenant configured
+			// faster than that, computing a duration would truncate to
+			// zero, which the throttler treats as a nonsensical limit and
+			// fails closed on unconditionally, regardless of Capacity.
+			// Units/Period has no such ceiling.
+			Limit: throttler.Limit{Capacity: int64(burstBytes), Rate: throttler.Rate{Units: int64(rateBytes), Period: time.Second}},
 			Cost:  int64(b.bytes),
 		})
 	}
@@ -183,4 +186,64 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 		exceeded = order
 	}
 	return exceeded, err
+}
+
+// shadowTimeout bounds how long a shadow check may run once detached from
+// the request that triggered it. It's generous relative to the throttler
+// client's own per-call timeout (milliseconds) specifically so a slow
+// throttler shows up as a shadow failure rather than leaking the goroutine.
+const shadowTimeout = 2 * time.Second
+
+// shadowEnforcer enforces exactly like the wrapped enforcer -- in practice,
+// reservationEnforcer backed by the ring-divided "global" strategy -- while
+// also sending the same buckets to the external throttler for observation
+// only: its decision never affects what's returned to the caller. The
+// shadow check runs asynchronously, off a context already detached from the
+// request's own (context.WithoutCancel), so a slow or unreachable
+// throttler can never add latency or risk to the real push path. This is
+// how validation.ShadowIngestionRateStrategy proves "exact" safe against
+// real production traffic -- with a metric showing what it would have
+// decided -- before switching real enforcement over to it.
+type shadowEnforcer struct {
+	enforcing ingestionRateEnforcer
+	shadow    *throttlerEnforcer
+	metrics   *metrics
+}
+
+func newShadowEnforcer(enforcing ingestionRateEnforcer, shadow *throttlerEnforcer, m *metrics) *shadowEnforcer {
+	return &shadowEnforcer{enforcing: enforcing, shadow: shadow, metrics: m}
+}
+
+// limit reports the wrapped (real) enforcer's limit -- the shadow path
+// never rejects anything for real, so it has no limit value that a
+// client-facing error message would ever need.
+func (e *shadowEnforcer) limit(now time.Time, tenantID string, b *rateLimitBucket) int {
+	return e.enforcing.limit(now, tenantID, b)
+}
+
+func (e *shadowEnforcer) enforce(ctx context.Context, now time.Time, tenantID string, rlBuckets map[string]*rateLimitBucket) ([]*rateLimitBucket, error) {
+	go e.runShadow(context.WithoutCancel(ctx), now, tenantID, rlBuckets)
+	return e.enforcing.enforce(ctx, now, tenantID, rlBuckets)
+}
+
+// runShadow evaluates rlBuckets against the external throttler purely for
+// observation, recording what it would have decided. ctx must already be
+// detached from the request's own context (see enforce above) -- the
+// request returning, and its context being canceled, must never cut this
+// check short or this would silently degrade into "shadow never actually
+// completes."
+func (e *shadowEnforcer) runShadow(ctx context.Context, now time.Time, tenantID string, rlBuckets map[string]*rateLimitBucket) {
+	ctx, cancel := context.WithTimeout(ctx, shadowTimeout)
+	defer cancel()
+
+	exceeded, err := e.shadow.enforce(ctx, now, tenantID, rlBuckets)
+
+	decision := "admit"
+	if len(exceeded) > 0 {
+		decision = "throttled"
+	}
+	e.metrics.exactShadowDecisions.WithLabelValues(tenantID, decision).Inc()
+	if err != nil {
+		e.metrics.exactShadowFailed.WithLabelValues(tenantID).Inc()
+	}
 }
