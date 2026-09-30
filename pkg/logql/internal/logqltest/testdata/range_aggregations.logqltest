@@ -1342,6 +1342,25 @@ eval range from 60s to 70s step 10s max_over_time({app="a"} | unwrap v [1m]) by 
   {pod="1"} 4 4
   {pod="2"} 20 20
 
+# max_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)
+  {app="m"} 7
+eval range from 20s to 60s step 20s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)            # overlapping
+  {app="m"} 5 7 7
+eval instant at 60s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)
+  {app="p"} 6
+eval range from 20s to 60s step 20s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)   # overlapping
+  {app="p"} 4 6 6
+
 # sum_over_time()
 #
 # - any NaN -> NaN
@@ -1396,6 +1415,25 @@ eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12
 eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12 12
+
+# sum_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s sum_over_time({app="m"} | unwrap n_extracted [1m])
+  {app="m", n="s"} 12
+eval range from 20s to 60s step 20s sum_over_time({app="m"} | unwrap n_extracted [1m])            # overlapping
+  {app="m", n="s"} 5 12 12
+eval instant at 60s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])
+  {app="p", v="s"} 10
+eval range from 20s to 60s step 20s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])   # overlapping
+  {app="p", v="s"} 4 10 10
 
 # sum_over_time() keeps every label except the unwrapped one.
 #
