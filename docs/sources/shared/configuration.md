@@ -4709,9 +4709,13 @@ shard_streams:
   [desired_rate: <int> | default = 1536KB]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
-  # for this tenant. One of 'disabled' (default, unchanged behavior) or 'shadow'
-  # (ask the limits service and compare its answer against the local rate
-  # store's; the local rate store still decides how streams are sharded).
+  # for this tenant, and whether its answer is used. One of 'disabled' (default,
+  # unchanged behavior), 'shadow' (ask the limits service and compare its answer
+  # against the local rate store's; the local rate store still decides how
+  # streams are sharded) or 'live' (shard streams with the count the limits
+  # service returns, falling back to the local rate store for streams it does
+  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
+  # to be enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
