@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -451,7 +450,7 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 	require.Equal(t, firstSize, secondSize, "retry must not double uncompressed_logs_size")
 }
 
-func tenantUncompressed(t *testing.T, ranges []multitenancy.TimeRange, tenant string) uint64 {
+func tenantUncompressed(t *testing.T, ranges []dataobj.TimeRange, tenant string) uint64 {
 	t.Helper()
 	for _, r := range ranges {
 		if r.Tenant == tenant {

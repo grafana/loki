@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -174,7 +173,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 }
 
 // writeTimeRanges records path in the ToC of every tenant in timeRanges.
-func writeTimeRanges(ctx context.Context, w *TableOfContentsWriter, path string, timeRanges []multitenancy.TimeRange) error {
+func writeTimeRanges(ctx context.Context, w *TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
 		if err := w.WriteEntry(ctx, tr.Tenant, TableOfContentsEntry{
 			Path:      path,

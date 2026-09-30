@@ -28,7 +28,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -214,21 +213,16 @@ func ListTableOfContentsTenants(ctx context.Context, bucket objstore.BucketReade
 	return tenants, nil
 }
 
-// IterTableOfContentsPaths returns a sequence of (path, time-range) pairs
-// covering the tenant's ToC for every window that overlaps [start, end].
-// start and end may be unaligned; the iterator truncates them to
-// MetastoreWindowSize boundaries.
-func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+// IterTableOfContentsPaths returns the paths of the tenant's ToCs for every
+// window that overlaps [start, end]. start and end may be unaligned; the
+// iterator truncates them to MetastoreWindowSize boundaries.
+func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[string] {
 	minTocWindow := start.Truncate(MetastoreWindowSize).UTC()
 	maxTocWindow := end.Truncate(MetastoreWindowSize).UTC()
 
-	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
+	return func(yield func(string) bool) {
 		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(MetastoreWindowSize) {
-			tocTimeRange := multitenancy.TimeRange{
-				MinTime: tocWindow,
-				MaxTime: tocWindow.Add(MetastoreWindowSize),
-			}
-			if !yield(TableOfContentsPath(tenant, tocWindow), tocTimeRange) {
+			if !yield(TableOfContentsPath(tenant, tocWindow)) {
 				return
 			}
 		}

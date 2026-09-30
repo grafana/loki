@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -313,7 +312,7 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 }
 
 // writeToCEntries records path in the ToC of every tenant in timeRanges.
-func writeToCEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []multitenancy.TimeRange) error {
+func writeToCEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
 		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
 			Path:      path,

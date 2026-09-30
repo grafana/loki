@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -86,7 +85,7 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	return obj, m.flushCloser, nil
 }
 
-func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
+func (m *mockBuilder) TimeRanges() []dataobj.TimeRange {
 	return m.builder.TimeRanges()
 }
 
@@ -137,7 +136,7 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 	}
 	return index.Result{
 		Path:      "index/" + objPath,
-		TimeRange: multitenancy.TimeRange{Tenant: "test"},
+		TimeRange: dataobj.TimeRange{Tenant: "test"},
 	}, nil
 }
 

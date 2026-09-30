@@ -14,7 +14,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -33,7 +32,7 @@ type builder interface {
 	GetEstimatedSize() int
 	IsFull() bool
 	Flush() (*dataobj.Object, io.Closer, error)
-	TimeRanges() []multitenancy.TimeRange
+	TimeRanges() []dataobj.TimeRange
 	GetEarliestRecordTime() time.Time
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }

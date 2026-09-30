@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -27,7 +26,7 @@ var ErrNotSingleTenant = errors.New("data object must hold exactly one tenant")
 // A Result describes the index object built and uploaded for a single-tenant data object.
 type Result struct {
 	Path      string
-	TimeRange multitenancy.TimeRange
+	TimeRange dataobj.TimeRange
 }
 
 // A SimpleIndexer builds an index for a data object and uploads it.
