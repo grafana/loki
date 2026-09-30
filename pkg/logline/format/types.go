@@ -160,14 +160,19 @@ type WriterConfig struct {
 	// 0 uses the format default; positive values enable at that threshold;
 	// negative values disable filtering.
 	// The threshold is applied against the total documents in a full day
-	// (24h / DocumentInterval), not the current index's document count.
+	// (24h / DocumentInterval × DocumentShards), not the current index's
+	// document count.
 	DensityThreshold float32
 
 	// DocumentInterval is the time range each document ID covers. Used with
 	// DensityThreshold to compute the day-based sentinel cutoff:
-	// sentinelCutoff = (24h / DocumentInterval) * DensityThreshold.
+	// sentinelCutoff = (24h / DocumentInterval) * DocumentShards * DensityThreshold.
 	// Zero disables the density filter.
 	DocumentInterval time.Duration
+
+	// DocumentShards is the number of stream shards per document interval.
+	// 0 means 1. Only v5 reads it.
+	DocumentShards int
 }
 
 // HeaderInfo is the meta.json index_header schema: a summary of the on-disk

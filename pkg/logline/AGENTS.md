@@ -18,9 +18,21 @@ review.
 | --- | --- | --- | --- |
 | v3 | Current (`CurrentVersion`) | footer 4 | v3 |
 | v4 | Supported | v3 bytes | packed numeric terms |
-| v5 | In development. Do not set `-logline-index.version=v5` | v3 bytes, for now | v4's extractor, forked into `internal/v5` |
+| v5 | In development. Do not set `-logline-index.version=v5` | v3 layout; documents split by `document_shards`, recorded in the footer | v4's extractor, forked into `internal/v5` |
 
 v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+
+## Document shards
+
+`IndexConfig.DocumentShards` (`-logline-index.document-shards`) splits each
+`document_interval` by stream fingerprint. It is v5 only: `Validate` resolves 0
+to `DefaultDocumentShards` (32) for v5, requires a power of two from 1 to
+`MaxDocumentShards` (128), and rejects any non-zero value for v3 and v4.
+
+`DocumentShard(fp, shards)` in `document_shard.go` is the one definition of a
+stream's document shard: the top log2(shards) bits of its ingester
+fingerprint, the same prefix `index.ShardAnnotation.Match` uses. Anything that
+computes or matches a document shard must call it.
 
 ## Extraction is coupled to index version
 
@@ -58,7 +70,8 @@ a frozen algorithm: revert. Do not update the expected values.
   `ValidateVersion`, factory functions
 - `ngrams.go` — `ExtractorForVersion` and `FormatterForVersion` shims that return the
   matching `vN` extractor and term formatter
-- `index_config.go` — `IndexConfig`, the shared `logline.index` section (see below)
+- `index_config.go` — `IndexConfig`, the shared `logline.index` section
+- `document_shard.go` — `DocumentShard` and `VersionHasDocumentShards`
 
 ## Compaction open question
 
