@@ -1,6 +1,7 @@
 package lz4
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
@@ -64,6 +65,11 @@ func (w *Writer) isNotConcurrent() bool {
 
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
+	if !w.legacy && !w.frame.Descriptor.Flags.BlockSizeIndex().IsValid() {
+		// Block8Mb is only valid in legacy frames, and LegacyOption may be
+		// applied after BlockSizeOption.
+		return fmt.Errorf("%w: %d is only valid for legacy frames", lz4errors.ErrOptionInvalidBlockSize, lz4block.Block8Mb)
+	}
 	w.frame.InitW(w.src, w.num, w.legacy)
 	size := w.frame.BlockSizeIndex()
 	w.data = size.Get()
