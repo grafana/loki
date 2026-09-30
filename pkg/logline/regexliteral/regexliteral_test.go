@@ -73,6 +73,7 @@ func TestRequired(t *testing.T) {
 		{"case-insensitive char class", `[Aa]bcdef`, []string{"abcdef"}},
 		{"case-insensitive non-ASCII", `(?i)caféé`, []string{"caféé"}},
 		{"case-insensitive dotted I stays non-ASCII", "(?i)x\u0130stanbul", []string{"x\u0130stanbul"}},
+		{"case-insensitive unicode same group as ascii", `(?i)databaſe error`, []string{"database error"}},
 
 		// Nothing required.
 		{"dot plus", `.+`, nil},
