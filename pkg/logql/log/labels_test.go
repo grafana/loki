@@ -362,10 +362,62 @@ func sortLabelSlice(l []labels.Label) {
 	})
 }
 
+// TestHashSorted_MatchesStableHash pins hasher.HashSorted (used by
+// LabelsResult/toUncategorizedResult to hash before paying for
+// labels.New's packed-string encoding) to produce exactly the hash
+// labels.StableHash(labels.New(buf...)) would - including the 1KB+
+// Write-API fallback path both implementations share. A future vendor
+// bump that changes StableHash's internal separator byte would only be
+// caught here, not by the compiler - see the comment on hashSep in
+// labels_stringlabels.go.
+func TestHashSorted_MatchesStableHash(t *testing.T) {
+	h := newHasher()
+
+	cases := map[string][]labels.Label{
+		"empty": {},
+		"single": {
+			{Name: "level", Value: "info"},
+		},
+		"typical": {
+			{Name: "namespace", Value: "loki"},
+			{Name: "job", Value: "us-central1/loki"},
+			{Name: "cluster", Value: "us-central1"},
+			{Name: "level", Value: "info"},
+		},
+		"empty values": {
+			{Name: "foo", Value: ""},
+			{Name: "bar", Value: ""},
+		},
+		"non-ascii": {
+			{Name: "msg", Value: "héllo wörld"},
+			{Name: "lang", Value: "日本語"},
+		},
+	}
+
+	// Exercise the xxhash.New()/Write-API fallback both HashSorted and
+	// StableHash switch to once the buffer would exceed 1KB.
+	big := make([]labels.Label, 50)
+	for i := range big {
+		big[i] = labels.Label{Name: fmt.Sprintf("label_%02d", i), Value: strings.Repeat("v", 30)}
+	}
+	cases["1KB+ fallback"] = big
+
+	for name, buf := range cases {
+		t.Run(name, func(t *testing.T) {
+			sortLabelSlice(buf)
+			want := labels.StableHash(labels.New(buf...))
+			got := h.HashSorted(buf)
+			require.Equal(t, want, got)
+		})
+	}
+}
+
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
-	strs := []string{"namespace", "loki",
+	strs := []string{
+		"namespace", "loki",
 		"job", "us-central1/loki",
-		"cluster", "us-central1"}
+		"cluster", "us-central1",
+	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
@@ -403,7 +455,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Del("job")
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"cluster", "us-central1",
 		"foo", "bar",
 	)
@@ -412,7 +465,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"job", "us-central1/loki",
 		"cluster", "us-central1",
 	)
@@ -422,7 +476,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
-	expected = labels.FromStrings("namespace", "loki",
+	expected = labels.FromStrings(
+		"namespace", "loki",
 		"job", "something",
 		"cluster", "us-central1",
 		"foo", "bar",
@@ -432,15 +487,18 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 
 func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 	t.Helper()
-	require.Equal(t,
+	require.Equal(
+		t,
 		lbs,
 		res.Labels(),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		labels.StableHash(lbs),
 		res.Hash(),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		lbs.String(),
 		res.String(),
 	)
@@ -495,6 +553,24 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
+	}
+}
+
+func BenchmarkLabelsBuilder_LabelsResult_CacheHit(b *testing.B) {
+	for _, n := range []int{1, 4, 16} {
+		b.Run(fmt.Sprintf("parsedLabels=%d", n), func(b *testing.B) {
+			base := labels.FromStrings("app", "bench", "namespace", "loki")
+			builder := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				builder.Reset()
+				for j := 0; j < n; j++ {
+					builder.Set(ParsedLabel, fmt.Sprintf("key_%d", j), "info")
+				}
+				_ = builder.LabelsResult()
+			}
+		})
 	}
 }
 

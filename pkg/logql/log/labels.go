@@ -2,6 +2,8 @@ package log
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -594,14 +596,16 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return b.currentResult
 	}
 
-	// Get all labels at once and sort them
+	// Get all labels at once and sort them without allocations.
 	b.buf = b.UnsortedLabels(b.buf)
-	lbls := labels.New(b.buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(b.buf)
+	hash := b.HashSorted(b.buf)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
+
+	lbls := labels.New(b.buf...)
 
 	// Now segregate the sorted labels into their categories
 	var stream, meta, parsed []labels.Label
@@ -629,6 +633,14 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	return result
 }
 
+// sortLabelPairsByName sorts buf in place by Name, using the exact
+// comparator labels.New uses internally - so hashing buf in this order
+// (see hasher.HashSorted) produces the same hash labels.New(buf...)
+// would, without first paying for its packed-string encoding.
+func sortLabelPairsByName(buf []labels.Label) {
+	slices.SortFunc(buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+}
+
 func labelsContain(labels []labels.Label, name string) bool {
 	for _, l := range labels {
 		if l.Name == name {
@@ -648,12 +660,13 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 }
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
-	lbls := labels.New(buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(buf)
+	hash := b.HashSorted(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
+	lbls := labels.New(buf...)
 	res := NewLabelsResult(lbls.String(), hash, lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	b.resultCache[hash] = res
 	return res
