@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -253,16 +254,25 @@ func (s *Service) CheckLimitsAndShard(
 		// The record carries the stream's metadata, so it also serves the
 		// usage store and there is no need for it to produce its own.
 		//
-		// A stream the usage store does not track is skipped. It was either
-		// rejected by ExceedsLimits or has not been checked by it yet, so it
-		// is not written, and a record for it would make the consumers in the
-		// other zones count a stream that does not exist. The bucket is
-		// dropped rather than retried later, which only costs the rate history
-		// of a stream that is not being ingested.
+		// In live mode checkAndShard has already decided this stream is
+		// accepted (a rejected stream never reaches toProduce), so there is
+		// nothing left for the usage store to confirm: live mode skips
+		// ExceedsLimits entirely (see the distributor), so the usage store
+		// never gets an entry for these streams and the check below would
+		// always fail, silently dropping every durability record.
+		//
+		// In shadow mode (and plain streams, which never reach here) the
+		// separate ExceedsLimits call is still the one deciding acceptance, so
+		// the usage store stays the source of truth: a stream it does not
+		// track was either rejected by ExceedsLimits or has not been checked
+		// by it yet, so it is not written, and a record for it would make the
+		// consumers in the other zones count a stream that does not exist. The
+		// bucket is dropped rather than retried later, which only costs the
+		// rate history of a stream that is not being ingested.
 		//
 		// A failed produce leaves the stream marked, so its metadata is absent
 		// from the topic until the produce interval has elapsed.
-		if !s.usage.markProduced(req.Tenant, rec.Metadata, now) {
+		if !s.isLiveMode(req.Tenant, rec.Metadata.IngestionPolicy) && !s.usage.markProduced(req.Tenant, rec.Metadata, now) {
 			continue
 		}
 		if err := s.producer.ProduceRecord(context.WithoutCancel(ctx), rec); err != nil {
@@ -270,6 +280,18 @@ func (s *Service) CheckLimitsAndShard(
 		}
 	}
 	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
+}
+
+// isLiveMode reports whether the tenant/policy's shard-streams config
+// currently has the limits-service-stream-sharding-mode set to "live". It
+// mirrors the mode check the distributor makes when building candidates for
+// CheckLimitsAndShard (see maybeShardByRate), so it tells apart the one mode
+// where this service's own shard-count decision is also the acceptance
+// decision, with no corresponding ExceedsLimits call to track the stream in
+// the usage store.
+func (s *Service) isLiveMode(tenant, policy string) bool {
+	cfg, _ := s.limits.PolicyShardStreams(tenant, policy)
+	return cfg.LimitsServiceStreamShardingMode == shardstreams.LimitsServiceStreamShardingModeLive
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
