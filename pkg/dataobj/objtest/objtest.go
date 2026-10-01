@@ -176,7 +176,7 @@ func (b *Builder) flush(ctx context.Context) error {
 		return fmt.Errorf("uploading logs object: %w", err)
 	}
 
-	if err := writeToCEntries(ctx, b.logsMetastoreToc, path, timeRanges); err != nil {
+	if err := WriteTableOfContentsEntries(ctx, b.logsMetastoreToc, path, timeRanges); err != nil {
 		return fmt.Errorf("updating metastore: %w", err)
 	}
 
@@ -271,7 +271,7 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 
 	if err := b.indexBucket.Upload(ctx, key, reader); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
-	} else if err := writeToCEntries(ctx, b.indexMetastoreToc, key, timeRanges); err != nil {
+	} else if err := WriteTableOfContentsEntries(ctx, b.indexMetastoreToc, key, timeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -311,8 +311,9 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 	)
 }
 
-// writeToCEntries records path in the ToC of every tenant in timeRanges.
-func writeToCEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
+// WriteTableOfContentsEntries records the object at path in the ToC of every tenant in
+// timeRanges, for every window each time range overlaps.
+func WriteTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
 		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
 			Path:      path,
