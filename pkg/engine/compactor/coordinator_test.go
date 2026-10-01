@@ -788,7 +788,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				// Fail the task that merges indexes/c.
 				for _, run := range mergeNodeRuns(t, plan) {
 					for _, section := range run.Sections {
@@ -840,7 +840,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				// Fail the task that merges logs/2.
 				for _, run := range mergeNodeRuns(t, plan) {
 					for _, section := range run.Sections {
@@ -900,7 +900,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				root, err := plan.Root()
 				if err != nil {
 					return nil, err
