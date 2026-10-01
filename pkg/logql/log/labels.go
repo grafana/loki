@@ -124,6 +124,10 @@ type BaseLabelsBuilder struct {
 	err string
 	// nolint:structcheck
 	errDetails string
+	// preserveError reports whether the query asked to keep the lines that carry err, so a metric
+	// query returns such a sample instead of failing.
+	// nolint:structcheck
+	preserveError bool
 
 	groups                       []string
 	baseMap                      map[string]string
@@ -206,6 +210,7 @@ func (b *BaseLabelsBuilder) Reset() {
 	}
 	b.err = ""
 	b.errDetails = ""
+	b.preserveError = false
 	b.baseMap = nil
 	b.parserKeyHints.Reset()
 }
@@ -237,9 +242,24 @@ func (b *BaseLabelsBuilder) sizeAdd() int {
 	return length
 }
 
-// SetErr sets the error label.
-func (b *LabelsBuilder) SetErr(err string) *LabelsBuilder {
+// SetErr sets the whole error state: the error, its details, and whether the query asked to keep
+// the lines that carry it. The input details may be nil.
+//
+// The three go together, because each error owns its own details. A later stage that replaces the
+// error must not inherit the details of the one before it.
+//
+// Whether to keep the line is the query's answer rather than the stage's, so SetErr reads it from
+// the parser hints. Every error a pipeline can raise answers the same way: a filter on __error__
+// asks to keep the errored lines, whichever stage failed (before or after the __error__ filter
+// stage).
+func (b *LabelsBuilder) SetErr(err string, details error) *LabelsBuilder {
 	b.err = err
+	b.errDetails = ""
+	if details != nil {
+		b.errDetails = details.Error()
+	}
+	b.preserveError = b.parserKeyHints.PreserveError()
+
 	return b
 }
 
@@ -260,6 +280,7 @@ func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
 
 func (b *LabelsBuilder) ResetError() *LabelsBuilder {
 	b.err = ""
+	b.preserveError = false
 	return b
 }
 
@@ -401,6 +422,13 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, DuplicateSuffix)
+
+			// The renamed label can itself already be taken (e.g. by a stream label of that
+			// exact name): in such case, we preserve the already existing one and the this value
+			// gets dropped.
+			if _, _, ok := b.getWithCategory(name); ok {
+				return
+			}
 		}
 
 		if name == logqlmodel.ErrorLabel {
@@ -447,6 +475,20 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 			Value: b.errDetails,
 		})
 	}
+
+	// The builder owns the preserve answer, so a line that carries __preserve_error__ of its own
+	// must not report it. Otherwise a stream could switch off the failure a metric query returns
+	// for an errored sample.
+	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
+		return l.Name == logqlmodel.PreserveErrorLabel
+	})
+	if b.preserveError {
+		buf = append(buf, labels.Label{
+			Name:  logqlmodel.PreserveErrorLabel,
+			Value: trueString,
+		})
+	}
+
 	return buf
 }
 
@@ -836,14 +878,13 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
 	}
 
-	// Unlike the other two special error labels, __preserve_error__ is an ordinary label rather than
-	// a builder field, so grouping drops it unless it is a group key. Losing it makes the evaluator
-	// fail the query on a sample the filter asked to keep.
-	if !labelsContain(buf, logqlmodel.PreserveErrorLabel) {
-		// The __preserve_error__ label can reach the builder in any category.
-		if v, _, ok := b.getWithCategory(logqlmodel.PreserveErrorLabel); ok {
-			buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: v})
-		}
+	// The builder owns the answer, so a __preserve_error__ the line carries must not reach the
+	// output. Otherwise a stream could switch off the failure a metric query returns.
+	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
+		return l.Name == logqlmodel.PreserveErrorLabel
+	})
+	if b.preserveError {
+		buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: trueString})
 	}
 
 	return buf

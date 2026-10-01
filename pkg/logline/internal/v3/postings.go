@@ -130,6 +130,10 @@ func decodeDeltaVarIntInto(dst []uint32, payload []byte) ([]uint32, error) {
 
 const (
 	fastPostingsBlockTarget = 4 * 1024 * 1024
+
+	// Testing showed zstd level 3 is a good balance between CPU usage and
+	// compression ratio for postings blocks.
+	fastPostingsZstdLevel = zstd.SpeedDefault
 )
 
 type FastPostingsEncoder struct {
@@ -188,7 +192,7 @@ func (e *FastPostingsEncoder) beginStream(w io.Writer, documentCount uint32) err
 	if e.session != nil {
 		return fmt.Errorf("streaming session already open")
 	}
-	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
+	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(fastPostingsZstdLevel))
 	if err != nil {
 		return fmt.Errorf("create zstd encoder: %w", err)
 	}

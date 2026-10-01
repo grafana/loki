@@ -30,11 +30,9 @@ var errNoShardBucketColumn = errors.New("postings section has no ShardBuckets co
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
-	Path                 string
-	Start                time.Time
-	End                  time.Time
-	FileSize             uint64
-	UncompressedLogsSize uint64
+	Path  string
+	Start time.Time
+	End   time.Time
 }
 
 type logSortPrefix struct {
@@ -185,22 +183,6 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 						continue
 					}
 					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
-				}
-			case indexpointers.ColumnTypeFileSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].FileSize = uint64(values.Value(rIdx))
-				}
-			case indexpointers.ColumnTypeUncompressedLogsSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].UncompressedLogsSize = uint64(values.Value(rIdx))
 				}
 			}
 		}

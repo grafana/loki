@@ -818,9 +818,9 @@ func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 func (e *LabelFilterExpr) Accept(v RootVisitor) { v.VisitLabelFilter(e) }
 
 func (e *LabelFilterExpr) Stage() (log.Stage, error) {
-	switch ip := e.LabelFilterer.(type) {
+	switch f := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
-		return ip, ip.PatternError()
+		return f, f.PatternError()
 	case *log.NoopLabelFilter:
 		return log.NoopStage, nil
 	}
@@ -1225,6 +1225,23 @@ func (r *LogRangeExpr) Walk(f WalkFn) {
 
 func (r *LogRangeExpr) Accept(v RootVisitor) {
 	v.VisitLogRange(r)
+}
+
+// HasUnwrapPostFilterOnErrorLabel reports whether the unwrap carries a post filter that reads
+// __error__ or __error_details__.
+func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
+	if r.Unwrap == nil {
+		return false
+	}
+
+	for _, f := range r.Unwrap.PostFilters {
+		// It reads the hints rather than the required label names, because the hints are what the
+		// pipeline reads to decide whether the query keeps the errored lines.
+		if f.Hints().ReadsErrorLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // WithoutUnwrap returns a copy of the log range without the unwrap statement.
