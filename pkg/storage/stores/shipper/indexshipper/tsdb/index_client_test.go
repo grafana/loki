@@ -377,9 +377,9 @@ func (i labelValuesIndex) LabelValues(_ context.Context, _ string, _, _ model.Ti
 }
 
 func TestIndexClient_LabelValuesForMetricName(t *testing.T) {
-	metric := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+	metric := labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 	shard := labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "0_of_2")
-	real := labels.MustNewMatcher(labels.MatchEqual, "app", "loki")
+	appMatcher := labels.MustNewMatcher(labels.MatchEqual, "app", "loki")
 	for _, tc := range []struct {
 		name      string
 		matchers  []*labels.Matcher
@@ -390,8 +390,8 @@ func TestIndexClient_LabelValuesForMetricName(t *testing.T) {
 		{name: "metric only", matchers: []*labels.Matcher{metric}},
 		{name: "shard only", matchers: []*labels.Matcher{shard}},
 		{name: "metric and shard", matchers: []*labels.Matcher{metric, shard}},
-		{name: "real matcher", matchers: []*labels.Matcher{real}, want: []*labels.Matcher{real}},
-		{name: "strip metric and shard", matchers: []*labels.Matcher{metric, shard, real}, want: []*labels.Matcher{real}},
+		{name: "real matcher", matchers: []*labels.Matcher{appMatcher}, want: []*labels.Matcher{appMatcher}},
+		{name: "strip metric and shard", matchers: []*labels.Matcher{metric, shard, appMatcher}, want: []*labels.Matcher{appMatcher}},
 		{name: "invalid shard", matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, astmapper.ShardLabel, "invalid")}, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
