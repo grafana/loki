@@ -11,6 +11,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/klauspost/compress/zstd"
+	"github.com/zeebo/xxh3"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
@@ -48,10 +49,18 @@ type PostingsReader interface {
 }
 
 // Postings block compression, recorded in the header's PostingsCompression.
-// It is independent of the postings encoding.
+// It is independent of the postings encoding, and every mode is checksummed
+// so a corrupted block fails to load instead of decoding to wrong postings.
+// Zero is never written and is rejected.
 const (
-	postingsCompressionNone uint32 = 0
+	// postingsCompressionZstd blocks are zstd frames, which carry their own
+	// checksum.
 	postingsCompressionZstd uint32 = 1
+	// postingsCompressionNoneXXH3 blocks are stored as-is, followed by the
+	// little-endian xxh3-64 of the block.
+	postingsCompressionNoneXXH3 uint32 = 2
+
+	postingsBlockChecksumSize = 8
 )
 
 // OpenPostingsReader creates a section reader for a specific encoding.
@@ -133,7 +142,8 @@ func decodeDeltaVarIntInto(dst []uint32, payload []byte) ([]uint32, error) {
 
 // ---------------------------------------------------------------------------
 // Fast postings encoder (blocks of per-term payloads). Delta-varint blocks are
-// zstd-compressed; Elias-Fano blocks are already compact and written as-is.
+// zstd-compressed; Elias-Fano blocks are already compact and written as-is,
+// followed by an xxh3 checksum.
 // ---------------------------------------------------------------------------
 
 const (
@@ -191,7 +201,7 @@ func (e *FastPostingsEncoder) PackingFactor() uint8 {
 
 func (e *FastPostingsEncoder) CompressionType() uint32 {
 	if e.encoding == format.PostingsEncodingFastEliasFanoBlocked {
-		return postingsCompressionNone
+		return postingsCompressionNoneXXH3
 	}
 	return postingsCompressionZstd
 }
@@ -318,6 +328,8 @@ func (e *FastPostingsEncoder) flushBlock(s *fastStreamingSession) error {
 	stored := raw.Bytes()
 	if s.encoder != nil {
 		stored = s.encoder.EncodeAll(stored, nil)
+	} else {
+		stored = binary.LittleEndian.AppendUint64(stored, xxh3.Hash(stored))
 	}
 	entry := postingsBlockDirEntry{
 		FirstTermID:    s.nextTermID,
@@ -413,7 +425,7 @@ type fastPostingsReader struct {
 	encoding   format.PostingsEncoding
 	termCount  uint64
 	dir        []postingsBlockDirEntry
-	decoder    *zstd.Decoder // nil when blocks are stored uncompressed
+	decoder    *zstd.Decoder // nil when blocks are stored uncompressed with an xxh3 checksum
 
 	cacheMu  sync.Mutex
 	cache    map[int]*decodedFastBlock
@@ -436,7 +448,7 @@ func openFastPostingsReaderFromDir(
 	}
 	var decoder *zstd.Decoder
 	switch compressionType {
-	case postingsCompressionNone:
+	case postingsCompressionNoneXXH3:
 	case postingsCompressionZstd:
 		var err error
 		decoder, err = zstd.NewReader(nil)
@@ -561,6 +573,15 @@ func (r *fastPostingsReader) loadBlock(blockIdx int, entry postingsBlockDirEntry
 		var err error
 		if raw, err = r.decoder.DecodeAll(raw, nil); err != nil {
 			return nil, fmt.Errorf("decompress postings block: %w", err)
+		}
+	} else {
+		if len(raw) < postingsBlockChecksumSize {
+			return nil, fmt.Errorf("invalid postings block checksum")
+		}
+		sum := binary.LittleEndian.Uint64(raw[len(raw)-postingsBlockChecksumSize:])
+		raw = raw[:len(raw)-postingsBlockChecksumSize]
+		if xxh3.Hash(raw) != sum {
+			return nil, fmt.Errorf("postings block %d checksum mismatch", blockIdx)
 		}
 	}
 	if len(raw) < 4 {

@@ -3,14 +3,17 @@ package v3
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/require"
+	"github.com/zeebo/xxh3"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 )
@@ -129,7 +132,7 @@ func TestPostingsEncodings_IndexRoundTrip(t *testing.T) {
 		wantCompression uint32
 	}{
 		{format.PostingsEncodingFastDeltaVarIntBlocked, postingsCompressionZstd},
-		{format.PostingsEncodingFastEliasFanoBlocked, postingsCompressionNone},
+		{format.PostingsEncodingFastEliasFanoBlocked, postingsCompressionNoneXXH3},
 	} {
 		t.Run(fmt.Sprintf("encoding=%d", tc.encoding), func(t *testing.T) {
 			cfg := DefaultFastIndexWriteConfig()
@@ -166,27 +169,116 @@ func TestPostingsEncodings_IndexRoundTrip(t *testing.T) {
 func TestPostingsCompressionIsHonored(t *testing.T) {
 	const numDocs = 100
 	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(2, 2)), numDocs, 50)
+	dir := t.TempDir()
+	written := map[uint32]format.HeaderInfo{}
+	files := map[uint32]string{}
+	for _, encoding := range []format.PostingsEncoding{
+		format.PostingsEncodingFastDeltaVarIntBlocked,
+		format.PostingsEncodingFastEliasFanoBlocked,
+	} {
+		cfg := DefaultFastIndexWriteConfig()
+		cfg.Encoding = encoding
+		path := filepath.Join(dir, fmt.Sprintf("index-%d.lidx", encoding))
+		info := writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+		written[info.PostingsCompression] = info
+		files[info.PostingsCompression] = path
+	}
+	require.Len(t, written, 2, "each encoding writes a different compression")
+
+	for _, compression := range []uint32{0, 3} {
+		t.Run(fmt.Sprintf("rejects_%d", compression), func(t *testing.T) {
+			bad := written[postingsCompressionZstd]
+			bad.PostingsCompression = compression
+			f, size := openTestReaderAt(t, files[postingsCompressionZstd])
+			_, err := OpenIndexAtWithHeader(f, 0, size, bad)
+			require.ErrorContains(t, err, fmt.Sprintf("unsupported postings compression: %d", compression))
+		})
+	}
+
+	for _, tc := range []struct{ written, claimed uint32 }{
+		{postingsCompressionZstd, postingsCompressionNoneXXH3},
+		{postingsCompressionNoneXXH3, postingsCompressionZstd},
+	} {
+		t.Run(fmt.Sprintf("written_%d_read_as_%d", tc.written, tc.claimed), func(t *testing.T) {
+			bad := written[tc.written]
+			bad.PostingsCompression = tc.claimed
+			f, size := openTestReaderAt(t, files[tc.written])
+			r, err := OpenIndexAtWithHeader(f, 0, size, bad)
+			require.NoError(t, err)
+			defer r.Close()
+			_, err = r.GetBitmap(1)
+			require.Error(t, err)
+		})
+	}
+}
+
+// TestUncompressedBlockFraming pins the on-disk framing of checksummed
+// uncompressed postings blocks, independently of the writer:
+//
+//	u32 storedLen | raw block | u64 xxh3(raw block)
+//
+// where storedLen covers the raw block and the checksum, and the directory's
+// CompressedSize is 4+storedLen. If this fails the format has changed: revert.
+func TestUncompressedBlockFraming(t *testing.T) {
+	const numDocs = 2000
+	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(7, 7)), numDocs, 1500)
+	cfg := DefaultFastIndexWriteConfig()
+	cfg.Encoding = format.PostingsEncodingFastEliasFanoBlocked
+	cfg.FastBlockTarget = 8 * 1024
 	path := filepath.Join(t.TempDir(), "index.lidx")
-	info := writeEncodingTestIndex(t, path, DefaultFastIndexWriteConfig(), numDocs, terms)
-	require.Equal(t, postingsCompressionZstd, info.PostingsCompression)
-	f, size := openTestReaderAt(t, path)
+	info := writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+	require.Greater(t, info.PostingsBlockCount, uint32(1))
 
-	t.Run("unknown", func(t *testing.T) {
-		bad := info
-		bad.PostingsCompression = 2
-		_, err := OpenIndexAtWithHeader(f, 0, size, bad)
-		require.ErrorContains(t, err, "unsupported postings compression: 2")
-	})
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	r, err := OpenIndexAt(bytes.NewReader(data), 0, int64(len(data)))
+	require.NoError(t, err)
+	defer r.Close()
 
-	t.Run("mismatched", func(t *testing.T) {
-		bad := info
-		bad.PostingsCompression = postingsCompressionNone
-		r, err := OpenIndexAtWithHeader(f, 0, size, bad)
-		require.NoError(t, err)
-		defer r.Close()
-		_, err = r.GetBitmap(1)
-		require.Error(t, err)
-	})
+	var total uint64
+	for i, entry := range r.metadata.postingsDir {
+		block := data[entry.BlockOffset : entry.BlockOffset+uint64(entry.CompressedSize)]
+		storedLen := binary.LittleEndian.Uint32(block[:4])
+		require.Equal(t, entry.CompressedSize, 4+storedLen, "block %d", i)
+		raw := block[4 : len(block)-postingsBlockChecksumSize]
+		require.Equal(t, xxh3.Hash(raw), binary.LittleEndian.Uint64(block[len(block)-postingsBlockChecksumSize:]), "block %d", i)
+		require.Equal(t, entry.NumTerms, binary.LittleEndian.Uint32(raw[:4]), "block %d", i)
+		total += uint64(entry.CompressedSize)
+	}
+	require.Equal(t, info.PostingsDataSize, total)
+}
+
+// A single flipped bit anywhere in an uncompressed block, including in the
+// Elias-Fano low bits where it would otherwise decode to a valid but wrong
+// docID, must fail the read.
+func TestUncompressedBlockChecksumDetectsCorruption(t *testing.T) {
+	const numDocs = 2000
+	terms := buildEncodingTestTerms(rand.New(rand.NewPCG(8, 8)), numDocs, 300)
+	cfg := DefaultFastIndexWriteConfig()
+	cfg.Encoding = format.PostingsEncodingFastEliasFanoBlocked
+	path := filepath.Join(t.TempDir(), "index.lidx")
+	writeEncodingTestIndex(t, path, cfg, numDocs, terms)
+	clean, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	r, err := OpenIndexAt(bytes.NewReader(clean), 0, int64(len(clean)))
+	require.NoError(t, err)
+	entry := r.metadata.postingsDir[0]
+	r.Close()
+
+	start := int(entry.BlockOffset) + 4
+	end := int(entry.BlockOffset + uint64(entry.CompressedSize))
+	for _, off := range []int{start, start + 4, (start + end) / 2, end - postingsBlockChecksumSize - 1, end - 1} {
+		t.Run(fmt.Sprintf("offset=%d", off), func(t *testing.T) {
+			corrupt := slices.Clone(clean)
+			corrupt[off] ^= 0x01
+			r, err := OpenIndexAt(bytes.NewReader(corrupt), 0, int64(len(corrupt)))
+			require.NoError(t, err, "postings are not read at open")
+			defer r.Close()
+			_, err = r.GetBitmap(1)
+			require.ErrorContains(t, err, "checksum mismatch")
+		})
+	}
 }
 
 func TestUnknownPostingsEncodingIsRejected(t *testing.T) {
