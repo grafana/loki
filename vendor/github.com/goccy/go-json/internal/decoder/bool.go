@@ -2,6 +2,7 @@ package decoder
 
 import (
 	"fmt"
+	"reflect"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
@@ -10,44 +11,12 @@ import (
 type boolDecoder struct {
 	structName string
 	fieldName  string
+	// typ is the type of the value, which the type errors report.
+	typ reflect.Type
 }
 
 func newBoolDecoder(structName, fieldName string) *boolDecoder {
-	return &boolDecoder{structName: structName, fieldName: fieldName}
-}
-
-func (d *boolDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) error {
-	c := s.skipWhiteSpace()
-	for {
-		switch c {
-		case 't':
-			if err := trueBytes(s); err != nil {
-				return err
-			}
-			**(**bool)(unsafe.Pointer(&p)) = true
-			return nil
-		case 'f':
-			if err := falseBytes(s); err != nil {
-				return err
-			}
-			**(**bool)(unsafe.Pointer(&p)) = false
-			return nil
-		case 'n':
-			if err := nullBytes(s); err != nil {
-				return err
-			}
-			return nil
-		case nul:
-			if s.read() {
-				c = s.char()
-				continue
-			}
-			goto ERROR
-		}
-		break
-	}
-ERROR:
-	return errors.ErrUnexpectedEndOfJSON("bool", s.totalOffset())
+	return &boolDecoder{structName: structName, fieldName: fieldName, typ: reflect.TypeOf(false)}
 }
 
 func (d *boolDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
@@ -74,6 +43,17 @@ func (d *boolDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.
 		}
 		cursor += 4
 		return cursor, nil
+	}
+	return d.decodeOther(ctx, cursor, depth)
+}
+
+// decodeOther skips the value at cursor, which is not a bool: a value of another kind is a type error, and
+// anything else a syntax error. It is a function of its own, so that Decode keeps the size it had.
+//
+//go:noinline
+func (d *boolDecoder) decodeOther(ctx *RuntimeContext, cursor, depth int64) (int64, error) {
+	if isOtherValue(ctx.Buf[cursor], boolValue) {
+		return ctx.skipTypeError(cursor, depth, d.typ)
 	}
 	return 0, errors.ErrUnexpectedEndOfJSON("bool", cursor)
 }
