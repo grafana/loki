@@ -144,11 +144,9 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				for _, timeRange := range tenantTimeRanges {
 					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
 						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
-							Path:                 dataobjPath,
-							StartTs:              timeRange.MinTime,
-							EndTs:                timeRange.MaxTime,
-							FileSize:             timeRange.FileSize,
-							UncompressedLogsSize: timeRange.UncompressedLogsSize,
+							Path:    dataobjPath,
+							StartTs: timeRange.MinTime,
+							EndTs:   timeRange.MaxTime,
 						})
 						if err != nil {
 							return nil, errors.Wrap(err, "appending index pointer")

@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -337,8 +336,7 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), limits)
 
 	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
-		Path:                 convergedPath,
-		UncompressedLogsSize: 300,
+		Path: convergedPath,
 	})
 	require.NoError(t, err)
 	require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, result)
@@ -362,10 +360,6 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	require.Len(t, swaps, 1)
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
 	require.Len(t, swaps[0].newEntries, 2)
-	require.ElementsMatch(t, []uint64{100, 200}, []uint64{
-		swaps[0].newEntries[0].UncompressedLogsSize,
-		swaps[0].newEntries[1].UncompressedLogsSize,
-	})
 }
 
 func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
@@ -736,7 +730,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 		stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
-			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 300,
+			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
 		})
 		require.NoError(t, err)
 		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
@@ -855,7 +849,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
 		run := func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source", UncompressedLogsSize: 300})
+			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
 		}
 		t.Run("all tasks succeed", func(t *testing.T) {
 			runner := &fakeRunner{}
@@ -928,7 +922,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
 		run := func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source", UncompressedLogsSize: 300})
+			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
 		}
 		t.Run("all tasks succeed", func(t *testing.T) {
 			runner := &fakeRunner{}
@@ -1940,41 +1934,13 @@ func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testin
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	// Converged ToC row is unknown (0), i.e. a legacy pre-upgrade index.
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 0}
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
 	require.NoError(t, err)
 
 	calls := replacer.snapshot()
 	require.Len(t, calls, 1)
 	require.NotEmpty(t, calls[0].newEntries)
-	for _, e := range calls[0].newEntries {
-		require.Equal(t, uint64(0), e.UncompressedLogsSize,
-			"an unknown converged row must not be healed into a positive size from legacy line-only stats")
-	}
-}
-
-// TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize is the complement:
-// when the converged ToC row is known (nonzero), the computed replacement size
-// is trustworthy and must be persisted rather than zeroed.
-func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
-	ctx := context.Background()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	convergedPath := "indexes/aa/converged"
-	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
-
-	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 200}
-	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
-	require.NoError(t, err)
-
-	calls := replacer.snapshot()
-	require.Len(t, calls, 1)
-	require.Len(t, calls[0].newEntries, 1)
-	require.Equal(t, uint64(200), calls[0].newEntries[0].UncompressedLogsSize,
-		"a known converged row keeps the computed section sum (100+100)")
 }
 
 func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
@@ -1995,7 +1961,7 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath, UncompressedLogsSize: 400})
+	_, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
 	require.NoError(t, err)
 
 	calls := replacer.snapshot()
@@ -2047,39 +2013,10 @@ func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
 	min1, max1 := taskBounds(tasks[0])
 	require.Equal(t, task1Min, min1, "first task StartTime = min across sections")
 	require.Equal(t, task1Max, max1, "first task EndTime = max across sections")
-	require.Equal(t, uint64(450), taskUncompressedLogsSize(tasks[0]), "first task sum: 100+200+150")
 
 	min2, max2 := taskBounds(tasks[1])
 	require.Equal(t, task2Min, min2, "second task StartTime = min across sections")
 	require.Equal(t, task2Max, max2, "second task EndTime = max across sections")
-	require.Equal(t, uint64(350), taskUncompressedLogsSize(tasks[1]), "second task sum: 300+50")
-}
-
-// TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
-// means "unknown", e.g. a legacy ToC row written before sizes were recorded)
-// poisons the whole task's sum. Publishing a partial sum would look exact even
-// though the true total is larger, so an unknown input must yield an unknown
-// (zero) output.
-func TestTaskUncompressedLogsSize_UnknownSizePropagates(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	minTS := window.UnixNano()
-	maxTS := window.Add(time.Hour).UnixNano()
-
-	tasks := []*compactionv2pb.TaskSpec{
-		{
-			Runs: []*compactionv2pb.RunRef{
-				{
-					Sections: []*compactionv2pb.SectionRef{
-						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 0},    // legacy: unknown
-						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 4096}, // known
-					},
-				},
-			},
-		},
-	}
-
-	require.Equal(t, uint64(0), taskUncompressedLogsSize(tasks[0]),
-		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
 }
 
 func TestMakeIndexTocEntries_UsesInputIndexes(t *testing.T) {
@@ -2094,76 +2031,17 @@ func TestMakeIndexTocEntries_UsesInputIndexes(t *testing.T) {
 		},
 	}}
 	inputs := []indexEntry{
-		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(3 * time.Hour), UncompressedLogsSize: 100},
-		{Path: "indexes/b", Start: window.Add(2 * time.Hour), End: window.Add(4 * time.Hour), UncompressedLogsSize: 200},
+		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(3 * time.Hour)},
+		{Path: "indexes/b", Start: window.Add(2 * time.Hour), End: window.Add(4 * time.Hour)},
 	}
 
 	entries, err := makeIndexTocEntries([]completedIndexMerge{{task: tasks[0], artifact: v2.ResultArtifact{Path: "indexes/output"}}}, inputs)
 	require.NoError(t, err)
 	require.Equal(t, []metastore.TableOfContentsEntry{{
-		Path:                 "indexes/output",
-		StartTime:            window.Add(time.Hour),
-		EndTime:              window.Add(4 * time.Hour),
-		UncompressedLogsSize: 300,
+		Path:      "indexes/output",
+		StartTime: window.Add(time.Hour),
+		EndTime:   window.Add(4 * time.Hour),
 	}}, entries)
-}
-
-func TestMakeIndexTocEntries_UnknownInputSizePropagates(t *testing.T) {
-	tasks := []*compactionv2pb.TaskSpec{{
-		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
-			{ObjectPath: "indexes/a"},
-			{ObjectPath: "indexes/b"},
-		}}},
-	}}
-	inputs := []indexEntry{
-		{Path: "indexes/a", UncompressedLogsSize: 100},
-		{Path: "indexes/b", UncompressedLogsSize: 0},
-	}
-
-	entries, err := makeIndexTocEntries([]completedIndexMerge{{task: tasks[0], artifact: v2.ResultArtifact{Path: "indexes/output"}}}, inputs)
-	require.NoError(t, err)
-	require.Zero(t, entries[0].UncompressedLogsSize)
-}
-
-func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	outputPath := "indexes/test/output"
-	testData := []byte("test data for size calculation")
-	err := bucket.Upload(ctx, outputPath, bytes.NewReader(testData))
-	require.NoError(t, err)
-
-	entries := []metastore.TableOfContentsEntry{
-		{Path: outputPath},
-	}
-
-	c := &coordinator{
-		logger: log.NewNopLogger(),
-		bucket: bucket,
-	}
-
-	c.fillFileSizes(ctx, entries)
-
-	require.Equal(t, uint64(len(testData)), entries[0].FileSize)
-}
-
-func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	entries := []metastore.TableOfContentsEntry{
-		{Path: "indexes/test/nonexistent"},
-	}
-
-	c := &coordinator{
-		logger: log.NewNopLogger(),
-		bucket: bucket,
-	}
-
-	c.fillFileSizes(ctx, entries)
-
-	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
 }
 
 // TestRunTenantLoop_IndexOnly verifies that a tenant with only index

@@ -270,9 +270,9 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			for _, entry := range after {
 				require.True(t, entry.Start.Equal(base))
 				require.True(t, entry.End.Equal(base.Add(time.Second)))
-				require.Positive(t, entry.FileSize)
-				_, err := bucket.Attributes(ctx, entry.Path)
-				require.NoError(t, err, "replacement index %q must exist", entry.Path)
+				exists, err := bucket.Exists(ctx, entry.Path)
+				require.NoError(t, err)
+				require.True(t, exists, "replacement index %q must exist", entry.Path)
 			}
 		})
 	}
