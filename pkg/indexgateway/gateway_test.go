@@ -607,7 +607,13 @@ func TestGetShardsWithoutChunkSizingInfo(t *testing.T) {
 		TargetBytesPerShard: targetBytesPerShard,
 	})
 
-	require.Equal(t, fallbackResponse(), resp)
+	expected := fallbackResponse()
+	require.Equal(t, expected.Shards, resp.Shards)
+	require.Equal(t, expected.ChunkGroups, resp.ChunkGroups)
+	require.Equal(t, expected.Statistics.Index.TotalChunks, resp.Statistics.Index.TotalChunks)
+	require.Equal(t, expected.Statistics.Index.TotalStreams, resp.Statistics.Index.TotalStreams)
+	require.NotEmpty(t, resp.Statistics.Index.GatewayInstance)
+	require.GreaterOrEqual(t, resp.Statistics.Index.GatewayQueueTime, int64(0))
 
 	// The gateway must delegate instead of resolving chunk refs itself.
 	indexQuerier.AssertNotCalled(t, "GetChunkRefsWithSizingInfo", mock.Anything, mock.Anything, mock.Anything)

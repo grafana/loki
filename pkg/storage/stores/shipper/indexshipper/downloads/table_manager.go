@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
@@ -224,7 +225,7 @@ func (tm *tableManager) Stop() {
 }
 
 func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
-	table, err := tm.getOrCreateTable(tableName)
+	table, err := tm.getOrCreateTable(ctx, tableName)
 	if err != nil {
 		return err
 	}
@@ -232,14 +233,14 @@ func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID
 }
 
 func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
-	table, err := tm.getOrCreateTable(tableName)
+	table, err := tm.getOrCreateTable(ctx, tableName)
 	if err != nil {
 		return err
 	}
 	return table.ForEach(ctx, userID, callback)
 }
 
-func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
+func (tm *tableManager) getOrCreateTable(ctx context.Context, tableName string) (Table, error) {
 	if tm.ctx.Err() != nil {
 		return nil, errors.New("table manager is stopping")
 	}
@@ -249,11 +250,14 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 	tm.tablesMtx.RLock()
 	table, ok := tm.tables[tableName]
 	tm.tablesMtx.RUnlock()
+	waited := time.Since(start)
 
-	level.Info(tm.logger).Log("msg", "get or create table", "found", ok, "table", tableName, "wait_for_lock", time.Since(start))
+	level.Info(tm.logger).Log("msg", "get or create table", "found", ok, "table", tableName, "wait_for_lock", waited)
 
 	if !ok {
+		lockStart := time.Now()
 		tm.tablesMtx.Lock()
+		waited += time.Since(lockStart)
 		defer tm.tablesMtx.Unlock()
 
 		// check if some other competing goroutine got the lock before us and created the table, use it if so.
@@ -265,6 +269,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 			tablePath := filepath.Join(tm.cfg.CacheDir, tableName)
 			err := util.EnsureDirectory(tablePath)
 			if err != nil {
+				stats.FromContext(ctx).AddIndexLockWaitTime(waited)
 				return nil, err
 			}
 
@@ -273,6 +278,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 		}
 	}
 
+	stats.FromContext(ctx).AddIndexLockWaitTime(waited)
 	return table, nil
 }
 
@@ -432,7 +438,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 
 		operationStart = time.Now()
-		table, err := tm.getOrCreateTable(tableName)
+		table, err := tm.getOrCreateTable(ctx, tableName)
 		if err != nil {
 			return err
 		}

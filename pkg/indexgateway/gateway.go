@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -37,6 +39,17 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/indexgateway")
+
+func indexGatewayInstance() string {
+	if host := os.Getenv("HOSTNAME"); host != "" {
+		return host
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return host
+}
 
 type IndexQuerier interface {
 	stores.ChunkFetcher
@@ -390,10 +403,15 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
+	queueStart := time.Now()
 	if err := g.queryGate.Start(ctx); err != nil {
 		return mapGateError(err)
 	}
 	defer g.queryGate.Done()
+
+	statsCtx, ctx := stats.NewContext(ctx)
+	statsCtx.SetIndexGatewayInstance(indexGatewayInstance())
+	statsCtx.AddIndexGatewayQueueTime(time.Since(queueStart))
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {
@@ -410,6 +428,9 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 
 		if err != nil {
 			return err
+		}
+		if shards != nil {
+			stats.ApplyIndexGatewayDiagnostics(&shards.Statistics.Index, statsCtx.Result(0, 0, 0).Index)
 		}
 
 		return server.Send(shards)
@@ -459,10 +480,13 @@ func (g *Gateway) boundedShards(
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 
+	buildStart := time.Now()
 	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
 	if err != nil {
 		return err
 	}
+	stats.FromContext(ctx).AddShardBuildTime(time.Since(buildStart))
+	stats.ApplyIndexGatewayDiagnostics(&resp.Statistics.Index, stats.FromContext(ctx).Result(0, 0, 0).Index)
 
 	sp.AddEvent("send shards response", trace.WithAttributes(
 		attribute.Int("shards", len(resp.Shards)),

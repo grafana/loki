@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -191,6 +192,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
+	stats.FromContext(ctx).AddIndexFilesScanned(int64(len(t.index)))
 
 	for _, idx := range t.index {
 		if err := callback(t.userID == "", idx); err != nil {
@@ -214,6 +216,7 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
+	stats.FromContext(ctx).AddIndexFilesScanned(int64(len(t.index)))
 
 	if len(t.index) == 0 {
 		return nil

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -171,18 +172,26 @@ func decodePostings(key string, encoded []byte) ([]storage.SeriesRef, error) {
 }
 
 func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute func() (index.Postings, error)) (index.Postings, error) {
+	queryStats := stats.FromContext(ctx)
+	ctx = cache.WithPostingsCacheTiming(ctx)
 	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
 	// Avoid a write after a failed fetch.
 	writeCache := err == nil
+	if err != nil {
+		queryStats.AddPostingsCacheError()
+	}
 	if err == nil && len(found) == 1 && len(bufs) == 1 {
-		refs, err := decodePostings(key, bufs[0])
-		if err == nil {
+		refs, decErr := decodePostings(key, bufs[0])
+		if decErr == nil {
+			queryStats.AddPostingsCacheHit()
 			return index.NewListPostings(refs), nil
 		}
+		queryStats.AddPostingsCacheError()
 		c.metrics.decodeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
+		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", decErr)
 	}
 
+	queryStats.AddPostingsCacheMiss()
 	postings, err := compute()
 	if err != nil {
 		return nil, err

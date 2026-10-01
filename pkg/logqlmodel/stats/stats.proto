@@ -134,6 +134,47 @@ message Index {
   // In addition to internal calculations this is also returned by the HTTP API.
   // Grafana expects time values to be returned in seconds as float.
   double bloomFilterTime = 7 [(gogoproto.jsontag) = "bloomFilterTime"];
+
+  // Index-gateway pod that served this shards request.
+  string gatewayInstance = 8 [(gogoproto.jsontag) = "gatewayInstance,omitempty"];
+  // Time spent waiting for an index-gateway query-gate slot, in nanoseconds.
+  // This is outside shardsDuration, which starts after admission.
+  int64 gatewayQueueTime = 9 [(gogoproto.jsontag) = "gatewayQueueTime,omitempty"];
+  // Time spent waiting on index-set and table locks, including readiness, in nanoseconds.
+  // Summed across lock acquisitions; concurrent waits add together.
+  int64 indexLockWaitTime = 10 [(gogoproto.jsontag) = "indexLockWaitTime,omitempty"];
+  // TSDB files opened for this request.
+  int64 indexFilesScanned = 11 [(gogoproto.jsontag) = "indexFilesScanned,omitempty"];
+  int64 postingsCacheHits = 12 [(gogoproto.jsontag) = "postingsCacheHits,omitempty"];
+  int64 postingsCacheMisses = 13 [(gogoproto.jsontag) = "postingsCacheMisses,omitempty"];
+  int64 postingsCacheErrors = 14 [(gogoproto.jsontag) = "postingsCacheErrors,omitempty"];
+  // Time blocked handing postings-cache fetches to the memcached worker pool, in nanoseconds.
+  // Summed across batches.
+  int64 postingsCacheQueueTime = 15 [(gogoproto.jsontag) = "postingsCacheQueueTime,omitempty"];
+  // Memcached GetMulti time for postings-cache fetches, in nanoseconds.
+  // Summed across batches, so concurrent RPCs can exceed the request wall time.
+  int64 postingsCacheRpcTime = 16 [(gogoproto.jsontag) = "postingsCacheRpcTime,omitempty"];
+  // Time computing postings from the index file after a cache miss, in nanoseconds.
+  // Summed across files.
+  int64 postingsComputeTimeSum = 17 [(gogoproto.jsontag) = "postingsComputeTimeSum,omitempty"];
+  // Wall clock from the first postings computation to the last, in nanoseconds.
+  int64 postingsComputeWallTime = 18 [(gogoproto.jsontag) = "postingsComputeWallTime,omitempty"];
+  // Postings entries walked while resolving series.
+  int64 postingsEntriesScanned = 19 [(gogoproto.jsontag) = "postingsEntriesScanned,omitempty"];
+  // Time in per-series chunk-metadata decoding, in nanoseconds.
+  // Summed across files. This includes mmap page-fault stalls; it is not CPU time.
+  int64 seriesScanTimeSum = 20 [(gogoproto.jsontag) = "seriesScanTimeSum,omitempty"];
+  // Wall clock from the first series scan to the last, in nanoseconds.
+  // This includes mmap page-fault stalls; it is not CPU time.
+  int64 seriesScanWallTime = 21 [(gogoproto.jsontag) = "seriesScanWallTime,omitempty"];
+  // Series records decoded.
+  int64 seriesVisited = 22 [(gogoproto.jsontag) = "seriesVisited,omitempty"];
+  // Decoded series that had at least one chunk overlapping the request range.
+  int64 seriesWithChunks = 23 [(gogoproto.jsontag) = "seriesWithChunks,omitempty"];
+  // Chunk metadata entries returned for the request range.
+  int64 chunksExamined = 24 [(gogoproto.jsontag) = "chunksExamined,omitempty"];
+  // Time building the shards response after chunk refs were resolved, in nanoseconds.
+  int64 shardBuildTime = 25 [(gogoproto.jsontag) = "shardBuildTime,omitempty"];
 }
 
 message Querier {

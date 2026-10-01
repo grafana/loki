@@ -535,7 +535,8 @@ func RecordShardsQueryMetrics(
 	if stats.Index.TotalChunks > 0 {
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
-	logValues := make([]interface{}, 0, 15)
+	index := stats.Index
+	logValues := make([]interface{}, 0, 40)
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
@@ -551,10 +552,28 @@ func RecordShardsQueryMetrics(
 		"query_hash", util.HashedQuery(query),
 		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
 		"shards", shards,
-		"index_total_chunks", stats.Index.TotalChunks,
-		"index_total_streams", stats.Index.TotalStreams,
-		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
+		"index_total_chunks", index.TotalChunks,
+		"index_total_streams", index.TotalStreams,
+		"index_post_bloom_filter_chunks", index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+		"index_gateway_instance", index.GatewayInstance,
+		"index_gateway_queue_time", time.Duration(index.GatewayQueueTime),
+		"index_lock_wait_time", time.Duration(index.IndexLockWaitTime),
+		"index_files_scanned", index.IndexFilesScanned,
+		"postings_cache_hits", index.PostingsCacheHits,
+		"postings_cache_misses", index.PostingsCacheMisses,
+		"postings_cache_errors", index.PostingsCacheErrors,
+		"postings_cache_queue_time", time.Duration(index.PostingsCacheQueueTime),
+		"postings_cache_rpc_time", time.Duration(index.PostingsCacheRpcTime),
+		"postings_compute_time_sum", time.Duration(index.PostingsComputeTimeSum),
+		"postings_compute_wall_time", time.Duration(index.PostingsComputeWallTime),
+		"postings_entries_scanned", index.PostingsEntriesScanned,
+		"series_scan_time_sum", time.Duration(index.SeriesScanTimeSum),
+		"series_scan_wall_time", time.Duration(index.SeriesScanWallTime),
+		"series_visited", index.SeriesVisited,
+		"series_with_chunks", index.SeriesWithChunks,
+		"chunks_examined", index.ChunksExamined,
+		"shard_build_time", time.Duration(index.ShardBuildTime),
 	)
 
 	level.Info(logger).Log(logValues...)

@@ -63,7 +63,36 @@ type Context struct {
 	// atomic operations on doubles.
 	querierExecTime int64
 
+	diag indexDiagnostics
+
 	mtx sync.Mutex
+}
+
+// indexDiagnostics accumulates per-request index-gateway timings. The fields are
+// updated from the concurrent file scans, then copied onto Index in Result.
+type indexDiagnostics struct {
+	gatewayQueueTime       atomic.Int64
+	indexLockWaitTime      atomic.Int64
+	indexFilesScanned      atomic.Int64
+	postingsCacheHits      atomic.Int64
+	postingsCacheMisses    atomic.Int64
+	postingsCacheErrors    atomic.Int64
+	postingsCacheQueueTime atomic.Int64
+	postingsCacheRpcTime   atomic.Int64
+	postingsComputeTimeSum atomic.Int64
+	postingsEntriesScanned atomic.Int64
+	seriesScanTimeSum      atomic.Int64
+	seriesVisited          atomic.Int64
+	seriesWithChunks       atomic.Int64
+	chunksExamined         atomic.Int64
+	shardBuildTime         atomic.Int64
+
+	postingsComputeStart atomic.Int64
+	postingsComputeEnd   atomic.Int64
+	seriesScanStart      atomic.Int64
+	seriesScanEnd        atomic.Int64
+
+	gatewayInstance atomic.Value
 }
 
 type CacheType string
@@ -196,10 +225,12 @@ func (c *Context) Reset() {
 	c.index.Reset()
 	c.recvWaitTime = 0
 	c.querierExecTime = 0
+	c.diag = indexDiagnostics{}
 }
 
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
+	c.publishIndexDiagnostics()
 	r := c.result
 
 	r.Merge(Result{
@@ -347,6 +378,44 @@ func (i *Index) Merge(m Index) {
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
+	i.mergeGatewayDiagnostics(m)
+}
+
+func (i *Index) mergeGatewayDiagnostics(m Index) {
+	switch {
+	case m.GatewayInstance == "":
+	case i.GatewayInstance == "":
+		i.GatewayInstance = m.GatewayInstance
+	case i.GatewayInstance == m.GatewayInstance:
+	default:
+		i.GatewayInstance += "," + m.GatewayInstance
+	}
+	i.GatewayQueueTime += m.GatewayQueueTime
+	i.IndexLockWaitTime += m.IndexLockWaitTime
+	i.IndexFilesScanned += m.IndexFilesScanned
+	i.PostingsCacheHits += m.PostingsCacheHits
+	i.PostingsCacheMisses += m.PostingsCacheMisses
+	i.PostingsCacheErrors += m.PostingsCacheErrors
+	i.PostingsCacheQueueTime += m.PostingsCacheQueueTime
+	i.PostingsCacheRpcTime += m.PostingsCacheRpcTime
+	i.PostingsComputeTimeSum += m.PostingsComputeTimeSum
+	i.PostingsComputeWallTime += m.PostingsComputeWallTime
+	i.PostingsEntriesScanned += m.PostingsEntriesScanned
+	i.SeriesScanTimeSum += m.SeriesScanTimeSum
+	i.SeriesScanWallTime += m.SeriesScanWallTime
+	i.SeriesVisited += m.SeriesVisited
+	i.SeriesWithChunks += m.SeriesWithChunks
+	i.ChunksExamined += m.ChunksExamined
+	i.ShardBuildTime += m.ShardBuildTime
+}
+
+// ApplyIndexGatewayDiagnostics copies index-gateway diagnostic counters onto dst.
+// Chunk totals already stored on dst are left unchanged.
+func ApplyIndexGatewayDiagnostics(dst *Index, src Index) {
+	if dst == nil {
+		return
+	}
+	dst.mergeGatewayDiagnostics(src)
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -876,5 +945,160 @@ func (d Dataobj) kvList(prefix string) []any {
 		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
 		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
 		prefix + "Dataobj.WireBytesTransferred", humanize.Bytes(uint64(d.WireBytesTransferred)),
+	}
+}
+
+func (c *Context) publishIndexDiagnostics() {
+	d := &c.diag
+	c.index.GatewayQueueTime = d.gatewayQueueTime.Load()
+	c.index.IndexLockWaitTime = d.indexLockWaitTime.Load()
+	c.index.IndexFilesScanned = d.indexFilesScanned.Load()
+	c.index.PostingsCacheHits = d.postingsCacheHits.Load()
+	c.index.PostingsCacheMisses = d.postingsCacheMisses.Load()
+	c.index.PostingsCacheErrors = d.postingsCacheErrors.Load()
+	c.index.PostingsCacheQueueTime = d.postingsCacheQueueTime.Load()
+	c.index.PostingsCacheRpcTime = d.postingsCacheRpcTime.Load()
+	c.index.PostingsComputeTimeSum = d.postingsComputeTimeSum.Load()
+	c.index.PostingsEntriesScanned = d.postingsEntriesScanned.Load()
+	c.index.SeriesScanTimeSum = d.seriesScanTimeSum.Load()
+	c.index.SeriesVisited = d.seriesVisited.Load()
+	c.index.SeriesWithChunks = d.seriesWithChunks.Load()
+	c.index.ChunksExamined = d.chunksExamined.Load()
+	c.index.ShardBuildTime = d.shardBuildTime.Load()
+	if start, end := d.postingsComputeStart.Load(), d.postingsComputeEnd.Load(); start > 0 && end >= start {
+		c.index.PostingsComputeWallTime = end - start
+	}
+	if start, end := d.seriesScanStart.Load(), d.seriesScanEnd.Load(); start > 0 && end >= start {
+		c.index.SeriesScanWallTime = end - start
+	}
+	if v := d.gatewayInstance.Load(); v != nil {
+		if instance, ok := v.(string); ok {
+			c.index.GatewayInstance = instance
+		}
+	}
+}
+
+// SetIndexGatewayInstance records the gateway pod that is serving this request.
+func (c *Context) SetIndexGatewayInstance(instance string) {
+	c.diag.gatewayInstance.Store(instance)
+}
+
+// AddIndexGatewayQueueTime adds time spent waiting for an index-gateway query slot.
+func (c *Context) AddIndexGatewayQueueTime(d time.Duration) {
+	c.diag.gatewayQueueTime.Add(int64(d))
+}
+
+// AddIndexLockWaitTime adds time spent waiting on an index-set or table lock.
+func (c *Context) AddIndexLockWaitTime(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.diag.indexLockWaitTime.Add(int64(d))
+}
+
+// AddIndexFilesScanned adds TSDB files visited for this request.
+func (c *Context) AddIndexFilesScanned(n int64) {
+	if n <= 0 {
+		return
+	}
+	c.diag.indexFilesScanned.Add(n)
+}
+
+// AddPostingsCacheHit records a postings cache fetch that decoded.
+func (c *Context) AddPostingsCacheHit() {
+	c.diag.postingsCacheHits.Add(1)
+}
+
+// AddPostingsCacheMiss records a postings cache fetch that had to compute postings.
+func (c *Context) AddPostingsCacheMiss() {
+	c.diag.postingsCacheMisses.Add(1)
+}
+
+// AddPostingsCacheError records a postings cache fetch or decode failure.
+func (c *Context) AddPostingsCacheError() {
+	c.diag.postingsCacheErrors.Add(1)
+}
+
+// AddPostingsCacheQueueTime adds time blocked submitting a postings-cache fetch to memcached workers.
+func (c *Context) AddPostingsCacheQueueTime(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.diag.postingsCacheQueueTime.Add(int64(d))
+}
+
+// AddPostingsCacheRPCTime adds memcached GetMulti time for a postings-cache fetch.
+func (c *Context) AddPostingsCacheRPCTime(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.diag.postingsCacheRpcTime.Add(int64(d))
+}
+
+// AddPostingsComputeTime adds time spent computing postings from an index file and
+// extends the wall-clock window covering every computation in this request.
+func (c *Context) AddPostingsComputeTime(d time.Duration, start time.Time) {
+	if d < 0 {
+		d = 0
+	}
+	c.diag.postingsComputeTimeSum.Add(int64(d))
+	observeWindow(&c.diag.postingsComputeStart, &c.diag.postingsComputeEnd, start, start.Add(d))
+}
+
+// AddPostingsEntriesScanned adds postings entries walked for this request.
+func (c *Context) AddPostingsEntriesScanned(n int) {
+	if n <= 0 {
+		return
+	}
+	c.diag.postingsEntriesScanned.Add(int64(n))
+}
+
+// AddSeriesScan records one index file's series walk. d is summed across files.
+// The wall-clock window is the span from the earliest start to the latest end.
+func (c *Context) AddSeriesScan(d time.Duration, start time.Time, visited, withChunks, chunks int) {
+	if d < 0 {
+		d = 0
+	}
+	c.diag.seriesScanTimeSum.Add(int64(d))
+	observeWindow(&c.diag.seriesScanStart, &c.diag.seriesScanEnd, start, start.Add(d))
+	if visited > 0 {
+		c.diag.seriesVisited.Add(int64(visited))
+	}
+	if withChunks > 0 {
+		c.diag.seriesWithChunks.Add(int64(withChunks))
+	}
+	if chunks > 0 {
+		c.diag.chunksExamined.Add(int64(chunks))
+	}
+}
+
+// AddShardBuildTime adds time spent turning chunk refs into shard bounds.
+func (c *Context) AddShardBuildTime(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.diag.shardBuildTime.Add(int64(d))
+}
+
+func observeWindow(start, end *atomic.Int64, from, to time.Time) {
+	begin := from.UnixNano()
+	finish := to.UnixNano()
+	for {
+		old := start.Load()
+		if old != 0 && old <= begin {
+			break
+		}
+		if start.CompareAndSwap(old, begin) {
+			break
+		}
+	}
+	for {
+		old := end.Load()
+		if old >= finish {
+			break
+		}
+		if end.CompareAndSwap(old, finish) {
+			break
+		}
 	}
 }

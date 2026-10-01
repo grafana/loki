@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -239,10 +240,23 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
+		scanStart := time.Now()
+		visited, withChunks, examined := 0, 0, 0
+		defer func() {
+			queryStats := stats.FromContext(ctx)
+			queryStats.AddSeriesScan(time.Since(scanStart), scanStart, visited, withChunks, examined)
+			queryStats.AddPostingsEntriesScanned(visited)
+		}()
+
 		for p.Next() {
 			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
 				return err
+			}
+			visited++
+			if n := len(chks); n > 0 {
+				withChunks++
+				examined += n
 			}
 
 			// skip series that belong to different shards
@@ -272,10 +286,23 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
+		scanStart := time.Now()
+		visited, withChunks, examined := 0, 0, 0
+		defer func() {
+			queryStats := stats.FromContext(ctx)
+			queryStats.AddSeriesScan(time.Since(scanStart), scanStart, visited, withChunks, examined)
+			queryStats.AddPostingsEntriesScanned(visited)
+		}()
+
 		for p.Next() {
 			hash, err := scan.Series(p.At(), int64(from), int64(through), nil, &chks)
 			if err != nil {
 				return err
+			}
+			visited++
+			if n := len(chks); n > 0 {
+				withChunks++
+				examined += n
 			}
 
 			// skip series that belong to different shards
@@ -299,7 +326,10 @@ func (i *TSDBIndex) forPostings(
 	fn func(index.Postings) error,
 ) error {
 	compute := func() (index.Postings, error) {
-		return PostingsForMatchers(i.reader, fpFilter, matchers...)
+		start := time.Now()
+		postings, err := PostingsForMatchers(i.reader, fpFilter, matchers...)
+		stats.FromContext(ctx).AddPostingsComputeTime(time.Since(start), start)
+		return postings, err
 	}
 	var p index.Postings
 	var err error

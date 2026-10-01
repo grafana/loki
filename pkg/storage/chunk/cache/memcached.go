@@ -122,6 +122,21 @@ type result struct {
 	batchID int // For ordering results.
 }
 
+type postingsCacheTimingKey struct{}
+
+// WithPostingsCacheTiming marks memcached operations on ctx as postings-cache
+// reads. Queue time and GetMulti time are then added to the query statistics.
+// Other cache clients that share this process do not set the marker, so their
+// fetches stay out of the postings counters.
+func WithPostingsCacheTiming(ctx context.Context) context.Context {
+	return context.WithValue(ctx, postingsCacheTimingKey{}, true)
+}
+
+func postingsCacheTiming(ctx context.Context) bool {
+	enabled, _ := ctx.Value(postingsCacheTimingKey{}).(bool)
+	return enabled
+}
+
 func memcacheStatusCode(err error) string {
 	// See https://godoc.org/github.com/grafana/gomemcache/memcache#pkg-variables
 	switch err {
@@ -161,6 +176,9 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		items map[string]*memcache.Item
 	)
 	items, err = c.memcache.GetMulti(ctx, keys)
+	if postingsCacheTiming(ctx) {
+		stats.FromContext(ctx).AddPostingsCacheRPCTime(time.Since(start))
+	}
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
 		return found, bufs, keys, err
@@ -204,11 +222,15 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			abort = true
 			err = ctx.Err()
 		default:
+			sendStart := time.Now()
 			c.inputCh <- &work{
 				keys:     keys[i:min(i+batchSize, len(keys))],
 				ctx:      ctx,
 				resultCh: resultsCh,
 				batchID:  sent,
+			}
+			if postingsCacheTiming(ctx) {
+				stats.FromContext(ctx).AddPostingsCacheQueueTime(time.Since(sendStart))
 			}
 			sent++
 		}

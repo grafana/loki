@@ -92,15 +92,27 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
 	idx := NewMultiTenantIndex(file.(*TSDBFile))
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
-	first, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
+	statsCtx, ctx := stats.NewContext(context.Background())
+	first, err := idx.GetChunkRefs(ctx, "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
+	second, err := idx.GetChunkRefs(ctx, "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
 
 	require.Equal(t, first, second)
 	require.Equal(t, 2, backend.fetches, "queries must fetch postings through the cache attached by the opener")
 	require.Equal(t, 1, backend.stores, "only the first query for each tenant should store postings")
 	require.Equal(t, 1, backend.hits, "the repeated query must hit cached postings")
+	recorded := statsCtx.Result(0, 0, 0).Index
+	require.Equal(t, int64(1), recorded.PostingsCacheMisses)
+	require.Equal(t, int64(1), recorded.PostingsCacheHits)
+	require.Equal(t, int64(0), recorded.PostingsCacheErrors)
+	require.Equal(t, int64(2), recorded.SeriesVisited)
+	require.Equal(t, recorded.SeriesVisited, recorded.PostingsEntriesScanned)
+	require.Equal(t, int64(2), recorded.ChunksExamined)
+	require.Positive(t, recorded.PostingsComputeTimeSum)
+	require.Positive(t, recorded.SeriesScanTimeSum)
+	require.Equal(t, recorded.PostingsComputeTimeSum, recorded.PostingsComputeWallTime)
+	require.Positive(t, recorded.SeriesScanWallTime)
 
 	_, err = idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
@@ -115,10 +127,15 @@ func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
 		called++
 		return index.EmptyPostings(), nil
 	}
-	_, err := c.cachedPostings(context.Background(), "key", compute)
+	statsCtx, ctx := stats.NewContext(context.Background())
+	_, err := c.cachedPostings(ctx, "key", compute)
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 	require.Empty(t, backend.entries)
+	recorded := statsCtx.Result(0, 0, 0).Index
+	require.Equal(t, int64(1), recorded.PostingsCacheErrors)
+	require.Equal(t, int64(1), recorded.PostingsCacheMisses)
+	require.Equal(t, int64(0), recorded.PostingsCacheHits)
 }
 
 func TestPostingsCodec(t *testing.T) {
