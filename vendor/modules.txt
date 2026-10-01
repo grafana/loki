@@ -822,7 +822,7 @@ github.com/go-openapi/swag/yamlutils
 # github.com/go-openapi/validate v1.0.0
 ## explicit; go 1.26.0
 github.com/go-openapi/validate
-# github.com/go-playground/locales v0.14.1
+# github.com/go-playground/locales v0.14.2
 ## explicit; go 1.17
 github.com/go-playground/locales
 github.com/go-playground/locales/currency
