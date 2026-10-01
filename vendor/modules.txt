@@ -1771,17 +1771,17 @@ go.opentelemetry.io/collector/confmap/internal
 go.opentelemetry.io/collector/confmap/internal/mapstructure
 go.opentelemetry.io/collector/confmap/internal/metadata
 go.opentelemetry.io/collector/confmap/internal/third_party/composehook
-# go.opentelemetry.io/collector/consumer v1.67.0
+# go.opentelemetry.io/collector/consumer v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/consumer/xconsumer v0.161.0
+# go.opentelemetry.io/collector/consumer/xconsumer v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/consumer/xconsumer
 # go.opentelemetry.io/collector/featuregate v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/componentalias v0.161.0
+# go.opentelemetry.io/collector/internal/componentalias v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/internal/componentalias
 # go.opentelemetry.io/collector/pdata v1.68.0
@@ -1798,14 +1798,14 @@ go.opentelemetry.io/collector/pdata/plog/plogotlp
 go.opentelemetry.io/collector/pdata/pmetric
 go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 go.opentelemetry.io/collector/pdata/ptrace
-# go.opentelemetry.io/collector/pdata/pprofile v0.161.0
+# go.opentelemetry.io/collector/pdata/pprofile v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
-# go.opentelemetry.io/collector/pipeline v1.67.0
+# go.opentelemetry.io/collector/pipeline v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.67.0
+# go.opentelemetry.io/collector/processor v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
 # go.opentelemetry.io/collector/processor/xprocessor v0.161.0
