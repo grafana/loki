@@ -19,6 +19,7 @@ type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Pla
 type planDispatcher struct {
 	runPlan runFunc
 	// limit caps how many plans run at once. A value <= 0 means no cap.
+	// it is applied locally for each call to Run, not globally for the dispatcher.
 	limit int
 }
 

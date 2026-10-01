@@ -249,8 +249,8 @@ type compactionStats struct {
 	dispatched int
 }
 
-// Add returns the field-wise sum of s and other.
-func (s compactionStats) Add(other compactionStats) compactionStats {
+// Merge returns the field-wise sum of s and other.
+func (s compactionStats) Merge(other compactionStats) compactionStats {
 	return compactionStats{
 		removed:    s.removed + other.removed,
 		added:      s.added + other.added,
@@ -323,13 +323,12 @@ func (c *coordinator) compactTenantLogs(
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+	if len(tasks) == 0 {
+		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
+	}
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
 	logMergeTaskDetails(entryLogger, tasks)
-
-	if len(tasks) == 0 {
-		return compactionStats{}, fmt.Errorf("planned log compaction tasks: no completed log merges")
-	}
 
 	plans := make([]*physical.Plan, len(tasks))
 	for i, task := range tasks {
@@ -455,7 +454,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		if err != nil {
 			return total, err
 		}
-		total = total.Add(stats)
+		total = total.Merge(stats)
 	}
 	return total, nil
 }
@@ -478,13 +477,12 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
+	if len(tasks) == 0 {
+		return compactionStats{}, fmt.Errorf("no index merge tasks to execute")
+	}
 
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
-
-	if len(tasks) == 0 {
-		return compactionStats{}, fmt.Errorf("build index ToC entries: no completed index merges")
-	}
 
 	plans := make([]*physical.Plan, len(tasks))
 	for i, task := range tasks {
@@ -733,7 +731,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		}
 		if stats.added > 0 {
 			anySwapped = true
-			agg = agg.Add(stats)
+			agg = agg.Merge(stats)
 		}
 	}
 

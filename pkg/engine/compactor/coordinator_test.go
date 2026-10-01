@@ -788,7 +788,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				// Fail the task that merges indexes/c.
 				for _, run := range mergeNodeRuns(t, plan) {
 					for _, section := range run.Sections {
@@ -840,7 +840,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				// Fail the task that merges logs/2.
 				for _, run := range mergeNodeRuns(t, plan) {
 					for _, section := range run.Sections {
@@ -900,7 +900,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 				root, err := plan.Root()
 				if err != nil {
 					return nil, err
@@ -921,7 +921,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 }
 
 func TestReplaceLogIndex(t *testing.T) {
-	t.Run("does not swap when there are no replacement entries", func(t *testing.T) {
+	t.Run("fail when there are no replacement entries", func(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, replacer, time.Now, nil)
 		_, err := c.replaceLogIndex(context.Background(), "acme", time.Now(), indexEntry{Path: "indexes/source"}, nil)
