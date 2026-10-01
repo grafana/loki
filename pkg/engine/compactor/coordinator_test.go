@@ -181,19 +181,18 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 			MaxRunsPerTask:            2,
 			LogMaxRunsPerTask:         2,
 			LogMinCompactionSize:      1,
-			ToCConsolidateTimeout:     30 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
 			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		},
-		logger:          log.NewNopLogger(),
-		bucket:          bucket,
-		runPlan:         runner.run,
-		metastoreWriter: replacer,
-		clock:           clock,
-		sleep:           sleepUntil,
-		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
-		limits:          limits,
+		logger:    log.NewNopLogger(),
+		bucket:    bucket,
+		runPlan:   runner.run,
+		publisher: &tocPublisher{writer: replacer, timeout: 30 * time.Second},
+		clock:     clock,
+		sleep:     sleepUntil,
+		metrics:   newCoordinatorMetrics(prometheus.NewRegistry()),
+		limits:    limits,
 	}
 }
 
@@ -661,7 +660,6 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 		failOnCall int
 		swapped    bool
 		swapErr    error
-		dryRun     bool
 		wantErr    bool
 		wantSwap   bool
 		wantAdded  int
@@ -669,7 +667,6 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 		{name: "swap_ok", swapped: true, wantSwap: true, wantAdded: 1},
 		{name: "swap_error", swapErr: errors.New("boom"), wantErr: true, wantSwap: true},
 		{name: "race_loss", swapped: false, wantSwap: true, wantAdded: 0},
-		{name: "dry_run", swapped: true, dryRun: true, wantAdded: 0},
 		{name: "job_failure", failOnCall: 1, swapped: true, wantErr: true},
 	}
 
@@ -682,7 +679,6 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 				defer runner.assertUniqueObjects(t)
 				replacer := &fakeReplacer{swapped: edge.swapped, err: edge.swapErr}
 				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-				c.cfg.DryRun = edge.dryRun
 
 				stats, err := run(c)
 				if edge.wantErr {

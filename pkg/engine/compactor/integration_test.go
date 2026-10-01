@@ -537,9 +537,13 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
 		},
-		metastoreWriter: metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
-		clock:           func() time.Time { return now },
-		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+		publisher: &tocPublisher{
+			writer:  metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
+			timeout: compactionCfg.ToCConsolidateTimeout,
+			dryRun:  compactionCfg.DryRun,
+		},
+		clock:   func() time.Time { return now },
+		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
 	}
 }
 
