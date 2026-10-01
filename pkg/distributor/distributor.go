@@ -819,11 +819,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 					d.writeFailuresManager.Log(tenantID, err)
 					// Set the validation error to the stream limit error so it is returned to the client.
 					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-					// If none of the streams were accepted, and there are no
-					// live-mode streams to write either, return early.
-					if len(accepted) == 0 && len(liveStreams) == 0 {
-						return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
-					}
+					// Do not return early here even if nothing was accepted: the
+					// live-mode rejection below still needs to run so its discards
+					// are tracked too.
 				}
 				streams = accepted
 			}
@@ -840,11 +838,17 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		rejectErr := fmt.Errorf(validation.StreamLimitErrorMsg, liveRejected[0].Labels, tenantID)
 		d.writeFailuresManager.Log(tenantID, rejectErr)
 		validationErr = httpgrpc.Error(http.StatusTooManyRequests, rejectErr.Error())
-		// The streams that were not rejected are still written, so only a push
-		// whose streams were all rejected returns the error instead.
-		if len(streams) == 0 {
-			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", rejectErr.Error())
-		}
+	}
+
+	// The streams that were not rejected are still written, so only a push
+	// whose streams were all rejected - live-mode and non-live alike -
+	// returns the error instead. validationErr is guaranteed set here: an
+	// earlier check already returned if nothing survived validation at all,
+	// so an empty streams slice at this point means one of the two rejection
+	// blocks above ran and set it. validationErr is already an httpgrpc
+	// error, so it is returned as-is instead of being wrapped again.
+	if len(streams) == 0 && validationErr != nil {
+		return nil, validationErr
 	}
 
 	tracker := PushTracker{
