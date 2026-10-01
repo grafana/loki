@@ -273,6 +273,11 @@ func checkResourceOwnership(
 
 		// Create minimal unstructured object to avoid copying all fields
 		gvk := obj.GetObjectKind().GroupVersionKind()
+		if gvk.Empty() {
+			// Skip ownership check for objects without GVK
+			continue
+		}
+
 		existing := &unstructured.Unstructured{}
 		existing.SetGroupVersionKind(gvk)
 
