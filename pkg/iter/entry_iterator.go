@@ -405,20 +405,24 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-type nonOverlappingIterator struct {
+type sequentialIterator struct {
 	iterators []EntryIterator
 	curr      EntryIterator
 	err       error
 }
 
-// NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
-	return &nonOverlappingIterator{
+// NewSequentialIterator returns an iterator that plays each given iterator to completion,
+// in order, before moving to the next. It makes no assumption about the time range each
+// iterator covers.
+//
+// Producing time-ordered output, if that is required, is the caller's job.
+func NewSequentialIterator(iterators []EntryIterator) EntryIterator {
+	return &sequentialIterator{
 		iterators: iterators,
 	}
 }
 
-func (i *nonOverlappingIterator) Next() bool {
+func (i *sequentialIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if i.curr != nil {
 			// The current iterator stopped. If it failed, surface the error and stop:
@@ -443,29 +447,29 @@ func (i *nonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingIterator) At() logproto.Entry {
+func (i *sequentialIterator) At() logproto.Entry {
 	return i.curr.At()
 }
 
-func (i *nonOverlappingIterator) Labels() string {
+func (i *sequentialIterator) Labels() string {
 	if i.curr == nil {
 		return ""
 	}
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingIterator) StreamHash() uint64 {
+func (i *sequentialIterator) StreamHash() uint64 {
 	if i.curr == nil {
 		return 0
 	}
 	return i.curr.StreamHash()
 }
 
-func (i *nonOverlappingIterator) Err() error {
+func (i *sequentialIterator) Err() error {
 	return i.err
 }
 
-func (i *nonOverlappingIterator) Close() error {
+func (i *sequentialIterator) Close() error {
 	// Close every iterator and keep all errors: Add ignores nil, so a clean close
 	// still returns nil.
 	var errs util.MultiError

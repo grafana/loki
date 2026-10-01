@@ -766,9 +766,7 @@ func NewStreamFirstMultiSeriesIterator(series []logproto.Series) SampleIterator 
 		is = append(is, NewSeriesIterator(series[i]))
 	}
 
-	// Two Series can cover overlapping timestamps. Despite its name,
-	// NewNonOverlappingSampleIterator accepts that: it plays each input to completion in turn.
-	return NewNonOverlappingSampleIterator(is)
+	return NewSequentialSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -804,7 +802,7 @@ func (i *seriesIterator) Close() error {
 	return nil
 }
 
-type nonOverlappingSampleIterator struct {
+type sequentialSampleIterator struct {
 	i         int
 	iterators []SampleIterator
 	curr      SampleIterator
@@ -815,14 +813,18 @@ type nonOverlappingSampleIterator struct {
 	closeErrs util.MultiError
 }
 
-// NewNonOverlappingSampleIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingSampleIterator(iterators []SampleIterator) SampleIterator {
-	return &nonOverlappingSampleIterator{
+// NewSequentialSampleIterator returns an iterator that plays each given iterator to
+// completion, in order, before moving to the next. It makes no assumption about the time
+// range each iterator covers.
+//
+// Producing time-ordered output, if that is required, is the caller's job.
+func NewSequentialSampleIterator(iterators []SampleIterator) SampleIterator {
+	return &sequentialSampleIterator{
 		iterators: iterators,
 	}
 }
 
-func (i *nonOverlappingSampleIterator) Next() bool {
+func (i *sequentialSampleIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if i.curr != nil {
 			// The current iterator stopped. If it failed, surface the error and stop:
@@ -852,23 +854,23 @@ func (i *nonOverlappingSampleIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingSampleIterator) At() logproto.Sample {
+func (i *sequentialSampleIterator) At() logproto.Sample {
 	return i.curr.At()
 }
 
-func (i *nonOverlappingSampleIterator) Labels() string {
+func (i *sequentialSampleIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingSampleIterator) StreamHash() uint64 {
+func (i *sequentialSampleIterator) StreamHash() uint64 {
 	return i.curr.StreamHash()
 }
 
-func (i *nonOverlappingSampleIterator) Err() error {
+func (i *sequentialSampleIterator) Err() error {
 	return i.err
 }
 
-func (i *nonOverlappingSampleIterator) Close() error {
+func (i *sequentialSampleIterator) Close() error {
 	if i.curr != nil {
 		// Some implementations return their stored read error from Close too. When
 		// it does, err is skipped: it already surfaced through i.Err(), so adding it
