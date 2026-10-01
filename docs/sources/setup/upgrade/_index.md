@@ -37,10 +37,6 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Logline `document_interval` default changed to `16s`
-
-The default value of `-logline-index.document-interval` changed from `100ms` to `16s`. Logline index builders that leave the flag unset write indexes whose documents each cover 16 seconds, so query hints are coarser. Existing indexes are unaffected, because readers take document time ranges from each index. To keep the previous behavior, set `-logline-index.document-interval=100ms` explicitly.
-
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
