@@ -24,18 +24,6 @@ import (
 
 const indexMergeIterations = 3
 
-// tocReplacer is the subset of *metastore.TableOfContentsWriter the
-// coordinator needs.
-type tocReplacer interface {
-	ReplaceIndexPointers(
-		ctx context.Context,
-		window time.Time,
-		tenant string,
-		oldPaths []string,
-		newEntries []metastore.TableOfContentsEntry,
-	) (bool, error)
-}
-
 // runFunc executes one single-root physical.Plan as a workflow.
 // Injected via the coordinator's runPlan field so unit tests can swap in a
 // recorder without standing up a scheduler + worker pair.
@@ -44,11 +32,11 @@ type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Pla
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
 type coordinator struct {
-	cfg             Config
-	logger          log.Logger
-	bucket          objstore.Bucket
-	runPlan         runFunc
-	metastoreWriter tocReplacer
+	cfg       Config
+	logger    log.Logger
+	bucket    objstore.Bucket
+	runPlan   runFunc
+	publisher *tocPublisher
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
 	clock func() time.Time
@@ -79,11 +67,15 @@ func newCoordinator(
 		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
-		metastoreWriter: metastoreWriter,
-		clock:           time.Now,
-		sleep:           sleepUntil,
-		metrics:         newCoordinatorMetrics(reg),
-		limits:          limits,
+		publisher: &tocPublisher{
+			writer:  metastoreWriter,
+			timeout: cfg.ToCConsolidateTimeout,
+			dryRun:  cfg.DryRun,
+		},
+		clock:   time.Now,
+		sleep:   sleepUntil,
+		metrics: newCoordinatorMetrics(reg),
+		limits:  limits,
 	}
 }
 
@@ -307,20 +299,7 @@ func (c *coordinator) replaceLogIndex(
 		return compactionStats{}, fmt.Errorf("replace source log index %q: got %d results for %d tasks", sourceIndex.Path, len(newEntries), dispatched)
 	}
 
-	if c.cfg.DryRun {
-		return compactionStats{dispatched: dispatched}, nil
-	}
-
-	replaceCtx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(
-		replaceCtx,
-		window,
-		tenant,
-		[]string{sourceIndex.Path},
-		newEntries,
-	)
+	swapped, err := c.publisher.Replace(ctx, tenant, window, []string{sourceIndex.Path}, newEntries)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("replace source log index %q: %w", sourceIndex.Path, err)
 	}
@@ -567,13 +546,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 
-	if c.cfg.DryRun {
-		return compactionStats{}, nil
-	}
-
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	swapped, err := c.publisher.Replace(ctx, tenant, window, oldPaths, newEntries)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
