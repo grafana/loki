@@ -83,7 +83,6 @@ func (m *TableOfContentsWriter) initBuilder() error {
 
 // WriteEntry adds entry to the tenant's ToC of every window the entry overlaps.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
-	var err error
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
@@ -99,6 +98,10 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
 		})
+		var (
+			err     error
+			written bool
+		)
 		for b.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
 				if existing != nil {
@@ -170,6 +173,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
 				m.metrics.incTableOfContentsWrites(statusSuccess)
+				written = true
 				break
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
@@ -179,8 +183,14 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 
 		// Reset at the end too so we don't leave our memory hanging around between calls.
 		m.tocBuilder.Reset()
+
+		// The loop only stops without writing once the context is done, which
+		// can happen before the first attempt, when err is still nil.
+		if !written {
+			return stderrors.Join(b.Err(), err)
+		}
 	}
-	return err
+	return nil
 }
 
 // wrappedReadCloser wraps an io.ReadCloser and calls OnClose when Close is

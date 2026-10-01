@@ -127,6 +127,24 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("WriteEntry fails when the context is canceled before the ToC is written", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket, builder)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err = writer.WriteEntry(ctx, "test", TableOfContentsEntry{
+			Path:      "testdata/metastore.obj",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(20),
+		})
+		require.ErrorIs(t, err, context.Canceled, "a caller must not treat an unwritten entry as recorded")
+		require.Empty(t, bucket.Objects())
+	})
+
 	t.Run("WriteEntry writes the tenant's ToC for every window it overlaps", func(t *testing.T) {
 		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
