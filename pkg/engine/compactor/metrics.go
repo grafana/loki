@@ -268,6 +268,9 @@ type workerMetrics struct {
 	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
 	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
+	logMergeInputRecordsTotal     *prometheus.CounterVec   // tenant
+	logMergeInputLineBytesTotal   *prometheus.CounterVec   // tenant
+	logMergeDuplicateRecordsTotal *prometheus.CounterVec   // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
@@ -298,6 +301,18 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
 			Buckets: byteBuckets,
+		}, []string{labelTenant}),
+		logMergeInputRecordsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_input_records_total",
+			Help: "Records merged by successful LogMerge tasks. Use rate() for merge throughput.",
+		}, []string{labelTenant}),
+		logMergeInputLineBytesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_input_line_bytes_total",
+			Help: "Log line bytes merged by successful LogMerge tasks, excluding metadata. Use rate() for merge throughput.",
+		}, []string{labelTenant}),
+		logMergeDuplicateRecordsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_duplicate_records_total",
+			Help: "Records seen by successful LogMerge tasks that repeat an earlier record's stream, timestamp, line, and metadata. Duplicates are kept in the output.",
 		}, []string{labelTenant}),
 	}
 }
@@ -334,4 +349,7 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
 	}
+	m.logMergeInputRecordsTotal.WithLabelValues(tenant).Add(float64(stats.InputRecords))
+	m.logMergeInputLineBytesTotal.WithLabelValues(tenant).Add(float64(stats.InputLineBytes))
+	m.logMergeDuplicateRecordsTotal.WithLabelValues(tenant).Add(float64(stats.DuplicateRecords))
 }

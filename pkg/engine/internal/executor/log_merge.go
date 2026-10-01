@@ -82,6 +82,11 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if err != nil {
 		return nil, err
 	}
+	var (
+		dups         duplicateDetector
+		inputRecords int
+		inputBytes   int64
+	)
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -90,6 +95,9 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return nil, err
 		}
+		inputRecords++
+		inputBytes += int64(len(rec.Line))
+		dups.observe(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
@@ -120,19 +128,28 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	for _, run := range inputs.runs {
 		stats.InputSections += len(run)
 	}
+	stats.InputRecords = inputRecords
+	stats.InputLineBytes = inputBytes
+	stats.DuplicateRecords = dups.duplicates
 
+	duration := time.Since(start)
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
 		"tenant", node.Tenant,
 		"source_objects", stats.SourceObjects,
 		"input_sections", stats.InputSections,
+		"input_records", stats.InputRecords,
+		"input_line_bytes", stats.InputLineBytes,
+		"duplicate_records", stats.DuplicateRecords,
 		"output_objects", stats.OutputObjects,
 		"output_bytes", stats.OutputBytesCompressed,
+		"records_per_second", int64(float64(stats.InputRecords)/duration.Seconds()),
+		"line_bytes_per_second", int64(float64(stats.InputLineBytes)/duration.Seconds()),
 		"sort_schema", strings.Join(node.SortSchema, ","),
-		"duration", time.Since(start),
+		"duration", duration,
 	)
 
-	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
+	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
 	return &v2.ResultArtifact{Path: idxPath}, nil
 }
 
@@ -147,6 +164,9 @@ type LogMergeObservedStats struct {
 	Outcome               string
 	SourceObjects         int
 	InputSections         int
+	InputRecords          int
+	InputLineBytes        int64 // Sum of log line lengths; excludes metadata.
+	DuplicateRecords      int   // Records that repeat an earlier record's stream, timestamp, line, and metadata.
 	OutputObjects         int
 	OutputBytesCompressed int64
 }
