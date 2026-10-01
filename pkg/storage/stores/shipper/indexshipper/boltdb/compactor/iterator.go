@@ -75,6 +75,7 @@ func ForEachSeries(ctx context.Context, bucket *bbolt.Bucket, config config.Peri
 }
 
 type seriesCleaner struct {
+	tableName     string
 	tableInterval model.Interval
 	shards        map[uint32]string
 	bucket        *bbolt.Bucket
@@ -97,6 +98,7 @@ func newSeriesCleaner(bucket *bbolt.Bucket, periodConfig config.PeriodConfig, ta
 	}
 
 	return &seriesCleaner{
+		tableName:     tableName,
 		tableInterval: retention.ExtractIntervalFromTableName(tableName),
 		schema:        schema,
 		bucket:        bucket,
@@ -137,6 +139,22 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	return nil
 }
 
+// entriesForTable returns the subset of index entries that belong to the table
+// this cleaner is processing. GetChunkWriteEntries recomputes keys for every
+// period a chunk overlaps; each boltdb table only stores its own period's keys.
+func (s *seriesCleaner) entriesForTable(indexEntries []series_index.Entry) []series_index.Entry {
+	if len(indexEntries) == 0 {
+		return indexEntries
+	}
+	filtered := indexEntries[:0]
+	for _, indexEntry := range indexEntries {
+		if indexEntry.TableName == s.tableName {
+			filtered = append(filtered, indexEntry)
+		}
+	}
+	return filtered
+}
+
 func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	builder := labels.NewBuilder(lbls)
@@ -145,10 +163,17 @@ func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbl
 	}
 	lbls = builder.Labels()
 
+	// Keep the full [from, through] so range keys (relative through offsets) stay
+	// correct, but only validate/delete entries for this table (#23358).
 	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, chunkID)
 	if err != nil {
 		return false, err
 	}
+	indexEntries = s.entriesForTable(indexEntries)
+	if len(indexEntries) == 0 {
+		return false, nil
+	}
+
 	keys := make([][]byte, 0, len(indexEntries))
 	for _, indexEntry := range indexEntries {
 		key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
@@ -193,6 +218,11 @@ func (s *seriesCleaner) ChunkExists(userID []byte, lbls labels.Labels, chunkRef 
 	if err != nil {
 		return false, err
 	}
+	indexEntries = s.entriesForTable(indexEntries)
+	if len(indexEntries) == 0 {
+		return false, nil
+	}
+
 	for _, indexEntry := range indexEntries {
 		key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
 		key = append(key, []byte(indexEntry.HashValue)...)
