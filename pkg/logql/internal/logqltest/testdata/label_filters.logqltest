@@ -1207,6 +1207,12 @@ load
   {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [repeat every 20s for 3] [metadata mp="m" sm="m" tri="m"]
   {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
 
+# Without a parser, the metadata `tri` value takes `tri_extracted`.
+# With a parser, the parsed value takes it, and the metadata value is dropped.
+eval select from 0 to 30s forward {app="a"}
+  {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [metadata mp="m" sm_extracted="m" tri_extracted="m"]
+eval select from 0 to 30s forward {app="a"} | logfmt
+  {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [metadata mp="m" sm_extracted="m"] [parsed sp_extracted="p" mp_extracted="p" tri_extracted="p"]
 eval instant at 60s count_over_time({app="a"} | logfmt [1m])
   {app="a", sp="s", sp_extracted="p", mp="m", mp_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])   # overlapping
@@ -1238,6 +1244,75 @@ load
 eval instant at 60s count_over_time({app="a"} | dup="second" [1m])
   {app="a", dup="second"} 3
 eval instant at 60s count_over_time({app="a"} | dup="first" [1m])
+  expect empty
+
+# label conflicts without a parser: each stream decides where a metadata value goes.
+clear
+load
+  {app="a", level="info"} "x" @ 20s [repeat every 20s for 3] [metadata level="error"]
+  {app="a", level="info"} "x" @ 30s                          [metadata level="warn"]  # noise: other spilled value
+  {app="a"}               "x" @ 30s [repeat every 20s for 2] [metadata level="error"]
+
+# A log query keeps each value in the metadata category.
+eval select from 0 to 35s forward {app="a"}
+  {app="a", level="info"} "x" @ 20s [metadata level_extracted="error"]
+  {app="a", level="info"} "x" @ 30s [metadata level_extracted="warn"]
+  {app="a"}               "x" @ 30s [metadata level="error"]
+eval select from 0 to 35s forward {app="a"} | level_extracted="error"
+  {app="a", level="info"} "x" @ 20s [metadata level_extracted="error"]
+eval select from 0 to 35s forward {app="a"} | level="error"
+  {app="a"}               "x" @ 30s [metadata level="error"]
+# The metadata `level` spills to `level_extracted` only on the stream with a `level` label.
+eval instant at 60s count_over_time({app="a"} | level_extracted="error" [1m])
+  {app="a", level="info", level_extracted="error"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | level_extracted="error" [1m])   # overlapping
+  {app="a", level="info", level_extracted="error"} 2 3
+# On the stream without a `level` label, the metadata keeps the base name.
+eval instant at 60s count_over_time({app="a"} | level="error" [1m])
+  {app="a", level="error"} 2
+eval range from 40s to 60s step 20s count_over_time({app="a"} | level="error" [1m])             # overlapping
+  {app="a", level="error"} 1 2
+# An absent `level_extracted` reads as "", so only the stream without a clash matches.
+eval instant at 60s count_over_time({app="a"} | level_extracted="" [1m])
+  {app="a", level="error"} 2
+
+# label conflicts: a label can already have a name that ends in `_extracted`.
+#
+# Two separate rules resolve conflicts:
+# - The base name goes to the highest-precedence source: stream > structured metadata > parsed.
+# - Each value that loses the base name spills to the single <name>_extracted key, where the precedence
+#   order is the opposite: parsed > structured metadata > stream.
+clear
+load
+  {app="a", k="s"}                     "x" @ 20s [repeat every 20s for 3] [metadata k="m" k_extracted="mext"]
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s [repeat every 20s for 3] [metadata k="m"]
+  {app="c", k_extracted="sext"}        "x" @ 20s [repeat every 20s for 3] [metadata k_extracted="m"]
+  {app="noise"}                        "x" @ 20s [repeat every 20s for 3] [metadata k_extracted="mext"]
+
+# A log query keeps a stream label `k_extracted` in the stream labels.
+eval select from 0 to 30s forward {app=~"a|b|c"}
+  {app="a", k="s"}                     "x" @ 20s [metadata k_extracted="mext"]
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s
+  {app="c", k_extracted="sext"}        "x" @ 20s [metadata k_extracted_extracted="m"]
+eval select from 0 to 30s forward {app=~"a|b|c"} | k_extracted="sext"
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s
+  {app="c", k_extracted="sext"}        "x" @ 20s [metadata k_extracted_extracted="m"]
+eval select from 0 to 30s forward {app=~"a|b|c"} | k_extracted="m"
+  expect empty
+eval instant at 60s count_over_time({app=~"a|b|c"} [1m])
+  {app="a", k="s", k_extracted="mext"} 3
+  {app="b", k="s", k_extracted="sext"} 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 3
+eval range from 40s to 60s step 20s count_over_time({app=~"a|b|c"} [1m])   # overlapping
+  {app="a", k="s", k_extracted="mext"} 2 3
+  {app="b", k="s", k_extracted="sext"} 2 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 2 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="mext" [1m])
+  {app="a", k="s", k_extracted="mext"} 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="sext" [1m])
+  {app="b", k="s", k_extracted="sext"} 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="m" [1m])
   expect empty
 
 # label filter after unwrap

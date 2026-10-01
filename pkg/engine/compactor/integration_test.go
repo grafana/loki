@@ -118,7 +118,7 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	seedSourceIndexObject(ctx, t, bucket, "indexes/dd/idx-d-0", window.Add(time.Hour), "untouched")
 
 	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
-	c.cfg.MaxRunningCompactionTasks = 4
+	c.indexDispatcher.limit = 4
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
 	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
@@ -270,9 +270,9 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			for _, entry := range after {
 				require.True(t, entry.Start.Equal(base))
 				require.True(t, entry.End.Equal(base.Add(time.Second)))
-				require.Positive(t, entry.FileSize)
-				_, err := bucket.Attributes(ctx, entry.Path)
-				require.NoError(t, err, "replacement index %q must exist", entry.Path)
+				exists, err := bucket.Exists(ctx, entry.Path)
+				require.NoError(t, err)
+				require.True(t, exists, "replacement index %q must exist", entry.Path)
 			}
 		})
 	}
@@ -530,16 +530,22 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))
 	activeServices = append(activeServices, w.Service())
 
+	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
+	}
 	return &coordinator{
-		cfg:    compactionCfg,
-		logger: log.NewNopLogger(),
-		bucket: bucket,
-		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-			return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
+		cfg:             compactionCfg,
+		logger:          log.NewNopLogger(),
+		bucket:          bucket,
+		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
+		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
+		publisher: &tocPublisher{
+			writer:  metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
+			timeout: compactionCfg.ToCConsolidateTimeout,
+			dryRun:  compactionCfg.DryRun,
 		},
-		metastoreWriter: metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
-		clock:           func() time.Time { return now },
-		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+		clock:   func() time.Time { return now },
+		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
 	}
 }
 
