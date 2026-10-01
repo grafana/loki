@@ -60,4 +60,4 @@ The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] opti
 
 [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
 */
-package otlploggrpc // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+package otlploggrpc
