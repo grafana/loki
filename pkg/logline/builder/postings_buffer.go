@@ -58,6 +58,10 @@ type postingsBuffer struct {
 	// "run_w<i>_" per extract-pipeline worker) so multiple buffers can share
 	// one runDir without filename collisions.
 	runPrefix string
+	// mergeThreads bounds concurrent mergeShard goroutines in mergeRuns.
+	// 0 or 1 is serial; Validate already requires 1..shardCount on the
+	// service config. A zero here (tests that bypass Validate) stays serial.
+	mergeThreads int
 
 	// SoA buffer + tandem radix scratch (all cap bufferPairs).
 	keys         [][8]byte
@@ -128,6 +132,7 @@ type postingsBufferConfig struct {
 	shardFn        shard.Func
 	scratchDir     string
 	runPrefix      string
+	mergeThreads   int
 }
 
 func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
@@ -145,6 +150,7 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		shardFn:        cfg.shardFn,
 		scratchDir:     cfg.scratchDir,
 		runPrefix:      prefix,
+		mergeThreads:   cfg.mergeThreads,
 		keys:           make([][8]byte, 0, cfg.bufferPairs),
 		docs:           make([]uint32, 0, cfg.bufferPairs),
 		keyBuf:         make([][8]byte, cfg.bufferPairs),

@@ -173,11 +173,12 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := iter.NewHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.Overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.QueryRequest
@@ -197,7 +198,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 		sp.AddEvent("querying store", trace.WithAttributes(
@@ -210,10 +211,16 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 		iters = append(iters, storeIter)
 	}
-	if len(iters) == 1 {
-		return iters[0], nil
+	var result iter.EntryIterator
+	switch len(iters) {
+	case 0:
+		result = iter.NoopEntryIterator
+	case 1:
+		result = iters[0]
+	default:
+		result = iter.NewMergeEntryIterator(ctx, iters, params.Direction)
 	}
-	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
+	return iter.NewHintEntryIterator(result, hintRanges), nil
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
@@ -239,6 +246,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := iter.NewHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
@@ -254,7 +262,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		}
 	}()
 
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.Overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.SampleQueryRequest
@@ -272,7 +280,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
@@ -284,14 +292,16 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, storeIter)
 	}
 
+	var result iter.SampleIterator
 	switch params.Order {
 	case logproto.SAMPLE_ORDER_BY_STREAM:
-		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+		result = iter.NewStreamFirstMergeSampleIterator(ctx, iters)
 	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-		return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+		result = iter.NewTimestampFirstMergeSampleIterator(ctx, iters)
 	default:
 		return nil, errors.Errorf("unknown sample order %v", params.Order)
 	}
+	return iter.NewHintSampleIterator(result, hintRanges), nil
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

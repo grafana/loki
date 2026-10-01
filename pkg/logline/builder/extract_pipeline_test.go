@@ -114,6 +114,53 @@ func TestBuilder_RoundTrip_ExtractThreads(t *testing.T) {
 	}
 }
 
+// TestBuilder_RoundTrip_MergeThreads is the routing-invariance proof for
+// bounded-parallel shard merge: semantic equality against referenceRanges
+// for every merge_threads that Validate accepts at that shard count.
+// Identical output for every N proves mergeShard concurrency does not
+// change which postings land in which file.
+func TestBuilder_RoundTrip_MergeThreads(t *testing.T) {
+	entries := pipelineTestEntries(120)
+
+	extractFn, err := logline.ExtractorForVersion("v3")
+	require.NoError(t, err)
+
+	for _, shardCount := range []int{1, 4} {
+		shardFn := shard.Noop
+		if shardCount > 1 {
+			shardFn, err = shard.New("murmur3_mix")
+			require.NoError(t, err)
+		}
+		want := referenceRanges(entries, extractFn, shardFn, shardCount)
+
+		threads := []int{1}
+		if shardCount >= 2 {
+			threads = append(threads, 2)
+		}
+		if shardCount >= 4 {
+			threads = append(threads, 4)
+		}
+		for _, n := range threads {
+			t.Run(fmt.Sprintf("shard%d_merge%d", shardCount, n), func(t *testing.T) {
+				cfg := roundTripConfig(t, shardCount, 32)
+				cfg.MergeThreads = n
+				b, err := newIndexBuilder(cfg, "2026-01-01", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
+				require.NoError(t, err)
+				defer b.clear()
+
+				feedInChunks(t, b, entries, 1)
+
+				files, err := b.prepareIndexes()
+				require.NoError(t, err)
+				require.Equal(t, sortedKeys(want), fileKeys(files), "(date,shard) file set mismatch")
+
+				require.Equal(t, want, termRangesByFile(t, files),
+					"merge_threads=%d output must equal the reference", n)
+			})
+		}
+	}
+}
+
 // TestBuilder_ExtractPipelineDrainBarrier flushes while items are still
 // mid-pipeline and asserts the barrier's guarantees: no pairs lost (output
 // equals a serial reference over the same input), all worker goroutines exited

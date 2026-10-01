@@ -29,13 +29,32 @@
 #define tmp4		R19
 #define dstend32	R20	// dstend - 32 (shortcut guard)
 
+// Reload the registers derived from the arguments after a call to
+// runtime·memmove, which may clobber all of them.
+#define RELOAD_ENDS \
+	MOVD dst_base+0(FP), dstorig \
+	MOVD dst_len+8(FP), dstend \
+	ADD  dstorig, dstend, dstend \
+	SUBS $16, dstend, dstend16 \
+	CSEL LO, ZR, dstend16, dstend16 \
+	SUBS $32, dstend, dstend32 \
+	CSEL LO, ZR, dstend32, dstend32 \
+	MOVD src_base+24(FP), tmp1 \
+	MOVD src_len+32(FP), srcend \
+	ADD  tmp1, srcend, srcend \
+	SUBS $16, srcend, srcend16 \
+	CSEL LO, ZR, srcend16, srcend16 \
+	MOVD dict_base+48(FP), dict \
+	MOVD dict_len+56(FP), dictlen \
+	ADD  dict, dictlen, dictend
+
 // func decodeBlock(dst, src, dict []byte) int
 //
-// Frame: 48 bytes for calling runtime·memmove in the long-match fast path
-// (arg0..arg2 at 0/8/16(SP), spill of dst-after-match and src at 24/32(SP)).
-// NOSPLIT is preserved -- memmove's own stack use is well under the nosplit
-// margin.
-TEXT ·decodeBlock(SB), NOSPLIT, $48-80
+// Frame: 56 bytes for calling runtime·memmove for long literals, dictionary
+// copies and non-overlapping matches (arg0..arg2 at 8/16/24(RSP), spills at
+// 32..48(RSP)). NOSPLIT is preserved -- memmove's own stack use is well under
+// the nosplit margin.
+TEXT ·decodeBlock(SB), NOSPLIT, $56-80
 	LDP  dst_base+0(FP), (dst, dstend)
 	ADD  dst, dstend
 	MOVD dst, dstorig
@@ -56,45 +75,43 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 	ADD dict, dictlen, dictend
 
 loop:
-	// Read token. Extract literal length.
+	// Read token; >= 0xF0 means literal length 15, slow path.
 	MOVBU.P 1(src), token
-	LSR     $4, token, len
-	CMP     $15, len
-	BEQ     readLitlenLoop        // len == 15: extended read, slow path.
+	CMP     $0xF0, token
+	BHS     readLitlenExt
 
 	// Shortcut: literal length is 0..14. If we also have at least 32 bytes
 	// of dst and 16 bytes of src remaining, copy 16 literal bytes in one
 	// shot, then try to finish the token's match with an 18-byte copy.
 	// Falls back to the slow path on any guard failure. Mirrors the
 	// "copy shortcut" in decode_amd64.s.
-	CMP dstend32, dst
-	BHS readLitlenDone            // <32 bytes left in dst: slow path.
-	CMP srcend16, src
-	BHS readLitlenDone            // <16 bytes left in src: slow path.
+	CMP  dstend32, dst
+	CCMP LO, src, srcend16, $0b0010 // dst >= dstend-32: 0010 sets C (HS).
+	BHS  readLitlenShort            // <32 bytes left in dst or <16 in src: slow path.
 
-	// 16-byte literal copy (bytes past len get overwritten next iter).
+	// 16-byte literal copy (bytes past the literal get overwritten next iter).
 	LDP (src), (tmp1, tmp2)
 	STP (tmp1, tmp2), (dst)
-	ADD len, src
-	ADD len, dst
+	ADD token>>4, src, src
+	ADD token>>4, dst, dst
 
-	// Derive initial matchlen from token's low nibble.
-	AND $15, token, len
-
-	// Read 2-byte offset (src has >=2 bytes left by the guard above).
-	MOVHU (src), offset
-	ADD   $2, src
-	CBZ   offset, corrupt
+	// Initial matchlen from the token's low nibble, then the 2-byte
+	// offset (src has >= 2 bytes left by the guard above).
+	AND     $15, token, len
+	MOVHU.P 2(src), offset
 
 	// Fast-match preconditions: matchlen != 15, offset >= 8, match is
 	// within the current block (>= dstorig -- not a dict reference).
+	// Branches, not a CCMP chain: matchlen == 15 data must leave at the
+	// first test. offset == 0 fails offset >= 8 and is rejected at
+	// readMatchlenChk.
 	CMP $15, len
-	BEQ readMatchlen              // extended matchlen: slow path.
+	BEQ readMatchlenChk
 	CMP $8, offset
-	BLO readMatchlen              // small offset: use existing <8 path.
+	BLO readMatchlenChk
 	SUB offset, dst, match
 	CMP dstorig, match
-	BLO readMatchlen              // dict reference: use existing dict path.
+	BLO readMatchlenChk
 
 	// 18-byte match copy as sequenced 8+8+2 (like the C decoder).
 	// dst-space is guaranteed: dst < dstend-32 and matchlen+minMatch
@@ -110,8 +127,15 @@ loop:
 	MOVH  tmp3, 16(dst)
 	ADD   $const_minMatch, len
 	ADD   len, dst
-	B     copyMatchDone
+	// src < srcend: the guard left >= 17 bytes, the shortcut used <= 16.
+	B     loop
 
+readLitlenShort:
+	LSR $4, token, len
+	B   readLitlenDone
+
+readLitlenExt:
+	MOVD $15, len
 readLitlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
@@ -134,7 +158,10 @@ readLitlenDone:
 	CMP  srcend, tmp2
 	BHI  shortSrc
 
-	// Copy literal.
+	// Copy literal. Long ones go to memmove, which copies 64 bytes per
+	// iteration.
+	CMP  $256, len
+	BHS  copyLiteralMemmove
 	SUBS $16, len
 	BLO  copyLiteralShort
 
@@ -188,7 +215,9 @@ copyLiteralDone:
 	CMP   srcend, src
 	BHI   shortSrc
 	MOVHU -2(src), offset
-	CBZ   offset, corrupt
+
+readMatchlenChk:
+	CBZ offset, corrupt
 
 readMatchlen:
 	// Read rest of match length.
@@ -224,14 +253,9 @@ readMatchlenDone:
 	ADDS tmp2, tmp1
 	BMI  shortDict
 	ADD  dict, tmp1, match
+	B    copyDict
 
-copyDict:
-	MOVBU.P 1(match), tmp3
-	MOVB.P  tmp3, 1(dst)
-	SUBS    $1, len
-	CCMP    NE, dictend, match, $0b0100 // 0100 sets the Z (EQ) flag.
-	BNE     copyDict
-
+copyDictDone:
 	CBZ len, copyMatchDone
 
 	// If the match extends beyond the dictionary, the rest is at dstorig.
@@ -269,8 +293,19 @@ copyMatchTry8_inline:
 	CCMP HS, offset, $31, $0
 	BLS  copyMatchTry8Narrow
 
+	// Long overlapping match: see copyMatchFar.
+	CMP  $256, len
+	BLO  copyMatchLoop16Setup
+	CMP  $(64<<10), len
+	BLS  copyMatchFar
+
+copyMatchLoop16Setup:
+
 	AND    $15, len, lenRem
 	SUB    $16, len
+	// Keep this loop aligned so that code added above cannot shift it: its
+	// placement alone moved N1 and Graviton 4 by 7-25% on long matches.
+	PCALIGN $32
 copyMatchLoop16:
 	LDP.P 16(match), (tmp1, tmp2)
 	STP.P (tmp1, tmp2), 16(dst)
@@ -296,8 +331,7 @@ copyMatchTry8Narrow:
 
 	CMP  $32, len
 	BLO  copyMatchLoop8Setup        // short match: 8-byte loop.
-	CMP  $32, offset
-	BHS  copyMatchLoop8Setup        // offset >= 32 only via the dict remainder path.
+	// offset is 8..31 here (entered with len < 16 or offset <= 31).
 	CMP  $8, offset
 	BEQ  copyMatchTile8
 	CMP  $16, offset
@@ -391,6 +425,26 @@ copyMatchTilePrefill:
 	LDP (lenRem), (tmp1, tmp2)     // 16-byte pattern tile.
 
 copyMatchTileLoop:
+	// While at least 64 bytes remain, store four tiles per iteration
+	// (4*step <= 64 bytes; the last store ends at most 3*step+16 <= 61
+	// bytes on): long runs are bound by stores, not by loop overhead.
+	CMP $64, len
+	BLO copyMatchTileLoop1
+
+copyMatchTileLoop4:
+	STP (tmp1, tmp2), (dst)
+	ADD tmp4, dst, tmp3
+	STP (tmp1, tmp2), (tmp3)
+	ADD tmp4, tmp3
+	STP (tmp1, tmp2), (tmp3)
+	ADD tmp4, tmp3
+	STP (tmp1, tmp2), (tmp3)
+	ADD tmp4, tmp3, dst
+	SUB tmp4<<2, len
+	CMP $64, len
+	BHS copyMatchTileLoop4
+
+copyMatchTileLoop1:
 	// Store 16 bytes while at least 16 remain, consuming step bytes per
 	// iteration; the 16-step overlap is rewritten by the next store (or
 	// the tail loop) with identical values.
@@ -399,7 +453,7 @@ copyMatchTileLoop:
 	STP (tmp1, tmp2), (dst)
 	ADD tmp4, dst
 	SUB tmp4, len
-	B   copyMatchTileLoop
+	B   copyMatchTileLoop1
 
 copyMatchTileTail:
 	CBZ len, copyMatchDone
@@ -418,6 +472,19 @@ copyMatchTile8:
 
 copyMatchTile16:
 	LDP (match), (tmp1, tmp2)
+	CMP $64, len
+	BLO copyMatchTile16Loop
+
+copyMatchTile16Loop64:
+	STP (tmp1, tmp2), (dst)
+	STP (tmp1, tmp2), 16(dst)
+	STP (tmp1, tmp2), 32(dst)
+	STP (tmp1, tmp2), 48(dst)
+	ADD $64, dst
+	SUB $64, len
+	CMP $64, len
+	BHS copyMatchTile16Loop64
+
 copyMatchTile16Loop:
 	CMP   $16, len
 	BLO   copyMatchTileTail
@@ -440,29 +507,18 @@ copyMatchTile24Loop:
 	B    copyMatchTile24Loop
 
 copyMatchTile32:
-	// offset in 17..23, 25..31: prefill one period (8-byte copies never
-	// read ahead of the writes since offset >= 8), so [dst-2*offset, dst)
-	// holds two periods (>= 34 bytes) and dst is phase-aligned; then
-	// store a 32-byte tile from there, advancing by offset. The overlap
-	// between consecutive stores is rewritten with identical bytes.
-	MOVD offset, tmp4
-copyMatchTile32Pre8:
-	MOVD.P 8(match), tmp1
-	MOVD.P tmp1, 8(dst)
-	SUB    $8, tmp4
-	CMP    $8, tmp4
-	BHS    copyMatchTile32Pre8
-	CBZ    tmp4, copyMatchTile32Load
-copyMatchTile32Pre1:
-	MOVBU.P 1(match), tmp1
-	MOVB.P  tmp1, 1(dst)
-	SUBS    $1, tmp4
-	BNE     copyMatchTile32Pre1
-copyMatchTile32Load:
+	// 17..23, 25..31: prefill one period with two 16-byte copies (bytes
+	// 0..15 from match, offset-16..offset-1 from before dst), then store
+	// the 32-byte tile at match every offset bytes.
+	LDP (match), (tmp1, tmp2)
+	LDP -16(dst), (tmp3, tmp4)
+	STP (tmp1, tmp2), (dst)
+	SUB $16, offset, lenRem
+	ADD lenRem, dst, lenRem         // dst + offset - 16
+	STP (tmp3, tmp4), (lenRem)
+	ADD offset, dst
 	SUB offset, len
-	SUB offset<<1, dst, lenRem     // lenRem = dst - 2*offset: tile source.
-	LDP (lenRem), (tmp1, tmp2)
-	LDP 16(lenRem), (tmp3, tmp4)
+	LDP 16(match), (tmp3, tmp4)
 copyMatchTile32Loop:
 	CMP $32, len
 	BLO copyMatchTileTail
@@ -490,11 +546,26 @@ copyMatchSplatTile32:
 	// shifting it off-alignment.
 	PCALIGN $64
 copyMatchSplatLoop:
+	// 64 bytes per iteration while at least 64 remain (runs of zeros).
+	CMP    $64, len
+	BLO    copyMatchSplatLoop16
+
+copyMatchSplatLoop64:
+	STP    (tmp3, tmp3), (dst)
+	STP    (tmp3, tmp3), 16(dst)
+	STP    (tmp3, tmp3), 32(dst)
+	STP    (tmp3, tmp3), 48(dst)
+	ADD    $64, dst
+	SUB    $64, len
+	CMP    $64, len
+	BHS    copyMatchSplatLoop64
+
+copyMatchSplatLoop16:
 	CMP    $16, len
 	BLO    copyMatchSplatTail
 	STP.P  (tmp3, tmp3), 16(dst)
 	SUB    $16, len
-	B      copyMatchSplatLoop
+	B      copyMatchSplatLoop16
 
 copyMatchSplatTail:
 	// 0..15 bytes remain. If >= 8, emit one more 8-byte store.
@@ -519,18 +590,96 @@ copyMatchDone:
 
 	B end
 
+copyMatchFar:
+	// Overlapping match with offset >= 32 and 256 <= len <= 64KiB. Loads
+	// from dst-offset would wait on the stores of the previous iterations,
+	// so first grow the copy distance: with P bytes of pattern before dst
+	// (P a multiple of the offset), copying [dst-P, dst) to dst doubles it.
+	// From P >= 512 on, stream 64 bytes per iteration from dst-P, bytes
+	// stored long before. Longer matches, which stream to memory, keep the
+	// 16-byte loop: Neoverse cores stop caching lines written in a store
+	// stream, so reading back bytes stored kilobytes earlier goes to DRAM,
+	// while the loop's loads from dst-offset hit the store buffer.
+	MOVD offset, tmp4
+
+copyMatchGrow:
+	// tmp4 = P >= 32, len > 0.
+	CMP  $512, tmp4
+	BHS  copyMatchStream
+	CMP  tmp4, len
+	BLS  copyMatchStream
+	SUB  tmp4, dst, match
+	MOVD tmp4, tmp3
+
+copyMatchGrowLoop:
+	LDP.P 16(match), (tmp1, tmp2)
+	STP.P (tmp1, tmp2), 16(dst)
+	SUB   $16, tmp3
+	CMP   $16, tmp3
+	BHS   copyMatchGrowLoop
+
+	// 0..15 left: the last 16 bytes of the source, which ends at the old dst.
+	ADD match, tmp3, lenRem
+	LDP -16(lenRem), (tmp1, tmp2)
+	ADD tmp3, dst
+	STP (tmp1, tmp2), -16(dst)
+	SUB tmp4, len
+	LSL $1, tmp4
+	B   copyMatchGrow
+
+copyMatchStream:
+	// P >= 512, or len <= P: all loads are below dst. match starts at the
+	// beginning of the pattern, so the end-aligned last copy below needs
+	// 16 bytes behind it: under 16 bytes left at the start, copy bytes.
+	SUB tmp4, dst, match
+	CMP $16, len
+	BLO copyMatchByteLoop
+	CMP $64, len
+	BLO copyMatchStreamTail
+
+copyMatchStream64:
+	LDP (match), (tmp1, tmp2)
+	LDP 16(match), (tmp3, tmp4)
+	STP (tmp1, tmp2), (dst)
+	STP (tmp3, tmp4), 16(dst)
+	LDP 32(match), (tmp1, tmp2)
+	LDP 48(match), (tmp3, tmp4)
+	STP (tmp1, tmp2), 32(dst)
+	STP (tmp3, tmp4), 48(dst)
+	ADD $64, match
+	ADD $64, dst
+	SUB $64, len
+	CMP $64, len
+	BHS copyMatchStream64
+
+copyMatchStreamTail:
+	CMP   $16, len
+	BLS   copyMatchStreamLast
+	LDP.P 16(match), (tmp1, tmp2)
+	STP.P (tmp1, tmp2), 16(dst)
+	SUB   $16, len
+	B     copyMatchStreamTail
+
+copyMatchStreamLast:
+	ADD  match, len, tmp3
+	LDP  -16(tmp3), (tmp1, tmp2)
+	ADD  len, dst
+	STP  (tmp1, tmp2), -16(dst)
+	MOVD $0, len
+	B    copyMatchDone
+
 copyMatchViaMemmove:
 	// runtime·memmove(dst, match, len). Caller must guarantee offset >= len
-	// (non-overlapping) and a stack frame of at least 48 bytes.
+	// (non-overlapping).
 	//
 	// Go's arm64 ABI0 places a callee's args at caller_SP + 8 (the 0
 	// offset is reserved for the callee's LR save slot), so arg0..arg2 go
-	// at 8/16/24(RSP) from our POV. The callee may clobber R0..R18 and
-	// most NEON regs; only R19..R28 and V8..V15 are preserved. Every
-	// working register we use is caller-save from memmove's perspective,
-	// so we spill the advanced dst and src to the frame and rebuild
-	// dstend/dstend16/dstend32/srcend/srcend16/dict/dictlen/dictend from
-	// the FP slots after the call.
+	// at 8/16/24(RSP) from our POV. Unlike the C ABI, Go's has no
+	// callee-saved registers: memmove (reached through an ABI wrapper) may
+	// clobber every register but RSP, g and the frame pointer. So every
+	// call site spills what it needs to the frame, and RELOAD_ENDS
+	// rebuilds the registers derived from the arguments. This code never
+	// writes g (R28), R18 or REGTMP (R27).
 	MOVD dst, 8(RSP)               // memmove arg0: to
 	MOVD match, 16(RSP)            // memmove arg1: from
 	MOVD len, 24(RSP)              // memmove arg2: n
@@ -541,25 +690,7 @@ copyMatchViaMemmove:
 	MOVD 32(RSP), dst
 	MOVD 40(RSP), src
 
-	// Rebuild derived pointers/ends. dstorig := dst_base; dstend := dst_base + dst_len; etc.
-	MOVD dst_base+0(FP), dstorig
-	MOVD dst_len+8(FP), dstend
-	ADD  dstorig, dstend, dstend
-	SUBS $16, dstend, dstend16
-	CSEL LO, ZR, dstend16, dstend16
-	SUBS $32, dstend, dstend32
-	CSEL LO, ZR, dstend32, dstend32
-
-	MOVD src_base+24(FP), tmp1
-	MOVD src_len+32(FP), srcend
-	ADD  tmp1, srcend, srcend
-	SUBS $16, srcend, srcend16
-	CSEL LO, ZR, srcend16, srcend16
-
-	MOVD dict_base+48(FP), dict
-	MOVD dict_len+56(FP), dictlen
-	ADD  dict, dictlen, dictend
-
+	RELOAD_ENDS
 	MOVD $0, len
 	B    copyMatchDone
 
@@ -579,3 +710,79 @@ corrupt:
 	MOVD $-1, tmp1
 	MOVD tmp1, ret+72(FP)
 	RET
+
+	// Out-of-line blocks.
+copyLiteralMemmove:
+	// runtime·memmove(dst, src, len); see copyMatchViaMemmove.
+	MOVD dst, 8(RSP)
+	MOVD src, 16(RSP)
+	MOVD len, 24(RSP)
+	ADD  len, dst
+	ADD  len, src
+	MOVD dst, 32(RSP)
+	MOVD src, 40(RSP)
+	MOVD token, 48(RSP)
+	BL   runtime·memmove(SB)
+	MOVD 32(RSP), dst
+	MOVD 40(RSP), src
+	MOVD 48(RSP), token
+	RELOAD_ENDS
+	B    copyLiteralDone
+
+copyDict:
+	// Copy tmp1 = min(len, dictend-match) >= 1 bytes from the dictionary,
+	// which does not overlap dst. Loads stay within the dictionary.
+	SUB  match, dictend, tmp1
+	CMP  tmp1, len
+	CSEL LO, len, tmp1, tmp1
+	SUB  tmp1, len
+	CMP  $256, tmp1
+	BHS  copyDictMemmove
+	CMP  $16, tmp1
+	BLO  copyDictShort
+
+	AND   $15, tmp1, lenRem
+	SUB   $16, tmp1
+copyDictLoop16:
+	LDP.P 16(match), (tmp2, tmp3)
+	STP.P (tmp2, tmp3), 16(dst)
+	SUBS  $16, tmp1
+	BPL   copyDictLoop16
+
+	ADD  match, tmp1, tmp4          // tmp4 = match + lenRem - 16
+	LDP  (tmp4), (tmp2, tmp3)
+	ADD  lenRem, dst
+	STP  (tmp2, tmp3), -16(dst)
+	B    copyDictDone
+
+copyDictShort:
+	TBZ     $3, tmp1, 3(PC)
+	MOVD.P  8(match), tmp2
+	MOVD.P  tmp2, 8(dst)
+	TBZ     $2, tmp1, 3(PC)
+	MOVWU.P 4(match), tmp2
+	MOVW.P  tmp2, 4(dst)
+	TBZ     $1, tmp1, 3(PC)
+	MOVHU.P 2(match), tmp2
+	MOVH.P  tmp2, 2(dst)
+	TBZ     $0, tmp1, 3(PC)
+	MOVBU.P 1(match), tmp2
+	MOVB.P  tmp2, 1(dst)
+
+	B copyDictDone
+
+copyDictMemmove:
+	// runtime·memmove(dst, match, tmp1); see copyMatchViaMemmove.
+	MOVD dst, 8(RSP)
+	MOVD match, 16(RSP)
+	MOVD tmp1, 24(RSP)
+	ADD  tmp1, dst
+	MOVD dst, 32(RSP)
+	MOVD src, 40(RSP)
+	MOVD len, 48(RSP)
+	BL   runtime·memmove(SB)
+	MOVD 32(RSP), dst
+	MOVD 40(RSP), src
+	MOVD 48(RSP), len
+	RELOAD_ENDS
+	B    copyDictDone

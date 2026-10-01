@@ -16,9 +16,9 @@ func TestTableOfContentsMetrics_WriteStatusesInitialized(t *testing.T) {
 	require.NoError(t, newTableOfContentsMetrics().register(reg))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-	# HELP loki_dataobj_consumer_metastore_writes_total Total number of metastore writes
-	# TYPE loki_dataobj_consumer_metastore_writes_total counter
-	loki_dataobj_consumer_metastore_writes_total{status="failure"} 0
-	loki_dataobj_consumer_metastore_writes_total{status="success"} 0
-	`), "loki_dataobj_consumer_metastore_writes_total"))
+	# HELP loki_metastore_toc_writes_total Total number of metastore writes
+	# TYPE loki_metastore_toc_writes_total counter
+	loki_metastore_toc_writes_total{status="failure"} 0
+	loki_metastore_toc_writes_total{status="success"} 0
+	`), "loki_metastore_toc_writes_total"))
 }

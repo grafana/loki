@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -170,7 +170,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC(), FileSize: uint64(1000 + i), UncompressedLogsSize: uint64(100000 + i)})
+		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
 		if builder.IsFull() {
 			break
 		}
@@ -187,8 +187,6 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		require.NoError(t, result.Err())
 		pointer := result.MustValue()
 		require.Equal(t, testTenant, pointer.Tenant)
-		require.Equal(t, uint64(1000+pointerCount), pointer.FileSize)
-		require.Equal(t, uint64(100000+pointerCount), pointer.UncompressedLogsSize)
 		pointerCount++
 	}
 	require.Greater(t, pointerCount, 0)

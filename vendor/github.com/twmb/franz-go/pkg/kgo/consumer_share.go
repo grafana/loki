@@ -69,7 +69,7 @@ type (
 		// callbackRing serializes shareAckCallback invocations
 		// via the same ring + spawn-on-empty pattern that
 		// producer.go uses for batchPromises. Each entry carries
-		// a pendingAcks count that is subtracted AFTER the user
+		// a pendingAcks count that is subtracted after the user
 		// callback returns, so FlushAcks blocks until callbacks
 		// have completed.
 		callbackRing ring[shareCallbackEntry]
@@ -210,6 +210,19 @@ type (
 	// offset; duplicates would be rejected with INVALID_RECORD_STATE.
 	// The sc.pendingAcks counter still increments once per appended
 	// entry; subtraction at callback time uses the entry count.
+	//
+	// The offset-dedupe only covers duplicates within one build. If
+	// a drain snapshots a renew entry and the user's terminal ack
+	// lands between the drain and the build's status read, the CAS
+	// re-appends the pointer to the new pending list while the
+	// drained copy also reads the terminal status: two requests
+	// carry the same terminal ack, and the broker rejects the
+	// second with INVALID_RECORD_STATE at partition granularity,
+	// erroring innocent co-batched acks. Those redeliver via the
+	// acquisition-lock timeout and the error is surfaced via the
+	// ack callback, so we deliberately leave this window open
+	// rather than track per-state sent status on every acquired
+	// record.
 	shareAckState struct {
 		status        atomic.Int32  // CAS target for ack transitions
 		deliveryCount int32         // broker's delivery count for this record (>= 1)
@@ -433,6 +446,7 @@ func (sc *shareConsumer) poll(ctx context.Context, maxPollRecords int) Fetches {
 
 	fill()
 	sc.c.mu.Unlock()
+	sc.c.runDeferredFetchHooks()
 	if len(fetches) > 0 || ctx == nil {
 		return fetches
 	}
@@ -466,6 +480,7 @@ func (sc *shareConsumer) poll(ctx context.Context, maxPollRecords int) Fetches {
 		sc.c.mu.Lock()
 		fill()
 		sc.c.mu.Unlock()
+		sc.c.runDeferredFetchHooks()
 	}
 
 	return fetches
@@ -986,9 +1001,18 @@ func (sc *shareConsumer) manage() {
 			return
 
 		case errors.Is(err, kerr.UnknownMemberID),
-			errors.Is(err, kerr.FencedMemberEpoch):
+			errors.Is(err, kerr.FencedMemberEpoch),
+			errors.Is(err, kerr.GroupIDNotFound):
 			// Keep the same UUID (matches the Java client) and reset
 			// to epoch 0 so the next heartbeat re-joins.
+			//
+			// GroupIDNotFound resets for liveness: the broker creates a
+			// share group only on a memberEpoch 0 heartbeat, so if group
+			// state vanished under a live member (coordinator state
+			// loss), retrying at our current epoch returns
+			// GROUP_ID_NOT_FOUND forever; only rejoining at epoch 0
+			// recreates the group. Classic and 848 groups self-heal the
+			// same way via their rejoin paths.
 			member, gen := sc.memberGen.load()
 			sc.memberGen.storeGeneration(0)
 			sc.cfg.logger.Log(LogLevelInfo, "share group heartbeat lost membership, resetting epoch",
@@ -1592,7 +1616,7 @@ func (s *sourceShare) takeBuffered(paused pausedTopics) Fetch {
 	close(s.s.sem)
 
 	f := b.fetch
-	s.s.hook(&f, false, true) // unbuffered, polled
+	s.s.hookDeferUnbuffered(&f, true) // unbuffered, polled; capture precedes the strip below
 
 	// Strip paused partitions from the returned fetch and release
 	// their records back to the broker for redelivery.
@@ -1698,9 +1722,9 @@ func (s *sourceShare) takeNBuffered(paused pausedTopics, n int) (Fetch, int, boo
 	}
 
 	if len(rstrip.Topics) > 0 {
-		s.s.hook(&rstrip, false, true)
+		s.s.hookDeferUnbuffered(&rstrip, true)
 	}
-	s.s.hook(&r, false, true) // unbuffered, polled
+	s.s.hookDeferUnbuffered(&r, true) // unbuffered, polled
 
 	drained := len(bf.Topics) == 0
 	if drained {
@@ -1738,8 +1762,27 @@ func (s *source) shareAck(predrained []cursorAckDrain) {
 	nAcks, nStaleAcks, staleResults := filterStaleEntries(s, epoch, drains)
 
 	sc.enqueueCallback(staleResults, nStaleAcks)
+	// nAcks counts only user ack entries; gap/release ranges are filtered
+	// separately and can survive as live with zero live user entries (a
+	// partition whose acquired ranges covered only compaction holes, or
+	// whose batch failed decode and was released, buffers no records for
+	// the user to ack). The drain above already removed those gaps from
+	// the cursors, so returning here would drop them permanently: never
+	// sent, never requeued, no callback -- the broker's acquisition locks
+	// for those offsets then sit occupied until the lock timeout, which
+	// is exactly what immediate gap acking exists to avoid. Return only
+	// when nothing live at all survived the stale filter.
 	if nAcks == 0 {
-		return // everything was stale
+		var liveGaps bool
+		for i := range drains {
+			if len(drains[i].gaps) > 0 {
+				liveGaps = true
+				break
+			}
+		}
+		if !liveGaps {
+			return // everything was stale
+		}
 	}
 
 	if epoch == 0 {
@@ -2338,10 +2381,10 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 
 	// Renew acks (type 4) cannot be piggybacked on a ShareFetch
 	// (the broker requires IsRenewAck + zero fetch params). If any
-	// are present, send ALL drained acks via standalone
+	// are present, send all drained acks via standalone
 	// ShareAcknowledge first, then rebuild the request without
-	// re-draining acks (they were already sent, new ones COULD
-	// have happened but we need forward progress...).
+	// re-draining acks: they were already sent, and any new ones
+	// wait for the next cycle.
 	if hasRenew {
 		sc.enqueueCallback(staleResults, nStaleAcks)
 		s.shareAck(piggybackAcks)
@@ -2506,7 +2549,7 @@ func (s *source) shareFetch(doneFetch chan<- bool) (fetched bool) {
 			doneFetch: doneFetch,
 		}
 		s.sem = make(chan struct{})
-		s.hook(&res.fetch, true, false)
+		s.hookBuffered(&res.fetch)
 		sc.c.addSourceReadyForDraining(s)
 	} else if res.allErrsStripped {
 		backoff("empty share fetch response due to all partitions having retryable errors")
@@ -2539,14 +2582,17 @@ func (s *source) handleShareReqResp(req *kmsg.ShareFetchRequest, resp *kmsg.Shar
 	sessionStale := s.share.sessionEpoch != epoch
 	if !sessionStale {
 		s.share.sessionEpoch++
-		// Only add cursors that were in the WANT set (usable) to
-		// sessionParts. req.Topics may also contain piggyback-only
-		// partitions for cursors that got revoked after we drained
-		// their acks: adding those to sessionParts would force us
-		// to forget them on the next request, generating an extra
-		// round trip of ForgottenTopicsData.
-		for _, c := range usable {
-			s.share.sessionParts[tidp{c.topicID, c.partition}] = struct{}{}
+		// Mirror the broker's session bookkeeping exactly: the broker
+		// adds every partition we list in the request topics to its
+		// share session, whether the partition carries a fetch or only
+		// piggybacked acks (a cursor that was revoked, paused, or
+		// migrated after we drained its acks). It removes a partition
+		// from the session only when we forget it.
+		for i := range req.Topics {
+			t := &req.Topics[i]
+			for j := range t.Partitions {
+				s.share.sessionParts[tidp{t.TopicID, t.Partitions[j].Partition}] = struct{}{}
+			}
 		}
 		for _, ft := range req.ForgottenTopicsData {
 			for _, p := range ft.Partitions {
@@ -2897,27 +2943,16 @@ func (s *source) processSharePartition(topicName string, cursor *shareCursor, se
 	gapType := int8(0) // 0 = gap
 	if fp.Err != nil { // error codes are handled before entering; an error here is a decode error
 		// fp.Err here is a whole-batch decode failure: the batch
-		// header, CRC, or compressed payload could not be parsed. kgo
-		// does not have per-record deserializers, so there is no
-		// per-record decode error to surface -- any future
-		// per-record error (e.g. key/value decompression of an
-		// individual record inside a decoded batch) is not reported
-		// via fp.Err. Current enumeration of causes:
-		//   - batch CRC mismatch
-		//   - whole-batch decompression failure
-		//   - malformed batch header / length
-		// Because the entire batch failed to decode, we can't
-		// distinguish which acquired offsets belonged to the bad
-		// batch vs a successfully-decoded one. We RELEASE the
-		// unfilled offsets so the broker re-delivers them after
-		// acquisition-lock expiry; Reject would permanently archive
-		// records that could be fine on a redelivery from another
-		// consumer (e.g. transient corruption on the wire).
-		//
-		// If the underlying error indicates irrecoverable corruption
-		// (not a network/transport issue), reject would be more
-		// correct -- but kgo does not currently distinguish those
-		// classes, so RELEASE is the safe default.
+		// header, CRC, or compressed payload could not be parsed
+		// (kgo has no per-record deserializers, so there is no
+		// per-record decode error to surface). We cannot tell which
+		// acquired offsets belonged to the bad batch, so we release
+		// the unfilled offsets and the broker re-delivers them after
+		// acquisition-lock expiry. Reject would permanently archive
+		// records that could be fine on redelivery (e.g. transient
+		// corruption on the wire); kgo cannot distinguish
+		// irrecoverable corruption from transport issues, so release
+		// is the safe default.
 		gapType = int8(AckRelease)
 		sc.cl.cfg.logger.Log(LogLevelWarn, "share fetch decode error on batch; releasing affected offsets for broker redelivery",
 			"topic", topicName,
@@ -3047,7 +3082,7 @@ func (s *source) createShareReq(skipAckDrain bool) (
 		return
 	}
 
-	// Drain acks from ALL cursors on this source (not just usable
+	// Drain acks from all cursors on this source (not just usable
 	// ones) to piggyback on the ShareFetch request.
 	if !skipAckDrain {
 		piggybackAcks = s.drainAllShareAcks(false)

@@ -109,7 +109,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
-	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
+	s.streamShards, err = newStreamShardStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, cfg.LifecyclerConfig.Zone, cfg.StreamShardingDurabilityEnabled, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream shard store: %w", err)
 	}
@@ -168,10 +168,15 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
+	var streamShardsConsumer *streamShardStore
+	if cfg.StreamShardingDurabilityEnabled {
+		streamShardsConsumer = s.streamShards
+	}
 	s.consumer = newConsumer(
 		s.kafkaReader,
 		s.partitionManager,
 		s.usage,
+		streamShardsConsumer,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
@@ -241,40 +246,30 @@ func (s *Service) CheckLimitsAndShard(
 		}
 		owned = append(owned, stream)
 	}
-	results = append(results, s.streamShards.checkAndShard(ctx, req.Tenant, owned, s.clock.Now())...)
+	now := s.clock.Now()
+	shardResults, toProduce := s.streamShards.checkAndShard(ctx, req.Tenant, owned, now)
+	results = append(results, shardResults...)
+	for _, rec := range toProduce {
+		// The record carries the stream's metadata, so it also serves the
+		// usage store and there is no need for it to produce its own.
+		//
+		// A stream the usage store does not track is skipped. It was either
+		// rejected by ExceedsLimits or has not been checked by it yet, so it
+		// is not written, and a record for it would make the consumers in the
+		// other zones count a stream that does not exist. The bucket is
+		// dropped rather than retried later, which only costs the rate history
+		// of a stream that is not being ingested.
+		//
+		// A failed produce leaves the stream marked, so its metadata is absent
+		// from the topic until the produce interval has elapsed.
+		if !s.usage.markProduced(req.Tenant, rec.Metadata, now) {
+			continue
+		}
+		if err := s.producer.ProduceRecord(context.WithoutCancel(ctx), rec); err != nil {
+			level.Error(s.logger).Log("msg", "failed to produce stream sharding record", "err", err.Error())
+		}
+	}
 	return &proto.CheckLimitsAndShardResponse{Results: results}, nil
-}
-
-// UpdateRates implements the [proto.IngestLimitsServer] interface.
-func (s *Service) UpdateRates(
-	_ context.Context,
-	req *proto.UpdateRatesRequest,
-) (*proto.UpdateRatesResponse, error) {
-	// We do not replicate data to Kafka here as we really need to figure out
-	// how to reduce the volume during replay (the reason we added
-	// LastProducedAt for streams).
-	updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
-	if err != nil {
-		return nil, err
-	}
-	resp := proto.UpdateRatesResponse{
-		Results: make([]*proto.UpdateRatesResult, len(updated)),
-	}
-	for i, stream := range updated {
-		var totalSize uint64
-		for _, bucket := range stream.rateBuckets {
-			totalSize += bucket.size
-		}
-		// The average rate is calculated over the total number of
-		// populated buckets. This allows us to calculate accurate rates
-		// without empty buckets pulling down the average.
-		averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(stream.rateBuckets)))
-		resp.Results[i] = &proto.UpdateRatesResult{
-			StreamHash: stream.hash,
-			Rate:       averageRate,
-		}
-	}
-	return &resp, nil
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {

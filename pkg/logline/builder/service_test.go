@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -59,7 +60,7 @@ func setupKafkaTest(t *testing.T) (*kfake.Cluster, Config) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group", InstanceID: "test-builder-0", SessionTimeout: DefaultKafkaSessionTimeout},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			DensityThreshold: 0.20,
@@ -208,7 +209,7 @@ func TestService_New_MissingKafkaAddress(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := Config{
 		Kafka: KafkaConfig{ConsumerGroupName: "test-group", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3},
 
@@ -763,7 +764,7 @@ func TestService_PollErrorDoesNotDropHealthyPartitionRecords(t *testing.T) {
 	// Service configured to consume both partitions.
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group-poll-err", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			DensityThreshold: 0.20,
@@ -823,7 +824,7 @@ func TestService_MultiPartitionConsumption(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group-multi", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      3,
 		},
@@ -916,7 +917,7 @@ func TestShouldFlush_MemoryBytes(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := Config{
 		Kafka: KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			Version:          "v3",
 			NgramLength:      3,

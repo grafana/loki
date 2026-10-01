@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
 )
 
 func TestConfigValidation(t *testing.T) {
@@ -24,7 +25,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:         KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir:    "/tmp/test",
-				Index:         IndexConfig{NgramLength: DefaultNgramLength, DocumentInterval: DefaultDocumentInterval, Version: "v3"},
+				Index:         logline.IndexConfig{NgramLength: DefaultNgramLength, DocumentInterval: DefaultDocumentInterval, Version: "v3"},
 				FlushOnIdle:   DefaultIdleFlushTimeout,
 				FlushOnMaxAge: DefaultMaxBuilderAge,
 			},
@@ -86,7 +87,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					NgramLength:      DefaultNgramLength,
 					DocumentInterval: 200 * time.Millisecond,
 				},
@@ -98,7 +99,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					DocumentInterval: 500 * time.Microsecond, // Too small
 				},
 			},
@@ -110,7 +111,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					DocumentInterval: 2 * time.Hour, // Too large
 				},
 			},
@@ -126,7 +127,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					DocumentInterval: 10 * time.Millisecond,
 				},
 			},
@@ -141,7 +142,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					DocumentInterval: 1 * time.Millisecond,
 				},
 			},
@@ -185,7 +186,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					NgramLength: 7,
 				},
 			},
@@ -193,23 +194,25 @@ func TestConfigValidation(t *testing.T) {
 			errorMsg:  "ngram_length must be between 1 and 6",
 		},
 		{
+			// Rejected by the shared format check, before the builder's own
+			// radix-sort limit is reached.
 			name: "ngram_length negative rejected",
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					NgramLength: -1,
 				},
 			},
 			wantError: true,
-			errorMsg:  "ngram_length must be between 1 and 6",
+			errorMsg:  "ngram_length must be between 1 and 8",
 		},
 		{
 			name: "bucket interval must divide 24h",
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					DocumentInterval: 7 * time.Millisecond, // In bounds, but 24h % 7ms != 0
 				},
 			},
@@ -230,7 +233,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: ""},
+				Index:      logline.IndexConfig{ShardCount: 4, ShardAlgorithm: ""},
 			},
 			wantError: true,
 			errorMsg:  "shard_algorithm must be set when shard_count > 1",
@@ -240,7 +243,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "unknown_algo"},
+				Index:      logline.IndexConfig{ShardCount: 4, ShardAlgorithm: "unknown_algo"},
 			},
 			wantError: true,
 			errorMsg:  "unknown shard algorithm",
@@ -250,7 +253,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: -1},
+				Index:      logline.IndexConfig{ShardCount: -1},
 			},
 			wantError: true,
 			errorMsg:  "shard_count must be >= 0",
@@ -260,7 +263,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: 0, ShardAlgorithm: ""},
+				Index:      logline.IndexConfig{ShardCount: 0, ShardAlgorithm: ""},
 			},
 			wantError: false,
 		},
@@ -269,7 +272,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: 4, ShardAlgorithm: "first_byte"},
+				Index:      logline.IndexConfig{ShardCount: 4, ShardAlgorithm: "first_byte"},
 			},
 			wantError: false,
 		},
@@ -278,7 +281,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					ShardCount:     256,
 					ShardAlgorithm: "murmur3_mix"},
 			},
@@ -289,7 +292,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					ShardCount:     257,
 					ShardAlgorithm: "murmur3_mix"},
 			},
@@ -301,7 +304,7 @@ func TestConfigValidation(t *testing.T) {
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
+				Index:      logline.IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
 			},
 			wantError: false,
 		},
@@ -342,6 +345,56 @@ func TestConfigValidation(t *testing.T) {
 			},
 			wantError: true,
 			errorMsg:  "extract_threads must be between 1 and 4",
+		},
+		{
+			name: "merge_threads zero defaults to 1 (serial merge)",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 0,
+			},
+			wantError: false,
+		},
+		{
+			name: "merge_threads equal to shard_count is valid",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 10,
+				Index:        logline.IndexConfig{ShardCount: 10, ShardAlgorithm: "murmur3_mix"},
+			},
+			wantError: false,
+		},
+		{
+			name: "merge_threads above shard_count rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 2,
+				Index:        logline.IndexConfig{ShardCount: 1},
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
+		},
+		{
+			name: "merge_threads above unsharded default rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: 2,
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
+		},
+		{
+			name: "merge_threads negative rejected",
+			settings: Config{
+				Kafka:        KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+				ScratchDir:   "/tmp/test",
+				MergeThreads: -1,
+			},
+			wantError: true,
+			errorMsg:  "merge_threads must be between 1 and shard_count (1)",
 		},
 	}
 
@@ -446,18 +499,18 @@ func TestKafkaApplyDefaultsFrom(t *testing.T) {
 func TestKafkaConfigFlags(t *testing.T) {
 	var cfg Config
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	cfg.RegisterFlags(fs)
+	cfg.RegisterFlagsWithPrefix("logline-builder", fs)
 
 	for _, name := range []string{
-		"logline-index-builder.kafka.address",
-		"logline-index-builder.kafka.topic",
-		"logline-index-builder.kafka.client-id",
-		"logline-index-builder.kafka.dial-timeout",
-		"logline-index-builder.kafka.sasl-username",
-		"logline-index-builder.kafka.sasl-password",
-		"logline-index-builder.kafka.consumer-group-name",
-		"logline-index-builder.kafka.session-timeout",
-		"logline-index-builder.kafka.instance-id",
+		"logline-builder.kafka.address",
+		"logline-builder.kafka.topic",
+		"logline-builder.kafka.client-id",
+		"logline-builder.kafka.dial-timeout",
+		"logline-builder.kafka.sasl-username",
+		"logline-builder.kafka.sasl-password",
+		"logline-builder.kafka.consumer-group-name",
+		"logline-builder.kafka.session-timeout",
+		"logline-builder.kafka.instance-id",
 	} {
 		require.NotNil(t, fs.Lookup(name), "missing flag %s", name)
 	}
@@ -503,12 +556,46 @@ func TestConfig_ExtractThreads_ValidRangeAndDefault(t *testing.T) {
 	}
 }
 
+// TestConfig_MergeThreads_ValidRangeAndDefault pins the merge_threads
+// contract: omitted (0) defaults to serial merge, the default constant
+// stays 1, and the accepted range is 1..shard_count (unsharded = 1).
+func TestConfig_MergeThreads_ValidRangeAndDefault(t *testing.T) {
+	base := func() Config {
+		return Config{
+			Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
+			ScratchDir: "/tmp/test",
+		}
+	}
+
+	require.Equal(t, 1, DefaultMergeThreads, "parallel merge must never be the default")
+
+	cfg := base()
+	require.NoError(t, cfg.Validate())
+	require.Equal(t, 1, cfg.MergeThreads, "omitted merge_threads must default to serial merge")
+
+	const shardCount = 10
+	for w := 1; w <= shardCount; w++ {
+		cfg := base()
+		cfg.Index.ShardCount = shardCount
+		cfg.Index.ShardAlgorithm = "murmur3_mix"
+		cfg.MergeThreads = w
+		require.NoError(t, cfg.Validate(), "merge_threads=%d must be valid with shard_count=%d", w, shardCount)
+		require.Equal(t, w, cfg.MergeThreads)
+	}
+
+	over := base()
+	over.Index.ShardCount = shardCount
+	over.Index.ShardAlgorithm = "murmur3_mix"
+	over.MergeThreads = shardCount + 1
+	require.Error(t, over.Validate(), "merge_threads above shard_count must be rejected")
+}
+
 // TestConfig_RegisterFlags_AppliesRingWaitDefault ensures the partition-ring
 // startup wait default is set by RegisterFlags.
 func TestConfig_RegisterFlags_AppliesRingWaitDefault(t *testing.T) {
 	var cfg Config
 	fs := flag.NewFlagSet("", flag.PanicOnError)
-	cfg.RegisterFlags(fs)
+	cfg.RegisterFlagsWithPrefix("logline-builder", fs)
 
 	require.Equal(t, 60*time.Second, cfg.WaitRingPopulatedTimeout,
 		"RegisterFlags must default wait_ring_populated_timeout to 60s; "+

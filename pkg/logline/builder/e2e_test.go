@@ -44,7 +44,7 @@ func TestE2E(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-group", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -134,7 +134,7 @@ func TestE2E_DecodeErrorFailsFast(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-decode-fail-group", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -199,7 +199,7 @@ func TestE2E_GracefulShutdownFlush(t *testing.T) {
 
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: "test-shutdown-group", InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},
@@ -277,7 +277,7 @@ func TestE2E_OffsetCommit(t *testing.T) {
 	consumerGroup := "test-offset-group"
 	cfg := Config{
 		Kafka: KafkaConfig{Address: addrs[0], Topic: testTopic, ConsumerGroupName: consumerGroup, InstanceID: "test-builder-0"},
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			DocumentInterval: 100 * time.Millisecond,
 			NgramLength:      6,
 		},

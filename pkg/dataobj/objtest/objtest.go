@@ -27,9 +27,9 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -70,7 +70,7 @@ type Builder struct {
 	dirty  bool // Whether there's any pending data to flush.
 	closed bool // Whether Close has written the indexes.
 
-	builderConfig                       logsobj.BuilderConfig
+	builderConfig                       logsobj.BuilderBaseConfig
 	uploader                            *uploader.Uploader
 	bucket, indexBucket                 objstore.Bucket
 	logsBuilder                         *logsobj.Builder
@@ -94,8 +94,12 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 	bucket, err := filesystem.NewBucket(dir)
 	require.NoError(t, err, "expected to be able to create bucket")
 
-	var builderConfig logsobj.BuilderConfig
-	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire defaults
+	var builderConfig logsobj.BuilderBaseConfig
+	_ = builderConfig.TargetPageSize.Set("1MB")
+	_ = builderConfig.TargetObjectSize.Set("512MB")
+	_ = builderConfig.BufferSize.Set("128MB")
+	_ = builderConfig.TargetSectionSize.Set("512MB")
+	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire the remaining defaults
 	if options.targetSectionSize > 0 {
 		builderConfig.TargetSectionSize = options.targetSectionSize
 	}
@@ -194,7 +198,7 @@ func (b *Builder) Close() {
 }
 
 func (b *Builder) buildIndex(ctx context.Context) error {
-	indexBuilder, err := indexobj.NewBuilder(b.builderConfig.BuilderBaseConfig, nil, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}

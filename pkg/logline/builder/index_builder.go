@@ -198,6 +198,7 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 		shardCount:     cfg.Index.ShardCount,
 		shardFn:        shardFn,
 		scratchDir:     runDir,
+		mergeThreads:   cfg.MergeThreads,
 	}
 
 	newIngester := func(runPrefix string) *streamIngester {

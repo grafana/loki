@@ -261,6 +261,13 @@ loop:
 			// still fail we will fall into the slower update below
 			// which waits (default) 5s between tries.
 			if now && err == nil && nowTries < 8 {
+				// This round merged: the metadata we just fetched was
+				// applied. Signal it and run the consumer's update hook
+				// before looping, otherwise everything waiting on a
+				// metadata update sleeps through every one of these
+				// rounds even though each of them updated.
+				cl.metawait.signal()
+				cl.consumer.doOnMetadataUpdate()
 				wait := min(cl.cfg.metadataMinAge, 250*time.Millisecond)
 				cl.cfg.logger.Log(LogLevelDebug, "immediate metadata update had inner errors, re-updating",
 					"errors", retryWhy.reason(""),
@@ -369,7 +376,7 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 				unknownTopics = append(unknownTopics, unknown)
 			}
 			var err error
-			unknownCreateResp, err = cl.fetchTopicMetadata(false, unknownTopics)
+			unknownCreateResp, err = cl.fetchTopicMetadata(false, unknownTopics, false) // prune: no; unknown produce topics only, the fetch below covers the rest
 			if err != nil {
 				// We bump all produce topics even though we
 				// only explicitly requested unknown ones; this
@@ -384,7 +391,7 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 		cl.producer.unknownTopicsMu.Unlock()
 	}
 
-	latest, err := cl.fetchTopicMetadata(all, reqTopics)
+	latest, err := cl.fetchTopicMetadata(all, reqTopics, true) // prune: yes; everything we track, so anything else is unwanted
 	if err != nil {
 		cl.bumpMetadataFailForTopics( // bump load failures for all topics
 			tpsProducerLoad,
@@ -450,24 +457,12 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 	// that we will store the topics at the end of our metadata update.
 	tpsConsumerLoad := tpsConsumer.load()
 	if all {
-		allTopics := make([]string, 0, len(latest))
-		for topic, mt := range latest {
-			// loadErr should only be non-nil when requesting all
-			// topics if this is with auto-topic-creation && the
-			// creation failed. That is, we should not consume the
-			// topic since we just tried creating it and creating
-			// it failed.
-			if mt.loadErr == nil {
-				allTopics = append(allTopics, topic)
-			}
-		}
-
 		// We filter out topics will not match any of our regex's.
 		// This ensures that the `tps` field does not contain topics
 		// we will never use (the client works with misc. topics in
 		// there, but it's better to avoid it -- and allows us to use
 		// `tps` in GetConsumeTopics).
-		allTopics = c.filterMetadataAllTopics(allTopics)
+		allTopics := c.filterMetadataAllTopics(latest)
 
 		tpsConsumerLoad = tpsConsumer.ensureTopics(allTopics)
 		defer tpsConsumer.storeData(tpsConsumerLoad)
@@ -663,8 +658,8 @@ func (mp metadataPartition) newPartition(cl *Client, kind partitionKind) *topicP
 
 // fetchTopicMetadata fetches metadata for all reqTopics and returns new
 // topicPartitionsData for each topic.
-func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string) (map[string]*metadataTopic, error) {
-	_, meta, err := cl.fetchMetadataByName(cl.ctx, all, reqTopics, nil)
+func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string, prune bool) (map[string]*metadataTopic, error) {
+	_, meta, err := cl.fetchMetadataByName(cl.ctx, all, reqTopics, prune, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -781,6 +776,12 @@ func (cl *Client) mergeTopicPartitions(
 ) {
 	isProduce := kind == partitionKindProduce
 	isShare := kind == partitionKindShare
+	// The logger is an interface, so the variadic slice and the interface
+	// boxes for every argument are built at the call site even when the
+	// logger drops the line. The logs below fire once per partition per
+	// metadata refresh, so for a client with many partitions that is
+	// continuous garbage forever; we only pay it if debug is on.
+	debug := cl.cfg.logger.Level() >= LogLevelDebug
 	lv := *l.load() // copy so our field writes do not collide with reads
 
 	r := mt.newPartitions(cl, kind)
@@ -996,12 +997,14 @@ func (cl *Client) mergeTopicPartitions(
 		// If the tp data equals the old, then the sink / source is the
 		// same, because the sink/source is from the tp leader.
 		if newTP.topicPartitionData == oldTP.topicPartitionData {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
-				"topic", topic,
-				"partition", part,
-				"leader", newTP.leader,
-				"leader_epoch", newTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh has identical topic partition data",
+					"topic", topic,
+					"partition", part,
+					"leader", newTP.leader,
+					"leader_epoch", newTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				newTP.records = oldTP.records
@@ -1012,14 +1015,16 @@ func (cl *Client) mergeTopicPartitions(
 				newTP.cursor = oldTP.cursor // unlike records, there is no failing state for a cursor
 			}
 		} else {
-			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
-				"topic", topic,
-				"partition", part,
-				"new_leader", newTP.leader,
-				"new_leader_epoch", newTP.leaderEpoch,
-				"old_leader", oldTP.leader,
-				"old_leader_epoch", oldTP.leaderEpoch,
-			)
+			if debug {
+				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh topic partition data changed",
+					"topic", topic,
+					"partition", part,
+					"new_leader", newTP.leader,
+					"new_leader_epoch", newTP.leaderEpoch,
+					"old_leader", oldTP.leader,
+					"old_leader_epoch", oldTP.leaderEpoch,
+				)
+			}
 			switch kind {
 			case partitionKindProduce:
 				oldTP.migrateProductionTo(newTP) // migration clears failing state
@@ -1055,32 +1060,38 @@ func (cl *Client) mergeTopicPartitions(
 		case partitionKindProduce:
 			if newTP.records.recBufsIdx == -1 {
 				newTP.records.sink.addRecBuf(newTP.records)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		case partitionKindShare:
 			if newTP.shareCursor.cursorsIdx == -1 {
 				newTP.shareCursor.source.Load().addShareCursor(newTP.shareCursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new share consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		default:
 			if newTP.cursor.cursorsIdx == -1 {
 				newTP.cursor.source.addCursor(newTP.cursor)
-				cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
-					"topic", topic,
-					"partition", newTP.partition(),
-					"leader", newTP.leader,
-					"leader_epoch", newTP.leaderEpoch,
-				)
+				if debug {
+					cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
+						"topic", topic,
+						"partition", newTP.partition(),
+						"leader", newTP.leader,
+						"leader_epoch", newTP.leaderEpoch,
+					)
+				}
 			}
 		}
 	}

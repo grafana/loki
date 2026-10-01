@@ -25,6 +25,7 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -294,7 +295,7 @@ func BenchmarkCapturedPipeline(b *testing.B) {
 
 	newBuilder := func(b *testing.B) *indexBuilder {
 		cfg := Config{
-			Index: IndexConfig{
+			Index: logline.IndexConfig{
 				Version:          "v3",
 				DocumentInterval: 100 * time.Millisecond,
 				NgramLength:      6,
@@ -452,7 +453,7 @@ func BenchmarkPartitionComparison(b *testing.B) {
 
 		newBld := func(b *testing.B) *indexBuilder {
 			cfg := Config{
-				Index: IndexConfig{
+				Index: logline.IndexConfig{
 					Version:          "v3",
 					DocumentInterval: 250 * time.Millisecond,
 					NgramLength:      6,
@@ -597,7 +598,7 @@ func runBuilderE2E(t *testing.T, records []capturedRecord, decoder *kafka.Decode
 		extractThreads = n
 	}
 	cfg := Config{
-		Index: IndexConfig{
+		Index: logline.IndexConfig{
 			Version:          "v3",
 			DocumentInterval: 100 * time.Millisecond,
 			ShardCount:       shardCount,

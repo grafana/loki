@@ -451,16 +451,9 @@ func Xpipe(t *TLS, pipefd uintptr) int32 {
 // int dup2(int oldfd, int newfd);
 func Xdup2(t *TLS, oldfd, newfd int32) int32 {
 	if __ccgo_strace {
-		trc("t=%v newfd=%v, (%v:)", t, newfd, origin(2))
+		trc("t=%v oldfd=%v newfd=%v, (%v:)", t, oldfd, newfd, origin(2))
 	}
-	panic(todo(""))
-	// n, _, err := unix.Syscall(unix.SYS_DUP2, uintptr(oldfd), uintptr(newfd), 0)
-	// if err != 0 {
-	// 	t.setErrno(err)
-	// 	return -1
-	// }
-
-	// return int32(n)
+	return dup2(t, oldfd, newfd)
 }
 
 // ssize_t readlink(const char *restrict path, char *restrict buf, size_t bufsize);

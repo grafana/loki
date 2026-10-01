@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -275,7 +275,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, pointer indexpointers.Inde
 	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
-	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs, pointer.FileSize, pointer.UncompressedLogsSize)
+	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
 
 	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate

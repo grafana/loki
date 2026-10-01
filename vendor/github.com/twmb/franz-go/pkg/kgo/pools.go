@@ -61,8 +61,11 @@ type PoolDecompressBytes interface {
 	// just have extra data slices put back into your pool that you never
 	// created.
 	GetDecompressBytes(compressed []byte, codec CompressionCodecType) []byte
-	// PutDecompressBytes puts a slice of that was used for decompression
-	// back into the pool. The slice is zeroed before it is put back.
+	// PutDecompressBytes puts a slice that was used for decompression
+	// back into the pool. The decompressed bytes (the slice's length) are
+	// zeroed before it is put back. If decompression fails, the default
+	// decompressor puts the slice back immediately with its entire
+	// capacity zeroed.
 	PutDecompressBytes([]byte)
 }
 
@@ -71,7 +74,9 @@ type PoolDecompressBytes interface {
 type PoolKRecords interface {
 	// GetKRecords returns a slice with capacity n.
 	GetKRecords(n int) []kmsg.Record
-	// PutKRecords puts a slice back into the pool.
+	// PutKRecords puts a slice back into the pool. Every record is
+	// zeroed, save for its Headers slice: the decoder reuses that
+	// slice's capacity on the next get.
 	PutKRecords([]kmsg.Record)
 }
 

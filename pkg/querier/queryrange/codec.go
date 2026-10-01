@@ -1915,7 +1915,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) GetHintRanges() []logproto.HintTimeRange {
-	return p.LokiRequest.HintRanges
+	return p.HintRanges
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {

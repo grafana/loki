@@ -55,6 +55,9 @@ type HookClientClosed interface {
 //////////////////
 
 // HookBrokerConnect is called after a connection to a broker is opened.
+// This fires once per connection ATTEMPT, including internal retries: a
+// broker that refuses connections produces repeated calls (with err set),
+// not one.
 type HookBrokerConnect interface {
 	// OnBrokerConnect is passed the broker metadata, how long it took to
 	// dial and initialize the connection (issue ApiVersions and run through
@@ -392,6 +395,11 @@ type HookFetchRecordUnbuffered interface {
 	// OnFetchRecordUnbuffered is passed a record that is being
 	// "unbuffered" within the client, and whether the record is being
 	// returned from polling.
+	//
+	// For polled records, this fires on the polling goroutine before the
+	// poll returns. For records discarded internally (an assignment
+	// invalidation dropping a buffered fetch), this fires asynchronously
+	// on a separate goroutine.
 	OnFetchRecordUnbuffered(r *Record, polled bool)
 }
 

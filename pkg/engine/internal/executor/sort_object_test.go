@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -66,9 +66,9 @@ func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
 		SortSchema:       targetSchema,
 	})
 	require.NoError(t, err)
-	require.Len(t, artifacts, 1)
+	require.NoError(t, artifacts.Validate())
 
-	indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts[0].Path, 0)
+	indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts.Path, 0)
 	require.NoError(t, err)
 	require.ElementsMatch(t, tenants, indexObj.Tenants(), "the replacement index must cover every source tenant")
 
@@ -173,16 +173,13 @@ func buildUnorderedObject(
 	targetSchema []string,
 ) sortObjectFixture {
 	t.Helper()
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          512,
-			MaxPageRows:             100,
-			TargetObjectSize:        1 << 20,
-			TargetSectionSize:       600,
-			BufferSize:              256,
-			SectionStripeMergeLimit: 2,
-		},
-		AppendOrderedEnabled: true,
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          512,
+		MaxPageRows:             100,
+		TargetObjectSize:        1 << 20,
+		TargetSectionSize:       600,
+		BufferSize:              256,
+		SectionStripeMergeLimit: 2,
 	}
 	builder, err := logsobj.NewBuilder(
 		cfg,

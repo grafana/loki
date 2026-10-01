@@ -120,6 +120,7 @@ type batchChunkIterator struct {
 	metrics         *ChunkMetrics
 	matchers        []*labels.Matcher
 	chunkFilterer   chunk.Filterer
+	hintRanges      iter.HintTimeRanges
 
 	begun      bool
 	ctx        context.Context
@@ -142,6 +143,7 @@ func newBatchChunkIterator(
 	metrics *ChunkMetrics,
 	matchers []*labels.Matcher,
 	chunkFilterer chunk.Filterer,
+	hintRanges iter.HintTimeRanges,
 ) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
@@ -160,6 +162,7 @@ func newBatchChunkIterator(
 		next:          make(chan *chunkBatch),
 		done:          make(chan struct{}),
 		chunkFilterer: chunkFilterer,
+		hintRanges:    hintRanges,
 	}
 	sort.Sort(res.chunks)
 	return res
@@ -381,13 +384,14 @@ func newLogBatchIterator(
 	direction logproto.Direction,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
+	hintRanges iter.HintTimeRanges,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &logBatchIterator{
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer, hintRanges),
 	}, nil
 }
 
@@ -490,7 +494,7 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk)
+			iterator, err := chks[i][j].Iterator(it.ctx, from, through, it.direction, streamPipeline, nextChunk, it.hintRanges)
 			if err != nil {
 				return nil, err
 			}
@@ -531,6 +535,7 @@ func newTimestampFirstSampleBatchIterator(
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
 	extractor syntax.SampleExtractor,
+	hintRanges iter.HintTimeRanges,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &timestampFirstSampleBatchIterator{
@@ -548,6 +553,7 @@ func newTimestampFirstSampleBatchIterator(
 			metrics,
 			matchers,
 			chunkFilterer,
+			hintRanges,
 		),
 	}, nil
 }
@@ -684,7 +690,7 @@ func (it *timestampFirstSampleBatchIterator) buildHeapIterator(
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractor)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, nextChunk, streamExtractor, it.hintRanges)
 			if err != nil {
 				return nil, err
 			}

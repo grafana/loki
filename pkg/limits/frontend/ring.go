@@ -108,42 +108,6 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 	return &resp, nil
 }
 
-// UpdateRates implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-	var resp proto.UpdateRatesResponse
-	if len(req.Streams) == 0 {
-		return &resp, nil
-	}
-	doRPCs := newRPCsFunc(r, log.With(r.logger, "rpc", "UpdateRates"), &resp.Results,
-		func(tenant string, streams []*proto.StreamMetadata) *proto.UpdateRatesRequest {
-			return &proto.UpdateRatesRequest{Tenant: tenant, Streams: streams}
-		},
-		func(ctx context.Context, client proto.IngestLimitsClient, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
-			resp, err := client.UpdateRates(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			return resp.Results, nil
-		},
-	)
-	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doRPCs)
-	if err != nil {
-		return nil, err
-	}
-	// Any unanswered streams after exhausting all zones have a rate of 0.
-	if len(unanswered) > 0 {
-		failed := make([]*proto.UpdateRatesResult, 0, len(unanswered))
-		for _, stream := range unanswered {
-			failed = append(failed, &proto.UpdateRatesResult{
-				StreamHash: stream.StreamHash,
-				Rate:       0,
-			})
-		}
-		resp.Results = append(resp.Results, failed...)
-	}
-	return &resp, nil
-}
-
 // CheckLimitsAndShard implements the [limitsClient] interface. Streams left
 // unanswered after all zones are exhausted have no result.
 func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {

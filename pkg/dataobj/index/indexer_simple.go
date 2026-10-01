@@ -2,6 +2,8 @@ package index
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"time"
@@ -11,8 +13,8 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -122,4 +124,25 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		"idxPath", idxObjKey, "idxSize", fileSize, "tenants", len(tenantTimeRanges))
 
 	return Result{Path: idxObjKey, TimeRanges: tenantTimeRanges}, nil
+}
+
+// ObjectKey generates the object key for storing an index object in object storage.
+func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
+	h := sha256.New224()
+
+	reader, err := object.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	if _, err := io.Copy(h, reader); err != nil {
+		return "", err
+	}
+
+	var sumBytes [sha256.Size224]byte
+	sum := h.Sum(sumBytes[:0])
+	sumStr := hex.EncodeToString(sum[:])
+
+	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
 }

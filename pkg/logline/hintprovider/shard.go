@@ -12,7 +12,14 @@ import (
 // split the ngram space the same way — their per-value results must be
 // intersected. Different groups (e.g., a re-shard from 4→8) cover different
 // time periods and are unioned.
+//
+// Version is part of the group because the extractor belongs to the index
+// version, so the same needle can decompose into different terms per version
+// and those terms route to different shard values. Intersecting across versions
+// would drop every range of a version that has no term on a shard the other
+// version queried.
 type shardGroup struct {
+	Version        string
 	ShardCount     int
 	ShardAlgorithm string
 }
@@ -26,6 +33,7 @@ type shardKey struct {
 func shardKeyOf(m store.Meta) shardKey {
 	return shardKey{
 		shardGroup: shardGroup{
+			Version:        m.Version,
 			ShardCount:     m.ShardCount,
 			ShardAlgorithm: m.ShardAlgorithm,
 		},
@@ -36,7 +44,7 @@ func shardKeyOf(m store.Meta) shardKey {
 func (g shardGroup) isSharded() bool { return g.ShardCount > 1 }
 
 func (k shardKey) String() string {
-	return fmt.Sprintf("%s/%d/%d", k.ShardAlgorithm, k.ShardCount, k.ShardValue)
+	return fmt.Sprintf("%s/%s/%d/%d", k.Version, k.ShardAlgorithm, k.ShardCount, k.ShardValue)
 }
 
 // intersectRanges returns the overlapping portions of two sorted, normalized

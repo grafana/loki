@@ -62,7 +62,7 @@ func Test_batchIterSafeStart(t *testing.T) {
 		},
 	}
 
-	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
+	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil, iter.HintTimeRanges{})
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
@@ -1002,7 +1002,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		s := schemaConfig
 		for name, tt := range tests {
 			t.Run(name, func(t *testing.T) {
-				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
+				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil, iter.HintTimeRanges{})
 				require.NoError(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				_ = it.Close()
@@ -1429,6 +1429,7 @@ func TestNewTimestampFirstSampleBatchIterator(t *testing.T) {
 				tt.end,
 				nil,
 				ex,
+				iter.HintTimeRanges{},
 			)
 			require.NoError(t, err)
 			series, _, err := iter.ReadTimestampFirstSampleBatch(it, 1000)
@@ -1601,6 +1602,7 @@ func newFakeSampleBatchIterator(t *testing.T, batchSize int, chunks ...*LazyChun
 		from.Add(-time.Hour), from.Add(3*time.Hour),
 		nil,
 		ex,
+		iter.HintTimeRanges{},
 	)
 	require.NoError(t, err)
 	return it
@@ -1907,7 +1909,7 @@ func TestBatchCancel(t *testing.T) {
 		},
 	}
 
-	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
+	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil, iter.HintTimeRanges{})
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
 	//nolint:revive
@@ -1950,7 +1952,7 @@ func TestTimestampFirstSampleBatchIterator_Close(t *testing.T) {
 		chunks := []*LazyChunk{newLazyChunk(chunkfmt, headfmt, mkStream("a", 1))}
 		it, err := newTimestampFirstSampleBatchIterator(
 			context.Background(), schemaConfig, NilMetrics, chunks, 10,
-			newMatchers(`{foo=~".+"}`), time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, ex)
+			newMatchers(`{foo=~".+"}`), time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, ex, iter.HintTimeRanges{})
 		require.NoError(t, err)
 
 		closeErr := make(chan error, 1)
@@ -1970,7 +1972,7 @@ func TestLogBatchIterator_Close(t *testing.T) {
 		it, err := newLogBatchIterator(
 			context.Background(), schemaConfig, NilMetrics, chunks, 10,
 			newMatchers(`{foo=~".+"}`), log.NewNoopPipeline(), logproto.FORWARD,
-			time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil)
+			time.Unix(0, 0), time.Unix(0, 100*int64(time.Millisecond)), nil, iter.HintTimeRanges{})
 		require.NoError(t, err)
 
 		closeErr := make(chan error, 1)
@@ -2001,7 +2003,7 @@ func TestLogBatchIterator_Close(t *testing.T) {
 		it, err := newLogBatchIterator(
 			ctx, schemaConfig, NilMetrics, chunks, 1,
 			newMatchers(`{foo=~".+"}`), log.NewNoopPipeline(), logproto.FORWARD,
-			time.Unix(0, 0), time.Unix(0, int64(chunkCount)*int64(time.Millisecond)+1), nil)
+			time.Unix(0, 0), time.Unix(0, int64(chunkCount)*int64(time.Millisecond)+1), nil, iter.HintTimeRanges{})
 		require.NoError(t, err)
 
 		require.True(t, it.Next(), "must read at least one entry before canceling")

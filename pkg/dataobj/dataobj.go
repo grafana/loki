@@ -139,7 +139,7 @@ func WithMetadataCache(cache MetadataCache) OpenOption {
 		}
 		v := reflect.ValueOf(cache)
 		switch v.Kind() {
-		case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Slice:
+		case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Slice:
 			if v.IsNil() {
 				return nil
 			}

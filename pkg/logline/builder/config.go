@@ -12,13 +12,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 
 	"github.com/grafana/loki/v3/pkg/logline"
-	"github.com/grafana/loki/v3/pkg/logline/shard"
 )
 
 const (
 	DefaultFlushOnMaxBytes  = 20 * 1024 * 1024 * 1024
-	DefaultNgramLength      = 6
-	DefaultDocumentInterval = 100 * time.Millisecond
+	DefaultNgramLength      = logline.DefaultNgramLength
+	DefaultDocumentInterval = logline.DefaultDocumentInterval
 
 	DefaultIdleFlushTimeout   = 5 * time.Minute
 	DefaultMaxBuilderAge      = 30 * time.Minute
@@ -46,6 +45,10 @@ const (
 	// value; 4 is already ~1.9 GiB of sort buffers plus the flush-merge
 	// ceiling downstream.
 	MaxExtractThreads = 4
+
+	// DefaultMergeThreads is serial shard merge (one mergeShard at a time).
+	// Parallel merge is an incident/catchup knob, never the default.
+	DefaultMergeThreads = 1
 
 	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
 	// when KafkaConfig.SessionTimeout is unset. It must be long enough that a
@@ -198,8 +201,8 @@ func (c *KafkaConfig) Validate() error {
 
 // Config holds configuration for the logline index builder service.
 type Config struct {
-	Kafka KafkaConfig `yaml:"kafka"`
-	Index IndexConfig `yaml:"index"`
+	Kafka KafkaConfig         `yaml:"kafka"`
+	Index logline.IndexConfig `yaml:"-"`
 
 	FlushOnIdle   time.Duration `yaml:"flush_on_idle"`
 	FlushOnMaxAge time.Duration `yaml:"flush_on_max_age"`
@@ -234,6 +237,14 @@ type Config struct {
 	// pkg/logline/builder/AGENTS.md.
 	ExtractThreads int `yaml:"extract_threads"`
 
+	// MergeThreads is the maximum number of shards merged concurrently during
+	// flush. 1 (the default) is serial mergeShard. Values above 1 run that
+	// many mergeShard calls at once and must not exceed the number of shards
+	// (shard_count 0 or 1 is one shard). Each concurrent shard holds its own
+	// rank maps and opens every run (1 MiB read buffer each), so the
+	// merge-phase memory and file-descriptor peak stacks with this value.
+	MergeThreads int `yaml:"merge_threads"`
+
 	ScratchDir string `yaml:"scratch_dir"`
 
 	// WaitRingPopulatedTimeout bounds how long the builder will wait at
@@ -250,62 +261,39 @@ type Config struct {
 	disableStaticMembership bool `yaml:"-"`
 }
 
-type IndexConfig struct {
-	NgramLength      int           `yaml:"ngram_length"`
-	DocumentInterval time.Duration `yaml:"document_interval"`
-	ShardCount       int           `yaml:"shard_count"`
-	ShardAlgorithm   string        `yaml:"shard_algorithm"`
-	// Version is the format version written to meta.json.
-	// Defaults to logline.CurrentVersion ("v3").
-	Version string `yaml:"index_version"`
-	// DensityThreshold filters n-grams covering more than this fraction of a
-	// full day's documents (24h / DocumentInterval). 0 = use the format
-	// version's built-in default (v3 default: 0.20).
-	DensityThreshold float64 `yaml:"density_threshold"`
-}
-
-// RegisterFlags registers configuration flags for BuilderSettings.
-func (c *Config) RegisterFlags(f *flag.FlagSet) {
+// RegisterFlagsWithPrefix registers the builder flags under prefix.
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	if f == nil {
 		f = flag.CommandLine
 	}
 
-	// Builder-specific flags
-	f.IntVar(&c.Index.NgramLength, "logline-index-builder.ngram-length", DefaultNgramLength,
-		"N-gram length for feature extraction")
-	f.DurationVar(&c.Index.DocumentInterval, "logline-index-builder.document-interval", DefaultDocumentInterval,
-		"Time range each document covers (e.g., 100ms, 1s)")
-	f.IntVar(&c.Index.ShardCount, "logline-index-builder.shard-count", 0,
-		"Number of ngram shards per date bucket. 0 or 1 disables sharding (single file per date).")
-	f.StringVar(&c.Index.ShardAlgorithm, "logline-index-builder.shard-algorithm", "murmur3_mix",
-		"Shard algorithm for ngram routing. Valid values: first_byte, murmur3_mix.")
-	f.StringVar(&c.Index.Version, "logline-index-builder.index-version", "",
-		"Index format version string written to meta.json (defaults to current version)")
-	f.Float64Var(&c.Index.DensityThreshold, "logline-index-builder.density-threshold", 0,
-		"Filter n-grams covering more than this fraction of a full day's documents (0 = use format default; v3 default is 0.20)")
-	f.DurationVar(&c.FlushOnIdle, "logline-index-builder.flush-on-idle", DefaultIdleFlushTimeout,
+	f.DurationVar(&c.FlushOnIdle, prefix+".flush-on-idle", DefaultIdleFlushTimeout,
 		"Duration of inactivity before flushing")
-	f.DurationVar(&c.FlushOnMaxAge, "logline-index-builder.flush-on-max-age", DefaultMaxBuilderAge,
+	f.DurationVar(&c.FlushOnMaxAge, prefix+".flush-on-max-age", DefaultMaxBuilderAge,
 		"Maximum age of the builder before flushing")
-	f.DurationVar(&c.FlushCheckInterval, "logline-index-builder.flush-check-interval", DefaultFlushCheckInterval,
+	f.DurationVar(&c.FlushCheckInterval, prefix+".flush-check-interval", DefaultFlushCheckInterval,
 		"Interval for periodic flush checks independent of the poll loop")
-	f.IntVar(&c.PostingsBufferPairs, "logline-index-builder.postings-buffer-pairs", DefaultPostingsBufferPairs,
+	f.IntVar(&c.PostingsBufferPairs, prefix+".postings-buffer-pairs", DefaultPostingsBufferPairs,
 		"Capacity of the in-memory postings buffer in (ngram, docID) pairs. Resident memory is ~24 bytes per pair, allocated up front (~460 MiB at the default), and a builder swap briefly holds two buffers — budget GOMEMLIMIT accordingly. Minimum 65536.")
-	f.Float64Var(&c.PostingsSpillWatermark, "logline-index-builder.postings-spill-watermark", DefaultPostingsSpillWatermark,
+	f.Float64Var(&c.PostingsSpillWatermark, prefix+".postings-spill-watermark", DefaultPostingsSpillWatermark,
 		"Fraction of the postings buffer the sorted, deduped head must reach before a run is spilled to scratch disk. Higher packs runs denser (fewer, larger runs feed the merge). Must be > 0 and <= 0.95.")
 
-	f.IntVar(&c.ExtractThreads, "logline-index-builder.extract-threads", DefaultExtractThreads,
+	f.IntVar(&c.ExtractThreads, prefix+".extract-threads", DefaultExtractThreads,
 		"Number of parallel n-gram extract goroutines (1-4). Incident/catchup mode only: values above 1 multiply the resident sort-buffer floor "+
 			"(~480 MiB per goroutine at the default postings_buffer_pairs) and CPU demand for higher ingest throughput. Default 1 is the serial production path.")
-	c.Kafka.RegisterFlagsWithPrefix("logline-index-builder.kafka", f)
-	f.StringVar(&c.ScratchDir, "logline-index-builder.scratch-dir", "./data/partial-indexes",
+	f.IntVar(&c.MergeThreads, prefix+".merge-threads", DefaultMergeThreads,
+		"Maximum number of shards merged concurrently during flush (default 1 = serial). "+
+			"Must be between 1 and the shard count (unsharded indexes have one shard). "+
+			"Each concurrent shard holds its own rank maps and a 1 MiB read buffer per run, so memory and file descriptors scale with this value.")
+	c.Kafka.RegisterFlagsWithPrefix(prefix+".kafka", f)
+	f.StringVar(&c.ScratchDir, prefix+".scratch-dir", "./data/partial-indexes",
 		"Directory where intermediate .lidx files are written")
-	f.Uint64Var(&c.FlushOnMaxBytes, "logline-index-builder.flush-on-max-bytes", DefaultFlushOnMaxBytes,
+	f.Uint64Var(&c.FlushOnMaxBytes, prefix+".flush-on-max-bytes", DefaultFlushOnMaxBytes,
 		"Full-flush trigger based on cumulative bytes of run files spilled to scratch disk by the active builder. "+
 			"Peak scratch usage reaches 2-3x this value during a flush (retiring builder's runs + its merged .lidx output + the fresh builder's runs), "+
 			"so size the scratch volume with that headroom.")
 
-	f.DurationVar(&c.WaitRingPopulatedTimeout, "logline-index-builder.wait-ring-populated-timeout", 60*time.Second,
+	f.DurationVar(&c.WaitRingPopulatedTimeout, prefix+".wait-ring-populated-timeout", 60*time.Second,
 		"Maximum time to wait at startup for the partition ring to be populated. "+
 			"Service startup fails if the ring is still empty after this — there is no silent fallback.")
 }
@@ -361,8 +349,11 @@ func (c *Config) Validate() error {
 			MaxExtractThreads, c.ExtractThreads)
 	}
 
-	if c.Index.NgramLength == 0 {
-		c.Index.NgramLength = DefaultNgramLength
+	// The shared index section applies the format defaults and checks the
+	// format constraints. The builder then adds the limits of its own
+	// implementation on top.
+	if err := c.Index.Validate(); err != nil {
+		return err
 	}
 
 	// radixSortByNgram orders only the first 6 key bytes and assumes bytes 6-7
@@ -373,23 +364,23 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("ngram_length must be between 1 and 6 (the radix sort orders only the first 6 ngram bytes), got %d", c.Index.NgramLength)
 	}
 
-	if c.Index.DocumentInterval == 0 {
-		c.Index.DocumentInterval = DefaultDocumentInterval
-	}
-
-	if c.Index.Version == "" {
-		c.Index.Version = logline.CurrentVersion
-	}
-
-	// Default density threshold: 0.20 (terms in >20% of a day's docs become sentinels).
-	if c.Index.DensityThreshold == 0 {
-		c.Index.DensityThreshold = 0.20
-	}
-
-	// The index-defining settings (version, interval, sharding) are validated
-	// in one place only, after the defaults above have been applied.
 	if err := validateIndexSettings(c.Index); err != nil {
 		return err
+	}
+
+	if c.MergeThreads == 0 {
+		c.MergeThreads = DefaultMergeThreads
+	}
+	// Unsharded configs (shard_count 0 or 1) have one mergeShard to run.
+	// More threads than shards cannot overlap work; they only multiply
+	// rank-map memory and per-run read buffers.
+	maxMerge := c.Index.ShardCount
+	if maxMerge < 1 {
+		maxMerge = 1
+	}
+	if c.MergeThreads < 1 || c.MergeThreads > maxMerge {
+		return fmt.Errorf("merge_threads must be between 1 and shard_count (%d), got %d",
+			maxMerge, c.MergeThreads)
 	}
 
 	if c.FlushOnIdle == 0 {
@@ -413,16 +404,10 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// validateIndexSettings checks the index-defining settings (version,
-// interval, sharding) as a unit. It is the single owner of these checks;
-// Config.Validate applies defaults and delegates here.
-func validateIndexSettings(settings IndexConfig) error {
-	if settings.Version == "" {
-		return fmt.Errorf("index_version is required")
-	}
-	if err := logline.ValidateVersion(settings.Version); err != nil {
-		return fmt.Errorf("invalid index_version: %w", err)
-	}
+// validateIndexSettings checks the index settings against the limits of the
+// builder's implementation. The format itself (version, shard algorithm) is
+// checked by logline.IndexConfig.Validate, which must run first.
+func validateIndexSettings(settings logline.IndexConfig) error {
 	if settings.DocumentInterval < MinDocumentInterval {
 		return fmt.Errorf("document_interval must be at least %v, got %v", MinDocumentInterval, settings.DocumentInterval)
 	}
@@ -450,21 +435,10 @@ func validateIndexSettings(settings IndexConfig) error {
 		return fmt.Errorf("document_interval %v yields a docID window ending %s (fixed epoch %s + 2^32 ticks), less than the required %v from now; use a larger interval",
 			settings.DocumentInterval, windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
 	}
-	if settings.ShardCount < 0 {
-		return fmt.Errorf("shard_count must be >= 0, got %d", settings.ShardCount)
-	}
 	// Shard values are carried as uint8 through the spill reorder
 	// (postingsBuffer.shardScratch), so 256 shards is a hard ceiling.
 	if settings.ShardCount > 256 {
 		return fmt.Errorf("shard count %d exceeds the builder maximum of 256", settings.ShardCount)
-	}
-	if settings.ShardCount > 1 {
-		if settings.ShardAlgorithm == "" {
-			return fmt.Errorf("shard_algorithm must be set when shard_count > 1")
-		}
-		if _, err := shard.New(settings.ShardAlgorithm); err != nil {
-			return fmt.Errorf("invalid shard config: %w", err)
-		}
 	}
 	return nil
 }

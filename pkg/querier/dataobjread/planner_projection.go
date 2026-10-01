@@ -146,7 +146,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 			case *syntax.LineFilterExpr:
 				needMessage = true
 			case *syntax.LabelFilterExpr:
-				for _, name := range typed.LabelFilterer.RequiredLabelNames() {
+				for _, name := range typed.RequiredLabelNames() {
 					addMetadataName(name)
 				}
 				if collectCandidates {
@@ -336,9 +336,9 @@ func dropsErroredLines(filter logqllog.LabelFilterer) bool {
 	if !ok || typed.Matcher == nil {
 		return false
 	}
-	return typed.Matcher.Name == logqlmodel.ErrorLabel &&
-		typed.Matcher.Type == labels.MatchEqual &&
-		typed.Matcher.Value == ""
+	return typed.Name == logqlmodel.ErrorLabel &&
+		typed.Type == labels.MatchEqual &&
+		typed.Value == ""
 }
 
 // reducesOutputLabels reports whether the top-level aggregation of expr reduces the output to a
