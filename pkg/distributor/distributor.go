@@ -562,6 +562,18 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// per request.
 	var shadowCandidates, liveCandidates []limitsServiceShardCandidate
 
+	// shardStreamsEnabledSeen/shardStreamsDisabledSeen track whether this
+	// push mixes streams whose resolved shardStreamsCfg.Enabled differs for
+	// this tenant. A tenant's policies are expected to agree on whether
+	// stream sharding is enabled; a stream with it disabled skips the limits
+	// service and is enforced by EnforceLimits instead, splitting
+	// max_global_streams_per_user enforcement between two independent
+	// trackers. This is only a concern while the limits service is enabled.
+	var (
+		shardStreamsEnabledSeen, shardStreamsDisabledSeen     bool
+		shardStreamsEnabledPolicy, shardStreamsDisabledPolicy string
+	)
+
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
@@ -572,6 +584,18 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// and threaded into these closures, so a policy can override the tenant sharding behavior
 	// (e.g. toggle time sharding or use a different desired_rate).
 	maybeShardByRate := func(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
+		if d.cfg.IngestLimitsEnabled {
+			if shardStreamsCfg.Enabled {
+				if !shardStreamsEnabledSeen {
+					shardStreamsEnabledSeen = true
+					shardStreamsEnabledPolicy = policy
+				}
+			} else if !shardStreamsDisabledSeen {
+				shardStreamsDisabledSeen = true
+				shardStreamsDisabledPolicy = policy
+			}
+		}
+
 		// Shortcut when stream sharding is not enabled
 		if !shardStreamsCfg.Enabled {
 			streams = append(streams, KeyedStream{
@@ -738,6 +762,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}()
 	if err != nil {
 		return nil, err
+	}
+
+	if shardStreamsEnabledSeen && shardStreamsDisabledSeen {
+		level.Warn(d.logger).Log(
+			"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
+			"tenant", tenantID,
+			"enabled_policy", shardStreamsEnabledPolicy,
+			"disabled_policy", shardStreamsDisabledPolicy,
+		)
 	}
 
 	var validationErr error
