@@ -2,10 +2,10 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -90,36 +90,17 @@ func sleepUntil(ctx context.Context, d time.Duration) {
 	}
 }
 
-// Run reconciles the set of per-tenant workers against the compacted windows'
-// ToCs and filtered by the per-tenant runtime config every PollingInterval
-// until ctx is cancelled, then drains all workers.
+// Run keeps one worker running for each tenant that has work in a compacted
+// window's ToC and is enabled for compaction. It re-checks every
+// PollingInterval until ctx is cancelled, then waits for all workers to exit.
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
 		"polling_interval", c.cfg.PollingInterval,
 		"plan_version", c.cfg.PlanVersion,
 	)
-
-	workers := make(map[string]context.CancelFunc)
-	var wg sync.WaitGroup
-
-	c.reconcile(ctx, workers, &wg)
-
-	ticker := time.NewTicker(c.cfg.PollingInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			for _, cancel := range workers {
-				cancel()
-			}
-			wg.Wait()
-			return ctx.Err()
-		case <-ticker.C:
-			c.reconcile(ctx, workers, &wg)
-		}
-	}
+	s := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
+	return s.Run(ctx)
 }
 
 // windows returns the metastore-aligned windows the coordinator compacts on
@@ -134,112 +115,46 @@ func (c *coordinator) windows() []time.Time {
 	return out
 }
 
-// reconcile brings the live worker set in line with the compacted windows' ToCs
-// and the per-tenant enable override. workers is owned solely by the single Run
-// goroutine, so it needs no synchronization.
-func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
-	discovered, allOK := c.discoverUniqueTenants(ctx)
-
-	// Per-tenant metric series are dropped by the worker goroutine on exit (see
-	// startWorker), not here, so a still-draining worker cannot resurrect a
-	// series after this cancel.
-	for tenant, cancel := range workers {
-		// A worker stays alive whenever any phase runs; runLog is irrelevant to
-		// liveness because it implies runIndex.
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
-			cancel()
-			delete(workers, tenant)
-		}
-	}
-
-	// Starting a worker for a discovered tenant is always safe, even when a
-	// window's ToCs failed to list (allOK=false): a tenant present in any
-	// successfully-listed window has real work. This is what lets a populated
-	// older window run while the current window has no ToCs yet.
-	for tenant := range discovered {
-		if _, running := workers[tenant]; running {
-			continue
-		}
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
-			continue
-		}
-		c.startWorker(ctx, workers, wg, tenant)
-	}
-
-	// Absence-driven cancellation requires an authoritative picture: only when
-	// every window read cleanly is a tenant's absence from the union conclusive.
-	// A transient read failure on any window leaves the running set untouched so
-	// a tenant present only in the unread window is not spuriously cancelled.
-	if !allOK {
-		return
-	}
-
-	// Workers just started above are all in discovered, so this cancel-absent
-	// pass can never cancel a freshly-started worker. Any new startWorker call
-	// must keep that invariant (only start tenants present in discovered).
-	for tenant, cancel := range workers {
-		if _, present := discovered[tenant]; !present {
-			cancel()
-			delete(workers, tenant)
-		}
-	}
+// compactionEnabled reports whether tenant may run any compaction phase. Log
+// compaction implies index compaction, so the index phase decides.
+func (c *coordinator) compactionEnabled(tenant string) bool {
+	runIndex, _ := c.limits.CompactionPhases(tenant)
+	return runIndex
 }
 
-// discoverUniqueTenants unions the tenants with a ToC in every compacted window.
-// allOK is true only when every window listed cleanly (a window without ToCs
-// or a transient error on any window clears it); reconcile uses allOK to gate
-// absence-driven cancellation so an unread window never causes a spurious
-// cancel.
-func (c *coordinator) discoverUniqueTenants(ctx context.Context) (map[string]struct{}, bool) {
-	discovered := make(map[string]struct{})
-	allOK := true
+// runTenant runs tenant's compaction loop until ctx is cancelled. It deletes
+// the tenant's per-tenant metric series when the loop exits.
+func (c *coordinator) runTenant(ctx context.Context, tenant string) {
+	defer c.metrics.deleteTenant(tenant)
+	c.runTenantLoop(ctx, tenant)
+}
+
+// errNoToC reports that a compacted window has no ToCs yet. It happens briefly
+// after each window boundary, before the first index for the new window is
+// written.
+var errNoToC = errors.New("no ToC for window")
+
+// discoverTenants returns the union of the tenants with a ToC in every
+// compacted window.
+//
+// It fails if any window's ToCs cannot be listed, including when the window
+// has no ToCs yet. A partial result could make a tenant with work look absent.
+// A window without ToCs returns an error that wraps errNoToC.
+func (c *coordinator) discoverTenants(ctx context.Context) (map[string]struct{}, error) {
+	tenants := make(map[string]struct{})
 	for _, window := range c.windows() {
-		tenants, ok := c.discover(ctx, window)
-		if !ok {
-			allOK = false
-			continue
+		listed, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
+		if err != nil {
+			return nil, fmt.Errorf("list ToCs for window %s: %w", window, err)
 		}
-		for tenant := range tenants {
-			discovered[tenant] = struct{}{}
+		if len(listed) == 0 {
+			return nil, fmt.Errorf("window %s: %w", window, errNoToC)
+		}
+		for _, tenant := range listed {
+			tenants[tenant] = struct{}{}
 		}
 	}
-	return discovered, allOK
-}
-
-// startWorker launches a long-lived runTenantLoop goroutine for tenant and
-// records its cancel func in workers. The goroutine deletes the tenant's
-// per-tenant metric series as its final action.
-func (c *coordinator) startWorker(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup, tenant string) {
-	wctx, cancel := context.WithCancel(ctx)
-	workers[tenant] = cancel
-	wg.Go(func() {
-		defer c.metrics.deleteTenant(tenant)
-		c.runTenantLoop(wctx, tenant)
-	})
-}
-
-// discover lists one window's ToCs and returns the set of tenants that have
-// one. ok is false on a listing error or when the window has no ToCs yet;
-// discoverUniqueTenants folds that into its allOK result so reconcile can
-// leave the running set untouched when the picture is incomplete. Only a
-// successfully listed, populated window is authoritative enough to conclude a
-// tenant was removed. Membership is by map key.
-func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
-	tenants, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
-	if err != nil {
-		level.Warn(c.logger).Log("msg", "discover: list ToCs failed; leaving workers as-is",
-			"window", window, "err", err)
-		return nil, false
-	}
-	if len(tenants) == 0 {
-		level.Debug(c.logger).Log("msg", "no ToCs for window; leaving workers as-is", "window", window)
-		return nil, false
-	}
-	out := make(map[string]struct{}, len(tenants))
-	for _, tenant := range tenants {
-		out[tenant] = struct{}{}
-	}
-	return out, true
+	return tenants, nil
 }
 
 // compactionStats reports the results of a single tenant compaction. The zero
