@@ -249,21 +249,31 @@ type compactionStats struct {
 	dispatched int
 }
 
+// Add returns the field-wise sum of s and other.
+func (s compactionStats) Add(other compactionStats) compactionStats {
+	return compactionStats{
+		removed:    s.removed + other.removed,
+		added:      s.added + other.added,
+		dispatched: s.dispatched + other.dispatched,
+	}
+}
+
 type indexedLogLayout struct {
 	sortSchema string
 	shardCount int64
 }
 
+// replaceLogIndex swaps sourceIndex for newEntries, which hold one entry per
+// dispatched task.
 func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
 	sourceIndex indexEntry,
 	newEntries []metastore.TableOfContentsEntry,
-	dispatched int,
 ) (compactionStats, error) {
-	if len(newEntries) == 0 || len(newEntries) != dispatched {
-		return compactionStats{}, fmt.Errorf("replace source log index %q: got %d results for %d tasks", sourceIndex.Path, len(newEntries), dispatched)
+	if len(newEntries) == 0 {
+		return compactionStats{}, fmt.Errorf("replace source log index %q: no replacement entries", sourceIndex.Path)
 	}
 
 	swapped, err := c.publisher.Replace(ctx, tenant, window, []string{sourceIndex.Path}, newEntries)
@@ -276,7 +286,7 @@ func (c *coordinator) replaceLogIndex(
 	return compactionStats{
 		removed:    1,
 		added:      len(newEntries),
-		dispatched: dispatched,
+		dispatched: len(newEntries),
 	}, nil
 }
 
@@ -317,6 +327,10 @@ func (c *coordinator) compactTenantLogs(
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
 	logMergeTaskDetails(entryLogger, tasks)
 
+	if len(tasks) == 0 {
+		return compactionStats{}, fmt.Errorf("planned log compaction tasks: no completed log merges")
+	}
+
 	plans := make([]*physical.Plan, len(tasks))
 	for i, task := range tasks {
 		plans[i] = buildLogMergePlan(tenant, window, task)
@@ -335,7 +349,7 @@ func (c *coordinator) compactTenantLogs(
 		}
 	}
 
-	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(tasks))
+	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries)
 	if err != nil {
 		return compactionStats{}, err
 	}
@@ -394,7 +408,7 @@ func (c *coordinator) sortTenantLogObjects(
 		}
 	}
 
-	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(objects))
+	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries)
 }
 
 func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
@@ -441,9 +455,7 @@ func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, w
 		if err != nil {
 			return total, err
 		}
-		total.removed += stats.removed
-		total.added += stats.added
-		total.dispatched += stats.dispatched
+		total = total.Add(stats)
 	}
 	return total, nil
 }
@@ -470,6 +482,10 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
+	if len(tasks) == 0 {
+		return compactionStats{}, fmt.Errorf("build index ToC entries: no completed index merges")
+	}
+
 	plans := make([]*physical.Plan, len(tasks))
 	for i, task := range tasks {
 		plans[i] = buildIndexMergePlan(tenant, window, task)
@@ -478,16 +494,25 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
-	completed := make([]completedIndexMerge, len(tasks))
+
+	entriesByPath := make(map[string]indexEntry, len(entries))
+	for _, entry := range entries {
+		entriesByPath[entry.Path] = entry
+	}
+	newEntries := make([]metastore.TableOfContentsEntry, len(tasks))
 	for i, task := range tasks {
-		completed[i] = completedIndexMerge{task: task, artifact: artifacts[i]}
+		start, end, err := indexTaskBounds(task, entriesByPath)
+		if err != nil {
+			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
+		}
+		newEntries[i] = metastore.TableOfContentsEntry{
+			Path:      artifacts[i].Path,
+			StartTime: start.UTC(),
+			EndTime:   end.UTC(),
+		}
 	}
 
 	oldPaths := taskObjectPaths(tasks)
-	newEntries, err := makeIndexTocEntries(completed, entries)
-	if err != nil {
-		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
-	}
 
 	swapped, err := c.publisher.Replace(ctx, tenant, window, oldPaths, newEntries)
 	if err != nil {
@@ -565,66 +590,29 @@ func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
 	return paths
 }
 
-// completedIndexMerge keeps an assignment paired with its validated output.
-type completedIndexMerge struct {
-	task     *compactionv2pb.TaskSpec
-	artifact v2.ResultArtifact
-}
-
-// makeIndexTocEntries derives output metadata from each completed task's source indexes.
-func makeIndexTocEntries(completed []completedIndexMerge, inputs []indexEntry) ([]metastore.TableOfContentsEntry, error) {
-	if len(completed) == 0 {
-		return nil, fmt.Errorf("no completed index merges")
-	}
-	byPath := make(map[string]indexEntry, len(inputs))
-	for _, input := range inputs {
-		byPath[input.Path] = input
-	}
-
-	entries := make([]metastore.TableOfContentsEntry, len(completed))
-	for i, result := range completed {
-		if err := result.artifact.Validate(); err != nil {
-			return nil, fmt.Errorf("index merge result %d: %w", i, err)
-		}
-		if result.task == nil {
-			return nil, fmt.Errorf("index merge result %d: missing assignment", i)
-		}
-		var (
-			start, end time.Time
-
-			first = true
-			seen  = make(map[string]struct{})
-		)
-		for _, run := range result.task.Runs {
-			for _, section := range run.Sections {
-				if _, ok := seen[section.ObjectPath]; ok {
-					continue
-				}
-				seen[section.ObjectPath] = struct{}{}
-
-				input, ok := byPath[section.ObjectPath]
-				if !ok {
-					return nil, fmt.Errorf("task references unknown index %q", section.ObjectPath)
-				}
-				if first || input.Start.Before(start) {
-					start = input.Start
-				}
-				if first || input.End.After(end) {
-					end = input.End
-				}
-				first = false
+// indexTaskBounds returns the time range covered by the source indexes that
+// task merges. inputsByPath maps each source index path to its ToC entry.
+func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexEntry) (start, end time.Time, err error) {
+	first := true
+	for _, run := range task.Runs {
+		for _, section := range run.Sections {
+			input, ok := inputsByPath[section.ObjectPath]
+			if !ok {
+				return time.Time{}, time.Time{}, fmt.Errorf("task references unknown index %q", section.ObjectPath)
 			}
-		}
-		if first {
-			return nil, fmt.Errorf("index merge result %d: assignment has no source indexes", i)
-		}
-		entries[i] = metastore.TableOfContentsEntry{
-			Path:      result.artifact.Path,
-			StartTime: start.UTC(),
-			EndTime:   end.UTC(),
+			if first || input.Start.Before(start) {
+				start = input.Start
+			}
+			if first || input.End.After(end) {
+				end = input.End
+			}
+			first = false
 		}
 	}
-	return entries, nil
+	if first {
+		return time.Time{}, time.Time{}, fmt.Errorf("task has no source indexes")
+	}
+	return start, end, nil
 }
 
 // phase is the current step of a tenant's flip-flop worker.
@@ -677,8 +665,8 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
 		return phaseOutcomeError
 	}
-	// compactTenant returns zero stats for every no-op success; a real swap sets
-	// added > 0.
+	// compactTenantIndexes returns zero stats for every no-op success. A real
+	// swap sets added > 0.
 	if stats.added == 0 {
 		c.metrics.observeTenantCycle(tenant, "converged", dur, compactionStats{})
 		return phaseOutcomeNoWork
@@ -745,9 +733,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		}
 		if stats.added > 0 {
 			anySwapped = true
-			agg.removed += stats.removed
-			agg.added += stats.added
-			agg.dispatched += stats.dispatched
+			agg = agg.Add(stats)
 		}
 	}
 
