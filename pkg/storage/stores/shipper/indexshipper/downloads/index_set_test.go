@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -259,4 +260,136 @@ func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// closeTrackingIndex records ownership release without relying on file descriptor reuse.
+type closeTrackingIndex struct {
+	index.Index
+	closed bool
+}
+
+func (i *closeTrackingIndex) Close() error {
+	i.closed = true
+	return i.Index.Close()
+}
+
+func TestIndexSet_Sync_OpenFailure(t *testing.T) {
+	for _, lock := range []bool{false, true} {
+		t.Run(fmt.Sprintf("lock=%t", lock), func(t *testing.T) {
+			tempDir := t.TempDir()
+			storePath := filepath.Join(tempDir, objectsStorageDirName, tableName)
+			oldFiles := setupIndexesAtPath(t, "", storePath, 0, 1)
+			is, stop := buildTestIndexSet(t, "", tempDir)
+			defer stop()
+			oldIndex := is.index["0"]
+			require.NoError(t, os.Remove(oldFiles[0]))
+			setupIndexesAtPath(t, "", storePath, 1, 4)
+
+			openErr := errors.New("open failed")
+			var opened []*closeTrackingIndex
+			is.openIndexFileFunc = func(path string) (index.Index, error) {
+				if len(opened) == 2 {
+					return nil, openErr
+				}
+				idx := &closeTrackingIndex{Index: openMockIndexFile(t, path)}
+				opened = append(opened, idx)
+				return idx, nil
+			}
+
+			require.ErrorIs(t, is.sync(context.Background(), lock, true), openErr)
+			require.Len(t, opened, 2)
+			for _, idx := range opened {
+				require.True(t, idx.closed)
+			}
+			require.Equal(t, map[string]index.Index{"0": oldIndex}, is.index)
+			require.FileExists(t, oldIndex.Path())
+			_, err := oldIndex.(*mockIndex).Stat()
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestIndexSet_Sync_ReadersDuringOpen(t *testing.T) {
+	tempDir := t.TempDir()
+	storePath := filepath.Join(tempDir, objectsStorageDirName, tableName)
+	oldFiles := setupIndexesAtPath(t, "", storePath, 0, 2)
+	is, stop := buildTestIndexSet(t, "", tempDir)
+	defer stop()
+	removedIndex := is.index["0"].(*mockIndex)
+	retainedIndex := is.index["1"]
+	require.NoError(t, os.Remove(oldFiles[0]))
+	setupIndexesAtPath(t, "", storePath, 2, 3)
+
+	opening := make(chan struct{})
+	release := make(chan struct{})
+	synced := make(chan error, 1)
+	is.openIndexFileFunc = func(path string) (index.Index, error) {
+		close(opening)
+		<-release
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return &mockIndex{f}, nil
+	}
+	go func() { synced <- is.sync(context.Background(), true, true) }()
+	// Unblock and join the sync even if a reader assertion fails.
+	defer func() {
+		close(release)
+		require.NoError(t, <-synced)
+		require.Len(t, is.index, 2)
+		require.Same(t, retainedIndex, is.index["1"])
+		require.Contains(t, is.index, "2")
+		require.NotContains(t, is.index, "0")
+		require.NoFileExists(t, removedIndex.Path())
+		_, err := removedIndex.Stat()
+		require.ErrorIs(t, err, os.ErrClosed)
+	}()
+	select {
+	case <-opening:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sync did not start opening the new index")
+	}
+
+	for _, forEach := range []func(context.Context, index.ForEachIndexCallback) error{is.ForEach, is.ForEachConcurrent} {
+		readDone := make(chan error, 1)
+		var seen atomic.Int32
+		go func() {
+			readDone <- forEach(context.Background(), func(_ bool, _ index.Index) error {
+				seen.Add(1)
+				return nil
+			})
+		}()
+		select {
+		case err := <-readDone:
+			require.NoError(t, err)
+			require.Equal(t, int32(2), seen.Load())
+		case <-time.After(5 * time.Second):
+			t.Fatal("reader blocked while opening the new index")
+		}
+	}
+}
+
+func TestIndexSet_Sync_LockFailure(t *testing.T) {
+	tempDir := t.TempDir()
+	is, stop := buildTestIndexSet(t, "", tempDir)
+	defer stop()
+	setupIndexesAtPath(t, "", filepath.Join(tempDir, objectsStorageDirName, tableName), 0, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var opened *closeTrackingIndex
+	is.openIndexFileFunc = func(path string) (index.Index, error) {
+		opened = &closeTrackingIndex{Index: openMockIndexFile(t, path)}
+		// Close the readiness gate after the storage check so cancellation
+		// deterministically fails write-lock acquisition.
+		is.indexMtx = newMtxWithReadiness()
+		cancel()
+		return opened, nil
+	}
+	err := is.sync(ctx, true, true)
+	is.indexMtx.markReady()
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotNil(t, opened)
+	require.True(t, opened.closed)
+	require.Empty(t, is.index)
 }
