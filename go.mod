@@ -71,7 +71,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.71.0
+	github.com/prometheus/common v0.72.0
 	github.com/prometheus/prometheus v0.314.0-rc.0.0.20260923171314-5f325dd18c88
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/segmentio/fasthash v1.0.3
