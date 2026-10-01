@@ -24,14 +24,14 @@ func (ms Stack) Equal(val Stack) bool {
 
 // switchDictionary updates the Stack, switching its indices from one
 // dictionary to another.
-func (ms Stack) switchDictionary(src, dst ProfilesDictionary) error {
+func (ms Stack) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	for i, v := range ms.LocationIndices().All() {
 		if v < 0 || src.LocationTable().Len() <= int(v) {
 			return fmt.Errorf("invalid location index %d", v)
 		}
 
 		loc := src.LocationTable().At(int(v))
-		idx, err := SetLocation(dst.LocationTable(), loc)
+		idx, err := mi.setLocation(dst.LocationTable(), loc)
 		if err != nil {
 			return fmt.Errorf("couldn't set location %d: %w", i, err)
 		}
