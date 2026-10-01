@@ -47,6 +47,23 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 
+# logfmt() with a line key that ends in `_extracted`.
+clear
+load
+  {app="a", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
+  {app="b", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
+  {app="noise", k="s"} "k=p"                  @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app=~"a|b"} | logfmt [1m])
+  {app="a", k="s", k_extracted="pext"} 3
+  {app="b", k="s", k_extracted="pext"} 3
+eval range from 40s to 60s step 20s count_over_time({app=~"a|b"} | logfmt [1m])   # overlapping
+  {app="a", k="s", k_extracted="pext"} 2 3
+  {app="b", k="s", k_extracted="pext"} 2 3
+eval instant at 60s sum by (app, k_extracted) (count_over_time({app=~"a|b"} | logfmt [1m]))
+  {app="a", k_extracted="pext"} 3
+  {app="b", k_extracted="pext"} 3
+
 # logfmt() partially malformed line: the parser keeps the valid pairs and drops the bad one, or
 # fails the whole line under --strict.
 clear

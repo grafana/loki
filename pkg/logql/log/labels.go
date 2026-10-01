@@ -422,6 +422,13 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, DuplicateSuffix)
+
+			// The renamed label can itself already be taken (e.g. by a stream label of that
+			// exact name): in such case, we preserve the already existing one and the this value
+			// gets dropped.
+			if _, _, ok := b.getWithCategory(name); ok {
+				return
+			}
 		}
 
 		if name == logqlmodel.ErrorLabel {
