@@ -112,14 +112,10 @@ func (f *fakeRunner) assertUniqueObjects(t *testing.T) {
 	}
 }
 
-func TestRunCompactionPlanRejectsMissingArtifact(t *testing.T) {
-	c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, time.Now, nil)
-	c.runPlan = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
-		return nil, nil
-	}
-	artifact, err := c.runCompactionPlan(context.Background(), "acme", "index-merge", nil)
-	require.ErrorContains(t, err, "index-merge job produced no result artifact")
-	require.Nil(t, artifact)
+// setRunPlan makes both of c's dispatchers run plans with run.
+func setRunPlan(c *coordinator, run runFunc) {
+	c.indexDispatcher.runPlan = run
+	c.logDispatcher.runPlan = run
 }
 
 // fakeReplacer records each ReplaceIndexPointers invocation and returns
@@ -176,23 +172,23 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	}
 	return &coordinator{
 		cfg: Config{
-			Enabled:                   true,
-			PollingInterval:           5 * time.Minute,
-			MaxRunsPerTask:            2,
-			LogMaxRunsPerTask:         2,
-			LogMinCompactionSize:      1,
-			MaxRunningCompactionTasks: 4,
-			PlanVersion:               1,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
+			Enabled:              true,
+			PollingInterval:      5 * time.Minute,
+			MaxRunsPerTask:       2,
+			LogMaxRunsPerTask:    2,
+			LogMinCompactionSize: 1,
+			PlanVersion:          1,
+			Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
 		},
-		logger:    log.NewNopLogger(),
-		bucket:    bucket,
-		runPlan:   runner.run,
-		publisher: &tocPublisher{writer: replacer, timeout: 30 * time.Second},
-		clock:     clock,
-		sleep:     sleepUntil,
-		metrics:   newCoordinatorMetrics(prometheus.NewRegistry()),
-		limits:    limits,
+		logger:          log.NewNopLogger(),
+		bucket:          bucket,
+		indexDispatcher: &planDispatcher{runPlan: runner.run, limit: 4},
+		logDispatcher:   &planDispatcher{runPlan: runner.run},
+		publisher:       &tocPublisher{writer: replacer, timeout: 30 * time.Second},
+		clock:           clock,
+		sleep:           sleepUntil,
+		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+		limits:          limits,
 	}
 }
 
@@ -801,7 +797,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 				runner := &fakeRunner{}
 				replacer := &fakeReplacer{swapped: true}
 				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-				c.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				setRunPlan(c, func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 					artifact, err := runner.run(ctx, opts, plan)
 					if err != nil {
 						return nil, err
@@ -818,7 +814,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 
 					// else return normally
 					return artifact, nil
-				}
+				})
 				result, err := run(c)
 				require.Len(t, runner.snapshot(), 2)
 				if tc.err == nil {
@@ -874,7 +870,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 				runner := &fakeRunner{}
 				replacer := &fakeReplacer{swapped: true}
 				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-				c.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				setRunPlan(c, func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 					artifact, err := runner.run(ctx, opts, plan)
 					if err != nil {
 						return nil, err
@@ -891,7 +887,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 
 					// else return normally
 					return artifact, nil
-				}
+				})
 				result, err := run(c)
 				require.Len(t, runner.snapshot(), 2)
 				if tc.err == nil {
@@ -955,7 +951,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 				runner := &fakeRunner{}
 				replacer := &fakeReplacer{swapped: true}
 				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-				c.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				setRunPlan(c, func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 					artifact, err := runner.run(ctx, opts, plan)
 					if err != nil {
 						return nil, err
@@ -970,7 +966,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 					}
 					// else return normally
 					return artifact, nil
-				}
+				})
 				result, err := run(c)
 				require.Len(t, runner.snapshot(), 3)
 				if tc.err == nil {
@@ -1296,14 +1292,14 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	started := make(chan struct{}, 1)
-	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		select {
 		case started <- struct{}{}:
 		default:
 		}
 		<-ctx.Done()
 		return nil, ctx.Err()
-	}
+	})
 
 	done := make(chan error, 1)
 	go func() { done <- c.Run(ctx) }()
@@ -1333,17 +1329,17 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme", "bravo"))
-	c.cfg.MaxRunningCompactionTasks = 1
+	c.indexDispatcher.limit = 1
 
 	var mu sync.Mutex
 	starts := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		starts[opts.Tenant]++
 		mu.Unlock()
 		<-ctx.Done()
 		return nil, ctx.Err()
-	}
+	})
 
 	done := make(chan error, 1)
 	go func() { done <- c.Run(ctx) }()
@@ -1370,11 +1366,11 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Time, limits Limits) (*coordinator, func() []string) {
 	t.Helper()
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, clock, limits)
-	c.cfg.MaxRunningCompactionTasks = 1
+	c.indexDispatcher.limit = 1
 
 	var mu sync.Mutex
 	live := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		live[opts.Tenant]++
 		mu.Unlock()
@@ -1383,7 +1379,7 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 		live[opts.Tenant]--
 		mu.Unlock()
 		return nil, ctx.Err()
-	}
+	})
 	tenantsWithLiveDispatch := func() []string {
 		mu.Lock()
 		defer mu.Unlock()
@@ -1769,12 +1765,12 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		var mu sync.Mutex
 		var phases []string
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+		setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 			mu.Lock()
 			phases = append(phases, opts.Actor[1])
 			mu.Unlock()
 			return nil, errors.New("dispatch boom")
-		}
+		})
 
 		done := make(chan struct{})
 		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
@@ -1810,14 +1806,14 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		var phases []string
 		// Collapse the dispatches within a cycle to a single entry so the slice
 		// records the per-cycle phase order.
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+		setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 			mu.Lock()
 			if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 				phases = append(phases, opts.Actor[1])
 			}
 			mu.Unlock()
 			return &v2.ResultArtifact{Path: "indexes/tenants/acme/aa/x"}, nil
-		}
+		})
 
 		done := make(chan struct{})
 		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
@@ -2054,12 +2050,12 @@ func TestRunTenantLoop_IndexOnly(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
 		return &v2.ResultArtifact{Path: "indexes/aa/bb"}, nil
-	}
+	})
 
 	done := make(chan struct{})
 	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
@@ -2096,14 +2092,14 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 			phases = append(phases, opts.Actor[1])
 		}
 		mu.Unlock()
 		return &v2.ResultArtifact{Path: "indexes/aa/bb"}, nil
-	}
+	})
 
 	done := make(chan struct{})
 	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
@@ -2138,7 +2134,7 @@ func TestRunTenantLoop_RunsMultipleIndexMergesPerLogMerge(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		if opts.Actor[1] == "log-merge" {
@@ -2146,7 +2142,7 @@ func TestRunTenantLoop_RunsMultipleIndexMergesPerLogMerge(t *testing.T) {
 		}
 		mu.Unlock()
 		return &v2.ResultArtifact{Path: "indexes/aa/bb"}, nil
-	}
+	})
 
 	done := make(chan struct{})
 	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
@@ -2225,7 +2221,7 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	var phases []string
 	sawLog := make(chan struct{})
 	var closeOnce sync.Once
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+	setRunPlan(c, func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
@@ -2233,7 +2229,7 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 			closeOnce.Do(func() { close(sawLog) })
 		}
 		return &v2.ResultArtifact{Path: "indexes/aa/bb"}, nil
-	}
+	})
 
 	observingLimits := newDisableObservingLimits(limits, func() int {
 		mu.Lock()

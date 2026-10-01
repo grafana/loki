@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
@@ -24,19 +23,17 @@ import (
 
 const indexMergeIterations = 3
 
-// runFunc executes one single-root physical.Plan as a workflow.
-// Injected via the coordinator's runPlan field so unit tests can swap in a
-// recorder without standing up a scheduler + worker pair.
-type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error)
-
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
 type coordinator struct {
-	cfg       Config
-	logger    log.Logger
-	bucket    objstore.Bucket
-	runPlan   runFunc
-	publisher *tocPublisher
+	cfg    Config
+	logger log.Logger
+	bucket objstore.Bucket
+	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge and
+	// SortObject plans. They have separate concurrency limits.
+	indexDispatcher *planDispatcher
+	logDispatcher   *planDispatcher
+	publisher       *tocPublisher
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
 	clock func() time.Time
@@ -48,9 +45,7 @@ type coordinator struct {
 }
 
 // newCoordinator constructs a coordinator wired to a real
-// *metastore.TableOfContentsWriter and a workflow.Runner. The runPlan field
-// is set to the package-private runPlan helper closing over the supplied
-// runner so unit tests can override it independently.
+// *metastore.TableOfContentsWriter and a workflow.Runner.
 func newCoordinator(
 	cfg Config,
 	logger log.Logger,
@@ -60,13 +55,15 @@ func newCoordinator(
 	reg prometheus.Registerer,
 	limits Limits,
 ) *coordinator {
+	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+		return runPlan(ctx, logger, runner, opts, plan)
+	}
 	return &coordinator{
-		cfg:    cfg,
-		logger: logger,
-		bucket: bucket,
-		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-			return runPlan(ctx, logger, runner, opts, plan)
-		},
+		cfg:             cfg,
+		logger:          logger,
+		bucket:          bucket,
+		indexDispatcher: &planDispatcher{runPlan: run, limit: cfg.MaxRunningCompactionTasks},
+		logDispatcher:   &planDispatcher{runPlan: run, limit: cfg.LogMaxRunningCompactionTasks},
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -257,36 +254,6 @@ type indexedLogLayout struct {
 	shardCount int64
 }
 
-// runCompactionPlan executes a dispatched index merge, log merge, or sort object
-// task and validates its replacement index artifact. A result must be either a non-nil artifact, or a non-nil err.
-// Its full result contract is:
-//
-//   - A non-nil artifact with a nonempty path and nil error is ready for
-//     publication, but is not yet referenced by the ToC.
-//   - A non-nil error fails the task; any accompanying artifact is ignored.
-//   - (nil, nil) or an artifact with an empty path is an invalid task response.
-//
-// No-work decisions belong to planning, before dispatch.
-func (c *coordinator) runCompactionPlan(
-	ctx context.Context,
-	tenant string,
-	actor string,
-	plan *physical.Plan,
-) (*v2.ResultArtifact, error) {
-	opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", actor}}
-	artifact, err := c.runPlan(ctx, opts, plan)
-	if err != nil {
-		return nil, fmt.Errorf("%s job: %w", actor, err)
-	}
-	if artifact == nil {
-		return nil, fmt.Errorf("%s job produced no result artifact", actor)
-	}
-	if err := artifact.Validate(); err != nil {
-		return nil, fmt.Errorf("%s job: %w", actor, err)
-	}
-	return artifact, nil
-}
-
 func (c *coordinator) replaceLogIndex(
 	ctx context.Context,
 	tenant string,
@@ -350,29 +317,22 @@ func (c *coordinator) compactTenantLogs(
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
 	logMergeTaskDetails(entryLogger, tasks)
 
-	resultEntries := make([]metastore.TableOfContentsEntry, len(tasks))
-	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.LogMaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
+	plans := make([]*physical.Plan, len(tasks))
+	for i, task := range tasks {
+		plans[i] = buildLogMergePlan(tenant, window, task)
 	}
-	for i, ts := range tasks {
-		g.Go(func() error {
-			plan := buildLogMergePlan(tenant, window, ts)
-			artifact, err := c.runCompactionPlan(gctx, tenant, "log-merge", plan)
-			if err != nil {
-				return err
-			}
-			minTS, maxTS := taskBounds(ts)
-			resultEntries[i] = metastore.TableOfContentsEntry{
-				Path:      artifact.Path,
-				StartTime: time.Unix(0, minTS).UTC(),
-				EndTime:   time.Unix(0, maxTS).UTC(),
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, "log-merge", plans)
+	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
+	}
+	resultEntries := make([]metastore.TableOfContentsEntry, len(tasks))
+	for i, task := range tasks {
+		minTS, maxTS := taskBounds(task)
+		resultEntries[i] = metastore.TableOfContentsEntry{
+			Path:      artifacts[i].Path,
+			StartTime: time.Unix(0, minTS).UTC(),
+			EndTime:   time.Unix(0, maxTS).UTC(),
+		}
 	}
 
 	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(tasks))
@@ -399,6 +359,7 @@ func (c *coordinator) sortTenantLogObjects(
 		maxTimestamp int64
 	}
 
+	var objects []*object
 	objectsByPath := make(map[string]*object)
 	for _, section := range sections {
 		path := section.Ref.ObjectPath
@@ -410,41 +371,30 @@ func (c *coordinator) sortTenantLogObjects(
 				maxTimestamp: section.Ref.MaxTimestamp,
 			}
 			objectsByPath[path] = obj
+			objects = append(objects, obj)
 		}
 		obj.minTimestamp = min(obj.minTimestamp, section.Ref.MinTimestamp)
 		obj.maxTimestamp = max(obj.maxTimestamp, section.Ref.MaxTimestamp)
 	}
 
-	resultEntries := make([]metastore.TableOfContentsEntry, len(objectsByPath))
-	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.LogMaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
+	plans := make([]*physical.Plan, len(objects))
+	for i, obj := range objects {
+		plans[i] = buildSortObjectPlan(obj.path, targetSortSchema)
 	}
-	idx := 0
-	for path := range objectsByPath {
-		resultIdx := idx
-		g.Go(func() error {
-			plan := buildSortObjectPlan(path, targetSortSchema)
-			artifact, err := c.runCompactionPlan(gctx, tenant, "sort-object", plan)
-			if err != nil {
-				return err
-			}
-
-			obj := objectsByPath[path]
-			resultEntries[resultIdx] = metastore.TableOfContentsEntry{
-				Path:      artifact.Path,
-				StartTime: time.Unix(0, obj.minTimestamp).UTC(),
-				EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
-			}
-			return nil
-		})
-		idx++
-	}
-	if err := g.Wait(); err != nil {
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, "sort-object", plans)
+	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute sort-object tasks: %w", err)
 	}
+	resultEntries := make([]metastore.TableOfContentsEntry, len(objects))
+	for i, obj := range objects {
+		resultEntries[i] = metastore.TableOfContentsEntry{
+			Path:      artifacts[i].Path,
+			StartTime: time.Unix(0, obj.minTimestamp).UTC(),
+			EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
+		}
+	}
 
-	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(objectsByPath))
+	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries, len(objects))
 }
 
 func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
@@ -516,28 +466,21 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
-	completed := make([]completedIndexMerge, len(tasks))
 
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.MaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
-	}
+	plans := make([]*physical.Plan, len(tasks))
 	for i, task := range tasks {
-		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, task)
-			artifact, err := c.runCompactionPlan(gctx, tenant, "index-merge", plan)
-			if err != nil {
-				return err
-			}
-			completed[i] = completedIndexMerge{task: task, artifact: *artifact}
-			return nil
-		})
+		plans[i] = buildIndexMergePlan(tenant, window, task)
 	}
-	if err := g.Wait(); err != nil {
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, "index-merge", plans)
+	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
+	}
+	completed := make([]completedIndexMerge, len(tasks))
+	for i, task := range tasks {
+		completed[i] = completedIndexMerge{task: task, artifact: artifacts[i]}
 	}
 
 	oldPaths := taskObjectPaths(tasks)
