@@ -82,11 +82,9 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	for tenant, paths := range entries {
 		for _, e := range paths {
 			require.NoError(t, w.WriteEntry(ctx, tenant, metastore.TableOfContentsEntry{
-				Path:                 e.path,
-				StartTime:            e.start,
-				EndTime:              e.end,
-				FileSize:             e.fileSize,
-				UncompressedLogsSize: e.uncompressedLogsSize,
+				Path:      e.path,
+				StartTime: e.start,
+				EndTime:   e.end,
 			}))
 		}
 	}

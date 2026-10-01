@@ -126,10 +126,8 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("failed to upload index object: %w", err)
 	}
 
-	timeRange.FileSize = uint64(idxObj.Size())
-
 	level.Debug(objLogger).Log("msg", "uploaded index object",
-		"idxPath", idxObjKey, "idxSize", timeRange.FileSize, "tenant", timeRange.Tenant)
+		"idxPath", idxObjKey, "tenant", timeRange.Tenant)
 
 	return Result{Path: idxObjKey, TimeRange: timeRange}, nil
 }

@@ -70,32 +70,25 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 type Calculator struct {
-	indexobjBuilder      *indexobj.Builder
-	builderMtx           sync.Mutex
-	metrics              *CalculatorMetrics
-	uncompressedByTenant map[string]uint64
+	indexobjBuilder *indexobj.Builder
+	builderMtx      sync.Mutex
+	metrics         *CalculatorMetrics
 }
 
 // NewCalculator returns a [Calculator].
 func NewCalculator(indexobjBuilder *indexobj.Builder, metrics *CalculatorMetrics) *Calculator {
 	return &Calculator{
-		indexobjBuilder:      indexobjBuilder,
-		metrics:              metrics,
-		uncompressedByTenant: make(map[string]uint64),
+		indexobjBuilder: indexobjBuilder,
+		metrics:         metrics,
 	}
 }
 
 func (c *Calculator) Reset() {
 	c.indexobjBuilder.Reset()
-	clear(c.uncompressedByTenant)
 }
 
 func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
-	ranges := c.indexobjBuilder.TimeRanges()
-	for i := range ranges {
-		ranges[i].UncompressedLogsSize = c.uncompressedByTenant[ranges[i].Tenant]
-	}
-	return ranges
+	return c.indexobjBuilder.TimeRanges()
 }
 
 // Flush consumes the calculator's state and returns the built object together
@@ -112,7 +105,6 @@ func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRan
 		return nil, nil, nil, err
 	}
 
-	clear(c.uncompressedByTenant)
 	return obj, closer, ranges, nil
 }
 
@@ -232,7 +224,6 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 					streamLabels[stream.ID] = stream.Labels
 					shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
 				}
-				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil
 		}()

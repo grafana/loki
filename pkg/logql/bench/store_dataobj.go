@@ -253,11 +253,9 @@ func (s *DataObjStore) buildIndex() error {
 func writeToCEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []multitenancy.TimeRange) error {
 	for _, tr := range timeRanges {
 		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
-			Path:                 path,
-			StartTime:            tr.MinTime,
-			EndTime:              tr.MaxTime,
-			FileSize:             tr.FileSize,
-			UncompressedLogsSize: tr.UncompressedLogsSize,
+			Path:      path,
+			StartTime: tr.MinTime,
+			EndTime:   tr.MaxTime,
 		}); err != nil {
 			return err
 		}

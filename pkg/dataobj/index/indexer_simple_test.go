@@ -67,10 +67,8 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		// entries, and the size of the index just uploaded.
 		tr := res.TimeRange
 		require.Equal(t, "tenant-0", tr.Tenant)
-		require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
 		require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
-		require.Positive(t, tr.UncompressedLogsSize)
 
 		// Read the uploaded bytes back: they must decode as an index object
 		// holding a streams and a pointers section for the tenant.

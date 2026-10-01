@@ -147,11 +147,9 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// WriteEntry retries each ToC window until it succeeds, so it returns an
 	// error only if the context is canceled.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
-		Path:                 res.Path,
-		StartTime:            res.TimeRange.MinTime,
-		EndTime:              res.TimeRange.MaxTime,
-		FileSize:             res.TimeRange.FileSize,
-		UncompressedLogsSize: res.TimeRange.UncompressedLogsSize,
+		Path:      res.Path,
+		StartTime: res.TimeRange.MinTime,
+		EndTime:   res.TimeRange.MaxTime,
 	}); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
