@@ -62,6 +62,7 @@ type SampleExtractorWrapper interface {
 type lineSampleExtractor struct {
 	Stage
 	LineExtractor
+	literal []byte
 
 	baseBuilder      *BaseLabelsBuilder
 	streamExtractors map[uint64]cachedStreamSampleExtractor
@@ -81,6 +82,7 @@ func NewLineSampleExtractor(ex LineExtractor, stages Stages, groups []string, wi
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
+		literal:          stagesLiteral(stages),
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
@@ -118,13 +120,14 @@ func (l *lineSampleExtractor) newStreamSampleExtractor(lbls labels.Labels, hash 
 			return &noopConstantLabelStreamExtractor{line: l.LineExtractor, groupedLabels: groupedLabels, baseLabels: baseLabels, builder: builder}
 		}
 
-		return &filteredConstantLabelStreamExtractor{stage: l.Stage, line: l.LineExtractor, groupedLabels: groupedLabels, baseLabels: baseLabels, builder: builder}
+		return &filteredConstantLabelStreamExtractor{stage: l.Stage, line: l.LineExtractor, groupedLabels: groupedLabels, baseLabels: baseLabels, builder: builder, literal: l.literal}
 	}
 
 	return &streamLineSampleExtractor{
 		Stage:         l.Stage,
 		LineExtractor: l.LineExtractor,
 		builder:       builder,
+		literal:       l.literal,
 	}
 }
 
@@ -172,7 +175,10 @@ type streamLineSampleExtractor struct {
 	Stage
 	LineExtractor
 	builder *LabelsBuilder
+	literal []byte
 }
+
+func (l *streamLineSampleExtractor) requiredLiteral() []byte { return l.literal }
 
 func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.builder.referencedStructuredMetadata
@@ -252,7 +258,10 @@ type filteredConstantLabelStreamExtractor struct {
 	groupedLabels LabelsResult
 	baseLabels    LabelsResult
 	builder       *LabelsBuilder
+	literal       []byte
 }
+
+func (e *filteredConstantLabelStreamExtractor) requiredLiteral() []byte { return e.literal }
 
 func (e *filteredConstantLabelStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// The base builder is shared among extractors for different log streams, so we have to Reset
@@ -297,6 +306,7 @@ type labelSampleExtractor struct {
 	postFilter   Stage
 	labelName    string
 	conversionFn conversionFn
+	literal      []byte
 
 	baseBuilder      *BaseLabelsBuilder
 	streamExtractors map[uint64]StreamSampleExtractor
@@ -335,6 +345,7 @@ func LabelExtractorWithStages(
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
+		literal:          stagesLiteral(preStages),
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
@@ -344,6 +355,8 @@ type streamLabelSampleExtractor struct {
 	*labelSampleExtractor
 	builder *LabelsBuilder
 }
+
+func (l *streamLabelSampleExtractor) requiredLiteral() []byte { return l.literal }
 
 func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.baseBuilder.referencedStructuredMetadata

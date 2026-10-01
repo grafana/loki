@@ -73,6 +73,7 @@ type ReaderService struct {
 type ReaderConfig struct {
 	MaxConsumerLagAtStartup       time.Duration
 	ConsumerGroupOffsetCommitFreq time.Duration
+	ConsumeFromEndIfUncommitted   bool
 }
 
 // mimics `NewReader` constructor but builds a reader service using
@@ -107,6 +108,7 @@ func NewReaderService(
 		ReaderConfig{
 			MaxConsumerLagAtStartup:       kafkaCfg.MaxConsumerLagAtStartup,
 			ConsumerGroupOffsetCommitFreq: kafkaCfg.ConsumerGroupOffsetCommitInterval,
+			ConsumeFromEndIfUncommitted:   kafkaCfg.ConsumeFromEndIfUncommitted,
 		},
 		reader,
 		offsetManager,
@@ -160,8 +162,12 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		return fmt.Errorf("fetching last committed offset: %w", err)
 	}
 
-	if lastCommittedOffset == int64(KafkaEndOffset) {
-		level.Warn(logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", KafkaStartOffset))
+	if lastCommittedOffset < 0 {
+		start := int64(KafkaStartOffset)
+		if s.cfg.ConsumeFromEndIfUncommitted {
+			start = int64(KafkaEndOffset)
+		}
+		level.Warn(logger).Log("msg", "no committed offset found", "starting_from", start)
 	} else {
 		level.Debug(logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
 	}
@@ -170,6 +176,8 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	if lastCommittedOffset >= 0 {
 		// Read from the next offset.
 		consumeOffset = lastCommittedOffset + 1
+	} else if s.cfg.ConsumeFromEndIfUncommitted {
+		consumeOffset = int64(KafkaEndOffset)
 	}
 	level.Debug(logger).Log("msg", "consuming from offset", "offset", consumeOffset)
 	s.reader.SetOffsetForConsumption(consumeOffset)

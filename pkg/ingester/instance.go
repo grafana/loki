@@ -439,6 +439,10 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 	if err != nil {
 		return 0, 0, err
 	}
+	if i.cfg.ChunkFormat != 0 {
+		chunkFormat = byte(i.cfg.ChunkFormat)
+		headblock = chunkenc.ChunkHeadFormatFor(chunkFormat)
+	}
 
 	return chunkFormat, headblock, nil
 }
