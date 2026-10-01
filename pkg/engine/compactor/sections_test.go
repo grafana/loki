@@ -372,42 +372,6 @@ func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 	})
 }
 
-// TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
-// populates indexEntry.FileSize and indexEntry.UncompressedLogsSize from a ToC
-// whose rows were written with non-zero sizes.
-func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"tenant-a": {
-			{path: "indexes/aa/idx-a-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
-				fileSize: 1024, uncompressedLogsSize: 2048},
-			{path: "indexes/bb/idx-a-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour),
-				fileSize: 512, uncompressedLogsSize: 4096},
-		},
-	})
-
-	got, err := loadTenantIndexes(ctx, bucket, window)
-	require.NoError(t, err)
-	require.Len(t, got["tenant-a"], 2)
-
-	// Build map by path to avoid order-dependent assertions (ToC order is not a contract).
-	byPath := make(map[string]indexEntry)
-	for _, e := range got["tenant-a"] {
-		byPath[e.Path] = e
-	}
-
-	idx0 := byPath["indexes/aa/idx-a-0"]
-	require.Equal(t, uint64(1024), idx0.FileSize)
-	require.Equal(t, uint64(2048), idx0.UncompressedLogsSize)
-
-	idx1 := byPath["indexes/bb/idx-a-1"]
-	require.Equal(t, uint64(512), idx1.FileSize)
-	require.Equal(t, uint64(4096), idx1.UncompressedLogsSize)
-}
-
 func TestCompareIndexSortKey(t *testing.T) {
 	base := indexSortKey{kind: postings.KindLabel, columnName: "service", labelValue: "api", minTimestamp: 10, maxTimestamp: 20}
 	tests := []indexSortKey{

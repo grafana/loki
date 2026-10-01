@@ -26,29 +26,32 @@ The dataobj package provides a hierarchical container format:
 ┌─────────────────────────────────────┐
 │         Data Object File            │
 ├─────────────────────────────────────┤
-│  Header (Magic: "THOR")            │
-├─────────────────────────────────────┤
-│  Section 1 Data                     │
-│  Section 2 Data                     │
-│  ...                                │
-│  Section N Data                     │
+│  Header                             │
+│  - Magic: "DOBJ"                    │
+│  - File Metadata Size (4 bytes)     │
+│  - File Format Version              │
+│  - File Metadata (Protobuf)         │
+│    - Dictionary                     │
+│    - Section Types                  │
+│    - Section Layout Info            │
 ├─────────────────────────────────────┤
 │  Section 1 Metadata                 │
 │  Section 2 Metadata                 │
 │  ...                                │
 │  Section N Metadata                 │
 ├─────────────────────────────────────┤
-│  File Metadata (Protobuf)           │
-│  - Dictionary                       │
-│  - Section Types                    │
-│  - Section Layout Info              │
+│  Section 1 Data                     │
+│  Section 2 Data                     │
+│  ...                                │
+│  Section N Data                     │
 ├─────────────────────────────────────┤
-│  Footer                             │
-│  - File Format Version              │
-│  - File Metadata Size (4 bytes)     │
-│  - Magic: "THOR"                    │
+│  Tailer                             │
+│  - Magic: "DOBJ"                    │
 └─────────────────────────────────────┘
 ```
+
+The file metadata sits in the header, at the start of the file. This lets a
+reader resolve every section's layout with one read from offset 0.
 
 ### Core Components
 
@@ -103,13 +106,13 @@ Most section implementations use columnar storage via the `internal/dataset` pac
 ```
 Offset  | Content
 --------|----------------------------------------------------------
-0       | Magic bytes: "THOR" (4 bytes)
-4       | [Section Data Region - All sections concatenated]
-...     | [Section Metadata Region - All sections concatenated]
-...     | Format Version (varint)
+0       | Magic bytes: "DOBJ" (4 bytes)
+4       | File Metadata Size (uint32, little-endian)
+8       | Format Version (varint)
 ...     | File Metadata (protobuf-encoded)
--8      | Metadata Size (uint32, little-endian)
--4      | Magic bytes: "THOR" (4 bytes)
+...     | [Section Metadata Region - All sections concatenated]
+...     | [Section Data Region - All sections concatenated]
+-4      | Magic bytes: "DOBJ" (4 bytes)
 ```
 
 File Metadata Structure (Protobuf) can be found in the `pkg/dataobj/internal/metadata` package.
@@ -249,18 +252,18 @@ The encoding uses a multi-level compression strategy:
 #### 1. Opening a Data Object
 
 Opening process:
-1. Reads last 16KB of file in one request (optimistic read for metadata)
-2. Parses footer to find metadata offset and size
+1. Reads first 16KB of file in one request (optimistic read for metadata)
+2. Parses the header, at the start of the file, to find the metadata size
 3. Reads and decodes file metadata
 4. Constructs Section objects with SectionReaders
 
 #### 2. Decoding File Metadata
 
 The decoder:
-1. Validates magic bytes ("THOR")
-2. Reads metadata size from last 8 bytes
-3. Seeks to metadata offset
-4. Decodes format version and protobuf metadata
+1. Validates magic bytes ("DOBJ")
+2. Reads metadata size from the header, right after the magic bytes
+3. Reads the format version, then the protobuf metadata that follows it
+4. Uses the header size to compute where the section metadata region starts
 
 #### 3. Opening a Section
 

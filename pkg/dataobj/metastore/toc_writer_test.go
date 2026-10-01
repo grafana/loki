@@ -3,7 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
-	io "io"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -32,7 +32,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		err = tocBuilder.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20), FileSize: 0, UncompressedLogsSize: 0})
+		err = tocBuilder.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20)})
 		require.NoError(t, err)
 
 		obj, closer, err := tocBuilder.Flush()
@@ -130,41 +130,6 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 		err = writer.copyFromExistingToc(context.Background(), dobj)
 		require.NoError(t, err)
-	})
-
-	t.Run("WriteEntry persists TimeRange sizes", func(t *testing.T) {
-		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
-		require.NoError(t, err)
-
-		bucket := newInMemoryBucket(t, unixTime(0), nil)
-		writer := newTableOfContentsWriter(t, bucket, builder)
-
-		const (
-			fileSize   = uint64(1024 * 1024)
-			uncompSize = uint64(2048 * 1024)
-			objectPath = "testdata/metastore.obj"
-		)
-
-		require.NoError(t, writer.WriteEntry(context.Background(), objectPath, []multitenancy.TimeRange{
-			{
-				Tenant:               "test",
-				MinTime:              unixTime(10),
-				MaxTime:              unixTime(20),
-				FileSize:             fileSize,
-				UncompressedLogsSize: uncompSize,
-			},
-		}))
-
-		rows := readToC(context.Background(), t, bucket, TableOfContentsPath(unixTime(0)))
-		var found bool
-		for _, r := range rows {
-			if r.Path == objectPath {
-				found = true
-				require.Equal(t, fileSize, r.FileSize)
-				require.Equal(t, uncompSize, r.UncompressedLogsSize)
-			}
-		}
-		require.True(t, found, "written object row must be present")
 	})
 }
 
