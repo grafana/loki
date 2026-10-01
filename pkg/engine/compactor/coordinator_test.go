@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -154,7 +152,7 @@ func (f *fakeReplacer) snapshot() []replaceCall {
 }
 
 // errBucket wraps a Bucket but fails Get with a non-not-found error, to exercise
-// the transient-read-error path in discover.
+// the transient-read-error path in discoverTenants.
 type errBucket struct{ objstore.Bucket }
 
 func (errBucket) Get(context.Context, string) (io.ReadCloser, error) {
@@ -1291,57 +1289,6 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 	require.ErrorIs(t, <-done, context.Canceled)
 }
 
-// reconcileHarness parks every dispatched plan on ctx cancellation so a started
-// worker stays observable and a cancelled worker's goroutine actually exits.
-func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Time, limits Limits) (*coordinator, func() []string) {
-	t.Helper()
-	runner := &fakeRunner{}
-	c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, clock, limits)
-	c.indexDispatcher.limit = 1
-
-	var mu sync.Mutex
-	live := map[string]int{}
-	runner.respond = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
-		mu.Lock()
-		live[opts.Tenant]++
-		mu.Unlock()
-		<-ctx.Done()
-		mu.Lock()
-		live[opts.Tenant]--
-		mu.Unlock()
-		return nil, ctx.Err()
-	}
-	tenantsWithLiveDispatch := func() []string {
-		mu.Lock()
-		defer mu.Unlock()
-		var out []string
-		for tn, n := range live {
-			if n > 0 {
-				out = append(out, tn)
-			}
-		}
-		sort.Strings(out)
-		return out
-	}
-	return c, tenantsWithLiveDispatch
-}
-
-// liveTenantsEqual reports whether one snapshot of the live-tenant set matches want.
-// Callers must not check length and contents across separate liveTenants() calls:
-// the set can change between them.
-func liveTenantsEqual(live func() []string, want ...string) bool {
-	got := live()
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func seededToC(ctx context.Context, t *testing.T, window time.Time, tenants ...string) objstore.Bucket {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
@@ -1358,208 +1305,6 @@ func seededToC(ctx context.Context, t *testing.T, window time.Time, tenants ...s
 	}
 	writeToCWithIndexes(ctx, t, bucket, entries)
 	return bucket
-}
-
-func TestReconcile_FiltersToEnabledTenants(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-	bucket := seededToC(ctx, t, window, "acme", "bravo")
-
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "acme")
-	}, 2*time.Second, 5*time.Millisecond, "only the enabled tenant runs a worker")
-	require.Contains(t, workers, "acme")
-	require.NotContains(t, workers, "bravo")
-}
-
-func TestReconcile_EnabledButAbsentFromToC_NoWorker(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-	bucket := seededToC(ctx, t, window, "acme") // bravo enabled but not in ToC
-
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme", "bravo"))
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "acme")
-	}, 2*time.Second, 5*time.Millisecond)
-	require.NotContains(t, workers, "bravo", "an enabled tenant not in the ToC gets no worker")
-}
-
-func TestReconcile_RemovedFromToC_CancelsWorker(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-
-	limits := newFakeLimits("acme", "bravo")
-	bucketBoth := seededToC(ctx, t, window, "acme", "bravo")
-	c, liveTenants := reconcileHarness(t, bucketBoth, fixedClock(window.Add(time.Hour)), limits)
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-	require.Eventually(t, func() bool { return len(liveTenants()) == 2 }, 2*time.Second, 5*time.Millisecond)
-
-	// Point the coordinator at a ToC that no longer lists bravo.
-	c.bucket = seededToC(ctx, t, window, "acme")
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "acme")
-	}, 2*time.Second, 5*time.Millisecond, "tenant removed from ToC has its worker cancelled")
-	require.NotContains(t, workers, "bravo")
-}
-
-func TestReconcile_DisabledDuringToCReadFailure_CancelsWorker(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-
-	limits := newFakeLimits("acme")
-	bucket := seededToC(ctx, t, window, "acme")
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), limits)
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
-
-	// Disable the tenant AND make the ToC read fail. Runtime-config disablement
-	// is authoritative even when discovery is not, so the worker must be removed
-	// from both the live set and the workers map. Otherwise the self-exiting
-	// worker leaves a stale entry that prevents a later re-enable from starting.
-	limits.setIndex("acme", false)
-	c.bucket = errBucket{objstore.NewInMemBucket()} // Get returns a non-not-found error
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool { return len(liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond,
-		"disable takes effect even when the ToC read fails")
-	require.NotContains(t, workers, "acme")
-
-	// Once the worker goroutine has fully exited, its deferred cleanup must have
-	// dropped the tenant's series.
-	wg.Wait()
-	require.Equal(t, 0, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog),
-		"a cancelled worker's per-tenant series is deleted on exit")
-}
-
-func TestReconcile_ReadError_PreservesWorkers(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-
-	limits := newFakeLimits("acme")
-	bucket := seededToC(ctx, t, window, "acme")
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), limits)
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
-
-	// Transient read failure with the tenant still enabled: worker must persist.
-	c.bucket = errBucket{objstore.NewInMemBucket()}
-	c.reconcile(ctx, workers, &wg)
-
-	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, []string{"acme"}, liveTenants(), "read error must not tear down running workers")
-	require.Contains(t, workers, "acme")
-}
-
-func TestReconcile_Idempotent_NoDuplicateWorkers(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-	bucket := seededToC(ctx, t, window, "acme")
-
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
-
-	first := workers["acme"]
-	c.reconcile(ctx, workers, &wg) // second tick, same ToC
-
-	time.Sleep(50 * time.Millisecond)
-	require.Len(t, workers, 1, "a second reconcile must not add a duplicate worker")
-	require.Equal(t, []string{"acme"}, liveTenants())
-	require.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(workers["acme"]).Pointer(),
-		"the existing worker must be left in place, not replaced")
-}
-
-func TestReconcile_StartAndCancelSameTick(t *testing.T) {
-	ctx := t.Context()
-	window := imWindow()
-
-	limits := newFakeLimits("acme", "bravo")
-	c, liveTenants := reconcileHarness(t, seededToC(ctx, t, window, "acme"), fixedClock(window.Add(time.Hour)), limits)
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "acme")
-	}, 2*time.Second, 5*time.Millisecond)
-
-	// Next tick: ToC now lists bravo only. acme is removed and bravo started in
-	// the same reconcile.
-	c.bucket = seededToC(ctx, t, window, "bravo")
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "bravo")
-	}, 2*time.Second, 5*time.Millisecond, "one start and one cancel in a single tick")
-	require.Contains(t, workers, "bravo")
-	require.NotContains(t, workers, "acme")
 }
 
 // seedWindowToC writes a two-index ToC entry per tenant into bucket for the
@@ -1588,6 +1333,56 @@ func keys(m map[string]struct{}) []string {
 	return out
 }
 
+func TestDiscoverTenants(t *testing.T) {
+	current := imWindow()
+	prev := current.Add(-metastore.MetastoreWindowSize)
+	newC := func(t *testing.T, bucket objstore.Bucket) *coordinator {
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), nil)
+		c.cfg.WindowLookback = 1
+		return c
+	}
+
+	t.Run("unions the tenants of every window", func(t *testing.T) {
+		ctx := t.Context()
+		bucket := objstore.NewInMemBucket()
+		seedWindowToC(ctx, t, bucket, current, "acme")
+		seedWindowToC(ctx, t, bucket, prev, "bravo")
+
+		tenants, err := newC(t, bucket).discoverTenants(ctx)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"acme", "bravo"}, keys(tenants))
+	})
+
+	t.Run("fails with errNoToC when a window has no ToC", func(t *testing.T) {
+		ctx := t.Context()
+		bucket := objstore.NewInMemBucket()
+		seedWindowToC(ctx, t, bucket, prev, "bravo")
+
+		tenants, err := newC(t, bucket).discoverTenants(ctx)
+		require.ErrorIs(t, err, errNoToC)
+		require.Nil(t, tenants)
+	})
+
+	t.Run("fails when a ToC read fails", func(t *testing.T) {
+		tenants, err := newC(t, errBucket{objstore.NewInMemBucket()}).discoverTenants(t.Context())
+		require.ErrorContains(t, err, "forced read failure")
+		require.Nil(t, tenants)
+	})
+}
+
+func TestRunTenant(t *testing.T) {
+	t.Run("deletes the tenant's metrics when the loop exits", func(t *testing.T) {
+		c := newTestCoordinator(t, objstore.NewInMemBucket(), &fakeRunner{}, &fakeReplacer{}, time.Now, newFakeLimits("acme"))
+		c.metrics.unconsolidatedBacklog.WithLabelValues("acme").Set(1)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		c.runTenant(ctx, "acme")
+
+		require.Zero(t, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog))
+	})
+}
+
 func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
 	current := imWindow()
 	newC := func(lookback int) *coordinator {
@@ -1609,75 +1404,6 @@ func TestWorseOutcome(t *testing.T) {
 	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeSwapped, phaseOutcomeError))
 	require.Equal(t, phaseOutcomeSwapped, worstOutcome(phaseOutcomeNoWork, phaseOutcomeSwapped))
 	require.Equal(t, phaseOutcomeNoWork, worstOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
-}
-
-func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
-	ctx := t.Context()
-	current := imWindow()
-	prev := current.Add(-metastore.MetastoreWindowSize)
-
-	bucket := objstore.NewInMemBucket()
-	seedWindowToC(ctx, t, bucket, current, "acme")
-	seedWindowToC(ctx, t, bucket, prev, "bravo")
-
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("acme", "bravo"))
-	c.cfg.WindowLookback = 1
-
-	discovered, allOK := c.discoverUniqueTenants(ctx)
-	require.True(t, allOK, "both windows read cleanly")
-	require.ElementsMatch(t, []string{"acme", "bravo"}, keys(discovered))
-}
-
-// TestDiscoverAll_CurrentMissingPreviousPresent reproduces the indexing-lag
-// scenario: the current window has no ToC yet, but the previous window does.
-// The previous window's tenant is still discovered, and allOK is false so
-// reconcile will start-but-not-cancel.
-func TestDiscoverAll_CurrentMissingPreviousPresent(t *testing.T) {
-	ctx := t.Context()
-	current := imWindow()
-	prev := current.Add(-metastore.MetastoreWindowSize)
-
-	bucket := objstore.NewInMemBucket()
-	seedWindowToC(ctx, t, bucket, prev, "bravo") // current window intentionally unwritten
-
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("bravo"))
-	c.cfg.WindowLookback = 1
-
-	discovered, allOK := c.discoverUniqueTenants(ctx)
-	require.False(t, allOK, "the missing current-window ToC makes the picture non-authoritative")
-	require.ElementsMatch(t, []string{"bravo"}, keys(discovered),
-		"the populated previous window still yields its tenant")
-}
-
-// TestReconcile_PreviousWindowStartsWorker is the end-to-end unblock: with
-// lookback=1 and only the previous window populated, reconcile starts a worker
-// that does real compaction work, even though the current window has no ToC.
-func TestReconcile_PreviousWindowStartsWorker(t *testing.T) {
-	ctx := t.Context()
-	current := imWindow()
-	prev := current.Add(-metastore.MetastoreWindowSize)
-
-	bucket := objstore.NewInMemBucket()
-	seedWindowToC(ctx, t, bucket, prev, "bravo")
-
-	c, liveTenants := reconcileHarness(t, bucket, fixedClock(current.Add(time.Hour)), newFakeLimits("bravo"))
-	c.cfg.WindowLookback = 1
-
-	workers := map[string]context.CancelFunc{}
-	var wg sync.WaitGroup
-	defer func() {
-		for _, cf := range workers {
-			cf()
-		}
-		wg.Wait()
-	}()
-
-	c.reconcile(ctx, workers, &wg)
-
-	require.Eventually(t, func() bool {
-		return liveTenantsEqual(liveTenants, "bravo")
-	}, 2*time.Second, 5*time.Millisecond, "previous-window tenant is compacted while the current window has no ToC")
-	require.Contains(t, workers, "bravo")
 }
 
 // TestRunTenantLoop_ErrorRetries pins the flip-flop state machine: a failing
