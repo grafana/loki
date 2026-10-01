@@ -1781,7 +1781,7 @@ go.opentelemetry.io/collector/consumer/xconsumer
 # go.opentelemetry.io/collector/featuregate v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/componentalias v0.161.0
+# go.opentelemetry.io/collector/internal/componentalias v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/internal/componentalias
 # go.opentelemetry.io/collector/pdata v1.68.0
