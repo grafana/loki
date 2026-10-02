@@ -86,7 +86,7 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 	builder, err := indexobj.NewBuilder(obj.Tenants()[0], cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := dataobjindex.NewCalculator(obj.Tenants()[0], builder, dataobjindex.NewCalculatorMetrics(nil))
+	calculator := dataobjindex.NewCalculator(builder, dataobjindex.NewCalculatorMetrics(nil))
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), obj, sourcePath))
 
 	indexObj, closer, timeRange, err := calculator.Flush()

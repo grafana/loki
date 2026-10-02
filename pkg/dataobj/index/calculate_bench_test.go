@@ -54,7 +54,7 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 		indexBuilder, err := indexobj.NewBuilder(benchTenant, benchCalculatorConfig, scratch.NewMemory(), indexobj.NewBuilderMetrics(nil))
 		require.NoError(b, err)
 
-		calc := NewCalculator(benchTenant, indexBuilder, NewCalculatorMetrics(nil))
+		calc := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		require.NoError(b, calc.Calculate(ctx, logger, obj, fmt.Sprintf("bench/path-%d", i)))
 
 		_, closer, _, err := calc.Flush()

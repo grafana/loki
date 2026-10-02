@@ -136,7 +136,7 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 
 	indexBuilder, err := indexobj.NewBuilder("tenant-1", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
-	calculator := NewCalculator("tenant-1", indexBuilder, NewCalculatorMetrics(nil))
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), logObj, "test/path/obj1"))
 
 	indexObj, indexCloser, _, err := calculator.Flush()
@@ -167,7 +167,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
 			obj := createTestLogObject(t, 1)
 
@@ -197,7 +197,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		bucket, err := filesystem.NewBucket(t.TempDir())
 		require.NoError(t, err)
 
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
 			obj := createTestLogObject(t, 1)
 
@@ -229,7 +229,7 @@ func TestCalculator_Calculate(t *testing.T) {
 	t.Run("returns ErrTenantMismatch and leaves the builder empty when a section belongs to another tenant", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 		obj := createTestLogObject(t, 2)
 		require.Equal(t, tenant, obj.Sections()[0].Tenant,
@@ -243,7 +243,7 @@ func TestCalculator_Calculate(t *testing.T) {
 	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds two streams sections", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 		lr := testLogsFixture(t)
 		obj, closer := fixtures.DataObject(t,
@@ -261,7 +261,7 @@ func TestCalculator_Calculate(t *testing.T) {
 	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds logs sections without a streams section", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 		obj, closer := fixtures.DataObject(t, fixtures.LogsSection(t, tenant, testLogsFixture(t).Logs()))
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
@@ -274,7 +274,7 @@ func TestCalculator_Calculate(t *testing.T) {
 	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds neither streams nor logs sections", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		calculator := NewCalculator(tenant, indexBuilder, NewCalculatorMetrics(nil))
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
 		postingsBuilder.SetTenant(tenant)
@@ -335,7 +335,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 
 	builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
-	calculator := NewCalculator(tenant, builder, NewCalculatorMetrics(nil))
+	calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), source, path))
 	obj, closer, _, err := calculator.Flush()
 	require.NoError(t, err)
@@ -441,7 +441,7 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator("tenant", indexBuilder, NewCalculatorMetrics(nil))
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "test-path-0", 0)
 	require.NoError(t, err)
@@ -477,7 +477,7 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	calculator := NewCalculator("tenant", indexBuilder, NewCalculatorMetrics(nil))
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 
 	logObj, err := dataobj.FromBucket(ctx, bucket, "objects/test-object", 0)
 	require.NoError(t, err)

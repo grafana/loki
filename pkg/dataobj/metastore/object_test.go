@@ -507,8 +507,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build and store the object
-	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 1)
+	timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -639,8 +638,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build and store the object
-	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 1)
+	timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -785,9 +783,6 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build and store the object
-	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 1)
-
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })

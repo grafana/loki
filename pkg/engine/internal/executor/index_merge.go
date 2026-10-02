@@ -158,8 +158,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 		obj := objects[path]
 		group := objectSections{path: path}
 		for _, sec := range obj.Sections() {
-			// Index objects are multi-tenant; only merge sections for the tenant
-			// being compacted, or other tenants' rows leak into this output.
+			// An index object in storage can hold sections of several tenants.
+			// Merge only the sections of node.Tenant, so that rows of other
+			// tenants do not leak into the output.
 			if sec.Tenant != node.Tenant {
 				continue
 			}
