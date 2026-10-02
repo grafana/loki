@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/zeebo/xxh3"
 	"go.uber.org/atomic"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -240,12 +242,29 @@ func intervalDuration(start, end time.Time) time.Duration {
 // NewLoglinePrefetchMiddleware starts an async logline index lookup before
 // SplitByInterval generates intervals.
 func NewLoglinePrefetchMiddleware(
+	inner *hintprovider.LoglineHintProvider,
+	hintCache cache.Cache,
+	cfg Config,
+	limits logline_query_limits.Limits,
+	metrics *Metrics,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		hp := hintprovider.QueryHintProvider(&frontendHintAdapter{inner: inner, next: next})
+		hp = hintprovider.NewCachingHintProvider(hp, hintCache, reg)
+		return newLoglinePrefetchHandler(next, hp, cfg, limits, metrics, logger)
+	})
+}
+
+func newLoglinePrefetchHandler(
+	next queryrangebase.Handler,
 	hp hintprovider.QueryHintProvider,
 	cfg Config,
 	limits logline_query_limits.Limits,
 	metrics *Metrics,
 	logger log.Logger,
-) queryrangebase.Middleware {
+) queryrangebase.Handler {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -253,21 +272,19 @@ func NewLoglinePrefetchMiddleware(
 		cfg.ShardPlanning.Enabled = defaultShardPlanningEnabled
 	}
 	cfg.ShardPlanning.applyDefaults()
-	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return &loglinePrefetchHandler{
-			next:                 next,
-			hintProvider:         hp,
-			defaultMode:          modeFromDryRun(cfg.DryRun),
-			requireOptInHeader:   cfg.RequireOptInHeader,
-			ngramLength:          cfg.NgramLength,
-			hintTimeout:          cfg.HintTimeout,
-			queryIngestersWithin: cfg.QueryIngestersWithin,
-			shardPlanning:        cfg.ShardPlanning,
-			limits:               limits,
-			metrics:              metrics,
-			logger:               logger,
-		}
-	})
+	return &loglinePrefetchHandler{
+		next:                 next,
+		hintProvider:         hp,
+		defaultMode:          modeFromDryRun(cfg.DryRun),
+		requireOptInHeader:   cfg.RequireOptInHeader,
+		ngramLength:          cfg.NgramLength,
+		hintTimeout:          cfg.HintTimeout,
+		queryIngestersWithin: cfg.QueryIngestersWithin,
+		shardPlanning:        cfg.ShardPlanning,
+		limits:               limits,
+		metrics:              metrics,
+		logger:               logger,
+	}
 }
 
 type loglinePrefetchHandler struct {
