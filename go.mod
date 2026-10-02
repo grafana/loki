@@ -156,7 +156,7 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.162.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.162.0 // indirect
-	go.opentelemetry.io/collector/processor/xprocessor v0.161.0 // indirect
+	go.opentelemetry.io/collector/processor/xprocessor v0.162.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -303,7 +303,7 @@ require (
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.59.0 // indirect
+	modernc.org/sqlite v1.60.0 // indirect
 )
 
 require (
@@ -413,7 +413,7 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/tools v0.50.0
-	google.golang.org/genproto v0.0.0-20260921155816-b14227669459 // indirect
+	google.golang.org/genproto v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260921155816-b14227669459 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc
 	k8s.io/client-go v0.37.1 // indirect

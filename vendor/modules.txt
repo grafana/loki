@@ -1809,7 +1809,7 @@ go.opentelemetry.io/collector/pipeline/internal/globalsignal
 # go.opentelemetry.io/collector/processor v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
-# go.opentelemetry.io/collector/processor/xprocessor v0.161.0
+# go.opentelemetry.io/collector/processor/xprocessor v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor/xprocessor
 # go.opentelemetry.io/contrib/bridges/prometheus v0.71.0
@@ -2164,7 +2164,7 @@ google.golang.org/api/storage/v1
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20260921155816-b14227669459
+# google.golang.org/genproto v0.0.0-20260928230214-8a89bd6388cc
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
@@ -2470,8 +2470,8 @@ modernc.org/mathutil
 # modernc.org/memory v1.12.1
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.59.0
-## explicit; go 1.25.0
+# modernc.org/sqlite v1.60.0
+## explicit; go 1.26.0
 modernc.org/sqlite/lib
 # sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5
 ## explicit; go 1.23

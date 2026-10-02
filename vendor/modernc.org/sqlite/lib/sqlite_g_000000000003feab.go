@@ -10,17 +10,47 @@ import (
 	"modernc.org/libc"
 )
 
+const BITVEC_NBIT = 3968
+
+const BITVEC_NELEM = 496
+
+const BITVEC_NINT = 124
+
+const BITVEC_NPTR = 62
+
+const BITVEC_USIZE = 496
+
+const EXPR_FULLSIZE = 72
+
+const EXPR_REDUCEDSIZE = 44
+
+const EXPR_TOKENONLYSIZE = 16
+
 const INTPTR_MAX = 9223372036854775807
 
 const INTPTR_MIN = -9223372036854775808
+
+const MEMCELLSIZE = 24
+
+const PARSE_HDR_SZ = 184
+
+const PARSE_RECURSE_SZ = 288
+
+const PARSE_TAIL_SZ = 136
 
 const PTRDIFF_MAX = 9223372036854775807
 
 const PTRDIFF_MIN = -9223372036854775808
 
+const ROWSET_ENTRY_PER_CHUNK = 42
+
 const SIZE_MAX = 18446744073709551615
 
 const SQLITE_PTRSIZE = 8
+
+const SZ_KEYINFO_0 = 32
+
+const SZ_SRCLIST_1 = 88
 
 type TBitvec = struct {
 	FiSize    Tu32
@@ -522,6 +552,8 @@ type Tuintptr_t = uint64
 type Tuptr = uint64
 
 const UINTPTR_MAX = 18446744073709551615
+
+const WHERE_LOOP_XFER_SZ = 56
 
 // C documentation
 //
@@ -1748,7 +1780,7 @@ func Xsqlite3_vtab_rhs_value(tls *libc.TLS, pIdxInfo uintptr, iCons int32, ppVal
 	pVal = uintptr(0)
 	rc = SQLITE_OK
 	if iCons < 0 || iCons >= (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint {
-		rc = _sqlite3MisuseError(tls, int32(173606)) /* EV: R-30545-25046 */
+		rc = _sqlite3MisuseError(tls, int32(173875)) /* EV: R-30545-25046 */
 	} else {
 		if *(*uintptr)(unsafe.Pointer(pH + 32 + uintptr(iCons)*8)) == uintptr(0) {
 			pTerm = _termFromWhereClause(tls, (*THiddenIndexInfo)(unsafe.Pointer(pH)).FpWC, (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(iCons)*12))).FiTermOffset)
@@ -11010,6 +11042,45 @@ func _sqlite3StmtCurrentTime(tls *libc.TLS, p uintptr) (r Tsqlite3_int64) {
 	return **(**Tsqlite3_int64)(__ccgo_up(piTime))
 }
 
+// C documentation
+//
+//	/*
+//	** Load the sqlite3.iSysErrno field if that is an appropriate thing
+//	** to do based on the SQLite error code in rc.
+//	*/
+func _sqlite3SystemError(tls *libc.TLS, db uintptr, rc int32) {
+	var iErr, ii int32
+	_, _ = iErr, ii
+	if rc == libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(12)<<libc.Int32FromInt32(8) {
+		return
+	}
+	if rc == libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(34)<<libc.Int32FromInt32(8) {
+		_sqlite3BtreeEnterAll(tls, db)
+		ii = 0
+		for {
+			if !(ii < (*Tsqlite3)(unsafe.Pointer(db)).FnDb) {
+				break
+			}
+			if (**(**TDb)(__ccgo_up((*Tsqlite3)(unsafe.Pointer(db)).FaDb + uintptr(ii)*32))).FpBt != 0 {
+				iErr = _sqlite3PagerWalSystemErrno(tls, _sqlite3BtreePager(tls, (**(**TDb)(__ccgo_up((*Tsqlite3)(unsafe.Pointer(db)).FaDb + uintptr(ii)*32))).FpBt))
+				if iErr != 0 {
+					(*Tsqlite3)(unsafe.Pointer(db)).FiSysErrno = iErr
+				}
+			}
+			goto _1
+		_1:
+			;
+			ii = ii + 1
+		}
+		_sqlite3BtreeLeaveAll(tls, db)
+		return
+	}
+	rc = rc & int32(0xff)
+	if rc == int32(SQLITE_CANTOPEN) || rc == int32(SQLITE_IOERR) {
+		(*Tsqlite3)(unsafe.Pointer(db)).FiSysErrno = _sqlite3OsGetLastError(tls, (*Tsqlite3)(unsafe.Pointer(db)).FpVfs)
+	}
+}
+
 func _sqlite3TableLock(tls *libc.TLS, pParse uintptr, iDb int32, iTab TPgno, isWriteLock Tu8, zName uintptr) {
 	if iDb == int32(1) {
 		return
@@ -11477,7 +11548,7 @@ func _sqlite3VdbeFinishMoveto(tls *libc.TLS, p uintptr) (r int32) {
 		return rc
 	}
 	if **(**int32)(__ccgo_up(bp)) != 0 {
-		return _sqlite3CorruptError(tls, int32(91835))
+		return _sqlite3CorruptError(tls, int32(92104))
 	}
 	(*TVdbeCursor)(unsafe.Pointer(p)).FdeferredMoveto = uint8(0)
 	(*TVdbeCursor)(unsafe.Pointer(p)).FcacheStatus = uint32(CACHE_STALE)
@@ -11983,51 +12054,6 @@ func _sqlite3VtabSync(tls *libc.TLS, db uintptr, p uintptr) (r int32) {
 // C documentation
 //
 //	/*
-//	** This function starts a write transaction on the WAL.
-//	**
-//	** A read transaction must have already been started by a prior call
-//	** to sqlite3WalBeginReadTransaction().
-//	**
-//	** If another thread or process has written into the database since
-//	** the read transaction was started, then it is not possible for this
-//	** thread to write as doing so would cause a fork.  So this routine
-//	** returns SQLITE_BUSY in that case and no write transaction is started.
-//	**
-//	** There can only be a single writer active at a time.
-//	*/
-func _sqlite3WalBeginWriteTransaction(tls *libc.TLS, pWal uintptr) (r int32) {
-	var rc int32
-	_ = rc
-	/* Cannot start a write transaction without first holding a read
-	 ** transaction. */
-	if (*TWal)(unsafe.Pointer(pWal)).FreadOnly != 0 {
-		return int32(SQLITE_READONLY)
-	}
-	/* Only one writer allowed at a time.  Get the write lock.  Return
-	 ** SQLITE_BUSY if unable.
-	 */
-	rc = _walLockExclusive(tls, pWal, WAL_WRITE_LOCK, int32(1))
-	if rc != 0 {
-		return rc
-	}
-	(*TWal)(unsafe.Pointer(pWal)).FwriteLock = uint8(1)
-	/* If another connection has written to the database file since the
-	 ** time the read transaction on this connection was started, then
-	 ** the write is disallowed.
-	 */
-	if libc.Xmemcmp(tls, pWal+72, _walIndexHdr(tls, pWal), uint64(48)) != 0 {
-		rc = libc.Int32FromInt32(SQLITE_BUSY) | libc.Int32FromInt32(2)<<libc.Int32FromInt32(8)
-	}
-	if rc != SQLITE_OK {
-		_walUnlockExclusive(tls, pWal, WAL_WRITE_LOCK, int32(1))
-		(*TWal)(unsafe.Pointer(pWal)).FwriteLock = uint8(0)
-	}
-	return rc
-}
-
-// C documentation
-//
-//	/*
 //	** The sqlite3_wal_hook() callback registered by sqlite3_wal_autocheckpoint().
 //	** Invoke sqlite3_wal_checkpoint if the number of frames in the log file
 //	** is greater than sqlite3.pWalArg cast to an integer (the value configured by
@@ -12057,14 +12083,6 @@ func _sqlite3WalSavepoint(tls *libc.TLS, pWal uintptr, aWalData uintptr) {
 	**(**Tu32)(__ccgo_up(aWalData + 3*4)) = (*TWal)(unsafe.Pointer(pWal)).FnCkpt
 }
 
-// C documentation
-//
-//	/*
-//	** Move the write position of the WAL back to the point identified by
-//	** the values in the aWalData[] array. aWalData must point to an array
-//	** of WAL_SAVEPOINT_NDATA u32 values that has been previously populated
-//	** by a call to WalSavepoint().
-//	*/
 func _sqlite3WalSavepointUndo(tls *libc.TLS, pWal uintptr, aWalData uintptr) (r int32) {
 	var rc int32
 	_ = rc
@@ -12081,7 +12099,7 @@ func _sqlite3WalSavepointUndo(tls *libc.TLS, pWal uintptr, aWalData uintptr) (r 
 		(*TWal)(unsafe.Pointer(pWal)).Fhdr.FmxFrame = **(**Tu32)(__ccgo_up(aWalData))
 		**(**Tu32)(__ccgo_up(pWal + 72 + 24)) = **(**Tu32)(__ccgo_up(aWalData + 1*4))
 		**(**Tu32)(__ccgo_up(pWal + 72 + 24 + 1*4)) = **(**Tu32)(__ccgo_up(aWalData + 2*4))
-		_walCleanupHash(tls, pWal)
+		rc = _walSehTry(tls, pWal, __ccgo_fp(_walSehCleanupHash), uintptr(0), uintptr(0))
 		if (*TWal)(unsafe.Pointer(pWal)).FiReCksum > (*TWal)(unsafe.Pointer(pWal)).Fhdr.FmxFrame {
 			(*TWal)(unsafe.Pointer(pWal)).FiReCksum = uint32(0)
 		}
@@ -12089,30 +12107,19 @@ func _sqlite3WalSavepointUndo(tls *libc.TLS, pWal uintptr, aWalData uintptr) (r 
 	return rc
 }
 
-// C documentation
-//
-//	/*
-//	** The caller currently has a read transaction open on the database.
-//	** This function takes a SHARED lock on the CHECKPOINTER slot and then
-//	** checks if the snapshot passed as the second argument is still
-//	** available. If so, SQLITE_OK is returned.
-//	**
-//	** If the snapshot is not available, SQLITE_ERROR is returned. Or, if
-//	** the CHECKPOINTER lock cannot be obtained, SQLITE_BUSY. If any error
-//	** occurs (any value other than SQLITE_OK is returned), the CHECKPOINTER
-//	** lock is released before returning.
-//	*/
-func _sqlite3WalSnapshotCheck(tls *libc.TLS, pWal uintptr, pSnapshot uintptr) (r int32) {
-	var pNew uintptr
+func _sqlite3WalUndo(tls *libc.TLS, pWal uintptr, __ccgo_fp_xUndo uintptr, pUndoCtx uintptr) (r int32) {
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
 	var rc int32
-	_, _ = pNew, rc
-	rc = _walLockShared(tls, pWal, int32(WAL_CKPT_LOCK))
-	if rc == SQLITE_OK {
-		pNew = pSnapshot
-		if libc.Xmemcmp(tls, pNew+32, pWal+72+32, uint64(8)) != 0 || (*TWalIndexHdr)(unsafe.Pointer(pNew)).FmxFrame < (*TWalCkptInfo)(unsafe.Pointer(_walCkptInfo(tls, pWal))).FnBackfillAttempted {
-			rc = libc.Int32FromInt32(SQLITE_ERROR) | libc.Int32FromInt32(3)<<libc.Int32FromInt32(8)
-			_walUnlockShared(tls, pWal, int32(WAL_CKPT_LOCK))
-		}
+	var _ /* a at bp+0 */ TWalSehUndo
+	_ = rc
+	rc = SQLITE_OK
+	if (*TWal)(unsafe.Pointer(pWal)).FwriteLock != 0 {
+		(**(**TWalSehUndo)(__ccgo_up(bp))).FxUndo = __ccgo_fp_xUndo
+		(**(**TWalSehUndo)(__ccgo_up(bp))).FpUndoCtx = pUndoCtx
+		(**(**TWalSehUndo)(__ccgo_up(bp))).FiMax = (*TWal)(unsafe.Pointer(pWal)).Fhdr.FmxFrame
+		rc = _walSehTry(tls, pWal, __ccgo_fp(_walSehUndo), bp, uintptr(0))
+		(*TWal)(unsafe.Pointer(pWal)).FiReCksum = uint32(0)
 	}
 	return rc
 }
@@ -13245,6 +13252,7 @@ func _vtabDisconnectAll(tls *libc.TLS, db uintptr, p uintptr) (r uintptr) {
 //	** Return a pointer to the WalCkptInfo structure in the wal-index.
 //	*/
 func _walCkptInfo(tls *libc.TLS, pWal uintptr) (r uintptr) {
+	_modernc_seh_inject(tls, pWal)
 	return **(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData)) + uintptr(libc.Uint64FromInt64(48)/libc.Uint64FromInt32(2))*4
 }
 
@@ -13257,6 +13265,7 @@ func _walFramePgno(tls *libc.TLS, pWal uintptr, iFrame Tu32) (r Tu32) {
 	var iHash int32
 	_ = iHash
 	iHash = _walFramePage(tls, iFrame)
+	_modernc_seh_inject(tls, pWal)
 	if iHash == 0 {
 		return **(**Tu32)(__ccgo_up(**(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData)) + uintptr((libc.Uint64FromInt64(48)*libc.Uint64FromInt32(2)+libc.Uint64FromInt64(40))/libc.Uint64FromInt64(4)+uint64(iFrame)-uint64(1))*4))
 	}
@@ -13267,6 +13276,7 @@ func _walIndexPage(tls *libc.TLS, pWal uintptr, iPage int32, ppPage uintptr) (r 
 	var v1 uintptr
 	var v2 bool
 	_, _ = v1, v2
+	_modernc_seh_inject(tls, pWal)
 	if v2 = (*TWal)(unsafe.Pointer(pWal)).FnWiData <= iPage; !v2 {
 		v1 = **(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData + uintptr(iPage)*8))
 		**(**uintptr)(__ccgo_up(ppPage)) = v1
@@ -13275,6 +13285,85 @@ func _walIndexPage(tls *libc.TLS, pWal uintptr, iPage int32, ppPage uintptr) (r 
 		return _walIndexPageRealloc(tls, pWal, iPage, ppPage)
 	}
 	return SQLITE_OK
+}
+
+// C documentation
+//
+//	/*
+//	** This function starts a write transaction on the WAL.
+//	**
+//	** A read transaction must have already been started by a prior call
+//	** to sqlite3WalBeginReadTransaction().
+//	**
+//	** If another thread or process has written into the database since
+//	** the read transaction was started, then it is not possible for this
+//	** thread to write as doing so would cause a fork.  So this routine
+//	** returns SQLITE_BUSY in that case and no write transaction is started.
+//	**
+//	** There can only be a single writer active at a time.
+//	*/
+func _walSehBeginWriteCheck(tls *libc.TLS, pWal uintptr, pNotUsed uintptr) (r int32) {
+	_ = pNotUsed
+	if libc.Xmemcmp(tls, pWal+72, _walIndexHdr(tls, pWal), uint64(48)) != 0 {
+		return libc.Int32FromInt32(SQLITE_BUSY) | libc.Int32FromInt32(2)<<libc.Int32FromInt32(8)
+	}
+	return SQLITE_OK
+}
+
+// C documentation
+//
+//	/*
+//	** The caller currently has a read transaction open on the database.
+//	** This function takes a SHARED lock on the CHECKPOINTER slot and then
+//	** checks if the snapshot passed as the second argument is still
+//	** available. If so, SQLITE_OK is returned.
+//	**
+//	** If the snapshot is not available, SQLITE_ERROR is returned. Or, if
+//	** the CHECKPOINTER lock cannot be obtained, SQLITE_BUSY. If any error
+//	** occurs (any value other than SQLITE_OK is returned), the CHECKPOINTER
+//	** lock is released before returning.
+//	*/
+func _walSehSnapshotCheck(tls *libc.TLS, pWal uintptr, p uintptr) (r int32) {
+	var pNew uintptr
+	var rc int32
+	_, _ = pNew, rc
+	rc = _walLockShared(tls, pWal, int32(WAL_CKPT_LOCK))
+	if rc == SQLITE_OK {
+		pNew = p
+		if libc.Xmemcmp(tls, pNew+32, pWal+72+32, uint64(8)) != 0 || (*TWalIndexHdr)(unsafe.Pointer(pNew)).FmxFrame < (*TWalCkptInfo)(unsafe.Pointer(_walCkptInfo(tls, pWal))).FnBackfillAttempted {
+			rc = libc.Int32FromInt32(SQLITE_ERROR) | libc.Int32FromInt32(3)<<libc.Int32FromInt32(8)
+			_walUnlockShared(tls, pWal, int32(WAL_CKPT_LOCK))
+		}
+	}
+	return rc
+}
+
+// C documentation
+//
+//	/*
+//	** Attempt to reduce the value of the WalCkptInfo.nBackfillAttempted
+//	** variable so that older snapshots can be accessed. To do this, loop
+//	** through all wal frames from nBackfillAttempted to (nBackfill+1),
+//	** comparing their content to the corresponding page with the database
+//	** file, if any. Set nBackfillAttempted to the frame number of the
+//	** first frame for which the wal file content matches the db file.
+//	**
+//	** This is only really safe if the file-system is such that any page
+//	** writes made by earlier checkpointers were atomic operations, which
+//	** is not always true. It is also possible that nBackfillAttempted
+//	** may be left set to a value larger than expected, if a wal frame
+//	** contains content that duplicate of an earlier version of the same
+//	** page.
+//	**
+//	** SQLITE_OK is returned if successful, or an SQLite error code if an
+//	** error occurs. It is not an error if nBackfillAttempted cannot be
+//	** decreased at all.
+//	*/
+func _walSehSnapshotRecover(tls *libc.TLS, pWal uintptr, p uintptr) (r int32) {
+	var aArg uintptr
+	_ = aArg
+	aArg = p
+	return _walSnapshotRecover(tls, pWal, **(**uintptr)(__ccgo_up(aArg)), **(**uintptr)(__ccgo_up(aArg + 1*8)))
 }
 
 // C documentation
