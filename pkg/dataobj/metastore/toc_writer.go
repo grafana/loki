@@ -82,9 +82,17 @@ func (m *TableOfContentsWriter) initBuilder() error {
 }
 
 // WriteEntry adds entry to the tenant's ToC of every window the entry overlaps.
+//
+// WriteEntry returns an error without retrying if entry has no valid time
+// range. When it fails on one window, the ToCs of the windows before it
+// already hold the entry.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
+
+	if err := entry.validate(); err != nil {
+		return err
+	}
 
 	// Initialize builder if this is the first call for this partition
 	if err := m.initBuilder(); err != nil {
@@ -229,15 +237,18 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		if err := indexPointersReader.Open(ctx); err != nil {
 			return errors.Wrap(err, "opening index pointers reader")
 		}
-		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
-			if err != nil && err != io.EOF {
-				return errors.Wrap(err, "reading index pointers")
-			}
+		for {
+			n, err := indexPointersReader.Read(ctx, pbuf)
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer)
-				if err != nil {
+				if err := m.tocBuilder.AppendIndexPointer(tenantID, indexPointer); err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}
+			}
+			if stderrors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return errors.Wrap(err, "reading index pointers")
 			}
 		}
 	}
