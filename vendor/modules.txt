@@ -1286,13 +1286,10 @@ github.com/oklog/run
 # github.com/oklog/ulid/v2 v2.1.2
 ## explicit; go 1.15
 github.com/oklog/ulid/v2
-# github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.161.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.162.0
 ## explicit; go 1.26.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
-# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.161.0
-## explicit; go 1.26.0
-github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil
-# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.161.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.162.0
 ## explicit; go 1.26.0
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/data
@@ -1802,6 +1799,9 @@ go.opentelemetry.io/collector/pdata/ptrace
 # go.opentelemetry.io/collector/pdata/pprofile v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
+# go.opentelemetry.io/collector/pdata/xpdata v0.162.0
+## explicit; go 1.26.0
+go.opentelemetry.io/collector/pdata/xpdata/xhash
 # go.opentelemetry.io/collector/pipeline v1.68.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
