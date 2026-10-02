@@ -15,8 +15,6 @@ package regexliteral
 import (
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/grafana/regexp/syntax"
 )
@@ -26,8 +24,9 @@ import (
 // another one are removed. Nothing is returned for a pattern that does not
 // parse or has no required literal.
 //
-// Case-insensitive literals are returned lowercase. The index uppercases ASCII
-// letters, so a lowercase needle finds every ASCII case variant.
+// Literals keep the case the regexp parser stores. Case-sensitive text is
+// returned as written. A case-insensitive literal comes back in the parser's
+// canonical form, which is uppercase for ASCII letters.
 //
 // Callers still decide whether a literal is long enough to look up.
 func Required(pattern string) []string {
@@ -111,25 +110,16 @@ func (w *walker) walk(re *syntax.Regexp) {
 }
 
 func (w *walker) literal(re *syntax.Regexp) {
-	if re.Flags&syntax.FoldCase == 0 {
-		for _, r := range re.Rune {
-			w.run.WriteRune(r)
-		}
-		return
-	}
-
-	// The index uppercases ASCII letters, so the lowercase needle finds every
-	// ASCII case variant. Non-ASCII runes are separators in the index, so
-	// their case does not matter, but they must stay non-ASCII.
-	// unicode.ToLower turns U+0130 into ASCII i, so that one is kept as parsed.
+	// For a case-insensitive literal the parser stores the smallest rune of
+	// each fold orbit. That is the uppercase letter for ASCII, and it never
+	// turns a non-ASCII-only orbit into ASCII, so the runes can be used as
+	// they are.
 	//
 	// A few non-ASCII runes also match an ASCII letter under (?i), for example
-	// U+017F for s and U+212A for k. Lines that spell a letter that way are
-	// missed. We accept that to keep needles whole.
+	// U+017F for s and U+212A for k. The parser stores those orbits as ASCII
+	// S and K, so lines that spell a letter that way are missed. We accept
+	// that to keep needles whole.
 	for _, r := range re.Rune {
-		if lower := unicode.ToLower(r); (lower < utf8.RuneSelf) == (r < utf8.RuneSelf) {
-			r = lower
-		}
 		w.run.WriteRune(r)
 	}
 }

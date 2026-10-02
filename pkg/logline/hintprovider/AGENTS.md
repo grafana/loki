@@ -78,5 +78,9 @@ Query-shape support and hint lookup for logline index lookups.
       keep regex needles free of false negatives, including `(?i)` handling.
     - Anchoring is irrelevant here. Label regexes are anchored, line regexes are
       not, and both only need "contains".
+    - Every needle leaves `SupportedQuery` with ASCII letters uppercased by
+      `upperASCII`, matching the extractors. Never use `strings.ToUpper`: it
+      maps U+0131 and U+017F to ASCII, which the extractors treat as
+      separators.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.

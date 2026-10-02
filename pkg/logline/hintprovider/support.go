@@ -24,6 +24,8 @@ import (
 //   - OR branches are not mandatory and are ignored
 //   - unsupported filters are ignored when a mandatory positive literal remains
 //   - extracted literals must be at least ngramLength bytes
+//   - literals are returned with ASCII letters uppercased (upperASCII), so
+//     filters that differ only in case share one needle
 //   - needles are matcher values only (never field names); value prefixes are
 //     not stripped
 //   - skip post-parser values with `"`, `\`, or control bytes. The same
@@ -48,6 +50,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
 		if len(match) < ngramLength {
 			return
 		}
+		match = upperASCII(match)
 		if _, exists := seen[match]; exists {
 			return
 		}
@@ -288,4 +291,27 @@ func extractMatcherLiterals(m *labels.Matcher) []string {
 	default:
 		return nil
 	}
+}
+
+// upperASCII uppercases a-z and leaves every other byte as it is. This is the
+// case change every index version's extractor applies, so the lookup does not
+// change, and filters that differ only in case dedupe to one needle.
+//
+// strings.ToUpper must not be used. It turns U+0131 and U+017F into ASCII I
+// and S, while the extractors treat those runes as separators, so the needle
+// would look up terms the matching line never produced. It also rewrites
+// invalid UTF-8 bytes as U+FFFD, which changes the needle length.
+func upperASCII(s string) string {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 'a' && c <= 'z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'a' && b[j] <= 'z' {
+					b[j] -= 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return s
 }

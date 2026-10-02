@@ -64,16 +64,16 @@ func TestRequired(t *testing.T) {
 		{"factored prefix", `abcdefgh|abcdefxy`, []string{"abcdef"}},
 		{"alternation then literal", `(GET|POST) /api`, []string{" /api"}},
 
-		// Case folding. ASCII letters are lowercased, non-ASCII runes are kept.
-		{"case-insensitive", `(?i)ERROR TIMEOUT`, []string{"error timeout"}},
-		{"case-insensitive wrapped", `(?i).*error.*`, []string{"error"}},
-		{"case-insensitive k and s", `(?i)kubelet_restarted`, []string{"kubelet_restarted"}},
-		{"case-insensitive scope", `abc(?i:DEF)ghi`, []string{"abcdefghi"}},
-		{"case-insensitive tail", `KS(?i)KS`, []string{"KSks"}},
-		{"case-insensitive char class", `[Aa]bcdef`, []string{"abcdef"}},
-		{"case-insensitive non-ASCII", `(?i)caféé`, []string{"caféé"}},
-		{"case-insensitive dotted I stays non-ASCII", "(?i)x\u0130stanbul", []string{"x\u0130stanbul"}},
-		{"case-insensitive unicode same group as ascii", `(?i)databaſe error`, []string{"database error"}},
+		// Case folding. Literals keep the parser's canonical form, uppercase for ASCII.
+		{"case-insensitive", `(?i)ERROR TIMEOUT`, []string{"ERROR TIMEOUT"}},
+		{"case-insensitive wrapped", `(?i).*error.*`, []string{"ERROR"}},
+		{"case-insensitive k and s", `(?i)kubelet_restarted`, []string{"KUBELET_RESTARTED"}},
+		{"case-insensitive scope", `abc(?i:DEF)ghi`, []string{"abcDEFghi"}},
+		{"case-insensitive tail", `KS(?i)KS`, []string{"KSKS"}},
+		{"case-insensitive char class", `[Aa]bcdef`, []string{"Abcdef"}},
+		{"case-insensitive non-ASCII", `(?i)caféé`, []string{"CAFÉÉ"}},
+		{"case-insensitive dotted I stays non-ASCII", "(?i)x\u0130stanbul", []string{"X\u0130STANBUL"}},
+		{"case-insensitive unicode same group as ascii", `(?i)databaſe error`, []string{"DATABASE ERROR"}},
 
 		// Nothing required.
 		{"dot plus", `.+`, nil},
