@@ -240,7 +240,7 @@ require (
 	github.com/moby/moby/api v1.56.0 // indirect
 	github.com/moby/sys/userns v0.2.1 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.162.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.162.0 // indirect

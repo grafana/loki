@@ -1271,8 +1271,8 @@ github.com/munnerz/goautoneg
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 ## explicit
 github.com/mwitkow/go-conntrack
-# github.com/ncruces/go-strftime v1.0.0
-## explicit; go 1.17
+# github.com/ncruces/go-strftime v1.1.0
+## explicit; go 1.24
 github.com/ncruces/go-strftime
 # github.com/ncw/swift v1.0.53
 ## explicit
