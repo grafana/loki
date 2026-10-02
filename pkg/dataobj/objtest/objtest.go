@@ -35,7 +35,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// Tenant is the tenant [Builder.Append] stores logs for.
+// Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant
+// because every data object holds one tenant.
 const Tenant = "objtest"
 
 // indexPrefix is where index objects and their table of contents live within the bucket.
@@ -128,12 +129,6 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 
 // Append appends the given streams to the builder for [Tenant].
 func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
-	b.AppendFor(ctx, Tenant, streams...)
-}
-
-// AppendFor appends the given streams to the builder for tenant. Appending for two tenants
-// without an intervening [Builder.Flush] puts both tenants' sections in one object.
-func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logproto.Stream) {
 	require.False(b.t, b.closed, "append before Close: logs appended afterwards reach no index, so a query would not see them")
 
 	for _, stream := range streams {
@@ -141,7 +136,7 @@ func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logpr
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
 		}
 
-		require.NoError(b.t, b.logsBuilder.Append(tenant, stream, time.Now()), "failed to append stream")
+		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}
