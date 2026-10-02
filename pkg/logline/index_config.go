@@ -12,12 +12,13 @@ const (
 	DefaultNgramLength      = 6
 	DefaultDocumentInterval = 16 * time.Second
 
-	// DefaultDocumentShards is the v5 document shard count used when
-	// document_shards is unset.
-	DefaultDocumentShards = 32
-	// MaxDocumentShards caps document_shards. Each doubling doubles a day's
-	// documents and halves the builder's fixed-epoch docID window.
-	MaxDocumentShards = 128
+	// DefaultDocumentShardBits is the document_shard_bits flag default:
+	// 2^5 = 32 document shards per interval.
+	DefaultDocumentShardBits = 5
+	// MaxDocumentShardBits caps document_shard_bits at 128 document shards.
+	// Each extra bit doubles a day's documents and halves the builder's
+	// fixed-epoch docID window.
+	MaxDocumentShardBits = 7
 
 	// DefaultDensityThreshold is the v3 format default: n-grams present in
 	// more than 20% of a full day's documents are stored as match-all.
@@ -35,11 +36,12 @@ type IndexConfig struct {
 	NgramLength int    `yaml:"ngram_length"`
 	// DocumentInterval is the time range one document covers.
 	DocumentInterval time.Duration `yaml:"document_interval"`
-	// DocumentShards splits each document interval by stream fingerprint, so
-	// one document covers one interval of the streams in one shard. v5 only:
-	// Validate resolves 0 to DefaultDocumentShards for v5, and v3/v4 must
-	// leave it 0.
-	DocumentShards int `yaml:"document_shards"`
+	// DocumentShardBits is the number of high stream-fingerprint bits that
+	// select a document shard: each document interval is split into
+	// 2^DocumentShardBits shards, and one document covers one interval of the
+	// streams in one shard. Only v5 uses it; Validate sets it to 0 for v3 and
+	// v4.
+	DocumentShardBits int `yaml:"document_shard_bits"`
 	// DensityThreshold is the fraction of a full day's documents above which
 	// an n-gram is stored as match-all. 0 selects the format default.
 	DensityThreshold float64 `yaml:"density_threshold"`
@@ -55,9 +57,9 @@ func (c *IndexConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"N-gram length used to build and to query the index. It is not recorded in the index, so every component must use the same value.")
 	f.DurationVar(&c.DocumentInterval, prefix+".document-interval", DefaultDocumentInterval,
 		"Time range each document covers, for example 1s or 16s.")
-	f.IntVar(&c.DocumentShards, prefix+".document-shards", 0,
-		fmt.Sprintf("Number of stream shards per document interval (index version v5 only). A document covers one interval of the streams whose fingerprint falls in one shard. "+
-			"Must be a power of two from 1 to %d. 0 uses the v5 default (%d). v3 and v4 require 0.", MaxDocumentShards, DefaultDocumentShards))
+	f.IntVar(&c.DocumentShardBits, prefix+".document-shard-bits", DefaultDocumentShardBits,
+		fmt.Sprintf("Number of high stream-fingerprint bits that select a document shard (index version v5 only). Each document interval is split into 2^bits shards, and a document covers one interval of the streams in one shard. "+
+			"From 0 to %d; 0 disables document sharding. v3 and v4 ignore it.", MaxDocumentShardBits))
 	f.Float64Var(&c.DensityThreshold, prefix+".density-threshold", 0,
 		"Store n-grams covering more than this fraction of a full day's documents as match-all. 0 uses the format default (v3: 0.20).")
 	f.IntVar(&c.ShardCount, prefix+".shard-count", 0,
@@ -91,7 +93,7 @@ func (c *IndexConfig) Validate() error {
 	if err := ValidateVersion(c.Version); err != nil {
 		return fmt.Errorf("invalid index version: %w", err)
 	}
-	if err := c.validateDocumentShards(); err != nil {
+	if err := c.validateDocumentShardBits(); err != nil {
 		return err
 	}
 	if c.ShardCount < 0 {
@@ -108,18 +110,13 @@ func (c *IndexConfig) Validate() error {
 	return nil
 }
 
-func (c *IndexConfig) validateDocumentShards() error {
+func (c *IndexConfig) validateDocumentShardBits() error {
 	if !VersionHasDocumentShards(c.Version) {
-		if c.DocumentShards != 0 {
-			return fmt.Errorf("document_shards requires index version v5, got %d for %s", c.DocumentShards, c.Version)
-		}
+		c.DocumentShardBits = 0
 		return nil
 	}
-	if c.DocumentShards == 0 {
-		c.DocumentShards = DefaultDocumentShards
-	}
-	if c.DocumentShards < 1 || c.DocumentShards > MaxDocumentShards || c.DocumentShards&(c.DocumentShards-1) != 0 {
-		return fmt.Errorf("document_shards must be a power of two from 1 to %d, got %d", MaxDocumentShards, c.DocumentShards)
+	if c.DocumentShardBits < 0 || c.DocumentShardBits > MaxDocumentShardBits {
+		return fmt.Errorf("document_shard_bits must be from 0 to %d, got %d", MaxDocumentShardBits, c.DocumentShardBits)
 	}
 	return nil
 }
