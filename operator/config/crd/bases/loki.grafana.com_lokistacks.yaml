@@ -817,6 +817,8 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
+                          - v11
+                          - v12
                           - v13
                           type: string
                       required:
@@ -4211,6 +4213,8 @@ spec:
                         version:
                           description: Version for writing and reading logs.
                           enum:
+                          - v11
+                          - v12
                           - v13
                           type: string
                       required:

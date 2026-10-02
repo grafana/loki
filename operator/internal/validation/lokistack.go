@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -56,6 +57,24 @@ func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStac
 	storageStatus := lokiv1.LokiStackStorageStatus{}
 	if newStack != nil {
 		storageStatus = newStack.Status.Storage
+	}
+
+	// Check for deprecated schema versions (v11, v12)
+	// Block creation of new LokiStacks, but warn for existing ones
+	for i, sc := range newStack.Spec.Storage.Schemas {
+		if sc.Version == lokiv1.ObjectStorageSchemaV11 || sc.Version == lokiv1.ObjectStorageSchemaV12 {
+			if currentStack == nil {
+				// Create: Block new LokiStacks with deprecated schemas
+				allErrs = append(allErrs, field.Invalid(
+					field.NewPath("spec").Child("storage").Child("schemas").Index(i).Child("version"),
+					sc.Version,
+					"Cannot create new LokiStack with deprecated schema version "+string(sc.Version)+". Use v13.",
+				))
+			} else {
+				// Update: Warn but allow existing LokiStacks to continue
+				warnings = append(warnings, fmt.Sprintf("Schema version %s is deprecated. Migrate to v13 before the next major release.", sc.Version))
+			}
+		}
 	}
 
 	errors := ValidateSchemas(&newStack.Spec.Storage, time.Now().UTC(), storageStatus, newStack.Spec.Limits)
@@ -340,15 +359,6 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 				field.NewPath("spec").Child("storage").Child("schemas").Index(i).Child("effectiveDate"),
 				sc.EffectiveDate,
 				lokiv1.ErrParseEffectiveDates.Error(),
-			))
-		}
-
-		// Reject deprecated schema versions (v11, v12)
-		if sc.Version == lokiv1.ObjectStorageSchemaV11 || sc.Version == lokiv1.ObjectStorageSchemaV12 {
-			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("spec").Child("storage").Child("schemas").Index(i).Child("version"),
-				sc.Version,
-				"Schema version "+string(sc.Version)+" is no longer supported. Migrate your schema to use v13 then remove old schema entries.",
 			))
 		}
 

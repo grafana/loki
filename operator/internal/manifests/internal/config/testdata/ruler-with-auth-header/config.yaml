@@ -139,8 +139,8 @@ schema_config:
         period: 24h
         prefix: index_
       object_store: s3
-      schema: v13
-      store: tsdb
+      schema: v11
+      store: boltdb-shipper
 ruler:
   enable_api: true
   enable_sharding: true
@@ -210,9 +210,9 @@ ruler_storage:
     directory: /tmp/rules
 storage_config:
   use_thanos_objstore: true
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/tsdb-index
-    cache_location: /tmp/loki/tsdb-cache
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:

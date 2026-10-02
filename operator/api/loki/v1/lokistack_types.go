@@ -653,23 +653,18 @@ type ObjectStorageSecretSpec struct {
 // ObjectStorageSchemaVersion defines the storage schema version which will be
 // used with the Loki cluster.
 //
-// +kubebuilder:validation:Enum=v13
+// +kubebuilder:validation:Enum=v11;v12;v13
 type ObjectStorageSchemaVersion string
 
 const (
-	// ObjectStorageSchemaV11 is deprecated and will no longer reconcile.
-	// Use v13 or later instead.
+	// ObjectStorageSchemaV11 is deprecated and cannot be used for new LokiStack instances.
 	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
 
-	// ObjectStorageSchemaV12 is deprecated and will no longer reconcile.
-	// Use v13 or later instead.
+	// ObjectStorageSchemaV12 is deprecated and cannot be used for new LokiStack instances.
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 
 	// ObjectStorageSchemaV13 when using v13 for the storage schema
 	ObjectStorageSchemaV13 ObjectStorageSchemaVersion = "v13"
-
-	// ObjectStorageSchemaLatest is the latest supported schema version (currently v13)
-	ObjectStorageSchemaLatest = ObjectStorageSchemaV13
 )
 
 // ObjectStorageSchema defines a schema version and the date when it will become effective.
@@ -678,7 +673,7 @@ type ObjectStorageSchema struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v13"},displayName="Version"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12","urn:alm:descriptor:com.tectonic.ui:select:v13"},displayName="Version"
 	Version ObjectStorageSchemaVersion `json:"version"`
 
 	// EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
