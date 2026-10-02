@@ -90,7 +90,9 @@ func (c IndexWriteConfig) sentinelCutoff() (cutoff uint64, ok bool) {
 
 // documentLayout is the document interval and shard count a v5 footer
 // records in ReservedMid: bytes 0-8 hold the interval in nanoseconds and
-// bytes 8-12 the shard count. Files written without a layout leave them zero.
+// bytes 8-12 the shard count. An interval of 0 means none was recorded. The
+// shard count is at least 1: unset counts are written as 1, and a stored 0
+// reads as 1.
 type documentLayout struct {
 	interval time.Duration
 	shards   uint32
@@ -99,20 +101,21 @@ type documentLayout struct {
 func (h IndexFooter) documentLayout() documentLayout {
 	return documentLayout{
 		interval: time.Duration(binary.LittleEndian.Uint64(h.ReservedMid[0:8])),
-		shards:   binary.LittleEndian.Uint32(h.ReservedMid[8:12]),
+		shards:   max(binary.LittleEndian.Uint32(h.ReservedMid[8:12]), 1),
 	}
 }
 
 func (h *IndexFooter) setDocumentLayout(l documentLayout) {
 	binary.LittleEndian.PutUint64(h.ReservedMid[0:8], uint64(l.interval))
-	binary.LittleEndian.PutUint32(h.ReservedMid[8:12], l.shards)
+	binary.LittleEndian.PutUint32(h.ReservedMid[8:12], max(l.shards, 1))
 }
 
 // withLayout returns c with the document layout of merge inputs. Merged
 // postings keep the inputs' cells, so a configured interval or shard count
-// that disagrees with them is an error. Inputs without a layout keep c.
+// that disagrees with them is an error. Inputs that recorded no interval keep
+// c.
 func (c IndexWriteConfig) withLayout(l documentLayout) (IndexWriteConfig, error) {
-	if l == (documentLayout{}) {
+	if l.interval == 0 {
 		return c, nil
 	}
 	if c.DocumentInterval != 0 && c.DocumentInterval != l.interval {
