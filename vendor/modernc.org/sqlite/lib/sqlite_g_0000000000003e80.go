@@ -2261,7 +2261,7 @@ func _addConstraintFunc(tls *libc.TLS, ctx uintptr, NotUsed int32, argv uintptr)
 				break
 			}
 			if **(**int32)(__ccgo_up(bp + 4)) == int32(TK_ILLEGAL) {
-				Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123384)))
+				Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123653)))
 				return
 			}
 			**(**int32)(__ccgo_up(bp)) = **(**int32)(__ccgo_up(bp)) + nTok
@@ -3278,7 +3278,7 @@ func _dropColumnFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uintptr
 	pTab = (**(**TParse)(__ccgo_up(bp))).FpNewTable
 	if pTab == uintptr(0) || int32((*TTable)(unsafe.Pointer(pTab)).FnCol) == int32(1) || iCol >= int32((*TTable)(unsafe.Pointer(pTab)).FnCol) {
 		/* This can happen if the sqlite_schema table is corrupt */
-		rc = _sqlite3CorruptError(tls, int32(122911))
+		rc = _sqlite3CorruptError(tls, int32(123180))
 		goto drop_column_done
 	}
 	if iCol < int32((*TTable)(unsafe.Pointer(pTab)).FnCol)-int32(1) {
@@ -3604,7 +3604,7 @@ func _fillInUnixFile(tls *libc.TLS, pVfs uintptr, h int32, pId uintptr, zFilenam
 			 ** implicit assumption here is that if fstat() fails, things are in
 			 ** such bad shape that dropping a lock or two doesn't matter much.
 			 */
-			_robust_close(tls, pNew, h, int32(46500))
+			_robust_close(tls, pNew, h, int32(46504))
 			h = -int32(1)
 		}
 		_unixLeaveMutex(tls)
@@ -3623,7 +3623,7 @@ func _fillInUnixFile(tls *libc.TLS, pVfs uintptr, h int32, pId uintptr, zFilenam
 	_storeLastErrno(tls, pNew, 0)
 	if rc != SQLITE_OK {
 		if h >= 0 {
-			_robust_close(tls, pNew, h, int32(46592))
+			_robust_close(tls, pNew, h, int32(46596))
 		}
 	} else {
 		(*Tsqlite3_file)(unsafe.Pointer(pId)).FpMethods = pLockingStyle
@@ -7572,7 +7572,7 @@ func _lockBtree(tls *libc.TLS, pBt uintptr) (r int32) {
 		}
 		if nPage > **(**Tu32)(__ccgo_up(bp + 8)) {
 			if _sqlite3WritableSchema(tls, (*TBtShared)(unsafe.Pointer(pBt)).Fdb) == 0 {
-				rc = _sqlite3CorruptError(tls, int32(76782))
+				rc = _sqlite3CorruptError(tls, int32(77051))
 				goto page1_init_failed
 			} else {
 				nPage = **(**Tu32)(__ccgo_up(bp + 8))
@@ -8540,7 +8540,7 @@ func _openDatabase(tls *libc.TLS, zFilename uintptr, ppDb uintptr, _flags uint32
 	/* READWRITE */
 	/* READWRITE | CREATE */
 	if int32(1)<<(**(**uint32)(__ccgo_up(bp))&uint32(7))&int32(0x46) == 0 {
-		rc = _sqlite3MisuseError(tls, int32(191114)) /* IMP: R-18321-05872 */
+		rc = _sqlite3MisuseError(tls, int32(191383)) /* IMP: R-18321-05872 */
 	} else {
 		if zFilename == uintptr(0) {
 			zFilename = __ccgo_ts + 4367
@@ -11534,7 +11534,7 @@ func _renameParseSql(tls *libc.TLS, p uintptr, zDb uintptr, db uintptr, zSql uin
 		return int32(SQLITE_NOMEM)
 	}
 	if Xsqlite3_strnicmp(tls, zSql, __ccgo_ts+11594, int32(7)) != 0 {
-		return _sqlite3CorruptError(tls, int32(121875))
+		return _sqlite3CorruptError(tls, int32(122144))
 	}
 	if bTemp != 0 {
 		(*Tsqlite3)(unsafe.Pointer(db)).Finit1.FiDb = uint8(1)
@@ -11553,7 +11553,7 @@ func _renameParseSql(tls *libc.TLS, p uintptr, zDb uintptr, db uintptr, zSql uin
 		rc = int32(SQLITE_NOMEM)
 	}
 	if rc == SQLITE_OK && ((*TParse)(unsafe.Pointer(p)).FpNewTable == uintptr(0) && (*TParse)(unsafe.Pointer(p)).FpNewIndex == uintptr(0) && (*TParse)(unsafe.Pointer(p)).FpNewTrigger == uintptr(0)) {
-		rc = _sqlite3CorruptError(tls, int32(121896))
+		rc = _sqlite3CorruptError(tls, int32(122165))
 	}
 	(*Tsqlite3)(unsafe.Pointer(db)).Finit1.FiDb = uint8(0)
 	return rc
@@ -19108,7 +19108,7 @@ statNextRestart:
 		(*TStatCursor)(unsafe.Pointer(pCsr)).FiPage = (*TStatCursor)(unsafe.Pointer(pCsr)).FiPage + 1
 		if (*TStatCursor)(unsafe.Pointer(pCsr)).FiPage >= libc.Int32FromUint64(libc.Uint64FromInt64(2048)/libc.Uint64FromInt64(64)) {
 			_statResetCsr(tls, pCsr)
-			return _sqlite3CorruptError(tls, int32(232585))
+			return _sqlite3CorruptError(tls, int32(232854))
 		}
 		if (*TStatPage)(unsafe.Pointer(p)).FiCell == (*TStatPage)(unsafe.Pointer(p)).FnCell {
 			(**(**TStatPage)(__ccgo_up(p + 1*64))).FiPgno = (*TStatPage)(unsafe.Pointer(p)).FiRightChildPg
@@ -19852,7 +19852,7 @@ func _unixRandomness(tls *libc.TLS, NotUsed uintptr, nBuf int32, zBuf uintptr) (
 		for cond := true; cond; cond = got < 0 && **(**int32)(__ccgo_up(libc.X__errno_location(tls))) == int32(EINTR) {
 			got = int32((*(*func(*libc.TLS, int32, uintptr, Tsize_t) Tssize_t)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(8)].FpCurrent})))(tls, fd, zBuf, libc.Uint64FromInt32(nBuf)))
 		}
-		_robust_close(tls, uintptr(0), fd, int32(47474))
+		_robust_close(tls, uintptr(0), fd, int32(47478))
 	}
 	return nBuf
 }
@@ -19907,7 +19907,7 @@ func _unixRemapfile(tls *libc.TLS, pFd uintptr, nNew Ti64) {
 	if pNew == uintptr(-libc.Int32FromInt32(1)) {
 		pNew = uintptr(0)
 		nNew = 0
-		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45992))
+		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45996))
 		/* If the mmap() above failed, assume that all subsequent mmap() calls
 		 ** will probably fail too. Fall back to using xRead/xWrite exclusively
 		 ** in this case.  */
@@ -20107,7 +20107,7 @@ func _unixSync(tls *libc.TLS, id uintptr, flags int32) (r int32) {
 	rc = _full_fsync(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, isFullsync, isDataOnly)
 	if rc != 0 {
 		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__errno_location(tls))))
-		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(4)<<libc.Int32FromInt32(8), __ccgo_ts+3971, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44276))
+		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(4)<<libc.Int32FromInt32(8), __ccgo_ts+3971, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44280))
 	}
 	/* Also fsync the directory containing the file if the DIRSYNC flag
 	 ** is set.  This is a one-time occurrence.  Many systems (examples: AIX)
@@ -20117,7 +20117,7 @@ func _unixSync(tls *libc.TLS, id uintptr, flags int32) (r int32) {
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(17)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, bp)
 		if rc == SQLITE_OK {
 			_full_fsync(tls, **(**int32)(__ccgo_up(bp)), 0, 0)
-			_robust_close(tls, pFile, **(**int32)(__ccgo_up(bp)), int32(44290))
+			_robust_close(tls, pFile, **(**int32)(__ccgo_up(bp)), int32(44294))
 		} else {
 			rc = SQLITE_OK
 		}

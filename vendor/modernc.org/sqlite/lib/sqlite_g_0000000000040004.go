@@ -4,4 +4,195 @@
 
 package sqlite3
 
+import (
+	"unsafe"
+
+	"modernc.org/libc"
+)
+
 type Ttime_t = int32
+
+func _fts5ConfigSkipLiteral(tls *libc.TLS, pIn uintptr) (r uintptr) {
+	var p uintptr
+	_ = p
+	p = pIn
+	switch int32(**(**int8)(__ccgo_up(p))) {
+	case int32('n'):
+		fallthrough
+	case int32('N'):
+		if Xsqlite3_strnicmp(tls, __ccgo_ts+1688, p, int32(4)) == 0 {
+			p = p + 4
+		} else {
+			p = uintptr(0)
+		}
+	case int32('x'):
+		fallthrough
+	case int32('X'):
+		p = p + 1
+		if int32(**(**int8)(__ccgo_up(p))) == int32('\'') {
+			p = p + 1
+			for int32(**(**int8)(__ccgo_up(p))) >= int32('a') && int32(**(**int8)(__ccgo_up(p))) <= int32('f') || int32(**(**int8)(__ccgo_up(p))) >= int32('A') && int32(**(**int8)(__ccgo_up(p))) <= int32('F') || int32(**(**int8)(__ccgo_up(p))) >= int32('0') && int32(**(**int8)(__ccgo_up(p))) <= int32('9') {
+				p = p + 1
+			}
+			if int32(**(**int8)(__ccgo_up(p))) == int32('\'') && 0 == (int32(p)-int32(pIn))%int32(2) {
+				p = p + 1
+			} else {
+				p = uintptr(0)
+			}
+		} else {
+			p = uintptr(0)
+		}
+	case int32('\''):
+		p = p + 1
+		for p != 0 {
+			if int32(**(**int8)(__ccgo_up(p))) == int32('\'') {
+				p = p + 1
+				if int32(**(**int8)(__ccgo_up(p))) != int32('\'') {
+					break
+				}
+			}
+			p = p + 1
+			if int32(**(**int8)(__ccgo_up(p))) == 0 {
+				p = uintptr(0)
+			}
+		}
+	default:
+		/* maybe a number */
+		if int32(**(**int8)(__ccgo_up(p))) == int32('+') || int32(**(**int8)(__ccgo_up(p))) == int32('-') {
+			p = p + 1
+		}
+		for _fts5_isdigit(tls, **(**int8)(__ccgo_up(p))) != 0 {
+			p = p + 1
+		}
+		/* At this point, if the literal was an integer, the parse is
+		 ** finished. Or, if it is a floating point value, it may continue
+		 ** with either a decimal point or an 'E' character. */
+		if int32(**(**int8)(__ccgo_up(p))) == int32('.') && _fts5_isdigit(tls, **(**int8)(__ccgo_up(p + 1))) != 0 {
+			p = p + uintptr(2)
+			for _fts5_isdigit(tls, **(**int8)(__ccgo_up(p))) != 0 {
+				p = p + 1
+			}
+		}
+		if p == pIn {
+			p = uintptr(0)
+		}
+		break
+	}
+	return p
+}
+
+// C documentation
+//
+//	/*
+//	** timediff(DATE1, DATE2)
+//	**
+//	** Return the amount of time that must be added to DATE2 in order to
+//	** convert it into DATE2.  The time difference format is:
+//	**
+//	**     +YYYY-MM-DD HH:MM:SS.SSS
+//	**
+//	** The initial "+" becomes "-" if DATE1 occurs before DATE2.  For
+//	** date/time values A and B, the following invariant should hold:
+//	**
+//	**     datetime(A) == (datetime(B, timediff(A,B))
+//	**
+//	** Both DATE arguments must be either a julian day number, or an
+//	** ISO-8601 string.  The unix timestamps are not supported by this
+//	** routine.
+//	*/
+func _timediffFunc(tls *libc.TLS, context uintptr, NotUsed1 int32, argv uintptr) {
+	bp := tls.Alloc(192)
+	defer tls.Free(192)
+	var M, Y int32
+	var sign int8
+	var v1 uintptr
+	var _ /* d1 at bp+0 */ TDateTime
+	var _ /* d2 at bp+48 */ TDateTime
+	var _ /* sRes at bp+96 */ Tsqlite3_str
+	_, _, _, _ = M, Y, sign, v1
+	_ = NotUsed1
+	if _isDate(tls, context, int32(1), argv, bp) != 0 {
+		return
+	}
+	if _isDate(tls, context, int32(1), argv+1*4, bp+48) != 0 {
+		return
+	}
+	_computeYMD_HMS(tls, bp)
+	_computeYMD_HMS(tls, bp+48)
+	if (**(**TDateTime)(__ccgo_up(bp))).FiJD >= (**(**TDateTime)(__ccgo_up(bp + 48))).FiJD {
+		sign = int8('+')
+		Y = (**(**TDateTime)(__ccgo_up(bp))).FY - (**(**TDateTime)(__ccgo_up(bp + 48))).FY
+		if Y != 0 {
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FY = (**(**TDateTime)(__ccgo_up(bp))).FY
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		M = (**(**TDateTime)(__ccgo_up(bp))).FM - (**(**TDateTime)(__ccgo_up(bp + 48))).FM
+		if M < 0 {
+			Y = Y - 1
+			M = M + int32(12)
+		}
+		if M != 0 {
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FM = (**(**TDateTime)(__ccgo_up(bp))).FM
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		for (**(**TDateTime)(__ccgo_up(bp))).FiJD < (**(**TDateTime)(__ccgo_up(bp + 48))).FiJD {
+			M = M - 1
+			if M < 0 {
+				M = int32(11)
+				Y = Y - 1
+			}
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FM = (**(**TDateTime)(__ccgo_up(bp + 48))).FM - 1
+			if (**(**TDateTime)(__ccgo_up(bp + 48))).FM < int32(1) {
+				(**(**TDateTime)(__ccgo_up(bp + 48))).FM = int32(12)
+				(**(**TDateTime)(__ccgo_up(bp + 48))).FY = (**(**TDateTime)(__ccgo_up(bp + 48))).FY - 1
+			}
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		(**(**TDateTime)(__ccgo_up(bp))).FiJD -= (**(**TDateTime)(__ccgo_up(bp + 48))).FiJD
+		v1 = bp
+		*(*Tsqlite3_int64)(unsafe.Pointer(v1)) = Tsqlite3_int64(uint64(*(*Tsqlite3_int64)(unsafe.Pointer(v1))) + libc.Uint64FromInt32(1486995408)*libc.Uint64FromInt32(100000))
+	} else { /* d1<d2 */
+		sign = int8('-')
+		Y = (**(**TDateTime)(__ccgo_up(bp + 48))).FY - (**(**TDateTime)(__ccgo_up(bp))).FY
+		if Y != 0 {
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FY = (**(**TDateTime)(__ccgo_up(bp))).FY
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		M = (**(**TDateTime)(__ccgo_up(bp + 48))).FM - (**(**TDateTime)(__ccgo_up(bp))).FM
+		if M < 0 {
+			Y = Y - 1
+			M = M + int32(12)
+		}
+		if M != 0 {
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FM = (**(**TDateTime)(__ccgo_up(bp))).FM
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		for (**(**TDateTime)(__ccgo_up(bp))).FiJD > (**(**TDateTime)(__ccgo_up(bp + 48))).FiJD {
+			M = M - 1
+			if M < 0 {
+				M = int32(11)
+				Y = Y - 1
+			}
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FM = (**(**TDateTime)(__ccgo_up(bp + 48))).FM + 1
+			if (**(**TDateTime)(__ccgo_up(bp + 48))).FM > int32(12) {
+				(**(**TDateTime)(__ccgo_up(bp + 48))).FM = int32(1)
+				(**(**TDateTime)(__ccgo_up(bp + 48))).FY = (**(**TDateTime)(__ccgo_up(bp + 48))).FY + 1
+			}
+			(**(**TDateTime)(__ccgo_up(bp + 48))).FvalidJD = 0
+			_computeJD(tls, bp+48)
+		}
+		(**(**TDateTime)(__ccgo_up(bp))).FiJD = (**(**TDateTime)(__ccgo_up(bp + 48))).FiJD - (**(**TDateTime)(__ccgo_up(bp))).FiJD
+		v1 = bp
+		*(*Tsqlite3_int64)(unsafe.Pointer(v1)) = Tsqlite3_int64(uint64(*(*Tsqlite3_int64)(unsafe.Pointer(v1))) + libc.Uint64FromInt32(1486995408)*libc.Uint64FromInt32(100000))
+	}
+	_clearYMD_HMS_TZ(tls, bp)
+	_computeYMD_HMS(tls, bp)
+	_sqlite3StrAccumInit(tls, bp+96, uintptr(0), uintptr(0), 0, int32(100))
+	Xsqlite3_str_appendf(tls, bp+96, __ccgo_ts+1483, libc.VaList(bp+128, int32(sign), Y, M, (**(**TDateTime)(__ccgo_up(bp))).FD-int32(1), (**(**TDateTime)(__ccgo_up(bp))).Fh, (**(**TDateTime)(__ccgo_up(bp))).Fm, (**(**TDateTime)(__ccgo_up(bp))).Fs))
+	_sqlite3ResultStrAccum(tls, context, bp+96)
+}

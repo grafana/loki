@@ -4,4 +4,4 @@
 
 package sqlite3
 
-const __WCHAR_TYPE__ = 0
+const __WCHAR_TYPE__ = "int"

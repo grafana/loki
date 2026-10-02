@@ -24,13 +24,9 @@ const INT_MAX = 2147483647
 
 const INT_MIN = -2147483648
 
-const IOCPARM_MAX = 0
-
 const LLONG_MAX = 9223372036854775807
 
 const LLONG_MIN = -9223372036854775808
-
-const LONG_BIT = 64
 
 const LONG_MAX = 9223372036854775807
 
@@ -46,10 +42,6 @@ const MAP_INHERIT_NONE = 2
 
 const MAP_INHERIT_SHARE = 0
 
-const QUAD_MAX = 9223372036854775807
-
-const QUAD_MIN = -9223372036854775808
-
 const SCHAR_MAX = 127
 
 const SCHAR_MIN = -128
@@ -57,8 +49,6 @@ const SCHAR_MIN = -128
 const SHRT_MAX = 32767
 
 const SHRT_MIN = -32768
-
-const SIZE_T_MAX = 18446744073709551615
 
 const STRIPDISC = 6
 
@@ -69,6 +59,12 @@ const TIOCFLAG_CRTSCTS = 4
 const TIOCFLAG_MDMBUF = 8
 
 const TIOCFLAG_SOFTCAR = 1
+
+const TIOCGFLAGS = 1074033757
+
+const TIOCREMOTE = 2147775593
+
+const TIOCSFLAGS = 2147775580
 
 type Tcpuid_t = uint64
 
@@ -112,11 +108,7 @@ const ULLONG_MAX = 18446744073709551615
 
 const ULONG_MAX = 18446744073709551615
 
-const UQUAD_MAX = 18446744073709551615
-
 const USHRT_MAX = 65535
-
-const WORD_BIT = 32
 
 const _BIG_ENDIAN = 4321
 
@@ -130,17 +122,7 @@ const _SC_PAGE_SIZE = 28
 
 const _SC_XOPEN_SHM = 30
 
-const __BEGIN_DECLS = 0
-
-const __BEGIN_HIDDEN_DECLS = 0
-
-const __BEGIN_PUBLIC_DECLS = 0
-
-const __END_DECLS = 0
-
-const __END_HIDDEN_DECLS = 0
-
-const __END_PUBLIC_DECLS = 0
+const __NFDBITS = 32
 
 // C documentation
 //
@@ -159,7 +141,7 @@ func _closeUnixFile(tls *libc.TLS, id uintptr) (r int32) {
 	_ = pFile
 	pFile = id
 	if (*TunixFile)(unsafe.Pointer(pFile)).Fh >= 0 {
-		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42654))
+		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42658))
 		(*TunixFile)(unsafe.Pointer(pFile)).Fh = -int32(1)
 	}
 	Xsqlite3_free(tls, (*TunixFile)(unsafe.Pointer(pFile)).FpPreallocatedUnused)
@@ -1129,7 +1111,7 @@ func _vdbeSorterListToPMA(tls *libc.TLS, pTask uintptr, pList uintptr) (r int32)
 
 type cpuid_t = Tcpuid_t
 
-const fd_mask = 0
+const fd_mask = "__fd_mask"
 
 type max_align_t = Tmax_align_t
 

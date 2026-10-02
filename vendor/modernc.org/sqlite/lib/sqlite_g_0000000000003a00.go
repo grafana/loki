@@ -79,7 +79,7 @@ func Xsqlite3_exec(tls *libc.TLS, db uintptr, zSql uintptr, __ccgo_fp_xCallback 
 	**(**uintptr)(__ccgo_up(bp + 8)) = uintptr(0) /* The current SQL statement */
 	azCols = uintptr(0)                           /* True if callback data is initialized */
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(142492))
+		return _sqlite3MisuseError(tls, int32(142761))
 	}
 	if zSql == uintptr(0) {
 		zSql = __ccgo_ts + 1704
@@ -211,7 +211,7 @@ func Xsqlite3_wal_checkpoint_v2(tls *libc.TLS, db uintptr, zDb uintptr, eMode in
 	if eMode < -int32(1) || eMode > int32(SQLITE_CHECKPOINT_TRUNCATE) {
 		/* EVIDENCE-OF: R-03996-12088 The M parameter must be a valid checkpoint
 		 ** mode: */
-		return _sqlite3MisuseError(tls, int32(190116))
+		return _sqlite3MisuseError(tls, int32(190385))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if zDb != 0 && **(**uint8)(__ccgo_up(zDb)) != 0 {
@@ -260,7 +260,7 @@ func _corruptSchema(tls *libc.TLS, pData uintptr, azObj uintptr, zExtra uintptr)
 				(*TInitData)(unsafe.Pointer(pData)).Frc = int32(SQLITE_ERROR)
 			} else {
 				if (*Tsqlite3)(unsafe.Pointer(db)).Fflags&uint64(SQLITE_WriteSchema) != 0 {
-					(*TInitData)(unsafe.Pointer(pData)).Frc = _sqlite3CorruptError(tls, int32(148102))
+					(*TInitData)(unsafe.Pointer(pData)).Frc = _sqlite3CorruptError(tls, int32(148371))
 				} else {
 					if **(**uintptr)(__ccgo_up(azObj + 1*8)) != 0 {
 						v1 = **(**uintptr)(__ccgo_up(azObj + 1*8))
@@ -273,7 +273,7 @@ func _corruptSchema(tls *libc.TLS, pData uintptr, azObj uintptr, zExtra uintptr)
 						z = _sqlite3MPrintf(tls, db, __ccgo_ts+20110, libc.VaList(bp+8, z, zExtra))
 					}
 					**(**uintptr)(__ccgo_up((*TInitData)(unsafe.Pointer(pData)).FpzErrMsg)) = z
-					(*TInitData)(unsafe.Pointer(pData)).Frc = _sqlite3CorruptError(tls, int32(148109))
+					(*TInitData)(unsafe.Pointer(pData)).Frc = _sqlite3CorruptError(tls, int32(148378))
 				}
 			}
 		}
@@ -5150,7 +5150,7 @@ func _openDirectory(tls *libc.TLS, zFilename uintptr, pFd uintptr) (r int32) {
 	if fd >= 0 {
 		return SQLITE_OK
 	}
-	return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(44235)), __ccgo_ts+3659, bp, int32(44235))
+	return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(44239)), __ccgo_ts+3659, bp, int32(44239))
 }
 
 // C documentation
@@ -8929,7 +8929,7 @@ func _sqlite3PagerOpen(tls *libc.TLS, pVfs uintptr, ppPager uintptr, zFilename u
 			 ** as it will not be possible to open the journal file or even
 			 ** check for a hot-journal before reading.
 			 */
-			rc = _sqlite3CantopenError(tls, int32(64648))
+			rc = _sqlite3CantopenError(tls, int32(64652))
 		}
 		if rc != SQLITE_OK {
 			_sqlite3DbFree(tls, uintptr(0), zPathname)
@@ -10855,14 +10855,14 @@ func _unixFullPathname(tls *libc.TLS, pVfs uintptr, zPath uintptr, nOut int32, z
 	(**(**TDbPath)(__ccgo_up(bp))).FzOut = zOut
 	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(zPath))) != int32('/') {
 		if (*(*func(*libc.TLS, uintptr, Tsize_t) uintptr)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(3)].FpCurrent})))(tls, bp+24, libc.Uint64FromInt64(4098)-libc.Uint64FromInt32(2)) == uintptr(0) {
-			return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47366)), __ccgo_ts+3560, zPath, int32(47366))
+			return _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47370)), __ccgo_ts+3560, zPath, int32(47370))
 		}
 		_appendAllPathElements(tls, bp, bp+24)
 	}
 	_appendAllPathElements(tls, bp, zPath)
 	**(**uint8)(__ccgo_up(zOut + uintptr((**(**TDbPath)(__ccgo_up(bp))).FnUsed))) = uint8(0)
 	if (**(**TDbPath)(__ccgo_up(bp))).Frc != 0 || (**(**TDbPath)(__ccgo_up(bp))).FnUsed < int32(2) {
-		return _sqlite3CantopenError(tls, int32(47372))
+		return _sqlite3CantopenError(tls, int32(47376))
 	}
 	if (**(**TDbPath)(__ccgo_up(bp))).FnSymlink != 0 {
 		return libc.Int32FromInt32(SQLITE_OK) | libc.Int32FromInt32(2)<<libc.Int32FromInt32(8)
@@ -11015,7 +11015,7 @@ func _unixOpen(tls *libc.TLS, pVfs uintptr, zPath uintptr, pFile uintptr, flags 
 			}
 		}
 		if fd < 0 {
-			rc2 = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47049)), __ccgo_ts+3542, zName, int32(47049))
+			rc2 = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47053)), __ccgo_ts+3542, zName, int32(47053))
 			if rc == SQLITE_OK {
 				rc = rc2
 			}
