@@ -150,7 +150,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				err := tocBuilder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+				err := tocBuilder.AppendIndexPointer(indexpointers.IndexPointer{
 					Path:    entry.Path,
 					StartTs: entry.StartTime,
 					EndTs:   entry.EndTime,
@@ -254,7 +254,7 @@ func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObje
 		for {
 			n, err := indexPointersReader.Read(ctx, pbuf)
 			for _, indexPointer := range pbuf[:n] {
-				if err := builder.AppendIndexPointer(builder.Tenant(), indexPointer); err != nil {
+				if err := builder.AppendIndexPointer(indexPointer); err != nil {
 					return fmt.Errorf("appending index pointers: %w", err)
 				}
 			}

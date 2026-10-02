@@ -32,7 +32,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		err = tocBuilder.AppendIndexPointer(tenantID, indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20)})
+		err = tocBuilder.AppendIndexPointer(indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20)})
 		require.NoError(t, err)
 
 		obj, closer, err := tocBuilder.Flush()
@@ -120,7 +120,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 	t.Run("copyFromExistingToc returns an error when the first row of a section has a zero start time, which decodes as missing", func(t *testing.T) {
 		source, err := indexobj.NewBuilder("test", tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		require.NoError(t, source.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
+		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
 		obj, closer, err := source.Flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = closer.Close() })

@@ -484,7 +484,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -492,9 +492,9 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 		UncompressedSize: 5,
 	})
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+	err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 	require.NoError(t, err)
 
 	traceIDBloom := bloom.NewWithEstimates(10, 0.01)
@@ -503,7 +503,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
 	require.NoError(t, err)
 
-	err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+	err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 	require.NoError(t, err)
 
 	// Build and store the object
@@ -603,7 +603,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "prod"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -611,11 +611,11 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		UncompressedSize: 5,
 	})
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 	require.NoError(t, err)
 
 	// Stream 2: app=bar, env=dev
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               2,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "env", Value: "dev"}),
 		MinTimestamp:     now.Add(-1 * time.Hour),
@@ -623,11 +623,11 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		UncompressedSize: 10,
 	})
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 1, 2, 2, now.Add(-1*time.Hour), 10)
+	err = builder.ObserveLogLine("test-path", 1, 2, 2, now.Add(-1*time.Hour), 10)
 	require.NoError(t, err)
 
 	// Stream 3: app=foo, env=dev (shares app label with stream 1, env with stream 2)
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               3,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "dev"}),
 		MinTimestamp:     now.Add(-30 * time.Minute),
@@ -635,7 +635,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		UncompressedSize: 7,
 	})
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 2, 3, 3, now.Add(-30*time.Minute), 7)
+	err = builder.ObserveLogLine("test-path", 2, 3, 3, now.Add(-30*time.Minute), 7)
 	require.NoError(t, err)
 
 	// Build and store the object
@@ -763,7 +763,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a stream with label app=foo
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -771,9 +771,9 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 		UncompressedSize: 5,
 	})
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 	require.NoError(t, err)
-	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+	err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 	require.NoError(t, err)
 
 	// Add a bloom filter for a metadata column (traceID), NOT for the stream label (app)
@@ -781,7 +781,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	traceIDBloom.AddString("abcd")
 	traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
 	require.NoError(t, err)
-	err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+	err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 	require.NoError(t, err)
 
 	// Build and store the object
@@ -982,7 +982,7 @@ func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -990,7 +990,7 @@ func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	})
 	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
