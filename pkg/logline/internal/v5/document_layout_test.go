@@ -109,13 +109,29 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 	ctx := context.Background()
 	sharded32 := writeLayoutIndex(t, "a.lidx", 16*time.Second, 32)
 
-	t.Run("equal layouts merge and keep the layout", func(t *testing.T) {
+	t.Run("equal time-only layouts merge and keep the layout", func(t *testing.T) {
 		var out bytes.Buffer
-		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 32)}, &out, DefaultFastIndexWriteConfig())
+		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 1), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
+		_, err := mergeFilesTo(ctx, t, inputs, &out, DefaultFastIndexWriteConfig())
 		require.NoError(t, err)
 		h, err := ReadIndexFooterFrom(bytes.NewReader(out.Bytes()), int64(out.Len()))
 		require.NoError(t, err)
-		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 32}, h.documentLayout())
+		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout())
+	})
+
+	t.Run("sharded inputs are rejected", func(t *testing.T) {
+		var out bytes.Buffer
+		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 32)}, &out, DefaultFastIndexWriteConfig())
+		require.ErrorContains(t, err, "indexes with 32 document shards cannot be merged")
+	})
+
+	t.Run("a sharded config over inputs without a layout is rejected", func(t *testing.T) {
+		cfg := DefaultFastIndexWriteConfig()
+		cfg.DocumentInterval = 16 * time.Second
+		cfg.DocumentShards = 32
+		var out bytes.Buffer
+		_, err := mergeFilesTo(ctx, t, []string{writeLayoutIndex(t, "a.lidx", 0, 0), writeLayoutIndex(t, "b.lidx", 0, 0)}, &out, cfg)
+		require.ErrorContains(t, err, "indexes with 32 document shards cannot be merged")
 	})
 
 	t.Run("different shard counts are rejected", func(t *testing.T) {
@@ -132,10 +148,11 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 
 	t.Run("config that disagrees with the inputs is rejected", func(t *testing.T) {
 		cfg := DefaultFastIndexWriteConfig()
-		cfg.DocumentShards = 16
+		cfg.DocumentShards = 2
 		var out bytes.Buffer
-		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 32)}, &out, cfg)
-		require.ErrorContains(t, err, "configured document shards 16 differ from the inputs' 32")
+		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 1), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
+		_, err := mergeFilesTo(ctx, t, inputs, &out, cfg)
+		require.ErrorContains(t, err, "configured document shards 2 differ from the inputs' 1")
 	})
 
 	t.Run("inputs without a layout keep the config", func(t *testing.T) {

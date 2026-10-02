@@ -35,6 +35,11 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 		if err != nil {
 			return nil, err
 		}
+		// deduplicateDocuments collapses documents with equal time bounds, so
+		// the shards of each interval would become one document.
+		if wcfg.DocumentShards > 1 {
+			return nil, fmt.Errorf("merge: indexes with %d document shards cannot be merged: documents are deduplicated by time bounds, which would collapse the document shards of each interval", wcfg.DocumentShards)
+		}
 		w, err := newStreamingIndexWriterTo(out, wcfg, docCount)
 		if err != nil {
 			return nil, err

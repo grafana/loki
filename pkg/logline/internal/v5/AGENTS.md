@@ -26,5 +26,9 @@ recoverable from the file yet.
   max(DocumentShards, 1) × DensityThreshold` (`IndexWriteConfig.sentinelCutoff`).
 - `Merge` requires every input to have the same layout and writes it to the
   output. A configured interval or shard count that disagrees with the inputs
-  is an error. The merge still dedupes documents by time bounds, which
-  collapses cells of one interval; nothing merges v5 files yet.
+  is an error. The merge dedupes documents by time bounds, which would
+  collapse the cells of one interval, so it rejects indexes with more than one
+  document shard.
+- Footer-4 v5 files are time-only to readers. When docIDs start carrying the
+  shard, readers must refuse footer-4 v5 files or read them as time-only.
+  They must not decode docIDs with the shard count in `ReservedMid`.
