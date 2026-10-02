@@ -250,6 +250,39 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 	}
 }
 
+// countingBucket counts GetAndReplace calls and passes them through.
+type countingBucket struct {
+	objstore.Bucket
+	mu    sync.Mutex
+	calls int
+}
+
+func (b *countingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+	return b.Bucket.GetAndReplace(ctx, name, fn)
+}
+
+func TestReplaceIndexPointers(t *testing.T) {
+	t.Run("returns an error without touching storage when a new entry ends before it starts", func(t *testing.T) {
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		writer := &TableOfContentsWriter{
+			bucket:  bucket,
+			metrics: newTableOfContentsMetrics(),
+			logger:  log.NewNopLogger(),
+		}
+
+		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
+		)
+		require.ErrorContains(t, err, "idx/a-new")
+		require.False(t, swapped)
+		require.Zero(t, bucket.calls)
+	})
+}
+
 func filterRows(rows []tocRow, tenants ...string) []tocRow {
 	keep := make(map[string]struct{}, len(tenants))
 	for _, t := range tenants {

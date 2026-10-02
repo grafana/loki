@@ -144,8 +144,9 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
-	// WriteEntry retries each ToC window until it succeeds, so it returns an
-	// error only if the context is canceled.
+	// WriteEntry retries each ToC window until it succeeds. It returns an
+	// error if the context is canceled, or on an error that retrying can't
+	// fix, such as an entry without a valid time range.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
 		Path:      res.Path,
 		StartTime: res.TimeRange.MinTime,
