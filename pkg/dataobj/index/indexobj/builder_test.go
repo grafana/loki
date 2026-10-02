@@ -76,16 +76,16 @@ func TestBuilder(t *testing.T) {
 		},
 	}
 
-	t.Run("Build", func(t *testing.T) {
+	t.Run("builds one section of each appended kind, all for the builder's tenant", func(t *testing.T) {
 		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		for _, stream := range testStreams {
-			_, err := builder.AppendStream(testTenant, stream)
+			_, err := builder.AppendStream(stream)
 			require.NoError(t, err)
 		}
 		for _, pointer := range testPointers {
-			err := builder.AppendColumnIndex(testTenant, pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
+			err := builder.AppendColumnIndex(pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
 			require.NoError(t, err)
 		}
 
@@ -97,33 +97,7 @@ func TestBuilder(t *testing.T) {
 		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
-	})
-
-	t.Run("BuildMultiTenant", func(t *testing.T) {
-		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-		require.NoError(t, err)
-
-		tenants := []string{"test-tenant-1", "test-tenant-2"}
-
-		for i, stream := range testStreams {
-			tenant := tenants[i%len(tenants)]
-			_, err := builder.AppendStream(tenant, stream)
-			require.NoError(t, err)
-		}
-		for i, pointer := range testPointers {
-			tenant := tenants[i%len(tenants)]
-			err := builder.AppendColumnIndex(tenant, pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
-			require.NoError(t, err)
-		}
-
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		defer closer.Close()
-
-		require.Equal(t, len(tenants), obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, len(tenants), obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, []string{testTenant}, obj.Tenants())
 	})
 }
 
@@ -140,7 +114,7 @@ func TestBuilder_Append(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		_, err := builder.AppendStream(testTenant, streams.Stream{
+		_, err := builder.AppendStream(streams.Stream{
 			ID: 1,
 			Labels: labels.New(
 				labels.Label{Name: "cluster", Value: "test"},
@@ -170,7 +144,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
+		err := builder.AppendIndexPointer(indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
 		if builder.IsFull() {
 			break
 		}
@@ -196,7 +170,7 @@ func TestBuilder_ObserveLogLine(t *testing.T) {
 	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	err = builder.ObserveLogLine(testTenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+	err = builder.ObserveLogLine("test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
 	require.NoError(t, err)
 
 	require.Greater(t, builder.estimatedSize(), 0)
@@ -206,15 +180,11 @@ func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
 	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(b, err)
 
-	maxTenants := 1000
-	tenants := make([]string, maxTenants)
-	for i := range tenants {
-		tenants[i] = fmt.Sprintf("test-tenant-%d", i)
-	}
+	const streamCount = 1000
 
 	for b.Loop() {
-		for _, tenant := range tenants {
-			err := builder.ObserveLogLine(tenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+		for i := range int64(streamCount) {
+			err := builder.ObserveLogLine("test/path", 1, i, i, time.Unix(10, 0).UTC(), 100)
 			require.NoError(b, err)
 		}
 	}
@@ -278,10 +248,10 @@ func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
 	require.NoError(t, err)
 
 	base := time.Unix(10000, 0).UTC()
-	tenant := "tenant-a"
+	tenant := testTenant
 
 	// Streams cover [base, base+1h]; postings extend the window on both ends.
-	_, err = b.AppendStream(tenant, streams.Stream{
+	_, err = b.AppendStream(streams.Stream{
 		Labels:           labels.FromStrings("app", "x"),
 		MinTimestamp:     base,
 		MaxTimestamp:     base.Add(time.Hour),
@@ -405,7 +375,7 @@ var sectionPerAppendConfig = logsobj.BuilderBaseConfig{
 func appendSections(t *testing.T, b *Builder, n int) {
 	t.Helper()
 	for i := range n {
-		err := b.AppendIndexPointer(testTenant, indexpointers.IndexPointer{
+		err := b.AppendIndexPointer(indexpointers.IndexPointer{
 			Path:    fmt.Sprintf("test/path-%04d", i),
 			StartTs: time.Unix(10, 0).UTC(),
 			EndTs:   time.Unix(20, 0).UTC(),

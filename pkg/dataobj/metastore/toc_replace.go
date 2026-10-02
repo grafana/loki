@@ -188,7 +188,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			}
 
 			for _, e := range newEntries {
-				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+				if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
 					Path:    e.Path,
 					StartTs: e.StartTime,
 					EndTs:   e.EndTime,
@@ -297,7 +297,7 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 				if _, drop := oldSet[buf[i].Path]; drop {
 					continue
 				}
-				if aerr := builder.AppendIndexPointer(builder.Tenant(), buf[i]); aerr != nil {
+				if aerr := builder.AppendIndexPointer(buf[i]); aerr != nil {
 					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}

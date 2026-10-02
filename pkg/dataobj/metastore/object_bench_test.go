@@ -88,7 +88,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx, err := builder.AppendStream(tenantID, streams.Stream{
+				newIdx, err := builder.AppendStream(streams.Stream{
 					ID:               globalStreamID,
 					Labels:           lbls,
 					MinTimestamp:     ts.Entries[0].Timestamp,
@@ -97,7 +97,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				})
 				require.NoError(b, err)
 
-				err = builder.ObserveLogLine(tenantID, "test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+				err = builder.ObserveLogLine("test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 				require.NoError(b, err)
 
 				globalStreamID++
@@ -191,7 +191,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
 
-			_, err = builder.AppendStream(tenantID, streams.Stream{
+			_, err = builder.AppendStream(streams.Stream{
 				ID:               1,
 				Labels:           lbls,
 				MinTimestamp:     now.Add(-3 * time.Hour),
@@ -200,9 +200,9 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			})
 			require.NoError(b, err)
 
-			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 			require.NoError(b, err)
-			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 			require.NoError(b, err)
 
 			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
@@ -211,7 +211,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
 			require.NoError(b, err)
 
-			err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+			err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 			require.NoError(b, err)
 
 			timeRanges := builder.TimeRanges()
