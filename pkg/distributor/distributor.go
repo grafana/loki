@@ -562,6 +562,18 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// per request.
 	var shadowCandidates, liveCandidates []limitsServiceShardCandidate
 
+	// shardStreamsEnabledSeen/shardStreamsDisabledSeen track whether this
+	// push mixes streams whose resolved shardStreamsCfg.Enabled differs for
+	// this tenant. A tenant's policies are expected to agree on whether
+	// stream sharding is enabled; a stream with it disabled skips the limits
+	// service and is enforced by EnforceLimits instead, splitting
+	// max_global_streams_per_user enforcement between two independent
+	// trackers. This is only a concern while the limits service is enabled.
+	var (
+		shardStreamsEnabledSeen, shardStreamsDisabledSeen     bool
+		shardStreamsEnabledPolicy, shardStreamsDisabledPolicy string
+	)
+
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
@@ -572,6 +584,18 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// and threaded into these closures, so a policy can override the tenant sharding behavior
 	// (e.g. toggle time sharding or use a different desired_rate).
 	maybeShardByRate := func(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
+		if d.cfg.IngestLimitsEnabled {
+			if shardStreamsCfg.Enabled {
+				if !shardStreamsEnabledSeen {
+					shardStreamsEnabledSeen = true
+					shardStreamsEnabledPolicy = policy
+				}
+			} else if !shardStreamsDisabledSeen {
+				shardStreamsDisabledSeen = true
+				shardStreamsDisabledPolicy = policy
+			}
+		}
+
 		// Shortcut when stream sharding is not enabled
 		if !shardStreamsCfg.Enabled {
 			streams = append(streams, KeyedStream{
@@ -740,6 +764,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return nil, err
 	}
 
+	if shardStreamsEnabledSeen && shardStreamsDisabledSeen {
+		level.Warn(d.logger).Log(
+			"msg", "tenant has shard_streams.enabled true for one policy and false for another in the same push; this is not expected and splits max_global_streams_per_user enforcement between the limits service and EnforceLimits",
+			"tenant", tenantID,
+			"enabled_policy", shardStreamsEnabledPolicy,
+			"disabled_policy", shardStreamsDisabledPolicy,
+		)
+	}
+
 	var validationErr error
 	if validationErrors.Err() != nil {
 		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
@@ -759,13 +792,31 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return nil, err
 	}
 
-	// Live-mode streams join streams only now, sharded with the count the
-	// limits service returns. Candidates are only collected while the limits
-	// service is enabled, see maybeShardByRate.
+	// Live-mode streams are sharded with the count the limits service returns,
+	// which also decides whether they are written at all. They join streams
+	// only after the limits have been enforced on the remaining streams, as
+	// CheckLimitsAndShard has already checked them. Candidates are only
+	// collected while the limits service is enabled, see maybeShardByRate.
+	var (
+		liveStreams  []KeyedStream
+		liveRejected []logproto.InternalStreamAdapter
+	)
 	if len(liveCandidates) > 0 {
 		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, liveCandidates)
 		for i, c := range liveCandidates {
-			streams = append(streams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, shardCounts[i])...)
+			count := shardCounts[i]
+			if count == 0 {
+				// The limits service has no stream budget left for this
+				// stream. Only this stream is rejected, the rest of the push
+				// is still written. In dry-run mode the rejection is recorded
+				// by the limits service but not acted on here.
+				if !d.cfg.IngestLimitsDryRunEnabled {
+					liveRejected = append(liveRejected, c.stream)
+					continue
+				}
+				count = 1
+			}
+			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
 		}
 	}
 
@@ -778,32 +829,52 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, shadowCandidates)
 		}
 
-		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
-		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-		enforceTimer.ObserveDuration()
-		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(rejected) > 0 {
-				discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
-				for _, stream := range rejected {
-					discardedStreams = append(discardedStreams, stream.Stream)
-				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+		// streams holds every stream but the live-mode ones, so shadow-mode
+		// streams are enforced as before. It is empty when the push consists of
+		// live-mode streams only.
+		if len(streams) > 0 {
+			enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+			accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+			enforceTimer.ObserveDuration()
+			if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+				if len(rejected) > 0 {
+					discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+					for _, stream := range rejected {
+						discardedStreams = append(discardedStreams, stream.Stream)
+					}
+					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
 
-				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-				d.writeFailuresManager.Log(tenantID, err)
-				// Set the validation error to the stream limit error so it is returned to the client.
-				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-				// If none of the streams were accepted, return early.
-				if len(accepted) == 0 {
-					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+					// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+					// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+					err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+					d.writeFailuresManager.Log(tenantID, err)
+					// Set the validation error to the stream limit error so it is returned to the client.
+					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+					// Do not return early here even if nothing was accepted: the
+					// live-mode rejection below still needs to run so its discards
+					// are tracked too.
 				}
+				streams = accepted
 			}
-			streams = accepted
 		}
+	}
+
+	streams = append(streams, liveStreams...)
+
+	if len(liveRejected) > 0 {
+		d.trackDiscardedData(ctx, liveRejected, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+
+		// Only one of the rejected streams is named, for the same reason as
+		// above.
+		rejectErr := fmt.Errorf(validation.StreamLimitErrorMsg, liveRejected[0].Labels, tenantID)
+		d.writeFailuresManager.Log(tenantID, rejectErr)
+		validationErr = httpgrpc.Error(http.StatusTooManyRequests, rejectErr.Error())
+	}
+
+	if len(streams) == 0 && validationErr != nil {
+		return nil, validationErr
 	}
 
 	tracker := PushTracker{
@@ -1287,8 +1358,6 @@ type limitsServiceShardCandidate struct {
 	totalSize       uint64
 }
 
-// limitsServiceShardTimeout bounds the synchronous CheckLimitsAndShard call
-// on the push path.
 // TODO(chaudum): Is a 2s timeout too long? Running it in production will tell...
 const limitsServiceShardTimeout = 2 * time.Second
 
@@ -1297,22 +1366,26 @@ const limitsServiceShardTimeout = 2 * time.Second
 // store's, and returns the shard count to use per candidate, in the order the
 // candidates were given.
 //
-// A candidate the service did not answer for, or could not decide on, keeps
-// the local rate store's count, so a limits service outage degrades to the
-// previous behavior rather than stopping sharding. A rejected stream is not
-// sharded: the service has no stream count budget left for more shards.
-// Whether such a stream is written at all is decided by EnforceLimits.
+// Live mode never falls back to the local rate store's recommendation. A
+// candidate the service has no usable answer for -- the whole call failed,
+// there was no result for the stream, the service could not check it, or
+// the answering instance does not own its partition -- gets a count of 1:
+// it is written unsharded rather than rejected. A limits-service outage removes
+// sharding until it recovers rather than stopping ingestion.
 //
-// It runs synchronously, on the push path, with a short timeout. The mode is
-// only used to label the metrics; shadow-mode callers discard the counts.
+// A candidate the service rejected, for example for exceeding the stream
+// limit, gets a count of 0.
 func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mode string, candidates []limitsServiceShardCandidate) []int {
 	// Deferred so that every path, success, failure and Unimplemented alike,
 	// records the latency the call adds.
 	defer prometheus.NewTimer(d.m.limitsServiceShardDuration).ObserveDuration()
 
+	// Defaults to 1 (written unsharded, not rejected) for every candidate the
+	// service ends up with no usable answer for, whether the whole call fails
+	// or only a specific candidate does; see the fail-open cases below.
 	shardCounts := make([]int, len(candidates))
-	for i, c := range candidates {
-		shardCounts[i] = c.rateStoreShards
+	for i := range shardCounts {
+		shardCounts[i] = 1
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, limitsServiceShardTimeout)
@@ -1322,25 +1395,24 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 	if err != nil {
 		// None of the candidates were answered, so count them all as failed
 		// rather than leaving them out of the coverage metrics.
-		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Add(float64(len(candidates)))
+		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Add(float64(len(candidates)))
 		if status.Code(err) == codes.Unimplemented {
 			// The service predates the RPC, for instance during a rollout.
 			level.Warn(d.logger).Log("msg", "CheckLimitsAndShard call returned Unimplemented; the limits service may predate this RPC", "tenant", tenantID, "mode", mode)
-			return shardCounts
+		} else {
+			level.Error(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		}
-		level.Debug(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		return shardCounts
 	}
+
 	for i, c := range candidates {
 		result, ok := results[c.stream.Hash]
 		switch {
 		case result.GetRejectReason() != "":
 			// A difference in kind rather than in shard count: the local rate
 			// store never rejects a stream.
-			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode).Inc()
-			// TODO(chaudum): Return 0 shards as an indicator of a rejected stream
-			// once we skip the ExceedsLimits call for enforcing the limits.
-			shardCounts[i] = 1
+			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
+			shardCounts[i] = 0
 		case !ok,
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
 			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
@@ -1348,10 +1420,19 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// stream, or the instance that answered does not own its
 			// partition. Comparing it would report agreement or disagreement
 			// that does not exist.
-			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
+			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
+			// Fail open: there is no decision from the service to enforce, so
+			// the stream is written unsharded rather than dropped.
+			shardCounts[i] = 1
 		case result.GetShards() < 1 && result.GetRejectReason() == "":
+			// Should never happen: the frontend's completeShardResults
+			// normalizes a zero shard count without a reject reason away
+			// before it reaches the distributor. Fail open rather than drop
+			// the stream on a contract violation we did not expect.
 			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
-			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode).Inc()
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Inc()
+			shardCounts[i] = 1
 		default:
 			resultShards := int(result.GetShards())
 			shardCounts[i] = resultShards
@@ -1370,12 +1451,12 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 				// Record the gap as a positive magnitude tagged by direction,
 				// so over- and under-sharding are separate distributions.
 				direction := "over"
-				magnitude := resultShards - c.rateStoreShards
-				if magnitude < 0 {
+				difference := resultShards - c.rateStoreShards
+				if difference < 0 {
 					direction = "under"
-					magnitude = -magnitude
+					difference = -difference
 				}
-				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, mode, direction).Observe(float64(magnitude))
+				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, mode, direction).Observe(float64(difference))
 				level.Debug(log.With(util_log.WithUserID(tenantID, d.logger), "stream", c.stream.Labels)).Log(
 					"msg", "shard count divergence",
 					"mode", mode,
