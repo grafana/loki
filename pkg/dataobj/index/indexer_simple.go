@@ -19,9 +19,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrNotSingleTenant is returned when a data object doesn't hold exactly one
-// tenant. Retrying can't fix it.
-var ErrNotSingleTenant = errors.New("data object must hold exactly one tenant")
+var (
+	// ErrInvalidObject marks an error that the shape of a data object causes.
+	// Every such error wraps it, for example [ErrNotSingleTenant]. Retrying
+	// can't fix it.
+	ErrInvalidObject = errors.New("invalid data object")
+
+	// ErrNotSingleTenant is returned when a data object doesn't hold exactly
+	// one tenant. It wraps [ErrInvalidObject].
+	ErrNotSingleTenant = fmt.Errorf("%w: data object must hold exactly one tenant", ErrInvalidObject)
+)
 
 // A Result describes the index object built and uploaded for a single-tenant data object.
 type Result struct {
