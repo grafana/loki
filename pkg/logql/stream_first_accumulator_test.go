@@ -77,6 +77,13 @@ func TestCountAccumulator(t *testing.T) {
 		}))
 	})
 
+	t.Run("panics when value is called before finish", func(t *testing.T) {
+		a := newCountAccumulator(2)
+		a.add(0, 1, 1)
+
+		require.Panics(t, func() { _, _ = a.value(0) })
+	})
+
 	t.Run("reports no value for any step without samples", func(t *testing.T) {
 		a := newCountAccumulator(3)
 		a.finish()

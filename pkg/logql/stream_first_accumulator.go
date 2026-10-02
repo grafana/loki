@@ -34,7 +34,8 @@ func newStepAccumulatorFuncFor(expr *syntax.RangeAggregationExpr) (newStepAccumu
 type countAccumulator struct {
 	// counts holds the +1/-1 marks before finish, with one extra slot after the last step. After
 	// finish, counts[k] is the sample count of step k.
-	counts []int64
+	counts   []int64
+	finished bool
 }
 
 func newCountAccumulator(steps int) stepAccumulator {
@@ -53,8 +54,13 @@ func (a *countAccumulator) finish() {
 	for k := 1; k < len(a.counts); k++ {
 		a.counts[k] += a.counts[k-1]
 	}
+	a.finished = true
 }
 
+// value panics when finish has not run, because the marks are not counts yet.
 func (a *countAccumulator) value(k int) (float64, bool) {
+	if !a.finished {
+		panic("countAccumulator: value called before finish")
+	}
 	return float64(a.counts[k]), a.counts[k] > 0
 }

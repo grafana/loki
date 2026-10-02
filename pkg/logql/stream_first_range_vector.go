@@ -163,6 +163,8 @@ func (r *streamFirstRangeVectorIterator) load() {
 	)
 
 	for lbs, sample, ok := r.it.Peek(); ok; lbs, sample, ok = r.it.Peek() {
+		// Next always returns true after Peek returned a sample. Read errors surface through Err,
+		// which load checks after the loop.
 		_ = r.it.Next()
 
 		lo, hi, inRange := r.windowRange(sample.Timestamp)

@@ -521,8 +521,7 @@ func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
 		return NewDefaultEvaluator(&hintCapturingQuerier{}, 0, 0, l)
 	}
 
-	rangeAggregation := func(t *testing.T, query string) *syntax.RangeAggregationExpr {
-		t.Helper()
+	rangeAggregation := func(query string) *syntax.RangeAggregationExpr {
 		return syntax.MustParseExpr(query).(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr)
 	}
 
@@ -530,7 +529,7 @@ func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
 		return user.InjectOrgID(context.Background(), tenantID)
 	}
 
-	count := rangeAggregation(t, `sum by (app) (count_over_time({app="foo"}[1m]))`)
+	count := rangeAggregation(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
 	t.Run("returns stream-first for a root sum of count_over_time when the tenant enables it", func(t *testing.T) {
 		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), count, true)
@@ -558,7 +557,7 @@ func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
 	})
 
 	t.Run("returns timestamp-first for a range aggregation other than count_over_time", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), rangeAggregation(t, `sum(rate({app="foo"}[1m]))`), true)
+		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), rangeAggregation(`sum(rate({app="foo"}[1m]))`), true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
