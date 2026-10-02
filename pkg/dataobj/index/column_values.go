@@ -79,7 +79,7 @@ func (c *columnValuesCalculation) Flush(_ context.Context, calcCtx *logsCalculat
 			return fmt.Errorf("failed to get bloom bytes for %s: %w", columnName, err)
 		}
 		err = calcCtx.builder.AppendColumnIndex(
-			calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
+			calcCtx.objectPath, calcCtx.sectionIdx,
 			columnName, c.columnIndexes[columnName], bloomBytes,
 		)
 		if err != nil {

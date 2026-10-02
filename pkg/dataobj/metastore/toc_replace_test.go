@@ -104,7 +104,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 		b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		for _, r := range rows {
-			require.NoError(t, b.AppendIndexPointer(tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
+			require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
 		}
 		obj, closer, err := b.Flush()
 		require.NoError(t, err)
@@ -253,7 +253,7 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 	for _, indexPath := range indexPaths {
-		require.NoError(t, b.AppendIndexPointer(tenant, indexpointers.IndexPointer{Path: indexPath, StartTs: unixTime(10), EndTs: unixTime(20)}))
+		require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: indexPath, StartTs: unixTime(10), EndTs: unixTime(20)}))
 	}
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)

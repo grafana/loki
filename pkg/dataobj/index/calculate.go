@@ -233,7 +233,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			break
 		}
 		for _, stream := range streamBuf[:n] {
-			newStreamID, err := c.indexobjBuilder.AppendStream(c.tenant, stream)
+			newStreamID, err := c.indexobjBuilder.AppendStream(stream)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to append to stream: %w", err)
 			}
