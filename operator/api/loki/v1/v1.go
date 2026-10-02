@@ -73,6 +73,8 @@ var (
 	ErrSchemaNotExpired = errors.New("Cannot remove schema. Ensure schema has a successor, global retention is configured, and retention period for the schema being removed has elapsed.")
 	// ErrSchemaRetroactivelyChanged when a schema has been retroactively changed
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
+	// ErrUnsupportedSchemaVersion when a schema version is no longer supported (v11/v12)
+	ErrUnsupportedSchemaVersion = errors.New("Schema version is no longer supported. Only v13 and later are supported.")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
 	ErrHeaderAuthCredentialsConflict = errors.New("credentials and credentialsFile cannot be used at the same time")
 	// ErrReplicationZonesNodes when there is an error retrieving nodes with replication zones labels.

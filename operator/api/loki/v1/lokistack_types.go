@@ -653,10 +653,18 @@ type ObjectStorageSecretSpec struct {
 // ObjectStorageSchemaVersion defines the storage schema version which will be
 // used with the Loki cluster.
 //
-// +kubebuilder:validation:Pattern=`^v1[3-9]$|^v[2-9][0-9]$`
+// +kubebuilder:validation:Enum=v13
 type ObjectStorageSchemaVersion string
 
 const (
+	// ObjectStorageSchemaV11 is deprecated and will no longer reconcile.
+	// Use v13 or later instead.
+	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
+
+	// ObjectStorageSchemaV12 is deprecated and will no longer reconcile.
+	// Use v13 or later instead.
+	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
+
 	// ObjectStorageSchemaV13 when using v13 for the storage schema
 	ObjectStorageSchemaV13 ObjectStorageSchemaVersion = "v13"
 

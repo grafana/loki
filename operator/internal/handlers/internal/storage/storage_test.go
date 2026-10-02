@@ -575,64 +575,8 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			wantAllow: false,
 		},
 		{
-			desc: "disallow - only v12",
+			desc: "disallow - v13 not active yet (future only)",
 			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-01",
-				},
-			},
-			wantAllow: false,
-		},
-		{
-			desc: "allow - only v13",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-01",
-				},
-			},
-			wantAllow: true,
-		},
-		{
-			desc: "disallow - v13 in future",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-01",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-02",
-				},
-			},
-			wantAllow: false,
-		},
-		{
-			desc: "disallow - v13 in past",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-06-01",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-01",
-				},
-			},
-			wantAllow: false,
-		},
-		{
-			desc: "disallow - v13 in past and future",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-06-01",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-07-01",
-				},
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-07-02",
@@ -645,6 +589,16 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			desc: "allow - v13 active with past schema",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2024-06-01",
 				},
 				{
@@ -655,7 +609,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			wantAllow: true,
 		},
 		{
-			desc: "allow - v13 active, v12 in future",
+			desc: "allow - v13 active with future schema",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,

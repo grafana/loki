@@ -343,14 +343,12 @@ func ValidateSchemas(v *lokiv1.ObjectStorageSpec, utcTime time.Time, status loki
 			))
 		}
 
-		// Reject deprecated schema versions (v11, v12) - BoltDB removed in Loki 4.0
-		if sc.Version == "v11" || sc.Version == "v12" {
+		// Reject deprecated schema versions (v11, v12)
+		if sc.Version == lokiv1.ObjectStorageSchemaV11 || sc.Version == lokiv1.ObjectStorageSchemaV12 {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("spec").Child("storage").Child("schemas").Index(i).Child("version"),
 				sc.Version,
-				"schema version "+string(sc.Version)+" is no longer supported (BoltDB removed in Loki 4.0). "+
-					"Only v13 and later versions are supported. "+
-					"Please remove old v11/v12 schema entries from your LokiStack spec before upgrading.",
+				"Schema version "+string(sc.Version)+" is no longer supported. Migrate your schema to use v13 then remove old schema entries.",
 			))
 		}
 

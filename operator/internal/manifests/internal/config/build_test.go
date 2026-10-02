@@ -115,7 +115,6 @@ func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		DiscoverLogLevels:     true,
 		HTTPTimeouts: HTTPTimeoutConfig{
@@ -283,7 +282,6 @@ func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -368,7 +366,6 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.Error(t, err)
@@ -502,7 +499,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithHeaderAuthorizati
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -643,7 +639,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithBasicAuthorizatio
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -801,7 +796,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithRelabelConfigs(t 
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -954,7 +948,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithRetention(t *testing.T) {
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
 		Retention: RetentionOptions{
 			Enabled:           true,
 			DeleteWorkerCount: 50,
@@ -1132,7 +1125,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertRelabelConfi
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1255,7 +1247,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1479,7 +1470,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1573,7 +1563,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec(t *testing.T) {
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1668,7 +1657,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec_EnableIPv6(t *testing.T) 
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1762,7 +1750,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithReplicationSpec(t *testing.T) {
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1891,7 +1878,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSEKMS(t *testing.T) {
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -2019,7 +2005,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSES3(t *testing.T) {
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -2110,7 +2095,6 @@ func TestBuild_ConfigAndRuntimeConfig_WithManualPerStreamRateLimits(t *testing.T
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2201,7 +2185,6 @@ func defaultOptions() Options {
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2215,70 +2198,11 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 	for _, tc := range []struct {
 		name                    string
 		schemaConfig            []lokiv1.ObjectStorageSchema
-		shippers                []string
 		allowStructuredMetadata bool
 		expSchemaConfig         string
 		expStorageConfig        string
 		expStructuredMetadata   string
 	}{
-		{
-			name: "default_config_v11_schema",
-			schemaConfig: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2020-10-01",
-				},
-			},
-			shippers: []string{"boltdb"},
-			expSchemaConfig: `
-  configs:
-    - from: "2020-10-01"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v11
-      store: boltdb-shipper`,
-			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
-			expStructuredMetadata: `
-  allow_structured_metadata: false`,
-		},
-		{
-			name: "v12_schema",
-			schemaConfig: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2020-02-05",
-				},
-			},
-			shippers: []string{"boltdb"},
-			expSchemaConfig: `
-  configs:
-    - from: "2020-02-05"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v12
-      store: boltdb-shipper`,
-			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
-			expStructuredMetadata: `
-  allow_structured_metadata: false`,
-		},
 		{
 			name: "v13_schema",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
@@ -2288,7 +2212,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 				},
 			},
 			allowStructuredMetadata: true,
-			shippers:                []string{"tsdb"},
 			expSchemaConfig: `
   configs:
     - from: "2024-01-01"
@@ -2310,7 +2233,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
   allow_structured_metadata: true`,
 		},
 		{
-			name: "multiple_schema",
+			name: "multiple_v13_schemas",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,
@@ -2325,7 +2248,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 					EffectiveDate: "2024-01-01",
 				},
 			},
-			shippers:                []string{"boltdb", "tsdb"},
 			allowStructuredMetadata: true,
 			expSchemaConfig: `
   configs:
@@ -2334,15 +2256,15 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
         period: 24h
         prefix: index_
       object_store: s3
-      schema: v11
-      store: boltdb-shipper
+      schema: v13
+      store: tsdb
     - from: "2021-01-01"
       index:
         period: 24h
         prefix: index_
       object_store: s3
-      schema: v12
-      store: boltdb-shipper
+      schema: v13
+      store: tsdb
     - from: "2024-01-01"
       index:
         period: 24h
@@ -2351,13 +2273,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
       schema: v13
       store: tsdb`,
 			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
@@ -2378,7 +2293,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 			opts := defaultOptions()
 			opts.ObjectStorage.Schemas = tc.schemaConfig
 			opts.ObjectStorage.AllowStructuredMetadata = tc.allowStructuredMetadata
-			opts.Shippers = tc.shippers
 
 			cfg, _, err := Build(opts)
 			require.NoError(t, err)
@@ -2556,7 +2470,6 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerClien
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2715,7 +2628,6 @@ func TestBuild_ConfigAndRuntimeConfig_OTLPConfigGenerated(t *testing.T) {
 			},
 			AllowStructuredMetadata: true,
 		},
-		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,

@@ -651,8 +651,6 @@ spec:
         displayName: Version
         path: storage.schemas[0].version
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:v11
-        - urn:alm:descriptor:com.tectonic.ui:select:v12
         - urn:alm:descriptor:com.tectonic.ui:select:v13
       - description: Name of a secret in the namespace configured for object storage
           secrets.
@@ -1347,8 +1345,7 @@ spec:
         displayName: Version
         path: storage.schemas[0].version
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:select:v11
-        - urn:alm:descriptor:com.tectonic.ui:select:v12
+        - urn:alm:descriptor:com.tectonic.ui:select:v13
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name

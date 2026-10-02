@@ -107,9 +107,6 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
-	// All schemas now use tsdb shipper (v13 and later). BoltDB schemas (v11, v12) removed in Loki 4.0.
-	shippers := []string{"tsdb"}
-
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -168,7 +165,6 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
-		Shippers:              shippers,
 		ObjectStorage:         opt.ObjectStorage,
 		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,

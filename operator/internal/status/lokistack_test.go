@@ -206,54 +206,14 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 	}
 }
 
-func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
+func TestGenerateNoWarningCondition_WithV13Schemas(t *testing.T) {
 	tt := []struct {
 		desc          string
 		schemas       []lokiv1.ObjectStorageSchema
 		wantCondition []metav1.Condition
 	}{
 		{
-			desc: "no V13 in schema config",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2020-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2023-10-11",
-				},
-			},
-			wantCondition: []metav1.Condition{{
-				Type:    string(lokiv1.ConditionWarning),
-				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
-				Message: messageWarningNeedsSchemaVersionUpdate,
-			}},
-		},
-		{
-			desc: "with V13 not as the last element in schema config",
-			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2020-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2023-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-10-11",
-				},
-			},
-			wantCondition: []metav1.Condition{{
-				Type:    string(lokiv1.ConditionWarning),
-				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
-				Message: messageWarningNeedsSchemaVersionUpdate,
-			}},
-		},
-		{
-			desc: "with V13 as the last element in schema config",
+			desc: "with V13 as latest schema - no warning",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,

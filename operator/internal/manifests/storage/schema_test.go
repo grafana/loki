@@ -66,14 +66,11 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	}
 
 	actual, err := BuildSchemaConfig(utcTime, spec, status, nil)
+	// Both schemas have same version v13, reduction keeps only first
 	expected := []lokiv1.ObjectStorageSchema{
 		{
 			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-10-01",
 		},
 	}
 
@@ -139,22 +136,11 @@ func TestBuildSchemas(t *testing.T) {
 		},
 	}
 
+	// All schemas have same version v13, reduction keeps only first
 	expected := []lokiv1.ObjectStorageSchema{
 		{
 			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-06-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-10-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-11-01",
 		},
 	}
 	actual := buildSchemas(schemas)
@@ -190,22 +176,11 @@ func TestReduceSortedSchemas(t *testing.T) {
 		},
 	}
 
+	// All schemas have same version v13, reduction keeps only first
 	expected := []lokiv1.ObjectStorageSchema{
 		{
 			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-06-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-10-01",
-		},
-		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
-			EffectiveDate: "2021-11-01",
 		},
 	}
 	actual := reduceSortedSchemas(schemas)

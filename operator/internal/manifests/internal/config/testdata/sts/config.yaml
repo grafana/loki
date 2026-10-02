@@ -149,9 +149,9 @@ server:
   log_level: info
 storage_config:
   use_thanos_objstore: true
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
+  tsdb_shipper:
+    active_index_directory: /tmp/loki/tsdb-index
+    cache_location: /tmp/loki/tsdb-cache
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:

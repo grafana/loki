@@ -30,7 +30,6 @@ type Options struct {
 	WriteAheadLog         WriteAheadLog
 	EnableRemoteReporting bool
 	DiscoverLogLevels     bool
-	Shippers              []string
 
 	ObjectStorage storage.Options
 

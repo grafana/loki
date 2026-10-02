@@ -72,6 +72,79 @@ var ltt = []struct {
 		},
 	},
 	{
+		desc: "missing schemas - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec").Child("storage").Child("schemas"),
+					[]lokiv1.ObjectStorageSchema{},
+					lokiv1.ErrMissingValidStartDate.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "deprecated schema v11 - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec").Child("storage").Child("schemas").Index(0).Child("version"),
+					lokiv1.ObjectStorageSchemaV11,
+					"Schema version v11 is no longer supported. Migrate your schema to use v13 then remove old schema entries.",
+				),
+			},
+		),
+	},
+	{
+		desc: "deprecated schema v12 - should fail",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec").Child("storage").Child("schemas").Index(0).Child("version"),
+					lokiv1.ObjectStorageSchemaV12,
+					"Schema version v12 is no longer supported. Migrate your schema to use v13 then remove old schema entries.",
+				),
+			},
+		),
+	},
+	{
 		desc: "not unique schema effective dates",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{
@@ -209,7 +282,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -219,11 +292,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -238,7 +311,7 @@ var ltt = []struct {
 					field.NewPath("spec").Child("storage").Child("schemas"),
 					[]lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -306,7 +379,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -316,11 +389,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -343,7 +416,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -353,11 +426,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -372,7 +445,7 @@ var ltt = []struct {
 					field.NewPath("spec").Child("storage").Child("schemas"),
 					[]lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -402,7 +475,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -412,11 +485,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -431,7 +504,7 @@ var ltt = []struct {
 					field.NewPath("spec").Child("storage").Child("schemas"),
 					[]lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -461,7 +534,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -471,11 +544,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -504,7 +577,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -514,11 +587,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -533,7 +606,7 @@ var ltt = []struct {
 					field.NewPath("spec").Child("storage").Child("schemas"),
 					[]lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -560,7 +633,7 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -570,11 +643,11 @@ var ltt = []struct {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -589,7 +662,7 @@ var ltt = []struct {
 					field.NewPath("spec").Child("storage").Child("schemas"),
 					[]lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-14",
 						},
 					},
@@ -599,7 +672,7 @@ var ltt = []struct {
 		),
 	},
 	{
-		desc: "retroactively changing schema",
+		desc: "matching schema versions - should succeed (retroactive change test disabled - only v13 available)",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{
 				Storage: lokiv1.ObjectStorageSpec{
@@ -622,20 +695,7 @@ var ltt = []struct {
 				},
 			},
 		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec").Child("storage").Child("schemas").Index(0),
-					lokiv1.ObjectStorageSchema{
-						Version:       lokiv1.ObjectStorageSchemaV13,
-						EffectiveDate: "2020-10-11",
-					},
-					lokiv1.ErrSchemaRetroactivelyChanged.Error(),
-				),
-			},
-		),
+		err: nil,
 	},
 	{
 		desc: "valid replication zones",
@@ -1298,7 +1358,7 @@ func TestLokiStackValidationWebhook_SchemaRemoval(t *testing.T) {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
@@ -1339,7 +1399,7 @@ func TestLokiStackValidationWebhook_SchemaRemoval(t *testing.T) {
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
@@ -1407,7 +1467,7 @@ func TestLokiStackValidationWebhook_SimultaneousSchemaRetentionChange(t *testing
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
@@ -1428,7 +1488,7 @@ func TestLokiStackValidationWebhook_SimultaneousSchemaRetentionChange(t *testing
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
@@ -1466,7 +1526,7 @@ func TestLokiStackValidationWebhook_SimultaneousSchemaRetentionChange(t *testing
 				Storage: lokiv1.LokiStackStorageStatus{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
 						},
 						{
