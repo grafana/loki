@@ -180,8 +180,8 @@ func earliestRecordTime(builders []builder) time.Time {
 // the index is not referenced from the metastore until it is recorded in the
 // ToC.
 //
-// An error that wraps [index.ErrUnprocessableObject] comes from the shape of the
-// object. It is returned right away, as retrying can't fix it.
+// An error that wraps [index.ErrUnprocessableObject] comes from the shape of
+// the object. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
