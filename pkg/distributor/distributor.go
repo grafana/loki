@@ -833,31 +833,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		// streams are enforced as before. It is empty when the push consists of
 		// live-mode streams only.
 		if len(streams) > 0 {
-			enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
-			accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-			enforceTimer.ObserveDuration()
-			if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-				if len(rejected) > 0 {
-					discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
-					for _, stream := range rejected {
-						discardedStreams = append(discardedStreams, stream.Stream)
-					}
-					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
-
-					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-					// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-					// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-					err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-					d.writeFailuresManager.Log(tenantID, err)
-					// Set the validation error to the stream limit error so it is returned to the client.
-					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-					// Do not return early here even if nothing was accepted: the
-					// live-mode rejection below still needs to run so its discards
-					// are tracked too.
-				}
-				streams = accepted
-			}
+			streams, validationErr = d.enforceLimitsForStreams(ctx, tenantID, streams, validationContext, streamResolver, format)
 		}
 	}
 
@@ -873,13 +849,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		validationErr = httpgrpc.Error(http.StatusTooManyRequests, rejectErr.Error())
 	}
 
-	// The streams that were not rejected are still written, so only a push
-	// whose streams were all rejected - live-mode and non-live alike -
-	// returns the error instead. validationErr is guaranteed set here: an
-	// earlier check already returned if nothing survived validation at all,
-	// so an empty streams slice at this point means one of the two rejection
-	// blocks above ran and set it. validationErr is already an httpgrpc
-	// error, so it is returned as-is instead of being wrapped again.
 	if len(streams) == 0 && validationErr != nil {
 		return nil, validationErr
 	}
@@ -995,6 +964,36 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (d *Distributor) enforceLimitsForStreams(ctx context.Context, tenantID string, streams []KeyedStream, validationContext validationContext, streamResolver push.StreamResolver, format string) ([]KeyedStream, error) {
+	var validationErr error
+	enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+	accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+	enforceTimer.ObserveDuration()
+	if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+		if len(rejected) > 0 {
+			discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+			for _, stream := range rejected {
+				discardedStreams = append(discardedStreams, stream.Stream)
+			}
+			d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+
+			// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+			// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+			// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+			// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+			err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+			d.writeFailuresManager.Log(tenantID, err)
+			// Set the validation error to the stream limit error so it is returned to the client.
+			validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+			// Do not return early here even if nothing was accepted: the
+			// live-mode rejection below still needs to run so its discards
+			// are tracked too.
+		}
+		streams = accepted
+	}
+	return streams, validationErr
 }
 
 // processStreamEntries validates and enriches entries, then removes empty scopes and resources.
@@ -1365,8 +1364,6 @@ type limitsServiceShardCandidate struct {
 	totalSize       uint64
 }
 
-// limitsServiceShardTimeout bounds the synchronous CheckLimitsAndShard call
-// on the push path.
 // TODO(chaudum): Is a 2s timeout too long? Running it in production will tell...
 const limitsServiceShardTimeout = 2 * time.Second
 
@@ -1379,17 +1376,11 @@ const limitsServiceShardTimeout = 2 * time.Second
 // candidate the service has no usable answer for -- the whole call failed,
 // there was no result for the stream, the service could not check it, or
 // the answering instance does not own its partition -- gets a count of 1:
-// it is written unsharded rather than rejected, since there is no decision
-// from the service to enforce (fail open). A limits-service outage removes
+// it is written unsharded rather than rejected. A limits-service outage removes
 // sharding until it recovers rather than stopping ingestion.
 //
 // A candidate the service rejected, for example for exceeding the stream
-// limit, gets a count of 0: the service has no budget for the stream at all,
-// not even for one shard, so it must not be written. The caller decides what
-// to do with a 0; shadow-mode callers discard the counts.
-//
-// It runs synchronously, on the push path, with a short timeout. The mode is
-// only used to label the metrics.
+// limit, gets a count of 0.
 func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mode string, candidates []limitsServiceShardCandidate) []int {
 	// Deferred so that every path, success, failure and Unimplemented alike,
 	// records the latency the call adds.
@@ -1415,7 +1406,7 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			// The service predates the RPC, for instance during a rollout.
 			level.Warn(d.logger).Log("msg", "CheckLimitsAndShard call returned Unimplemented; the limits service may predate this RPC", "tenant", tenantID, "mode", mode)
 		} else {
-			level.Debug(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
+			level.Error(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		}
 		return shardCounts
 	}
