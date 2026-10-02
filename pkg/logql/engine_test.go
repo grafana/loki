@@ -503,6 +503,30 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 }
 
+func TestEngine_RangeAggEvaluator_UnparsableSeriesLabels(t *testing.T) {
+	samples := make([]logproto.Sample, 0, testSize)
+	for i := int64(0); i < testSize; i++ {
+		samples = append(samples, identity(i).Sample)
+	}
+	querier := &errorIteratorQuerier{
+		samples: func() []iter.SampleIterator {
+			return []iter.SampleIterator{
+				iter.NewSeriesIterator(logproto.Series{
+					Labels:  `{app="foo", badlabels=}`,
+					Samples: samples,
+				}),
+			}
+		},
+	}
+	eng := NewEngine(EngineOpts{}, querier, NoLimits, log.NewNopLogger())
+
+	params, err := NewLiteralParams(`count_over_time({app="foo"}[1m])`, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
+	_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.Error(t, err)
+}
+
 func TestEngine_MaxSeries(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), &fakeLimits{maxSeries: 1}, log.NewNopLogger())
 

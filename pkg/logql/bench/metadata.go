@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
@@ -243,7 +244,7 @@ func BuildMetadata(config *GeneratorConfig, streamsMeta []StreamMetadata) *Datas
 			metadata.ByKeyword[keyword] = append(metadata.ByKeyword[keyword], selector)
 		}
 
-		lbls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(selector)
+		lbls, err := syntax.ParseLabels(selector)
 		if err != nil {
 			continue // Skip this stream if we can't parse labels
 		}

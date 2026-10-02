@@ -260,6 +260,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	if !strings.Contains(query, "@") {
 		return true
 	}
+	//nolint:forbidigo // parses a PromQL expression, not LogQL labels
 	expr, err := parser.NewParser(parser.Options{}).ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.

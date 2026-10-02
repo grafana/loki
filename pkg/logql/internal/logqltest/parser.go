@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -655,11 +654,11 @@ func parseSeriesLabels(s string) (labels.Labels, error) {
 	if strings.TrimSpace(s) == "{}" {
 		return labels.EmptyLabels(), nil
 	}
-	// Unlike syntax.ParseLabels, keep empty-value labels instead of dropping them with WithoutEmpty().
-	// That normalization exists for write-path hash stability, but a query result can carry a label
-	// with an empty value (e.g. a json expression whose path is missing sets `age=""`), and a test
-	// must assert `{age=""}` as distinct from an absent `age`.
-	return promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s)
+	// Unlike syntax.ParseLabels, ParseMetric keeps empty-value labels instead of dropping
+	// them with WithoutEmpty(). A query result can carry a label with an empty value
+	// (e.g. a json expression whose path is missing sets `age=""`), and a test must
+	// assert `{age=""}` as distinct from an absent `age`.
+	return syntax.ParseMetric(s)
 }
 
 // parseSamples expands a series of tokens (`5`, `_`, `NaN`, `2+3x4`, `2-1x4`, `2x4`) into samples.
