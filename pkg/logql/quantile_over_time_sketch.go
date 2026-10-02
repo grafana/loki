@@ -151,6 +151,10 @@ func ProbabilisticQuantileMatrixFromProto(proto *logproto.QuantileSketchMatrix) 
 type QuantileSketchStepEvaluator struct {
 	iter RangeVectorIterator
 
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
 	err error
 }
 
@@ -161,11 +165,12 @@ func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	}
 	ts, r := e.iter.At()
 	vec := r.QuantileSketchVec()
-	for _, s := range vec {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
-			e.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, ProbabilisticQuantileVector{}
+	if !e.keepsErroredLines {
+		for _, s := range vec {
+			if s.Metric.Has(logqlmodel.ErrorLabel) {
+				e.err = logqlmodel.NewPipelineErr(s.Metric)
+				return false, 0, ProbabilisticQuantileVector{}
+			}
 		}
 	}
 	return true, ts, vec
