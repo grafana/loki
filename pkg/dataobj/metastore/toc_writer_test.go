@@ -213,6 +213,30 @@ func TestTableOfContentsWriter(t *testing.T) {
 			require.Zero(t, bucket.calls)
 		})
 	}
+
+	t.Run("WriteEntry returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant", func(t *testing.T) {
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
+		uploadToC(t, inner, tocPath, "tenant-b", "indexes/b")
+		before := readToC(context.Background(), t, inner, tocPath)
+
+		bucket := &countingBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket)
+
+		// WriteEntry retries other errors until the context is done, so the
+		// timeout turns a regression into a failure instead of a hang.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := writer.WriteEntry(ctx, "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(20),
+		})
+		require.ErrorIs(t, err, errTenantMismatch)
+		require.NotErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, before, readToC(context.Background(), t, inner, tocPath))
+	})
 }
 
 // writeTimeRanges records path in the ToC of every tenant in timeRanges.

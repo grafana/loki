@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -32,6 +33,19 @@ var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	// MaxPageRows: 20000,
 
 	SectionStripeMergeLimit: 2,
+}
+
+// errTenantMismatch is returned when a ToC holds a section of a tenant other
+// than the tenant the ToC belongs to. Retrying can't fix it.
+var errTenantMismatch = stderrors.New("ToC section belongs to another tenant")
+
+// checkSectionTenant returns errTenantMismatch if section belongs to a tenant
+// other than tenant.
+func checkSectionTenant(section *dataobj.Section, tenant string) error {
+	if section.Tenant != tenant {
+		return fmt.Errorf("%w: section has tenant %q, want %q", errTenantMismatch, section.Tenant, tenant)
+	}
+	return nil
 }
 
 // The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular tenant and time range.
@@ -69,8 +83,8 @@ func (m *TableOfContentsWriter) UnregisterMetrics(reg prometheus.Registerer) {
 // WriteEntry adds entry to the tenant's ToC of every window the entry overlaps.
 //
 // WriteEntry returns an error without retrying if entry has no valid time
-// range. When it fails on one window, the ToCs of the windows before it
-// already hold the entry.
+// range, or if a ToC holds a section of another tenant. When it fails on one
+// window, the ToCs of the windows before it already hold the entry.
 //
 // WriteEntry is not safe for concurrent use, because all calls share one
 // buffer.
@@ -183,11 +197,15 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
 			m.metrics.incTableOfContentsWrites(statusFailure)
+			if stderrors.Is(err, errTenantMismatch) {
+				break
+			}
 			b.Wait()
 		}
 
-		// The loop only stops without writing once the context is done, which
-		// can happen before the first attempt, when err is still nil.
+		// The loop stops without writing on a tenant mismatch, or once the
+		// context is done. The context can be done before the first attempt,
+		// when err is still nil.
 		if !written {
 			return stderrors.Join(b.Err(), err)
 		}
@@ -214,6 +232,7 @@ func (w *wrappedReadCloser) Close() error {
 }
 
 // copyFromExistingToc reads the provided table of contents (toc) object and appends the contained index pointers to the builder. The resulting builder will contain exactly the same entries as the input object.
+// It returns errTenantMismatch if the object holds a section of a tenant other than the builder's tenant.
 func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObject *dataobj.Object) error {
 	var indexPointersReader indexpointers.RowReader
 	defer indexPointersReader.Close()
@@ -222,11 +241,13 @@ func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObje
 	pbuf := make([]indexpointers.IndexPointer, 256)
 
 	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
+		if err := checkSectionTenant(section, builder.Tenant()); err != nil {
+			return err
+		}
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return errors.Wrap(err, "opening section")
 		}
-		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
 		if err := indexPointersReader.Open(ctx); err != nil {
 			return errors.Wrap(err, "opening index pointers reader")
@@ -234,7 +255,7 @@ func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObje
 		for {
 			n, err := indexPointersReader.Read(ctx, pbuf)
 			for _, indexPointer := range pbuf[:n] {
-				if err := builder.AppendIndexPointer(tenantID, indexPointer); err != nil {
+				if err := builder.AppendIndexPointer(builder.Tenant(), indexPointer); err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}
 			}
