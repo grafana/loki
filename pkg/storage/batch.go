@@ -505,7 +505,7 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewNonOverlappingIterator(iterators))
+		result = append(result, iter.NewChainedIterator(iterators))
 	}
 
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
@@ -696,7 +696,7 @@ func (it *timestampFirstSampleBatchIterator) buildHeapIterator(
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
+		result = append(result, iter.NewChainedSampleIterator(iterators))
 	}
 
 	return iter.NewTimestampFirstMergeSampleIterator(it.ctx, result), nil
@@ -724,14 +724,13 @@ func fetchChunkBySeries(
 ) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
-	// Make sure the initial chunks are loaded. This is not one chunk
-	// per series, but rather a chunk per non-overlapping iterator.
+	// Load the first chunk of each non-overlapping chunk run, not one chunk per series.
 	if err := loadFirstChunks(ctx, s, chksBySeries); err != nil {
 		return nil, err
 	}
 
-	// Now that we have the first chunk for each series loaded,
-	// we can proceed to filter the series that don't match.
+	// Now that the first chunk of each chunk run is loaded, filter out the
+	// series whose chunks don't match.
 	chksBySeries = filterSeriesByMatchers(chksBySeries, matchers, chunkFilter, metrics)
 
 	var allChunks []*LazyChunk
