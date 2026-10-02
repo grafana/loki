@@ -325,9 +325,11 @@ func TestFileReader_BufferInvariant(t *testing.T) {
 			got, err := r.Peek(n)
 			require.NoError(t, err, "iteration %d", i)
 			require.Equal(t, off, r.Offset(), "iteration %d", i)
-			want := min(n, len(content)-off)
-			require.GreaterOrEqual(t, len(got), want, "iteration %d", i)
-			require.Equal(t, content[off:off+want], got[:want], "iteration %d", i)
+			if want := min(n, len(content)-off); want > 0 {
+				require.Equal(t, content[off:off+want], got, "iteration %d", i)
+			} else {
+				require.Empty(t, got, "iteration %d", i)
+			}
 		case 3:
 			// ReadInto a random number of bytes into a byte buffer
 			if r.Len() == 0 {
@@ -370,4 +372,54 @@ func TestFileReader_ReadIntoPastEOF(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidSize)
 	require.Equal(t, content[5:], buf[:length-5])
 	require.Equal(t, length, r.Offset())
+}
+
+// TestFileReader_NeverReadsPastSegment checks that bytes after the end of the
+// reader's segment are never returned, even though the file continues.
+func TestFileReader_NeverReadsPastSegment(t *testing.T) {
+	const (
+		base   = 17
+		length = 3*ReaderBufferSize + 137
+	)
+
+	t.Run("Peek", func(t *testing.T) {
+		r, content := newTestFileReaderWithGeneratedData(t, base, length)
+		require.NoError(t, r.ResetAt(length-2))
+
+		got, err := r.Peek(10)
+		require.NoError(t, err)
+		require.Equal(t, content[length-2:], got)
+	})
+
+	t.Run("ReadIntoThroughWindow", func(t *testing.T) {
+		r, content := newTestFileReaderWithGeneratedData(t, base, length)
+		require.NoError(t, r.ResetAt(length-2))
+
+		buf := make([]byte, 5)
+		require.ErrorIs(t, r.ReadInto(buf), ErrInvalidSize)
+		require.Equal(t, content[length-2:], buf[:2])
+		require.Equal(t, make([]byte, 3), buf[2:], "bytes past the segment must not be read")
+		require.Equal(t, length, r.Offset())
+	})
+
+	t.Run("ReadIntoDirect", func(t *testing.T) {
+		r, content := newTestFileReaderWithGeneratedData(t, base, length)
+		require.NoError(t, r.ResetAt(length-10))
+
+		buf := make([]byte, 2*ReaderBufferSize)
+		require.ErrorIs(t, r.ReadInto(buf), ErrInvalidSize)
+		require.Equal(t, content[length-10:], buf[:10])
+		require.Equal(t, make([]byte, len(buf)-10), buf[10:], "bytes past the segment must not be read")
+		require.Equal(t, length, r.Offset())
+	})
+
+	t.Run("Read", func(t *testing.T) {
+		r, _ := newTestFileReaderWithGeneratedData(t, base, length)
+		require.NoError(t, r.ResetAt(length-2))
+
+		got, err := r.Read(5)
+		require.ErrorIs(t, err, ErrInvalidSize)
+		require.Nil(t, got)
+		require.Equal(t, length, r.Offset())
+	})
 }

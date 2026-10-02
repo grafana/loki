@@ -97,9 +97,13 @@ func (f *FileReader) dropWindow() {
 }
 
 // fill ensures at least need bytes are in the window, or that the end of the
-// file has been reached, in which case it returns io.EOF. It always asks for as
+// segment has been reached, in which case it returns io.EOF. It asks for as
 // much as the window can hold, so a single pread serves many small reads.
 func (f *FileReader) fill(need int) error {
+	if need > len(f.buf) {
+		return fmt.Errorf("%w filling %d bytes: window holds %d", ErrInvalidSize, need, len(f.buf))
+	}
+
 	if f.n-f.r >= need {
 		return nil
 	}
@@ -110,8 +114,8 @@ func (f *FileReader) fill(need int) error {
 		f.r = 0
 	}
 
-	if f.n < len(f.buf) {
-		m, err := f.file.ReadAt(f.buf[f.n:], int64(f.base+f.off+(f.n-f.r)))
+	if limit := min(len(f.buf), f.Len()); f.n < limit {
+		m, err := f.file.ReadAt(f.buf[f.n:limit], int64(f.base+f.off+f.n))
 		f.n += m
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
@@ -142,15 +146,11 @@ func (f *FileReader) Skip(l int) error {
 }
 
 func (f *FileReader) Peek(n int) ([]byte, error) {
-	if n > len(f.buf) {
-		// Callers are expected to check Size() first and use Read for anything
-		// larger; this mirrors bufio.Reader.Peek refusing to peek past its own
-		// buffer.
-		return nil, fmt.Errorf("%w peeking %d bytes: window holds %d", ErrInvalidSize, n, len(f.buf))
-	}
-
+	// Callers are expected to check Size() first and use Read for anything
+	// larger; fill refuses to fill more than the window holds, which mirrors
+	// bufio.Reader.Peek refusing to peek past its own buffer.
 	err := f.fill(n)
-	// Still return a partial result when Peeking beyond the end of the file;
+	// Still return a partial result when Peeking beyond the end of the segment;
 	// this mirrors bufio.Reader.Peek.
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
@@ -192,7 +192,7 @@ func (f *FileReader) ReadInto(b []byte) error {
 		// copied than it saves, so it goes straight into the destination.
 		if len(b)-read >= len(f.buf) {
 			f.dropWindow()
-			m, err := f.file.ReadAt(b[read:], int64(f.base+f.off))
+			m, err := f.file.ReadAt(b[read:read+min(len(b)-read, f.Len())], int64(f.base+f.off))
 			f.off += m
 			read += m
 			if err != nil && !errors.Is(err, io.EOF) {
