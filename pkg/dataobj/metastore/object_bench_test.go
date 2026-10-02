@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -104,7 +105,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 			}
 
 			// Build and store the index object
-			timeRanges := builder.TimeRanges()
+			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			obj, closer, err := builder.Flush()
 			require.NoError(b, err)
 			b.Cleanup(func() { _ = closer.Close() })
@@ -214,7 +215,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 			require.NoError(b, err)
 
-			timeRanges := builder.TimeRanges()
+			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			require.Len(b, timeRanges, 1)
 
 			obj, closer, err := builder.Flush()

@@ -572,7 +572,6 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 					b.Fatal(err)
 				}
 				calcCtx := &logsCalculationContext{
-					tenantID:           "bench-tenant",
 					objectPath:         "bench/path",
 					sectionIdx:         0,
 					streamLabels:       streamLabels,

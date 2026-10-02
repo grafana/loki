@@ -101,6 +101,19 @@ func TestBuilder(t *testing.T) {
 	})
 }
 
+func TestNewBuilder(t *testing.T) {
+	t.Run("returns a builder bound to the tenant", func(t *testing.T) {
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.Equal(t, testTenant, builder.Tenant())
+	})
+
+	t.Run("returns an error when the tenant is empty", func(t *testing.T) {
+		_, err := NewBuilder("", testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.ErrorContains(t, err, "tenant must not be empty")
+	})
+}
+
 // TestBuilder_Append ensures that appending to the buffer eventually reports
 // that the buffer is full.
 func TestBuilder_Append(t *testing.T) {
@@ -190,89 +203,79 @@ func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
 	}
 }
 
-func TestBuilder_TimeRanges_PostingsOnly(t *testing.T) {
-	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+func TestBuilder_TimeRange(t *testing.T) {
+	t.Run("returns the builder's tenant and zero times when the builder is empty", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-	base := time.Unix(8000, 0).UTC()
-	tenant := "tenant-a"
-
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
-		StreamID: 2, Timestamp: base.Add(time.Hour),
+		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-	require.Equal(t, tenant, ranges[0].Tenant)
-	require.Equal(t, base, ranges[0].MinTime)
-	require.Equal(t, base.Add(time.Hour), ranges[0].MaxTime)
-}
+	t.Run("returns the postings range when the builder holds only postings", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
-	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+		base := time.Unix(8000, 0).UTC()
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: base,
+		})
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
+			StreamID: 2, Timestamp: base.Add(time.Hour),
+		})
 
-	base := time.Unix(9000, 0).UTC()
-
-	// tenant-a: postings only.
-	b.ObserveLabelPosting("tenant-a", postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-	// tenant-b: postings only, different window.
-	b.ObserveLabelPosting("tenant-b", postings.LabelObservation{
-		ObjectPath: "/b", SectionIndex: 0, ColumnName: "app", LabelValue: "z",
-		StreamID: 1, Timestamp: base.Add(2 * time.Hour),
+		require.Equal(t, dataobj.TimeRange{
+			Tenant:  testTenant,
+			MinTime: base,
+			MaxTime: base.Add(time.Hour),
+		}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 2)
+	t.Run("returns the union of the streams and postings ranges", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-	byTenant := map[string]dataobj.TimeRange{}
-	for _, r := range ranges {
-		byTenant[r.Tenant] = r
-	}
-	require.Equal(t, base, byTenant["tenant-a"].MinTime)
-	require.Equal(t, base, byTenant["tenant-a"].MaxTime)
-	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MinTime)
-	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MaxTime)
-}
+		base := time.Unix(10000, 0).UTC()
 
-func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
-	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+		// Streams cover [base, base+1h]; postings extend the window on both ends.
+		_, err = b.AppendStream(streams.Stream{
+			Labels:           labels.FromStrings("app", "x"),
+			MinTimestamp:     base,
+			MaxTimestamp:     base.Add(time.Hour),
+			UncompressedSize: 1,
+		})
+		require.NoError(t, err)
 
-	base := time.Unix(10000, 0).UTC()
-	tenant := testTenant
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: base.Add(-time.Hour),
+		})
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 2, Timestamp: base.Add(2 * time.Hour),
+		})
 
-	// Streams cover [base, base+1h]; postings extend the window on both ends.
-	_, err = b.AppendStream(streams.Stream{
-		Labels:           labels.FromStrings("app", "x"),
-		MinTimestamp:     base,
-		MaxTimestamp:     base.Add(time.Hour),
-		UncompressedSize: 1,
-	})
-	require.NoError(t, err)
-
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base.Add(-time.Hour),
-	})
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 2, Timestamp: base.Add(2 * time.Hour),
+		require.Equal(t, dataobj.TimeRange{
+			Tenant:  testTenant,
+			MinTime: base.Add(-time.Hour),
+			MaxTime: base.Add(2 * time.Hour),
+		}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-	require.Equal(t, tenant, ranges[0].Tenant)
-	require.Equal(t, base.Add(-time.Hour), ranges[0].MinTime)
-	require.Equal(t, base.Add(2*time.Hour), ranges[0].MaxTime)
+	t.Run("returns zero times after Reset", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: time.Unix(8000, 0).UTC(),
+		})
+		require.False(t, b.TimeRange().MinTime.IsZero())
+
+		b.Reset()
+		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
+	})
 }
 
 func TestUnionTimeRange(t *testing.T) {
@@ -302,28 +305,6 @@ func TestUnionTimeRange(t *testing.T) {
 	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
 	require.True(t, gotMin.IsZero())
 	require.True(t, gotMax.IsZero())
-}
-
-func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
-	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
-
-	base := time.Unix(8000, 0).UTC()
-	tenant := "test-tenant"
-
-	// Observe a label posting so TimeRanges() is non-empty.
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-
-	// After Reset, TimeRanges() must be empty.
-	b.Reset()
-	ranges = b.TimeRanges()
-	require.Empty(t, ranges)
 }
 
 // failingReadStore is a scratch store whose reads fail: either all of them, or
