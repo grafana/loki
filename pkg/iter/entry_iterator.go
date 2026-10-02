@@ -405,24 +405,24 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-type sequentialIterator struct {
+type chainedIterator struct {
 	iterators []EntryIterator
 	curr      EntryIterator
 	err       error
 }
 
-// NewSequentialIterator returns an iterator that plays each given iterator to completion,
+// NewChainedIterator returns an iterator that plays each given iterator to completion,
 // in order, before moving to the next. It makes no assumption about the time range each
 // iterator covers.
 //
 // Producing time-ordered output, if that is required, is the caller's job.
-func NewSequentialIterator(iterators []EntryIterator) EntryIterator {
-	return &sequentialIterator{
+func NewChainedIterator(iterators []EntryIterator) EntryIterator {
+	return &chainedIterator{
 		iterators: iterators,
 	}
 }
 
-func (i *sequentialIterator) Next() bool {
+func (i *chainedIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if i.curr != nil {
 			// The current iterator stopped. If it failed, surface the error and stop:
@@ -447,29 +447,29 @@ func (i *sequentialIterator) Next() bool {
 	return true
 }
 
-func (i *sequentialIterator) At() logproto.Entry {
+func (i *chainedIterator) At() logproto.Entry {
 	return i.curr.At()
 }
 
-func (i *sequentialIterator) Labels() string {
+func (i *chainedIterator) Labels() string {
 	if i.curr == nil {
 		return ""
 	}
 	return i.curr.Labels()
 }
 
-func (i *sequentialIterator) StreamHash() uint64 {
+func (i *chainedIterator) StreamHash() uint64 {
 	if i.curr == nil {
 		return 0
 	}
 	return i.curr.StreamHash()
 }
 
-func (i *sequentialIterator) Err() error {
+func (i *chainedIterator) Err() error {
 	return i.err
 }
 
-func (i *sequentialIterator) Close() error {
+func (i *chainedIterator) Close() error {
 	// Close every iterator and keep all errors: Add ignores nil, so a clean close
 	// still returns nil.
 	var errs util.MultiError

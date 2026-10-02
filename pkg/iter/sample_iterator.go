@@ -766,7 +766,7 @@ func NewStreamFirstMultiSeriesIterator(series []logproto.Series) SampleIterator 
 		is = append(is, NewSeriesIterator(series[i]))
 	}
 
-	return NewSequentialSampleIterator(is)
+	return NewChainedSampleIterator(is)
 }
 
 // NewSeriesIterator iterates over sample in a series.
@@ -802,7 +802,7 @@ func (i *seriesIterator) Close() error {
 	return nil
 }
 
-type sequentialSampleIterator struct {
+type chainedSampleIterator struct {
 	i         int
 	iterators []SampleIterator
 	curr      SampleIterator
@@ -813,18 +813,18 @@ type sequentialSampleIterator struct {
 	closeErrs util.MultiError
 }
 
-// NewSequentialSampleIterator returns an iterator that plays each given iterator to
+// NewChainedSampleIterator returns an iterator that plays each given iterator to
 // completion, in order, before moving to the next. It makes no assumption about the time
 // range each iterator covers.
 //
 // Producing time-ordered output, if that is required, is the caller's job.
-func NewSequentialSampleIterator(iterators []SampleIterator) SampleIterator {
-	return &sequentialSampleIterator{
+func NewChainedSampleIterator(iterators []SampleIterator) SampleIterator {
+	return &chainedSampleIterator{
 		iterators: iterators,
 	}
 }
 
-func (i *sequentialSampleIterator) Next() bool {
+func (i *chainedSampleIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
 		if i.curr != nil {
 			// The current iterator stopped. If it failed, surface the error and stop:
@@ -854,23 +854,23 @@ func (i *sequentialSampleIterator) Next() bool {
 	return true
 }
 
-func (i *sequentialSampleIterator) At() logproto.Sample {
+func (i *chainedSampleIterator) At() logproto.Sample {
 	return i.curr.At()
 }
 
-func (i *sequentialSampleIterator) Labels() string {
+func (i *chainedSampleIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *sequentialSampleIterator) StreamHash() uint64 {
+func (i *chainedSampleIterator) StreamHash() uint64 {
 	return i.curr.StreamHash()
 }
 
-func (i *sequentialSampleIterator) Err() error {
+func (i *chainedSampleIterator) Err() error {
 	return i.err
 }
 
-func (i *sequentialSampleIterator) Close() error {
+func (i *chainedSampleIterator) Close() error {
 	if i.curr != nil {
 		// Some implementations return their stored read error from Close too. When
 		// it does, err is skipped: it already surfaced through i.Err(), so adding it

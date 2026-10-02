@@ -86,7 +86,7 @@ func (c *LazyChunk) Iterator(
 
 	if direction == logproto.FORWARD {
 		return iter.NewHintEntryIterator(iter.NewTimeRangedIterator(
-			iter.NewSequentialIterator(its),
+			iter.NewChainedIterator(its),
 			from,
 			through,
 		), hintRanges), nil
@@ -107,7 +107,7 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewHintEntryIterator(iter.NewSequentialIterator(its), hintRanges), nil
+	return iter.NewHintEntryIterator(iter.NewChainedIterator(its), hintRanges), nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -167,7 +167,7 @@ func (c *LazyChunk) SampleIterator(
 
 	// build the final iterator bound to the requested time range.
 	return iter.NewHintSampleIterator(iter.NewTimeRangedSampleIterator(
-		iter.NewSequentialSampleIterator(its),
+		iter.NewChainedSampleIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
 	), hintRanges), nil

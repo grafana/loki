@@ -596,7 +596,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 	}
 
 	if ordered {
-		return iter.NewSequentialIterator(iterators), nil
+		return iter.NewChainedIterator(iterators), nil
 	}
 	return iter.NewSortEntryIterator(iterators, direction), nil
 }
@@ -633,7 +633,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 	}
 
 	if ordered {
-		return iter.NewSequentialSampleIterator(iterators), nil
+		return iter.NewChainedSampleIterator(iterators), nil
 	}
 	return iter.NewTimestampFirstSortSampleIterator(iterators), nil
 }

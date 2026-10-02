@@ -505,7 +505,7 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
 		}
-		result = append(result, iter.NewSequentialIterator(iterators))
+		result = append(result, iter.NewChainedIterator(iterators))
 	}
 
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
@@ -696,7 +696,7 @@ func (it *timestampFirstSampleBatchIterator) buildHeapIterator(
 			}
 			iterators = append(iterators, iterator)
 		}
-		result = append(result, iter.NewSequentialSampleIterator(iterators))
+		result = append(result, iter.NewChainedSampleIterator(iterators))
 	}
 
 	return iter.NewTimestampFirstMergeSampleIterator(it.ctx, result), nil
