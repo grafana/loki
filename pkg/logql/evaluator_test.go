@@ -392,6 +392,50 @@ func TestLiteralStepEvaluator(t *testing.T) {
 	}
 }
 
+func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
+	newIterator := func() (iter.PeekingSampleIterator, *bool) {
+		var closed bool
+		it := iter.NewPeekingSampleIterator(iter.SampleIteratorWithClose(iter.NoopSampleIterator, func() error {
+			closed = true
+			return nil
+		}))
+		return it, &closed
+	}
+
+	q := LiteralParams{
+		start: time.Unix(0, 0),
+		end:   time.Unix(60, 0),
+		step:  15 * time.Second,
+	}
+
+	t.Run("closes the sample iterator when the operation is unsupported", func(t *testing.T) {
+		it, closed := newIterator()
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: "not-a-real-operation",
+		}
+
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0)
+		require.Error(t, err)
+		require.True(t, *closed)
+	})
+
+	t.Run("leaves the sample iterator open when the evaluator is built successfully", func(t *testing.T) {
+		it, closed := newIterator()
+		expr := &syntax.RangeAggregationExpr{
+			Left:      &syntax.LogRangeExpr{Interval: time.Minute},
+			Operation: syntax.OpRangeTypeCount,
+		}
+
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0)
+		require.NoError(t, err)
+		require.False(t, *closed)
+
+		require.NoError(t, ev.Close())
+		require.True(t, *closed)
+	})
+}
+
 // TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace ensure the expression
 // groups are not mutated in place. Another VectorAggregationExpr evaluated concurrently
 // (e.g. the sum/count legs of a sharded avg_over_time) may hold the same
