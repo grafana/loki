@@ -4540,6 +4540,11 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
+# When enabled, the querier evaluates eligible metric queries in stream-first
+# order, which reads samples one stream at a time instead of in timestamp order.
+# CLI flag: -querier.stream-first-execution-enabled
+[stream_first_execution_enabled: <boolean> | default = false]
+
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.

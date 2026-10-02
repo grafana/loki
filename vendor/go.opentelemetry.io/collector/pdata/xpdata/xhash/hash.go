@@ -1,15 +1,17 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package pdatautil // import "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil"
+package xhash // import "go.opentelemetry.io/collector/pdata/xpdata/xhash"
 
 import (
 	"encoding/binary"
 	"math"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -56,15 +58,22 @@ func WithString(s string) HashOption {
 	}
 }
 
+// mapEntry is a key and its value collected from a pcommon.Map so that entries can be
+// sorted by key without looking each value up again.
+type mapEntry struct {
+	key string
+	val pcommon.Value
+}
+
 type hashWriter struct {
-	byteBuf []byte
-	keysBuf []string
+	byteBuf    []byte
+	entriesBuf []mapEntry
 }
 
 func newHashWriter() *hashWriter {
 	return &hashWriter{
-		byteBuf: make([]byte, 0, 512),
-		keysBuf: make([]string, 0, 16),
+		byteBuf:    make([]byte, 0, 512),
+		entriesBuf: make([]mapEntry, 0, 16),
 	}
 }
 
@@ -124,29 +133,32 @@ func ValueHash(v pcommon.Value) [16]byte {
 
 func (hw *hashWriter) writeMapHash(m pcommon.Map) {
 	// For each recursive call into this function we want to preserve the previous buffer state
-	// while also adding new keys to the buffer. nextIndex is the index of the first new key
+	// while also adding new entries to the buffer. nextIndex is the index of the first new entry
 	// added to the buffer for this call of the function.
 	// This also works for the first non-recursive call of this function because the buffer is always empty
-	// on the first call due to it being cleared of any added keys at then end of the function.
-	nextIndex := len(hw.keysBuf)
+	// on the first call due to it being cleared of any added entries at then end of the function.
+	nextIndex := len(hw.entriesBuf)
 
-	for k := range m.All() {
-		hw.keysBuf = append(hw.keysBuf, k)
+	// Collect keys together with their values in a single pass. Looking each value up by key with
+	// Map.Get afterwards is a linear scan per key, which makes hashing a wide map quadratic.
+	for k, v := range m.All() {
+		hw.entriesBuf = append(hw.entriesBuf, mapEntry{key: k, val: v})
 	}
 
-	// Get only the newly added keys from the buffer by slicing the buffer from nextIndex to the end
-	workingKeySet := hw.keysBuf[nextIndex:]
+	// Get only the newly added entries from the buffer by slicing the buffer from nextIndex to the end
+	workingEntries := hw.entriesBuf[nextIndex:]
 
-	sort.Strings(workingKeySet)
-	for _, k := range workingKeySet {
-		v, _ := m.Get(k)
+	slices.SortFunc(workingEntries, func(a, b mapEntry) int { return strings.Compare(a.key, b.key) })
+	for _, e := range workingEntries {
 		hw.byteBuf = append(hw.byteBuf, keyPrefix...)
-		hw.byteBuf = append(hw.byteBuf, k...)
-		hw.writeValueHash(v)
+		hw.byteBuf = append(hw.byteBuf, e.key...)
+		hw.writeValueHash(e.val)
 	}
 
-	// Remove all keys that were added to the buffer during this call of the function
-	hw.keysBuf = hw.keysBuf[:nextIndex]
+	// Remove all entries that were added to the buffer during this call of the function, and drop the
+	// references they hold so the pooled buffer does not keep the map's values reachable.
+	clear(hw.entriesBuf[nextIndex:])
+	hw.entriesBuf = hw.entriesBuf[:nextIndex]
 }
 
 func (hw *hashWriter) writeValueHash(v pcommon.Value) {

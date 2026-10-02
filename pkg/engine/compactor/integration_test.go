@@ -303,7 +303,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		})
 	}
 	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
-	return testIndex{path: path, start: ts, end: ts.Add(time.Second), uncompressedLogsSize: uint64(len(sourcePaths) * 100)}
+	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
 }
 
 func TestE2ECompactionConvergence(t *testing.T) {
@@ -556,11 +556,18 @@ func (integrationSortSchema) CompactionPhases(string) (bool, bool) {
 	return true, true
 }
 
-func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
+// mustLoadTenantIndexes loads the ToC of every tenant in the window, keyed by tenant.
+func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexEntry {
 	t.Helper()
-	got, err := loadTenantIndexes(ctx, b, window)
+	tenants, err := metastore.ListTableOfContentsTenants(ctx, b, window)
 	require.NoError(t, err)
-	return got
+	out := make(map[string][]indexEntry, len(tenants))
+	for _, tenant := range tenants {
+		got, err := loadTenantIndexes(ctx, b, window, tenant)
+		require.NoError(t, err)
+		out[tenant] = got
+	}
+	return out
 }
 
 func pathsOf(entries []indexEntry) []string {

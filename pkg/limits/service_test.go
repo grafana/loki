@@ -155,6 +155,71 @@ func TestService_CheckLimitsAndShard_DoesNotProduceUntrackedStreams(t *testing.T
 	require.Equal(t, uint64(0x1), rec.Metadata.StreamHash)
 }
 
+func TestService_CheckLimitsAndShard_LiveModeProducesWithoutUsageTracking(t *testing.T) {
+	const bucketSize = 10 * time.Second
+	limits := &mockLimits{
+		ShardStreamsConfig: shardstreams.Config{
+			Enabled:                         true,
+			LimitsServiceStreamShardingMode: shardstreams.LimitsServiceStreamShardingModeLive,
+		},
+	}
+	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+	s, clock := newTestService(t, limits, 1)
+	s.partitionManager.Assign([]int32{0})
+	kafka := s.producer.client.(*mockKafka)
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 100}},
+	}
+
+	// Unlike shadow mode, live mode never calls ExceedsLimits for this stream,
+	// so the usage store has no entry for it at all.
+	_, err := s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Empty(t, kafka.produced)
+
+	// The first push of the next bucket publishes the complete one, even
+	// though the usage store still does not track the stream: checkAndShard's
+	// own granted shard count is the acceptance decision in live mode.
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Len(t, kafka.produced, 1)
+	var rec proto.StreamMetadataRecord
+	require.NoError(t, rec.Unmarshal(kafka.produced[0].Value))
+	require.Equal(t, uint64(0x1), rec.Metadata.StreamHash)
+}
+
+func TestService_CheckLimitsAndShard_ShadowModeStillRequiresUsageTracking(t *testing.T) {
+	const bucketSize = 10 * time.Second
+	limits := &mockLimits{
+		ShardStreamsConfig: shardstreams.Config{
+			Enabled:                         true,
+			LimitsServiceStreamShardingMode: shardstreams.LimitsServiceStreamShardingModeShadow,
+		},
+	}
+	require.NoError(t, limits.ShardStreamsConfig.DesiredRate.Set("1KB"))
+	s, clock := newTestService(t, limits, 1)
+	s.partitionManager.Assign([]int32{0})
+	kafka := s.producer.client.(*mockKafka)
+
+	req := &proto.CheckLimitsAndShardRequest{
+		Tenant:  "test",
+		Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 100}},
+	}
+
+	// Shadow mode still relies on a separate ExceedsLimits call to track the
+	// stream in the usage store, which never happens here, so the record is
+	// withheld even once its bucket completes.
+	_, err := s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	clock.Advance(bucketSize)
+	_, err = s.CheckLimitsAndShard(t.Context(), req)
+	require.NoError(t, err)
+	require.Empty(t, kafka.produced)
+}
+
 func TestService_CheckLimitsAndShard(t *testing.T) {
 	limits := &mockLimits{
 		ShardStreamsConfig: shardstreams.Config{Enabled: true},

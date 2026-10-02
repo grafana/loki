@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -263,7 +263,7 @@ func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
 	ranges := b.TimeRanges()
 	require.Len(t, ranges, 2)
 
-	byTenant := map[string]multitenancy.TimeRange{}
+	byTenant := map[string]dataobj.TimeRange{}
 	for _, r := range ranges {
 		byTenant[r.Tenant] = r
 	}

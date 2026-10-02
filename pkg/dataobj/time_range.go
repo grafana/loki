@@ -1,10 +1,11 @@
-package multitenancy
+package dataobj
 
 import (
 	"time"
 )
 
-// TimeRange represents a time range for a specific tenant.
+// TimeRange is the time range of a tenant's data in an object, together with
+// the sizes recorded for it in the metastore.
 type TimeRange struct {
 	Tenant               string
 	MinTime              time.Time

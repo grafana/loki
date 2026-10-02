@@ -63,6 +63,12 @@ var (
 	lastEntryMinTime = time.Unix(-100, 0)
 )
 
+// seriesLimitPartialResultsWarning returns the warning of a query that returns partial results
+// because it reached the series limit.
+func seriesLimitPartialResultsWarning(maxSeries int) string {
+	return fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries)
+}
+
 type QueryParams interface {
 	LogSelector() (syntax.LogSelectorExpr, error)
 	GetStart() time.Time
@@ -213,7 +219,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 	}
 	return &QueryEngine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize, l),
 		limits:           l,
 		opts:             opts,
 	}
@@ -403,7 +409,9 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
 	if err != nil {
 		return nil, err
 	}
@@ -417,8 +425,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
-			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true
@@ -489,7 +495,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		if httpreq.IsLogsDrilldownRequest(ctx) {
 			// For Logs Drilldown requests, return partial results with warning
 			vec = vec[:maxSeries]
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			// Since we've already reached the series limit, skip processing additional steps and add the initial vector to seriesIndex
 			next = false
 			vectorsToSeries(vec, seriesIndex)
@@ -532,7 +538,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			break
 		}
 

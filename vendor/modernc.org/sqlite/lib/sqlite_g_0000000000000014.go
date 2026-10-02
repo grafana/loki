@@ -10,6 +10,8 @@ import (
 	"modernc.org/libc"
 )
 
+const FIODGNAME = 2148034168
+
 const RSIZE_MAX = 2147483647
 
 type Tcap_ioctl_t = uint32
@@ -358,9 +360,9 @@ func Xsqlite3_declare_vtab(tls *libc.TLS, db uintptr, zCreateTable uintptr) (r i
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	pCtx = (*Tsqlite3)(unsafe.Pointer(db)).FpVtabCtx
 	if !(pCtx != 0) || (*TVtabCtx)(unsafe.Pointer(pCtx)).FbDeclared != 0 {
-		_sqlite3Error(tls, db, _sqlite3MisuseError(tls, int32(162888)))
+		_sqlite3Error(tls, db, _sqlite3MisuseError(tls, int32(163157)))
 		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
-		return _sqlite3MisuseError(tls, int32(162890))
+		return _sqlite3MisuseError(tls, int32(163159))
 	}
 	pTab = (*TVtabCtx)(unsafe.Pointer(pCtx)).FpTab
 	_sqlite3ParseObjectInit(tls, bp, db)
@@ -1271,6 +1273,8 @@ diff_out:
 	return rc
 }
 
+const _NFDBITS = 32
+
 const __INTPTR_FMTd__ = "d"
 
 const __INTPTR_FMTi__ = "i"
@@ -1310,36 +1314,6 @@ const __UINTPTR_WIDTH__ = 32
 const __ULONG_MAX = 4294967295
 
 const __WORDSIZE = 32
-
-var _aBase = [27]Tu64{
-	0:  libc.Uint64FromUint64(0x8000000000000000),
-	1:  libc.Uint64FromUint64(0xa000000000000000),
-	2:  libc.Uint64FromUint64(0xc800000000000000),
-	3:  libc.Uint64FromUint64(0xfa00000000000000),
-	4:  libc.Uint64FromUint64(0x9c40000000000000),
-	5:  libc.Uint64FromUint64(0xc350000000000000),
-	6:  libc.Uint64FromUint64(0xf424000000000000),
-	7:  libc.Uint64FromUint64(0x9896800000000000),
-	8:  libc.Uint64FromUint64(0xbebc200000000000),
-	9:  libc.Uint64FromUint64(0xee6b280000000000),
-	10: libc.Uint64FromUint64(0x9502f90000000000),
-	11: libc.Uint64FromUint64(0xba43b74000000000),
-	12: libc.Uint64FromUint64(0xe8d4a51000000000),
-	13: libc.Uint64FromUint64(0x9184e72a00000000),
-	14: libc.Uint64FromUint64(0xb5e620f480000000),
-	15: libc.Uint64FromUint64(0xe35fa931a0000000),
-	16: libc.Uint64FromUint64(0x8e1bc9bf04000000),
-	17: libc.Uint64FromUint64(0xb1a2bc2ec5000000),
-	18: libc.Uint64FromUint64(0xde0b6b3a76400000),
-	19: libc.Uint64FromUint64(0x8ac7230489e80000),
-	20: libc.Uint64FromUint64(0xad78ebc5ac620000),
-	21: libc.Uint64FromUint64(0xd8d726b7177a8000),
-	22: libc.Uint64FromUint64(0x878678326eac9000),
-	23: libc.Uint64FromUint64(0xa968163f0a57b400),
-	24: libc.Uint64FromUint64(0xd3c21bcecceda100),
-	25: libc.Uint64FromUint64(0x84595161401484a0),
-	26: libc.Uint64FromUint64(0xa56fa5b99019a5c8),
-}
 
 /*
  ** The following array holds FuncDef structures for all of the functions
@@ -2100,35 +2074,6 @@ var _aJsonFunc = [36]TFuncDef{
 	},
 }
 
-var _aScale = [26]Tu64{
-	0:  libc.Uint64FromUint64(0x8049a4ac0c5811ae),
-	1:  libc.Uint64FromUint64(0xcf42894a5dce35ea),
-	2:  libc.Uint64FromUint64(0xa76c582338ed2621),
-	3:  libc.Uint64FromUint64(0x873e4f75e2224e68),
-	4:  libc.Uint64FromUint64(0xda7f5bf590966848),
-	5:  libc.Uint64FromUint64(0xb080392cc4349dec),
-	6:  libc.Uint64FromUint64(0x8e938662882af53e),
-	7:  libc.Uint64FromUint64(0xe65829b3046b0afa),
-	8:  libc.Uint64FromUint64(0xba121a4650e4ddeb),
-	9:  libc.Uint64FromUint64(0x964e858c91ba2655),
-	10: libc.Uint64FromUint64(0xf2d56790ab41c2a2),
-	11: libc.Uint64FromUint64(0xc428d05aa4751e4c),
-	12: libc.Uint64FromUint64(0x9e74d1b791e07e48),
-	13: libc.Uint64FromUint64(0xcccccccccccccccc),
-	14: libc.Uint64FromUint64(0xcecb8f27f4200f3a),
-	15: libc.Uint64FromUint64(0xa70c3c40a64e6c51),
-	16: libc.Uint64FromUint64(0x86f0ac99b4e8dafd),
-	17: libc.Uint64FromUint64(0xda01ee641a708de9),
-	18: libc.Uint64FromUint64(0xb01ae745b101e9e4),
-	19: libc.Uint64FromUint64(0x8e41ade9fbebc27d),
-	20: libc.Uint64FromUint64(0xe5d3ef282a242e81),
-	21: libc.Uint64FromUint64(0xb9a74a0637ce2ee1),
-	22: libc.Uint64FromUint64(0x95f83d0a1fb69cd9),
-	23: libc.Uint64FromUint64(0xf24a01a73cf2dccf),
-	24: libc.Uint64FromUint64(0xc3b8358109e84f07),
-	25: libc.Uint64FromUint64(0x9e19db92b4e31ba9),
-}
-
 // C documentation
 //
 //	/*
@@ -2170,7 +2115,7 @@ func _addConstraintFunc(tls *libc.TLS, ctx uintptr, NotUsed int32, argv uintptr)
 				break
 			}
 			if **(**int32)(__ccgo_up(bp + 4)) == int32(TK_ILLEGAL) {
-				Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123384)))
+				Xsqlite3_result_error_code(tls, ctx, _sqlite3CorruptError(tls, int32(123653)))
 				return
 			}
 			**(**int32)(__ccgo_up(bp)) = **(**int32)(__ccgo_up(bp)) + nTok
@@ -3737,7 +3682,7 @@ func _dropColumnFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uintptr
 	pTab = (**(**TParse)(__ccgo_up(bp))).FpNewTable
 	if pTab == uintptr(0) || int32((*TTable)(unsafe.Pointer(pTab)).FnCol) == int32(1) || iCol >= int32((*TTable)(unsafe.Pointer(pTab)).FnCol) {
 		/* This can happen if the sqlite_schema table is corrupt */
-		rc = _sqlite3CorruptError(tls, int32(122911))
+		rc = _sqlite3CorruptError(tls, int32(123180))
 		goto drop_column_done
 	}
 	if iCol < int32((*TTable)(unsafe.Pointer(pTab)).FnCol)-int32(1) {
@@ -4091,7 +4036,7 @@ func _fillInUnixFile(tls *libc.TLS, pVfs uintptr, h int32, pId uintptr, zFilenam
 			 ** implicit assumption here is that if fstat() fails, things are in
 			 ** such bad shape that dropping a lock or two doesn't matter much.
 			 */
-			_robust_close(tls, pNew, h, int32(46500))
+			_robust_close(tls, pNew, h, int32(46504))
 			h = -int32(1)
 		}
 		_unixLeaveMutex(tls)
@@ -4110,7 +4055,7 @@ func _fillInUnixFile(tls *libc.TLS, pVfs uintptr, h int32, pId uintptr, zFilenam
 	_storeLastErrno(tls, pNew, 0)
 	if rc != SQLITE_OK {
 		if h >= 0 {
-			_robust_close(tls, pNew, h, int32(46592))
+			_robust_close(tls, pNew, h, int32(46596))
 		}
 	} else {
 		(*Tsqlite3_file)(unsafe.Pointer(pId)).FpMethods = pLockingStyle
@@ -6676,7 +6621,7 @@ func _lockBtree(tls *libc.TLS, pBt uintptr) (r int32) {
 		}
 		if nPage > **(**Tu32)(__ccgo_up(bp + 4)) {
 			if _sqlite3WritableSchema(tls, (*TBtShared)(unsafe.Pointer(pBt)).Fdb) == 0 {
-				rc = _sqlite3CorruptError(tls, int32(76782))
+				rc = _sqlite3CorruptError(tls, int32(77051))
 				goto page1_init_failed
 			} else {
 				nPage = **(**Tu32)(__ccgo_up(bp + 4))
@@ -13405,7 +13350,7 @@ func _sqlite3CreateFunc(tls *libc.TLS, db uintptr, zFunctionName uintptr, nArg i
 	var p, v1 uintptr
 	_, _, _, _ = extraFlags, p, rc, v1
 	if zFunctionName == uintptr(0) || __ccgo_fp_xSFunc != uintptr(0) && __ccgo_fp_xFinal != uintptr(0) || libc.BoolInt32(__ccgo_fp_xFinal == uintptr(0)) != libc.BoolInt32(__ccgo_fp_xStep == uintptr(0)) || libc.BoolInt32(__ccgo_fp_xValue == uintptr(0)) != libc.BoolInt32(__ccgo_fp_xInverse == uintptr(0)) || (nArg < -int32(1) || nArg > int32(SQLITE_MAX_FUNCTION_ARG)) || int32(255) < _sqlite3Strlen30(tls, zFunctionName) {
-		return _sqlite3MisuseError(tls, int32(189491))
+		return _sqlite3MisuseError(tls, int32(189760))
 	}
 	extraFlags = enc & (libc.Int32FromInt32(SQLITE_DETERMINISTIC) | libc.Int32FromInt32(SQLITE_DIRECTONLY) | libc.Int32FromInt32(SQLITE_SUBTYPE) | libc.Int32FromInt32(SQLITE_INNOCUOUS) | libc.Int32FromInt32(SQLITE_RESULT_SUBTYPE) | libc.Int32FromInt32(SQLITE_SELFORDER1))
 	enc = enc & (libc.Int32FromInt32(SQLITE_FUNC_ENCMASK) | libc.Int32FromInt32(SQLITE_ANY))
@@ -17768,33 +17713,6 @@ func _sqlite3OpenTempDatabase(tls *libc.TLS, pParse uintptr) (r int32) {
 // C documentation
 //
 //	/*
-//	** Turn bulk memory into a valid Parse object and link that Parse object
-//	** into database connection db.
-//	**
-//	** Call sqlite3ParseObjectReset() to undo this operation.
-//	**
-//	** Caution:  Do not confuse this routine with sqlite3ParseObjectInit() which
-//	** is generated by Lemon.
-//	*/
-func _sqlite3ParseObjectInit(tls *libc.TLS, pParse uintptr, db uintptr) {
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+4)), 0, uint32(libc.UintptrFromInt32(0)+136)-uint32(libc.UintptrFromInt32(0)+4))
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), 0, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
-	(*TParse)(unsafe.Pointer(pParse)).FpOuterParse = (*Tsqlite3)(unsafe.Pointer(db)).FpParse
-	(*Tsqlite3)(unsafe.Pointer(db)).FpParse = pParse
-	(*TParse)(unsafe.Pointer(pParse)).Fdb = db
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		_sqlite3ErrorMsg(tls, pParse, __ccgo_ts+1672, 0)
-	}
-}
-
-/*
-** Maximum number of times that we will try again to prepare a statement
-** that returns SQLITE_ERROR_RETRY.
- */
-
-// C documentation
-//
-//	/*
 //	** Generate code for the REINDEX command.
 //	**
 //	**        REINDEX                            -- 1
@@ -21383,7 +21301,7 @@ statNextRestart:
 		(*TStatCursor)(unsafe.Pointer(pCsr)).FiPage = (*TStatCursor)(unsafe.Pointer(pCsr)).FiPage + 1
 		if (*TStatCursor)(unsafe.Pointer(pCsr)).FiPage >= libc.Int32FromUint32(libc.Uint32FromInt64(1280)/libc.Uint32FromInt64(40)) {
 			_statResetCsr(tls, pCsr)
-			return _sqlite3CorruptError(tls, int32(232585))
+			return _sqlite3CorruptError(tls, int32(232854))
 		}
 		if (*TStatPage)(unsafe.Pointer(p)).FiCell == (*TStatPage)(unsafe.Pointer(p)).FnCell {
 			(**(**TStatPage)(__ccgo_up(p + 1*40))).FiPgno = (*TStatPage)(unsafe.Pointer(p)).FiRightChildPg
@@ -21828,7 +21746,7 @@ func _unixRemapfile(tls *libc.TLS, pFd uintptr, nNew Ti64) {
 	if pNew == uintptr(-libc.Int32FromInt32(1)) {
 		pNew = uintptr(0)
 		nNew = 0
-		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45992))
+		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45996))
 		/* If the mmap() above failed, assume that all subsequent mmap() calls
 		 ** will probably fail too. Fall back to using xRead/xWrite exclusively
 		 ** in this case.  */
@@ -22028,7 +21946,7 @@ func _unixSync(tls *libc.TLS, id uintptr, flags int32) (r int32) {
 	rc = _full_fsync(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, isFullsync, isDataOnly)
 	if rc != 0 {
 		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__error(tls))))
-		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(4)<<libc.Int32FromInt32(8), __ccgo_ts+3945, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44276))
+		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(4)<<libc.Int32FromInt32(8), __ccgo_ts+3945, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44280))
 	}
 	/* Also fsync the directory containing the file if the DIRSYNC flag
 	 ** is set.  This is a one-time occurrence.  Many systems (examples: AIX)
@@ -22038,7 +21956,7 @@ func _unixSync(tls *libc.TLS, id uintptr, flags int32) (r int32) {
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(17)].FpCurrent})))(tls, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, bp)
 		if rc == SQLITE_OK {
 			_full_fsync(tls, **(**int32)(__ccgo_up(bp)), 0, 0)
-			_robust_close(tls, pFile, **(**int32)(__ccgo_up(bp)), int32(44290))
+			_robust_close(tls, pFile, **(**int32)(__ccgo_up(bp)), int32(44294))
 		} else {
 			rc = SQLITE_OK
 		}
@@ -22596,12 +22514,13 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 		 ** are able to understand */
 		version = _sqlite3Get4byte(tls, bp+8+4)
 		if version != uint32(WAL_MAX_VERSION) {
-			rc = _sqlite3CantopenError(tls, int32(69141))
+			rc = _sqlite3CantopenError(tls, int32(69195))
 			goto finished
 		}
 		/* Malloc a buffer to read frames into. */
 		szFrame = szPage + int32(WAL_FRAME_HDRSIZE)
 		aFrame = Xsqlite3_malloc64(tls, uint64(libc.Uint32FromInt32(szFrame)+(libc.Uint32FromInt64(2)*libc.Uint32FromInt32(libc.Int32FromInt32(HASHTABLE_NPAGE)*libc.Int32FromInt32(2))+libc.Uint32FromInt32(HASHTABLE_NPAGE)*libc.Uint32FromInt64(4))))
+		(*TWal)(unsafe.Pointer(pWal)).FpFree = aFrame
 		if !(aFrame != 0) {
 			rc = int32(SQLITE_NOMEM)
 			goto recovery_error
@@ -22631,6 +22550,8 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			if **(**uintptr)(__ccgo_up(bp + 40)) == uintptr(0) {
 				break
 			}
+			(*TWal)(unsafe.Pointer(pWal)).FiWiPg = libc.Int32FromUint32(iPg)
+			(*TWal)(unsafe.Pointer(pWal)).FpWiValue = **(**uintptr)(__ccgo_up(bp + 40))
 			**(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData + uintptr(iPg)*4)) = aPrivate
 			iFrame = iFirst
 			for {
@@ -22665,6 +22586,8 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 				iFrame = iFrame + 1
 			}
 			**(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData + uintptr(iPg)*4)) = **(**uintptr)(__ccgo_up(bp + 40))
+			(*TWal)(unsafe.Pointer(pWal)).FiWiPg = 0
+			(*TWal)(unsafe.Pointer(pWal)).FpWiValue = uintptr(0)
 			if iPg == uint32(0) {
 				v2 = libc.Uint32FromInt64(48)*libc.Uint32FromInt32(2) + libc.Uint32FromInt64(40)
 			} else {
@@ -22681,6 +22604,7 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			 ** is safe for this.  Memcpy() is certainly a lot faster.
 			 */
 			libc.Xmemcpy(tls, **(**uintptr)(__ccgo_up(bp + 40))+uintptr(nHdr32)*4, aPrivate+uintptr(nHdr32)*4, libc.Uint32FromInt64(2)*libc.Uint32FromInt32(libc.Int32FromInt32(HASHTABLE_NPAGE)*libc.Int32FromInt32(2))+libc.Uint32FromInt32(HASHTABLE_NPAGE)*libc.Uint32FromInt64(4)-nHdr)
+			_modernc_seh_inject(tls, pWal)
 			if iFrame <= iLast {
 				break
 			}
@@ -22689,6 +22613,7 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			;
 			iPg = iPg + 1
 		}
+		(*TWal)(unsafe.Pointer(pWal)).FpFree = uintptr(0)
 		Xsqlite3_free(tls, aFrame)
 	}
 	goto finished
@@ -22718,6 +22643,7 @@ finished:
 				} else {
 					**(**Tu32)(__ccgo_up(pInfo + 4 + uintptr(i)*4)) = uint32(READMARK_NOT_USED)
 				}
+				_modernc_seh_inject(tls, pWal)
 				_walUnlockExclusive(tls, pWal, int32(3)+i, int32(1))
 			} else {
 				if rc != int32(SQLITE_BUSY) {

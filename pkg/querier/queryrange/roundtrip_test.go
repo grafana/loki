@@ -1477,7 +1477,7 @@ func (f fakeLimits) MaxEntriesLimitPerQuery(context.Context, string) int {
 	return f.maxEntriesLimitPerQuery
 }
 
-func (f fakeLimits) MaxQuerySeries(context.Context, string) int {
+func (f fakeLimits) MaxQuerySeries(string) int {
 	return f.maxSeries
 }
 
@@ -1546,6 +1546,10 @@ func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) str
 
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
+}
+
+func (f fakeLimits) StreamFirstExecutionEnabled(string) bool {
+	return false
 }
 
 func (f fakeLimits) DebugEngineTasks(_ string) bool {

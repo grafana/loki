@@ -708,7 +708,7 @@ func combineByStreamFirst(streams []sampleStream) iter.SampleIterator {
 	if len(its) == 1 {
 		return its[0]
 	}
-	return iter.NewNonOverlappingSampleIterator(its)
+	return iter.NewChainedSampleIterator(its)
 }
 
 // Label returns the label names or values depending on the given request

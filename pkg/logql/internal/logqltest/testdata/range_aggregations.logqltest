@@ -295,33 +295,41 @@ load
 
 # by()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {app="a"} 7
 # without()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 3
   {pod="2"} 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 3 3
   {pod="2"} 15 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {app="a"} 7 7
 eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 2
   {pod="2"} 10
 eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 4
   {pod="2"} 20
 eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
@@ -337,7 +345,8 @@ load
   {app="a", pod="2"} "v=NaN" @ 30s
 
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="1"} 3
   {pod="2"} NaN
 
@@ -364,10 +373,12 @@ load
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m])
   expect fail msg: JSONParserErr
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 8
 eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod) # non-overlapping
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 7 8
 # Dropping the errored lines leaves no sample to take a quantile of.
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
@@ -385,13 +396,16 @@ load
 # The malformed line carries no `v` to unwrap, so it becomes no sample and never reaches the query,
 # reason why the query doesn't fail.
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="p1"} 6
 eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod) # overlapping
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="p1"} 5 6   # (-40s,20s]={4,6}, (0s,60s]={4,6,8}
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
   {pod="p1"} 6
 # Keeping the malformed line adds no sample either, so no group is left to take a quantile of.
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)

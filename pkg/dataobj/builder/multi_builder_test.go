@@ -18,9 +18,9 @@ func windowEntry(window time.Time, offset time.Duration, line string) push.Entry
 	return push.Entry{Timestamp: window.Add(offset), Line: line}
 }
 
-func TestTOCAlignedMultiBuilder_AppendSplitsAcrossWindows(t *testing.T) {
+func TestMultiObjectBuilder_AppendSplitsAcrossWindows(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	w2 := w1.Add(metastore.MetastoreWindowSize)
@@ -47,9 +47,50 @@ func TestTOCAlignedMultiBuilder_AppendSplitsAcrossWindows(t *testing.T) {
 	require.Equal(t, w2, truncatedWindow(t, builders[1]))
 }
 
-func TestTOCAlignedMultiBuilder_AppendReusesBuilderForSameWindow(t *testing.T) {
+func TestMultiObjectBuilder_AppendSplitsAcrossTenantsAndWindows(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
+
+	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
+	w2 := w1.Add(metastore.MetastoreWindowSize)
+
+	// Append tenants and windows out of order to show that GetBuilders sorts
+	// them rather than relying on insertion order.
+	for _, tenant := range []string{"tenant-b", "tenant-a"} {
+		require.NoError(t, m.Append(tenant, logproto.Stream{
+			Labels: `{app="foo"}`,
+			Entries: []push.Entry{
+				windowEntry(w2, time.Minute, "b"),
+				windowEntry(w1, time.Minute, "a"),
+			},
+		}, w1))
+	}
+
+	builders := m.GetBuilders()
+	require.Len(t, builders, 4)
+	require.Equal(t, 4, factory.created)
+
+	type scope struct {
+		tenant string
+		window time.Time
+	}
+	var got []scope
+	for _, b := range builders {
+		ranges := b.TimeRanges()
+		require.Len(t, ranges, 1, "each builder must hold exactly one tenant")
+		got = append(got, scope{ranges[0].Tenant, truncatedWindow(t, b)})
+	}
+	require.Equal(t, []scope{
+		{"tenant-a", w1},
+		{"tenant-a", w2},
+		{"tenant-b", w1},
+		{"tenant-b", w2},
+	}, got)
+}
+
+func TestMultiObjectBuilder_AppendReusesBuilderForSameWindow(t *testing.T) {
+	factory := newTestBuilderFactory()
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 
@@ -68,9 +109,9 @@ func TestTOCAlignedMultiBuilder_AppendReusesBuilderForSameWindow(t *testing.T) {
 	require.Equal(t, 1, factory.created)
 }
 
-func TestTOCAlignedMultiBuilder_GetBuildersSorted(t *testing.T) {
+func TestMultiObjectBuilder_GetBuildersSorted(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	w2 := w1.Add(metastore.MetastoreWindowSize)
@@ -94,9 +135,9 @@ func TestTOCAlignedMultiBuilder_GetBuildersSorted(t *testing.T) {
 	require.Equal(t, w3, truncatedWindow(t, builders[2]))
 }
 
-func TestTOCAlignedMultiBuilder_IsFullBoundsTotalMemory(t *testing.T) {
+func TestMultiObjectBuilder_IsFullBoundsTotalMemory(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	w2 := w1.Add(metastore.MetastoreWindowSize)
@@ -126,9 +167,9 @@ func TestTOCAlignedMultiBuilder_IsFullBoundsTotalMemory(t *testing.T) {
 	require.True(t, m.IsFull())
 }
 
-func TestTOCAlignedMultiBuilder_AppendDoesNotKeepEmptyBuilderOnError(t *testing.T) {
+func TestMultiObjectBuilder_AppendDoesNotKeepEmptyBuilderOnError(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	// Invalid labels make the underlying builder's Append fail.
@@ -142,10 +183,10 @@ func TestTOCAlignedMultiBuilder_AppendDoesNotKeepEmptyBuilderOnError(t *testing.
 	require.Empty(t, m.GetBuilders())
 }
 
-func TestTOCAlignedMultiBuilder_AppendPropagatesFactoryError(t *testing.T) {
+func TestMultiObjectBuilder_AppendPropagatesFactoryError(t *testing.T) {
 	factory := newTestBuilderFactory()
 	factory.failAt = 0 // fail to create the very first builder
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	err := m.Append("tenant", logproto.Stream{
@@ -157,9 +198,9 @@ func TestTOCAlignedMultiBuilder_AppendPropagatesFactoryError(t *testing.T) {
 	require.Empty(t, m.GetBuilders())
 }
 
-func TestTOCAlignedMultiBuilder_Reset(t *testing.T) {
+func TestMultiObjectBuilder_Reset(t *testing.T) {
 	factory := newTestBuilderFactory()
-	m := NewTOCAlignedMultiBuilder(factory, math.MaxInt)
+	m := NewMultiObjectBuilder(factory, math.MaxInt)
 
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	require.NoError(t, m.Append("tenant", logproto.Stream{

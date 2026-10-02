@@ -1,21 +1,27 @@
 package logqltest
 
 import (
+	"context"
+	"math"
 	"testing"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
-	directStackName               = "direct"
-	queryFrontendNoShardStackName = "query-frontend + query-scheduler (no sharding)"
-	queryFrontendShardStackName   = "query-frontend + query-scheduler (sharding)"
+	directTimestampFirstStackName               = "direct (timestamp-first)"
+	directStreamFirstStackName                  = "direct (stream-first)"
+	queryFrontendNoShardTimestampFirstStackName = "query-frontend + query-scheduler (no sharding, timestamp-first)"
+	queryFrontendShardTimestampFirstStackName   = "query-frontend + query-scheduler (sharding, timestamp-first)"
+	queryFrontendShardStreamFirstStackName      = "query-frontend + query-scheduler (sharding, stream-first)"
 )
 
 var (
-	stackNames = []string{directStackName, queryFrontendNoShardStackName, queryFrontendShardStackName}
+	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName}
 )
 
 func isKnownStackName(name string) bool {
@@ -81,3 +87,25 @@ func newScriptStore(t *testing.T, streams []logproto.Stream) *testingChunkStore 
 	store.flush(t)
 	return store
 }
+
+// execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
+// series limit and the query timeout are high enough that no script reaches them.
+type execLimits struct {
+	streamFirstExecutionEnabled bool
+}
+
+func (execLimits) MaxQuerySeries(string) int { return math.MaxInt32 }
+
+func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
+
+func (execLimits) QueryTimeout(context.Context, string) time.Duration { return time.Hour }
+
+func (execLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery { return nil }
+
+func (l execLimits) StreamFirstExecutionEnabled(string) bool {
+	return l.streamFirstExecutionEnabled
+}
+
+func (execLimits) DebugEngineTasks(string) bool { return false }
+
+func (execLimits) DebugEngineStreams(string) bool { return false }
