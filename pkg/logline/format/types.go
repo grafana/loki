@@ -113,6 +113,10 @@ const (
 	PostingsEncodingBIDXPacked
 	// PostingsEncodingFastDeltaVarIntBlocked stores delta+varint encoded docIDs in blocks.
 	PostingsEncodingFastDeltaVarIntBlocked
+	// PostingsEncodingFastEliasFanoBlocked stores Elias-Fano encoded docIDs in
+	// blocks. Blocks are written uncompressed, each followed by an xxh3-64
+	// checksum.
+	PostingsEncodingFastEliasFanoBlocked
 )
 
 // MaxQueryRequestBytes enforces the object-storage request contract.
