@@ -65,7 +65,7 @@ func TestNewProjectionPlan(t *testing.T) {
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata: []string{"app", "duration"},
 		},
-		"an unwrap under a by grouping also reads all metadata": {
+		"an unwrap on a bare range aggregation reads all metadata because its output keeps the whole label set": {
 			query:       `max_over_time({app="x"} | unwrap duration [1m]) by (pod)`,
 			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
 		},
