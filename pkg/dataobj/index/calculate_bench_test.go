@@ -24,8 +24,8 @@ import (
 )
 
 // BenchmarkCalculator_Calculate exercises Calculator end-to-end on a synthetic
-// object with enough tenants and logs sections per tenant to stress the
-// builderMtx contention inside Calculate's errgroup.
+// object with enough logs sections to stress the builderMtx contention inside
+// Calculate's errgroup.
 //
 //	go test -bench=. -benchtime=10x -run=^$ ./pkg/dataobj/index/...
 func BenchmarkCalculator_Calculate(b *testing.B) {
@@ -34,15 +34,13 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 	}
 
 	const (
-		tenants          = 4
-		streamsPerTenant = 200
+		streamCount      = 800
 		entriesPerStream = 300
 	)
 
-	obj, cleanup := buildBenchDataobj(b, tenants, streamsPerTenant, entriesPerStream)
+	obj, cleanup := buildBenchDataobj(b, streamCount, entriesPerStream)
 	b.Cleanup(cleanup)
 
-	b.ReportMetric(float64(tenants), "tenants")
 	b.ReportMetric(float64(obj.Sections().Count(logs.CheckSection)), "logs_sections")
 	b.ReportMetric(float64(obj.Sections().Count(streams.CheckSection)), "streams_sections")
 
@@ -65,9 +63,11 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 	}
 }
 
+const benchTenant = "bench-tenant"
+
 var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:   128 * 1024,
-	TargetObjectSize: 1 << 28, // 256 MiB, large enough for all tenants
+	TargetObjectSize: 1 << 28, // 256 MiB, large enough for the whole object
 	BufferSize:       2 << 20,
 	// TargetSectionSize is set to 1 byte so the index builder rolls a new
 	// section as soon as anything is written. This forces many small index
@@ -78,10 +78,10 @@ var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetSectionSize:       1,
 }
 
-// buildBenchDataobj builds a synthetic object shaped to produce multiple logs
-// sections per tenant (via a small TargetSectionSize) so Calculate's errgroup
-// runs enough parallel workers to contend on builderMtx.
-func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStream int) (*dataobj.Object, func()) {
+// buildBenchDataobj builds a synthetic object for [benchTenant] shaped to
+// produce multiple logs sections (via a small TargetSectionSize) so
+// Calculate's errgroup runs enough parallel workers to contend on builderMtx.
+func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
@@ -115,34 +115,31 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 		return string(out)
 	}
 
-	for tenantIdx := range tenants {
-		tenantID := fmt.Sprintf("tenant-%d", tenantIdx)
-		for streamIdx := range streamsPerTenant {
-			lbls := fmt.Sprintf(
-				`{cluster=%q,namespace=%q,app=%q,env=%q,pod="pod-%d",stream_id="s-%d-%d"}`,
-				clusters[streamIdx%len(clusters)],
-				namespaces[streamIdx%len(namespaces)],
-				apps[streamIdx%len(apps)],
-				envs[streamIdx%len(envs)],
-				streamIdx%32,
-				tenantIdx, streamIdx,
-			)
+	for streamIdx := range streamCount {
+		lbls := fmt.Sprintf(
+			`{cluster=%q,namespace=%q,app=%q,env=%q,pod="pod-%d",stream_id="s-%d"}`,
+			clusters[streamIdx%len(clusters)],
+			namespaces[streamIdx%len(namespaces)],
+			apps[streamIdx%len(apps)],
+			envs[streamIdx%len(envs)],
+			streamIdx%32,
+			streamIdx,
+		)
 
-			entries := make([]push.Entry, entriesPerStream)
-			for entryIdx := range entries {
-				entries[entryIdx] = push.Entry{
-					Timestamp: baseTime.Add(time.Duration(streamIdx*entriesPerStream+entryIdx) * time.Millisecond),
-					Line:      string(lineFiller) + fmt.Sprintf(" req=%d stream=%d", entryIdx, streamIdx),
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: randStr(16)},
-						{Name: "span_id", Value: randStr(8)},
-						{Name: "user_id", Value: fmt.Sprintf("u-%d", rng.Intn(10000))},
-					},
-				}
+		entries := make([]push.Entry, entriesPerStream)
+		for entryIdx := range entries {
+			entries[entryIdx] = push.Entry{
+				Timestamp: baseTime.Add(time.Duration(streamIdx*entriesPerStream+entryIdx) * time.Millisecond),
+				Line:      string(lineFiller) + fmt.Sprintf(" req=%d stream=%d", entryIdx, streamIdx),
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "trace_id", Value: randStr(16)},
+					{Name: "span_id", Value: randStr(8)},
+					{Name: "user_id", Value: fmt.Sprintf("u-%d", rng.Intn(10000))},
+				},
 			}
-
-			require.NoError(tb, builder.Append(tenantID, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 		}
+
+		require.NoError(tb, builder.Append(benchTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
 	obj, closer, err := builder.Flush()
@@ -150,7 +147,7 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 
 	// Without multiple logs sections we aren't exercising the errgroup contention.
 	require.GreaterOrEqual(tb, obj.Sections().Count(logs.CheckSection), 2, "need multiple logs sections")
-	require.Equal(tb, tenants, obj.Sections().Count(streams.CheckSection))
+	require.Equal(tb, 1, obj.Sections().Count(streams.CheckSection))
 
 	return obj, func() { _ = closer.Close() }
 }
