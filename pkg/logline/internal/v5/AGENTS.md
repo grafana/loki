@@ -21,7 +21,8 @@ recoverable from the file yet.
 
 - The footer records the document layout in `ReservedMid`: bytes 0-8 hold the
   interval in nanoseconds and bytes 8-12 the shard count. v3 readers ignore
-  those bytes, and files written without a layout leave them zero.
+  those bytes. An interval of 0 means none was recorded. The shard count is
+  always at least 1, so an unset count and one shard are the same layout.
 - The density cutoff counts cells: `(24h / DocumentInterval) ×
   max(DocumentShards, 1) × DensityThreshold` (`IndexWriteConfig.sentinelCutoff`).
 - `Merge` requires every input to have the same layout and writes it to the

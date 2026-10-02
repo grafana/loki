@@ -3,6 +3,7 @@ package v5
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"path/filepath"
 	"testing"
 	"time"
@@ -38,9 +39,18 @@ func TestFooter_DocumentLayoutRoundTrip(t *testing.T) {
 	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 32}, h.documentLayout())
 	require.Equal(t, IndexVersion, h.Version, "the layout rides in ReservedMid; the footer version is unchanged")
 
+	h, err = ReadIndexHeader(writeLayoutIndex(t, "unset-shards.lidx", 16*time.Second, 0))
+	require.NoError(t, err)
+	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout(), "an unset shard count is one shard")
+	require.Equal(t, uint32(1), binary.LittleEndian.Uint32(h.ReservedMid[8:12]), "and is written as 1")
+
 	h, err = ReadIndexHeader(writeLayoutIndex(t, "unset.lidx", 0, 0))
 	require.NoError(t, err)
-	require.Equal(t, documentLayout{}, h.documentLayout())
+	require.Equal(t, documentLayout{shards: 1}, h.documentLayout())
+
+	var legacy IndexFooter
+	binary.LittleEndian.PutUint64(legacy.ReservedMid[0:8], uint64(16*time.Second))
+	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, legacy.documentLayout(), "a stored 0 reads as one shard")
 }
 
 func TestSentinelCutoff_ScalesWithDocumentShards(t *testing.T) {
@@ -119,6 +129,13 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout())
 	})
 
+	t.Run("unset and one shard are the same layout", func(t *testing.T) {
+		var out bytes.Buffer
+		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 0), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
+		_, err := mergeFilesTo(ctx, t, inputs, &out, DefaultFastIndexWriteConfig())
+		require.NoError(t, err)
+	})
+
 	t.Run("sharded inputs are rejected", func(t *testing.T) {
 		var out bytes.Buffer
 		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 32)}, &out, DefaultFastIndexWriteConfig())
@@ -163,6 +180,6 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 		require.NoError(t, err)
 		h, err := ReadIndexFooterFrom(bytes.NewReader(out.Bytes()), int64(out.Len()))
 		require.NoError(t, err)
-		require.Equal(t, documentLayout{interval: 16 * time.Second}, h.documentLayout())
+		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout())
 	})
 }
