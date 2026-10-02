@@ -14,11 +14,11 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -302,7 +302,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 }
 
 func mustParseLabels(s string) labels.Labels {
-	labels, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s)
+	labels, err := syntax.ParseLabels(s)
 	if err != nil {
 		logger.Fatalf("Failed to parse %s", s)
 	}
