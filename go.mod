@@ -156,6 +156,7 @@ require (
 	github.com/mschoch/smat v0.2.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.162.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.162.0 // indirect
+	go.opentelemetry.io/collector/pdata/xpdata v0.162.0 // indirect
 	go.opentelemetry.io/collector/processor/xprocessor v0.162.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
@@ -240,8 +241,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.161.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.161.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.162.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.161.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.6.0 // indirect
 	github.com/parquet-go/bitpack v1.1.0 // indirect
