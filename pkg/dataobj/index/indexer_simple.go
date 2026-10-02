@@ -20,14 +20,14 @@ import (
 )
 
 var (
-	// ErrInvalidObject marks an error that the shape of a data object causes.
-	// Every such error wraps it, for example [ErrNotSingleTenant]. Retrying
-	// can't fix it.
-	ErrInvalidObject = errors.New("invalid data object")
+	// ErrUnprocessableObject marks an error that the shape of a data object
+	// causes. Every such error wraps it, for example [ErrNotSingleTenant].
+	// Retrying can't fix it.
+	ErrUnprocessableObject = errors.New("unprocessable data object")
 
 	// ErrNotSingleTenant is returned when a data object doesn't hold exactly
-	// one tenant. It wraps [ErrInvalidObject].
-	ErrNotSingleTenant = fmt.Errorf("%w: data object must hold exactly one tenant", ErrInvalidObject)
+	// one tenant. It wraps [ErrUnprocessableObject].
+	ErrNotSingleTenant = fmt.Errorf("%w: data object must hold exactly one tenant", ErrUnprocessableObject)
 )
 
 // A Result describes the index object built and uploaded for a single-tenant data object.
