@@ -88,6 +88,19 @@ eval instant at 60s count_over_time({app="a"} |= ip("10.0.0.0/8") [1m])
 eval instant at 60s count_over_time({app="a"} |= ip("notanip") [1m])
   expect fail msg: ip: invalid pattern
 
+# ip() line filter: an address followed by punctuation is still matched by |=
+# and excluded by !=.
+clear
+load
+  {app="p"} "accepted from 192.168.1.10." @ 20s
+  {app="p"} "peer 2001:db8::1: reset"     @ 30s
+  {app="p"} "src 10.0.0.9 ok"             @ 40s
+
+eval instant at 60s count_over_time({app="p"} |= ip("192.168.1.0/24") or ip("2001:db8::/32") [1m])
+  {app="p"} 2
+eval instant at 60s count_over_time({app="p"} != ip("192.168.1.0/24") [1m])
+  {app="p"} 2
+
 # ip() line filter with "or" operator.
 clear
 load
