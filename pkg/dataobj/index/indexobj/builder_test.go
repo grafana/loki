@@ -77,7 +77,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		for _, stream := range testStreams {
@@ -100,7 +100,7 @@ func TestBuilder(t *testing.T) {
 	})
 
 	t.Run("BuildMultiTenant", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		tenants := []string{"test-tenant-1", "test-tenant-2"}
@@ -133,7 +133,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	i := 0
@@ -163,7 +163,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	i := 0
@@ -193,7 +193,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 }
 
 func TestBuilder_ObserveLogLine(t *testing.T) {
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	err = builder.ObserveLogLine(testTenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
@@ -203,7 +203,7 @@ func TestBuilder_ObserveLogLine(t *testing.T) {
 }
 
 func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(b, err)
 
 	maxTenants := 1000
@@ -221,7 +221,7 @@ func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
 }
 
 func TestBuilder_TimeRanges_PostingsOnly(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	base := time.Unix(8000, 0).UTC()
@@ -244,7 +244,7 @@ func TestBuilder_TimeRanges_PostingsOnly(t *testing.T) {
 }
 
 func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	base := time.Unix(9000, 0).UTC()
@@ -274,7 +274,7 @@ func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
 }
 
 func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	base := time.Unix(10000, 0).UTC()
@@ -335,7 +335,7 @@ func TestUnionTimeRange(t *testing.T) {
 }
 
 func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	base := time.Unix(8000, 0).UTC()
@@ -396,7 +396,7 @@ func newBuilderWithSections(t *testing.T, store scratch.Store, n int) *Builder {
 
 	cfg := testBuilderConfig
 	cfg.TargetSectionSize = 1
-	builder, err := NewBuilder(cfg, store, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, cfg, store, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	for i := range n {
@@ -414,7 +414,7 @@ func newBuilderWithSections(t *testing.T, store scratch.Store, n int) *Builder {
 // stop at the error, so Flush must hand back nothing when it fails.
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	t.Run("when the builder is empty", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		obj, closer, err := builder.Flush()

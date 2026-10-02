@@ -334,7 +334,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -464,7 +464,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 func TestSectionsForPredicateMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -582,7 +582,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 func TestSectionsForLabelsByStreamID(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -742,7 +742,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -962,7 +962,7 @@ func uploadIndexObject(t *testing.T, obj *dataobj.Object) (*ObjectMetastore, str
 // sections (no postings) for tenantID.
 func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,

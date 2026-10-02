@@ -63,7 +63,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		// Create multiple index files
 		for fileIdx := 0; fileIdx < bm.indexFilesNum; fileIdx++ {
 			// Create index builder for this file
-			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 				TargetPageSize:          1024 * 1024,
 				TargetObjectSize:        10 * 1024 * 1024,
 				TargetSectionSize:       128,
@@ -180,7 +180,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 
-			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 				TargetPageSize:          1024 * 1024,
 				TargetObjectSize:        10 * 1024 * 1024,
 				TargetSectionSize:       128,

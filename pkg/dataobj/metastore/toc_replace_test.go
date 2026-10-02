@@ -101,10 +101,10 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	}
 
 	for tenant, rows := range rowsByTenant {
-		b, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		for _, r := range rows {
-			require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
+			require.NoError(t, b.AppendIndexPointer(tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
 		}
 		obj, closer, err := b.Flush()
 		require.NoError(t, err)
@@ -129,10 +129,9 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	})
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -223,10 +222,9 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
 
 			writer := &TableOfContentsWriter{
-				bucket:      bucket,
-				metrics:     newTableOfContentsMetrics(),
-				logger:      log.NewNopLogger(),
-				builderOnce: sync.Once{},
+				bucket:  bucket,
+				metrics: newTableOfContentsMetrics(),
+				logger:  log.NewNopLogger(),
 			}
 
 			swapped, err := writer.ReplaceIndexPointers(ctx, window,
@@ -315,10 +313,9 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	preSwap := readWindowToCs(ctx, t, bucket, window)
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Caller still believes "idx/a-0" / "idx/a-1" are present — they're not.
@@ -342,10 +339,9 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 	tocPath := TableOfContentsPath("tenantA", window)
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -413,10 +409,9 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 	}
 
 	writer := &TableOfContentsWriter{
-		bucket:      flaky,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  flaky,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -445,10 +440,9 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 	alwaysFail := &alwaysFailBucket{Bucket: inner}
 
 	writer := &TableOfContentsWriter{
-		bucket:      alwaysFail,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  alwaysFail,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Use the same-package internal helper to override backoff to a tight budget,
@@ -488,10 +482,9 @@ func TestReplaceIndexPointers_EmptyOldAndNewPaths_BypassesStorage(t *testing.T) 
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Even with a permanently-failing bucket, empty old and new paths must no-op
@@ -520,10 +513,9 @@ func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Empty old, non empty new => error without calling storage.

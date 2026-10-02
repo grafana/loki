@@ -35,6 +35,7 @@ var (
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
 type Builder struct {
+	tenant  string
 	cfg     logsobj.BuilderBaseConfig
 	metrics *BuilderMetrics
 
@@ -73,10 +74,14 @@ const (
 	builderStateDirty
 )
 
-// NewBuilder creates a new [Builder] which stores log-oriented data objects.
+// NewBuilder returns a [Builder] that builds index objects for tenant.
 //
-// NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
+// NewBuilder returns an error if tenant is empty or the provided config is
+// invalid.
+func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
+	if tenant == "" {
+		return nil, errors.New("tenant must not be empty")
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -84,6 +89,7 @@ func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metri
 	metrics.ObserveConfig(cfg)
 
 	return &Builder{
+		tenant:  tenant,
 		cfg:     cfg,
 		metrics: metrics,
 
@@ -94,6 +100,11 @@ func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metri
 		stats:         make(map[string]*stats.Builder),
 		postings:      make(map[string]*postings.Builder),
 	}, nil
+}
+
+// Tenant returns the tenant the builder is bound to.
+func (b *Builder) Tenant() string {
+	return b.tenant
 }
 
 func (b *Builder) GetEstimatedSize() int {
