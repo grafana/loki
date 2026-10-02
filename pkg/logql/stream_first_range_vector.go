@@ -42,6 +42,10 @@ type streamFirstRangeVectorIterator struct {
 	// output series and a warning instead of an error.
 	partialResultsAllowed bool
 
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not pre-empt the series-limit error.
+	keepsErroredLines bool
+
 	// grouping and sortedGroups are the grouping of the vector aggregation above the range
 	// aggregation. The iterator groups its series by them to count the output series.
 	grouping     *syntax.Grouping
@@ -75,6 +79,7 @@ func newStreamFirstRangeVectorIterator(
 	selRange, step, start, end, offset int64,
 	grouping *syntax.Grouping,
 	maxSeries int,
+	keepsErroredLines bool,
 ) (RangeVectorIterator, error) {
 	newAccumulator, ok := newStepAccumulatorFuncFor(expr)
 	if !ok {
@@ -104,6 +109,7 @@ func newStreamFirstRangeVectorIterator(
 		sortedGroups:          sortedGroups,
 		maxSeries:             maxSeries,
 		partialResultsAllowed: httpreq.IsLogsDrilldownRequest(ctx),
+		keepsErroredLines:     keepsErroredLines,
 		metadata:              metadata.FromContext(ctx),
 		series:                map[string]*accumulatedSeries{},
 		outputs:               map[uint64]struct{}{},
@@ -235,7 +241,7 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 	if _, ok := r.outputs[output]; !ok {
 		if r.maxSeries > 0 && len(r.outputs) >= r.maxSeries {
 			// Prefer the pipeline error to the limit error, because it tells the user what to fix.
-			if metric.Has(logqlmodel.ErrorLabel) && metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
+			if !r.keepsErroredLines && metric.Has(logqlmodel.ErrorLabel) {
 				return nil, logqlmodel.NewPipelineErr(metric)
 			}
 			if !r.partialResultsAllowed {

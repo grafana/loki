@@ -329,6 +329,5 @@ func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
 // object has, and handing one to the metastore would drop every section.
 func isPipelineErrorLabel(name string) bool {
 	return name == logqlmodel.ErrorLabel ||
-		name == logqlmodel.ErrorDetailsLabel ||
-		name == logqlmodel.PreserveErrorLabel
+		name == logqlmodel.ErrorDetailsLabel
 }

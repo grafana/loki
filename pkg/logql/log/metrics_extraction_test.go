@@ -1018,7 +1018,7 @@ func TestBinaryLabelFilter_Hints(t *testing.T) {
 	})
 }
 
-func TestHints_PreserveError(t *testing.T) {
+func TestStages_KeepsErroredLines(t *testing.T) {
 	errorFilter := func(typ labels.MatchType, value string) LabelFilterer {
 		return NewStringLabelFilter(labels.MustNewMatcher(typ, logqlmodel.ErrorLabel, value))
 	}
@@ -1031,41 +1031,17 @@ func TestHints_PreserveError(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		stages      Stages
-		groups      []string
-		without     bool
-		noLabels    bool
-		unwrap      string
 		postFilters []LabelFilterer
 		want        bool
 	}{
 		{
-			name:   `__error__!="" keeps the errored lines under a by(<labels>) grouping`,
-			stages: Stages{errorFilter(labels.MatchNotEqual, "")},
-			groups: []string{"pod"},
-			want:   true,
-		},
-		{
-			name:   `__error__!="" keeps the errored lines with no grouping`,
+			name:   `__error__!="" keeps the errored lines`,
 			stages: Stages{errorFilter(labels.MatchNotEqual, "")},
 			want:   true,
-		},
-		{
-			name:    `__error__!="" keeps the errored lines under a without grouping`,
-			stages:  Stages{errorFilter(labels.MatchNotEqual, "")},
-			groups:  []string{"pod"},
-			without: true,
-			want:    true,
-		},
-		{
-			name:     `__error__!="" keeps the errored lines under by()`,
-			stages:   Stages{errorFilter(labels.MatchNotEqual, "")},
-			noLabels: true,
-			want:     true,
 		},
 		{
 			name:   `__error__="JSONParserErr" keeps the errored lines`,
 			stages: Stages{errorFilter(labels.MatchEqual, "JSONParserErr")},
-			groups: []string{"pod"},
 			want:   true,
 		},
 		{
@@ -1091,14 +1067,7 @@ func TestHints_PreserveError(t *testing.T) {
 		{
 			name:   `__error__="" asks to drop the errored lines`,
 			stages: Stages{errorFilter(labels.MatchEqual, "")},
-			groups: []string{"pod"},
 			want:   false,
-		},
-		{
-			name:     `__error__="" asks to drop the errored lines under by ()`,
-			stages:   Stages{errorFilter(labels.MatchEqual, "")},
-			noLabels: true,
-			want:     false,
 		},
 		{
 			name: `an and keeps the errored lines when its __error__ leg asks for them`,
@@ -1153,7 +1122,6 @@ func TestHints_PreserveError(t *testing.T) {
 		{
 			name:   `label_format reading __error__ does not keep the errored lines, because only a filter decides`,
 			stages: Stages{renameError()},
-			groups: []string{"pod"},
 			want:   false,
 		},
 		{
@@ -1169,28 +1137,15 @@ func TestHints_PreserveError(t *testing.T) {
 		{
 			name:   `a filter on another label does not keep the errored lines`,
 			stages: Stages{NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "level", ""))},
-			groups: []string{"pod"},
-			want:   false,
-		},
-		{
-			name:   `a by (__error__) grouping does not keep the errored lines`,
-			groups: []string{logqlmodel.ErrorLabel},
-			want:   false,
-		},
-		{
-			name:   `an unwrap on __error__ does not keep the errored lines`,
-			unwrap: logqlmodel.ErrorLabel,
 			want:   false,
 		},
 		{
 			name:        `a __error__!="" post filter after the unwrap keeps the errored lines`,
-			unwrap:      "v",
 			postFilters: []LabelFilterer{errorFilter(labels.MatchNotEqual, "")},
 			want:        true,
 		},
 		{
 			name:        `a __error__="" post filter after the unwrap drops the errored lines`,
-			unwrap:      "v",
 			postFilters: []LabelFilterer{errorFilter(labels.MatchEqual, "")},
 			want:        false,
 		},
@@ -1200,21 +1155,11 @@ func TestHints_PreserveError(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// The extractor constructors wire the stages to the hints, so the test goes through
-			// them rather than calling NewParserHint itself. It reads the hints only, so the line
-			// extractor and the conversion never run.
-			var hints ParserHint
-			if tc.unwrap != "" {
-				ex, err := LabelExtractorWithStages(tc.unwrap, ConvertFloat, tc.groups, tc.without, tc.noLabels, tc.stages, ReduceAndLabelFilter(tc.postFilters))
-				require.NoError(t, err)
-				hints = ex.(*labelSampleExtractor).baseBuilder.ParserLabelHints()
-			} else {
-				ex, err := NewLineSampleExtractor(nil, tc.stages, tc.groups, tc.without, tc.noLabels)
-				require.NoError(t, err)
-				hints = ex.(*lineSampleExtractor).baseBuilder.ParserLabelHints()
+			stages := tc.stages
+			if tc.postFilters != nil {
+				stages = append(append(Stages{}, stages...), ReduceAndLabelFilter(tc.postFilters))
 			}
-
-			require.Equal(t, tc.want, hints.PreserveError())
+			require.Equal(t, tc.want, stages.Hints().KeepsErroredLines)
 		})
 	}
 }

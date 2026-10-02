@@ -55,7 +55,7 @@ func (kl *KeepLabels) RequiredLabelNames() []string {
 
 func isSpecialLabel(lblName string) bool {
 	switch lblName {
-	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
+	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel:
 		return true
 	}
 

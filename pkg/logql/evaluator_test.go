@@ -415,7 +415,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: "not-a-real-operation",
 		}
 
-		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0)
+		_, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
 		require.Error(t, err)
 		require.True(t, *closed)
 	})
@@ -427,7 +427,7 @@ func TestNewTimestampFirstRangeAggEvaluator(t *testing.T) {
 			Operation: syntax.OpRangeTypeCount,
 		}
 
-		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0)
+		ev, err := newTimestampFirstRangeAggEvaluator(context.Background(), it, expr, q, 0, false)
 		require.NoError(t, err)
 		require.False(t, *closed)
 

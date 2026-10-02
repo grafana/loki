@@ -25,7 +25,6 @@ var (
 	ErrMaxQueryLength      = errors.New("query time range exceeds the limit")
 	ErrMaxEntriesLimit     = errors.New("max entries limit per query exceeded")
 	ErrorLabel             = "__error__"
-	PreserveErrorLabel     = "__preserve_error__"
 	ErrorDetailsLabel      = "__error_details__"
 )
 
