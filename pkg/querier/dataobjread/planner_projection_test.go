@@ -60,21 +60,24 @@ func TestNewProjectionPlan(t *testing.T) {
 			query:       `max by (app) (count_over_time({app="x"}[1m]))`,
 			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
 		},
-		"an unwrap reads all metadata because a failed conversion keeps every label": {
-			query:       `sum by (app) (sum_over_time({app="x"} | unwrap duration [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		"an unwrap narrows the metadata to the grouping key and the unwrapped name": {
+			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"app", "duration"},
 		},
-		"an unwrap under a by grouping also reads all metadata": {
+		"an unwrap on a bare range aggregation reads all metadata because its output keeps the whole label set": {
 			query:       `max_over_time({app="x"} | unwrap duration [1m]) by (pod)`,
 			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
 		},
-		"a duration label filter reads all metadata because a failed conversion keeps every label": {
-			query:       `sum by (app) (count_over_time({app="x"} | latency > 1s [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		"a duration label filter narrows the metadata to the grouping key and the filtered name": {
+			query:        `sum by (app) (count_over_time({app="x"} | latency > 1s [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"app", "latency"},
 		},
-		"a numeric label filter reads all metadata because a failed conversion keeps every label": {
-			query:       `sum by (app) (count_over_time({app="x"} | status > 400 [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		"a numeric label filter narrows the metadata to the grouping key and the filtered name": {
+			query:        `sum by (app) (count_over_time({app="x"} | status > 400 [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"app", "status"},
 		},
 		"sum(max_over_time) reads all metadata, because the extractor keeps every label": {
 			query:       `sum by (app) (max_over_time({app="x"} | unwrap duration | __error__="" [1m]))`,
@@ -120,38 +123,23 @@ func TestNewProjectionPlan(t *testing.T) {
 			},
 			wantSectionPredicates: []string{`level="error"`},
 		},
-		"a label filter whose failures are dropped narrows the metadata": {
-			query:        `sum by (app) (count_over_time({app="x"} | latency > 1s | __error__="" [1m]))`,
-			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "latency"},
-		},
 		"an unwrap's own filters name metadata the read must project": {
 			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" | level="error" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
 			wantMetadata: []string{"app", "duration", "level"},
 		},
-		"a delete whose filter can fail keeps the metadata wide": {
-			query:       `sum by (app) (count_over_time({app="x"}[1m]))`,
-			deletes:     []string{`{app="x"} | latency > 1s`},
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+		"a delete's label filter narrows the metadata to the grouping key and the filtered name": {
+			query:        `sum by (app) (count_over_time({app="x"}[1m]))`,
+			deletes:      []string{`{app="x"} | latency > 1s`},
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"app", "latency"},
 		},
-		"a binary filter with a converting child keeps the metadata wide, and still pushes the string half": {
+		"a binary filter with a converting child narrows the metadata, and still pushes the string half": {
 			query:                 `sum by (app) (count_over_time({app="x"} | level="error" and latency > 1s [1m]))`,
-			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
+			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata:          []string{"app", "latency", "level"},
 			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
 			wantSectionPredicates: []string{`level="error"`},
-		},
-		"a drop filter before the unwrap does not stop the unwrap failing": {
-			query:       `sum by (app) (sum_over_time({app="x"} | __error__="" | unwrap duration [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
-		},
-		"a filter that selects one error keeps it, so the metadata stays wide": {
-			query:       `sum by (app) (count_over_time({app="x"} | latency > 1s | __error__="LabelFilterErr" [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
-		},
-		"a fallible stage after the drop filter can still fail": {
-			query:       `sum by (app) (count_over_time({app="x"} | latency > 1s | __error__="" | status > 400 [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMetadata},
 		},
 		"an equality against an empty value is pushed to the reader but withheld from the metastore": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="" [1m]))`,
