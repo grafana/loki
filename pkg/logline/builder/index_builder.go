@@ -371,10 +371,8 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 }
 
 // documentShard returns the stream's document shard, computed once per
-// stream. The hash must be the ingester's stream fingerprint
-// (instance.getHashForLabels), because queriers match document shards
-// against chunk fingerprints. For stream labels, which never carry __name__,
-// it equals labels.StableHash.
+// stream from logline.StreamFingerprint, because queriers match document
+// shards against chunk fingerprints.
 func (w *streamIngester) documentShard(parsedLabels *labels.Labels) uint32 {
 	shards := w.postings.documentShards
 	if shards <= 1 {
@@ -385,7 +383,7 @@ func (w *streamIngester) documentShard(parsedLabels *labels.Labels) uint32 {
 		ls = *parsedLabels
 	}
 	var fp uint64
-	fp, w.scratchHash = ls.HashWithoutLabels(w.scratchHash)
+	fp, w.scratchHash = logline.StreamFingerprint(ls, w.scratchHash)
 	return logline.DocumentShard(fp, int(shards))
 }
 
