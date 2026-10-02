@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -105,7 +104,7 @@ func (c *coordinator) Run(ctx context.Context) error {
 
 // windows returns the metastore-aligned windows the coordinator compacts on
 // each pass, newest first: the current window followed by cfg.WindowLookback
-// older windows. With the default lookback of 0 this is the current window.
+// older windows.
 func (c *coordinator) windows() []time.Time {
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
@@ -129,26 +128,18 @@ func (c *coordinator) runTenant(ctx context.Context, tenant string) {
 	c.runTenantLoop(ctx, tenant)
 }
 
-// errNoToC reports that a compacted window has no ToCs yet. It happens briefly
-// after each window boundary, before the first index for the new window is
-// written.
-var errNoToC = errors.New("no ToC for window")
-
 // discoverTenants returns the union of the tenants with a ToC in every
 // compacted window.
 //
-// It fails if any window's ToCs cannot be listed, including when the window
-// has no ToCs yet. A partial result could make a tenant with work look absent.
-// A window without ToCs returns an error that wraps errNoToC.
+// A window with no ToCs contributes no tenants. This happens after each window
+// boundary and in windows that received no data. A listing error fails the
+// call, because a partial result could make a tenant with work look absent.
 func (c *coordinator) discoverTenants(ctx context.Context) (map[string]struct{}, error) {
 	tenants := make(map[string]struct{})
 	for _, window := range c.windows() {
 		listed, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
 		if err != nil {
 			return nil, fmt.Errorf("list ToCs for window %s: %w", window, err)
-		}
-		if len(listed) == 0 {
-			return nil, fmt.Errorf("window %s: %w", window, errNoToC)
 		}
 		for _, tenant := range listed {
 			tenants[tenant] = struct{}{}

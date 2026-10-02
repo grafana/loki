@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"sync"
 	"time"
@@ -25,11 +24,26 @@ type tenantsSupervisor struct {
 	discover func(ctx context.Context) (map[string]struct{}, error)
 	// enabled reports whether tenant may run any compaction phase.
 	enabled func(tenant string) bool
-	// runTenant runs one tenant's worker until ctx is cancelled.
+	// runTenant runs one tenant's worker until ctx is cancelled. It may also
+	// return earlier, in which case the supervisor restarts it on a later pass.
 	runTenant func(ctx context.Context, tenant string)
 
-	runningWorkers map[string]context.CancelFunc
+	runningWorkers map[string]*tenantWorker
 	wg             sync.WaitGroup
+}
+
+type tenantWorker struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+func (w *tenantWorker) exited() bool {
+	select {
+	case <-w.done:
+		return true
+	default:
+		return false
+	}
 }
 
 func newTenantsSupervisor(
@@ -45,7 +59,7 @@ func newTenantsSupervisor(
 		discover:       discover,
 		enabled:        enabled,
 		runTenant:      runTenant,
-		runningWorkers: make(map[string]context.CancelFunc),
+		runningWorkers: make(map[string]*tenantWorker),
 	}
 }
 
@@ -70,23 +84,22 @@ func (s *tenantsSupervisor) Run(ctx context.Context) error {
 }
 
 // reconcile starts and stops runningWorkers to match the current discovery result.
-// When discovery fails, reconcile changes nothing and waits for the next pass.
+// It also drops workers that exited on their own, so a later pass can restart them.
+// When discovery fails, reconcile only stops disabled workers. It starts none,
+// because a partial result could make a tenant with work look absent.
 //
 // A stopped worker deletes its per-tenant metric series when its goroutine
 // exits, not here, so a draining worker cannot recreate a series after stop.
 func (s *tenantsSupervisor) reconcile(ctx context.Context) {
 	discovered, err := s.discover(ctx)
 	if err != nil {
-		// A missing ToC is expected after every window boundary, so it is not
-		// worth a warning.
-		lvl := level.Warn
-		if errors.Is(err, errNoToC) {
-			lvl = level.Debug
-		}
-		lvl(s.logger).Log("msg", "tenant discovery failed; leaving workers unchanged", "err", err)
-		return
+		level.Warn(s.logger).Log("msg", "tenant discovery failed; stopping only disabled workers", "err", err)
+		discovered = s.running()
 	}
 	start, stop := reconcileWorkers(s.running(), discovered, s.enabled)
+	if err != nil {
+		start = nil
+	}
 	for _, tenant := range stop {
 		s.stop(tenant)
 	}
@@ -97,7 +110,11 @@ func (s *tenantsSupervisor) reconcile(ctx context.Context) {
 
 func (s *tenantsSupervisor) running() map[string]struct{} {
 	out := make(map[string]struct{}, len(s.runningWorkers))
-	for tenant := range s.runningWorkers {
+	for tenant, w := range s.runningWorkers {
+		if w.exited() {
+			delete(s.runningWorkers, tenant)
+			continue
+		}
 		out[tenant] = struct{}{}
 	}
 	return out
@@ -106,13 +123,17 @@ func (s *tenantsSupervisor) running() map[string]struct{} {
 func (s *tenantsSupervisor) start(ctx context.Context, tenant string) {
 	level.Debug(s.logger).Log("msg", "starting compaction worker", "tenant", tenant)
 	wctx, cancel := context.WithCancel(ctx)
-	s.runningWorkers[tenant] = cancel
-	s.wg.Go(func() { s.runTenant(wctx, tenant) })
+	w := &tenantWorker{cancel: cancel, done: make(chan struct{})}
+	s.runningWorkers[tenant] = w
+	s.wg.Go(func() {
+		defer close(w.done)
+		s.runTenant(wctx, tenant)
+	})
 }
 
 func (s *tenantsSupervisor) stop(tenant string) {
 	level.Debug(s.logger).Log("msg", "stopping compaction worker", "tenant", tenant)
-	s.runningWorkers[tenant]()
+	s.runningWorkers[tenant].cancel()
 	delete(s.runningWorkers, tenant)
 }
 

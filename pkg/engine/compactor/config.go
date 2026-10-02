@@ -50,14 +50,10 @@ type Config struct {
 	// with nothing to do stops hammering object storage.
 	MaxBackoff time.Duration `yaml:"max_backoff"`
 
-	// WindowLookback is the number of older metastore windows the coordinator
-	// compacts in addition to the current window. Zero (the default) compacts
-	// only the current window; 1 also compacts the immediately-preceding
-	// window, and so on. Raise it when indexing lags behind wall-clock
-	// so a ToC for the current window may not exist yet: the preceding
-	// window(s) still have populated ToCs and would otherwise never be
-	// compacted. Each extra window is an independent per-pass read + plan, so
-	// cost scales linearly with the count.
+	// WindowLookback is the number of metastore windows prior to the current one the coordinator
+	// compacts in addition to the current window. It must be at least 1 (the
+	// default), so tenants stay discoverable through the preceding window while
+	// the current window has no ToC yet.
 	WindowLookback int `yaml:"window_lookback"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
@@ -178,7 +174,7 @@ const (
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMinBackoff            = 1 * time.Minute
 	defaultMaxBackoff            = 15 * time.Minute
-	defaultWindowLookback        = 0
+	defaultWindowLookback        = 1
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 3
 	defaultToCConsolidateTimeout = 30 * time.Second
@@ -209,7 +205,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxBackoff, prefix+"max-backoff", defaultMaxBackoff,
 		"Experimental: Maximum wait a per-tenant worker backs off to after consecutive no-work (converged or empty) or failing phases, so an idle worker stops hammering object storage.")
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
-		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window.")
+		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
@@ -286,7 +282,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxBackoff < cfg.MinBackoff {
 		return errInvalidMaxBackoff
 	}
-	if cfg.WindowLookback < 0 {
+	if cfg.WindowLookback < 1 {
 		return errInvalidWindowLookback
 	}
 	if cfg.ToCConsolidateTimeout <= 0 {
@@ -320,7 +316,7 @@ var (
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
 	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
-	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 0")
+	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 1")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")

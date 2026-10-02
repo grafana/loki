@@ -1356,17 +1356,17 @@ func TestDiscoverTenants(t *testing.T) {
 		require.ElementsMatch(t, []string{"acme", "bravo"}, keys(tenants))
 	})
 
-	t.Run("fails with errNoToC when a window has no ToC", func(t *testing.T) {
+	t.Run("skips a window with no ToCs and returns the other tenants", func(t *testing.T) {
 		ctx := t.Context()
 		bucket := objstore.NewInMemBucket()
 		seedWindowToC(ctx, t, bucket, prev, "bravo")
 
 		tenants, err := newC(t, bucket).discoverTenants(ctx)
-		require.ErrorIs(t, err, errNoToC)
-		require.Nil(t, tenants)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"bravo"}, keys(tenants))
 	})
 
-	t.Run("fails with errNoToC when a window holds only a shared ToC from before the per-tenant layout", func(t *testing.T) {
+	t.Run("ignores a shared ToC from before the per-tenant layout", func(t *testing.T) {
 		ctx := t.Context()
 		bucket := objstore.NewInMemBucket()
 		seedWindowToC(ctx, t, bucket, prev, "bravo")
@@ -1374,8 +1374,8 @@ func TestDiscoverTenants(t *testing.T) {
 		require.NoError(t, bucket.Upload(ctx, legacyPath, strings.NewReader("legacy")))
 
 		tenants, err := newC(t, bucket).discoverTenants(ctx)
-		require.ErrorIs(t, err, errNoToC)
-		require.Nil(t, tenants)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"bravo"}, keys(tenants))
 	})
 
 	t.Run("fails when listing ToCs fails", func(t *testing.T) {
@@ -1403,9 +1403,6 @@ func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
 	newC := func(lookback int) *coordinator {
 		return &coordinator{cfg: Config{WindowLookback: lookback}, clock: fixedClock(current.Add(time.Hour))}
 	}
-
-	require.Equal(t, []time.Time{current}, newC(0).windows(),
-		"lookback 0 compacts only the current window (original behaviour)")
 
 	require.Equal(t, []time.Time{
 		current,
