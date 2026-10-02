@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -53,6 +54,7 @@ type indexSet struct {
 	logger            log.Logger
 	maxConcurrent     int
 	downloadTimeout   time.Duration
+	observeDownload   func(time.Duration, error)
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -62,7 +64,9 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
+// NewIndexSet creates an index set. A non-nil observer measures object transfer
+// attempts independently of subsequent extraction, fsync and index opening.
+func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration, observeDownload func(time.Duration, error)) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -85,6 +89,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		logger:            logger,
 		maxConcurrent:     maxConcurrent,
 		downloadTimeout:   downloadTimeout,
+		observeDownload:   observeDownload,
 		lastUsedAt:        time.Now(),
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
@@ -236,9 +241,11 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 
 	for i := range t.index {
 		idx := t.index[i]
+		endDispatch := timing.Track(ctx, timing.DispatchWait)
 		g.Go(func() error {
 			return callback(t.userID == "", idx)
 		})
+		endDispatch()
 	}
 	return g.Wait()
 }
@@ -350,6 +357,26 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		return errIndexListCacheTooStale
 	}
 
+	// Index files are immutable, so opening them does not require the write lock.
+	// Keep ownership here until all opens and lock acquisition have succeeded.
+	openedIndexes := make(map[string]index.Index, len(downloadedFiles))
+	defer func() {
+		for fileName, idx := range openedIndexes {
+			if closeErr := idx.Close(); closeErr != nil {
+				level.Error(t.logger).Log("msg", "failed to close uncommitted index", "file", fileName, "err", closeErr)
+			}
+		}
+	}()
+
+	for _, fileName := range downloadedFiles {
+		filePath := filepath.Join(t.cacheLocation, fileName)
+		idx, err := t.openIndexFileFunc(filePath)
+		if err != nil {
+			return err
+		}
+		openedIndexes[fileName] = idx
+	}
+
 	if lock {
 		err = t.indexMtx.lock(ctx)
 		if err != nil {
@@ -358,15 +385,11 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		defer t.indexMtx.unlock()
 	}
 
-	for _, fileName := range downloadedFiles {
-		filePath := filepath.Join(t.cacheLocation, fileName)
-		idx, err := t.openIndexFileFunc(filePath)
-		if err != nil {
-			return err
-		}
-
+	for fileName, idx := range openedIndexes {
 		t.index[fileName] = idx
 	}
+	// remove ownership so files aren't close prematurely
+	openedIndexes = nil
 
 	for _, db := range toDelete {
 		err := t.cleanupDB(db)
@@ -439,7 +462,7 @@ func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folder
 	if decompress {
 		dst = strings.TrimSuffix(dst, gzipExtension)
 	}
-	return filepath.Base(dst), storage.DownloadFileFromStorage(
+	return filepath.Base(dst), storage.DownloadFileFromStorageWithObserver(
 		dst,
 		decompress,
 		true,
@@ -447,6 +470,7 @@ func (t *indexSet) downloadFileFromStorage(ctx context.Context, fileName, folder
 		func() (io.ReadCloser, error) {
 			return t.baseIndexSet.GetFile(ctx, t.tableName, t.userID, fileName)
 		},
+		t.observeDownload,
 	)
 }
 

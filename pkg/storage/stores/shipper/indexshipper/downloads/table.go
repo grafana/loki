@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
@@ -114,7 +115,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout)
+			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout, metrics.observeDownload)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +129,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
-		openIndexFileFunc, table.logger, table.downloadTimeout)
+		openIndexFileFunc, table.logger, table.downloadTimeout, metrics.observeDownload)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +171,7 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 		// sending to goroutine
 		uid := users[i]
 
+		endDispatch := timing.Track(ctx, timing.DispatchWait)
 		g.Go(func() error {
 			indexSet, err := t.getOrCreateIndexSet(ctx, uid, true)
 			if err != nil {
@@ -194,6 +196,7 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 			}
 			return err
 		})
+		endDispatch()
 	}
 	return g.Wait()
 }
@@ -345,7 +348,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout, t.metrics.observeDownload)
 	if err != nil {
 		return nil, err
 	}

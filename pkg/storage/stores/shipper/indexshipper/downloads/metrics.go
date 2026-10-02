@@ -1,6 +1,9 @@
 package downloads
 
 import (
+	"time"
+
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -11,6 +14,7 @@ const (
 )
 
 type metrics struct {
+	fileDownloadDuration                   *prometheus.HistogramVec
 	queryTimeTableDownloadDurationSeconds  *prometheus.CounterVec
 	tablesSyncOperationTotal               *prometheus.CounterVec
 	tablesDownloadOperationDurationSeconds *prometheus.GaugeVec
@@ -22,6 +26,13 @@ type metrics struct {
 
 func newMetrics(r prometheus.Registerer) *metrics {
 	m := &metrics{
+		fileDownloadDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "index_file_download_duration_seconds",
+			Help:                            "Object retrieval and transfer to a temporary file, excluding extraction, fsync and open. Successful observation count is the number of files downloaded, including repeat downloads.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}, []string{"status_code"}),
 		queryTimeTableDownloadDurationSeconds: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "query_time_table_download_duration_seconds",
 			Help: "Time (in seconds) spent in downloading of files per table at query time",
@@ -46,4 +57,8 @@ func newMetrics(r prometheus.Registerer) *metrics {
 	}
 
 	return m
+}
+
+func (m *metrics) observeDownload(elapsed time.Duration, err error) {
+	m.fileDownloadDuration.WithLabelValues(instrument.ErrorCode(err)).Observe(elapsed.Seconds())
 }

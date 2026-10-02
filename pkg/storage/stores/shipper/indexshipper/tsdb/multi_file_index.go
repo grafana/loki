@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/timing"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -145,6 +146,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	acc := newResultAccumulator(func(xs [][]logproto.ChunkRefWithSizingInfo) ([]logproto.ChunkRefWithSizingInfo, error) {
+		defer timing.Track(ctx, timing.Merge)()
 		if res == nil {
 			res = ChunkRefsPool.Get()
 		}
