@@ -73,7 +73,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	calc := dataobjindex.NewCalculator(node.Tenant, indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
+	calc := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
 
 	merged := sortmerge.MixedRunIterator(ctx, inputs.runs, node.SortSchema)
 

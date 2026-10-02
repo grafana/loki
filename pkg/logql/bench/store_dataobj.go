@@ -211,7 +211,7 @@ func (s *DataObjStore) buildIndex() error {
 		return fmt.Errorf("failed to create index builder: %w", err)
 	}
 
-	calculator := index.NewCalculator(s.tenant, builder, index.NewCalculatorMetrics(nil))
+	calculator := index.NewCalculator(builder, index.NewCalculatorMetrics(nil))
 	cnt := 0
 	objectsPerIndex := 16
 	err = s.bucket.Iter(context.Background(), "", func(name string) error {

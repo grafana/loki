@@ -74,7 +74,7 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: creating index builder: %w", err)
 	}
-	calculator := dataobjindex.NewCalculator(tenants[0], indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
+	calculator := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
 
 	sortedPath, err := uploader.ObjectKey(ctx, sorted, c.uploaderCfg.SHAPrefixSize)
 	if err != nil {

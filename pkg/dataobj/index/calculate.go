@@ -44,7 +44,6 @@ type logsIndexCalculation interface {
 }
 
 type logsCalculationContext struct {
-	tenantID       string
 	objectPath     string
 	sectionIdx     int64
 	streamIDLookup map[int64]int64
@@ -79,20 +78,18 @@ var (
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 //
-// A Calculator is bound to one tenant. It indexes only data objects that hold
-// that tenant alone.
+// A Calculator is bound to the tenant of its builder. It indexes only data
+// objects that hold that tenant alone.
 type Calculator struct {
-	tenant           string
 	indexobjBuilder  *indexobj.Builder
 	builderMtx       sync.Mutex
 	metrics          *CalculatorMetrics
 	uncompressedSize uint64
 }
 
-// NewCalculator returns a [Calculator] for tenant.
-func NewCalculator(tenant string, indexobjBuilder *indexobj.Builder, metrics *CalculatorMetrics) *Calculator {
+// NewCalculator returns a [Calculator] for the tenant of indexobjBuilder.
+func NewCalculator(indexobjBuilder *indexobj.Builder, metrics *CalculatorMetrics) *Calculator {
 	return &Calculator{
-		tenant:          tenant,
 		indexobjBuilder: indexobjBuilder,
 		metrics:         metrics,
 	}
@@ -107,12 +104,7 @@ func (c *Calculator) Reset() {
 // data calculated since the last [Calculator.Flush] or [Calculator.Reset].
 // MinTime and MaxTime are zero when no data was calculated.
 func (c *Calculator) TimeRange() dataobj.TimeRange {
-	timeRange := dataobj.TimeRange{Tenant: c.tenant}
-	for _, r := range c.indexobjBuilder.TimeRanges() {
-		if r.Tenant == c.tenant {
-			timeRange = r
-		}
-	}
+	timeRange := c.indexobjBuilder.TimeRange()
 	timeRange.UncompressedLogsSize = c.uncompressedSize
 	return timeRange
 }
@@ -184,13 +176,14 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 // streams section.
 func (c *Calculator) validate(reader *dataobj.Object) (*dataobj.Section, error) {
 	var (
+		tenant         = c.indexobjBuilder.Tenant()
 		streamsSection *dataobj.Section
 		streamsCount   int
 		logsCount      int
 	)
 	for i, section := range reader.Sections() {
-		if section.Tenant != c.tenant {
-			return nil, fmt.Errorf("%w: section %d has tenant %q, want %q", ErrTenantMismatch, i, section.Tenant, c.tenant)
+		if section.Tenant != tenant {
+			return nil, fmt.Errorf("%w: section %d has tenant %q, want %q", ErrTenantMismatch, i, section.Tenant, tenant)
 		}
 		switch {
 		case streams.CheckSection(section):
@@ -269,7 +262,6 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	}
 
 	calculationContext := &logsCalculationContext{
-		tenantID:           c.tenant,
 		objectPath:         objectPath,
 		sectionIdx:         sectionIdx,
 		streamIDLookup:     streamIDLookup,

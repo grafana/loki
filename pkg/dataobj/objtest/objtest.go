@@ -198,7 +198,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}
 
-	calculator := index.NewCalculator(Tenant, indexBuilder, index.NewCalculatorMetrics(nil))
+	calculator := index.NewCalculator(indexBuilder, index.NewCalculatorMetrics(nil))
 
 	var (
 		count           int

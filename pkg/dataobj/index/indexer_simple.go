@@ -104,7 +104,7 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 	}
 	defer builder.Reset()
 
-	calc := NewCalculator(tenants[0], builder, s.calculatorMetrics)
+	calc := NewCalculator(builder, s.calculatorMetrics)
 	defer calc.Reset()
 
 	if err := calc.Calculate(ctx, objLogger, obj, objPath); err != nil {
