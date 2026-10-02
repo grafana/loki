@@ -55,6 +55,12 @@ metadata:
           "spec": {
             "size": "1x.small",
             "storage": {
+              "schemas": [
+                {
+                  "effectiveDate": "2024-01-01",
+                  "version": "v13"
+                }
+              ],
               "secret": {
                 "name": "test"
               }
