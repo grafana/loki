@@ -70,7 +70,7 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	}
 	defer sortedCloser.Close()
 
-	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(tenants[0], c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: creating index builder: %w", err)
 	}

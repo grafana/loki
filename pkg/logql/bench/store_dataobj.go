@@ -199,7 +199,7 @@ func (s *DataObjStore) buildIndex() error {
 		return nil
 	}
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(s.tenant, logsobj.BuilderBaseConfig{
 		TargetPageSize:    128 * 1024,        // 128KB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
