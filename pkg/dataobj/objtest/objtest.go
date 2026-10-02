@@ -35,7 +35,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// Tenant is the tenant [Builder.Append] stores logs for.
+// Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant
+// because the index Calculator accepts only single-tenant objects.
 const Tenant = "objtest"
 
 // indexPrefix is where index objects and their table of contents live within the bucket.
@@ -128,12 +129,6 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 
 // Append appends the given streams to the builder for [Tenant].
 func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
-	b.AppendFor(ctx, Tenant, streams...)
-}
-
-// AppendFor appends the given streams to the builder for tenant. Appending for two tenants
-// without an intervening [Builder.Flush] puts both tenants' sections in one object.
-func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logproto.Stream) {
 	require.False(b.t, b.closed, "append before Close: logs appended afterwards reach no index, so a query would not see them")
 
 	for _, stream := range streams {
@@ -141,7 +136,7 @@ func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logpr
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
 		}
 
-		require.NoError(b.t, b.logsBuilder.Append(tenant, stream, time.Now()), "failed to append stream")
+		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}
@@ -198,7 +193,7 @@ func (b *Builder) Close() {
 }
 
 func (b *Builder) buildIndex(ctx context.Context) error {
-	indexBuilder, err := indexobj.NewBuilder(b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(Tenant, b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}
@@ -252,7 +247,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 }
 
 func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculator) error {
-	obj, closer, timeRanges, err := calculator.Flush()
+	obj, closer, timeRange, err := calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush index: %w", err)
 	}
@@ -271,7 +266,7 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 
 	if err := b.indexBucket.Upload(ctx, key, reader); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
-	} else if err := WriteTableOfContentsEntries(ctx, b.indexMetastoreToc, key, timeRanges); err != nil {
+	} else if err := WriteTableOfContentsEntries(ctx, b.indexMetastoreToc, key, []dataobj.TimeRange{timeRange}); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 

@@ -46,12 +46,12 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 
-	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per tenant to maintain state.
+	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per index object to maintain state.
 	TargetSectionSize: 1,
 }
 
-// createTestLogObject creates a test data object with both streams and logs sections
-func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
+// testLogsFixture returns two streams with two entries each, at seconds 10 to 25.
+func testLogsFixture(t *testing.T) *fixtures.LogFixtureBuilder {
 	t.Helper()
 
 	lr := fixtures.NewLogsFixtureBuilder(t)
@@ -61,6 +61,16 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	lr.ForStream(`{cluster="test",app="bar",env="dev"}`).
 		Entry(20, `{trace_id="abc",user_id="user123"}`, "hello from bar").
 		Entry(25, `{trace_id="def",level="error"}`, "error message from bar")
+	return lr
+}
+
+// createTestLogObject creates a test data object with a logs and a streams
+// section for each of the tenants "tenant-0" to "tenant-<tenants-1>", in that
+// order.
+func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
+	t.Helper()
+
+	lr := testLogsFixture(t)
 
 	var allTenantSections []dataobj.SectionBuilder
 	for i := range tenants {
@@ -83,109 +93,42 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	return obj
 }
 
-func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
-	// Two streams share service_name (the default stats grouping key) but
-	// land in different shard buckets. Calculate must populate
-	// streamShardBuckets from labels; a missing or zeroed map would either
-	// error or collapse these into one row.
-	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := streams.ShardBucket(first)
-	var second labels.Labels
-	for i := 1; i < 256; i++ {
-		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if streams.ShardBucket(candidate) != firstShard {
-			second = candidate
-			break
-		}
-	}
-	require.NotEmpty(t, second)
-
-	logBuilder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		TargetObjectSize:        1 << 22,
-		TargetSectionSize:       1 << 21,
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), fakeLimits{})
-	require.NoError(t, err)
-
-	ts := time.Unix(10, 0).UTC()
-	for _, lbls := range []labels.Labels{first, second} {
-		require.NoError(t, logBuilder.Append("tenant-1", logproto.Stream{
-			Labels: lbls.String(),
-			Entries: []push.Entry{{
-				Timestamp: ts,
-				Line:      "hello",
-			}},
-		}, ts))
-	}
-
-	logObj, logCloser, err := logBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logCloser.Close() })
-
-	indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
-	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
-	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), logObj, "test/path/obj1"))
-
-	indexObj, indexCloser, _, err := calculator.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = indexCloser.Close() })
-
-	rows := readAllStatsRows(t, indexObj)
-	require.Len(t, rows, 2)
-	gotShards := make(map[int64]struct{}, len(rows))
-	for _, row := range rows {
-		require.Equal(t, "api", row["service_name.label.utf8"])
-		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
-	}
-	require.Equal(t, map[int64]struct{}{
-		int64(firstShard):                  {},
-		int64(streams.ShardBucket(second)): {},
-	}, gotShards)
-}
-
 func TestCalculator_Calculate(t *testing.T) {
 	logger := log.NewNopLogger()
-	tenants := 4
-	objects := 10
+	const (
+		tenant  = "tenant-0"
+		objects = 10
+	)
 
-	t.Run("successful calculation from readerAt", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+	t.Run("indexes several objects from readerAt into one range", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
-			obj := createTestLogObject(t, tenants)
+			obj := createTestLogObject(t, 1)
 
 			path := fmt.Sprintf("test/path-%d", i)
 			err = calculator.Calculate(context.Background(), logger, obj, path)
 			require.NoError(t, err)
 		}
 
-		// Verify we can flush the results
-		obj, closer, timeRanges, err := calculator.Flush()
+		obj, closer, timeRange, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.Equal(t, len(timeRanges), tenants)
-		for _, timeRange := range timeRanges {
-			require.NotEmpty(t, timeRange.Tenant)
-			require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
-			require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
-		}
+		require.Equal(t, tenant, timeRange.Tenant)
+		require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
+		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
+		require.Equal(t, []string{tenant}, obj.Tenants())
 
-		// Confirm we have multiple pointers sections
-		count := obj.Sections().Count(pointers.CheckSection)
-		require.GreaterOrEqual(t, count, tenants)
-
+		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
 		requireValidPointers(t, obj)
 	})
 
-	t.Run("successful calculation from FS bucket", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+	t.Run("indexes several objects from an FS bucket into one range", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		bucket, err := filesystem.NewBucket(t.TempDir())
@@ -193,7 +136,7 @@ func TestCalculator_Calculate(t *testing.T) {
 
 		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
 		for i := 0; i < objects; i++ {
-			obj := createTestLogObject(t, tenants)
+			obj := createTestLogObject(t, 1)
 
 			// Upload to bucket
 			reader, err := obj.Reader(context.Background())
@@ -207,43 +150,153 @@ func TestCalculator_Calculate(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// Verify we can flush the results
-		obj, closer, timeRanges, err := calculator.Flush()
+		obj, closer, timeRange, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.Equal(t, len(timeRanges), tenants)
-		for _, timeRange := range timeRanges {
-			require.NotEmpty(t, timeRange.Tenant)
-			require.False(t, timeRange.MinTime.IsZero())
-			require.Equal(t, timeRange.MinTime, time.Unix(10, 0).UTC())
-			require.False(t, timeRange.MaxTime.IsZero())
-			require.Equal(t, timeRange.MaxTime, time.Unix(25, 0).UTC())
-		}
+		require.Equal(t, tenant, timeRange.Tenant)
+		require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
+		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 
-		// Confirm we have multiple pointers sections
-		count := obj.Sections().Count(pointers.CheckSection)
-		require.GreaterOrEqual(t, count, tenants)
-
+		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
 		requireValidPointers(t, obj)
 	})
-}
 
-func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testing.T) {
-	ctx := context.Background()
-	const path = "objects/section-index-test"
-	sourceBuilder := dataobj.NewBuilder(nil)
-	// Physical sections: streams A, logs A, logs A, streams B, logs B, logs B.
-	// References must be 0,1 for A and 2,3 for B, rather than physical indexes
-	// 1,2,4,5 or tenant-local indexes 0,1 for both tenants.
-	for _, tenant := range []string{"A", "B"} {
+	t.Run("returns ErrTenantMismatch and leaves the builder empty when a section belongs to another tenant", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		obj := createTestLogObject(t, 2)
+		require.Equal(t, tenant, obj.Sections()[0].Tenant,
+			"the calculator's tenant must come first, so a check per section would already have changed the builder")
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrTenantMismatch)
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds two streams sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		lr := testLogsFixture(t)
+		obj, closer := fixtures.DataObject(t,
+			fixtures.StreamsSection(t, tenant, lr.Streams()),
+			fixtures.StreamsSection(t, tenant, lr.Streams()),
+			fixtures.LogsSection(t, tenant, lr.Logs()),
+		)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrStreamsSectionCount)
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds logs sections without a streams section", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		obj, closer := fixtures.DataObject(t, fixtures.LogsSection(t, tenant, testLogsFixture(t).Logs()))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrStreamsSectionCount)
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("returns ErrStreamsSectionCount and leaves the builder empty when the object holds neither streams nor logs sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
+		postingsBuilder.SetTenant(tenant)
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: time.Unix(10, 0).UTC(),
+		})
+		obj, closer := fixtures.DataObject(t, postingsBuilder)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrStreamsSectionCount)
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("writes one stats row per shard bucket when streams share the stats grouping key", func(t *testing.T) {
+		first := labels.FromStrings("service_name", "api", "instance", "0")
+		firstShard := streams.ShardBucket(first)
+		var second labels.Labels
+		for i := 1; i < 256; i++ {
+			candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
+			if streams.ShardBucket(candidate) != firstShard {
+				second = candidate
+				break
+			}
+		}
+		require.NotEmpty(t, second)
+
+		logBuilder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+			TargetPageSize:          2048,
+			TargetObjectSize:        1 << 22,
+			TargetSectionSize:       1 << 21,
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
+		}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), fakeLimits{})
+		require.NoError(t, err)
+
+		ts := time.Unix(10, 0).UTC()
+		for _, lbls := range []labels.Labels{first, second} {
+			require.NoError(t, logBuilder.Append("tenant-1", logproto.Stream{
+				Labels: lbls.String(),
+				Entries: []push.Entry{{
+					Timestamp: ts,
+					Line:      "hello",
+				}},
+			}, ts))
+		}
+
+		logObj, logCloser, err := logBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = logCloser.Close() })
+
+		indexBuilder, err := indexobj.NewBuilder("tenant-1", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+		require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), logObj, "test/path/obj1"))
+
+		indexObj, indexCloser, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = indexCloser.Close() })
+
+		rows := readAllStatsRows(t, indexObj)
+		require.Len(t, rows, 2)
+		gotShards := make(map[int64]struct{}, len(rows))
+		for _, row := range rows {
+			require.Equal(t, "api", row["service_name.label.utf8"])
+			gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
+		}
+		require.Equal(t, map[int64]struct{}{
+			int64(firstShard):                  {},
+			int64(streams.ShardBucket(second)): {},
+		}, gotShards)
+	})
+
+	t.Run("references logs sections by their index among logs sections when the streams section sits between them", func(t *testing.T) {
+		ctx := context.Background()
+		const (
+			path   = "objects/section-index-test"
+			tenant = "A"
+		)
+		sourceBuilder := dataobj.NewBuilder(nil)
+		ts := time.Unix(10, 0).UTC()
 		streamBuilder := streams.NewBuilder(nil, 2048, 10000)
 		streamBuilder.SetTenant(tenant)
-		ts := time.Unix(10, 0).UTC()
 		id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
-		require.NoError(t, sourceBuilder.Append(streamBuilder))
-		for range 2 {
+		appendLogsSection := func() {
 			logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
 				PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
 			})
@@ -251,65 +304,70 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testin
 			logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line"), Metadata: labels.FromStrings("trace_id", "trace")})
 			require.NoError(t, sourceBuilder.Append(logBuilder))
 		}
-	}
-	source, sourceCloser, err := sourceBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, sourceCloser.Close()) })
-	require.Len(t, source.Sections(), 6)
-	for _, i := range []int{0, 3} {
-		require.True(t, streams.CheckSection(source.Sections()[i]))
-	}
-	for _, i := range []int{1, 2, 4, 5} {
-		require.True(t, logs.CheckSection(source.Sections()[i]))
-	}
+		appendLogsSection()
+		require.NoError(t, sourceBuilder.Append(streamBuilder))
+		appendLogsSection()
 
-	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
-	calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
-	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), source, path))
-	obj, closer, _, err := calculator.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-	want := map[string]map[int64]bool{"A": {0: true, 1: true}, "B": {2: true, 3: true}}
-	postingIndexes := map[string]map[int64]bool{}
-	for _, section := range obj.Sections().Filter(postings.CheckSection) {
-		sec, err := postings.Open(ctx, section)
+		source, sourceCloser, err := sourceBuilder.Flush()
 		require.NoError(t, err)
-		inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
-		require.NoError(t, inner.Open(ctx))
-		reader := postings.NewRowReader(ctx, inner)
-		for reader.Next() {
-			row := reader.At()
-			require.Equal(t, path, row.ObjectPath)
-			require.True(t, want[section.Tenant][row.SectionIndex], "unexpected posting reference for tenant %s: %d", section.Tenant, row.SectionIndex)
-			if postingIndexes[section.Tenant] == nil {
-				postingIndexes[section.Tenant] = map[int64]bool{}
-			}
-			postingIndexes[section.Tenant][row.SectionIndex] = true
-		}
-		require.NoError(t, reader.Err())
-		require.NoError(t, reader.Close())
-	}
-	require.Equal(t, want, postingIndexes)
+		t.Cleanup(func() { require.NoError(t, sourceCloser.Close()) })
+		require.Len(t, source.Sections(), 3)
+		require.True(t, logs.CheckSection(source.Sections()[0]))
+		require.True(t, streams.CheckSection(source.Sections()[1]))
+		require.True(t, logs.CheckSection(source.Sections()[2]))
 
-	statsIndexes := map[string]map[int64]bool{}
-	for _, section := range obj.Sections().Filter(stats.CheckSection) {
-		sec, err := stats.Open(ctx, section)
+		builder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		reader := stats.NewRowReader(ctx, sec)
-		for reader.Next() {
-			row := reader.At()
-			require.Equal(t, path, row.ObjectPath)
-			if statsIndexes[section.Tenant] == nil {
-				statsIndexes[section.Tenant] = map[int64]bool{}
+		calculator := NewCalculator(builder, NewCalculatorMetrics(nil))
+		require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), source, path))
+		obj, closer, _, err := calculator.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		want := map[int64]bool{0: true, 1: true}
+		postingIndexes := map[int64]bool{}
+		for _, section := range obj.Sections().Filter(postings.CheckSection) {
+			sec, err := postings.Open(ctx, section)
+			require.NoError(t, err)
+			inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+			require.NoError(t, inner.Open(ctx))
+			reader := postings.NewRowReader(ctx, inner)
+			for reader.Next() {
+				row := reader.At()
+				require.Equal(t, path, row.ObjectPath)
+				require.True(t, want[row.SectionIndex], "unexpected posting reference: %d", row.SectionIndex)
+				postingIndexes[row.SectionIndex] = true
 			}
-			statsIndexes[section.Tenant][row.SectionIndex] = true
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
 		}
-		require.NoError(t, reader.Err())
-		require.NoError(t, reader.Close())
-	}
-	require.Equal(t, want, statsIndexes)
+		require.Equal(t, want, postingIndexes)
+
+		statsIndexes := map[int64]bool{}
+		for _, section := range obj.Sections().Filter(stats.CheckSection) {
+			sec, err := stats.Open(ctx, section)
+			require.NoError(t, err)
+			reader := stats.NewRowReader(ctx, sec)
+			for reader.Next() {
+				row := reader.At()
+				require.Equal(t, path, row.ObjectPath)
+				statsIndexes[row.SectionIndex] = true
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+		}
+		require.Equal(t, want, statsIndexes)
+	})
+}
+
+// requireEmptyCalculator checks that calculator and its builder hold no data.
+func requireEmptyCalculator(t *testing.T, calculator *Calculator, builder *indexobj.Builder) {
+	t.Helper()
+
+	require.Zero(t, builder.GetEstimatedSize())
+	require.Zero(t, calculator.TimeRange().UncompressedLogsSize)
+	_, _, _, err := calculator.Flush()
+	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
 }
 
 func requireValidPointers(t *testing.T, obj *dataobj.Object) {
@@ -355,7 +413,7 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 		require.Greater(t, totalPointers, 0)
 	}
 
-	// Expect two pointers for each object section, per tenant. This is because we write two streams to the log objects for every tenant.
+	// Expect two pointers for each object section, because every log object holds two streams.
 	for _, count := range pointersByTenant {
 		require.Equal(t, 2, count)
 	}
@@ -368,7 +426,7 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	buildLogObject(t, "app", "test-path-0", bucket)
 
-	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	indexBuilder, err := indexobj.NewBuilder("tenant", logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
 		BufferSize:              2048 * 8,
@@ -385,10 +443,6 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 	err = calculator.Calculate(ctx, log.NewNopLogger(), logObj, "test-path-0")
 	require.NoError(t, err)
 
-	timeRanges := calculator.TimeRanges()
-	require.Greater(t, len(timeRanges), 0)
-
-	// Verify per-tenant UncompressedLogsSize accumulator is populated.
 	// buildLogObject creates 10 streams with 1 entry each (lines "line 0" through "line 9").
 	expectedUncompressed := uint64(0)
 	for i := 0; i < 10; i++ {
@@ -396,15 +450,9 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 		expectedUncompressed += 6
 	}
 
-	var foundTenant bool
-	for _, tr := range timeRanges {
-		if tr.Tenant == "tenant" {
-			foundTenant = true
-			require.Equal(t, expectedUncompressed, tr.UncompressedLogsSize, "UncompressedLogsSize should equal sum of input stream sizes")
-			break
-		}
-	}
-	require.True(t, foundTenant, "tenant should be found in timeRanges")
+	timeRange := calculator.TimeRange()
+	require.Equal(t, "tenant", timeRange.Tenant)
+	require.Equal(t, expectedUncompressed, timeRange.UncompressedLogsSize, "UncompressedLogsSize should equal sum of input stream sizes")
 }
 
 func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
@@ -414,7 +462,7 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	buildLogObject(t, "app", "objects/test-object", bucket)
 
-	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	indexBuilder, err := indexobj.NewBuilder("tenant", logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
 		BufferSize:              2048 * 8,
@@ -430,11 +478,11 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 
 	// First calculation and flush.
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
-	_, closer, firstRanges, err := calculator.Flush()
+	_, closer, firstRange, err := calculator.Flush()
 	require.NoError(t, err)
 	closer.Close()
 
-	firstSize := tenantUncompressed(t, firstRanges, "tenant")
+	firstSize := firstRange.UncompressedLogsSize
 	require.Equal(t, uint64(60), firstSize)
 
 	// Simulate a retry after a failed upload / ToC write: the same calculator
@@ -442,23 +490,11 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 	// Flush must have consumed all prior state so the byte count does not
 	// accumulate across the retry.
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
-	_, closer, secondRanges, err := calculator.Flush()
+	_, closer, secondRange, err := calculator.Flush()
 	require.NoError(t, err)
 	closer.Close()
 
-	secondSize := tenantUncompressed(t, secondRanges, "tenant")
-	require.Equal(t, firstSize, secondSize, "retry must not double uncompressed_logs_size")
-}
-
-func tenantUncompressed(t *testing.T, ranges []dataobj.TimeRange, tenant string) uint64 {
-	t.Helper()
-	for _, r := range ranges {
-		if r.Tenant == tenant {
-			return r.UncompressedLogsSize
-		}
-	}
-	t.Fatalf("tenant %q not found in ranges", tenant)
-	return 0
+	require.Equal(t, firstSize, secondRange.UncompressedLogsSize, "retry must not double uncompressed_logs_size")
 }
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {

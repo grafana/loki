@@ -19,9 +19,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrNotSingleTenant is returned when a data object doesn't hold exactly one
-// tenant. Retrying can't fix it.
-var ErrNotSingleTenant = errors.New("data object must hold exactly one tenant")
+var (
+	// ErrInvalidObject marks an error that the shape of a data object causes.
+	// Every such error wraps it, for example [ErrNotSingleTenant]. Retrying
+	// can't fix it.
+	ErrInvalidObject = errors.New("invalid data object")
+
+	// ErrNotSingleTenant is returned when a data object doesn't hold exactly
+	// one tenant. It wraps [ErrInvalidObject].
+	ErrNotSingleTenant = fmt.Errorf("%w: data object must hold exactly one tenant", ErrInvalidObject)
+)
 
 // A Result describes the index object built and uploaded for a single-tenant data object.
 type Result struct {
@@ -86,7 +93,12 @@ func (s *SimpleIndexer) release(closer io.Closer, logger log.Logger, what string
 }
 
 func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath string, objLogger log.Logger) (Result, error) {
-	builder, err := indexobj.NewBuilder(s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
+	tenants := obj.Tenants()
+	if len(tenants) != 1 {
+		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenants))
+	}
+
+	builder, err := indexobj.NewBuilder(tenants[0], s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}
@@ -99,16 +111,11 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("calculate object: %w", err)
 	}
 
-	idxObj, closer, tenantTimeRanges, err := calc.Flush()
+	idxObj, closer, timeRange, err := calc.Flush()
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer s.release(closer, objLogger, "index object")
-
-	if len(tenantTimeRanges) != 1 {
-		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenantTimeRanges))
-	}
-	timeRange := tenantTimeRanges[0]
 
 	idxObjKey, err := ObjectKey(ctx, idxObj)
 	if err != nil {

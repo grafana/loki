@@ -76,16 +76,16 @@ func TestBuilder(t *testing.T) {
 		},
 	}
 
-	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	t.Run("builds one section of each appended kind, all for the builder's tenant", func(t *testing.T) {
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		for _, stream := range testStreams {
-			_, err := builder.AppendStream(testTenant, stream)
+			_, err := builder.AppendStream(stream)
 			require.NoError(t, err)
 		}
 		for _, pointer := range testPointers {
-			err := builder.AppendColumnIndex(testTenant, pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
+			err := builder.AppendColumnIndex(pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
 			require.NoError(t, err)
 		}
 
@@ -97,33 +97,20 @@ func TestBuilder(t *testing.T) {
 		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, []string{testTenant}, obj.Tenants())
+	})
+}
+
+func TestNewBuilder(t *testing.T) {
+	t.Run("returns a builder bound to the tenant", func(t *testing.T) {
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.Equal(t, testTenant, builder.Tenant())
 	})
 
-	t.Run("BuildMultiTenant", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
-		require.NoError(t, err)
-
-		tenants := []string{"test-tenant-1", "test-tenant-2"}
-
-		for i, stream := range testStreams {
-			tenant := tenants[i%len(tenants)]
-			_, err := builder.AppendStream(tenant, stream)
-			require.NoError(t, err)
-		}
-		for i, pointer := range testPointers {
-			tenant := tenants[i%len(tenants)]
-			err := builder.AppendColumnIndex(tenant, pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
-			require.NoError(t, err)
-		}
-
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		defer closer.Close()
-
-		require.Equal(t, len(tenants), obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, len(tenants), obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+	t.Run("returns an error when the tenant is empty", func(t *testing.T) {
+		_, err := NewBuilder("", testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.ErrorContains(t, err, "tenant must not be empty")
 	})
 }
 
@@ -133,14 +120,14 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	i := 0
 	for {
 		require.NoError(t, ctx.Err())
 
-		_, err := builder.AppendStream(testTenant, streams.Stream{
+		_, err := builder.AppendStream(streams.Stream{
 			ID: 1,
 			Labels: labels.New(
 				labels.Label{Name: "cluster", Value: "test"},
@@ -163,14 +150,14 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	i := 0
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
+		err := builder.AppendIndexPointer(indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
 		if builder.IsFull() {
 			break
 		}
@@ -193,116 +180,102 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 }
 
 func TestBuilder_ObserveLogLine(t *testing.T) {
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	err = builder.ObserveLogLine(testTenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+	err = builder.ObserveLogLine("test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
 	require.NoError(t, err)
 
 	require.Greater(t, builder.estimatedSize(), 0)
 }
 
 func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 	require.NoError(b, err)
 
-	maxTenants := 1000
-	tenants := make([]string, maxTenants)
-	for i := range tenants {
-		tenants[i] = fmt.Sprintf("test-tenant-%d", i)
-	}
+	const streamCount = 1000
 
 	for b.Loop() {
-		for _, tenant := range tenants {
-			err := builder.ObserveLogLine(tenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+		for i := range int64(streamCount) {
+			err := builder.ObserveLogLine("test/path", 1, i, i, time.Unix(10, 0).UTC(), 100)
 			require.NoError(b, err)
 		}
 	}
 }
 
-func TestBuilder_TimeRanges_PostingsOnly(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+func TestBuilder_TimeRange(t *testing.T) {
+	t.Run("returns the builder's tenant and zero times when the builder is empty", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-	base := time.Unix(8000, 0).UTC()
-	tenant := "tenant-a"
-
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
-		StreamID: 2, Timestamp: base.Add(time.Hour),
+		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-	require.Equal(t, tenant, ranges[0].Tenant)
-	require.Equal(t, base, ranges[0].MinTime)
-	require.Equal(t, base.Add(time.Hour), ranges[0].MaxTime)
-}
+	t.Run("returns the postings range when the builder holds only postings", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+		base := time.Unix(8000, 0).UTC()
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: base,
+		})
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
+			StreamID: 2, Timestamp: base.Add(time.Hour),
+		})
 
-	base := time.Unix(9000, 0).UTC()
-
-	// tenant-a: postings only.
-	b.ObserveLabelPosting("tenant-a", postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-	// tenant-b: postings only, different window.
-	b.ObserveLabelPosting("tenant-b", postings.LabelObservation{
-		ObjectPath: "/b", SectionIndex: 0, ColumnName: "app", LabelValue: "z",
-		StreamID: 1, Timestamp: base.Add(2 * time.Hour),
+		require.Equal(t, dataobj.TimeRange{
+			Tenant:  testTenant,
+			MinTime: base,
+			MaxTime: base.Add(time.Hour),
+		}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 2)
+	t.Run("returns the union of the streams and postings ranges", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
 
-	byTenant := map[string]dataobj.TimeRange{}
-	for _, r := range ranges {
-		byTenant[r.Tenant] = r
-	}
-	require.Equal(t, base, byTenant["tenant-a"].MinTime)
-	require.Equal(t, base, byTenant["tenant-a"].MaxTime)
-	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MinTime)
-	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MaxTime)
-}
+		base := time.Unix(10000, 0).UTC()
 
-func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
+		// Streams cover [base, base+1h]; postings extend the window on both ends.
+		_, err = b.AppendStream(streams.Stream{
+			Labels:           labels.FromStrings("app", "x"),
+			MinTimestamp:     base,
+			MaxTimestamp:     base.Add(time.Hour),
+			UncompressedSize: 1,
+		})
+		require.NoError(t, err)
 
-	base := time.Unix(10000, 0).UTC()
-	tenant := "tenant-a"
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: base.Add(-time.Hour),
+		})
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 2, Timestamp: base.Add(2 * time.Hour),
+		})
 
-	// Streams cover [base, base+1h]; postings extend the window on both ends.
-	_, err = b.AppendStream(tenant, streams.Stream{
-		Labels:           labels.FromStrings("app", "x"),
-		MinTimestamp:     base,
-		MaxTimestamp:     base.Add(time.Hour),
-		UncompressedSize: 1,
-	})
-	require.NoError(t, err)
-
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base.Add(-time.Hour),
-	})
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 2, Timestamp: base.Add(2 * time.Hour),
+		require.Equal(t, dataobj.TimeRange{
+			Tenant:  testTenant,
+			MinTime: base.Add(-time.Hour),
+			MaxTime: base.Add(2 * time.Hour),
+		}, b.TimeRange())
 	})
 
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-	require.Equal(t, tenant, ranges[0].Tenant)
-	require.Equal(t, base.Add(-time.Hour), ranges[0].MinTime)
-	require.Equal(t, base.Add(2*time.Hour), ranges[0].MaxTime)
+	t.Run("returns zero times after Reset", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+			StreamID: 1, Timestamp: time.Unix(8000, 0).UTC(),
+		})
+		require.False(t, b.TimeRange().MinTime.IsZero())
+
+		b.Reset()
+		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
+	})
 }
 
 func TestUnionTimeRange(t *testing.T) {
@@ -332,28 +305,6 @@ func TestUnionTimeRange(t *testing.T) {
 	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
 	require.True(t, gotMin.IsZero())
 	require.True(t, gotMax.IsZero())
-}
-
-func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
-	b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
-
-	base := time.Unix(8000, 0).UTC()
-	tenant := "test-tenant"
-
-	// Observe a label posting so TimeRanges() is non-empty.
-	b.ObserveLabelPosting(tenant, postings.LabelObservation{
-		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-		StreamID: 1, Timestamp: base,
-	})
-
-	ranges := b.TimeRanges()
-	require.Len(t, ranges, 1)
-
-	// After Reset, TimeRanges() must be empty.
-	b.Reset()
-	ranges = b.TimeRanges()
-	require.Empty(t, ranges)
 }
 
 // failingReadStore is a scratch store whose reads fail: either all of them, or
@@ -388,16 +339,27 @@ func (s *failingReadStore) Remove(h scratch.Handle) error {
 	return s.inner.Remove(h)
 }
 
-func appendStreamPerTenant(t *testing.T, b *Builder, tenants int) {
+// sectionPerAppendConfig makes the builder write an index pointers section
+// for every index pointer appended.
+var sectionPerAppendConfig = logsobj.BuilderBaseConfig{
+	TargetPageSize:    2048,
+	TargetObjectSize:  1 << 22, // 4 MiB
+	TargetSectionSize: 1,
+
+	BufferSize: 2048 * 8,
+
+	SectionStripeMergeLimit: 2,
+}
+
+// appendSections appends index pointers to b until it holds n sections. b
+// must use sectionPerAppendConfig.
+func appendSections(t *testing.T, b *Builder, n int) {
 	t.Helper()
-	for i := range tenants {
-		_, err := b.AppendStream(fmt.Sprintf("tenant-%04d", i), streams.Stream{
-			ID:               int64(i + 1),
-			Labels:           labels.New(labels.Label{Name: "app", Value: fmt.Sprintf("v%d", i)}),
-			Rows:             1,
-			MinTimestamp:     time.Unix(10, 0).UTC(),
-			MaxTimestamp:     time.Unix(20, 0).UTC(),
-			UncompressedSize: 100,
+	for i := range n {
+		err := b.AppendIndexPointer(indexpointers.IndexPointer{
+			Path:    fmt.Sprintf("test/path-%04d", i),
+			StartTs: time.Unix(10, 0).UTC(),
+			EndTs:   time.Unix(20, 0).UTC(),
 		})
 		require.NoError(t, err)
 	}
@@ -407,7 +369,7 @@ func appendStreamPerTenant(t *testing.T, b *Builder, tenants int) {
 // stop at the error, so Flush must hand back nothing when it fails.
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	t.Run("when the builder is empty", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
 		obj, closer, err := builder.Flush()
@@ -418,9 +380,9 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 
 	t.Run("when the object cannot be built", func(t *testing.T) {
 		store := newFailingReadStore(false)
-		builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, sectionPerAppendConfig, store, NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		appendStreamPerTenant(t, builder, 1)
+		appendSections(t, builder, 1)
 
 		obj, closer, err := builder.Flush()
 		require.ErrorContains(t, err, "flushing object")
@@ -435,9 +397,9 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		// object opens successfully and the failure lands while observing it,
 		// which is where Flush owns the object and has to release it itself.
 		store := newFailingReadStore(true)
-		builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, sectionPerAppendConfig, store, NewBuilderMetrics(nil))
 		require.NoError(t, err)
-		appendStreamPerTenant(t, builder, 64)
+		appendSections(t, builder, 64)
 
 		obj, closer, err := builder.Flush()
 		require.ErrorContains(t, err, "observing object")
@@ -451,37 +413,38 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 // leaves nothing behind for the next one to pick up.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	tests := []struct {
-		name    string
-		store   scratch.Store
-		tenants int
-		wantErr string
+		name  string
+		store scratch.Store
+		// sections is the number of sections to append. With 64 sections the
+		// metadata outgrows the decoder's prefetch window, so the object opens
+		// and a failing read of the last section lands while observing it.
+		sections int
+		wantErr  string
 	}{
 		{
-			name:    "when the object is built",
-			store:   scratch.NewMemory(),
-			tenants: 1,
+			name:     "when the object is built",
+			store:    scratch.NewMemory(),
+			sections: 1,
 		},
 		{
-			name:    "when the object cannot be built",
-			store:   newFailingReadStore(false),
-			tenants: 1,
-			wantErr: "flushing object",
+			name:     "when the object cannot be built",
+			store:    newFailingReadStore(false),
+			sections: 1,
+			wantErr:  "flushing object",
 		},
 		{
-			// See TestBuilder_FlushReturnsNoCloserOnError for why this many
-			// tenants are needed to fail while observing.
-			name:    "when the built object cannot be observed",
-			store:   newFailingReadStore(true),
-			tenants: 64,
-			wantErr: "observing object",
+			name:     "when the built object cannot be observed",
+			store:    newFailingReadStore(true),
+			sections: 64,
+			wantErr:  "observing object",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(nil))
+			builder, err := NewBuilder(testTenant, sectionPerAppendConfig, tt.store, NewBuilderMetrics(nil))
 			require.NoError(t, err)
-			appendStreamPerTenant(t, builder, tt.tenants)
+			appendSections(t, builder, tt.sections)
 
 			_, closer, err := builder.Flush()
 			if tt.wantErr != "" {

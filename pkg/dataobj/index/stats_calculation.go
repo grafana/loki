@@ -142,7 +142,6 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 	sortSchema := strings.Join(c.schema, ",")
 	for _, agg := range sorted {
 		err := calcCtx.builder.AppendStat(
-			calcCtx.tenantID,
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
 			agg.shardBucket,

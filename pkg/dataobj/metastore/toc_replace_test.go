@@ -101,10 +101,10 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	}
 
 	for tenant, rows := range rowsByTenant {
-		b, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		for _, r := range rows {
-			require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
+			require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
 		}
 		obj, closer, err := b.Flush()
 		require.NoError(t, err)
@@ -129,10 +129,9 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	})
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -187,11 +186,9 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			otherTenants:   []string{"tenantB", "tenantC"},
 		},
 		{
-			// L0 → L1 compaction shape: L0 indexes are multi-tenant — the
-			// same idx/... path is referenced from multiple tenants' sections.
-			// Compacting tenantA must drop those paths from tenantA's section
-			// ONLY; tenantB's references to the same shared L0 paths must
-			// remain. This exercises the `sectionTenant == tenant` guard.
+			// The same idx/... path is referenced from several tenants'
+			// ToCs. Compacting tenantA must drop those paths from tenantA's
+			// ToC ONLY; tenantB's references to the same paths must remain.
 			name: "shared L0 indexes across tenants",
 			seedRows: []tocRow{
 				{Tenant: "tenantA", Path: "idx/l0-shared-0", StartUnix: 10, EndUnix: 20},
@@ -223,10 +220,9 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
 
 			writer := &TableOfContentsWriter{
-				bucket:      bucket,
-				metrics:     newTableOfContentsMetrics(),
-				logger:      log.NewNopLogger(),
-				builderOnce: sync.Once{},
+				bucket:  bucket,
+				metrics: newTableOfContentsMetrics(),
+				logger:  log.NewNopLogger(),
 			}
 
 			swapped, err := writer.ReplaceIndexPointers(ctx, window,
@@ -248,6 +244,121 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 				"non-target tenant rows must be preserved unchanged")
 		})
 	}
+}
+
+// uploadToC writes a ToC to path that holds one section of tenant with the
+// given index paths. The tenant does not have to match the path.
+func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexPaths ...string) {
+	t.Helper()
+	b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err)
+	for _, indexPath := range indexPaths {
+		require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: indexPath, StartTs: unixTime(10), EndTs: unixTime(20)}))
+	}
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(t.Context(), path, reader))
+	require.NoError(t, reader.Close())
+}
+
+// countingBucket counts GetAndReplace calls and passes them through.
+type countingBucket struct {
+	objstore.Bucket
+	mu    sync.Mutex
+	calls int
+}
+
+func (b *countingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+	return b.Bucket.GetAndReplace(ctx, name, fn)
+}
+
+func TestReplaceIndexPointers(t *testing.T) {
+	t.Run("returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenantA", window)
+		uploadToC(t, inner, tocPath, "tenantB", "idx/a-0")
+		before := readToC(ctx, t, inner, tocPath)
+
+		bucket := &countingBucket{Bucket: inner}
+		writer := &TableOfContentsWriter{
+			bucket:  bucket,
+			metrics: newTableOfContentsMetrics(),
+			logger:  log.NewNopLogger(),
+		}
+
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.ErrorIs(t, err, errTenantMismatch)
+		require.False(t, swapped)
+		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, before, readToC(ctx, t, inner, tocPath))
+	})
+
+	t.Run("returns an error and leaves the ToC unchanged when another tenant's section follows a matching section", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenantA", window)
+
+		objBuilder := dataobj.NewBuilder(nil)
+		for _, tenant := range []string{"tenantA", "tenantB"} {
+			section := indexpointers.NewBuilder(indexpointers.NewMetrics(), int(tocBuilderCfg.TargetPageSize), tocBuilderCfg.MaxPageRows)
+			section.SetTenant(tenant)
+			section.Append("idx/a-0", unixTime(10), unixTime(20))
+			require.NoError(t, objBuilder.Append(section))
+		}
+		obj, closer, err := objBuilder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+		reader, err := obj.Reader(ctx)
+		require.NoError(t, err)
+		require.NoError(t, inner.Upload(ctx, tocPath, reader))
+		require.NoError(t, reader.Close())
+		before := readToC(ctx, t, inner, tocPath)
+
+		bucket := &countingBucket{Bucket: inner}
+		writer := &TableOfContentsWriter{
+			bucket:  bucket,
+			metrics: newTableOfContentsMetrics(),
+			logger:  log.NewNopLogger(),
+		}
+
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.ErrorIs(t, err, errTenantMismatch)
+		require.False(t, swapped)
+		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, before, readToC(ctx, t, inner, tocPath))
+	})
+
+	t.Run("returns an error without touching storage when a new entry ends before it starts", func(t *testing.T) {
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		writer := &TableOfContentsWriter{
+			bucket:  bucket,
+			metrics: newTableOfContentsMetrics(),
+			logger:  log.NewNopLogger(),
+		}
+
+		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
+		)
+		require.ErrorContains(t, err, "idx/a-new")
+		require.False(t, swapped)
+		require.Zero(t, bucket.calls)
+	})
 }
 
 func filterRows(rows []tocRow, tenants ...string) []tocRow {
@@ -276,10 +387,9 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	preSwap := readWindowToCs(ctx, t, bucket, window)
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Caller still believes "idx/a-0" / "idx/a-1" are present — they're not.
@@ -303,10 +413,9 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 	tocPath := TableOfContentsPath("tenantA", window)
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -374,10 +483,9 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 	}
 
 	writer := &TableOfContentsWriter{
-		bucket:      flaky,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  flaky,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -406,10 +514,9 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 	alwaysFail := &alwaysFailBucket{Bucket: inner}
 
 	writer := &TableOfContentsWriter{
-		bucket:      alwaysFail,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  alwaysFail,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Use the same-package internal helper to override backoff to a tight budget,
@@ -449,10 +556,9 @@ func TestReplaceIndexPointers_EmptyOldAndNewPaths_BypassesStorage(t *testing.T) 
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Even with a permanently-failing bucket, empty old and new paths must no-op
@@ -481,10 +587,9 @@ func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
 	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: newTableOfContentsMetrics(),
+		logger:  log.NewNopLogger(),
 	}
 
 	// Empty old, non empty new => error without calling storage.

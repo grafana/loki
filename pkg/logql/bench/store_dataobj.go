@@ -169,7 +169,7 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		obj, closer, timeRanges, err := calculator.Flush()
+		obj, closer, timeRange, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
@@ -191,7 +191,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = objtest.WriteTableOfContentsEntries(context.Background(), s.indexMetastoreToc, key, timeRanges)
+		err = objtest.WriteTableOfContentsEntries(context.Background(), s.indexMetastoreToc, key, []dataobj.TimeRange{timeRange})
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}
@@ -199,7 +199,7 @@ func (s *DataObjStore) buildIndex() error {
 		return nil
 	}
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(s.tenant, logsobj.BuilderBaseConfig{
 		TargetPageSize:    128 * 1024,        // 128KB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB

@@ -718,14 +718,12 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok, "index object must be written at %s", indexPath)
 
-	// Index contains sections for the tenant
+	// Index contains sections for the tenant only
 	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
 	require.NoError(t, err)
+	require.Equal(t, []string{tenant}, indexObj.Tenants())
 	kinds := make(map[string]bool)
 	for _, sec := range indexObj.Sections() {
-		if sec.Tenant != tenant {
-			continue
-		}
 		if stats.CheckSection(sec) {
 			kinds["stats"] = true
 		}

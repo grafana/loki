@@ -137,15 +137,16 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error only if the context is canceled, otherwise it
-	// retries indefinitely.
+	// index returns an error if the context is canceled or the object is
+	// invalid. It retries every other error indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
-	// WriteEntry retries each ToC window until it succeeds, so it returns an
-	// error only if the context is canceled.
+	// WriteEntry retries each ToC window until it succeeds. It returns an
+	// error if the context is canceled, or on an error that retrying can't
+	// fix, such as a ToC that holds a section of another tenant.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
 		Path:      res.Path,
 		StartTime: res.TimeRange.MinTime,
@@ -179,8 +180,8 @@ func earliestRecordTime(builders []builder) time.Time {
 // the index is not referenced from the metastore until it is recorded in the
 // ToC.
 //
-// Builders hold a single tenant, so [index.ErrNotSingleTenant] means that
-// invariant is broken. It is returned right away, as retrying can't fix it.
+// An error that wraps [index.ErrInvalidObject] comes from the shape of the
+// object. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -193,7 +194,7 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 		if err == nil {
 			return res, nil
 		}
-		if errors.Is(err, index.ErrNotSingleTenant) {
+		if errors.Is(err, index.ErrInvalidObject) {
 			return index.Result{}, err
 		}
 		lastErr = err
