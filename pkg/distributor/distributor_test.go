@@ -4671,71 +4671,11 @@ func TestDistributor_LimitsServiceShardLiveEnforcement(t *testing.T) {
 		require.Len(t, shards, 2)
 	})
 
-	t.Run("streams that live mode does not shard are still checked by ExceedsLimits", func(t *testing.T) {
-		unsharded := labels.FromStrings("app", "unsharded")
-		live := labels.FromStrings("app", "live")
-		entries := []logproto.Entry{{Timestamp: time.Now(), Line: "aa"}}
-
-		// Stream sharding, and with it live mode, is turned off for the
-		// "unsharded" policy only, so one push carries both kinds of stream.
-		lim := newLimits(t)
-		lim.PolicyStreamMapping = validation.PolicyStreamMapping{
-			"unsharded": []*validation.PriorityStream{{Selector: `{app="unsharded"}`, Priority: 1}},
-		}
-		shardingOff := false
-		lim.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
-			"unsharded": {ShardStreams: &validation.PerPolicyConfigOverride{Enabled: &shardingOff}},
-		}
-		require.NoError(t, lim.Validate())
-
-		ing := &mockIngester{}
-		distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
-		d := distributors[0]
-		d.cfg.IngestLimitsEnabled = true
-		d.rateStore = &fakeRateStore{rate: 30, pushRate: 1}
-
-		mockClient := mockIngestLimitsFrontendClient{
-			t: t,
-			// Each call sees its own streams: the live-mode stream must not be
-			// checked twice, and the unsharded one must still be checked.
-			expectedCheckLimitsAndShardRequest: &limitsproto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*limitsproto.StreamMetadata{{StreamHash: labels.StableHash(live), TotalSize: 2}},
-			},
-			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
-				Results: []*limitsproto.StreamShardResult{{StreamHash: labels.StableHash(live), Shards: 1}},
-			},
-			expectedExceedsLimitsRequest: &limitsproto.ExceedsLimitsRequest{
-				Tenant: "test",
-				Streams: []*limitsproto.StreamMetadata{{
-					StreamHash:      labels.StableHash(unsharded),
-					TotalSize:       2,
-					IngestionPolicy: "unsharded",
-				}},
-			},
-			exceedsLimitsResponse: &limitsproto.ExceedsLimitsResponse{},
-		}
-		d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
-
-		pushCtx := user.InjectOrgID(context.Background(), "test")
-		resp, err := d.Push(pushCtx, &logproto.PushRequest{
-			Streams: []logproto.Stream{
-				{Labels: unsharded.String(), Entries: entries},
-				{Labels: live.String(), Entries: entries},
-			},
-		})
-		require.NoError(t, err)
-		require.Equal(t, success, resp)
-		require.Equal(t, uint64(2), mockClient.calls.Load())
-
-		got := ing.Peek()
-		require.NotNil(t, got)
-		pushed := make([]string, 0, len(got.Streams))
-		for _, s := range got.Streams {
-			pushed = append(pushed, s.Labels)
-		}
-		require.ElementsMatch(t, []string{unsharded.String(), live.String()}, pushed)
-	})
+	// There used to be a case here for a policy with shard_streams.enabled
+	// overridden to false, which went through ExceedsLimits instead of live
+	// mode. shard_streams.enabled is now a global-only setting: a tenant or
+	// policy can no longer opt out of sharding (see
+	// validation.Overrides.PolicyShardStreams), so that path is unreachable.
 }
 
 // TestDistributor_LimitsServiceShardObservations covers how the ingest-limits

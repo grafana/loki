@@ -672,9 +672,20 @@ func (l *Limits) Validate() error {
 		return err
 	}
 
+	// Stream sharding can no longer be turned off per tenant: shard_streams.enabled is now a
+	// global-only setting (see Overrides.ShardStreams/PolicyShardStreams, which always report it
+	// as enabled). Warn rather than fail, since this is a behavior change to an existing field
+	// rather than an invalid config.
+	if !l.ShardStreams.Enabled {
+		level.Warn(util_log.Logger).Log("msg", "shard_streams.enabled is ignored; stream sharding is always enabled")
+	}
+
 	for policy, pl := range l.PolicyOverrideLimits {
 		if err := pl.Validate(); err != nil {
 			return fmt.Errorf("policy_override_limits[%q]: %w", policy, err)
+		}
+		if pl.ShardStreams != nil && pl.ShardStreams.Enabled != nil {
+			level.Warn(util_log.Logger).Log("msg", "shard_streams.enabled is ignored for policy overrides; stream sharding is always enabled", "policy", policy)
 		}
 	}
 
@@ -1080,8 +1091,13 @@ func (o *Overrides) DeletionMode(userID string) string {
 	return o.getOverridesForUser(userID).DeletionMode
 }
 
+// ShardStreams returns the tenant's shard_streams config, with Enabled always true: stream
+// sharding can no longer be turned off per tenant, only globally (see shardstreams.Config.Enabled
+// and Limits.Validate, which warns if a tenant still tries to override it).
 func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
-	return o.getOverridesForUser(userID).ShardStreams
+	cfg := o.getOverridesForUser(userID).ShardStreams
+	cfg.Enabled = true
+	return cfg
 }
 
 func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {

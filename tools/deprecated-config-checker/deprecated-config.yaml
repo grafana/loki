@@ -23,7 +23,9 @@ kafka_config:
   client_id: "Use reader_config.client_id or writer_config.client_id instead."
 
 ## NOTE: This will also be used to validate per-tenant overrides.
-limits_config: {}
+limits_config:
+  shard_streams:
+    enabled: "Stream sharding has become a first-class citizen of Loki and is always performed."
 
 server:
   grpc_server_stats_tracking_enabled: "Deprecated, currently doesn't do anything, will be removed in a future version."
