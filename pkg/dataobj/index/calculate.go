@@ -68,12 +68,13 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 
 var (
 	// ErrTenantMismatch is returned when a data object holds a section of a
-	// tenant other than the [Calculator]'s tenant. It wraps [ErrInvalidObject].
-	ErrTenantMismatch = fmt.Errorf("%w: section belongs to another tenant", ErrInvalidObject)
+	// tenant other than the [Calculator]'s tenant. It wraps
+	// [ErrUnprocessableObject].
+	ErrTenantMismatch = fmt.Errorf("%w: section belongs to another tenant", ErrUnprocessableObject)
 
 	// ErrStreamsSectionCount is returned when a data object doesn't hold exactly
-	// one streams section. It wraps [ErrInvalidObject].
-	ErrStreamsSectionCount = fmt.Errorf("%w: data object must hold one streams section", ErrInvalidObject)
+	// one streams section. It wraps [ErrUnprocessableObject].
+	ErrStreamsSectionCount = fmt.Errorf("%w: data object must hold one streams section", ErrUnprocessableObject)
 )
 
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
