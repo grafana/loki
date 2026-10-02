@@ -251,6 +251,7 @@ func newCountDistinctStepEvaluator(
 	params Params,
 	interval, offset time.Duration,
 	emitSketch bool,
+	keepsErroredLines bool,
 ) StepEvaluator {
 	iter := newCountDistinctIterator(
 		it,
@@ -262,9 +263,9 @@ func newCountDistinctStepEvaluator(
 		emitSketch,
 	)
 	if emitSketch {
-		return &countDistinctSketchEvaluator{iter: iter}
+		return &countDistinctSketchEvaluator{iter: iter, keepsErroredLines: keepsErroredLines}
 	}
-	return &RangeVectorEvaluator{iter: iter}
+	return &RangeVectorEvaluator{iter: iter, keepsErroredLines: keepsErroredLines}
 }
 
 func newCountDistinctIterator(
@@ -341,7 +342,12 @@ func countDistinctSketch(samples []promql.FPoint) *hyperloglog.Sketch {
 // SampleVector is empty on that StepResult, so pipeline errors are checked here.
 type countDistinctSketchEvaluator struct {
 	iter RangeVectorIterator
-	err  error
+
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
+	err error
 }
 
 func (e *countDistinctSketchEvaluator) Next() (bool, int64, StepResult) {
@@ -351,10 +357,12 @@ func (e *countDistinctSketchEvaluator) Next() (bool, int64, StepResult) {
 	}
 	ts, r := e.iter.At()
 	vec := r.CountDistinctSketchVec()
-	for _, s := range vec {
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			e.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, CountDistinctSketchVector{}
+	if !e.keepsErroredLines {
+		for _, s := range vec {
+			if s.Metric.Has(logqlmodel.ErrorLabel) {
+				e.err = logqlmodel.NewPipelineErr(s.Metric)
+				return false, 0, CountDistinctSketchVector{}
+			}
 		}
 	}
 	return true, ts, vec

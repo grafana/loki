@@ -25,8 +25,6 @@ import (
 
 type QueryRangeType string
 
-const trueString = "true"
-
 var (
 	InstantType QueryRangeType = "instant"
 	RangeType   QueryRangeType = "range"
@@ -337,6 +335,11 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
+				if err != nil {
+					return nil, err
+				}
+
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						// extend startTs backwards by step
@@ -356,13 +359,18 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
+		keepsErroredLines, err := syntax.KeepsErroredLines(e.Left)
+		if err != nil {
+			return nil, err
+		}
+
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
 				// extend startTs backwards by step
@@ -382,7 +390,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines)
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
 	case *syntax.CountDistinctSketchExpr:
@@ -410,6 +418,11 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	q Params,
 	emitSketch bool,
 ) (StepEvaluator, error) {
+	keepsErroredLines, err := syntax.KeepsErroredLines(left)
+	if err != nil {
+		return nil, err
+	}
+
 	it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 		&logproto.SampleQueryRequest{
 			Start:    q.Start().Add(-left.Interval).Add(-left.Offset),
@@ -426,7 +439,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch), nil
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines), nil
 }
 
 func newVectorAggEvaluator(
@@ -703,6 +716,7 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
+	keepsErroredLines bool,
 ) (StepEvaluator, error) {
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
@@ -721,8 +735,9 @@ func newRangeAggEvaluator(
 			return nil, err
 		}
 		return &AbsentRangeVectorEvaluator{
-			iter: iter,
-			lbs:  absentLabels,
+			iter:              iter,
+			lbs:               absentLabels,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeQuantileSketch:
 		iter := newQuantileSketchIterator(
@@ -733,7 +748,8 @@ func newRangeAggEvaluator(
 		)
 
 		return &QuantileSketchStepEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeFirstWithTimestamp:
 		iter := newFirstWithTimestampIterator(
@@ -744,7 +760,8 @@ func newRangeAggEvaluator(
 		)
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeLastWithTimestamp:
 		iter := newLastWithTimestampIterator(
@@ -755,7 +772,8 @@ func newRangeAggEvaluator(
 		)
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	default:
 		iter, err := newTimestampFirstRangeVectorIterator(
@@ -769,13 +787,18 @@ func newRangeAggEvaluator(
 		}
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	}
 }
 
 type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
+
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
 
 	err error
 }
@@ -786,11 +809,12 @@ func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.SampleVector() {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
+	if !r.keepsErroredLines {
+		for _, s := range vec.SampleVector() {
+			if s.Metric.Has(logqlmodel.ErrorLabel) {
+				r.err = logqlmodel.NewPipelineErr(s.Metric)
+				return false, 0, SampleVector{}
+			}
 		}
 	}
 	return true, ts, vec
@@ -809,6 +833,10 @@ type AbsentRangeVectorEvaluator struct {
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
 	err error
 }
 
@@ -818,11 +846,12 @@ func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.SampleVector() {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
+	if !r.keepsErroredLines {
+		for _, s := range vec.SampleVector() {
+			if s.Metric.Has(logqlmodel.ErrorLabel) {
+				r.err = logqlmodel.NewPipelineErr(s.Metric)
+				return false, 0, SampleVector{}
+			}
 		}
 	}
 	if len(vec.SampleVector()) > 0 {

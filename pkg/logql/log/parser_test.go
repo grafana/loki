@@ -200,7 +200,6 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
-				"__preserve_error__", "true",
 			),
 			map[string][]string{},
 			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
@@ -393,10 +392,6 @@ func (p *fakeParseHints) AllRequiredExtracted() bool {
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
-}
-
-func (p *fakeParseHints) PreserveError() bool {
-	return false
 }
 
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
@@ -678,7 +673,6 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				logqlmodel.ErrorLabel, errJSON,
-				logqlmodel.PreserveErrorLabel, "true",
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
@@ -1210,7 +1204,6 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
-				"__preserve_error__", "true",
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
 			nil,
@@ -1829,7 +1822,6 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "expecting json object(6), but it is not",
-				"__preserve_error__", "true",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),

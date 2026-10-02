@@ -98,11 +98,11 @@ eval select from 0 to 60s forward {app="a"} | label_format __error_details__="mi
   {app="a", pod="p2"} `{"ok":1}` @ 20s [metadata n="5"] [parsed __error_details__="mine"]
 # A parsing error replaces __error_details__, so both __error__ and __error_details__ are related to the same error.
 eval instant at 60s first_over_time({app="a"} | label_format __error_details__="mine" | json | __error__!="" | unwrap n [1m]) by (__error_details__)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error"} 7
 # A label_format after the parser cannot overwrite the details either, so the stage order does not
 # change the result.
 eval instant at 60s first_over_time({app="a"} | json | label_format __error_details__="mine" | __error__!="" | unwrap n [1m]) by (__error_details__)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error"} 7
 
 # label_format with a `<name>_extracted` label.
 clear
@@ -212,11 +212,9 @@ eval range from 60s to 180s step 120s first_over_time({app="a"} | json | drop __
 # A cleared __error_details__ leaves __error__, so the query still fails.
 eval instant at 60s first_over_time({app="a"} | json | drop __error_details__ | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
-# drop cannot delete __preserve_error__.
+# __preserve_error__ is never synthesized, so dropping it is an ordinary, no-op drop.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__ | unwrap v [1m]) by (code)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
-eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__="true" | unwrap v [1m]) by (code)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7
 # The filter runs before drop, so the malformed line is the only one left to report.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __error__ | unwrap v [1m]) by (code)
   {code="500"} 7
@@ -289,11 +287,11 @@ eval select from 0 to 60s forward {app="a"} | json | keep __error__="JSONParserE
 # keep never drops the error labels, so a query with an __error__ filter keeps erroring samples in the result,
 # and a query without an __error__ filter fails.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7
 eval range from 40s to 80s step 20s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)   # overlapping
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7 7 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7 7 7
 eval range from 60s to 180s step 120s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code) # non-overlapping
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7 _
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7 _
 eval instant at 60s first_over_time({app="a"} | json | keep code, v | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
 # Naming __error__ in the keep list does not ask to keep the error.

@@ -44,22 +44,17 @@ type ParserHint interface {
 	// Resets the state of extracted labels
 	Reset()
 
-	// PreserveError returns true when a label filter on __error__ asks to keep the errored lines.
-	// It answers for every error a pipeline raises, not only a parser error.
-	PreserveError() bool
-
 	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 }
 
 type Hints struct {
-	noLabels            bool
-	requiredLabels      []string
-	shouldPreserveError bool
-	extracted           map[string]struct{}
-	labelFilters        []LabelFilterer
-	labelNames          []string
+	noLabels       bool
+	requiredLabels []string
+	extracted      map[string]struct{}
+	labelFilters   []LabelFilterer
+	labelNames     []string
 }
 
 func (p *Hints) Extracted(key string) bool {
@@ -124,10 +119,6 @@ func (p *Hints) Reset() {
 	clear(p.extracted)
 }
 
-func (p *Hints) PreserveError() bool {
-	return p.shouldPreserveError
-}
-
 func (p *Hints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
 	for i := 0; i < len(p.labelNames); i++ {
 		if p.labelNames[i] == labelName {
@@ -167,17 +158,15 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 		}
 	}
 
-	preserveError := stages.Hints().KeepsErroredLines
-
 	extracted := make(map[string]struct{}, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: preserveError, labelFilters: labelFilters, labelNames: labelNames}
+			return &Hints{requiredLabels: hints, extracted: extracted, labelFilters: labelFilters, labelNames: labelNames}
 		}
-		return &Hints{noLabels: true, shouldPreserveError: preserveError}
+		return &Hints{noLabels: true}
 	}
 
-	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames, shouldPreserveError: preserveError}
+	ph := &Hints{labelFilters: labelFilters, labelNames: labelNames}
 
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
@@ -186,7 +175,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 		return ph
 	}
 
-	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: preserveError}
+	return &Hints{requiredLabels: hints, extracted: extracted}
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
