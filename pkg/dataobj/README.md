@@ -382,7 +382,7 @@ The builder (the `dataobj-builder` target) reads log data from Kafka and builds 
 
 **Key Features:**
 - Reads from Kafka partitions
-- Accumulates logs into data objects
+- Accumulates logs into data objects, one per tenant and 12-hour window
 - Flushes based on size or idle timeout
 - Commits offsets after successful upload
 - Builds an index object for each uploaded data object and records it in the Table of Contents.
@@ -394,7 +394,7 @@ The builder (the `dataobj-builder` target) reads log data from Kafka and builds 
 Manages an index of data objects and their contents for efficient querying.
 
 The metastore serves queries by the following:
-1. Fetch and scan relevant Table of Contents (toc) files from the query time range to resolve index objects.
+1. Fetch and scan the querying tenant's Table of Contents (toc) files for every 12-hour window in the query time range to resolve index objects. Each toc file holds a single tenant and is stored at `tocs/<window>/<tenant>/toc.toc`.
 2. Fetches resolved index objects and utilises the contained indexes (stream sections, blooms, etc.) to resolve log objects & metadata such as size and number of log lines.
 
 ### Index

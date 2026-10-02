@@ -16,6 +16,8 @@ const FP_NAN = 1
 
 const GID_MAX = 2147483647
 
+const IOV_MAX = 1024
+
 const LINE_MAX = 2048
 
 const LINK_MAX = 32767
@@ -24,19 +26,41 @@ const MAP_NORESERVE = 64
 
 const MAP_RENAME = 32
 
+const MB_CUR_MAX = "__mb_cur_max"
+
 const NGROUPS_MAX = 16
 
+const NL_ARGMAX = 9
+
+const NL_LANGMAX = 14
+
+const NL_MSGMAX = 32767
+
+const NL_NMAX = 1
+
+const NL_SETMAX = 255
+
+const NL_TEXTMAX = 2048
+
 const NZERO = 20
+
+const PASS_MAX = 128
 
 const PATH_MAX = 1024
 
 const PIPE_BUF = 512
 
+const PTHREAD_DESTRUCTOR_ITERATIONS = 4
+
 const RE_DUP_MAX = 255
 
-const TIOCGSIZE = "TIOCGWINSZ"
+const TIOCDCDTIMESTAMP = 1074820184
 
-const TIOCSSIZE = "TIOCSWINSZ"
+const TIOCGSIZE = 1074295912
+
+const TIOCSIG = 536900703
+
+const TIOCSSIZE = 2148037735
 
 type Texception = struct {
 	Ftype1  int32
@@ -61,15 +85,95 @@ type Tttysize = struct {
 
 const UID_MAX = 2147483647
 
-const X_TLOSS = 0
+const X_TLOSS = 1.414847550405688e+16
+
+const _POSIX2_BC_BASE_MAX = 99
+
+const _POSIX2_BC_DIM_MAX = 2048
+
+const _POSIX2_BC_SCALE_MAX = 99
+
+const _POSIX2_BC_STRING_MAX = 1000
+
+const _POSIX2_CHARCLASS_NAME_MAX = 14
+
+const _POSIX2_COLL_WEIGHTS_MAX = 2
+
+const _POSIX2_EXPR_NEST_MAX = 32
+
+const _POSIX2_LINE_MAX = 2048
+
+const _POSIX2_RE_DUP_MAX = 255
 
 const _POSIX2_VERSION = 200112
 
+const _POSIX_AIO_LISTIO_MAX = 2
+
+const _POSIX_AIO_MAX = 1
+
+const _POSIX_ARG_MAX = 4096
+
+const _POSIX_CHILD_MAX = 25
+
+const _POSIX_DELAYTIMER_MAX = 32
+
+const _POSIX_HOST_NAME_MAX = 255
+
+const _POSIX_LINK_MAX = 8
+
+const _POSIX_LOGIN_NAME_MAX = 9
+
+const _POSIX_MAX_CANON = 255
+
+const _POSIX_MAX_INPUT = 255
+
+const _POSIX_MQ_OPEN_MAX = 8
+
+const _POSIX_MQ_PRIO_MAX = 32
+
+const _POSIX_NAME_MAX = 14
+
+const _POSIX_NGROUPS_MAX = 8
+
+const _POSIX_OPEN_MAX = 20
+
+const _POSIX_PATH_MAX = 256
+
+const _POSIX_PIPE_BUF = 512
+
+const _POSIX_RE_DUP_MAX = 255
+
+const _POSIX_SEM_NSEMS_MAX = 256
+
+const _POSIX_SIGQUEUE_MAX = 32
+
+const _POSIX_SSIZE_MAX = 32767
+
+const _POSIX_STREAM_MAX = 8
+
+const _POSIX_SYMLINK_MAX = 255
+
+const _POSIX_SYMLOOP_MAX = 8
+
+const _POSIX_THREAD_DESTRUCTOR_ITERATIONS = 4
+
 const _POSIX_THREAD_KEYS_MAX = 128
+
+const _POSIX_THREAD_THREADS_MAX = 64
+
+const _POSIX_TIMER_MAX = 32
+
+const _POSIX_TTY_NAME_MAX = 9
+
+const _POSIX_TZNAME_MAX = 6
 
 const _P_ALL = 0
 
 const _P_PID = 1
+
+const _XOPEN_IOV_MAX = 16
+
+const _XOPEN_PATH_MAX = 1024
 
 type exception = Texception
 

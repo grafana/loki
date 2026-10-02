@@ -23,7 +23,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -379,11 +378,11 @@ func (b *Builder) estimatedSize() int {
 }
 
 // TimeRanges returns the time ranges for each tenant.
-func (b *Builder) TimeRanges() []multitenancy.TimeRange {
-	var timeRanges []multitenancy.TimeRange
+func (b *Builder) TimeRanges() []dataobj.TimeRange {
+	var timeRanges []dataobj.TimeRange
 	for _, sb := range b.streams {
 		minTime, maxTime := sb.TimeRange()
-		timeRanges = append(timeRanges, multitenancy.TimeRange{
+		timeRanges = append(timeRanges, dataobj.TimeRange{
 			Tenant:  sb.Tenant(),
 			MinTime: minTime,
 			MaxTime: maxTime,

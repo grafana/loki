@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // A committer allows mocking of certain [kgo.Client] methods in tests.
@@ -30,7 +30,7 @@ type indexer interface {
 
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
 type tocWriter interface {
-	WriteEntry(ctx context.Context, idxPath string, tenantTimeRanges []multitenancy.TimeRange) error
+	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
 }
 
 // A flusher allows mocking of flushes in tests.
@@ -146,7 +146,11 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 
 	// WriteEntry retries each ToC window until it succeeds, so it returns an
 	// error only if the context is canceled.
-	if err := c.tocWriter.WriteEntry(ctx, res.Path, res.TimeRanges); err != nil {
+	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
+		Path:      res.Path,
+		StartTime: res.TimeRange.MinTime,
+		EndTime:   res.TimeRange.MaxTime,
+	}); err != nil {
 		return fmt.Errorf("failed to update metastore ToC: %w", err)
 	}
 
@@ -174,6 +178,9 @@ func earliestRecordTime(builders []builder) time.Time {
 // backoff until successful or the context is canceled. Retrying is safe because
 // the index is not referenced from the metastore until it is recorded in the
 // ToC.
+//
+// Builders hold a single tenant, so [index.ErrNotSingleTenant] means that
+// invariant is broken. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -185,6 +192,9 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 		res, err := c.indexer.Index(ctx, obj, objPath)
 		if err == nil {
 			return res, nil
+		}
+		if errors.Is(err, index.ErrNotSingleTenant) {
+			return index.Result{}, err
 		}
 		lastErr = err
 		level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())

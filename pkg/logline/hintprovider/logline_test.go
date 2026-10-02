@@ -211,6 +211,76 @@ func TestLoglineHintProvider_ProvideHints_PostParserJSONLabelFilter(t *testing.T
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
 }
 
+func TestLoglineHintProvider_ProvideHints_PostParserRegexLabelFilter(t *testing.T) {
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+
+	for _, tc := range []struct {
+		name       string
+		query      string
+		wantRanges int
+	}{
+		{
+			name:       "required literal is indexed",
+			query:      `{job="api"} | json | dashboardUID=~".*klu4xpj1w5lmbmvi8u6ec.*"`,
+			wantRanges: 1,
+		},
+		{
+			name:       "every required literal is indexed",
+			query:      `{job="api"} | json | dashboardUID=~"grafana_slo.*klu4xpj1w5lmbmvi8u6ec"`,
+			wantRanges: 1,
+		},
+		{
+			name:       "one of the required literals is not indexed",
+			query:      `{job="api"} | json | dashboardUID=~"grafana_slo.*zzzzzzzzzzzz"`,
+			wantRanges: 0,
+		},
+		{
+			name:       "required literal is not indexed",
+			query:      `{job="api"} | json | dashboardUID=~".*zzzzzzzzzzzz.*"`,
+			wantRanges: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			indexStore := newTestStore(t)
+			writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", "grafana_slo_app-klu4xpj1w5lmbmvi8u6ec", docMin, docMax)
+
+			provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+			require.NoError(t, err)
+
+			hints, _, err := provider.ProvideHints(
+				context.Background(),
+				"test-tenant",
+				mustParseExpr(t, tc.query),
+				model.TimeFromUnixNano(docMin.Add(-time.Minute).UnixNano()),
+				model.TimeFromUnixNano(docMax.Add(time.Minute).UnixNano()),
+			)
+			require.NoError(t, err)
+			require.NotNil(t, hints)
+			require.Len(t, hints.TimeRanges, tc.wantRanges)
+			if tc.wantRanges == 1 {
+				require.Equal(t, docMin.UTC(), hints.TimeRanges[0].Start)
+				require.Equal(t, docMax.UTC(), hints.TimeRanges[0].End)
+			}
+		})
+	}
+
+	t.Run("no required literal is unsupported", func(t *testing.T) {
+		provider, err := NewLoglineHintProvider(newTestStore(t), 6, 0, nil, log.NewNopLogger(), nil)
+		require.NoError(t, err)
+
+		hints, _, err := provider.ProvideHints(
+			context.Background(),
+			"test-tenant",
+			mustParseExpr(t, `{job="api"} | json | dashboardUID=~".*slo.*"`),
+			model.TimeFromUnixNano(docMin.UnixNano()),
+			model.TimeFromUnixNano(docMax.UnixNano()),
+		)
+		require.Nil(t, hints)
+		require.ErrorIs(t, err, ErrUnsupported)
+	})
+}
+
 func TestLoglineHintProvider_ProvideHints_LabelFilter(t *testing.T) {
 	indexStore := newTestStore(t)
 	needle := "9fA81cD2Ef0077aa"

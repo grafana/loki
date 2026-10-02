@@ -53,9 +53,9 @@ func Xsqlite3_declare_vtab(tls *libc.TLS, db uintptr, zCreateTable uintptr) (r i
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	pCtx = (*Tsqlite3)(unsafe.Pointer(db)).FpVtabCtx
 	if !(pCtx != 0) || (*TVtabCtx)(unsafe.Pointer(pCtx)).FbDeclared != 0 {
-		_sqlite3Error(tls, db, _sqlite3MisuseError(tls, int32(162888)))
+		_sqlite3Error(tls, db, _sqlite3MisuseError(tls, int32(163157)))
 		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
-		return _sqlite3MisuseError(tls, int32(162890))
+		return _sqlite3MisuseError(tls, int32(163159))
 	}
 	pTab = (*TVtabCtx)(unsafe.Pointer(pCtx)).FpTab
 	_sqlite3ParseObjectInit(tls, bp, db)
@@ -1766,7 +1766,7 @@ func _createCollation(tls *libc.TLS, db uintptr, zName uintptr, enc Tu8, pCtx ui
 		enc2 = int32(SQLITE_UTF16LE)
 	}
 	if enc2 < int32(SQLITE_UTF8) || enc2 > int32(SQLITE_UTF16BE) {
-		return _sqlite3MisuseError(tls, int32(190431))
+		return _sqlite3MisuseError(tls, int32(190700))
 	}
 	/* Check if this call is removing or replacing an existing collation
 	 ** sequence. If so, and there are active VMs, return busy. If there
@@ -3718,7 +3718,7 @@ func _sqlite3CreateFunc(tls *libc.TLS, db uintptr, zFunctionName uintptr, nArg i
 	var p, v1 uintptr
 	_, _, _, _ = extraFlags, p, rc, v1
 	if zFunctionName == uintptr(0) || __ccgo_fp_xSFunc != uintptr(0) && __ccgo_fp_xFinal != uintptr(0) || libc.BoolInt32(__ccgo_fp_xFinal == uintptr(0)) != libc.BoolInt32(__ccgo_fp_xStep == uintptr(0)) || libc.BoolInt32(__ccgo_fp_xValue == uintptr(0)) != libc.BoolInt32(__ccgo_fp_xInverse == uintptr(0)) || (nArg < -int32(1) || nArg > int32(SQLITE_MAX_FUNCTION_ARG)) || int32(255) < _sqlite3Strlen30(tls, zFunctionName) {
-		return _sqlite3MisuseError(tls, int32(189491))
+		return _sqlite3MisuseError(tls, int32(189760))
 	}
 	extraFlags = enc & (libc.Int32FromInt32(SQLITE_DETERMINISTIC) | libc.Int32FromInt32(SQLITE_DIRECTONLY) | libc.Int32FromInt32(SQLITE_SUBTYPE) | libc.Int32FromInt32(SQLITE_INNOCUOUS) | libc.Int32FromInt32(SQLITE_RESULT_SUBTYPE) | libc.Int32FromInt32(SQLITE_SELFORDER1))
 	enc = enc & (libc.Int32FromInt32(SQLITE_FUNC_ENCMASK) | libc.Int32FromInt32(SQLITE_ANY))
@@ -11819,14 +11819,14 @@ func _vdbeUnbind(tls *libc.TLS, p uintptr, i uint32) (r int32) {
 	var v2 bool
 	_, _, _ = pVar, v1, v2
 	if _vdbeSafetyNotNull(tls, p) != 0 {
-		return _sqlite3MisuseError(tls, int32(95495))
+		return _sqlite3MisuseError(tls, int32(95764))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
 	if libc.Int32FromUint8((*TVdbe)(unsafe.Pointer(p)).FeVdbeState) != int32(VDBE_READY_STATE) {
-		_sqlite3Error(tls, (*TVdbe)(unsafe.Pointer(p)).Fdb, _sqlite3MisuseError(tls, int32(95499)))
+		_sqlite3Error(tls, (*TVdbe)(unsafe.Pointer(p)).Fdb, _sqlite3MisuseError(tls, int32(95768)))
 		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
 		Xsqlite3_log(tls, int32(SQLITE_MISUSE), __ccgo_ts+5701, libc.VaList(bp+8, (*TVdbe)(unsafe.Pointer(p)).FzSql))
-		return _sqlite3MisuseError(tls, int32(95503))
+		return _sqlite3MisuseError(tls, int32(95772))
 	}
 	if i >= libc.Uint32FromInt16((*TVdbe)(unsafe.Pointer(p)).FnVar) {
 		_sqlite3Error(tls, (*TVdbe)(unsafe.Pointer(p)).Fdb, int32(SQLITE_RANGE))
@@ -11934,12 +11934,13 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 		 ** are able to understand */
 		version = _sqlite3Get4byte(tls, bp+8+4)
 		if version != uint32(WAL_MAX_VERSION) {
-			rc = _sqlite3CantopenError(tls, int32(69141))
+			rc = _sqlite3CantopenError(tls, int32(69195))
 			goto finished
 		}
 		/* Malloc a buffer to read frames into. */
 		szFrame = szPage + int32(WAL_FRAME_HDRSIZE)
 		aFrame = Xsqlite3_malloc64(tls, uint64(libc.Uint64FromInt32(szFrame)+(libc.Uint64FromInt64(2)*libc.Uint64FromInt32(libc.Int32FromInt32(HASHTABLE_NPAGE)*libc.Int32FromInt32(2))+libc.Uint64FromInt32(HASHTABLE_NPAGE)*libc.Uint64FromInt64(4))))
+		(*TWal)(unsafe.Pointer(pWal)).FpFree = aFrame
 		if !(aFrame != 0) {
 			rc = int32(SQLITE_NOMEM)
 			goto recovery_error
@@ -11969,6 +11970,8 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			if **(**uintptr)(__ccgo_up(bp + 40)) == uintptr(0) {
 				break
 			}
+			(*TWal)(unsafe.Pointer(pWal)).FiWiPg = libc.Int32FromUint32(iPg)
+			(*TWal)(unsafe.Pointer(pWal)).FpWiValue = **(**uintptr)(__ccgo_up(bp + 40))
 			**(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData + uintptr(iPg)*8)) = aPrivate
 			iFrame = iFirst
 			for {
@@ -12003,6 +12006,8 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 				iFrame = iFrame + 1
 			}
 			**(**uintptr)(__ccgo_up((*TWal)(unsafe.Pointer(pWal)).FapWiData + uintptr(iPg)*8)) = **(**uintptr)(__ccgo_up(bp + 40))
+			(*TWal)(unsafe.Pointer(pWal)).FiWiPg = 0
+			(*TWal)(unsafe.Pointer(pWal)).FpWiValue = uintptr(0)
 			if iPg == uint32(0) {
 				v2 = libc.Uint64FromInt64(48)*libc.Uint64FromInt32(2) + libc.Uint64FromInt64(40)
 			} else {
@@ -12019,6 +12024,7 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			 ** is safe for this.  Memcpy() is certainly a lot faster.
 			 */
 			libc.Xmemcpy(tls, **(**uintptr)(__ccgo_up(bp + 40))+uintptr(nHdr32)*4, aPrivate+uintptr(nHdr32)*4, libc.Uint64FromInt64(2)*libc.Uint64FromInt32(libc.Int32FromInt32(HASHTABLE_NPAGE)*libc.Int32FromInt32(2))+libc.Uint64FromInt32(HASHTABLE_NPAGE)*libc.Uint64FromInt64(4)-uint64(nHdr))
+			_modernc_seh_inject(tls, pWal)
 			if iFrame <= iLast {
 				break
 			}
@@ -12027,6 +12033,7 @@ func _walIndexRecover(tls *libc.TLS, pWal uintptr) (r int32) {
 			;
 			iPg = iPg + 1
 		}
+		(*TWal)(unsafe.Pointer(pWal)).FpFree = uintptr(0)
 		Xsqlite3_free(tls, aFrame)
 	}
 	goto finished
@@ -12056,6 +12063,7 @@ finished:
 				} else {
 					**(**Tu32)(__ccgo_up(pInfo + 4 + uintptr(i)*4)) = uint32(READMARK_NOT_USED)
 				}
+				_modernc_seh_inject(tls, pWal)
 				_walUnlockExclusive(tls, pWal, int32(3)+i, int32(1))
 			} else {
 				if rc != int32(SQLITE_BUSY) {

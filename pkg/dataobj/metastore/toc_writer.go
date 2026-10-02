@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -35,7 +34,7 @@ var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular time range.
+// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular tenant and time range.
 // The Table of Contents files are used to look up other objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
 type TableOfContentsWriter struct {
 	tocBuilder *indexobj.Builder // New index pointer based builder.
@@ -82,9 +81,8 @@ func (m *TableOfContentsWriter) initBuilder() error {
 	return initErr
 }
 
-// WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
-func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
-	var err error
+// WriteEntry adds entry to the tenant's ToC of every window the entry overlaps.
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
@@ -93,23 +91,17 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 		return err
 	}
 
-	var globalMinTime, globalMaxTime time.Time
-	for _, timeRange := range tenantTimeRanges {
-		if globalMinTime.IsZero() || timeRange.MinTime.Before(globalMinTime) {
-			globalMinTime = timeRange.MinTime
-		}
-		if globalMaxTime.IsZero() || timeRange.MaxTime.After(globalMaxTime) {
-			globalMaxTime = timeRange.MaxTime
-		}
-	}
-
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range IterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+	for tocPath := range IterTableOfContentsPaths(tenant, entry.StartTime, entry.EndTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
 		})
+		var (
+			err     error
+			written bool
+		)
 		for b.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
 				if existing != nil {
@@ -140,18 +132,13 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				// Append all the tenant time ranges that overlap with the current Table of Contents window.
-				for _, timeRange := range tenantTimeRanges {
-					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
-							Path:    dataobjPath,
-							StartTs: timeRange.MinTime,
-							EndTs:   timeRange.MaxTime,
-						})
-						if err != nil {
-							return nil, errors.Wrap(err, "appending index pointer")
-						}
-					}
+				err := m.tocBuilder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+					Path:    entry.Path,
+					StartTs: entry.StartTime,
+					EndTs:   entry.EndTime,
+				})
+				if err != nil {
+					return nil, errors.Wrap(err, "appending index pointer")
 				}
 
 				var (
@@ -186,6 +173,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
 				m.metrics.incTableOfContentsWrites(statusSuccess)
+				written = true
 				break
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
@@ -195,8 +183,14 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 
 		// Reset at the end too so we don't leave our memory hanging around between calls.
 		m.tocBuilder.Reset()
+
+		// The loop only stops without writing once the context is done, which
+		// can happen before the first attempt, when err is still nil.
+		if !written {
+			return stderrors.Join(b.Err(), err)
+		}
 	}
-	return err
+	return nil
 }
 
 // wrappedReadCloser wraps an io.ReadCloser and calls OnClose when Close is

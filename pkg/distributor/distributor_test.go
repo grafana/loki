@@ -4436,7 +4436,13 @@ func TestDistributor_NestedLimitsServiceShard(t *testing.T) {
 				pushCtx := user.InjectOrgID(context.Background(), "test")
 				_, err := d.pushWithResolver(pushCtx, req, newRequestScopedStreamResolver("test", d.validator.Limits, nil), constants.Loki)
 				require.NoError(t, err)
-				require.Equal(t, uint64(2), mockClient.calls.Load())
+				// Shadow mode calls both RPCs, live mode only
+				// CheckLimitsAndShard: it already enforces the limits.
+				wantCalls := uint64(2)
+				if mode == shardstreams.LimitsServiceStreamShardingModeLive {
+					wantCalls = 1
+				}
+				require.Equal(t, wantCalls, mockClient.calls.Load())
 				require.Equal(t, float64(len(results)), sumCounterVec(t, d.m.limitsServiceShardShadowCompared))
 				// Compare recommendations even when entry count limits the number of physical shards.
 				require.Zero(t, sumCounterVec(t, d.m.limitsServiceShardShadowDivergence))
@@ -4462,14 +4468,13 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 	lbls := labels.FromStrings("job", "internal")
 	streamHash := labels.StableHash(lbls)
 
-	// Four two-byte lines, so the local rate store recommends
-	// ceil((30 + 8) / 10) = 4 shards and the entry count does not limit the
-	// physical shards below any count used here.
+	// Four two-byte lines: enough that a multi-shard answer actually splits
+	// them, and enough to check that entries are neither dropped nor
+	// duplicated by it.
 	entries := make([]logproto.Entry, 4)
 	for i := range entries {
 		entries[i] = logproto.Entry{Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond), Line: "aa"}
 	}
-	const rateStoreShards = 4
 
 	tests := []struct {
 		name        string
@@ -4477,6 +4482,8 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 		responseErr error
 		// wantShards is the number of physical streams the push produces.
 		wantShards int
+		// wantErr is the error the push returns, if any.
+		wantErr string
 	}{{
 		name: "the service asks for fewer shards than the rate store: its count is used",
 		response: &limitsproto.CheckLimitsAndShardResponse{
@@ -4490,19 +4497,23 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 		},
 		wantShards: 1,
 	}, {
-		// Falling back keeps sharding working through a limits service outage,
-		// rather than collapsing hot streams onto one shard.
-		name:        "the whole call fails: the rate store's count is used",
+		// A limits-service outage has no decision to enforce, so the stream is
+		// written unsharded rather than falling back to the rate store's
+		// recommendation.
+		name:        "the whole call fails: it is written unsharded",
 		responseErr: errors.New("limits service unavailable"),
-		wantShards:  rateStoreShards,
+		wantShards:  1,
 	}, {
-		name:       "the stream has no result: the rate store's count is used",
+		// No decision from the service means nothing to enforce, so the
+		// stream is written unsharded rather than dropped (fail open).
+		name:       "the stream has no result: it is written unsharded",
 		response:   &limitsproto.CheckLimitsAndShardResponse{},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		// The shard count of an answer the service could not decide on carries
-		// no decision, so it must not be used either.
-		name: "the service could not check the stream: the rate store's count is used",
+		// no decision, so it must not be used either; the rate store's count is
+		// not used here, only the service's.
+		name: "the service could not check the stream: it is written unsharded",
 		response: &limitsproto.CheckLimitsAndShardResponse{
 			Results: []*limitsproto.StreamShardResult{{
 				StreamHash: streamHash,
@@ -4510,7 +4521,7 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
 			}},
 		},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
 		name: "the answer has no shard count, and there is no reject reason: this should/must not happen",
 		response: &limitsproto.CheckLimitsAndShardResponse{
@@ -4518,12 +4529,12 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 				{StreamHash: streamHash, Shards: 0},
 			},
 		},
-		wantShards: rateStoreShards,
+		wantShards: 1,
 	}, {
-		// The tenant has no stream count budget left for more shards. The
-		// stream is still written, as whether it is rejected is decided by the
-		// ExceedsLimits check.
-		name: "the service rejects the stream: the stream is not sharded",
+		// The tenant has no stream count budget left, not even for a single
+		// shard, so the stream is not written at all. It is the only stream in
+		// this push, so the push itself fails.
+		name: "the service rejects the stream: the stream is not written",
 		response: &limitsproto.CheckLimitsAndShardResponse{
 			Results: []*limitsproto.StreamShardResult{{
 				StreamHash:   streamHash,
@@ -4531,7 +4542,8 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 				RejectReason: limits.ReasonMaxStreams.String(),
 			}},
 		},
-		wantShards: 1,
+		wantShards: 0,
+		wantErr:    "maximum active stream limit exceeded",
 	}}
 
 	for _, test := range tests {
@@ -4567,6 +4579,11 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 			resp, err := d.Push(pushCtx, &logproto.PushRequest{
 				Streams: []logproto.Stream{{Labels: lbls.String(), Entries: entries}},
 			})
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+				require.Nil(t, ing.Peek())
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, success, resp)
 
@@ -4585,6 +4602,140 @@ func TestDistributor_LimitsServiceShardLive(t *testing.T) {
 			require.Equal(t, len(entries), total)
 		})
 	}
+}
+
+// TestDistributor_LimitsServiceShardLiveEnforcement covers what live mode
+// enforces on its own and which streams it leaves to the ExceedsLimits check.
+func TestDistributor_LimitsServiceShardLiveEnforcement(t *testing.T) {
+	newLimits := func(t *testing.T) *validation.Limits {
+		lim := &validation.Limits{}
+		flagext.DefaultValues(lim)
+		lim.DiscoverLogLevels = false
+		lim.ShardStreams.Enabled = true
+		lim.ShardStreams.DesiredRate = 10
+		lim.ShardStreams.LimitsServiceStreamShardingMode = shardstreams.LimitsServiceStreamShardingModeLive
+		require.NoError(t, lim.Validate())
+		return lim
+	}
+
+	t.Run("a rejected stream is dropped and the rest of the push is written", func(t *testing.T) {
+		written := labels.FromStrings("job", "written")
+		rejected := labels.FromStrings("job", "rejected")
+		entries := []logproto.Entry{
+			{Timestamp: time.Now(), Line: "aa"},
+			{Timestamp: time.Now().Add(time.Millisecond), Line: "aa"},
+		}
+
+		ing := &mockIngester{}
+		distributors, _ := prepare(t, 1, 3, newLimits(t), func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+		d := distributors[0]
+		d.cfg.IngestLimitsEnabled = true
+		d.rateStore = &fakeRateStore{rate: 30, pushRate: 1}
+
+		mockClient := mockIngestLimitsFrontendClient{
+			t: t,
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{
+					StreamHash: labels.StableHash(written),
+					Shards:     2,
+				}, {
+					StreamHash:   labels.StableHash(rejected),
+					Shards:       0,
+					RejectReason: limits.ReasonMaxStreams.String(),
+				}},
+			},
+			exceedsLimitsResponse: &limitsproto.ExceedsLimitsResponse{},
+		}
+		d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
+
+		pushCtx := user.InjectOrgID(context.Background(), "test")
+		_, err := d.Push(pushCtx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{Labels: written.String(), Entries: entries},
+				{Labels: rejected.String(), Entries: entries},
+			},
+		})
+		// The rejection is reported even though the other stream was written.
+		require.ErrorContains(t, err, "maximum active stream limit exceeded")
+
+		// Only CheckLimitsAndShard is called: it decided both streams.
+		require.Equal(t, uint64(1), mockClient.calls.Load())
+
+		got := ing.Peek()
+		require.NotNil(t, got)
+		shards := make(map[string]int, len(got.Streams))
+		for _, s := range got.Streams {
+			require.Contains(t, s.Labels, `job="written"`)
+			shards[s.Labels] += len(s.Entries)
+		}
+		require.Len(t, shards, 2)
+	})
+
+	t.Run("streams that live mode does not shard are still checked by ExceedsLimits", func(t *testing.T) {
+		unsharded := labels.FromStrings("app", "unsharded")
+		live := labels.FromStrings("app", "live")
+		entries := []logproto.Entry{{Timestamp: time.Now(), Line: "aa"}}
+
+		// Stream sharding, and with it live mode, is turned off for the
+		// "unsharded" policy only, so one push carries both kinds of stream.
+		lim := newLimits(t)
+		lim.PolicyStreamMapping = validation.PolicyStreamMapping{
+			"unsharded": []*validation.PriorityStream{{Selector: `{app="unsharded"}`, Priority: 1}},
+		}
+		shardingOff := false
+		lim.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+			"unsharded": {ShardStreams: &validation.PerPolicyConfigOverride{Enabled: &shardingOff}},
+		}
+		require.NoError(t, lim.Validate())
+
+		ing := &mockIngester{}
+		distributors, _ := prepare(t, 1, 3, lim, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+		d := distributors[0]
+		d.cfg.IngestLimitsEnabled = true
+		d.rateStore = &fakeRateStore{rate: 30, pushRate: 1}
+
+		mockClient := mockIngestLimitsFrontendClient{
+			t: t,
+			// Each call sees its own streams: the live-mode stream must not be
+			// checked twice, and the unsharded one must still be checked.
+			expectedCheckLimitsAndShardRequest: &limitsproto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*limitsproto.StreamMetadata{{StreamHash: labels.StableHash(live), TotalSize: 2}},
+			},
+			checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
+				Results: []*limitsproto.StreamShardResult{{StreamHash: labels.StableHash(live), Shards: 1}},
+			},
+			expectedExceedsLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+				Tenant: "test",
+				Streams: []*limitsproto.StreamMetadata{{
+					StreamHash:      labels.StableHash(unsharded),
+					TotalSize:       2,
+					IngestionPolicy: "unsharded",
+				}},
+			},
+			exceedsLimitsResponse: &limitsproto.ExceedsLimitsResponse{},
+		}
+		d.ingestLimits = newIngestLimits(&mockClient, prometheus.NewRegistry())
+
+		pushCtx := user.InjectOrgID(context.Background(), "test")
+		resp, err := d.Push(pushCtx, &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{Labels: unsharded.String(), Entries: entries},
+				{Labels: live.String(), Entries: entries},
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, success, resp)
+		require.Equal(t, uint64(2), mockClient.calls.Load())
+
+		got := ing.Peek()
+		require.NotNil(t, got)
+		pushed := make([]string, 0, len(got.Streams))
+		for _, s := range got.Streams {
+			pushed = append(pushed, s.Labels)
+		}
+		require.ElementsMatch(t, []string{unsharded.String(), live.String()}, pushed)
+	})
 }
 
 // TestDistributor_LimitsServiceShardObservations covers how the ingest-limits
@@ -4727,8 +4878,16 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 						}},
 					}},
 				})
-				require.NoError(t, err)
-				require.Equal(t, success, resp)
+				// Live mode does not write a rejected stream, and this push has
+				// no other stream to write, so it fails. The only reject reason
+				// in the table is the stream limit.
+				live := mode == shardstreams.LimitsServiceStreamShardingModeLive
+				if live && test.expectRejected {
+					require.ErrorContains(t, err, "maximum active stream limit exceeded")
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, success, resp)
+				}
 
 				// Every counter is asserted, not just the one this case expects to
 				// increment. A stream is failed, rejected or compared, never more
@@ -4754,14 +4913,19 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 				}
 
 				// The CheckLimitsAndShard call records the latency it adds
-				// whatever its outcome, and the ExceedsLimits call is timed
-				// alongside it so the two can be compared. Once each per push.
+				// whatever its outcome, once per push. In shadow mode the
+				// ExceedsLimits call is timed alongside it so the two can be
+				// compared; live mode does not call it.
 				var shard dto.Metric
 				require.NoError(t, d.m.limitsServiceShardDuration.Write(&shard))
 				require.Equal(t, uint64(1), shard.GetHistogram().GetSampleCount())
+				wantExceeds := uint64(1)
+				if live {
+					wantExceeds = 0
+				}
 				var exceeds dto.Metric
 				require.NoError(t, d.m.limitsServiceExceedsLimitsDuration.Write(&exceeds))
-				require.Equal(t, uint64(1), exceeds.GetHistogram().GetSampleCount())
+				require.Equal(t, wantExceeds, exceeds.GetHistogram().GetSampleCount())
 			})
 		}
 	}

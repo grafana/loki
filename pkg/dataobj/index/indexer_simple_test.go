@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -57,49 +56,47 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		idx, _ := newTestSimpleIndexer(t, bucket)
 
 		const objPath = "objects/test"
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), objPath)
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 1), objPath)
 		require.NoError(t, err)
 
 		require.Contains(t, bucket.Objects(), res.Path)
 		require.Len(t, bucket.Objects(), 1, "one index object per data object")
 
-		// The ranges are what the caller records in the Table of Contents, so
-		// they must describe the data object: both of its tenants, the span of
-		// the fixture's entries, and the size of the index just uploaded.
-		require.Len(t, res.TimeRanges, 2)
-		require.ElementsMatch(t, []string{"tenant-0", "tenant-1"}, tenantsOf(res.TimeRanges))
-		for _, tr := range res.TimeRanges {
-			require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
-			require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
-			require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
-			require.Positive(t, tr.UncompressedLogsSize)
-		}
+		// The range is what the caller records in the Table of Contents, so it
+		// must describe the data object: its tenant, the span of the fixture's
+		// entries, and the size of the index just uploaded.
+		tr := res.TimeRange
+		require.Equal(t, "tenant-0", tr.Tenant)
+		require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
+		require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
+		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
+		require.Positive(t, tr.UncompressedLogsSize)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding a streams and a pointers section for each tenant.
+		// holding a streams and a pointers section for the tenant.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, 2, idxObj.Sections().Count(streams.CheckSection))
-		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 2)
+		require.Equal(t, 1, idxObj.Sections().Count(streams.CheckSection))
+		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 1)
 
-		// Every stream of the data object is recorded, per tenant.
-		for _, tenant := range []string{"tenant-0", "tenant-1"} {
-			require.ElementsMatch(t, []string{
-				`{app="bar", cluster="test", env="dev"}`,
-				`{app="foo", cluster="test", env="prod"}`,
-			}, indexedStreams(t, idxObj, tenant), "tenant %s", tenant)
-		}
+		// Every stream of the data object is recorded.
+		require.ElementsMatch(t, []string{
+			`{app="bar", cluster="test", env="dev"}`,
+			`{app="foo", cluster="test", env="prod"}`,
+		}, indexedStreams(t, idxObj, "tenant-0"))
 
 		// The index points back at the data object it was built from.
 		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
 	})
 
-	t.Run("should index every tenant in the data object", func(t *testing.T) {
-		idx, _ := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+	t.Run("should reject a data object with more than one tenant", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, _ := newTestSimpleIndexer(t, bucket)
 
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 3), "objects/test")
-		require.NoError(t, err)
-		require.Len(t, res.TimeRanges, 3)
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), "objects/test")
+		require.ErrorIs(t, err, ErrNotSingleTenant)
+		require.Empty(t, res.Path)
+		require.Empty(t, bucket.Objects(), "a rejected index must not be uploaded")
 	})
 
 	t.Run("should propagate an upload failure", func(t *testing.T) {
@@ -212,7 +209,7 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 	// Build the objects up front: the fixtures are not concurrency-safe.
 	objs := make([]*dataobj.Object, objects)
 	for i := range objs {
-		objs[i] = createTestLogObject(t, i+1)
+		objs[i] = createTestLogObject(t, 1)
 	}
 
 	var wg sync.WaitGroup
@@ -227,11 +224,13 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 
 	require.NoError(t, errors.Join(errs...))
 
-	// Each data object gets its own index, covering only its own tenants.
+	// Each data object gets its own index, pointing only at that object.
 	paths := make(map[string]struct{}, objects)
 	for i, res := range results {
 		require.NotEmpty(t, res.Path)
-		require.Len(t, res.TimeRanges, i+1)
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedPointerPaths(t, idxObj))
 		paths[res.Path] = struct{}{}
 	}
 	require.Len(t, paths, objects)
@@ -296,14 +295,6 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	_, err := NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
 		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
 	require.Error(t, err)
-}
-
-func tenantsOf(ranges []multitenancy.TimeRange) []string {
-	tenants := make([]string, 0, len(ranges))
-	for _, tr := range ranges {
-		tenants = append(tenants, tr.Tenant)
-	}
-	return tenants
 }
 
 // indexedStreams returns the label sets the index object records for tenant.
