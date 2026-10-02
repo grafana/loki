@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -105,7 +104,7 @@ func (c *coordinator) Run(ctx context.Context) error {
 
 // windows returns the metastore-aligned windows the coordinator compacts on
 // each pass, newest first: the current window followed by cfg.WindowLookback
-// older windows. With the default lookback of 0 this is the current window.
+// older windows.
 func (c *coordinator) windows() []time.Time {
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
@@ -129,24 +128,20 @@ func (c *coordinator) runTenant(ctx context.Context, tenant string) {
 	c.runTenantLoop(ctx, tenant)
 }
 
-// errNoToC reports that a compacted window has no ToC yet. It happens briefly
-// after each window boundary, before the first index for the new window is
-// written.
-var errNoToC = errors.New("no ToC for window")
-
-// discoverTenants returns the union of the tenants in every compacted
-// window's ToC.
+// discoverTenants returns the union of the tenants in the ToC of every
+// compacted window.
 //
-// It fails if any window's ToC cannot be read, including when the ToC does
-// not exist yet. A partial result could make a tenant with work look absent.
-// A missing ToC returns an error that wraps errNoToC.
+// A window with no ToC contributes no tenants. This happens after each window
+// boundary and in windows that received no data. Any other read error fails
+// the call, because a partial result could make a tenant with work look
+// absent.
 func (c *coordinator) discoverTenants(ctx context.Context) (map[string]struct{}, error) {
 	tenants := make(map[string]struct{})
 	for _, window := range c.windows() {
 		indexes, err := loadTenantIndexes(ctx, c.bucket, window)
 		switch {
 		case err != nil && c.bucket.IsObjNotFoundErr(err):
-			return nil, fmt.Errorf("window %s: %w", window, errNoToC)
+			continue
 		case err != nil:
 			return nil, fmt.Errorf("load tenant indexes for window %s: %w", window, err)
 		}

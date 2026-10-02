@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -192,6 +193,38 @@ func TestSupervisor(t *testing.T) {
 		s.reconcile(t.Context())
 		require.Equal(t, []string{"acme"}, workers.liveTenants())
 		require.Equal(t, map[string]int{"acme": 1}, workers.startCounts())
+	})
+
+	t.Run("a discovery error still stops a disabled worker", func(t *testing.T) {
+		workers := newFakeWorkers()
+		enabled := true
+		s := newTenantsSupervisor(log.NewNopLogger(), time.Hour, discoverFixed("acme"), func(string) bool { return enabled }, workers.run)
+		defer s.stopAll()
+
+		s.reconcile(t.Context())
+		enabled = false
+		s.discover = func(context.Context) (map[string]struct{}, error) { return nil, errors.New("read failed") }
+		s.reconcile(t.Context())
+		require.Empty(t, s.runningWorkers)
+		require.Eventually(t, func() bool { return len(workers.liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond)
+	})
+
+	t.Run("a worker that exits on its own is restarted on the next reconcile", func(t *testing.T) {
+		var starts atomic.Int32
+		exitFirstRun := func(ctx context.Context, _ string) {
+			if starts.Add(1) == 1 {
+				return
+			}
+			<-ctx.Done()
+		}
+		s := newTenantsSupervisor(log.NewNopLogger(), time.Hour, discoverFixed("acme"), allEnabled, exitFirstRun)
+		defer s.stopAll()
+
+		s.reconcile(t.Context())
+		require.Eventually(t, func() bool { return s.runningWorkers["acme"].exited() }, 2*time.Second, 5*time.Millisecond)
+
+		s.reconcile(t.Context())
+		require.Eventually(t, func() bool { return starts.Load() == 2 }, 2*time.Second, 5*time.Millisecond)
 	})
 
 	t.Run("a stopped tenant gets a new worker when it is re-enabled", func(t *testing.T) {
