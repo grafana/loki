@@ -1658,6 +1658,19 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			nil,
 		},
 		{
+			"two labels from one field",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("lvl", "level"),
+				NewLabelExtractionExpr("severity", "level"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("lvl", "error",
+				"severity", "error",
+			),
+			nil,
+		},
+		{
 			"multiple fields with label renaming",
 			testLine,
 			[]LabelExtractionExpr{
