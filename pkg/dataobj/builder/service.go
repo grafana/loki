@@ -41,15 +41,12 @@ type resumeOffsetReader interface {
 
 type Service struct {
 	services.Service
-	cfg                Config
 	consumer           partitionConsumer
 	offsetReader       resumeOffsetReader
 	partition          int32
 	processor          services.Service
-	flusher            *flusherImpl
 	downscalePermitted downscalePermittedFunc
 	logger             log.Logger
-	reg                prometheus.Registerer
 	subservicesWatcher *services.FailureWatcher
 }
 
@@ -156,12 +153,8 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		wrapped,
 	)
 
-	s := newService(consumer, offsetReader, processor, partitionID, logger)
-	s.cfg = cfg
-	s.reg = reg
-	s.flusher = flusher
-	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
-	return s, nil
+	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
+	return newService(consumer, offsetReader, processor, downscalePermitted, partitionID, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
@@ -170,6 +163,7 @@ func newService(
 	consumer partitionConsumer,
 	offsetReader resumeOffsetReader,
 	processor services.Service,
+	downscalePermitted downscalePermittedFunc,
 	partition int32,
 	logger log.Logger,
 ) *Service {
@@ -178,6 +172,7 @@ func newService(
 		offsetReader:       offsetReader,
 		partition:          partition,
 		processor:          processor,
+		downscalePermitted: downscalePermitted,
 		logger:             logger,
 		subservicesWatcher: services.NewFailureWatcher(),
 	}
