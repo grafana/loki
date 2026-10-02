@@ -350,6 +350,26 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		return errIndexListCacheTooStale
 	}
 
+	// Index files are immutable, so opening them does not require the write lock.
+	// Keep ownership here until all opens and lock acquisition have succeeded.
+	openedIndexes := make(map[string]index.Index, len(downloadedFiles))
+	defer func() {
+		for fileName, idx := range openedIndexes {
+			if closeErr := idx.Close(); closeErr != nil {
+				level.Error(t.logger).Log("msg", "failed to close uncommitted index", "file", fileName, "err", closeErr)
+			}
+		}
+	}()
+
+	for _, fileName := range downloadedFiles {
+		filePath := filepath.Join(t.cacheLocation, fileName)
+		idx, err := t.openIndexFileFunc(filePath)
+		if err != nil {
+			return err
+		}
+		openedIndexes[fileName] = idx
+	}
+
 	if lock {
 		err = t.indexMtx.lock(ctx)
 		if err != nil {
@@ -358,15 +378,11 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 		defer t.indexMtx.unlock()
 	}
 
-	for _, fileName := range downloadedFiles {
-		filePath := filepath.Join(t.cacheLocation, fileName)
-		idx, err := t.openIndexFileFunc(filePath)
-		if err != nil {
-			return err
-		}
-
+	for fileName, idx := range openedIndexes {
 		t.index[fileName] = idx
 	}
+	// remove ownership so files aren't closed prematurely
+	openedIndexes = nil
 
 	for _, db := range toDelete {
 		err := t.cleanupDB(db)
