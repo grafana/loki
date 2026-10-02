@@ -137,8 +137,8 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error if the context is canceled or the object is
-	// invalid. It retries every other error indefinitely.
+	// index returns an error if the context is canceled or the object can't
+	// be processed. It retries every other error indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
 		return fmt.Errorf("failed to index data object: %w", err)
@@ -180,7 +180,7 @@ func earliestRecordTime(builders []builder) time.Time {
 // the index is not referenced from the metastore until it is recorded in the
 // ToC.
 //
-// An error that wraps [index.ErrInvalidObject] comes from the shape of the
+// An error that wraps [index.ErrUnprocessableObject] comes from the shape of the
 // object. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
@@ -194,7 +194,7 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 		if err == nil {
 			return res, nil
 		}
-		if errors.Is(err, index.ErrInvalidObject) {
+		if errors.Is(err, index.ErrUnprocessableObject) {
 			return index.Result{}, err
 		}
 		lastErr = err
