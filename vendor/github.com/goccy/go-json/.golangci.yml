@@ -1,84 +1,99 @@
-run:
-  skip-files:
-    - encode_optype.go
-    - ".*_test\\.go$"
+version: "2"
 
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      - shadow
+run:
+  tests: false
 
 linters:
-  enable-all: true
+  default: all
   disable:
+    - containedctx
+    - cyclop
+    - depguard
     - dogsled
     - dupl
-    - exhaustive
-    - exhaustivestruct
+    - embeddedstructfieldcheck
+    - err113
     - errorlint
+    - exhaustive
+    - exhaustruct
+    - exhaustruct_v5
     - forbidigo
+    - forcetypeassert
+    - funcorder
     - funlen
-    - gci
     - gochecknoglobals
     - gochecknoinits
     - gocognit
+    - goconst
     - gocritic
     - gocyclo
+    - godoclint
     - godot
     - godox
-    - goerr113
-    - gofumpt
-    - gomnd
+    - gomodguard
     - gosec
-    - ifshort
+    - govet
+    - inamedparam
+    - ireturn
     - lll
     - makezero
+    - mnd
+    - modernize
     - nakedret
     - nestif
+    - nilnil
     - nlreturn
+    - noinlineerr
     - paralleltest
+    - perfsprint
+    - revive
     - testpackage
     - thelper
-    - wrapcheck
-    - interfacer
-    - lll
-    - nakedret
-    - nestif
-    - nlreturn
-    - testpackage
-    - wsl
     - varnamelen
-    - nilnil
-    - ireturn
-    - govet
-    - forcetypeassert
-    - cyclop
-    - containedctx
-    - revive
-    - nosnakecase
-    - exhaustruct
-    - depguard
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - shadow
+    staticcheck:
+      checks:
+        - all
+        # quickfix suggestions are not defects
+        - -QF*
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # not needed
+      - linters:
+          - staticcheck
+        text: "ST1003: should not use underscores in package names"
+      - linters:
+          - staticcheck
+        path: rtype.go
+      - linters:
+          - staticcheck
+        path: error.go
+    paths:
+      - encode_optype.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - encode_optype.go
 
 issues:
-  exclude-rules:
-    # not needed
-    - path: /*.go
-      text: "ST1003: should not use underscores in package names"
-      linters:
-        - stylecheck
-    - path: /*.go
-      text: "don't use an underscore in package name"
-      linters:
-        - golint
-    - path: rtype.go
-      linters:
-        - golint
-        - stylecheck
-    - path: error.go
-      linters:
-        - staticcheck
-
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
   max-issues-per-linter: 0
 

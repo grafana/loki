@@ -421,7 +421,7 @@ func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory Sampl
 }
 
 func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
-	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
+	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params, false)
 	if err != nil {
 		return false, 0, CountMinSketchVector{}
 	}

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type QueryRangeType string
@@ -267,13 +269,16 @@ type EvaluatorFactory interface {
 type SampleEvaluatorFactory interface {
 	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
-	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+	//
+	// isRootExpr is true only for the root expression of the query, whose output is the query
+	// result.
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
-	return s(ctx, nextEvaluatorFactory, expr, p)
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
+	return s(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
 }
 
 type EntryEvaluatorFactory interface {
@@ -290,14 +295,18 @@ type DefaultEvaluator struct {
 	maxLookBackPeriod         time.Duration
 	maxCountMinSketchHeapSize int
 	querier                   Querier
+
+	// limits are the per-tenant limits of the queries the evaluator runs.
+	limits Limits
 }
 
-// NewDefaultEvaluator constructs a DefaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int) *DefaultEvaluator {
+// NewDefaultEvaluator constructs a DefaultEvaluator.
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int, limits Limits) *DefaultEvaluator {
 	return &DefaultEvaluator{
 		querier:                   querier,
 		maxLookBackPeriod:         maxLookBackPeriod,
 		maxCountMinSketchHeapSize: maxCountMinSketchHeapSize,
+		limits:                    limits,
 	}
 }
 
@@ -330,13 +339,16 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
+	isRootExpr bool,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+			sampleOrder := ev.sampleOrderFor(ctx, rangExpr, isRootExpr)
+
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						// extend startTs backwards by step
@@ -351,12 +363,21 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						},
 						StoreChunks: q.GetStoreChunks(),
 						HintRanges:  q.GetHintRanges(),
+						Order:       sampleOrder,
 					},
 				})
 				if err != nil {
 					return nil, err
 				}
-				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				switch sampleOrder {
+				case logproto.SAMPLE_ORDER_BY_STREAM:
+					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx))
+				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				default:
+					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
+					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
+				}
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
@@ -382,7 +403,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
 	case *syntax.CountDistinctSketchExpr:
@@ -400,6 +421,41 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
+}
+
+// sampleOrderFor returns the sample order to use for the range aggregation rangExpr.
+func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax.RangeAggregationExpr, isRootExpr bool) logproto.SampleOrder {
+	const timestampFirst = logproto.SAMPLE_ORDER_BY_TIMESTAMP
+
+	// The stream-first iterator enforces the series limit on its output series. Only at the root
+	// are those the series the query returns.
+	if !isRootExpr {
+		return timestampFirst
+	}
+	if _, ok := newStepAccumulatorFuncFor(rangExpr); !ok {
+		return timestampFirst
+	}
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil || len(tenantIDs) == 0 {
+		return timestampFirst
+	}
+	for _, id := range tenantIDs {
+		if !ev.limits.StreamFirstExecutionEnabled(id) {
+			return timestampFirst
+		}
+	}
+	return logproto.SAMPLE_ORDER_BY_STREAM
+}
+
+// maxQuerySeries returns the series limit of the query, the smallest one among its tenants. It
+// returns 0, no limit, when the context has no tenant.
+func (ev *DefaultEvaluator) maxQuerySeries(ctx context.Context) int {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return 0
+	}
+	return validation.SmallestPositiveIntPerTenant(tenantIDs, ev.limits.MaxQuerySeries)
 }
 
 func (ev *DefaultEvaluator) newCountDistinctEvaluator(
@@ -439,7 +495,7 @@ func newVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
 	if err != nil {
 		return nil, err
 	}
@@ -698,12 +754,21 @@ func (e *VectorAggEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
-func newRangeAggEvaluator(
+// newTimestampFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples
+// must come in global timestamp order. On error, it closes the input iterator.
+func newTimestampFirstRangeAggEvaluator(
+	ctx context.Context,
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-) (StepEvaluator, error) {
+) (_ StepEvaluator, returnErr error) {
+	defer func() {
+		if returnErr != nil {
+			util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
+		}
+	}()
+
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
 		iter, err := newTimestampFirstRangeVectorIterator(
@@ -772,6 +837,33 @@ func newRangeAggEvaluator(
 			iter: iter,
 		}, nil
 	}
+}
+
+// newStreamFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples may
+// come in any order. grouping is the grouping of the vector aggregation above expr. On error, it
+// closes the input iterator.
+func newStreamFirstRangeAggEvaluator(
+	ctx context.Context,
+	it iter.PeekingSampleIterator,
+	expr *syntax.RangeAggregationExpr,
+	q Params,
+	o time.Duration,
+	grouping *syntax.Grouping,
+	maxSeries int,
+) (StepEvaluator, error) {
+	rangeIter, err := newStreamFirstRangeVectorIterator(
+		ctx, it, expr,
+		expr.Left.Interval.Nanoseconds(),
+		q.Step().Nanoseconds(),
+		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		grouping,
+		maxSeries,
+	)
+	if err != nil {
+		util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
+		return nil, err
+	}
+	return &RangeVectorEvaluator{iter: rangeIter}, nil
 }
 
 type RangeVectorEvaluator struct {
@@ -861,7 +953,7 @@ func newBinOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
 		if err != nil {
 			return nil, err
 		}
@@ -874,7 +966,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
 		if err != nil {
 			return nil, err
 		}
@@ -896,7 +988,7 @@ func newBinOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q, false)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
@@ -904,7 +996,7 @@ func newBinOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q, false)
 		if err != nil {
 			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
@@ -1314,7 +1406,7 @@ func newLabelReplaceEvaluator(
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (*LabelReplaceEvaluator, error) {
-	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q, false)
 	if err != nil {
 		return nil, err
 	}

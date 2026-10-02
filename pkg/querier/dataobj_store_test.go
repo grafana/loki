@@ -354,6 +354,22 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
 		}, got)
 	})
+
+	t.Run("a failed conversion reports a sample with the grouped labels even with no __error__ filter", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{
+				Labels:       `{__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"not-a-number\": invalid syntax", app="u"}`,
+				TimestampSec: 3,
+				Value:        0,
+				StreamHash:   streamHashOf(stream.Labels),
+			},
+			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
 }
 
 // denyAppFilterer denies every stream whose app label has the given value.

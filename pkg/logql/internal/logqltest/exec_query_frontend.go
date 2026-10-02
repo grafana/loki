@@ -42,6 +42,7 @@ type queryFrontendExecutionStack struct {
 	t                    *testing.T
 	stackName            string
 	queryShardingEnabled bool
+	limits               logql.Limits
 	handler              http.Handler
 
 	// storeMu guards the swap against reads from in-flight sharded subqueries.
@@ -49,23 +50,32 @@ type queryFrontendExecutionStack struct {
 	store   *testingChunkStore
 }
 
+// newQueryFrontendTimestampFirstStack returns the query-frontend stack in timestamp-first order,
+// with query sharding on or off.
+func newQueryFrontendTimestampFirstStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
+	stackName := queryFrontendNoShardTimestampFirstStackName
+	if queryShardingEnabled {
+		stackName = queryFrontendShardTimestampFirstStackName
+	}
+	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{})
+}
+
+// newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
+// stream-first execution on.
+func newQueryFrontendStreamFirstStack(t *testing.T) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendStack(t, queryFrontendShardStreamFirstStackName, true, execLimits{streamFirstExecutionEnabled: true})
+}
+
 // newQueryFrontendStack builds a self-contained query-frontend + query-scheduler +
-// querier-worker loop wired over gRPC.
-func newQueryFrontendStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
+// querier-worker loop wired over gRPC. The querier runs queries with limits.
+func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits) (*queryFrontendExecutionStack, error) {
 	var (
 		logger       = log.NewNopLogger()
 		ctx          = context.Background()
 		schemaConfig = newQueryFrontendSchemaConfig()
-		stackName    string
 	)
 
-	if queryShardingEnabled {
-		stackName = queryFrontendShardStackName
-	} else {
-		stackName = queryFrontendNoShardStackName
-	}
-
-	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName}
+	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits}
 
 	var shutdown []func()
 	stop := func() {
@@ -284,7 +294,7 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 
 		var opts logql.EngineOpts
 		flagext.DefaultValues(&opts)
-		engine := logql.NewEngine(opts, q, logql.NoLimits, logger)
+		engine := logql.NewEngine(opts, q, s.limits, logger)
 
 		params, err := queryrange.ParamsFromRequest(req)
 		if err != nil {

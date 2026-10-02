@@ -698,7 +698,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 	mock := &mockEvaluatorFactory{
 		SampleEvaluatorFunc(
-			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
 				return EmptyEvaluator[SampleVector]{value: nil}, nil
 			},
 		),
@@ -718,9 +718,9 @@ type mockEvaluatorFactory struct {
 	sampleEvalFunc SampleEvaluatorFunc
 }
 
-func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
 	if m.sampleEvalFunc != nil {
-		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p)
+		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
 	}
 	return nil, errors.New("unimplemented mock SampleEvaluatorFactory")
 }

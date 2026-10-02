@@ -73,14 +73,11 @@ func indexKey(row postings.Row) indexSortKey {
 	}
 }
 
-// tenantIndexes maps tenant ID → ordered list of indexes the ToC references
-// for that tenant. Slice order reflects ToC enumeration order and is not
-// part of the contract — callers must not rely on it for correctness.
-type tenantIndexes map[string][]indexEntry
-
-// loadTenantIndexes returns the window's ToC entries grouped by tenant.
-func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time) (tenantIndexes, error) {
-	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
+// loadTenantIndexes returns the entries of the tenant's ToC for the window.
+// Entry order reflects ToC enumeration order and is not part of the contract
+// — callers must not rely on it for correctness.
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexEntry, error) {
+	tocPath := metastore.TableOfContentsPath(tenant, window.UTC().Truncate(metastore.MetastoreWindowSize))
 
 	r, err := bucket.Get(ctx, tocPath)
 	if err != nil {
@@ -98,23 +95,26 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	}
 
 	// Hoist the Reader and the per-batch decode scratch above the section
-	// loop. A ToC has one indexpointers section per tenant; in large
-	// deployments that can be hundreds. Reader.Reset(...) at each iteration
-	// reuses the reader's internal allocator + record-batch state — matches
-	// the upstream pattern in metastore/iter.go's forEachIndexPointer.
+	// loop. Reader.Reset(...) at each iteration reuses the reader's internal
+	// allocator + record-batch state — matches the upstream pattern in
+	// metastore/iter.go's forEachIndexPointer.
 	var reader indexpointers.Reader
 	defer reader.Close()
 	const batchSize = 1024
 	scratch := make([]indexEntry, batchSize)
 
-	out := make(tenantIndexes, len(obj.Tenants()))
+	var out []indexEntry
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		tenant := section.Tenant
+		// ToCs are written per tenant, so another tenant's section means the
+		// metastore is corrupt. Compacting it could merge indexes across tenants.
+		if section.Tenant != tenant {
+			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, section.Tenant))
+		}
 		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
 		if err != nil {
 			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
 		}
-		out[tenant] = append(out[tenant], entries...)
+		out = append(out, entries...)
 	}
 
 	return out, nil
@@ -126,8 +126,7 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 //
 // Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
 // the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
-// predicate — the compactor reads every row from every tenant in the
-// most-recent ToC.
+// predicate — the compactor reads every row of the tenant's ToC.
 func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
 	sec, err := indexpointers.Open(ctx, section)
 	if err != nil {

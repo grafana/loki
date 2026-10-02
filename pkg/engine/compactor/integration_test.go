@@ -118,7 +118,7 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	seedSourceIndexObject(ctx, t, bucket, "indexes/dd/idx-d-0", window.Add(time.Hour), "untouched")
 
 	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
-	c.cfg.MaxRunningCompactionTasks = 4
+	c.indexDispatcher.limit = 4
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
 	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
@@ -303,7 +303,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		})
 	}
 	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
-	return testIndex{path: path, start: ts, end: ts.Add(time.Second), uncompressedLogsSize: uint64(len(sourcePaths) * 100)}
+	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
 }
 
 func TestE2ECompactionConvergence(t *testing.T) {
@@ -530,13 +530,15 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))
 	activeServices = append(activeServices, w.Service())
 
+	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
+	}
 	return &coordinator{
-		cfg:    compactionCfg,
-		logger: log.NewNopLogger(),
-		bucket: bucket,
-		runPlan: func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-			return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
-		},
+		cfg:             compactionCfg,
+		logger:          log.NewNopLogger(),
+		bucket:          bucket,
+		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
+		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
 		publisher: &tocPublisher{
 			writer:  metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
 			timeout: compactionCfg.ToCConsolidateTimeout,
@@ -554,11 +556,18 @@ func (integrationSortSchema) CompactionPhases(string) (bool, bool) {
 	return true, true
 }
 
-func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
+// mustLoadTenantIndexes loads the ToC of every tenant in the window, keyed by tenant.
+func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexEntry {
 	t.Helper()
-	got, err := loadTenantIndexes(ctx, b, window)
+	tenants, err := metastore.ListTableOfContentsTenants(ctx, b, window)
 	require.NoError(t, err)
-	return got
+	out := make(map[string][]indexEntry, len(tenants))
+	for _, tenant := range tenants {
+		got, err := loadTenantIndexes(ctx, b, window, tenant)
+		require.NoError(t, err)
+		out[tenant] = got
+	}
+	return out
 }
 
 func pathsOf(entries []indexEntry) []string {

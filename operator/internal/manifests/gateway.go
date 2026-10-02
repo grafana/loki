@@ -321,7 +321,8 @@ func NewPassthroughGatewayDeployment(opts Options) *appsv1.Deployment {
 					Limits:   opts.ResourceRequirements.Gateway.Limits,
 					Requests: opts.ResourceRequirements.Gateway.Requests,
 				},
-				Args: args,
+				Command: []string{"/bin/passthrough-gateway"},
+				Args:    args,
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          gatewayInternalPortName,
