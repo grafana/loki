@@ -3,7 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
@@ -120,7 +119,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 				if existing != nil {
 					_, err := io.Copy(m.buf, existing)
 					if err != nil {
-						return nil, errors.Wrap(err, "copying to local buffer")
+						return nil, fmt.Errorf("copying to local buffer: %w", err)
 					}
 				}
 
@@ -128,11 +127,11 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 					replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
 					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
 					if err != nil {
-						return nil, errors.Wrap(err, "creating object from buffer")
+						return nil, fmt.Errorf("creating object from buffer: %w", err)
 					}
 					err = copyFromExistingToc(ctx, tocBuilder, object)
 					if err != nil {
-						return nil, errors.Wrap(err, "reading existing metastore version")
+						return nil, fmt.Errorf("reading existing metastore version: %w", err)
 					}
 					replayDuration.ObserveDuration()
 				}
@@ -144,7 +143,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 					EndTs:   entry.EndTime,
 				})
 				if err != nil {
-					return nil, errors.Wrap(err, "appending index pointer")
+					return nil, fmt.Errorf("appending index pointer: %w", err)
 				}
 
 				var (
@@ -154,7 +153,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 
 				obj, closer, err = tocBuilder.Flush()
 				if err != nil {
-					return nil, errors.Wrap(err, "flushing metastore builder")
+					return nil, fmt.Errorf("flushing metastore builder: %w", err)
 				}
 
 				reader, err := obj.Reader(ctx)
@@ -172,7 +171,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 						var errs []error
 						errs = append(errs, reader.Close())
 						errs = append(errs, closer.Close())
-						return stderrors.Join(errs...)
+						return errors.Join(errs...)
 					},
 				}, nil
 			})
@@ -190,7 +189,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 		// The loop only stops without writing once the context is done, which
 		// can happen before the first attempt, when err is still nil.
 		if !written {
-			return stderrors.Join(b.Err(), err)
+			return errors.Join(b.Err(), err)
 		}
 	}
 	return nil
@@ -225,12 +224,12 @@ func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObje
 	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
-			return errors.Wrap(err, "opening section")
+			return fmt.Errorf("opening section: %w", err)
 		}
 		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
 		if err := indexPointersReader.Open(ctx); err != nil {
-			return errors.Wrap(err, "opening index pointers reader")
+			return fmt.Errorf("opening index pointers reader: %w", err)
 		}
 		for {
 			n, err := indexPointersReader.Read(ctx, pbuf)
@@ -239,7 +238,7 @@ func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObje
 					return fmt.Errorf("appending index pointers: %w", err)
 				}
 			}
-			if stderrors.Is(err, io.EOF) {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
