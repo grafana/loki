@@ -373,7 +373,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				case logproto.SAMPLE_ORDER_BY_STREAM:
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx))
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -403,7 +403,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.LabelAggregationExpr:
 		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
 	case *syntax.CountDistinctSketchExpr:
@@ -754,12 +754,21 @@ func (e *VectorAggEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
+// newTimestampFirstRangeAggEvaluator returns the step evaluator of expr over it, whose samples
+// must come in global timestamp order. On error, it closes the input iterator.
 func newTimestampFirstRangeAggEvaluator(
+	ctx context.Context,
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-) (StepEvaluator, error) {
+) (_ StepEvaluator, returnErr error) {
+	defer func() {
+		if returnErr != nil {
+			util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
+		}
+	}()
+
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
 		iter, err := newTimestampFirstRangeVectorIterator(
