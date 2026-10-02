@@ -19,8 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -mod=readonly -o passthroug
 # Use distroless as minimal base image to package the passthrough-gateway binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
-WORKDIR /
-COPY --from=builder /workspace/passthrough-gateway .
+WORKDIR /tmp
+COPY --from=builder /workspace/passthrough-gateway /bin/passthrough-gateway
 USER 65532:65532
 
-ENTRYPOINT ["/passthrough-gateway"]
+ENTRYPOINT ["/bin/passthrough-gateway"]

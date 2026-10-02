@@ -13,7 +13,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -448,7 +447,7 @@ func (b *Builder) estimatedSize() int {
 // TimeRanges returns the time range of the data in the builder, by tenant.
 // For each tenant, the range is the union of its streams and postings ranges;
 // a source with no observations (zero time range) does not contribute.
-func (b *Builder) TimeRanges() []multitenancy.TimeRange {
+func (b *Builder) TimeRanges() []dataobj.TimeRange {
 	tenantIDs := make(map[string]struct{}, len(b.streams)+len(b.postings))
 	for tenantID := range b.streams {
 		tenantIDs[tenantID] = struct{}{}
@@ -457,7 +456,7 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		tenantIDs[tenantID] = struct{}{}
 	}
 
-	timeRanges := make([]multitenancy.TimeRange, 0, len(tenantIDs))
+	timeRanges := make([]dataobj.TimeRange, 0, len(tenantIDs))
 	for tenantID := range tenantIDs {
 		var minTime, maxTime time.Time
 
@@ -473,7 +472,7 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		if minTime.IsZero() && maxTime.IsZero() {
 			continue
 		}
-		timeRanges = append(timeRanges, multitenancy.TimeRange{
+		timeRanges = append(timeRanges, dataobj.TimeRange{
 			Tenant:  tenantID,
 			MinTime: minTime,
 			MaxTime: maxTime,

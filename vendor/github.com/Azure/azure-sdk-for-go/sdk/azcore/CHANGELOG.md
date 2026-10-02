@@ -1,5 +1,11 @@
 # Release History
 
+## 1.23.2 (2026-09-28)
+
+### Bugs Fixed
+
+* Fixed unmarshalling `datetime.RFC7231` to use a fixed `GMT` zone.
+
 ## 1.23.1 (2026-08-27)
 
 ### Other Changes

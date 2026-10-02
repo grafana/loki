@@ -76,22 +76,44 @@ func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path str
 	return rows
 }
 
-// seedToC writes a ToC at the given window containing the supplied (tenant,path,start,end) rows.
-// Uses the same indexobj.Builder + tocBuilderCfg path that the production writer uses.
+// readWindowToCs reads the ToCs of every tenant in the window, flattened by
+// tenant.
+func readWindowToCs(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time) []tocRow {
+	t.Helper()
+	tenants, err := ListTableOfContentsTenants(ctx, bucket, window)
+	require.NoError(t, err)
+
+	var rows []tocRow
+	for _, tenant := range tenants {
+		rows = append(rows, readToC(ctx, t, bucket, TableOfContentsPath(tenant, window))...)
+	}
+	return rows
+}
+
+// seedToC writes one ToC per tenant at the given window containing the
+// supplied (tenant,path,start,end) rows. Uses the same indexobj.Builder +
+// tocBuilderCfg path that the production writer uses.
 func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocRow) {
 	t.Helper()
-	b, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	rowsByTenant := make(map[string][]tocRow)
 	for _, r := range rows {
-		require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
+		rowsByTenant[r.Tenant] = append(rowsByTenant[r.Tenant], r)
 	}
-	obj, closer, err := b.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-	reader, err := obj.Reader(t.Context())
-	require.NoError(t, err)
-	defer reader.Close()
-	require.NoError(t, bucket.Upload(t.Context(), TableOfContentsPath(window), reader))
+
+	for tenant, rows := range rowsByTenant {
+		b, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		for _, r := range rows {
+			require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
+		}
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+		reader, err := obj.Reader(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, bucket.Upload(t.Context(), TableOfContentsPath(tenant, window), reader))
+		require.NoError(t, reader.Close())
+	}
 }
 
 func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
@@ -122,7 +144,7 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, swapped, "expected swap to apply")
 
-	got := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	got := readWindowToCs(ctx, t, bucket, window)
 	want := []tocRow{
 		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
 		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
@@ -195,8 +217,9 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			seedToC(t, bucket, window, tt.seedRows)
 
-			// Capture other-tenant rows pre-swap so we can compare verbatim.
-			preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+			// Capture other tenants' rows pre-swap so we can show their ToCs
+			// are left untouched.
+			preSwap := readWindowToCs(ctx, t, bucket, window)
 			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
 
 			writer := &TableOfContentsWriter{
@@ -212,7 +235,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, swapped, "expected %s swap to apply", tt.targetTenant)
 
-			postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+			postSwap := readWindowToCs(ctx, t, bucket, window)
 
 			// 1. Target tenant ends up with exactly the expected rows.
 			targetAfter := filterRows(postSwap, tt.targetTenant)
@@ -250,7 +273,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 		{Tenant: "tenantA", Path: "idx/a-already-rolled-up", StartUnix: 10, EndUnix: 60}, // simulates "the other coordinator's swap already landed"
 		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
 	})
-	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	preSwap := readWindowToCs(ctx, t, bucket, window)
 
 	writer := &TableOfContentsWriter{
 		bucket:      bucket,
@@ -269,7 +292,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, swapped, "expected no-op when oldPaths are no longer present")
 
-	postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	postSwap := readWindowToCs(ctx, t, bucket, window)
 	require.Equal(t, preSwap, postSwap, "ToC must be unchanged on race-loss")
 }
 
@@ -277,7 +300,7 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 	ctx := context.Background()
 	window := unixTime(0)
 	bucket := objstore.NewInMemBucket()
-	tocPath := TableOfContentsPath(window)
+	tocPath := TableOfContentsPath("tenantA", window)
 
 	writer := &TableOfContentsWriter{
 		bucket:      bucket,
@@ -366,7 +389,7 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, swapped)
 
-	got := readToC(ctx, t, inner, TableOfContentsPath(window))
+	got := readWindowToCs(ctx, t, inner, window)
 	require.Equal(t, []tocRow{
 		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
 		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},

@@ -497,7 +497,7 @@ func (q *seriesQuerier) SelectSamples(_ context.Context, params SelectSamplePara
 	for _, s := range q.series {
 		its = append(its, iter.NewSeriesIterator(s))
 	}
-	return &countingSampleIterator{SampleIterator: iter.NewNonOverlappingSampleIterator(its), count: &q.samplesRead}, nil
+	return &countingSampleIterator{SampleIterator: iter.NewChainedSampleIterator(its), count: &q.samplesRead}, nil
 }
 
 // countingSampleIterator counts the samples its caller reads.

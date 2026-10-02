@@ -36,17 +36,25 @@ const __GNUC__ = 15
 
 const __GXX_ABI_VERSION = 1020
 
+const __LLACCUM_EPSILON__ = "0x1P-63LLK"
+
 const __LLACCUM_FBIT__ = 63
 
 const __LLACCUM_IBIT__ = 64
 
-const __REGISTER_PREFIX__ = 0
+const __LLACCUM_MAX__ = "0X7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFP-63LLK"
+
+const __REGISTER_PREFIX__ = "$"
 
 const __STDC_VERSION__ = 202311
+
+const __ULLACCUM_EPSILON__ = "0x1P-64ULLK"
 
 const __ULLACCUM_FBIT__ = 64
 
 const __ULLACCUM_IBIT__ = 64
+
+const __ULLACCUM_MAX__ = "0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFP-64ULLK"
 
 const __VERSION__ = "15.3.0"
 
@@ -127,7 +135,7 @@ func _appendOnePathElement(tls *libc.TLS, pPath uintptr, zName uintptr, nName in
 		zIn = (*TDbPath)(unsafe.Pointer(pPath)).FzOut
 		if (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(27)].FpCurrent})))(tls, zIn, bp) != 0 {
 			if **(**int32)(__ccgo_up(libc.X__errno_location(tls))) != int32(ENOENT) {
-				(*TDbPath)(unsafe.Pointer(pPath)).Frc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47297)), __ccgo_ts+3740, zIn, int32(47297))
+				(*TDbPath)(unsafe.Pointer(pPath)).Frc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47301)), __ccgo_ts+3740, zIn, int32(47301))
 			}
 		} else {
 			if (**(**Tstat)(__ccgo_up(bp))).Fst_mode&uint32(S_IFMT) == uint32(S_IFLNK) {
@@ -135,12 +143,12 @@ func _appendOnePathElement(tls *libc.TLS, pPath uintptr, zName uintptr, nName in
 				v1 = *(*int32)(unsafe.Pointer(v2))
 				*(*int32)(unsafe.Pointer(v2)) = *(*int32)(unsafe.Pointer(v2)) + 1
 				if v1 > int32(SQLITE_MAX_SYMLINK) {
-					(*TDbPath)(unsafe.Pointer(pPath)).Frc = _sqlite3CantopenError(tls, int32(47303))
+					(*TDbPath)(unsafe.Pointer(pPath)).Frc = _sqlite3CantopenError(tls, int32(47307))
 					return
 				}
 				got = (*(*func(*libc.TLS, uintptr, uintptr, Tsize_t) Tssize_t)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(26)].FpCurrent})))(tls, zIn, bp+128, libc.Uint64FromInt64(4098)-libc.Uint64FromInt32(2))
 				if got <= 0 || got >= libc.Int64FromInt64(4098)-libc.Int64FromInt32(2) {
-					(*TDbPath)(unsafe.Pointer(pPath)).Frc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47308)), __ccgo_ts+3731, zIn, int32(47308))
+					(*TDbPath)(unsafe.Pointer(pPath)).Frc = _unixLogErrorAtLine(tls, _sqlite3CantopenError(tls, int32(47312)), __ccgo_ts+3731, zIn, int32(47312))
 					return
 				}
 				(**(**[4098]int8)(__ccgo_up(bp + 128)))[got] = 0
@@ -154,3 +162,9 @@ func _appendOnePathElement(tls *libc.TLS, pPath uintptr, zName uintptr, nName in
 		}
 	}
 }
+
+const nullptr = 0
+
+const wsdStat = "sqlite3Stat"
+
+/* C23 keywords, no longer defined as macros by <stdbool.h> and <stddef.h>. */

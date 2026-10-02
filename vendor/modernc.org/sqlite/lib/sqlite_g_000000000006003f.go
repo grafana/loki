@@ -4,16 +4,285 @@
 
 package sqlite3
 
+import (
+	"unsafe"
+
+	"modernc.org/libc"
+)
+
 type Terrno_t = int32
 
 type Tmode_t = uint16
 
+var _azTypes = [5]uintptr{
+	0: __ccgo_ts + 1172,
+	1: __ccgo_ts + 1184,
+	2: __ccgo_ts + 1189,
+	3: __ccgo_ts + 1167,
+	4: __ccgo_ts + 1703,
+}
+
+// C documentation
+//
+//	/*
+//	** The CONCAT(...) function.  Generate a string result that is the
+//	** concatentation of all non-null arguments.
+//	*/
+func _concatFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
+	_concatFuncCore(tls, context, argc, argv, 0, __ccgo_ts+1702)
+}
+
+// C documentation
+//
+//	/*
+//	** Return the value in pVal interpreted as utf-8 text. Except, if pVal
+//	** contains a NULL value, return a pointer to a static string zero
+//	** bytes in length instead of a NULL pointer.
+//	*/
+func _fts5ValueToText(tls *libc.TLS, pVal uintptr) (r uintptr) {
+	var zRet, v1 uintptr
+	_, _ = zRet, v1
+	zRet = Xsqlite3_value_text(tls, pVal)
+	if zRet != 0 {
+		v1 = zRet
+	} else {
+		v1 = __ccgo_ts + 1702
+	}
+	return v1
+}
+
+// C documentation
+//
+//	/*
+//	** This function is called whenever processing of the doclist for the
+//	** last term on leaf page (pWriter->iBtPage) is completed.
+//	**
+//	** The doclist-index for that term is currently stored in-memory within the
+//	** Fts5SegWriter.aDlidx[] array. If it is large enough, this function
+//	** writes it out to disk. Or, if it is too small to bother with, discards
+//	** it.
+//	**
+//	** Fts5SegWriter.btterm currently contains the first term on page iBtPage.
+//	*/
+func _fts5WriteFlushBtree(tls *libc.TLS, p uintptr, pWriter uintptr) {
+	var bFlag int32
+	var z, v1 uintptr
+	_, _, _ = bFlag, z, v1
+	if (*TFts5SegWriter)(unsafe.Pointer(pWriter)).FiBtPage == 0 {
+		return
+	}
+	bFlag = _fts5WriteFlushDlidx(tls, p, pWriter)
+	if (*TFts5Index)(unsafe.Pointer(p)).Frc == SQLITE_OK {
+		if (*TFts5SegWriter)(unsafe.Pointer(pWriter)).Fbtterm.Fn > 0 {
+			v1 = (*TFts5SegWriter)(unsafe.Pointer(pWriter)).Fbtterm.Fp
+		} else {
+			v1 = __ccgo_ts + 1702
+		}
+		z = v1
+		/* The following was already done in fts5WriteInit(): */
+		/* sqlite3_bind_int(p->pIdxWriter, 1, pWriter->iSegid); */
+		Xsqlite3_bind_blob(tls, (*TFts5Index)(unsafe.Pointer(p)).FpIdxWriter, int32(2), z, (*TFts5SegWriter)(unsafe.Pointer(pWriter)).Fbtterm.Fn, libc.UintptrFromInt32(0))
+		Xsqlite3_bind_int64(tls, (*TFts5Index)(unsafe.Pointer(p)).FpIdxWriter, int32(3), int64(bFlag)+int64((*TFts5SegWriter)(unsafe.Pointer(pWriter)).FiBtPage)<<libc.Int32FromInt32(1))
+		Xsqlite3_step(tls, (*TFts5Index)(unsafe.Pointer(p)).FpIdxWriter)
+		(*TFts5Index)(unsafe.Pointer(p)).Frc = Xsqlite3_reset(tls, (*TFts5Index)(unsafe.Pointer(p)).FpIdxWriter)
+		Xsqlite3_bind_null(tls, (*TFts5Index)(unsafe.Pointer(p)).FpIdxWriter, int32(2))
+	}
+	(*TFts5SegWriter)(unsafe.Pointer(pWriter)).FiBtPage = 0
+}
+
+// C documentation
+//
+//	/*
+//	** Log an error that is an API call on a connection pointer that should
+//	** not have been used.  The "type" of connection pointer is given as the
+//	** argument.  The zType is a word like "NULL" or "closed" or "invalid".
+//	*/
+func _logBadConnection(tls *libc.TLS, zType uintptr) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	Xsqlite3_log(tls, int32(SQLITE_MISUSE), __ccgo_ts+1850, libc.VaList(bp+8, zType))
+}
+
+// C documentation
+//
+//	/*
+//	** Attempt to parse the given string into a julian day number.  Return
+//	** the number of errors.
+//	**
+//	** The following are acceptable forms for the input string:
+//	**
+//	**      YYYY-MM-DD HH:MM:SS.FFF  +/-HH:MM
+//	**      DDDD.DD
+//	**      now
+//	**
+//	** In the first form, the +/-HH:MM is always optional.  The fractional
+//	** seconds extension (the ".FFF") is optional.  The seconds portion
+//	** (":SS.FFF") is option.  The year and date can be omitted as long
+//	** as there is a time string.  The time string can be omitted as long
+//	** as there is a year and date.
+//	*/
+func _parseDateOrTime(tls *libc.TLS, context uintptr, zDate uintptr, p uintptr) (r int32) {
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var _ /* r at bp+0 */ float64
+	if _parseYyyyMmDd(tls, zDate, p) == 0 {
+		return 0
+	} else {
+		if _parseHhMmSs(tls, zDate, p) == 0 {
+			return 0
+		} else {
+			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1226) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
+				return _setDateTimeToCurrent(tls, context, p)
+			} else {
+				if _sqlite3AtoF(tls, zDate, bp) > 0 {
+					_setRawDateNumber(tls, p, **(**float64)(__ccgo_up(bp)))
+					return 0
+				} else {
+					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1230) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1237) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
+						libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 2, 0x4)
+						return _setDateTimeToCurrent(tls, context, p)
+					}
+				}
+			}
+		}
+	}
+	return int32(1)
+}
+
+/* The julian day number for 9999-12-31 23:59:59.999 is 5373484.4999999.
+** Multiplying this by 86400000 gives 464269060799999 as the maximum value
+** for DateTime.iJD.
+**
+** But some older compilers (ex: gcc 4.2.1 on older Macs) cannot deal with
+** such a large integer literal, so we have to encode it.
+ */
+
+var _sqlite3StdType = [6]uintptr{
+	0: __ccgo_ts + 1163,
+	1: __ccgo_ts + 1167,
+	2: __ccgo_ts + 1172,
+	3: __ccgo_ts + 1176,
+	4: __ccgo_ts + 1184,
+	5: __ccgo_ts + 1189,
+}
+
+/************** End of global.c **********************************************/
+/************** Begin file status.c ******************************************/
+/*
+** 2008 June 18
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+*************************************************************************
+**
+** This module implements the sqlite3_status() interface and related
+** functionality.
+ */
+/* #include "sqliteInt.h" */
+/************** Include vdbeInt.h in the middle of status.c ******************/
+/************** Begin file vdbeInt.h *****************************************/
+/*
+** 2003 September 6
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+*************************************************************************
+** This is the header file for information that is private to the
+** VDBE.  This information used to all be at the top of the single
+** source code file "vdbe.c".  When that file became too big (over
+** 6000 lines long) it was split up into several smaller files and
+** this header information was factored out.
+ */
+
+/*
+** The maximum number of times that a statement will try to reparse
+** itself before giving up and returning SQLITE_SCHEMA.
+ */
+
+/*
+** VDBE_DISPLAY_P4 is true or false depending on whether or not the
+** "explain" P4 display logic is enabled.
+ */
+
+// C documentation
+//
+//	/*
+//	** An array of names of all compile-time options.  This array should
+//	** be sorted A-Z.
+//	**
+//	** This array looks large, but in a typical installation actually uses
+//	** only a handful of compile-time options, so most times this array is usually
+//	** rather short and uses little memory space.
+//	*/
+var _sqlite3azCompileOpt = [56]uintptr{
+	0:  __ccgo_ts,
+	1:  __ccgo_ts + 20,
+	2:  __ccgo_ts + 42,
+	3:  __ccgo_ts + 61,
+	4:  __ccgo_ts + 86,
+	5:  __ccgo_ts + 108,
+	6:  __ccgo_ts + 138,
+	7:  __ccgo_ts + 158,
+	8:  __ccgo_ts + 178,
+	9:  __ccgo_ts + 201,
+	10: __ccgo_ts + 226,
+	11: __ccgo_ts + 253,
+	12: __ccgo_ts + 278,
+	13: __ccgo_ts + 300,
+	14: __ccgo_ts + 332,
+	15: __ccgo_ts + 358,
+	16: __ccgo_ts + 383,
+	17: __ccgo_ts + 404,
+	18: __ccgo_ts + 422,
+	19: __ccgo_ts + 445,
+	20: __ccgo_ts + 464,
+	21: __ccgo_ts + 483,
+	22: __ccgo_ts + 495,
+	23: __ccgo_ts + 510,
+	24: __ccgo_ts + 532,
+	25: __ccgo_ts + 557,
+	26: __ccgo_ts + 580,
+	27: __ccgo_ts + 602,
+	28: __ccgo_ts + 613,
+	29: __ccgo_ts + 626,
+	30: __ccgo_ts + 641,
+	31: __ccgo_ts + 657,
+	32: __ccgo_ts + 670,
+	33: __ccgo_ts + 691,
+	34: __ccgo_ts + 715,
+	35: __ccgo_ts + 738,
+	36: __ccgo_ts + 754,
+	37: __ccgo_ts + 770,
+	38: __ccgo_ts + 794,
+	39: __ccgo_ts + 821,
+	40: __ccgo_ts + 841,
+	41: __ccgo_ts + 863,
+	42: __ccgo_ts + 885,
+	43: __ccgo_ts + 915,
+	44: __ccgo_ts + 940,
+	45: __ccgo_ts + 966,
+	46: __ccgo_ts + 986,
+	47: __ccgo_ts + 1012,
+	48: __ccgo_ts + 1035,
+	49: __ccgo_ts + 1061,
+	50: __ccgo_ts + 1083,
+	51: __ccgo_ts + 1104,
+	52: __ccgo_ts + 1115,
+	53: __ccgo_ts + 1123,
+	54: __ccgo_ts + 1137,
+	55: __ccgo_ts + 1150,
+}
+
 type errno_t = Terrno_t
 
 type rsize_t = Trsize_t
-
-const stderr = 0
-
-const stdin = 0
-
-const stdout = 0
