@@ -48,8 +48,8 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0 h1:irsmOWwkp0KCTTNS5
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0/go.mod h1:GWcBkQj3MqN7ozHKLaCCAuNLiXoIGv2RtanfAwSjY/Y=
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1 h1:WJTmL004Abzc5wDB5VtZG2PJk5ndYDgVacGqfirKxjM=
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1/go.mod h1:tCcJZ0uHAmvjsVYzEFivsRTN00oz5BEsRgQHu5JZ9WE=
-github.com/AzureAD/microsoft-authentication-library-for-go v1.10.0 h1:Byx2mFH6zOunKuxJlzKj/L31czf2B45rsjToG4yo8uI=
-github.com/AzureAD/microsoft-authentication-library-for-go v1.10.0/go.mod h1:OZ+YRWCg7N54lg8lzu1OiGRGbWsqPh+FEGHA7bvbLKA=
+github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 h1:0O6j18nQDoIff6/mtosT5LNU2WehEwp+LqfX6699oqY=
+github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1/go.mod h1:xdYAf5bjkOpsd3auA8riiJW4vneBubt9caavL7626jQ=
 github.com/Code-Hex/go-generics-cache v1.5.1 h1:6vhZGc5M7Y/YD8cIUcY8kcuQLB4cHR7U+0KMqAA0KcU=
 github.com/Code-Hex/go-generics-cache v1.5.1/go.mod h1:qxcC9kRVrct9rHeiYpFWSoW1vxyillCVzX13KZG8dl4=
 github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
