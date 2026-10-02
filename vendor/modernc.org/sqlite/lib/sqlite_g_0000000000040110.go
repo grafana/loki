@@ -1512,9 +1512,13 @@ type TWal = struct {
 	FiReCksum            Tu32
 	FzWalName            uintptr
 	FnCkpt               Tu32
+	FlockMask            Tu32
+	FpFree               uintptr
+	FpWiValue            uintptr
+	FiWiPg               int32
+	FiSysErrno           int32
 	FpSnapshot           uintptr
 	FbGetSnapshot        int32
-	F__ccgo_pad26        [4]byte
 }
 
 // C documentation
@@ -2445,7 +2449,7 @@ func Xsqlite3_vtab_rhs_value(tls *libc.TLS, pIdxInfo uintptr, iCons int32, ppVal
 	pVal = uintptr(0)
 	rc = SQLITE_OK
 	if iCons < 0 || iCons >= (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint {
-		rc = _sqlite3MisuseError(tls, int32(173606)) /* EV: R-30545-25046 */
+		rc = _sqlite3MisuseError(tls, int32(173875)) /* EV: R-30545-25046 */
 	} else {
 		if *(*uintptr)(unsafe.Pointer(pH + 20 + uintptr(iCons)*4)) == uintptr(0) {
 			pTerm = _termFromWhereClause(tls, (*THiddenIndexInfo)(unsafe.Pointer(pH)).FpWC, (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(iCons)*12))).FiTermOffset)
