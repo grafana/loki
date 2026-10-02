@@ -4,13 +4,14 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-// DeleteGroups: v0-2
+// DeleteGroups: v0-3
 //
 // Version notes:
 // * v1: ThrottleMillis
 // * v2: Flexible versions
+// * v3: Per-group ErrorMessage (we leave it unset)
 
-func init() { regKey(42, 0, 2) }
+func init() { regKey(42, 0, 3) }
 
 func (c *Cluster) handleDeleteGroups(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.DeleteGroupsRequest)
