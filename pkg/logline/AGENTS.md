@@ -29,10 +29,12 @@ v5 will change. It is registered so the fork can be tested, and `CurrentVersion`
 to `DefaultDocumentShards` (32) for v5, requires a power of two from 1 to
 `MaxDocumentShards` (128), and rejects any non-zero value for v3 and v4.
 
-`DocumentShard(fp, shards)` in `document_shard.go` is the one definition of a
-stream's document shard: the top log2(shards) bits of its ingester
-fingerprint, the same prefix `index.ShardAnnotation.Match` uses. Anything that
-computes or matches a document shard must call it.
+`document_shard.go` is the one definition of a stream's document shard:
+`StreamFingerprint` computes the stream's ingester fingerprint, and
+`DocumentShard(fp, shards)` takes its top log2(shards) bits, the same prefix
+`index.ShardAnnotation.Match` uses. Anything that computes or matches a
+document shard must call both. `pkg/ingester` has a test that pins
+`instance.getHashForLabels` to `StreamFingerprint`.
 
 ## Extraction is coupled to index version
 
@@ -71,7 +73,7 @@ a frozen algorithm: revert. Do not update the expected values.
 - `ngrams.go` — `ExtractorForVersion` and `FormatterForVersion` shims that return the
   matching `vN` extractor and term formatter
 - `index_config.go` — `IndexConfig`, the shared `logline.index` section
-- `document_shard.go` — `DocumentShard` and `VersionHasDocumentShards`
+- `document_shard.go` — `StreamFingerprint`, `DocumentShard`, and `VersionHasDocumentShards`
 
 ## Compaction open question
 

@@ -50,10 +50,12 @@ func readDocsAndPostings(t *testing.T, path string) ([]format.DocumentMetadata, 
 	return reader.Documents(), postings
 }
 
-// TestStreamIngester_DocumentShardIsIngesterFingerprint pins the builder's
-// stream hash to the ingester's: queriers match document shards against chunk
-// fingerprints, so any drift silently drops data once hints prune by shard.
-func TestStreamIngester_DocumentShardIsIngesterFingerprint(t *testing.T) {
+// TestStreamIngester_DocumentShardIsStreamFingerprint pins the builder's
+// stream hash to logline.StreamFingerprint, which pkg/ingester's
+// TestGetHashForLabels_MatchesLoglineStreamFingerprint pins to the ingester:
+// queriers match document shards against chunk fingerprints, so any drift
+// silently drops data once hints prune by shard.
+func TestStreamIngester_DocumentShardIsStreamFingerprint(t *testing.T) {
 	const shards = 32
 	b, err := newIndexBuilder(documentShardsConfig(t, "v5", shards), "", log.NewNopLogger(), NewMetrics(prometheus.NewRegistry()))
 	require.NoError(t, err)
@@ -69,13 +71,12 @@ func TestStreamIngester_DocumentShardIsIngesterFingerprint(t *testing.T) {
 		ls := parseLabelsOrNil(s)
 		require.NotNil(t, ls, s)
 
-		// The ingester's fingerprint (instance.getHashForLabels).
-		ingesterFP, _ := ls.HashWithoutLabels(nil)
-		require.Equal(t, labels.StableHash(*ls), ingesterFP, s)
+		fp, _ := logline.StreamFingerprint(*ls, nil)
+		require.Equal(t, labels.StableHash(*ls), fp, s)
 
 		got := b.ing.documentShard(ls)
-		require.Equal(t, logline.DocumentShard(ingesterFP, shards), got, s)
-		require.True(t, index.NewShard(got, shards).Match(model.Fingerprint(ingesterFP)), s)
+		require.Equal(t, logline.DocumentShard(fp, shards), got, s)
+		require.True(t, index.NewShard(got, shards).Match(model.Fingerprint(fp)), s)
 	}
 }
 
