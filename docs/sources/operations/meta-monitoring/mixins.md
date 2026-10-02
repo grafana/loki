@@ -86,8 +86,6 @@ If your jobs carry a prefix, for example `loki/loki-distributor` from the Servic
   },
 }
 ```
-
-The Bloom Build and Bloom Gateway dashboards don't use `job_prefix` yet.
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}
