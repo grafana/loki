@@ -20,9 +20,9 @@ import (
 )
 
 var (
-	// ErrUnprocessableObject marks an error that the shape of a data object causes.
-	// Every such error wraps it, for example [ErrNotSingleTenant]. Retrying
-	// can't fix it.
+	// ErrUnprocessableObject marks an error that the shape of a data object
+	// causes. Every such error wraps it, for example [ErrNotSingleTenant].
+	// Retrying can't fix it.
 	ErrUnprocessableObject = errors.New("unprocessable data object")
 
 	// ErrNotSingleTenant is returned when a data object doesn't hold exactly
