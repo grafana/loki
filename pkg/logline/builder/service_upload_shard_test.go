@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -27,6 +28,7 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 	cfg.Index.ShardAlgorithm = "first_byte"
 	cfg.Index.NgramLength = 6
 	cfg.Index.DocumentInterval = 100 * time.Millisecond
+	cfg.Index.DocumentShardBits = logline.DefaultDocumentShardBits
 
 	metas := uploadAndReadMetas(t, cfg)
 	for _, m := range metas {
@@ -34,25 +36,25 @@ func TestService_UploadSetsShardMeta(t *testing.T) {
 		require.Equal(t, "first_byte", m.ShardAlgorithm)
 		require.GreaterOrEqual(t, m.ShardValue, 0)
 		require.Less(t, m.ShardValue, 4)
-		require.Zero(t, m.DocumentShards, "v3 indexes are time-only")
+		require.Zero(t, m.DocumentShardBits, "v3 indexes are time-only")
 	}
 }
 
-// TestService_UploadSetsDocumentShardsMeta verifies that v5 uploads record the
-// resolved document shard count in meta.json.
-func TestService_UploadSetsDocumentShardsMeta(t *testing.T) {
+// TestService_UploadSetsDocumentShardBitsMeta verifies that v5 uploads record
+// the document shard bits in meta.json.
+func TestService_UploadSetsDocumentShardBitsMeta(t *testing.T) {
 	cluster, cfg := setupKafkaTest(t)
 	defer cluster.Close()
 
 	cfg.Index.Version = "v5"
 	cfg.Index.DocumentInterval = 0
-	cfg.Index.DocumentShards = 0
+	cfg.Index.DocumentShardBits = logline.DefaultDocumentShardBits
 
 	metas := uploadAndReadMetas(t, cfg)
 	for _, m := range metas {
 		require.Equal(t, "v5", m.Version)
 		require.Equal(t, 16*time.Second, m.DocumentInterval)
-		require.Equal(t, 32, m.DocumentShards)
+		require.Equal(t, logline.DefaultDocumentShardBits, m.DocumentShardBits)
 	}
 }
 
