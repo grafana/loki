@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -241,14 +242,14 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 			n, err := indexPointersReader.Read(ctx, pbuf)
 			for _, indexPointer := range pbuf[:n] {
 				if err := m.tocBuilder.AppendIndexPointer(tenantID, indexPointer); err != nil {
-					return errors.Wrap(err, "appending index pointers")
+					return fmt.Errorf("appending index pointers: %w", err)
 				}
 			}
 			if stderrors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
-				return errors.Wrap(err, "reading index pointers")
+				return fmt.Errorf("reading index pointers: %w", err)
 			}
 		}
 	}
