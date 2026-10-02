@@ -104,7 +104,7 @@ func newProcessor(
 		metrics:          newMetrics(reg),
 		logger:           logger,
 	}
-	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
+	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping).WithName("dataobj-builder-processor")
 	return p
 }
 
