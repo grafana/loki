@@ -17,16 +17,24 @@ import (
 // directExecutionStack runs queries straight through the v1 engine, with no query-frontend in
 // front of it.
 type directExecutionStack struct {
-	t     *testing.T
-	store *testingChunkStore
+	t         *testing.T
+	stackName string
+	limits    logql.Limits
+	store     *testingChunkStore
 }
 
-func newDirectStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t}
+// newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
+func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
+	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}}
 }
 
-func (*directExecutionStack) name() string {
-	return directStackName
+// newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.
+func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
+	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}}
+}
+
+func (s *directExecutionStack) name() string {
+	return s.stackName
 }
 
 func (*directExecutionStack) isQueryShardingSupported() bool {
@@ -48,7 +56,7 @@ func (s *directExecutionStack) setStreams(streams []logproto.Stream) {
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	var opts logql.EngineOpts
 	flagext.DefaultValues(&opts)
-	engine := logql.NewEngine(opts, s.store.querier(), logql.NoLimits, log.NewNopLogger())
+	engine := logql.NewEngine(opts, s.store.querier(), s.limits, log.NewNopLogger())
 
 	start, end, step := cmd.getTimeRange()
 	params, err := logql.NewLiteralParams(

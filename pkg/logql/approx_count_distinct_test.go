@@ -166,7 +166,7 @@ func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params)
+	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params, true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -427,12 +427,12 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
@@ -468,12 +468,12 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stepEv.Close() })
 

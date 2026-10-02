@@ -250,7 +250,7 @@ through a probabilistic sketch:
 
 ```
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
   {pod="1"} 3
   {pod="2"} 15
 ```
@@ -264,7 +264,7 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) 
 
 ```
 eval instant at 60s some_query_with_a_nondeterministic_value({app="a"}[1m])
-  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  skip values-comparison on "query-frontend + query-scheduler (sharding, timestamp-first)"
   {app="a"} 3
 ```
 
@@ -280,9 +280,12 @@ contradictory ("don't compare" vs. "compare, loosely").
 
 Each `eval` runs on multiple execution stacks:
 
-- `direct` — the query runs straight through `logql.Engine` over the chunk store.
-- `query-frontend + query-scheduler (no sharding)` — a real frontend, scheduler, and querier loop.
-- `query-frontend + query-scheduler (sharding)` — the same loop with query sharding on.
+- `direct (timestamp-first)` — the query runs straight through `logql.Engine` over the chunk store.
+- `direct (stream-first)` — the same, with stream-first execution enabled.
+- `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
+- `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
+- `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
+  and stream-first execution on.
 
 ## Example
 
