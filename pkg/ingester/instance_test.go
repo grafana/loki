@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -76,6 +78,31 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 }
 
 var NilMetrics = newIngesterMetrics(nil, constants.Loki)
+
+// TestGetHashForLabels_MatchesLoglineStreamFingerprint pins the ingester's
+// stream fingerprint to logline.StreamFingerprint. The Logline index builder
+// assigns document shards with StreamFingerprint, and queriers match them
+// against the fingerprints computed here, so the two must stay equal.
+func TestGetHashForLabels_MatchesLoglineStreamFingerprint(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	for _, s := range []string{
+		`{app="api"}`,
+		`{namespace="loki", app="api", cluster="eu-west-1"}`,
+		`{app="` + strings.Repeat("x", 2048) + `"}`,
+	} {
+		ls, err := syntax.ParseLabels(s)
+		require.NoError(t, err)
+		want, _ := logline.StreamFingerprint(ls, nil)
+		require.Equal(t, model.Fingerprint(want), i.getHashForLabels(ls), s)
+	}
+}
 
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)

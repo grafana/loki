@@ -18,9 +18,25 @@ review.
 | --- | --- | --- | --- |
 | v3 | Current (`CurrentVersion`) | footer 4 | v3 |
 | v4 | Supported | v3 bytes | packed numeric terms |
-| v5 | In development. Do not set `-logline-index.version=v5` | v3 bytes, for now | v4's extractor, forked into `internal/v5` |
+| v5 | In development. Do not set `-logline-index.version=v5` | v3 layout; documents split by `document_shard_bits`, recorded in the footer | v4's extractor, forked into `internal/v5` |
 
 v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+
+## Document shards
+
+`IndexConfig.DocumentShardBits` (`-logline-index.document-shard-bits`) splits
+each `document_interval` into 2^bits shards by stream fingerprint, like
+dataobj's `streams.ShardBits`. The flag defaults to `DefaultDocumentShardBits`
+(5, so 32 shards). For v5, `Validate` accepts 0 to `MaxDocumentShardBits` (7);
+0 is one shard. v3 and v4 ignore it: `Validate` resets it to 0. Configuring
+bits rather than a shard count means every value is a valid power of two.
+
+`document_shard.go` is the one definition of a stream's document shard:
+`StreamFingerprint` computes the stream's ingester fingerprint, and
+`DocumentShard(fp, shardBits)` takes its top `shardBits` bits, the same prefix
+`index.ShardAnnotation.Match` uses with `1 << shardBits` shards. Anything that computes or matches a
+document shard must call both. `pkg/ingester` has a test that pins
+`instance.getHashForLabels` to `StreamFingerprint`.
 
 ## Extraction is coupled to index version
 
@@ -58,7 +74,8 @@ a frozen algorithm: revert. Do not update the expected values.
   `ValidateVersion`, factory functions
 - `ngrams.go` — `ExtractorForVersion` and `FormatterForVersion` shims that return the
   matching `vN` extractor and term formatter
-- `index_config.go` — `IndexConfig`, the shared `logline.index` section (see below)
+- `index_config.go` — `IndexConfig`, the shared `logline.index` section
+- `document_shard.go` — `StreamFingerprint`, `DocumentShard`, and `VersionHasDocumentShards`
 
 ## Compaction open question
 

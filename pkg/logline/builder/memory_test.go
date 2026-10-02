@@ -25,11 +25,11 @@ func TestMemoryFlushThresholdBytes(t *testing.T) {
 // and clear zeroes the rest.
 func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 	const batch = 64
-	ticksPerDay := uint64((24 * 60 * 60 * 1000) / 100) // 100ms interval
+	cellsPerDay := uint64((24 * 60 * 60 * 1000) / 100) // 100ms interval, time-only
 	b := newPostingsBuffer(postingsBufferConfig{
 		bufferPairs:    batch,
 		spillWatermark: 0.75,
-		ticksPerDay:    ticksPerDay,
+		cellsPerDay:    cellsPerDay,
 	})
 
 	bufferBytes := uint64(2*batch*8 + 2*batch*4) // keys+keyBuf, docs+docBuf
@@ -41,7 +41,7 @@ func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 
 	// First touch of a (shard, day) adds one dense bitset; a second touch of
 	// the same key adds nothing.
-	bitsetBytes := ((ticksPerDay + 63) / 64) * 8
+	bitsetBytes := ((cellsPerDay + 63) / 64) * 8
 	b.recordDocumentTick(0, 1)
 	require.Equal(t, bufferBytes+bitsetBytes, b.residentBytes())
 	b.recordDocumentTick(0, 2)
@@ -61,7 +61,7 @@ func TestPostingsBuffer_ResidentBytes(t *testing.T) {
 	bs := newPostingsBuffer(postingsBufferConfig{
 		bufferPairs:    batch,
 		spillWatermark: 0.75,
-		ticksPerDay:    ticksPerDay,
+		cellsPerDay:    cellsPerDay,
 		shardCount:     2,
 		shardFn:        func(ngram [8]byte, count int) int { return int(ngram[0]) % count },
 	})
