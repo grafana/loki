@@ -3,8 +3,8 @@
 The `testdata/*.logqltest` scripts alongside this package are declarative correctness tests for LogQL
 **metric and log-selection** queries. Each `.logqltest` file loads some log streams and evaluates
 queries against absolute, hand-specified expected results. Scripts are run by `TestLogQLScripts`
-through the real `logql.Engine` over a filesystem-backed chunk store (TSDB index), so the full
-storage read path and parsing/extraction pipeline are exercised end to end.
+through the real `logql.Engine` and querier over a filesystem-backed chunk store (TSDB index), so
+the full storage read path and parsing/extraction pipeline are exercised end to end.
 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
@@ -280,12 +280,20 @@ contradictory ("don't compare" vs. "compare, loosely").
 
 Each `eval` runs on multiple execution stacks:
 
-- `direct (timestamp-first)` — the query runs straight through `logql.Engine` over the chunk store.
+- `direct (timestamp-first)` — the query runs straight through `logql.Engine` and the production
+  querier over the chunk store.
 - `direct (stream-first)` — the same, with stream-first execution enabled.
+- `direct (dataobj)` — the direct stack with stream-first execution on. The querier reads
+  stream-first queries from data objects and every other query from chunks. A stream-first query
+  that returns data must read data-object rows, or the eval fails.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
   and stream-first execution on.
+- `query-frontend + query-scheduler (sharding, dataobj)` — the sharded stream-first loop over the
+  `direct (dataobj)` querier.
+- `query-frontend + query-scheduler (sharding, dataobj and chunk)` — the same, but the querier reads
+  the samples before 90s from chunks.
 
 ## Example
 

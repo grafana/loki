@@ -90,6 +90,20 @@ func newTestingChunkStore(t *testing.T) *testingChunkStore {
 	return &testingChunkStore{store: store, chunks: map[string]*chunkenc.MemChunk{}}
 }
 
+// newTestingChunkStoreWithStreams builds a chunk store from streams and registers its close.
+func newTestingChunkStoreWithStreams(t *testing.T, streams []logproto.Stream) *testingChunkStore {
+	store := newTestingChunkStore(t)
+
+	// The close runs before the store's temp dir is removed: newTestingChunkStore
+	// registers the temp-dir cleanup first, so this later-registered cleanup runs
+	// first (t.Cleanup is LIFO).
+	t.Cleanup(store.close)
+
+	store.write(t, streams)
+	store.flush(t)
+	return store
+}
+
 // write appends entries to per-stream memchunks, flushing a chunk when it fills.
 func (s *testingChunkStore) write(t *testing.T, streams []logproto.Stream) {
 	t.Helper()

@@ -29,24 +29,25 @@ func TestNewProjectionPlan(t *testing.T) {
 		// sections. Each is written as the matcher prints.
 		wantSectionPredicates []string
 	}{
-		"count_over_time under a sum reads no message and only the grouping key, which may be metadata": {
+		"count_over_time under a sum reads no message, only the grouping key and the error labels": {
 			query:        `sum by (app) (count_over_time({app="x"}[1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"bytes_over_time reads the message to measure the line": {
 			query:        `sum by (app) (bytes_over_time({app="x"}[1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"bytes_rate reads the message to measure the line": {
 			query:        `sum by (app) (bytes_rate({app="x"}[1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
-		"a sum with no grouping reads no metadata at all, because its output carries no label": {
-			query:       `sum (count_over_time({app="x"}[1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+		"a sum with no grouping reads only the error label metadata, which can set the pipeline error": {
+			query:        `sum (count_over_time({app="x"}[1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__"},
 		},
 		"a bare range aggregation reads all metadata because its output keeps the whole label set": {
 			query:       `count_over_time({app="x"}[1m])`,
@@ -83,7 +84,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		"sum(sum_over_time) narrows the metadata, because merging its series keeps the total": {
 			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "duration"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "duration"},
 		},
 		"a range aggregation with its own grouping reads all metadata, because that grouping wins": {
 			query:       `sum by (app) (max_over_time({app="x"} | unwrap duration | __error__="" [1m]) by (pod))`,
@@ -95,25 +96,25 @@ func TestNewProjectionPlan(t *testing.T) {
 		"a grouping on a renamed key reads the column behind it as well": {
 			query:        `sum by (level_extracted) (count_over_time({app="x"}[1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"level", "level_extracted"},
+			wantMetadata: []string{"__error__", "__error_details__", "level", "level_extracted"},
 		},
 		"a matcher on a renamed key is not pushed as a predicate when the streams carry that label": {
 			query:        `sum by (app) (count_over_time({app="x"} | level_extracted="error" [1m]))`,
 			streamLabels: []string{"level"},
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "level", "level_extracted"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level", "level_extracted"},
 		},
 		"a matcher on a renamed key is pushed as a predicate when no stream carries that label": {
 			query:                 `sum by (app) (count_over_time({app="x"} | level_extracted="error" [1m]))`,
 			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata:          []string{"app", "level", "level_extracted"},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level", "level_extracted"},
 			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level_extracted", Value: "error"}},
 			wantSectionPredicates: nil,
 		},
 		"two equalities on one name reach the metastore as one": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="error" | level="warn" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "level"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level"},
 			wantRowPredicates: []logs.RowPredicate{
 				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
 				logs.MetadataMatcherRowPredicate{Key: "level", Value: "warn"},
@@ -123,12 +124,12 @@ func TestNewProjectionPlan(t *testing.T) {
 		"a label filter whose failures are dropped narrows the metadata": {
 			query:        `sum by (app) (count_over_time({app="x"} | latency > 1s | __error__="" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "latency"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "latency"},
 		},
 		"an unwrap's own filters name metadata the read must project": {
 			query:        `sum by (app) (sum_over_time({app="x"} | unwrap duration | __error__="" | level="error" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "duration", "level"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "duration", "level"},
 		},
 		"a delete whose filter can fail keeps the metadata wide": {
 			query:       `sum by (app) (count_over_time({app="x"}[1m]))`,
@@ -156,42 +157,40 @@ func TestNewProjectionPlan(t *testing.T) {
 		"an equality against an empty value is pushed to the reader but withheld from the metastore": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "level"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level"},
 			// The reader reduces an absent column against an empty value and keeps the row, but
 			// a section holding no such column has no bloom entry, so the metastore would drop
 			// exactly the sections the query must read.
 			wantRowPredicates: []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: ""}},
 		},
-		"a filter on the pipeline error label is neither projected nor pushed anywhere": {
-			query:       `sum by (app) (count_over_time({app="x"} | __error__="" [1m]))`,
-			wantColumns: []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			// __error__ is the pipeline's own label, never a stored column, so a predicate on
-			// it would filter against a column no object has.
-			wantMetadata: []string{"app"},
+		"a filter on the pipeline error label is projected but not pushed as a predicate": {
+			query:        `sum by (app) (count_over_time({app="x"} | __error__="" [1m]))`,
+			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"a line filter reads the message": {
 			query:        `sum by (app) (count_over_time({app="x"} |= "boom" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"a metadata equality is pushed as a matcher predicate and given to the metastore": {
 			query:                 `sum by (app) (count_over_time({app="x"} | level="error" [1m]))`,
 			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata:          []string{"app", "level"},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level"},
 			wantRowPredicates:     []logs.RowPredicate{logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"}},
 			wantSectionPredicates: []string{`level="error"`},
 		},
 		"a metadata inequality is pushed as a filter predicate": {
 			query:                 `sum by (app) (count_over_time({app="x"} | level!="error" [1m]))`,
 			wantColumns:           []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata:          []string{"app", "level"},
+			wantMetadata:          []string{"__error__", "__error_details__", "app", "level"},
 			wantRowPredicates:     []logs.RowPredicate{logs.MetadataFilterRowPredicate{Key: "level"}},
 			wantSectionPredicates: []string{`level!="error"`},
 		},
 		"both sides of an and are pushed": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="error" | pod="a" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "level", "pod"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level", "pod"},
 			wantRowPredicates: []logs.RowPredicate{
 				logs.MetadataMatcherRowPredicate{Key: "level", Value: "error"},
 				logs.MetadataMatcherRowPredicate{Key: "pod", Value: "a"},
@@ -201,13 +200,13 @@ func TestNewProjectionPlan(t *testing.T) {
 		"neither side of an or is pushed because the other can satisfy the filter": {
 			query:        `sum by (app) (count_over_time({app="x"} | level="error" or pod="a" [1m]))`,
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "level", "pod"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "level", "pod"},
 		},
 		"a matcher on a stream label is not pushed because the predicate cannot see that label": {
 			query:        `sum by (app) (count_over_time({app="x"} | app="x" [1m]))`,
 			streamLabels: []string{"app"},
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 			// The metastore still receives it: it decides per section whether the name is a
 			// stream label there.
 			wantSectionPredicates: []string{`app="x"`},
@@ -228,19 +227,19 @@ func TestNewProjectionPlan(t *testing.T) {
 			query:        `sum by (app) (count_over_time({app="x"}[1m]))`,
 			deletes:      []string{`{app="x"}`},
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"a delete with a line filter widens the projection to the message": {
 			query:        `sum by (app) (count_over_time({app="x"}[1m]))`,
 			deletes:      []string{`{app="x"} |= "secret"`},
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp, logs.ColumnTypeMessage},
-			wantMetadata: []string{"app"},
+			wantMetadata: []string{"__error__", "__error_details__", "app"},
 		},
 		"a delete with a metadata filter widens the projection to that key": {
 			query:        `sum by (app) (count_over_time({app="x"}[1m]))`,
 			deletes:      []string{`{app="x"} | trace_id="abc"`},
 			wantColumns:  []logs.ColumnType{logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp},
-			wantMetadata: []string{"app", "trace_id"},
+			wantMetadata: []string{"__error__", "__error_details__", "app", "trace_id"},
 		},
 		"a delete with a parser widens the projection to the message and all metadata": {
 			query:       `sum by (app) (count_over_time({app="x"}[1m]))`,

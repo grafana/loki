@@ -23,4 +23,8 @@ type Limits interface {
 	MaxEntriesLimitPerQuery(context.Context, string) int
 	RequiredLabels(context.Context, string) []string
 	RequiredNumberLabels(context.Context, string) int
+
+	// DataObjQueryStartTime returns the time from which the querier reads the tenant's
+	// stream-first metric queries from data objects. The zero time disables it.
+	DataObjQueryStartTime(userID string) time.Time
 }
