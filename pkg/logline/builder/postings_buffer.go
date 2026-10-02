@@ -19,8 +19,8 @@ import (
 // Units used throughout this type and the merge:
 //   - Absolute bucket: wall-clock document bucket counted from Unix epoch
 //     (1970).
-//   - Absolute cell: absolute bucket × documentShards + the stream's document
-//     shard. Used for day/date math. With documentShards 1 a cell is a
+//   - Absolute cell: absolute bucket << documentShardBits | the stream's
+//     document shard. Used for day/date math. With 0 shard bits a cell is a
 //     bucket.
 //   - Tick (docID): absolute cell minus baseCell, packed into uint32 for
 //     storage. baseCell is the fixed docIDEpoch (2026-01-01); see
@@ -49,10 +49,10 @@ type postingsBuffer struct {
 	bufferPairs    int
 	spillWatermark float64
 	intervalNanos  int64
-	// documentShards is the number of cells per document interval (at least
-	// 1). Distinct from shardCount, which splits files by n-gram.
-	documentShards uint64
-	cellsPerDay    uint64
+	// documentShardBits is log2 of the number of cells per document interval.
+	// Distinct from shardCount, which splits files by n-gram.
+	documentShardBits uint
+	cellsPerDay       uint64
 	// baseCell is the absolute cell of docIDEpoch. Stored ticks are relative:
 	// tick = absCell - baseCell (fits uint32). Day/date math converts back
 	// with abs = baseCell + tick.
@@ -129,17 +129,17 @@ type refKey struct {
 // postingsBufferConfig holds the resolved, global parameters for one
 // accumulation cycle.
 type postingsBufferConfig struct {
-	bufferPairs    int
-	spillWatermark float64
-	intervalNanos  int64
-	documentShards uint64
-	cellsPerDay    uint64
-	baseCell       uint64
-	shardCount     int
-	shardFn        shard.Func
-	scratchDir     string
-	runPrefix      string
-	mergeThreads   int
+	bufferPairs       int
+	spillWatermark    float64
+	intervalNanos     int64
+	documentShardBits uint
+	cellsPerDay       uint64
+	baseCell          uint64
+	shardCount        int
+	shardFn           shard.Func
+	scratchDir        string
+	runPrefix         string
+	mergeThreads      int
 }
 
 func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
@@ -148,30 +148,30 @@ func newPostingsBuffer(cfg postingsBufferConfig) *postingsBuffer {
 		prefix = "run_"
 	}
 	return &postingsBuffer{
-		bufferPairs:    cfg.bufferPairs,
-		spillWatermark: cfg.spillWatermark,
-		intervalNanos:  cfg.intervalNanos,
-		documentShards: max(cfg.documentShards, 1),
-		cellsPerDay:    cfg.cellsPerDay,
-		baseCell:       cfg.baseCell,
-		shardCount:     cfg.shardCount,
-		shardFn:        cfg.shardFn,
-		scratchDir:     cfg.scratchDir,
-		runPrefix:      prefix,
-		mergeThreads:   cfg.mergeThreads,
-		keys:           make([][8]byte, 0, cfg.bufferPairs),
-		docs:           make([]uint32, 0, cfg.bufferPairs),
-		keyBuf:         make([][8]byte, cfg.bufferPairs),
-		docBuf:         make([]uint32, cfg.bufferPairs),
-		sortBufBytes:   sortBufferFloorBytes(cfg.bufferPairs),
-		refTicks:       make(map[refKey][]uint64),
+		bufferPairs:       cfg.bufferPairs,
+		spillWatermark:    cfg.spillWatermark,
+		intervalNanos:     cfg.intervalNanos,
+		documentShardBits: cfg.documentShardBits,
+		cellsPerDay:       cfg.cellsPerDay,
+		baseCell:          cfg.baseCell,
+		shardCount:        cfg.shardCount,
+		shardFn:           cfg.shardFn,
+		scratchDir:        cfg.scratchDir,
+		runPrefix:         prefix,
+		mergeThreads:      cfg.mergeThreads,
+		keys:              make([][8]byte, 0, cfg.bufferPairs),
+		docs:              make([]uint32, 0, cfg.bufferPairs),
+		keyBuf:            make([][8]byte, cfg.bufferPairs),
+		docBuf:            make([]uint32, cfg.bufferPairs),
+		sortBufBytes:      sortBufferFloorBytes(cfg.bufferPairs),
+		refTicks:          make(map[refKey][]uint64),
 	}
 }
 
 // absCell returns the absolute document cell (from 1970) of a timestamp in
 // the given document shard.
 func (b *postingsBuffer) absCell(unixNano int64, documentShard uint32) uint64 {
-	return uint64(unixNano)/uint64(b.intervalNanos)*b.documentShards + uint64(documentShard)
+	return uint64(unixNano)/uint64(b.intervalNanos)<<b.documentShardBits | uint64(documentShard)
 }
 
 // tick converts an absolute document cell (from 1970) into a packed tick

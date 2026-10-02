@@ -37,24 +37,24 @@ type mergedFile struct {
 
 // dateMapper derives dates and per-document time ranges from epoch cells. All
 // math is in absolute cells (baseCell + tick): a document's time range is its
-// bucket (absolute cell / documentShards) × interval, and the merge assigns
-// dense ranks in ascending cell order. One per shard merge (its dateCache is
-// not safe for concurrent use).
+// bucket (absolute cell >> documentShardBits) × interval, and the merge
+// assigns dense ranks in ascending cell order. One per shard merge (its
+// dateCache is not safe for concurrent use).
 type dateMapper struct {
-	intervalNanos  int64
-	documentShards uint64
-	cellsPerDay    uint64
-	baseCell       uint64
-	dateCache      map[uint64]string
+	intervalNanos     int64
+	documentShardBits uint
+	cellsPerDay       uint64
+	baseCell          uint64
+	dateCache         map[uint64]string
 }
 
 func (b *postingsBuffer) newDateMapper() *dateMapper {
 	return &dateMapper{
-		intervalNanos:  b.intervalNanos,
-		documentShards: b.documentShards,
-		cellsPerDay:    b.cellsPerDay,
-		baseCell:       b.baseCell,
-		dateCache:      map[uint64]string{},
+		intervalNanos:     b.intervalNanos,
+		documentShardBits: b.documentShardBits,
+		cellsPerDay:       b.cellsPerDay,
+		baseCell:          b.baseCell,
+		dateCache:         map[uint64]string{},
 	}
 }
 
@@ -66,7 +66,7 @@ func (dm *dateMapper) dateOfDay(day uint64) string {
 	if s, ok := dm.dateCache[day]; ok {
 		return s
 	}
-	absBucket := day * dm.cellsPerDay / dm.documentShards
+	absBucket := day * dm.cellsPerDay >> dm.documentShardBits
 	s := time.Unix(0, int64(absBucket)*dm.intervalNanos).UTC().Format("2006-01-02")
 	dm.dateCache[day] = s
 	return s
@@ -76,7 +76,7 @@ func (dm *dateMapper) dateOfDay(day uint64) string {
 // document covers [bucket × interval, (bucket + 1) × interval). Cells of one
 // bucket in different document shards share those bounds.
 func (dm *dateMapper) docMeta(docID uint32, id uint32) format.DocumentMetadata {
-	absBucket := (dm.baseCell + uint64(docID)) / dm.documentShards
+	absBucket := (dm.baseCell + uint64(docID)) >> dm.documentShardBits
 	startNanos := int64(absBucket) * dm.intervalNanos
 	return format.DocumentMetadata{
 		ID:          id,

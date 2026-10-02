@@ -190,18 +190,18 @@ func newIndexBuilder(cfg Config, minDate string, logger log.Logger, metrics *Met
 	// outside the uint32 window panic at ingest. In pipeline mode this config
 	// is computed ONCE and shared by every worker's buffer — all buffers of
 	// one cycle must agree on baseCell or the merged docIDs would disagree.
-	documentShards := uint64(max(cfg.Index.DocumentShards, 1))
+	shardBits := uint(cfg.Index.DocumentShardBits)
 	pbCfg := postingsBufferConfig{
-		bufferPairs:    cfg.PostingsBufferPairs,
-		spillWatermark: cfg.PostingsSpillWatermark,
-		intervalNanos:  intervalNanos,
-		documentShards: documentShards,
-		cellsPerDay:    uint64((24*time.Hour)/cfg.Index.DocumentInterval) * documentShards,
-		baseCell:       epochCell(docIDEpoch, intervalNanos, documentShards),
-		shardCount:     cfg.Index.ShardCount,
-		shardFn:        shardFn,
-		scratchDir:     runDir,
-		mergeThreads:   cfg.MergeThreads,
+		bufferPairs:       cfg.PostingsBufferPairs,
+		spillWatermark:    cfg.PostingsSpillWatermark,
+		intervalNanos:     intervalNanos,
+		documentShardBits: shardBits,
+		cellsPerDay:       uint64((24*time.Hour)/cfg.Index.DocumentInterval) << shardBits,
+		baseCell:          epochCell(docIDEpoch, intervalNanos, shardBits),
+		shardCount:        cfg.Index.ShardCount,
+		shardFn:           shardFn,
+		scratchDir:        runDir,
+		mergeThreads:      cfg.MergeThreads,
 	}
 
 	newIngester := func(runPrefix string) *streamIngester {
@@ -339,7 +339,7 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 			// runs first, so pre-epoch entries never get here. That branch now
 			// defends only against future bugs that bypass the minDate filter
 			// (e.g. an empty minDate, or reordering the checks).
-			panicOutOfWindow(entryTime, time.Duration(postings.intervalNanos), int(postings.documentShards), ref)
+			panicOutOfWindow(entryTime, time.Duration(postings.intervalNanos), postings.documentShardBits, ref)
 		}
 		w.observeDate(date, entryTime, enqueuedAt)
 
@@ -374,8 +374,8 @@ func (w *streamIngester) ingest(stream *logproto.Stream, parsedLabels *labels.La
 // stream from logline.StreamFingerprint, because queriers match document
 // shards against chunk fingerprints.
 func (w *streamIngester) documentShard(parsedLabels *labels.Labels) uint32 {
-	shards := w.postings.documentShards
-	if shards <= 1 {
+	shardBits := w.postings.documentShardBits
+	if shardBits == 0 {
 		return 0
 	}
 	ls := labels.EmptyLabels()
@@ -384,7 +384,7 @@ func (w *streamIngester) documentShard(parsedLabels *labels.Labels) uint32 {
 	}
 	var fp uint64
 	fp, w.scratchHash = logline.StreamFingerprint(ls, w.scratchHash)
-	return logline.DocumentShard(fp, int(shards))
+	return logline.DocumentShard(fp, shardBits)
 }
 
 // observeDate widens the per-date time spans used for file metadata.
@@ -536,9 +536,9 @@ func (s *indexBuilder) prepareIndexes() ([]fileInfo, error) {
 	dates := s.unionDateRanges()
 
 	writerCfg := format.WriterConfig{
-		DensityThreshold: float32(s.cfg.Index.DensityThreshold),
-		DocumentInterval: s.cfg.Index.DocumentInterval,
-		DocumentShards:   int(host.documentShards),
+		DensityThreshold:  float32(s.cfg.Index.DensityThreshold),
+		DocumentInterval:  s.cfg.Index.DocumentInterval,
+		DocumentShardBits: int(host.documentShardBits),
 	}
 	runCount := len(runPaths)
 	mergeStart := time.Now()

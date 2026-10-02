@@ -37,8 +37,8 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 		}
 		// deduplicateDocuments collapses documents with equal time bounds, so
 		// the shards of each interval would become one document.
-		if wcfg.DocumentShards > 1 {
-			return nil, fmt.Errorf("merge: indexes with %d document shards cannot be merged: documents are deduplicated by time bounds, which would collapse the document shards of each interval", wcfg.DocumentShards)
+		if wcfg.DocumentShardBits > 0 {
+			return nil, fmt.Errorf("merge: indexes with %d document shard bits cannot be merged: documents are deduplicated by time bounds, which would collapse the document shards of each interval", wcfg.DocumentShardBits)
 		}
 		w, err := newStreamingIndexWriterTo(out, wcfg, docCount)
 		if err != nil {
@@ -117,15 +117,15 @@ func openMergeInputsFromReaders(readers []io.ReaderAt, sizes []int64) ([]*IndexR
 }
 
 // commonDocumentLayout returns the document layout shared by every input.
-// Inputs with different intervals or shard counts number their documents
+// Inputs with different intervals or shard bits number their documents
 // differently, so they cannot be merged.
 func commonDocumentLayout(readers []*IndexReader) (documentLayout, error) {
 	want := readers[0].header.documentLayout()
 	for i, r := range readers[1:] {
 		if got := r.header.documentLayout(); got != want {
 			return documentLayout{}, fmt.Errorf(
-				"merge: input %d has document interval %v and %d document shards, input 0 has %v and %d",
-				i+1, got.interval, got.shards, want.interval, want.shards,
+				"merge: input %d has document interval %v and %d document shard bits, input 0 has %v and %d",
+				i+1, got.interval, got.shardBits, want.interval, want.shardBits,
 			)
 		}
 	}

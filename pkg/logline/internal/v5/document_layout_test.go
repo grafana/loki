@@ -3,7 +3,6 @@ package v5
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 
 // writeLayoutIndex writes a two-document index with one term through the
 // public NewWriter, recording the given document layout.
-func writeLayoutIndex(t *testing.T, name string, interval time.Duration, shards int) string {
+func writeLayoutIndex(t *testing.T, name string, interval time.Duration, shardBits int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
 	docs := []format.DocumentMetadata{
@@ -23,9 +22,9 @@ func writeLayoutIndex(t *testing.T, name string, interval time.Duration, shards 
 		{ID: 1, MinTimeUnix: 0, MaxTimeUnix: 16_000},
 	}
 	w, err := NewWriter(path, docs, &format.WriterConfig{
-		DensityThreshold: -1,
-		DocumentInterval: interval,
-		DocumentShards:   shards,
+		DensityThreshold:  -1,
+		DocumentInterval:  interval,
+		DocumentShardBits: shardBits,
 	})
 	require.NoError(t, err)
 	require.NoError(t, w.WriteTermDocIDs([8]byte{'s', 'h', 'a', 'r', 'e', 'd'}, []uint32{0, 1}, 2))
@@ -34,37 +33,32 @@ func writeLayoutIndex(t *testing.T, name string, interval time.Duration, shards 
 }
 
 func TestFooter_DocumentLayoutRoundTrip(t *testing.T) {
-	h, err := ReadIndexHeader(writeLayoutIndex(t, "sharded.lidx", 16*time.Second, 32))
+	h, err := ReadIndexHeader(writeLayoutIndex(t, "sharded.lidx", 16*time.Second, 5))
 	require.NoError(t, err)
-	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 32}, h.documentLayout())
+	require.Equal(t, documentLayout{interval: 16 * time.Second, shardBits: 5}, h.documentLayout())
+	require.Equal(t, uint8(5), h.ReservedMid[8])
 	require.Equal(t, IndexVersion, h.Version, "the layout rides in ReservedMid; the footer version is unchanged")
 
-	h, err = ReadIndexHeader(writeLayoutIndex(t, "unset-shards.lidx", 16*time.Second, 0))
+	h, err = ReadIndexHeader(writeLayoutIndex(t, "time-only.lidx", 16*time.Second, 0))
 	require.NoError(t, err)
-	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout(), "an unset shard count is one shard")
-	require.Equal(t, uint32(1), binary.LittleEndian.Uint32(h.ReservedMid[8:12]), "and is written as 1")
+	require.Equal(t, documentLayout{interval: 16 * time.Second}, h.documentLayout())
 
 	h, err = ReadIndexHeader(writeLayoutIndex(t, "unset.lidx", 0, 0))
 	require.NoError(t, err)
-	require.Equal(t, documentLayout{shards: 1}, h.documentLayout())
-
-	var legacy IndexFooter
-	binary.LittleEndian.PutUint64(legacy.ReservedMid[0:8], uint64(16*time.Second))
-	require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, legacy.documentLayout(), "a stored 0 reads as one shard")
+	require.Equal(t, documentLayout{}, h.documentLayout())
 }
 
-func TestSentinelCutoff_ScalesWithDocumentShards(t *testing.T) {
+func TestSentinelCutoff_ScalesWithDocumentShardBits(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		shards int
-		want   uint64
+		name      string
+		shardBits int
+		want      uint64
 	}{
-		{name: "unset means one shard", shards: 0, want: 8640},
-		{name: "one shard", shards: 1, want: 8640},
-		{name: "four shards", shards: 4, want: 4 * 8640},
+		{name: "one shard", shardBits: 0, want: 8640},
+		{name: "four shards", shardBits: 2, want: 4 * 8640},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := IndexWriteConfig{DensityThreshold: 0.5, DocumentInterval: 5 * time.Second, DocumentShards: tt.shards}
+			cfg := IndexWriteConfig{DensityThreshold: 0.5, DocumentInterval: 5 * time.Second, DocumentShardBits: tt.shardBits}
 			cutoff, ok := cfg.sentinelCutoff()
 			require.True(t, ok)
 			require.Equal(t, tt.want, cutoff)
@@ -75,10 +69,10 @@ func TestSentinelCutoff_ScalesWithDocumentShards(t *testing.T) {
 	require.False(t, ok, "zero interval disables the density filter")
 }
 
-// TestDensityFilter_DocumentShards checks the writer applies the shard-scaled
-// cutoff: 10,000 documents is dense for one shard at 5s × 0.5 (cutoff 8640)
-// but not for four (cutoff 34,560).
-func TestDensityFilter_DocumentShards(t *testing.T) {
+// TestDensityFilter_DocumentShardBits checks the writer applies the
+// shard-scaled cutoff: 10,000 documents is dense for one shard at 5s × 0.5
+// (cutoff 8640) but not for four (cutoff 34,560).
+func TestDensityFilter_DocumentShardBits(t *testing.T) {
 	const n = 10_000
 	docs := make([]format.DocumentMetadata, n)
 	ids := make([]uint32, n)
@@ -89,17 +83,17 @@ func TestDensityFilter_DocumentShards(t *testing.T) {
 	term := [8]byte{'d', 'e', 'n', 's', 'e', '!'}
 
 	for _, tt := range []struct {
-		shards         int
+		shardBits      int
 		wantMatchesAll bool
 	}{
-		{shards: 1, wantMatchesAll: true},
-		{shards: 4, wantMatchesAll: false},
+		{shardBits: 0, wantMatchesAll: true},
+		{shardBits: 2, wantMatchesAll: false},
 	} {
 		path := filepath.Join(t.TempDir(), "density.lidx")
 		w, err := NewWriter(path, docs, &format.WriterConfig{
-			DensityThreshold: 0.5,
-			DocumentInterval: 5 * time.Second,
-			DocumentShards:   tt.shards,
+			DensityThreshold:  0.5,
+			DocumentInterval:  5 * time.Second,
+			DocumentShardBits: tt.shardBits,
 		})
 		require.NoError(t, err)
 		require.NoError(t, w.WriteTermDocIDs(term, ids, n))
@@ -110,66 +104,59 @@ func TestDensityFilter_DocumentShards(t *testing.T) {
 		it, err := r.NewTermIterator()
 		require.NoError(t, err)
 		require.True(t, it.Next())
-		require.Equal(t, tt.wantMatchesAll, it.Bitmap().MatchesAll, "shards=%d", tt.shards)
+		require.Equal(t, tt.wantMatchesAll, it.Bitmap().MatchesAll, "shardBits=%d", tt.shardBits)
 		require.NoError(t, r.Close())
 	}
 }
 
 func TestMerge_DocumentLayoutGuard(t *testing.T) {
 	ctx := context.Background()
-	sharded32 := writeLayoutIndex(t, "a.lidx", 16*time.Second, 32)
+	sharded := writeLayoutIndex(t, "a.lidx", 16*time.Second, 5)
 
 	t.Run("equal time-only layouts merge and keep the layout", func(t *testing.T) {
 		var out bytes.Buffer
-		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 1), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
+		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 0), writeLayoutIndex(t, "b.lidx", 16*time.Second, 0)}
 		_, err := mergeFilesTo(ctx, t, inputs, &out, DefaultFastIndexWriteConfig())
 		require.NoError(t, err)
 		h, err := ReadIndexFooterFrom(bytes.NewReader(out.Bytes()), int64(out.Len()))
 		require.NoError(t, err)
-		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout())
-	})
-
-	t.Run("unset and one shard are the same layout", func(t *testing.T) {
-		var out bytes.Buffer
-		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 0), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
-		_, err := mergeFilesTo(ctx, t, inputs, &out, DefaultFastIndexWriteConfig())
-		require.NoError(t, err)
+		require.Equal(t, documentLayout{interval: 16 * time.Second}, h.documentLayout())
 	})
 
 	t.Run("sharded inputs are rejected", func(t *testing.T) {
 		var out bytes.Buffer
-		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 32)}, &out, DefaultFastIndexWriteConfig())
-		require.ErrorContains(t, err, "indexes with 32 document shards cannot be merged")
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 16*time.Second, 5)}, &out, DefaultFastIndexWriteConfig())
+		require.ErrorContains(t, err, "indexes with 5 document shard bits cannot be merged")
 	})
 
 	t.Run("a sharded config over inputs without a layout is rejected", func(t *testing.T) {
 		cfg := DefaultFastIndexWriteConfig()
 		cfg.DocumentInterval = 16 * time.Second
-		cfg.DocumentShards = 32
+		cfg.DocumentShardBits = 5
 		var out bytes.Buffer
 		_, err := mergeFilesTo(ctx, t, []string{writeLayoutIndex(t, "a.lidx", 0, 0), writeLayoutIndex(t, "b.lidx", 0, 0)}, &out, cfg)
-		require.ErrorContains(t, err, "indexes with 32 document shards cannot be merged")
+		require.ErrorContains(t, err, "indexes with 5 document shard bits cannot be merged")
 	})
 
-	t.Run("different shard counts are rejected", func(t *testing.T) {
+	t.Run("different shard bits are rejected", func(t *testing.T) {
 		var out bytes.Buffer
-		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 16*time.Second, 16)}, &out, DefaultFastIndexWriteConfig())
-		require.ErrorContains(t, err, "input 1 has document interval 16s and 16 document shards")
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 16*time.Second, 4)}, &out, DefaultFastIndexWriteConfig())
+		require.ErrorContains(t, err, "input 1 has document interval 16s and 4 document shard bits")
 	})
 
 	t.Run("different intervals are rejected", func(t *testing.T) {
 		var out bytes.Buffer
-		_, err := mergeFilesTo(ctx, t, []string{sharded32, writeLayoutIndex(t, "b.lidx", 8*time.Second, 32)}, &out, DefaultFastIndexWriteConfig())
+		_, err := mergeFilesTo(ctx, t, []string{sharded, writeLayoutIndex(t, "b.lidx", 8*time.Second, 5)}, &out, DefaultFastIndexWriteConfig())
 		require.ErrorContains(t, err, "input 1 has document interval 8s")
 	})
 
 	t.Run("config that disagrees with the inputs is rejected", func(t *testing.T) {
 		cfg := DefaultFastIndexWriteConfig()
-		cfg.DocumentShards = 2
+		cfg.DocumentShardBits = 1
 		var out bytes.Buffer
-		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 1), writeLayoutIndex(t, "b.lidx", 16*time.Second, 1)}
+		inputs := []string{writeLayoutIndex(t, "a.lidx", 16*time.Second, 0), writeLayoutIndex(t, "b.lidx", 16*time.Second, 0)}
 		_, err := mergeFilesTo(ctx, t, inputs, &out, cfg)
-		require.ErrorContains(t, err, "configured document shards 2 differ from the inputs' 1")
+		require.ErrorContains(t, err, "configured document shard bits 1 differ from the inputs' 0")
 	})
 
 	t.Run("inputs without a layout keep the config", func(t *testing.T) {
@@ -180,6 +167,6 @@ func TestMerge_DocumentLayoutGuard(t *testing.T) {
 		require.NoError(t, err)
 		h, err := ReadIndexFooterFrom(bytes.NewReader(out.Bytes()), int64(out.Len()))
 		require.NoError(t, err)
-		require.Equal(t, documentLayout{interval: 16 * time.Second, shards: 1}, h.documentLayout())
+		require.Equal(t, documentLayout{interval: 16 * time.Second}, h.documentLayout())
 	})
 }

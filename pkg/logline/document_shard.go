@@ -1,8 +1,6 @@
 package logline
 
 import (
-	"math/bits"
-
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -24,14 +22,11 @@ func StreamFingerprint(ls labels.Labels, buf []byte) (uint64, []byte) {
 }
 
 // DocumentShard returns the document shard of a stream fingerprint: its top
-// log2(shards) bits. That is the prefix TSDB's index.ShardAnnotation.Match
-// uses, so document shards line up with Loki's power-of-two query shards.
+// shardBits bits. That is the prefix TSDB's index.ShardAnnotation.Match uses
+// for 2^shardBits shards, so document shards line up with Loki's power-of-two
+// query shards. With 0 bits every stream is in shard 0.
 //
-// fp must come from StreamFingerprint. shards must be a power of two; 0 and 1
-// both mean one shard.
-func DocumentShard(fp uint64, shards int) uint32 {
-	if shards <= 1 {
-		return 0
-	}
-	return uint32(fp >> (64 - bits.TrailingZeros(uint(shards))))
+// fp must come from StreamFingerprint. shardBits must be at most 32.
+func DocumentShard(fp uint64, shardBits uint) uint32 {
+	return uint32(fp >> (64 - shardBits))
 }

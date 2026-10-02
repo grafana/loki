@@ -1,42 +1,48 @@
 package logline
 
 import (
+	"flag"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestIndexConfigValidate_DocumentShards(t *testing.T) {
+func TestIndexConfigValidate_DocumentShardBits(t *testing.T) {
 	for _, tt := range []struct {
-		name       string
-		version    string
-		shards     int
-		wantShards int
-		wantErr    string
+		name     string
+		version  string
+		bits     int
+		wantBits int
+		wantErr  string
 	}{
-		{name: "v3 leaves shards unset", version: "v3", wantShards: 0},
-		{name: "default version leaves shards unset", version: "", wantShards: 0},
-		{name: "v3 rejects shards", version: "v3", shards: 32, wantErr: "document_shards requires index version v5"},
-		{name: "v4 rejects shards", version: "v4", shards: 1, wantErr: "document_shards requires index version v5"},
-		{name: "v5 defaults to 32", version: "v5", wantShards: DefaultDocumentShards},
-		{name: "v5 accepts 1", version: "v5", shards: 1, wantShards: 1},
-		{name: "v5 accepts 128", version: "v5", shards: 128, wantShards: 128},
-		{name: "v5 rejects non power of two", version: "v5", shards: 24, wantErr: "power of two"},
-		{name: "v5 rejects above max", version: "v5", shards: 256, wantErr: "power of two"},
-		{name: "v5 rejects negative", version: "v5", shards: -1, wantErr: "power of two"},
+		{name: "v3 ignores shard bits", version: "v3", bits: DefaultDocumentShardBits, wantBits: 0},
+		{name: "default version ignores shard bits", version: "", bits: DefaultDocumentShardBits, wantBits: 0},
+		{name: "v4 ignores shard bits", version: "v4", bits: 3, wantBits: 0},
+		{name: "v5 accepts 0", version: "v5", bits: 0, wantBits: 0},
+		{name: "v5 accepts the default", version: "v5", bits: DefaultDocumentShardBits, wantBits: DefaultDocumentShardBits},
+		{name: "v5 accepts the max", version: "v5", bits: MaxDocumentShardBits, wantBits: MaxDocumentShardBits},
+		{name: "v5 rejects above max", version: "v5", bits: MaxDocumentShardBits + 1, wantErr: "document_shard_bits must be from 0 to 7"},
+		{name: "v5 rejects negative", version: "v5", bits: -1, wantErr: "document_shard_bits must be from 0 to 7"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := IndexConfig{Version: tt.version, DocumentShards: tt.shards}
+			cfg := IndexConfig{Version: tt.version, DocumentShardBits: tt.bits}
 			err := cfg.Validate()
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.wantShards, cfg.DocumentShards)
+			require.Equal(t, tt.wantBits, cfg.DocumentShardBits)
 		})
 	}
+}
+
+func TestIndexConfig_DocumentShardBitsFlagDefault(t *testing.T) {
+	var cfg IndexConfig
+	cfg.RegisterFlagsWithPrefix("logline-index", flag.NewFlagSet("test", flag.PanicOnError))
+	require.Equal(t, DefaultDocumentShardBits, cfg.DocumentShardBits)
+	require.Equal(t, 5, DefaultDocumentShardBits, "32 document shards")
 }
 
 func TestIndexConfigValidate_DefaultDocumentInterval(t *testing.T) {

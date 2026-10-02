@@ -168,23 +168,24 @@ func TestConfigValidation(t *testing.T) {
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
 				Index: logline.IndexConfig{
-					Version:          "v5",
-					DocumentInterval: 500 * time.Millisecond,
-					DocumentShards:   128,
+					Version:           "v5",
+					DocumentInterval:  500 * time.Millisecond,
+					DocumentShardBits: 7,
 				},
 			},
 			wantError: true,
-			errorMsg:  "use a larger interval or fewer document shards",
+			errorMsg:  "use a larger interval or fewer document shard bits",
 		},
 		{
-			name: "v3 with document shards rejected",
+			// 100ms × 2^7 would end the window in 2026, but v3 ignores the
+			// shard bits, so the time-only window (2039) applies.
+			name: "v3 ignores document shard bits",
 			settings: Config{
 				Kafka:      KafkaConfig{Address: "localhost:9092", Topic: "test-topic", ConsumerGroupName: "test-group"},
 				ScratchDir: "/tmp/test",
-				Index:      logline.IndexConfig{Version: "v3", DocumentShards: 32},
+				Index:      logline.IndexConfig{Version: "v3", DocumentInterval: 100 * time.Millisecond, DocumentShardBits: 7},
 			},
-			wantError: true,
-			errorMsg:  "document_shards requires index version v5",
+			wantError: false,
 		},
 		{
 			// Below 2^16 pairs the buffer degenerates into constant radix

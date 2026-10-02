@@ -422,18 +422,18 @@ func validateIndexSettings(settings logline.IndexConfig) error {
 		return fmt.Errorf("document_interval must evenly divide 24h, got %s", settings.DocumentInterval)
 	}
 	// The docID is an epoch cell: a uint32 count of document cells from the
-	// FIXED docIDEpoch (2026-01-01), so the interval and document shard count
-	// fix the END of the representable window: epoch + (2^32 / shards) ×
+	// FIXED docIDEpoch (2026-01-01), so the interval and document shard bits
+	// fix the END of the representable window: epoch + 2^(32 - shard bits) ×
 	// interval. Timestamps outside the window PANIC at ingest, so the window
 	// end must stay comfortably ahead of the present: require it to be ≥ now +
 	// minDocIDFutureRunway (1 year). This rule is deliberately time-DEPENDENT —
 	// with a fixed epoch the window consumes its headroom as calendar time
 	// passes, and the config must be rejected at startup well before live
 	// traffic starts panicking. At 100ms time-only the window ends 2039-08-12;
-	// at the v5 default of 16s × 32 shards it ends about 2094.
-	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval, settings.DocumentShards), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
-		return fmt.Errorf("document_interval %v with %d document_shards yields a docID window ending %s (fixed epoch %s + 2^32 cells), less than the required %v from now; use a larger interval or fewer document shards",
-			settings.DocumentInterval, max(settings.DocumentShards, 1), windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
+	// at the v5 default of 16s × 5 shard bits it ends about 2094.
+	if windowEnd, minEnd := docIDWindowEnd(settings.DocumentInterval, uint(settings.DocumentShardBits)), time.Now().Add(minDocIDFutureRunway); windowEnd.Before(minEnd) {
+		return fmt.Errorf("document_interval %v with document_shard_bits %d yields a docID window ending %s (fixed epoch %s + 2^32 cells), less than the required %v from now; use a larger interval or fewer document shard bits",
+			settings.DocumentInterval, settings.DocumentShardBits, windowEnd.UTC().Format(time.RFC3339), docIDEpoch.Format(time.RFC3339), minDocIDFutureRunway)
 	}
 	// Shard values are carried as uint8 through the spill reorder
 	// (postingsBuffer.shardScratch), so 256 shards is a hard ceiling.

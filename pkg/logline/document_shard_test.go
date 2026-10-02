@@ -22,13 +22,14 @@ func TestDocumentShard_MatchesShardAnnotation(t *testing.T) {
 		fps = append(fps, rng.Uint64())
 	}
 
-	for shards := 2; shards <= MaxDocumentShards; shards *= 2 {
-		t.Run(fmt.Sprintf("shards=%d", shards), func(t *testing.T) {
+	for bits := uint(1); bits <= MaxDocumentShardBits; bits++ {
+		shards := uint32(1) << bits
+		t.Run(fmt.Sprintf("bits=%d", bits), func(t *testing.T) {
 			for _, fp := range fps {
-				got := DocumentShard(fp, shards)
-				require.Less(t, got, uint32(shards))
-				for s := range uint32(shards) {
-					match := index.NewShard(s, uint32(shards)).Match(model.Fingerprint(fp))
+				got := DocumentShard(fp, bits)
+				require.Less(t, got, shards)
+				for s := range shards {
+					match := index.NewShard(s, shards).Match(model.Fingerprint(fp))
 					require.Equal(t, s == got, match, "fp %x shard %d of %d", fp, s, shards)
 				}
 			}
@@ -36,8 +37,6 @@ func TestDocumentShard_MatchesShardAnnotation(t *testing.T) {
 	}
 }
 
-func TestDocumentShard_SingleShard(t *testing.T) {
-	for _, shards := range []int{0, 1} {
-		require.Zero(t, DocumentShard(math.MaxUint64, shards))
-	}
+func TestDocumentShard_ZeroBitsIsOneShard(t *testing.T) {
+	require.Zero(t, DocumentShard(math.MaxUint64, 0))
 }

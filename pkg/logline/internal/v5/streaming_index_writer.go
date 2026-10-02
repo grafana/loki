@@ -303,8 +303,8 @@ func (w *StreamingIndexWriter) Close() (retErr error) {
 		PostingsBlockDirSize: uint64(len(postingsDirSection)),
 	}
 	w.footer.setDocumentLayout(documentLayout{
-		interval: w.config.DocumentInterval,
-		shards:   uint32(w.config.DocumentShards),
+		interval:  w.config.DocumentInterval,
+		shardBits: uint8(w.config.DocumentShardBits),
 	})
 
 	// v2: append footer at EOF (no seek needed).
