@@ -370,7 +370,8 @@ func TestLoglineHintProvider_ProvideHints_PostParserRegexLabelFilter(t *testing.
 			model.TimeFromUnixNano(docMin.UnixNano()),
 			model.TimeFromUnixNano(docMax.UnixNano()),
 		)
-		require.Nil(t, hints)
+		require.NotNil(t, hints)
+		require.Empty(t, hints.TimeRanges)
 		require.ErrorIs(t, err, ErrUnsupported)
 	})
 }
