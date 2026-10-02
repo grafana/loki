@@ -381,7 +381,7 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 	for fileName, idx := range openedIndexes {
 		t.index[fileName] = idx
 	}
-	// remove ownership so files aren't close prematurely
+	// remove ownership so files aren't closed prematurely
 	openedIndexes = nil
 
 	for _, db := range toDelete {
