@@ -93,29 +93,29 @@ func (s *SimpleIndexer) release(closer io.Closer, logger log.Logger, what string
 }
 
 func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath string, objLogger log.Logger) (Result, error) {
+	tenants := obj.Tenants()
+	if len(tenants) != 1 {
+		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenants))
+	}
+
 	builder, err := indexobj.NewBuilder(s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}
 	defer builder.Reset()
 
-	calc := NewCalculator(builder, s.calculatorMetrics)
+	calc := NewCalculator(tenants[0], builder, s.calculatorMetrics)
 	defer calc.Reset()
 
 	if err := calc.Calculate(ctx, objLogger, obj, objPath); err != nil {
 		return Result{}, fmt.Errorf("calculate object: %w", err)
 	}
 
-	idxObj, closer, tenantTimeRanges, err := calc.Flush()
+	idxObj, closer, timeRange, err := calc.Flush()
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer s.release(closer, objLogger, "index object")
-
-	if len(tenantTimeRanges) != 1 {
-		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenantTimeRanges))
-	}
-	timeRange := tenantTimeRanges[0]
 
 	idxObjKey, err := ObjectKey(ctx, idxObj)
 	if err != nil {

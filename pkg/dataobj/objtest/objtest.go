@@ -36,7 +36,7 @@ import (
 )
 
 // Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant
-// because every data object holds one tenant.
+// because the index Calculator accepts only single-tenant objects.
 const Tenant = "objtest"
 
 // indexPrefix is where index objects and their table of contents live within the bucket.
@@ -198,7 +198,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}
 
-	calculator := index.NewCalculator(indexBuilder, index.NewCalculatorMetrics(nil))
+	calculator := index.NewCalculator(Tenant, indexBuilder, index.NewCalculatorMetrics(nil))
 
 	var (
 		count           int
@@ -247,7 +247,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 }
 
 func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculator) error {
-	obj, closer, timeRanges, err := calculator.Flush()
+	obj, closer, timeRange, err := calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush index: %w", err)
 	}
@@ -266,7 +266,7 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 
 	if err := b.indexBucket.Upload(ctx, key, reader); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
-	} else if err := writeTableOfContentsEntries(ctx, b.indexMetastoreToc, key, timeRanges); err != nil {
+	} else if err := writeTableOfContentsEntries(ctx, b.indexMetastoreToc, key, []dataobj.TimeRange{timeRange}); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 

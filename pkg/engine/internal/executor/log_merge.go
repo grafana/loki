@@ -73,7 +73,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	calc := dataobjindex.NewCalculator(indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
+	calc := dataobjindex.NewCalculator(node.Tenant, indexBuilder, dataobjindex.NewCalculatorMetrics(nil))
 
 	merged := sortmerge.MixedRunIterator(ctx, inputs.runs, node.SortSchema)
 
@@ -209,8 +209,9 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		// Slots for unselected sections or sections belonging to other tenants will remain nil
 		logSections := make([]*dataobj.Section, obj.Sections().Count(logs.CheckSection))
 		found := 0
-		// Filter indexes count logs sections across all tenants, matching the
-		// index calculator. Unselected sections need no layout or data reads.
+		// Filter indexes count every logs section in the object, whatever its
+		// tenant. Index objects number the sections of a multi-tenant object
+		// the same way. Unselected sections need no layout or data reads.
 		for i, sec := range obj.Sections().Filter(logs.CheckSection) {
 			if _, ok := want[int64(i)]; !ok {
 				continue

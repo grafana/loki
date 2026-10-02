@@ -89,14 +89,19 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
 	})
 
-	t.Run("should reject a data object with more than one tenant", func(t *testing.T) {
+	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		idx, _ := newTestSimpleIndexer(t, bucket)
+		idx, reg := newTestSimpleIndexer(t, bucket)
 
 		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), "objects/test")
 		require.ErrorIs(t, err, ErrNotSingleTenant)
 		require.Empty(t, res.Path)
 		require.Empty(t, bucket.Objects(), "a rejected index must not be uploaded")
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_indexobj_appends_total Total number of appends
+		# TYPE loki_indexobj_appends_total counter
+		loki_indexobj_appends_total 0
+		`), "loki_indexobj_appends_total"))
 	})
 
 	t.Run("should propagate an upload failure", func(t *testing.T) {
