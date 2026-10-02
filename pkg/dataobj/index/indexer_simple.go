@@ -98,7 +98,7 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenants))
 	}
 
-	builder, err := indexobj.NewBuilder(s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
+	builder, err := indexobj.NewBuilder(tenants[0], s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}

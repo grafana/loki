@@ -44,7 +44,7 @@ func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	t.Parallel()
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -83,7 +83,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -145,7 +145,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -197,7 +197,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -243,7 +243,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -303,7 +303,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -352,7 +352,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -416,7 +416,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
