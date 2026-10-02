@@ -97,12 +97,13 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 
 	require.NoError(t, bucket.Upload(ctx, indexPath, reader))
 	require.NotEmpty(t, ranges)
-	attrs, err := bucket.Attributes(ctx, indexPath)
-	require.NoError(t, err)
-	for i := range ranges {
-		ranges[i].FileSize = uint64(attrs.Size)
+	for _, r := range ranges {
+		require.NoError(t, tocWriter.WriteEntry(ctx, r.Tenant, metastore.TableOfContentsEntry{
+			Path:      indexPath,
+			StartTime: r.MinTime,
+			EndTime:   r.MaxTime,
+		}))
 	}
-	require.NoError(t, tocWriter.WriteEntry(ctx, indexPath, ranges))
 }
 
 func closeFixture(t *testing.T, closer io.Closer) {
@@ -113,7 +114,7 @@ func closeFixture(t *testing.T, closer io.Closer) {
 // Indexes returns the persisted ToC pointers belonging to tenant, in ToC order.
 func (s *Scenario) Indexes(ctx context.Context, t *testing.T, tenant string) []indexpointers.IndexPointer {
 	t.Helper()
-	sections := s.tenantSections(ctx, t, metastore.TableOfContentsPath(s.Window), tenant)
+	sections := s.tenantSections(ctx, t, metastore.TableOfContentsPath(tenant, s.Window), tenant)
 	var entries []indexpointers.IndexPointer
 	for _, section := range sections.Filter(indexpointers.CheckSection) {
 		opened, err := indexpointers.Open(ctx, section)

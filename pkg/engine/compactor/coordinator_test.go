@@ -160,6 +160,9 @@ type errBucket struct{ objstore.Bucket }
 func (errBucket) Get(context.Context, string) (io.ReadCloser, error) {
 	return nil, errors.New("errBucket: forced read failure")
 }
+func (errBucket) Iter(context.Context, string, func(string) error, ...objstore.IterOption) error {
+	return errors.New("errBucket: forced list failure")
+}
 func (errBucket) IsObjNotFoundErr(error) bool { return false }
 
 // newTestCoordinator builds a Coordinator wired to the supplied fakes plus a
@@ -643,9 +646,9 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 			seed: func(ctx context.Context, t *testing.T, window time.Time) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
 				bucket := overlappingIndexesBucket(ctx, t, window, "acme")
 				return bucket, func(c *coordinator) (compactionStats, error) {
-					indexes, err := loadTenantIndexes(ctx, bucket, window)
+					indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 					require.NoError(t, err)
-					return c.compactTenantIndexes(ctx, "acme", window, indexes["acme"])
+					return c.compactTenantIndexes(ctx, "acme", window, indexes)
 				}
 			},
 		},
@@ -743,9 +746,9 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-		indexes, err := loadTenantIndexes(ctx, bucket, window)
+		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
-		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes["acme"])
+		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
 		require.NoError(t, err)
 		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
 		require.Equal(t, 2, stats.added)
@@ -765,10 +768,10 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 	t.Run("index merge", func(t *testing.T) {
 		oldPaths := []string{"indexes/a", "indexes/b", "indexes/c"}
 		bucket := overlappingIndexesBucket(ctx, t, window, "acme", oldPaths...)
-		indexes, err := loadTenantIndexes(ctx, bucket, window)
+		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
 		run := func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantIndexes(ctx, "acme", window, indexes["acme"])
+			return c.compactTenantIndexes(ctx, "acme", window, indexes)
 		}
 		t.Run("all tasks succeed", func(t *testing.T) {
 			runner := &fakeRunner{}
@@ -1626,6 +1629,70 @@ func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
 	discovered, allOK := c.discoverUniqueTenants(ctx)
 	require.True(t, allOK, "both windows read cleanly")
 	require.ElementsMatch(t, []string{"acme", "bravo"}, keys(discovered))
+}
+
+func TestDiscover(t *testing.T) {
+	window := imWindow()
+
+	for _, tc := range []struct {
+		name        string
+		bucket      func(ctx context.Context, t *testing.T) objstore.Bucket
+		wantTenants []string
+		wantOK      bool
+	}{
+		{
+			name: "lists per-tenant ToCs",
+			bucket: func(ctx context.Context, t *testing.T) objstore.Bucket {
+				return seededToC(ctx, t, window, "acme", "bravo")
+			},
+			wantTenants: []string{"acme", "bravo"},
+			wantOK:      true,
+		},
+		{
+			name: "ignores other windows",
+			bucket: func(ctx context.Context, t *testing.T) objstore.Bucket {
+				bucket := objstore.NewInMemBucket()
+				seedWindowToC(ctx, t, bucket, window, "acme")
+				seedWindowToC(ctx, t, bucket, window.Add(-metastore.MetastoreWindowSize), "bravo")
+				return bucket
+			},
+			wantTenants: []string{"acme"},
+			wantOK:      true,
+		},
+		{
+			name: "missing window is not authoritative",
+			bucket: func(context.Context, *testing.T) objstore.Bucket {
+				return objstore.NewInMemBucket()
+			},
+			wantOK: false,
+		},
+		{
+			name: "shared ToC from before the per-tenant layout is not read",
+			bucket: func(ctx context.Context, t *testing.T) objstore.Bucket {
+				bucket := objstore.NewInMemBucket()
+				legacyPath := strings.TrimSuffix(metastore.TableOfContentsWindowPrefix(window), "/") + ".toc"
+				require.NoError(t, bucket.Upload(ctx, legacyPath, strings.NewReader("legacy")))
+				return bucket
+			},
+			wantOK: false,
+		},
+		{
+			name: "list error is not authoritative",
+			bucket: func(context.Context, *testing.T) objstore.Bucket {
+				return errBucket{objstore.NewInMemBucket()}
+			},
+			wantOK: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			c := newTestCoordinator(t, tc.bucket(ctx, t), &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), nil)
+
+			tenants, ok := c.discover(ctx, window)
+			require.Equal(t, tc.wantOK, ok)
+			require.ElementsMatch(t, tc.wantTenants, keys(tenants))
+		})
+	}
 }
 
 // TestDiscoverAll_CurrentMissingPreviousPresent reproduces the indexing-lag
