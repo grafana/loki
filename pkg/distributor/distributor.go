@@ -833,7 +833,31 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		// streams are enforced as before. It is empty when the push consists of
 		// live-mode streams only.
 		if len(streams) > 0 {
-			streams, validationErr = d.enforceLimitsForStreams(ctx, tenantID, streams, validationContext, streamResolver, format)
+			enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+			accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+			enforceTimer.ObserveDuration()
+			if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+				if len(rejected) > 0 {
+					discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+					for _, stream := range rejected {
+						discardedStreams = append(discardedStreams, stream.Stream)
+					}
+					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+
+					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+					// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+					// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+					err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+					d.writeFailuresManager.Log(tenantID, err)
+					// Set the validation error to the stream limit error so it is returned to the client.
+					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+					// Do not return early here even if nothing was accepted: the
+					// live-mode rejection below still needs to run so its discards
+					// are tracked too.
+				}
+				streams = accepted
+			}
 		}
 	}
 
@@ -964,36 +988,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-}
-
-func (d *Distributor) enforceLimitsForStreams(ctx context.Context, tenantID string, streams []KeyedStream, validationContext validationContext, streamResolver push.StreamResolver, format string) ([]KeyedStream, error) {
-	var validationErr error
-	enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
-	accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-	enforceTimer.ObserveDuration()
-	if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-		if len(rejected) > 0 {
-			discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
-			for _, stream := range rejected {
-				discardedStreams = append(discardedStreams, stream.Stream)
-			}
-			d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
-
-			// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-			// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-			// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-			// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-			err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-			d.writeFailuresManager.Log(tenantID, err)
-			// Set the validation error to the stream limit error so it is returned to the client.
-			validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-			// Do not return early here even if nothing was accepted: the
-			// live-mode rejection below still needs to run so its discards
-			// are tracked too.
-		}
-		streams = accepted
-	}
-	return streams, validationErr
 }
 
 // processStreamEntries validates and enriches entries, then removes empty scopes and resources.
