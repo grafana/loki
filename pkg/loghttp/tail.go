@@ -86,6 +86,14 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
+	// Validate pipeline stages (line filters) before upgrading the websocket.
+	// syntax.ParseExpr only validates label matchers; pipeline stages like
+	// |~ "GET(" with invalid regex are caught later, causing the tail to hang
+	// silently on the websocket instead of returning a 400 immediately.
+	if _, err := syntax.ParseExpr(req.Query); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
 	req.Limit, err = limit(r)
 	if err != nil {
 		return nil, err
