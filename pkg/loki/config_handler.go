@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// nolint:unused // will be used again in #24589
 var errConfigFieldNotFound = errors.New("config field not found")
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
@@ -124,7 +123,21 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	}
 }
 
-// nolint:unused // will be used again in #24589
+// publicConfigHandler always returns exactly allowedFields, regardless of any query parameters —
+// there's no caller-selectable subset here, unlike configHandler's q=. A field missing from the
+// actual config is an operator misconfiguration (a typo in allowedFields), not a client error, so
+// it's a 500, not configHandler's 400.
+func publicConfigHandler(actualCfg any, allowedFields []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		result, err := extractConfigPaths(actualCfg, allowedFields)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeYAMLResponse(w, result)
+	}
+}
+
 func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
 	cfgMap, err := yamlMarshalUnmarshal(cfg)
 	if err != nil {
@@ -144,8 +157,6 @@ func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
 // setNestedValue writes val into node at the given path segments, reusing (rather than replacing)
 // any intermediate map already created there by an earlier path, so paths sharing a common ancestor
 // merge into one tree instead of clobbering each other.
-//
-// nolint:unused // will be used again in #24589
 func setNestedValue(node map[string]any, segments []string, val any) {
 	for _, segment := range segments[:len(segments)-1] {
 		next, ok := node[segment].(map[string]any)
@@ -158,7 +169,6 @@ func setNestedValue(node map[string]any, segments []string, val any) {
 	node[segments[len(segments)-1]] = val
 }
 
-// nolint:unused // will be used again in #24589
 func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {
 	var cur any = m
 	for _, segment := range strings.Split(path, ".") {
