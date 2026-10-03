@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#load-block" },
     { "include": "#clear-command" },
+    { "include": "#flush-command" },
     { "include": "#eval-instant" },
     { "include": "#eval-range" },
     { "include": "#eval-select" },
@@ -25,6 +26,13 @@
       "match": "^[ \\t]*(clear)\\b",
       "captures": {
         "1": { "name": "keyword.control.clear.logqltest" }
+      }
+    },
+
+    "flush-command": {
+      "match": "^[ \\t]*(flush)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.flush.logqltest" }
       }
     },
 

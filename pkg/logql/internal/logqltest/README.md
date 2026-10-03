@@ -13,13 +13,13 @@ For syntax highlighting of `.logqltest` files in GoLand or VS Code, see [syntax/
 
 ## Commands
 
-A script is a sequence of `load`, `clear`, and `eval` commands. Blank lines separate blocks, and
-`#` starts a comment (ignored to end of line, except inside `"…"` or `` `…` `` quotes).
+A script is a sequence of `load`, `flush`, `clear`, and `eval` commands. Blank lines separate
+blocks, and `#` starts a comment (ignored to end of line, except inside `"…"` or `` `…` `` quotes).
 
 ### `clear`
 
-Resets all loaded streams, so the next `load` starts from a clean slate. Use it to isolate
-independent scenarios within one file (see `testdata/AGENTS.md`).
+Resets all loaded streams and group cuts, so the next `load` starts from a clean slate. Use it to
+isolate independent scenarios within one file (see `testdata/AGENTS.md`).
 
 ### `load`
 
@@ -46,6 +46,29 @@ load
   `"value={{.i}}"` produces `value=0`, `value=1`, … — handy for `unwrap` scenarios.
 
 `load` blocks are additive and may be interleaved with `eval` commands.
+
+### `flush`
+
+Cuts the chunks written so far, so the entries a later `load` puts on the same stream go to a new
+chunk:
+
+```
+load
+  {app="a"} "boom" @ 30s [metadata trace_id="1"]
+
+flush
+
+load
+  {app="a"} "boom" @ 30s [metadata trace_id="2"]
+```
+
+Without a `flush` all of a stream's entries land in one chunk. With one, the stream gets two
+chunks, which overlap in time when their entries do. That is the only layout in which the store
+compares samples for deduplication.
+
+`flush` takes no arguments. A leading or repeated `flush` does nothing, since an empty chunk never
+reaches the store. Two chunks with identical contents get identical checksums, so the store keeps
+only one of them: give each chunk at least one entry of its own.
 
 ### `eval`
 
