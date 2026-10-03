@@ -64,24 +64,32 @@ func TestFlushCommitter(t *testing.T) {
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
 	})
 
-	t.Run("should fail without retrying when the object is not single-tenant", func(t *testing.T) {
-		var (
-			reg            = prometheus.NewRegistry()
-			flusher        = &mockFlusher{obj: &dataobj.Object{}}
-			indexer        = &mockIndexer{errs: []error{fmt.Errorf("%w: found 2 tenants", index.ErrNotSingleTenant)}}
-			tocWriter      = &mockTOCWriter{}
-			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
-		)
-		b := newTestFlushBuilder(t, reg)
-		err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
-		require.ErrorIs(t, err, index.ErrNotSingleTenant)
-		// A retry would have succeeded, as the mock only fails once.
-		require.Len(t, indexer.paths, 1)
-		require.Empty(t, tocWriter.paths)
-		require.Empty(t, committer.offsets)
-		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
-	})
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "should fail without retrying when the object is not single-tenant", err: index.ErrNotSingleTenant},
+		{name: "should fail without retrying when the error wraps ErrUnprocessableObject", err: fmt.Errorf("%w: test", index.ErrUnprocessableObject)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				reg            = prometheus.NewRegistry()
+				flusher        = &mockFlusher{obj: &dataobj.Object{}}
+				indexer        = &mockIndexer{errs: []error{fmt.Errorf("calculate object: %w", tc.err)}}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			)
+			b := newTestFlushBuilder(t, reg)
+			err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
+			require.ErrorIs(t, err, tc.err)
+			// A retry would have succeeded, as the mock only fails once.
+			require.Len(t, indexer.paths, 1)
+			require.Empty(t, tocWriter.paths)
+			require.Empty(t, committer.offsets)
+			requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
+		})
+	}
 
 	t.Run("should fail when the flush fails", func(t *testing.T) {
 		var (
