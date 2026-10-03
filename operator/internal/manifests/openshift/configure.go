@@ -303,12 +303,12 @@ func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorSe
 		RefreshInterval: "1m",
 		Notifier: &config.NotifierConfig{
 			TLS: config.TLSConfig{
-				ServerName: ptr.To(monitorServerName),
+				ServerName: new(monitorServerName),
 				CAPath:     &caPath,
 			},
 			HeaderAuth: config.HeaderAuth{
 				CredentialsFile: &token,
-				Type:            ptr.To("Bearer"),
+				Type:            new("Bearer"),
 			},
 		},
 	}

@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -151,7 +150,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(opts.Stack.Template.Querier.Replicas),
+			Replicas: new(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -244,7 +243,7 @@ func NewQuerierPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
+			MaxUnavailable: new(intstr.FromInt32(1)),
 		},
 	}
 }

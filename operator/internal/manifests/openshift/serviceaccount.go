@@ -3,7 +3,6 @@ package openshift
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -21,6 +20,6 @@ func BuildRulerServiceAccount(opts Options) client.Object {
 			Name:      rulerServiceAccountName(opts),
 			Namespace: opts.BuildOpts.LokiStackNamespace,
 		},
-		AutomountServiceAccountToken: ptr.To(true),
+		AutomountServiceAccountToken: new(true),
 	}
 }
