@@ -1,0 +1,13 @@
+Concatenations with a literal prefix on a non-message column must match the
+whole value, so they are rewritten to an anchored regex instead of a
+substring match.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+foo.*
+
+-- expect --
+%1 = MATCH_RE label.foo "^(?:foo.*)$"
+RETURN %1
