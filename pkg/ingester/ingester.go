@@ -268,6 +268,12 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// flushQueuesClosed guards against enqueueing onto a flush queue that shutdown
+	// has already closed. Readers of the flag schedule flushes under the read lock
+	// so the queues cannot be closed while a sweep is in flight.
+	flushQueuesMtx    sync.RWMutex
+	flushQueuesClosed bool
+
 	// Spread out calls to the chunk store over the flush period
 	flushRateLimiter *rate.Limiter
 
@@ -722,9 +728,7 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
+	i.closeFlushQueues()
 	i.flushQueuesDone.Wait()
 
 	i.streamRateCalculator.Stop()

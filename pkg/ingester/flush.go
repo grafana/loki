@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -130,20 +131,38 @@ func (i *Ingester) TransferOut(_ context.Context) error {
 
 func (i *Ingester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
-
-	// Close the flush queues, to unblock waiting workers.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
+	i.closeFlushQueues()
 
 	i.flushQueuesDone.Wait()
 	level.Debug(i.logger).Log("msg", "flush queues have drained")
 }
 
+// closeFlushQueues closes the flush queues, to unblock waiting workers, and marks
+// them as no longer accepting work.
+func (i *Ingester) closeFlushQueues() {
+	i.flushQueuesMtx.Lock()
+	defer i.flushQueuesMtx.Unlock()
+
+	i.flushQueuesClosed = true
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+}
+
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
-	i.sweepUsers(true, true)
+	if i.State() != services.Running {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	// Return service unavailable if the queues are already closed.
+	if !i.sweepUsers(true, true) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -157,6 +176,12 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 // immediately referenceable. The flush is synchronous, so
 // callers should set a generous client timeout.
 func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
+	// Refuse new work if ingester is not running.
+	if i.State() != services.Running {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	ctx := r.Context()
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -253,14 +278,26 @@ func (o *flushOp) Priority() int64 {
 	return -int64(o.from)
 }
 
-// sweepUsers periodically schedules series for flushing and garbage collects users with no streams
-func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
+// sweepUsers periodically schedules series for flushing and garbage collects users with no streams.
+//
+// It holds the flush queue read lock for the whole sweep so that shutdown cannot
+// close the queues underneath an in-flight enqueue. It returns false if the flush
+// queues are closed.
+func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) bool {
+	i.flushQueuesMtx.RLock()
+	defer i.flushQueuesMtx.RUnlock()
+
+	if i.flushQueuesClosed {
+		return false
+	}
+
 	instances := i.getInstances()
 
 	for _, instance := range instances {
 		i.sweepInstance(instance, immediate, mayRemoveStreams)
 	}
 	i.setFlushRate()
+	return true
 }
 
 func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
