@@ -141,6 +141,24 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			return nil, ErrNotSupported
 		}
 
+		// Run logical optimization passes (e.g. regex simplification, which
+		// also anchors otherwise-unanchored one-sided regex label filters such
+		// as "foo.*" -- see grafana/loki#23892). This mirrors
+		// [Engine.buildLogicalPlan], which also calls Optimize; skipping this
+		// step here would leave label/metadata/parsed-field regex filters
+		// unanchored, since the executor's BinaryOpMatchRe evaluation performs
+		// a bare, unanchored regexp match.
+		var opt logical.Optimizer
+		if err := opt.Optimize(logicalPlan); err != nil {
+			level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
+			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stageLogicalPlanning, statusFailure, queryType).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to optimize logical plan")
+			return nil, ErrNotSupported
+		}
+		e.metrics.recordLogicalPasses(opt.Report())
+
 		durLogicalPlanning = timer.ObserveDuration()
 		level.Info(logger).Log(
 			"msg", "finished logical planning",
