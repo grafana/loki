@@ -350,7 +350,10 @@ func IngestionPoliciesKafkaHeadersToContext(ctx context.Context, headers []kgo.R
 // Each field is a pointer so that a nil field inherits the value from the base (tenant) Config —
 // this lets a policy change just one setting (e.g. toggle time sharding) without restating the rest.
 type PerPolicyConfigOverride struct {
-	Enabled                  *bool             `yaml:"enabled" json:"enabled" doc:"description=Override shard_streams.enabled for a specific policy."`
+	// Enabled is ignored: shard_streams.enabled can no longer be overridden per policy, only
+	// globally. The field is kept so existing config does not fail to parse; Limits.Validate logs
+	// a warning if it is set.
+	Enabled                  *bool             `yaml:"enabled" json:"enabled" doc:"description=Ignored. shard_streams.enabled can only be set globally; this per-policy override has no effect."`
 	DesiredRate              *flagext.ByteSize `yaml:"desired_rate" json:"desired_rate" doc:"description=Override shard_streams.desired_rate for a specific policy."`
 	TimeShardingEnabled      *bool             `yaml:"time_sharding_enabled" json:"time_sharding_enabled" doc:"description=Override shard_streams.time_sharding_enabled for a specific policy."`
 	TimeShardingIgnoreRecent *model.Duration   `yaml:"time_sharding_ignore_recent" json:"time_sharding_ignore_recent" doc:"description=Override shard_streams.time_sharding_ignore_recent for a specific policy."`
@@ -530,10 +533,17 @@ func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, 
 // PolicyShardStreams returns the effective shard_streams config for the policy (the tenant config
 // with the policy's overrides applied) and whether the policy overrides shard_streams. The
 // returned config is always usable (it is the tenant config when not overridden).
+//
+// Enabled is always true: stream sharding can no longer be turned off per tenant or policy, only
+// globally (see shardstreams.Config.Enabled and Limits.Validate, which warns if a tenant or
+// policy still tries to override it).
 func (o *Overrides) PolicyShardStreams(userID, policy string) (shardstreams.Config, bool) {
 	base := o.getOverridesForUser(userID).ShardStreams
+	base.Enabled = true
 	if pl, ok := o.policyOverride(userID, policy); ok && pl.ShardStreams != nil {
-		return pl.ShardStreams.ApplyTo(base), true
+		cfg := pl.ShardStreams.ApplyTo(base)
+		cfg.Enabled = true
+		return cfg, true
 	}
 	return base, false
 }

@@ -900,6 +900,26 @@ func TestPolicyShardStreams(t *testing.T) {
 	require.Equal(t, base, cfg)
 }
 
+func TestShardStreamsEnabledIsGlobalOnly(t *testing.T) {
+	// A tenant or policy trying to disable stream sharding no longer has any effect: Enabled is
+	// always reported as true, and Validate only warns, it does not fail.
+	enabledOverride := false
+	limits := &Limits{}
+	dskit_flagext.DefaultValues(limits)
+	limits.ShardStreams.Enabled = false
+	limits.PolicyOverrideLimits = map[string]PolicyOverridableLimits{
+		"foo": {ShardStreams: &PerPolicyConfigOverride{Enabled: &enabledOverride}},
+	}
+	require.NoError(t, limits.Validate())
+
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+	require.True(t, overrides.ShardStreams("tenant1").Enabled)
+
+	cfg, ok := overrides.PolicyShardStreams("tenant1", "foo")
+	require.True(t, ok)
+	require.True(t, cfg.Enabled)
+}
+
 func TestOTLPConfig(t *testing.T) {
 	initialDefault := defaultLimits.Load()
 	defer func() {
