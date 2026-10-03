@@ -230,15 +230,17 @@ func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, li
 	sgClient.cfg.PoolConfig.RemoteTimeout = 2 * time.Second
 	sgClient.cfg.PoolConfig.ClientCleanupPeriod = 5 * time.Second
 	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
+	sgClient.cfg.PoolConfig.HealthCheckGracePeriod = 2 * time.Minute
 
 	if sgClient.cfg.Mode == RingMode {
 		sgClient.pool = clientpool.NewPool("index-gateway", sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger, metricsNamespace)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
 		poolCfg := client.PoolConfig{
-			CheckInterval:      sgClient.cfg.PoolConfig.ClientCleanupPeriod,
-			HealthCheckEnabled: sgClient.cfg.PoolConfig.HealthCheckIngesters,
-			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
+			CheckInterval:          sgClient.cfg.PoolConfig.ClientCleanupPeriod,
+			HealthCheckEnabled:     sgClient.cfg.PoolConfig.HealthCheckIngesters,
+			HealthCheckTimeout:     sgClient.cfg.PoolConfig.RemoteTimeout,
+			HealthCheckGracePeriod: sgClient.cfg.PoolConfig.HealthCheckGracePeriod,
 		}
 		clients := prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
@@ -623,5 +625,6 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 		}
 	}
 
+	
 	return addrs[start:end]
 }
