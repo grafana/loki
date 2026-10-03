@@ -231,6 +231,215 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 	}
 }
 
+func TestPushHandlerNegativeSizeHandling(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// A custom parser that reports negative sizes, to exercise the guard clause in recordPush
+	// that prevents a panic when incrementing Prometheus counters.
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.PushRequest, *push.Stats, error) {
+		req := &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels:  `{foo="bar"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test line"}},
+				},
+			},
+		}
+
+		stats := push.NewPushStats()
+		stats.LogLinesBytes[""] = map[time.Duration]int64{time.Hour: -100}
+		stats.StructuredMetadataBytes[""] = map[time.Duration]int64{time.Hour: -200}
+
+		return req, stats, nil
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() {
+		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+	})
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+	require.Equal(t, float64(0), testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "1", "false", "", constants.Loki)))
+}
+
+func TestPushHandlerAllLogsFilteredRecordsMetrics(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// A parser that reports some bytes/lines seen before filtering everything out, then
+	// returns ErrAllLogsFiltered. Regression test for: the ErrAllLogsFiltered branch in
+	// pushHandler used to return before recordParsedRequest was ever called, silently
+	// dropping the ingest metrics below for any request that hit this path.
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.PushRequest, *push.Stats, error) {
+		req := &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{Labels: `{foo="bar"}`},
+			},
+		}
+
+		stats := push.NewPushStats()
+		stats.LogLinesBytes[""] = map[time.Duration]int64{0: 8}
+		stats.PolicyNumLines[""] = 1
+
+		return req, stats, push.ErrAllLogsFiltered
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, float64(8), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+}
+
+// TestPushHandlerAllLogsFilteredNilStats verifies pushHandler doesn't panic when a
+// RequestParser returns ErrAllLogsFiltered without populating req/pushStats, since not
+// every RequestParser implementation is guaranteed to do so.
+func TestPushHandlerAllLogsFilteredNilStats(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	var mockParser push.RequestParser = func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ push.UsageTracker, _ push.StreamResolver, _ log.Logger) (*logproto.PushRequest, *push.Stats, error) {
+		return nil, nil, push.ErrAllLogsFiltered
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader("{}"))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	require.NotPanics(t, func() {
+		d.pushHandler(rec, req, mockParser, push.HTTPError, constants.Loki)
+	})
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestPushHandlerRecordsIngestMetrics(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	line := "fizzbuzz"
+	body := fmt.Sprintf(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "%d", %q, {"name1": "value1"} ] ] }]}`, time.Now().UnixNano(), line)
+
+	// bytesReceivedStats, structuredMetadataBytesReceivedStats and linesReceivedStats are process-wide
+	// usage-stats counters that other tests in this package may have already incremented; capture the
+	// current values as the baseline so the deltas below are correct regardless of test execution order.
+	previousBytesReceived := bytesReceivedStats.Value()["total"].(int64)
+	previousStructuredMetadataBytesReceived := structuredMetadataBytesReceivedStats.Value()["total"].(int64)
+	previousLinesReceived := linesReceivedStats.Value()["total"].(int64)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	structuredMetadataBytes := float64(len("name1") + len("value1"))
+	logLineBytes := float64(len(line))
+
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+	require.Equal(t, structuredMetadataBytes, testutil.ToFloat64(d.m.structuredMetadataBytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, logLineBytes+structuredMetadataBytes, testutil.ToFloat64(d.m.expandedBytesIngested.WithLabelValues("test", constants.Loki)))
+
+	require.Equal(t, int64(1), linesReceivedStats.Value()["total"].(int64)-previousLinesReceived)
+	require.Equal(t, int64(structuredMetadataBytes), structuredMetadataBytesReceivedStats.Value()["total"].(int64)-previousStructuredMetadataBytesReceived)
+	require.Equal(t, int64(logLineBytes+structuredMetadataBytes), bytesReceivedStats.Value()["total"].(int64)-previousBytesReceived)
+}
+
+// TestPushHandlerRecordsIngestMetricsMultiplePolicies is a regression test for coverage lost
+// when pkg/loghttp/push/push_test.go's old TestParseRequest table (which asserted metric label
+// values directly) was replaced: it only ever exercised a single stream under a single,
+// empty-string policy. This reproduces the deleted multi-policy case (streams resolving to
+// "dev", "prod", and an unmatched "" policy in one request), asserting that each policy's
+// bytes/lines land on distinct, correctly-scoped label combinations rather than being merged
+// into the wrong bucket.
+func TestPushHandlerRecordsIngestMetricsMultiplePolicies(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"dev":  []*validation.PriorityStream{{Selector: `{environment="dev"}`, Priority: 1}},
+		"prod": []*validation.PriorityStream{{Selector: `{environment="prod"}`, Priority: 1}},
+	}
+	require.NoError(t, limits.Validate())
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	now := time.Now().UnixNano()
+	body := fmt.Sprintf(
+		`{"streams": [`+
+			`{ "stream": { "foo": "bar", "environment": "dev" }, "values": [ [ "%d", "devline" ] ] },`+
+			`{ "stream": { "foo": "bar", "environment": "prod" }, "values": [ [ "%d", "prodline" ] ] },`+
+			`{ "stream": { "foo": "bar", "other": "x" }, "values": [ [ "%d", "unmatched" ] ] }`+
+			`]}`,
+		now, now, now,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	// Each policy's bytes/lines land on their own label combination, independent of the others.
+	require.Equal(t, float64(len("devline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "dev", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "dev", constants.Loki)))
+
+	require.Equal(t, float64(len("prodline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "prod", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "prod", constants.Loki)))
+
+	require.Equal(t, float64(len("unmatched")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "false", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "false", "", constants.Loki)))
+}
+
+// TestPushHandlerRecordsIngestMetricsInternalStream is a regression test for coverage lost
+// alongside the multi-policy case above: pkg/loghttp/push/push_test.go used to assert that a
+// stream carrying the aggregated-metric label drives is_internal_stream="true" on the
+// resulting ingest metrics. HasInternalStreams is computed once per request (not per-stream),
+// so this uses a request containing only the internal stream to keep the assertion unambiguous.
+func TestPushHandlerRecordsIngestMetricsInternalStream(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	now := time.Now().UnixNano()
+	body := fmt.Sprintf(`{"streams": [{ "stream": { "__aggregated_metric__": "stuff", "foo": "bar" }, "values": [ [ "%d", "aggline" ] ] }]}`, now)
+
+	req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
+	req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	require.Equal(t, float64(len("aggline")), testutil.ToFloat64(d.m.bytesIngested.WithLabelValues("test", "", "true", "", constants.Loki)))
+	require.Equal(t, float64(1), testutil.ToFloat64(d.m.linesIngested.WithLabelValues("test", "true", "", constants.Loki)))
+}
+
 func TestPushHandlerLogPushRequestStreams(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)

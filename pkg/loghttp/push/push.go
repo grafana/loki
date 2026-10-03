@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -25,7 +24,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -38,46 +36,14 @@ import (
 )
 
 var (
-	contentType   = http.CanonicalHeaderKey("Content-Type")
-	contentEnc    = http.CanonicalHeaderKey("Content-Encoding")
-	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, resource and scope attributes are considered only once per request.",
-	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"}) // TODO rename is_internal_stream to has_internal_streams
-
-	expandedBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_expanded_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, all attributes added as structured metadata are considered.",
-	}, []string{"tenant", "format"})
-
-	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_structured_metadata_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
-	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"})
-	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_lines_received_total",
-		Help:      "The total number of lines received per tenant",
-	}, []string{"tenant", "is_internal_stream", "policy", "format"})
+	contentType = http.CanonicalHeaderKey("Content-Type")
+	contentEnc  = http.CanonicalHeaderKey("Content-Encoding")
 
 	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_otlp_exporter_streams_total",
 		Help:      "The total number of streams with exporter=OTLP label",
 	}, []string{"tenant"})
-
-	distributorLagByUserAgent = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_lag_ms_total",
-		Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
-	}, []string{"tenant", "userAgent", "format"})
-
-	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
-	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
-	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const (
@@ -187,151 +153,6 @@ type Stats struct {
 	// OTLPAttributes breaks TotalExpandedEntriesSize down per resource and scope attribute.
 	// Is only populated for OTLP requests when logOTLPAttributeExpansion is true.
 	OTLPAttributes *otlpattrs.Accumulator
-}
-
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
-	// If the X-Loki-Backfill-Shard header is set, validate it and stash the shard in the request
-	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
-	if shard, ok, err := ExtractAndValidateBackfillShard(r); err != nil {
-		return nil, nil, err
-	} else if ok {
-		r = r.Clone(InjectBackfillShardContext(r.Context(), shard))
-	}
-
-	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
-	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
-		if errors.Is(err, util.ErrMessageSizeTooLarge) || errors.Is(err, util.ErrMessageDecompressedSizeTooLarge) {
-			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
-		}
-		return nil, nil, err
-	}
-
-	var (
-		entriesSize            int64
-		structuredMetadataSize int64
-	)
-
-	hasInternalStreams := fmt.Sprintf("%t", pushStats.HasInternalStreams)
-
-	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
-		for retentionPeriod, size := range retentionToSizeMapping {
-			retentionHours := RetentionPeriodToString(retentionPeriod)
-			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size >= 0 {
-				bytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
-				bytesReceivedStats.Inc(size)
-			} else {
-				level.Error(logger).Log(
-					"msg", "negative log lines bytes received",
-					"userID", userID,
-					"retentionHours", retentionHours,
-					"hasInternalStreams", hasInternalStreams,
-					"policyName", policyName,
-					"size", size)
-			}
-			entriesSize += size
-		}
-	}
-
-	for policyName, retentionToSizeMapping := range pushStats.StructuredMetadataBytes {
-		for retentionPeriod, size := range retentionToSizeMapping {
-			retentionHours := RetentionPeriodToString(retentionPeriod)
-
-			// Add guard clause to prevent negative values from being passed to Prometheus counters
-			if size >= 0 {
-				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
-				bytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
-				bytesReceivedStats.Inc(size)
-				structuredMetadataBytesReceivedStats.Inc(size)
-			} else {
-				level.Error(logger).Log(
-					"msg", "negative structured metadata bytes received",
-					"userID", userID,
-					"retentionHours", retentionHours,
-					"hasInternalStreams", hasInternalStreams,
-					"policyName", policyName,
-					"size", size)
-			}
-
-			entriesSize += size
-			structuredMetadataSize += size
-		}
-	}
-
-	expandedBytesIngested.WithLabelValues(userID, format).Add(float64(pushStats.TotalExpandedEntriesSize))
-
-	var totalNumLines int64
-	// incrementing tenant metrics if we have a tenant.
-	for policy, numLines := range pushStats.PolicyNumLines {
-		if numLines != 0 && userID != "" {
-			linesIngested.WithLabelValues(userID, hasInternalStreams, policy, format).Add(float64(numLines))
-		}
-		totalNumLines += numLines
-	}
-	linesReceivedStats.Inc(totalNumLines)
-	mostRecentLagMs := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
-
-	logValues := []interface{}{
-		"msg", "push request parsed",
-		"path", r.URL.Path,
-		"contentType", pushStats.ContentType,
-		"contentEncoding", pushStats.ContentEncoding,
-		"bodySize", humanize.Bytes(uint64(pushStats.BodySize)),
-		"streams", len(req.Streams),
-		"entries", totalNumLines,
-		"streamLabelsSize", humanize.Bytes(uint64(pushStats.StreamLabelsSize)),
-		"entriesSize", humanize.Bytes(uint64(entriesSize)),
-		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
-		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"totalExpandedSize", humanize.Bytes(uint64(pushStats.TotalExpandedEntriesSize + pushStats.StreamLabelsSize)),
-		"mostRecentLagMs", mostRecentLagMs,
-	}
-
-	if presumedAgentIP != "" {
-		logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
-	}
-
-	userAgent := r.Header.Get("User-Agent")
-	// Sanitize the User-Agent to valid UTF-8 to prevent prometheus from panicking
-	// when it's used as a label value in WithLabelValues.
-	userAgent = strings.ToValidUTF8(userAgent, "")
-	if userAgent != "" {
-		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
-	}
-	// Since we're using a counter (so we can do things w/rate, irate, deriv, etc.) on the lag metrics,
-	// dispatch a warning if we ever get a negative value.  This could occur if we start getting logs
-	// whose timestamps are in the future (e.g. agents sending logs w/missing or invalid NTP configs).
-	// Negative values can't give us much insight into whether-or-not a customer's ingestion is falling
-	// behind, so we won't include it in the metrics, and instead will capture the occurrence in the
-	// distributor logs.
-	// We capture this metric even when the user agent is empty; we want insight into the tenant's
-	// ingestion lag no matter what.
-	if mostRecentLagMs >= 0 && mostRecentLagMs < 1_000_000_000 {
-		// we're filtering out anything over 1B -- the OTLP endpoints often really mess with this metric...
-		distributorLagByUserAgent.WithLabelValues(userID, userAgent, format).Add(float64(mostRecentLagMs))
-	}
-
-	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
-		resultHash := uint64(0)
-		for _, stream := range req.Streams {
-			// I don't believe a hash will be set, but if it is, use it.
-			hash := stream.Hash
-			if hash == 0 {
-				// calculate an fnv32 hash of the stream labels
-				// reusing our query hash function for simplicity
-				hash = uint64(util.HashedQuery(stream.Labels))
-			}
-			// xor the hash with the result hash, this will result in the same hash regardless of the order of the streams
-			resultHash ^= hash
-		}
-		logValues = append(logValues, "hashOfLabels", resultHash)
-		pushStats.HashOfAllStreams = resultHash
-	}
-
-	logValues = append(logValues, pushStats.Extra...)
-	level.Debug(logger).Log(logValues...)
-
-	return req, pushStats, err
 }
 
 // parsePushRequestBody returns logproto.PushRequest from http.Request body, deserialized according to specified content type.
