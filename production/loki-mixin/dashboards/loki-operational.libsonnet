@@ -28,19 +28,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                ],
 
                                jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
+                                 cortexgateway: [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'cortex-gw(-internal)?')],
                                  distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(distributor|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/distributor')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(distributor|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'distributor')],
                                  ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/(ingester.*|partition-ingester.*)')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester.*|ingester.*|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(ingester.*|partition-ingester.*)')],
                                  querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(querier|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/querier')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(querier|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'querier')],
                                  queryFrontend: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(query-frontend|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/query-frontend')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(query-frontend|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'query-frontend')],
                                },
 
                                podMatchers:: {
