@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -615,6 +616,10 @@ func TestFlushTenantHandler(t *testing.T) {
 		expectedStreams []string
 		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
 		expectedFlushes int32
+		// expectedMetricStatus is the status label expected on
+		// loki_ingester_flush_tenant_requests_total; empty means the request
+		// should not be counted (e.g. no tenant could be resolved).
+		expectedMetricStatus string
 	}{
 		{
 			name:                    "matcher scopes flush to matching streams",
@@ -624,6 +629,7 @@ func TestFlushTenantHandler(t *testing.T) {
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`},
 			expectedFlushes:         1,
+			expectedMetricStatus:    "success",
 		},
 		{
 			name:                    "empty selector flushes the whole tenant",
@@ -632,6 +638,7 @@ func TestFlushTenantHandler(t *testing.T) {
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
 			expectedFlushes:         1,
+			expectedMetricStatus:    "success",
 		},
 		{
 			name:                    "missing tenant is a bad request",
@@ -642,11 +649,13 @@ func TestFlushTenantHandler(t *testing.T) {
 			orgID:                   userID,
 			flushStreamsSelector:    "not-a-matcher",
 			expectedFlushStatusCode: http.StatusBadRequest,
+			expectedMetricStatus:    "failure",
 		},
 		{
 			name:                    "unknown tenant is a no-op",
 			orgID:                   "no-such-tenant",
 			expectedFlushStatusCode: http.StatusNoContent,
+			expectedMetricStatus:    "success",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -679,6 +688,13 @@ func TestFlushTenantHandler(t *testing.T) {
 			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
 
 			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
+
+			if tc.expectedMetricStatus != "" {
+				require.Equal(t, 1, testutil.CollectAndCount(ing.metrics.flushTenantRequestsTotal))
+				require.Equal(t, float64(1), testutil.ToFloat64(ing.metrics.flushTenantRequestsTotal.WithLabelValues(tc.expectedMetricStatus)))
+			} else {
+				require.Equal(t, 0, testutil.CollectAndCount(ing.metrics.flushTenantRequestsTotal))
+			}
 		})
 	}
 }
