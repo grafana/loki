@@ -1195,9 +1195,9 @@ func (c *MarshalJSONCode) marshalerCall() *MarshalerCall {
 		}
 		recv = reflect.PointerTo(c.typ)
 	}
-	iface := marshalJSONType
+	iface := marshalJSONInterface
 	if c.isMarshalerContext {
-		iface = marshalJSONContextType
+		iface = marshalJSONContextInterface
 	}
 	return newMarshalerCall(recv, iface)
 }
@@ -1264,7 +1264,7 @@ func (c *MarshalTextCode) marshalerCall() *MarshalerCall {
 		}
 		recv = reflect.PointerTo(c.typ)
 	}
-	return newMarshalerCall(recv, marshalTextType)
+	return newMarshalerCall(recv, marshalTextInterface)
 }
 
 func (c *MarshalTextCode) Filter(query *FieldQuery) Code {
