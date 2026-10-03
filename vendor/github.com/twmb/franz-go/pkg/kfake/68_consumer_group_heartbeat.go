@@ -19,6 +19,5 @@ func (c *Cluster) handleConsumerGroupHeartbeat(creq *clientReq) (kmsg.Response, 
 		return nil, err
 	}
 
-	c.groups.handleConsumerGroupHeartbeat(creq)
-	return nil, nil
+	return c.groups.handleConsumerGroupHeartbeat(creq), nil
 }

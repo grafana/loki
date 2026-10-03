@@ -25,8 +25,12 @@ func (c *Cluster) handleDescribeACLs(creq *clientReq) (kmsg.Response, error) {
 		return nil, err
 	}
 
-	if !c.allowedClusterACL(creq, kmsg.ACLOperationDescribe) {
-		resp.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+	var k faultKey
+	if req.ResourceName != nil {
+		k.resource = *req.ResourceName
+	}
+	if e := c.denyCluster(creq, kmsg.ACLOperationDescribe, k); e != nil {
+		resp.ErrorCode = e.Code
 		return resp, nil
 	}
 
@@ -38,6 +42,12 @@ func (c *Cluster) handleDescribeACLs(creq *clientReq) (kmsg.Response, error) {
 		resourceName: req.ResourceName,
 		principal:    req.Principal,
 		host:         req.Host,
+	}
+
+	if !filter.validate() {
+		resp.ErrorCode = kerr.InvalidRequest.Code
+		resp.ErrorMessage = kmsg.StringPtr("DescribeAclsRequest contains UNKNOWN elements")
+		return resp, nil
 	}
 
 	matching := c.acls.describe(filter)
