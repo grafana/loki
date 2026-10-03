@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -475,6 +476,27 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if svc.Name == name.Name && svc.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&svc)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
 			k.SetClientObject(object, &stack)
@@ -498,6 +520,140 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 
 	// make sure update was called
 	require.NotZero(t, k.UpdateCallCount())
+}
+
+func TestCreateOrUpdateLokiStack_WhenResourceNotOwnedByLokiStack_ReturnsError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	// Return existing resources that are owned by a different controller
+	foreignOwnerRefs := []metav1.OwnerReference{
+		{
+			APIVersion:         "apps/v1",
+			Kind:               "Deployment",
+			Name:               "some-other-owner",
+			UID:                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			Controller:         ptr.To(true),
+			BlockOwnerDeletion: ptr.To(true),
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		// All other namespaced resources exist but are owned by a different controller
+		object.SetOwnerReferences(foreignOwnerRefs)
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+	require.Error(t, err)
+
+	var degradedErr *status.DegradedError
+	require.True(t, errors.As(err, &degradedErr), "Expected DegradedError")
+	require.Equal(t, lokiv1.ReasonResourceOwnershipConflict, degradedErr.Reason)
+	require.Contains(t, degradedErr.Message, "Resource ownership conflict detected")
+	require.Contains(t, degradedErr.Message, "ConfigMap/my-stack-config", "Error message should list conflicting resources")
+	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
+}
+
+func TestCreateOrUpdateLokiStack_WhenObjectHasEmptyGVK_SkipsOwnershipCheck(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+	// Should succeed even with objects that have empty GVK (like NetworkPolicies without TypeMeta)
+	require.NoError(t, err)
 }
 
 func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects(t *testing.T) {
@@ -643,6 +799,27 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if svc.Name == name.Name && svc.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&svc)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
 			k.SetClientObject(object, &stack)
