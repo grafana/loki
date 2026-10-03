@@ -1075,7 +1075,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.11.0
 ## explicit; go 1.26.0
 github.com/hashicorp/serf/coordinate
-# github.com/huandu/xstrings v1.6.1
+# github.com/huandu/xstrings v1.6.2
 ## explicit; go 1.12
 github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
