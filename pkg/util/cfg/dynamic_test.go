@@ -104,6 +104,43 @@ server:
 		data := testContext(mockApplyDynamicConfig, defaultYamlConfig, args)
 		assert.Equal(t, 7070, data.Port)
 	})
+
+	t.Run("DynamicUnmarshal fails when config file does not exist", func(t *testing.T) {
+		data := NewDynamicConfig(nil)
+		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", "/path/that/does/not/exist.yaml"}
+
+		err := DynamicUnmarshal(&data, args, fs)
+		require.Error(t, err)
+	})
+
+	t.Run("DynamicUnmarshalOptionalConfig does not fail when config file does not exist", func(t *testing.T) {
+		data := NewDynamicConfig(nil)
+		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+		args := []string{"-config.file", "/path/that/does/not/exist.yaml"}
+
+		err := DynamicUnmarshalOptionalConfig(&data, args, fs)
+		require.NoError(t, err)
+		// Defaults are still applied.
+		assert.Equal(t, 80, data.Port)
+		assert.Equal(t, 60*time.Second, data.Timeout)
+	})
+
+	t.Run("DynamicUnmarshalOptionalConfig still loads config file when present", func(t *testing.T) {
+		data := NewDynamicConfig(nil)
+		fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
+
+		file, err := os.CreateTemp(t.TempDir(), "config.yaml")
+		require.NoError(t, err)
+		_, err = file.WriteString(defaultYamlConfig)
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
+
+		args := []string{"-config.file", file.Name()}
+		err = DynamicUnmarshalOptionalConfig(&data, args, fs)
+		require.NoError(t, err)
+		assert.Equal(t, 8080, data.Port)
+	})
 }
 
 type DynamicConfig struct {

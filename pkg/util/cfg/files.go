@@ -75,6 +75,18 @@ func dYAML(y []byte, strict bool) Source {
 }
 
 func ConfigFileLoader(args []string, name string, strict bool) Source {
+	return configFileLoader(args, name, strict, false)
+}
+
+// OptionalConfigFileLoader behaves like ConfigFileLoader but does not return an
+// error when none of the configured paths exist; instead it is a no-op. This
+// allows commands that don't depend on a config file (such as -list-targets) to
+// load one when it is present without requiring one to exist.
+func OptionalConfigFileLoader(args []string, name string, strict bool) Source {
+	return configFileLoader(args, name, strict, true)
+}
+
+func configFileLoader(args []string, name string, strict, optional bool) Source {
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
 
@@ -115,6 +127,9 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 				}
 				return err
 			}
+		}
+		if optional {
+			return nil
 		}
 		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)
 	}
