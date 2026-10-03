@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -309,4 +312,36 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	}
 
 	return cfg
+}
+
+func TestInitMemberlistKV_UnresolvableAdvertiseAddr(t *testing.T) {
+	// Memberlist is only started when a KV store uses it, so failing to resolve
+	// an advertise address must not prevent the module from initialising.
+	l := &Loki{
+		Cfg:    Config{},
+		Server: &server.Server{HTTP: mux.NewRouter()},
+	}
+	flagext.DefaultValues(&l.Cfg.MemberlistKV)
+	l.Cfg.Common.Ring.InstanceInterfaceNames = []string{"loki-nonexistent0"}
+
+	svc, err := l.initMemberlistKV()
+	require.NoError(t, err)
+	require.NotNil(t, svc)
+	require.Empty(t, l.Cfg.MemberlistKV.AdvertiseAddr)
+}
+
+func TestMemberlistAdvertiseAddr(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configAddr string
+		interfaces []string
+		expected   string
+	}{
+		{name: "configured address is kept", configAddr: "10.0.0.1", interfaces: []string{"loki-nonexistent0"}, expected: "10.0.0.1"},
+		{name: "unresolvable interfaces leave address unset", interfaces: []string{"loki-nonexistent0"}, expected: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, memberlistAdvertiseAddr(tc.configAddr, tc.interfaces, log.NewNopLogger(), false))
+		})
+	}
 }
