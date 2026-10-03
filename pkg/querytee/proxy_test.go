@@ -44,6 +44,51 @@ func Test_NewProxy(t *testing.T) {
 	assert.Nil(t, p)
 }
 
+func TestRoutingConfig_Validate_V1OnlySelector(t *testing.T) {
+	tests := []struct {
+		name             string
+		selector         string
+		expectedErr      string
+		expectedMatchers int
+	}{
+		{
+			name: "empty selector is valid",
+		},
+		{
+			name:             "valid equality selector",
+			selector:         `{app="foo"}`,
+			expectedMatchers: 1,
+		},
+		{
+			name:        "invalid selector is rejected",
+			selector:    `{app=}`,
+			expectedErr: "invalid v1-only stream selector",
+		},
+		{
+			name:        "non-equality matchers are rejected",
+			selector:    `{app="foo", env=~"prod.*"}`,
+			expectedErr: "must contain only equality matchers",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := RoutingConfig{
+				Mode:           RoutingModeV1Preferred,
+				V1OnlySelector: tt.selector,
+			}
+			err := cfg.Validate()
+
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, cfg.V1OnlyMatchers, tt.expectedMatchers)
+		})
+	}
+}
+
 func Test_Proxy_RequestsForwarding(t *testing.T) {
 	const (
 		querySingleMetric1 = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"cortex_build_info"},"value":[1583320883,"1"]}]}}`

@@ -13,8 +13,10 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -35,6 +37,7 @@ type SplittingHandlerConfig struct {
 	SplitLag                      time.Duration
 	SplitRetentionDays            int64
 	AddRoutingDecisionsToWarnings bool
+	V1OnlyMatchers                []*labels.Matcher
 }
 
 type SplittingHandler struct {
@@ -49,6 +52,7 @@ type SplittingHandler struct {
 	metricsQueryHandler           queryrangebase.Handler
 	v1Handler                     queryrangebase.Handler
 	addRoutingDecisionsToWarnings bool
+	forceV1                       func(params logql.Params) bool
 }
 
 // isMultiTenant returns true if the request contains multiple tenant IDs.
@@ -58,6 +62,9 @@ func isMultiTenant(tenants []string) bool {
 
 func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Handler, error) {
 	if cfg.V1Backend == nil {
+		if len(cfg.V1OnlyMatchers) > 0 {
+			level.Warn(logger).Log("msg", "a v1-only selector is configured but there is no v1 backend to route matching queries to")
+		}
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(cfg.FanOutHandler, cfg.Codec), logger), nil
 	}
 
@@ -68,6 +75,7 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 		splitStart:         cfg.SplitStart,
 		splitLag:           cfg.SplitLag,
 		splitRetentionDays: cfg.SplitRetentionDays,
+		v1OnlyMatchers:     cfg.V1OnlyMatchers,
 	}
 	v1RoundTrip, err := frontend.NewDownstreamRoundTripper(
 		cfg.V1Backend.endpoint.String(),
@@ -83,6 +91,7 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, v1RoundTrip)
 	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, v1RoundTrip)
 
+	v1OnlyCfg := engine.Config{V1OnlyMatchers: cfg.V1OnlyMatchers}
 	splittingHandler := &SplittingHandler{
 		codec:                         cfg.Codec,
 		fanOutHandler:                 cfg.FanOutHandler,
@@ -95,6 +104,7 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 		routingMode:                   cfg.RoutingMode,
 		splitLag:                      cfg.SplitLag,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
+		forceV1:                       v1OnlyCfg.MatchesV1OnlySelector,
 	}
 
 	return tenantHandler(splittingHandler, logger), nil
@@ -124,6 +134,7 @@ type splitHandlerFactory struct {
 	splitStart         time.Time
 	splitLag           time.Duration
 	splitRetentionDays int64
+	v1OnlyMatchers     []*labels.Matcher
 }
 
 func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Handler queryrangebase.Handler) queryrangebase.Handler {
@@ -131,11 +142,13 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Hand
 		StorageLag:           f.splitLag,
 		StorageStartDate:     flagext.Time(f.splitStart),
 		StorageRetentionDays: f.splitRetentionDays,
+		V1OnlyMatchers:       f.v1OnlyMatchers,
 	}
 
 	routerConfig := queryrange.RouterConfig{
 		Enabled:  true,
 		Validate: engine.IsQuerySupported,
+		ForceV1:  v2Cfg.MatchesV1OnlySelector,
 		Handler:  f.fanOutHandler, // v2Next: fan-out to all backends for comparison
 		V2Range:  v2Cfg.ValidQueryRange,
 	}
@@ -202,6 +215,19 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp, err = f.v1Handler.Do(ctx, req)
 		if resp != nil && f.addRoutingDecisionsToWarnings {
 			addWarningToResponse(resp, "multi-tenant query routed to v1 backend only (v2 does not support multi-tenant)")
+		}
+		f.writeResponse(ctx, r, w, resp, err)
+		return
+	}
+
+	// Queries matching the configured v1-only stream selector must be answered by
+	// the v1 backend only: v2 does not have the data, so fanning out (or sampling
+	// for goldfish comparison) is meaningless.
+	if f.matchesV1Only(req) {
+		level.Info(f.logger).Log("msg", "query matches v1-only selector, routing to v1 only", "query", req.GetQuery())
+		resp, err = f.v1Handler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "query matches the v1-only stream selector and was routed to the v1 backend only")
 		}
 		f.writeResponse(ctx, r, w, resp, err)
 		return
@@ -303,6 +329,35 @@ func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w
 	if _, err := io.Copy(w, httpResp.Body); err != nil {
 		level.Warn(f.logger).Log("msg", "unable to write response body", "err", err)
 	}
+}
+
+// matchesV1Only returns true if the request is a query whose stream selector
+// matches the configured v1-only matchers.
+func (f *SplittingHandler) matchesV1Only(req queryrangebase.Request) bool {
+	if f.forceV1 == nil {
+		return false
+	}
+
+	// Only query and query_range requests carry a query plan with a stream
+	// selector to match against.
+	switch typed := req.(type) {
+	case *queryrange.LokiRequest:
+		if typed.Plan == nil {
+			return false
+		}
+	case *queryrange.LokiInstantRequest:
+		if typed.Plan == nil {
+			return false
+		}
+	default:
+		return false
+	}
+
+	params, err := queryrange.ParamsFromRequest(req)
+	if err != nil {
+		return false
+	}
+	return f.forceV1(params)
 }
 
 // shouldSample determines if a query should be sampled for goldfish comparison.
