@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"sync"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql/parser"
 
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
@@ -43,8 +45,9 @@ type DefaultMultiTenantManager struct {
 	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
-	notifiersMtx sync.Mutex
-	notifiers    map[string]*rulerNotifier
+	notifiersMtx    sync.Mutex
+	notifiers       map[string]*rulerNotifier
+	notifierCfgHash map[string][sha256.Size]byte
 
 	managersTotal                 prometheus.Gauge
 	lastReloadSuccessful          *prometheus.GaugeVec
@@ -77,6 +80,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		managerFactory:     managerFactory,
 		limits:             limits,
 		notifiers:          map[string]*rulerNotifier{},
+		notifierCfgHash:    map[string][sha256.Size]byte{},
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
@@ -127,6 +131,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
+			delete(r.notifierCfgHash, userID)
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
@@ -147,7 +152,11 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 	}
 
 	manager, exists := r.userManagers[user]
-	if !exists || update {
+
+	// Check if the alertmanager config changed even if rules didn't.
+	amCfgChanged := r.amConfigChanged(user)
+
+	if !exists || update || amCfgChanged {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
 		if !exists {
@@ -162,6 +171,13 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			// Hence run it as another goroutine.
 			go manager.Run()
 			r.userManagers[user] = manager
+		} else if amCfgChanged {
+			// AM config changed but manager already exists: rebuild notifier and update manager.
+			if _, err = r.getOrCreateNotifier(user); err != nil {
+				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
+				level.Error(r.logger).Log("msg", "unable to recreate notifier after alertmanager config change", "user", user, "err", err)
+				return
+			}
 		}
 		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
 		if err != nil {
@@ -191,12 +207,58 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
+func alertManagerConfigHash(amOverrides *rulerconfig.AlertManagerConfig) [sha256.Size]byte {
+	if amOverrides == nil {
+		return [sha256.Size]byte{}
+	}
+	b, _ := yaml.Marshal(amOverrides)
+	return sha256.Sum256(b)
+}
+
+// amConfigChanged returns true if the alertmanager config for the given user has changed
+// since the notifier was last built.
+func (r *DefaultMultiTenantManager) amConfigChanged(userID string) bool {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+	if _, exists := r.notifiers[userID]; !exists {
+		return false
+	}
+	currentHash := alertManagerConfigHash(r.limits.RulerAlertManagerConfig(userID))
+	return r.notifierCfgHash[userID] != currentHash
+}
+
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
-	n, ok := r.notifiers[userID]
-	if ok {
+	amOverrides := r.limits.RulerAlertManagerConfig(userID)
+	currentHash := alertManagerConfigHash(amOverrides)
+
+	// If a notifier already exists for this tenant, check whether the alertmanager
+	// config changed. If it did, update the notifier config in place so that the
+	// existing rules manager's NotifyFunc reference remains valid. Stopping and
+	// rebuilding the notifier would leave the rules manager pointing at a stopped
+	// instance, causing alerts to be dropped.
+	if n, ok := r.notifiers[userID]; ok {
+		if r.notifierCfgHash[userID] == currentHash {
+			return n.notifier, nil
+		}
+		level.Info(r.logger).Log("msg", "ruler alertmanager config changed, updating notifier", "user", userID)
+		amCfg := r.cfg.AlertManagerConfig
+		if amOverrides != nil {
+			amCfg = applyAlertmanagerDefaults(*amOverrides)
+		}
+		nCfg, err := buildNotifierConfig(&amCfg, r.cfg.ExternalLabels)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update notifier config for tenant %s: %w", userID, err)
+		}
+		if nCfg != nil {
+			if err := n.applyConfig(nCfg); err != nil {
+				return nil, err
+			}
+			r.notifiersCfg[userID] = nCfg
+		}
+		r.notifierCfgHash[userID] = currentHash
 		return n.notifier, nil
 	}
 
@@ -205,7 +267,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		amCfg := r.cfg.AlertManagerConfig
 
 		// Apply the tenant specific alertmanager config when defined
-		if amOverrides := r.limits.RulerAlertManagerConfig(userID); amOverrides != nil {
+		if amOverrides != nil {
 			amCfg = applyAlertmanagerDefaults(*amOverrides)
 		}
 
@@ -222,7 +284,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", reg)
-	n = newRulerNotifier(&notifier.Options{
+	n := newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
 		Registerer:    reg,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
@@ -250,6 +312,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	}
 
 	r.notifiers[userID] = n
+	r.notifierCfgHash[userID] = currentHash
 	return n.notifier, nil
 }
 
