@@ -9,11 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/print"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestFileClient_QueryRangeLogQueries(t *testing.T) {
@@ -85,6 +87,33 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 			assert.Equal(t, string(resp.Data.ResultType), loghttp.ResultTypeStream)
 			assertStreams(t, resp.Data.Result, c.expected)
 		})
+	}
+}
+
+func TestFileClient_QueryRangeOutputOrder(t *testing.T) {
+	input := "group=a line=first\ngroup=b line=second\ngroup=a line=third\n"
+	for _, query := range []string{`{source="logcli"}`, `{source="logcli"} | logfmt | drop line`} {
+		for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
+			t.Run(query+"/"+direction.String(), func(t *testing.T) {
+				client := NewFileClient(io.NopCloser(strings.NewReader(input)))
+				now := time.Now()
+				resp, err := client.QueryRange(query, 10, now.Add(-time.Hour), now, direction, 0, 0, true)
+				require.NoError(t, err)
+
+				var buf bytes.Buffer
+				out, err := output.NewLogOutput(&buf, "raw", &output.LogOutputOptions{})
+				require.NoError(t, err)
+				printer := print.NewQueryResultPrinter(nil, nil, true, 0, direction == logproto.FORWARD, false)
+				_, _, err = printer.PrintResult(resp.Data.Result, out, nil)
+				require.NoError(t, err)
+
+				expected := input
+				if direction == logproto.BACKWARD {
+					expected = "group=a line=third\ngroup=b line=second\ngroup=a line=first\n"
+				}
+				require.Equal(t, expected, buf.String())
+			})
+		}
 	}
 }
 
@@ -242,9 +271,6 @@ func assertStreams(t *testing.T, result loghttp.ResultValue, logLines []string) 
 	require.Len(t, streams, 1, "there should be only one stream for FileClient")
 
 	got := streams[0]
-	sort.Slice(got.Entries, func(i, j int) bool {
-		return got.Entries[i].Timestamp.UnixNano() < got.Entries[j].Timestamp.UnixNano()
-	})
 	require.Equal(t, len(got.Entries), len(logLines))
 	for i, entry := range got.Entries {
 		assert.Equal(t, entry.Line, logLines[i])
