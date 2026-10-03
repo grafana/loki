@@ -57,6 +57,7 @@ type Reader struct {
 	pathPrefix      string
 	user            string
 	pass            string
+	bearerToken     config.SecretReader
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
@@ -105,6 +106,7 @@ func NewReader(writer io.Writer,
 	pathPrefix string,
 	user string,
 	pass string,
+	bearerTokenFile string,
 	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
@@ -115,6 +117,10 @@ func NewReader(writer io.Writer,
 	queryAppend string,
 	labels string,
 ) (*Reader, error) {
+	if user != "" && bearerTokenFile != "" {
+		return nil, fmt.Errorf("at most one of basic authentication and bearer token authentication may be configured")
+	}
+
 	h := http.Header{}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
@@ -137,6 +143,19 @@ func NewReader(writer io.Writer,
 		// non-mutual TLS
 		httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	}
+
+	var bearerToken config.SecretReader
+	if bearerTokenFile != "" {
+		bearerToken = config.NewFileSecret(bearerTokenFile)
+		transport := httpClient.Transport
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		httpClient = &http.Client{
+			Transport: config.NewAuthorizationCredentialsRoundTripper("Bearer", bearerToken, transport),
+		}
+	}
+
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
 	}
@@ -171,6 +190,7 @@ func NewReader(writer io.Writer,
 		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
+		bearerToken:     bearerToken,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
@@ -515,8 +535,15 @@ func (r *Reader) closeAndReconnect() {
 
 		fmt.Fprintf(r.w, "Connecting to loki at %v, using selector %s\n", u.String(), r.labelSelector)
 
+		header, err := r.webSocketHeader(context.Background())
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to load authorization credentials for %s: %s\n", u.String(), err)
+			<-time.After(10 * time.Second)
+			continue
+		}
+
 		dialer := r.webSocketDialer()
-		c, _, err := dialer.Dial(u.String(), r.header)
+		c, _, err := dialer.Dial(u.String(), header)
 		if err != nil {
 			fmt.Fprintf(r.w, "failed to connect to %s with err %s\n", u.String(), err)
 			<-time.After(10 * time.Second)
@@ -535,6 +562,21 @@ func (r *Reader) closeAndReconnect() {
 		})
 		r.conn = c
 	}
+}
+
+func (r *Reader) webSocketHeader(ctx context.Context) (http.Header, error) {
+	header := r.header.Clone()
+	if r.bearerToken == nil {
+		return header, nil
+	}
+
+	token, err := r.bearerToken.Fetch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set("Authorization", "Bearer "+token)
+
+	return header, nil
 }
 
 // webSocketDialer creates a dialer for the web socket connection to Loki

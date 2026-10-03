@@ -6,6 +6,8 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -39,6 +41,7 @@ type response struct {
 	pushReq            logproto.PushRequest
 	contentType        string
 	userAgent          string
+	authorization      string
 	username, password string
 	path               string
 }
@@ -72,6 +75,17 @@ func Test_CreatePusher(t *testing.T) {
 	// batch size of -1 is nonsensical
 	_, err = newPush(testCfg, -1)
 	require.Error(t, err)
+
+	_, err = newPushWithOptions(
+		testCfg,
+		testUsername,
+		testPassword,
+		"token-file",
+		"stream",
+		"stdout",
+		1,
+	)
+	require.EqualError(t, err, "at most one of basic authentication and bearer token authentication may be configured")
 }
 
 // basic test with a few diff HTTP settings
@@ -105,6 +119,32 @@ func Test_Push(t *testing.T) {
 	push.WriteEntry(ts, payload)
 	resp = <-testCfg.responses
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
+}
+
+func Test_PushWithBearerTokenFile(t *testing.T) {
+	testCfg := newTestConfig(t)
+	defer testCfg.mock.Close()
+
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte("first-token\n"), 0o600))
+
+	push, err := newPushWithBearerTokenFile(testCfg, tokenFile, 1)
+	require.NoError(t, err)
+	defer push.Stop()
+
+	ts, payload := testPayload()
+	push.WriteEntry(ts, payload)
+	resp := <-testCfg.responses
+	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	assert.Equal(t, "Bearer first-token", resp.authorization)
+
+	require.NoError(t, os.WriteFile(tokenFile, []byte("second-token\n"), 0o600))
+
+	ts, payload = testPayload()
+	push.WriteEntry(ts, payload)
+	resp = <-testCfg.responses
+	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	assert.Equal(t, "Bearer second-token", resp.authorization)
 }
 
 // test that a path prefix is applied to the push endpoint, and that a
@@ -328,8 +368,9 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 
 		var username, password string
 
-		basicAuth := req.Header.Get("Authorization")
-		if basicAuth != "" {
+		authorization := req.Header.Get("Authorization")
+		if strings.HasPrefix(authorization, "Basic ") {
+			basicAuth := authorization
 			encoded := strings.TrimPrefix(basicAuth, "Basic ") // now we have just encoded `username:password`
 			decoded, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
@@ -343,13 +384,14 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 		}
 
 		responses <- response{
-			tenantID:    req.Header.Get("X-Scope-OrgID"),
-			contentType: req.Header.Get("Content-Type"),
-			userAgent:   req.Header.Get("User-Agent"),
-			username:    username,
-			password:    password,
-			path:        req.URL.Path,
-			pushReq:     pushReq,
+			tenantID:      req.Header.Get("X-Scope-OrgID"),
+			contentType:   req.Header.Get("Content-Type"),
+			userAgent:     req.Header.Get("User-Agent"),
+			authorization: authorization,
+			username:      username,
+			password:      password,
+			path:          req.URL.Path,
+			pushReq:       pushReq,
 		}
 
 		rw.WriteHeader(http.StatusOK)
@@ -433,9 +475,13 @@ func newPush(testCfg testConfig, logBatchSize int) (EntryWriter, error) {
 	return newPushWithCredentials(testCfg, "", "", logBatchSize)
 }
 
+func newPushWithBearerTokenFile(testCfg testConfig, bearerTokenFile string, logBatchSize int) (EntryWriter, error) {
+	return newPushWithOptions(testCfg, "", "", bearerTokenFile, "stream", "stdout", logBatchSize)
+}
+
 // create a new `EventWriter` with credentials
 func newPushWithCredentials(testCfg testConfig, username, password string, logBatchSize int) (EntryWriter, error) {
-	return newPushWithCredentialsAndStreamNameValue(testCfg, username, password, "stream", "stdout", logBatchSize)
+	return newPushWithOptions(testCfg, username, password, "", "stream", "stdout", logBatchSize)
 }
 
 // create a new `EventWriter` with a path prefix
@@ -457,6 +503,7 @@ func newPushWithPathPrefix(testCfg testConfig, pathPrefix string, logBatchSize i
 		"",
 		"",
 		"",
+		"",
 		&testCfg.backoff,
 		logBatchSize,
 		log.NewNopLogger(),
@@ -464,7 +511,26 @@ func newPushWithPathPrefix(testCfg testConfig, pathPrefix string, logBatchSize i
 }
 
 // create a new `EventWriter` with custom credentials and labels
-func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
+func newPushWithCredentialsAndStreamNameValue(
+	testCfg testConfig,
+	username string,
+	password string,
+	streamName string,
+	streamValue string,
+	logBatchSize int,
+) (EntryWriter, error) {
+	return newPushWithOptions(testCfg, username, password, "", streamName, streamValue, logBatchSize)
+}
+
+func newPushWithOptions(
+	testCfg testConfig,
+	username string,
+	password string,
+	bearerTokenFile string,
+	streamName string,
+	streamValue string,
+	logBatchSize int,
+) (EntryWriter, error) {
 	return NewPush(
 		testCfg.mock.Listener.Addr().String(),
 		"",
@@ -482,6 +548,7 @@ func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, pass
 		"",
 		username,
 		password,
+		bearerTokenFile,
 		&testCfg.backoff,
 		logBatchSize,
 		log.NewNopLogger(),

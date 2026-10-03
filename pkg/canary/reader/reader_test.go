@@ -1,8 +1,14 @@
 package reader
 
 import (
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,4 +115,65 @@ func TestBuildMetricQuery(t *testing.T) {
 			require.Equal(t, tc.expected, got)
 		})
 	}
+}
+
+func TestNewReaderRejectsMultipleAuthenticationMethods(t *testing.T) {
+	_, err := NewReader(
+		io.Discard,
+		make(chan time.Time),
+		false,
+		nil,
+		"",
+		"",
+		"",
+		"loki:3100",
+		"",
+		"user",
+		"password",
+		"token-file",
+		"tenant",
+		time.Second,
+		"name",
+		"canary",
+		"stream",
+		"stdout",
+		time.Second,
+		"",
+		"",
+	)
+	require.EqualError(t, err, "at most one of basic authentication and bearer token authentication may be configured")
+}
+
+func TestReaderWebSocketHeader(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte("first-token\n"), 0o600))
+	header := http.Header{}
+	header.Set("X-Scope-OrgID", "tenant")
+
+	r := Reader{
+		header:      header,
+		bearerToken: config.NewFileSecret(tokenFile),
+	}
+
+	header, err := r.webSocketHeader(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "Bearer first-token", header.Get("Authorization"))
+	require.Equal(t, "tenant", header.Get("X-Scope-OrgID"))
+	require.Empty(t, r.header.Get("Authorization"))
+
+	require.NoError(t, os.WriteFile(tokenFile, []byte("second-token\n"), 0o600))
+
+	header, err = r.webSocketHeader(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "Bearer second-token", header.Get("Authorization"))
+}
+
+func TestReaderWebSocketHeaderWithoutBearerToken(t *testing.T) {
+	r := Reader{
+		header: http.Header{"Authorization": []string{"Basic credentials"}},
+	}
+
+	header, err := r.webSocketHeader(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "Basic credentials", header.Get("Authorization"))
 }
