@@ -83,7 +83,7 @@ Like the current implementation, the scheduler enqueues requests based on the `X
 However, this has the disadvantage that the concept of users (that does not exist yet in Loki) leaks into the scheduler domain.
 
 **Pros:**
-* Relatively simple to to implement
+* Relatively simple to implement
 
 **Cons:**
 * Not extensible
