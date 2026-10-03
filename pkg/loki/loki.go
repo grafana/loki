@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/chunkexp/correctness"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -128,6 +129,9 @@ type Config struct {
 	// -logline-index.*, -logline-store.*, -logline-builder.*,
 	// -logline-query.* and -logline-correctness.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
+
+	// ChunkExpCorrectness compares samples from a stable Loki to this experimental stack.
+	ChunkExpCorrectness correctness.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -246,6 +250,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
+	c.ChunkExpCorrectness.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -379,6 +384,11 @@ func (c *Config) Validate() error {
 		c.Logline.Correctness.QueryIngestersWithin = c.Querier.QueryIngestersWithin
 		if err := c.Logline.ValidateCorrectness(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
+	if c.isTarget(ChunkExpCorrectness) {
+		if err := c.ChunkExpCorrectness.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk-exp-correctness config"))
 		}
 	}
 	// A no-op unless logline query narrowing is enabled.
@@ -837,6 +847,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(LoglineCorrectness, t.initLoglineCorrectness, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(ChunkExpCorrectness, t.initChunkExpCorrectness, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
@@ -895,6 +906,7 @@ func (t *Loki) setupModuleManager() error {
 		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
 		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
 		LoglineCorrectness:              {Server},
+		ChunkExpCorrectness:             {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

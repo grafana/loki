@@ -62,6 +62,10 @@ type Config struct {
 	MaxConsumerLagAtStartup time.Duration `yaml:"max_consumer_lag_at_startup"`
 	MaxConsumerWorkers      int           `yaml:"max_consumer_workers"`
 
+	// ConsumeFromEndIfUncommitted starts a consumer group with no committed offset
+	// at the log end. The default replays from the beginning.
+	ConsumeFromEndIfUncommitted bool `yaml:"consume_from_end_if_uncommitted"`
+
 	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
 	TracingEnabled        bool `yaml:"tracing_enabled"`
 }
@@ -120,6 +124,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
 	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for processing records from Kafka.")
+	f.BoolVar(&cfg.ConsumeFromEndIfUncommitted, prefix+".consume-from-end-if-uncommitted", false, "When a consumer group has no committed offset, start at the end of the topic instead of the beginning.")
 
 	f.BoolVar(&cfg.TracingEnabled, prefix+".tracing-enabled", false, "Enable tracing.")
 	// If the number of workers is set to 0, use the number of available CPUs
