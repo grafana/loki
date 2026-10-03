@@ -227,7 +227,7 @@ If this is the first time you have deployed the Loki Helm chart since the move t
 
    ```bash
     helm install loki grafana-community/loki -f values.yaml -n loki --create-namespace
-    ```
+   ```
 
 1. Install or upgrade the Loki deployment.
      - To install:
