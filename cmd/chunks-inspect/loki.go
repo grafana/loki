@@ -147,7 +147,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 
 		structuredMetadata := data[structuredMetadataOffset : structuredMetadataOffset+structuredMetadataLength]
 
-		// Structured Metadata is compresed by extracting the string keys and values and storing them in a separate section.
+		// Structured Metadata is compressed by extracting the string keys and values and storing them in a separate section.
 		// The order of the strings determines the index of the string in the metadata section of each row.
 
 		// First we read the number of symbols
