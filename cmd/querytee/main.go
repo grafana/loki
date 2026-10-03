@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querytee"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	loki_tracing "github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -41,7 +42,10 @@ func main() {
 
 	// Initialize tracing
 	if cfg.Tracing.Enabled {
-		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
+		trace, err := tracing.NewOTelOrJaegerFromEnv(
+			util.GetServiceNameFromEnv("loki-querytee", "JAEGER_SERVICE_NAME", "OTEL_SERVICE_NAME"),
+			util_log.Logger,
+		)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 			exit(1)
