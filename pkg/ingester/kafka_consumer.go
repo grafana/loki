@@ -201,7 +201,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 }
 
 func canRetry(err error) bool {
-	return errors.Is(err, ErrReadOnly)
+	return errors.Is(err, ErrReadOnly) || errors.Is(err, ErrDiskThrottled)
 }
 
 func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
