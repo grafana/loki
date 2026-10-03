@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -503,4 +505,157 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	tm.syncManager.Wait()
 	require.Equal(t, float64(1), testutil.ToFloat64(
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
+}
+
+func TestTableManager_loadLocalTables_PurgeExpiredTables(t *testing.T) {
+	tableRangeToHandle := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: indexTablePeriod,
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name                          string
+		queryReadyNumDays             int
+		queryReadyIndexNumDaysDefault int
+		queryReadyIndexNumDaysByUser  map[string]int
+		numTablesCreated              int
+		expectedLoadedTableNames      []string
+		expectedPurgedTableNames      []string
+	}{
+		{
+			name:              "synchronously loads tables within QueryReadyNumDays and purges older tables from disk",
+			queryReadyNumDays: 2,
+			numTablesCreated:  6,
+			expectedLoadedTableNames: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+			},
+			expectedPurgedTableNames: []string{
+				buildTableName(3),
+				buildTableName(4),
+				buildTableName(5),
+			},
+		},
+		{
+			name:                          "respects default limit override when default limits exceed global QueryReadyNumDays",
+			queryReadyNumDays:             1,
+			queryReadyIndexNumDaysDefault: 3,
+			numTablesCreated:              6,
+			expectedLoadedTableNames: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+				buildTableName(3),
+			},
+			expectedPurgedTableNames: []string{
+				buildTableName(4),
+				buildTableName(5),
+			},
+		},
+		{
+			name:              "respects per-user limit override when a tenant limit exceeds global QueryReadyNumDays",
+			queryReadyNumDays: 1,
+			queryReadyIndexNumDaysByUser: map[string]int{
+				"vip_user": 4,
+			},
+			numTablesCreated: 6,
+			expectedLoadedTableNames: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+				buildTableName(3),
+				buildTableName(4),
+			},
+			expectedPurgedTableNames: []string{
+				buildTableName(5),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			cachePath := filepath.Join(tempDir, cacheDirName)
+			require.NoError(t, os.MkdirAll(cachePath, 0750))
+
+			for i := 0; i < tc.numTablesCreated; i++ {
+				tableName := buildTableName(i)
+				setupIndexesAtPath(t, "", filepath.Join(cachePath, tableName), 1, 3)
+				setupIndexesAtPath(t, "user1", filepath.Join(cachePath, tableName, "user1"), 1, 3)
+				for userID := range tc.queryReadyIndexNumDaysByUser {
+					setupIndexesAtPath(t, userID, filepath.Join(cachePath, tableName, userID), 1, 3)
+				}
+			}
+
+			// Add delete_requests and non-table directories to verify proper handling
+			deleteRequestsPath := filepath.Join(cachePath, deletion.DeleteRequestsTableName)
+			require.NoError(t, os.MkdirAll(deleteRequestsPath, 0750))
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, "lost+found"), 0750))
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, ".ds_store"), 0750))
+
+			baseStorageClient := buildTestStorageClient(t, tempDir)
+
+			limits := &mockLimits{
+				queryReadyIndexNumDaysDefault: tc.queryReadyIndexNumDaysDefault,
+				queryReadyIndexNumDaysByUser:  tc.queryReadyIndexNumDaysByUser,
+			}
+
+			cfg := Config{
+				CacheDir:          cachePath,
+				SyncInterval:      time.Hour,
+				CacheTTL:          time.Hour,
+				QueryReadyNumDays: tc.queryReadyNumDays,
+				DownloadTimeout:   5 * time.Minute,
+				Limits:            limits,
+			}
+
+			tm := &tableManager{
+				cfg: cfg,
+				openIndexFileFunc: func(s string) (index.Index, error) {
+					return openMockIndexFile(t, s), nil
+				},
+				indexStorageClient: baseStorageClient,
+				tableRangeToHandle: tableRangeToHandle,
+				tables:             make(map[string]Table),
+				metrics:            newMetrics(nil),
+				logger:             log.NewNopLogger(),
+				ctx:                context.Background(),
+				cancel:             func() {},
+			}
+
+			require.NoError(t, tm.loadLocalTables())
+			defer func() {
+				for _, tbl := range tm.tables {
+					tbl.Close()
+				}
+			}()
+
+			require.Len(t, tm.tables, len(tc.expectedLoadedTableNames))
+
+			// Tables within readiness window are loaded and retained on disk
+			for _, tableName := range tc.expectedLoadedTableNames {
+				require.Contains(t, tm.tables, tableName)
+				require.DirExists(t, filepath.Join(cachePath, tableName))
+			}
+
+			// Expired tables are purged from disk to reclaim PVC space
+			for _, tableName := range tc.expectedPurgedTableNames {
+				require.NotContains(t, tm.tables, tableName)
+				require.NoDirExists(t, filepath.Join(cachePath, tableName))
+			}
+
+			// delete_requests directory must not be deleted and not loaded
+			require.DirExists(t, deleteRequestsPath)
+			require.NotContains(t, tm.tables, deletion.DeleteRequestsTableName)
+		})
+	}
 }
