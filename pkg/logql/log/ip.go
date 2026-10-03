@@ -214,11 +214,20 @@ func (f *ipFilter) filter(line []byte) bool {
 		if iplen < 0 {
 			return false, 0
 		}
-		ip, err := netip.ParseAddr(string(line[start : start+iplen]))
-		if err == nil {
-			if containsIP(f.matcher, ip) {
-				return true, 0
+		// The charsets include '.' and ':', so punctuation directly after an
+		// address (e.g. "from 10.0.0.1." or "peer ::1: EOF") ends up in the
+		// candidate. Drop trailing separators one by one until it parses.
+		candidate := string(line[start : start+iplen])
+		for len(candidate) > 0 {
+			ip, err := netip.ParseAddr(candidate)
+			if err == nil {
+				return containsIP(f.matcher, ip), iplen
 			}
+			last := candidate[len(candidate)-1]
+			if last != '.' && last != ':' {
+				break
+			}
+			candidate = candidate[:len(candidate)-1]
 		}
 		return false, iplen
 	}
