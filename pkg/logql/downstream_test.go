@@ -726,6 +726,13 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "foo", "$1", "a", "(.*)")`, time.Second},
+
+		// label_replace nested inside the vector aggregation
+		{`sum by (foo) (label_replace(count_over_time({a=~".+"}[3s]), "foo", "other", "a", ".*"))`, time.Second},
+		{`sum by (foo) (label_replace(label_replace(count_over_time({a=~".+"}[3s]), "foo", "other", "a", ".*"), "foo", "matched", "a", "1"))`, time.Second},
+		{`sum by (foo, a) (label_replace(label_replace(count_over_time({a=~".+"}[3s]), "foo", "other", "a", ".*"), "foo", "matched", "a", "1"))`, time.Second},
+		{`sum (label_replace(count_over_time({a=~".+"}[3s]), "foo", "other", "a", ".*"))`, time.Second},
+		{`sum by (foo) (label_replace(rate({a=~".+"}[3s]), "foo", "other", "a", ".*"))`, time.Second},
 	} {
 		q := NewMockQuerier(
 			shards,
