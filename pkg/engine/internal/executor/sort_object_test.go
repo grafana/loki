@@ -44,125 +44,147 @@ type sortObjectFixture struct {
 	streams map[string]streamFixture
 }
 
-func TestDoSortObject_RewritesWholeObjectAndReindexes(t *testing.T) {
-	ctx := context.Background()
-	dataBucket := objstore.NewInMemBucket()
-	indexBucket := objstore.NewInMemBucket()
-	const sourcePath = "objects/source"
-	targetSchema := []string{"label:app"}
-	tenants := []string{"tenant-a", "tenant-b"}
+func TestDoSortObject(t *testing.T) {
+	t.Run("rewrites the whole object and reindexes it", func(t *testing.T) {
+		ctx := context.Background()
+		dataBucket := objstore.NewInMemBucket()
+		indexBucket := objstore.NewInMemBucket()
+		const sourcePath = "objects/source"
+		targetSchema := []string{"label:app"}
+		tenants := []string{"tenant-a"}
 
-	expected := buildUnorderedObject(t, dataBucket, sourcePath, tenants, targetSchema)
+		expected := buildUnorderedObject(t, dataBucket, sourcePath, tenants, targetSchema)
 
-	c := newTestExecutorContext(t, indexBucket)
-	c.dataBucket = dataBucket
-	c.logsobjCfg.TargetPageSize = 512
-	c.logsobjCfg.TargetObjectSize = 2048 // Output is larger, but SortObject must not split it.
-	c.logsobjCfg.TargetSectionSize = 1500
-	c.logsobjCfg.BufferSize = 700 // Force several independently sorted runs.
-	c.uploaderCfg = uploader.Config{SHAPrefixSize: 4}
-	artifacts, err := c.doSortObject(ctx, &physical.SortObject{
-		SourceObjectPath: sourcePath,
-		SortSchema:       targetSchema,
-	})
-	require.NoError(t, err)
-	require.NoError(t, artifacts.Validate())
+		c := newTestExecutorContext(t, indexBucket)
+		c.dataBucket = dataBucket
+		c.logsobjCfg.TargetPageSize = 512
+		c.logsobjCfg.TargetObjectSize = 2048 // Output is larger, but SortObject must not split it.
+		c.logsobjCfg.TargetSectionSize = 1500
+		c.logsobjCfg.BufferSize = 700 // Force several independently sorted runs.
+		c.uploaderCfg = uploader.Config{SHAPrefixSize: 4}
+		artifacts, err := c.doSortObject(ctx, &physical.SortObject{
+			SourceObjectPath: sourcePath,
+			SortSchema:       targetSchema,
+		})
+		require.NoError(t, err)
+		require.NoError(t, artifacts.Validate())
 
-	indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts.Path, 0)
-	require.NoError(t, err)
-	require.ElementsMatch(t, tenants, indexObj.Tenants(), "the replacement index must cover every source tenant")
+		indexObj, err := dataobj.FromBucket(ctx, indexBucket, artifacts.Path, 0)
+		require.NoError(t, err)
+		require.ElementsMatch(t, tenants, indexObj.Tenants(), "the replacement index must cover the source tenant")
 
-	statsRows := readSortObjectStats(ctx, t, indexObj)
-	statsPaths := make(map[string]bool)
-	for _, stat := range statsRows {
-		statsPaths[stat.row.ObjectPath] = true
-	}
-
-	postingsRows := readSortObjectPostings(ctx, t, indexObj)
-	postingsPaths := make(map[string]bool)
-	for _, posting := range postingsRows {
-		postingsPaths[posting.row.ObjectPath] = true
-	}
-	require.Equal(t, statsPaths, postingsPaths)
-	require.Len(t, statsPaths, 1, "one source object must remain one output object")
-
-	var outputPath string
-	for path := range statsPaths {
-		outputPath = path
-	}
-	require.NotEqual(t, sourcePath, outputPath)
-	require.Len(t, strings.Split(outputPath, "/")[1], c.uploaderCfg.SHAPrefixSize)
-	assertSortObjectIndexContents(t, statsRows, postingsRows, outputPath, tenants, expected)
-
-	output, err := dataobj.FromBucket(ctx, dataBucket, outputPath, 0)
-	require.NoError(t, err)
-	require.ElementsMatch(t, tenants, output.Tenants())
-
-	actualRecords := make(map[string]recordFixture)
-	for _, tenant := range tenants {
-		streamLabels := make(map[int64]labels.Labels)
-		for _, section := range output.Sections().Filter(func(section *dataobj.Section) bool {
-			return streams.CheckSection(section) && section.Tenant == tenant
-		}) {
-			opened, err := streams.Open(ctx, section)
-			require.NoError(t, err)
-			for result := range streams.IterSection(ctx, opened) {
-				stream, err := result.Value()
-				require.NoError(t, err)
-				streamLabels[stream.ID] = stream.Labels.Copy()
-				expectedStream := expected.streams[tenant+"/"+stream.Labels.Get("app")]
-				require.True(t, stream.MinTimestamp.Equal(expectedStream.minTimestamp))
-				require.True(t, stream.MaxTimestamp.Equal(expectedStream.maxTimestamp))
-				require.Equal(t, expectedStream.rows, stream.Rows)
-				require.Equal(t, expectedStream.uncompressedSize, stream.UncompressedSize)
-			}
+		statsRows := readSortObjectStats(ctx, t, indexObj)
+		statsPaths := make(map[string]bool)
+		for _, stat := range statsRows {
+			statsPaths[stat.row.ObjectPath] = true
 		}
 
-		var previous streams.SortKey
-		var previousStreamID int64
-		var previousTimestamp time.Time
-		havePrevious := false
-		for _, section := range output.Sections().Filter(func(section *dataobj.Section) bool {
-			return logs.CheckSection(section) && section.Tenant == tenant
-		}) {
-			opened, err := logs.Open(ctx, section)
-			require.NoError(t, err)
-			require.Equal(t, logs.SortLayout{
-				SchemaLabels: targetSchema,
-				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.ShardFactor,
-			}, opened.SortLayout())
+		postingsRows := readSortObjectPostings(ctx, t, indexObj)
+		postingsPaths := make(map[string]bool)
+		for _, posting := range postingsRows {
+			postingsPaths[posting.row.ObjectPath] = true
+		}
+		require.Equal(t, statsPaths, postingsPaths)
+		require.Len(t, statsPaths, 1, "one source object must remain one output object")
 
-			for result := range logs.IterSection(ctx, opened) {
-				record, err := result.Value()
+		var outputPath string
+		for path := range statsPaths {
+			outputPath = path
+		}
+		require.NotEqual(t, sourcePath, outputPath)
+		require.Len(t, strings.Split(outputPath, "/")[1], c.uploaderCfg.SHAPrefixSize)
+		assertSortObjectIndexContents(t, statsRows, postingsRows, outputPath, tenants, expected)
+
+		output, err := dataobj.FromBucket(ctx, dataBucket, outputPath, 0)
+		require.NoError(t, err)
+		require.ElementsMatch(t, tenants, output.Tenants())
+
+		actualRecords := make(map[string]recordFixture)
+		for _, tenant := range tenants {
+			streamLabels := make(map[int64]labels.Labels)
+			for _, section := range output.Sections().Filter(func(section *dataobj.Section) bool {
+				return streams.CheckSection(section) && section.Tenant == tenant
+			}) {
+				opened, err := streams.Open(ctx, section)
 				require.NoError(t, err)
-				line := string(record.Line)
-				actualRecords[line] = recordFixture{
-					timestamp: record.Timestamp.UnixNano(),
-					metadata:  record.Metadata.Get("sequence"),
+				for result := range streams.IterSection(ctx, opened) {
+					stream, err := result.Value()
+					require.NoError(t, err)
+					streamLabels[stream.ID] = stream.Labels.Copy()
+					expectedStream := expected.streams[tenant+"/"+stream.Labels.Get("app")]
+					require.True(t, stream.MinTimestamp.Equal(expectedStream.minTimestamp))
+					require.True(t, stream.MaxTimestamp.Equal(expectedStream.maxTimestamp))
+					require.Equal(t, expectedStream.rows, stream.Rows)
+					require.Equal(t, expectedStream.uncompressedSize, stream.UncompressedSize)
 				}
+			}
 
-				schemaKey, err := logsobj.ComputeSchemaKey(streamLabels[record.StreamID], targetSchema)
+			var previous streams.SortKey
+			var previousStreamID int64
+			var previousTimestamp time.Time
+			havePrevious := false
+			for _, section := range output.Sections().Filter(func(section *dataobj.Section) bool {
+				return logs.CheckSection(section) && section.Tenant == tenant
+			}) {
+				opened, err := logs.Open(ctx, section)
 				require.NoError(t, err)
-				key := streams.NewSortKey(streamLabels[record.StreamID], schemaKey)
-				if havePrevious {
-					comparison := streams.CompareSortKey(previous, key)
-					require.LessOrEqual(t, comparison, 0)
-					if comparison == 0 {
-						require.LessOrEqual(t, previousStreamID, record.StreamID)
-						if previousStreamID == record.StreamID {
-							require.False(t, record.Timestamp.After(previousTimestamp))
+				require.Equal(t, logs.SortLayout{
+					SchemaLabels: targetSchema,
+					StreamOrder:  logs.StreamOrderStableHashV1,
+					ShardCount:   streams.ShardFactor,
+				}, opened.SortLayout())
+
+				for result := range logs.IterSection(ctx, opened) {
+					record, err := result.Value()
+					require.NoError(t, err)
+					line := string(record.Line)
+					actualRecords[line] = recordFixture{
+						timestamp: record.Timestamp.UnixNano(),
+						metadata:  record.Metadata.Get("sequence"),
+					}
+
+					schemaKey, err := logsobj.ComputeSchemaKey(streamLabels[record.StreamID], targetSchema)
+					require.NoError(t, err)
+					key := streams.NewSortKey(streamLabels[record.StreamID], schemaKey)
+					if havePrevious {
+						comparison := streams.CompareSortKey(previous, key)
+						require.LessOrEqual(t, comparison, 0)
+						if comparison == 0 {
+							require.LessOrEqual(t, previousStreamID, record.StreamID)
+							if previousStreamID == record.StreamID {
+								require.False(t, record.Timestamp.After(previousTimestamp))
+							}
 						}
 					}
+					previous = key
+					previousStreamID = record.StreamID
+					previousTimestamp = record.Timestamp
+					havePrevious = true
 				}
-				previous = key
-				previousStreamID = record.StreamID
-				previousTimestamp = record.Timestamp
-				havePrevious = true
 			}
 		}
-	}
-	require.Equal(t, expected.records, actualRecords)
+		require.Equal(t, expected.records, actualRecords)
+	})
+
+	t.Run("rejects a source with several tenants and writes nothing", func(t *testing.T) {
+		ctx := context.Background()
+		dataBucket := objstore.NewInMemBucket()
+		indexBucket := objstore.NewInMemBucket()
+		const sourcePath = "objects/source"
+		targetSchema := []string{"label:app"}
+
+		buildUnorderedObject(t, dataBucket, sourcePath, []string{"tenant-a", "tenant-b"}, targetSchema)
+
+		c := newTestExecutorContext(t, indexBucket)
+		c.dataBucket = dataBucket
+		_, err := c.doSortObject(ctx, &physical.SortObject{
+			SourceObjectPath: sourcePath,
+			SortSchema:       targetSchema,
+		})
+		require.ErrorContains(t, err, "holds 2 tenants")
+		require.Empty(t, indexBucket.Objects(), "a rejected source must produce no index")
+		require.Len(t, dataBucket.Objects(), 1, "a rejected source must produce no sorted object")
+	})
 }
 
 func buildUnorderedObject(
