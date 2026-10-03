@@ -657,10 +657,10 @@ type ObjectStorageSecretSpec struct {
 type ObjectStorageSchemaVersion string
 
 const (
-	// ObjectStorageSchemaV11 when using v11 for the storage schema
+	// ObjectStorageSchemaV11 is deprecated and cannot be used for new LokiStack instances.
 	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
 
-	// ObjectStorageSchemaV12 when using v12 for the storage schema
+	// ObjectStorageSchemaV12 is deprecated and cannot be used for new LokiStack instances.
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 
 	// ObjectStorageSchemaV13 when using v13 for the storage schema

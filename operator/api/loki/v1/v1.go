@@ -110,7 +110,6 @@ var (
 	ErrSchemaRetentionConflict = errors.New("Cannot update schemas and retention in the same request. Update retention first, then remove the schema. This ensures each schema is using the correct retention period.")
 
 	// WarnRetentionUpdate warns users that changing retention affects schema removal validation
-	WarnRetentionUpdate = "Retention configuration has changed. Retention is enforced by the compactor " +
-		"asynchronously and can take several hours to fully apply (defaults, ~6h before expired " +
-		"data is deleted). If you intend to remove a schema, wait for the new retention to take effect first."
+	WarnRetentionUpdate = "Retention configuration has changed. Schema removal validation uses the new retention settings immediately. " +
+		"Existing schemas can only be removed after: (next schema effective date) + (new retention period)."
 )
