@@ -82,6 +82,7 @@ type Config struct {
 	SendContentMd5       bool                `yaml:"send_content_md5" category:"experimental"`
 	STSEndpoint          string              `yaml:"sts_endpoint"`
 	MaxRetries           int                 `yaml:"max_retries"`
+	ShuffleAddresses     bool                `yaml:"shuffle_addresses" category:"experimental"`
 
 	SSE         SSEConfig   `yaml:"sse"`
 	HTTP        http.Config `yaml:"http"`
@@ -114,6 +115,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"s3.", f)
 	cfg.TraceConfig.RegisterFlagsWithPrefix(prefix+"s3.trace.", f)
+	f.BoolVar(&cfg.ShuffleAddresses, prefix+"s3.shuffle-addresses", true, "When enabled, pick a random address among those the S3 endpoint resolves to when opening a connection, instead of always preferring the first one returned by the resolver.")
 }
 
 // Validate config and returns error on failure
