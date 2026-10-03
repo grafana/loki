@@ -14,6 +14,9 @@ func scanStringAVX2(p unsafe.Pointer, n int, tables *nibbleTables) int
 //go:noescape
 func escapeStringAVX2(dst, src unsafe.Pointer, n int, tables *nibbleTables, seqs *[256]uint64) (consumed, written int)
 
+//go:noescape
+func escapeUTF8AVX2(dst, src unsafe.Pointer, n int, tables *nibbleTables, seqs *[256]uint64, utf8 *utf8Tables) (consumed, written int)
+
 // hasEscapeLoop is whether appendEscapedSIMD escapes: whether the CPU has AVX2.
 var hasEscapeLoop = runtime.HasAVX2
 
@@ -23,9 +26,10 @@ const escapeSegmentLength = 1024
 
 // appendEscapedSIMD appends the string escaped, 32 bytes at a time, as the appendString functions do by the
 // tables of their options, and returns the number of the bytes of the string it appended. It stops at a byte
-// which the caller escapes ( a byte which is not ASCII, if UTF-8 is normalized ) or when fewer than 32 bytes
-// remain. The string has 32 bytes or more, and the CPU has AVX2.
-func appendEscapedSIMD(buf []byte, s string, tables *nibbleTables) ([]byte, int) {
+// which the caller escapes or when fewer than 32 bytes remain. If UTF-8 is normalized, tables are the ones of
+// the bytes of ASCII to escape, and the bytes which are not ASCII are validated: it stops at the start of a
+// character in a block of 32 bytes with invalid UTF-8, U+2028 or U+2029. The CPU has AVX2.
+func appendEscapedSIMD(buf []byte, s string, tables *nibbleTables, normalizeUTF8 bool) ([]byte, int) {
 	consumed := 0
 	for len(s)-consumed >= 32 {
 		n := min(len(s)-consumed, escapeSegmentLength)
@@ -33,7 +37,13 @@ func appendEscapedSIMD(buf []byte, s string, tables *nibbleTables) ([]byte, int)
 			buf = growForString(buf, need)
 		}
 		dst := unsafe.Add(unsafe.Pointer(unsafe.SliceData(buf)), len(buf))
-		c, w := escapeStringAVX2(dst, unsafe.Add(unsafe.Pointer(unsafe.StringData(s)), consumed), n, tables, &escapeSequences)
+		src := unsafe.Add(unsafe.Pointer(unsafe.StringData(s)), consumed)
+		var c, w int
+		if normalizeUTF8 {
+			c, w = escapeUTF8AVX2(dst, src, n, tables, &escapeSequences, &utf8ValidationTables)
+		} else {
+			c, w = escapeStringAVX2(dst, src, n, tables, &escapeSequences)
+		}
 		buf = buf[:len(buf)+w]
 		consumed += c
 		if c+32 <= n {
@@ -48,14 +58,13 @@ func appendEscapedSIMD(buf []byte, s string, tables *nibbleTables) ([]byte, int)
 // about as much as a few words of the scalar scan.
 const minSIMDScanLength = 32
 
-// hasEscapeSIMD is whether a byte of the string may need an escape, by SIMD. The second result is false if
-// the CPU doesn't support it or the string is short, and the string is not looked at.
-func (e *stringEscape) hasEscapeSIMD(src unsafe.Pointer, n int) (bool, bool) {
-	return scanBytesSIMD(src, n, &e.tables)
-}
+// maxOnePassLength is the length of the longest string which AppendString looks at and copies in one pass:
+// a longer one is looked at by SIMD, which then costs less, and copied after.
+const maxOnePassLength = minSIMDScanLength - 1
 
 // scanBytesSIMD is whether a byte of the n bytes at src is in the tables, by SIMD. The second result is false
-// if the CPU doesn't support it or n is small, and the bytes are not looked at.
+// if the CPU doesn't support it or n is small, and the bytes are not looked at. It is inlined, so that
+// AppendString calls the scan itself.
 func scanBytesSIMD(src unsafe.Pointer, n int, tables *nibbleTables) (bool, bool) {
 	if !runtime.HasAVX2 || n < minSIMDScanLength {
 		return false, false

@@ -167,6 +167,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 					if code.Flags&encoder.MapStringKeyFlags != 0 {
 						mapCtx.SortKeys()
 						mapCtx.Sorted = true
+						mapCtx.DirectEntries = code.Map.ScalarValue || code.Map.InterfaceValue
 					} else {
 						mapCtx.SortByEncodedKeys()
 						mapCtx.First = len(b)
@@ -190,6 +191,14 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				mapCtx.Slice.Items[idx].Value = b[mapCtx.Start:]
 			}
 			idx++
+			if mapCtx.DirectEntries && idx < mapCtx.Len {
+				// the entries from here are written by one call, up to one whose value is left to its opcodes.
+				bb, next, err := appendSortedMapEntries(ctx, code, b, mapCtx, idx)
+				if err != nil {
+					return nil, err
+				}
+				b, idx = bb, next
+			}
 			if idx == mapCtx.Len {
 				if byEncodedKeys {
 					code = code.End
@@ -2496,6 +2505,55 @@ func appendMapAsRead(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte
 	return b, nil
 }
 
+// appendSortedMapEntries writes the entries of a sorted map with keys of a string kind directly, as
+// appendMapAsRead does for a map which is not sorted, from the one at idx in the order of the keys, as the
+// opcodes of the entries would: every value when the values are written by one opcode of a scalar
+// ( MapLayout.ScalarValue ), and a value of interface{} which holds a scalar or nothing
+// ( MapLayout.InterfaceValue ). It returns the index of the first entry it doesn't write, whose value is left to
+// its opcodes, or the number of the entries. code is the opcode of the keys, followed by the one of the values.
+//
+//go:noinline
+func appendSortedMapEntries(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, mapCtx *encoder.MapContext, idx int) ([]byte, int, error) {
+	scalarValue := mapCtx.ScalarValue()
+	for ; idx < mapCtx.Len; idx++ {
+		i := int(mapCtx.Order[idx])
+		p := mapCtx.ValueAt(i)
+		scalar := code.Next
+		if !scalarValue {
+			// as appendMapAsRead does for a value of interface{}.
+			iface := (*emptyInterface)(p)
+			if iface.typ == nil {
+				b = appendMapKey(ctx, code, b, mapCtx.Keys[i])
+				b = appendNullComma(ctx, b)
+				continue
+			}
+			if iface.ptr == nil {
+				return b, idx, nil
+			}
+			codeSet := ctx.RecentCodeSet(uintptr(iface.typ))
+			if codeSet == nil {
+				var err error
+				codeSet, err = encoder.CompileToGetCodeSet(ctx, uintptr(iface.typ))
+				if err != nil {
+					return nil, 0, err
+				}
+			}
+			if codeSet.Scalar == nil {
+				return b, idx, nil
+			}
+			scalar = codeSet.Scalar
+			p = iface.ptr
+		}
+		b = appendMapKey(ctx, code, b, mapCtx.Keys[i])
+		bb, err := appendScalar(ctx, b, scalar, p)
+		if err != nil {
+			return nil, 0, err
+		}
+		b = bb
+	}
+	return b, idx, nil
+}
+
 // appendMapKey writes the key of an entry of a map, as OpMapKey does.
 func appendMapKey(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, k string) []byte {
 	b = appendMapKeyIndent(ctx, code, b)
@@ -2509,7 +2567,13 @@ func appendMapKey(ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, k
 // depends only on the sizes of the key and of the value ( encoder.MapLayout ).
 func appendMapScalarValues[V any](ctx *encoder.RuntimeContext, code *encoder.Opcode, b []byte, p unsafe.Pointer) ([]byte, error) {
 	value := code.Next
-	for k, v := range *(*map[string]V)(unsafe.Pointer(&p)) {
+	// v is declared out of the loop: its address is given to appendScalar, so it lives on the heap, and a
+	// variable of the loop would be allocated for each entry.
+	var (
+		k string
+		v V
+	)
+	for k, v = range *(*map[string]V)(unsafe.Pointer(&p)) {
 		b = appendMapKey(ctx, code, b, k)
 		bb, err := appendScalar(ctx, b, value, unsafe.Pointer(&v))
 		if err != nil {

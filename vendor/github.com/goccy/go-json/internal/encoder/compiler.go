@@ -1052,6 +1052,12 @@ func (c *Compiler) implementsMarshalJSON(typ reflect.Type) bool {
 	if !c.implementsMarshalJSONType(typ.Elem()) {
 		return true
 	}
+	if !runtime.IfaceIndir(typ.Elem()) {
+		// the value is stored directly in an interface value ( a map, a func, a struct of one pointer, ... ): the
+		// method of the pointer takes the pointer, where the one of the value would take the value itself, which the
+		// opcodes of a dereferenced pointer don't load.
+		return true
+	}
 	// needs to dereference
 	return false
 }
@@ -1065,6 +1071,12 @@ func (c *Compiler) implementsMarshalText(typ reflect.Type) bool {
 	}
 	// type kind is reflect.Ptr
 	if !typ.Elem().Implements(marshalTextType) {
+		return true
+	}
+	if !runtime.IfaceIndir(typ.Elem()) {
+		// the value is stored directly in an interface value ( a map, a func, a struct of one pointer, ... ): the
+		// method of the pointer takes the pointer, where the one of the value would take the value itself, which the
+		// opcodes of a dereferenced pointer don't load.
 		return true
 	}
 	// needs to dereference

@@ -342,8 +342,12 @@ type MapContext struct {
 	Order    []int32
 	prefixes []uint64 // the first bytes of the keys as numbers, while they are sorted
 	Sorted   bool
-	Len      int
-	Idx      int
+	// DirectEntries is whether the entries of a sorted map are written directly by one call of the VM, up to one
+	// whose value is left to its opcodes, as the entries of a map which is not sorted are written as it is read:
+	// the values are written by one opcode of a scalar, or are of interface{} ( see MapLayout ).
+	DirectEntries bool
+	Len           int
+	Idx           int
 	// The entries of a sorted map whose keys are not of a string kind are encoded as they come and put in
 	// the order of their encoded keys after: Start is where the key or the value being written starts,
 	// First is where the entries start in the buffer, Slice has the entries and Buf is where they are copied.
@@ -370,9 +374,15 @@ func NewMapContext(rctx *RuntimeContext) *MapContext {
 	ctx.Buf = ctx.Buf[:0]
 	ctx.Idx = 0
 	ctx.Sorted = false
+	ctx.DirectEntries = false
 	// Items is set by SortByEncodedKeys, and tells the VM the entries are put in that order.
 	ctx.Slice.Items = nil
 	return ctx
+}
+
+// ScalarValue is whether the values of the map are written by one opcode of a scalar ( MapLayout.ScalarValue ).
+func (c *MapContext) ScalarValue() bool {
+	return c.layout.ScalarValue
 }
 
 // SortByEncodedKeys makes the context put the entries in the order of their encoded keys, for a sorted map
@@ -543,6 +553,12 @@ func AppendMarshalJSON(ctx *RuntimeContext, code *Opcode, b []byte, p unsafe.Poi
 	if m.nilIsNull && p == nil {
 		return AppendNull(ctx, b), nil
 	}
+	if m.appendOutput != nil {
+		// the output of a type of the standard library is valid and compact: it is written as it is.
+		if out, ok := m.appendOutput(b, p); ok {
+			return out, nil
+		}
+	}
 	var bb []byte
 	var err error
 	if (code.Flags & MarshalerContextFlags) != 0 {
@@ -558,7 +574,7 @@ func AppendMarshalJSON(ctx *RuntimeContext, code *Opcode, b []byte, p unsafe.Poi
 		return nil, &errors.MarshalerError{Type: m.recv, Err: err}
 	}
 	escape := (ctx.Option.Flag & HTMLEscapeOption) != 0
-	if out, ok := appendCompactOutput(b, bb, escape); ok {
+	if out, ok := appendCompactOutput(b, bb, escape, m.trusted); ok {
 		// the output is compact and valid: it is copied as it is.
 		return out, nil
 	}
@@ -631,6 +647,12 @@ func AppendMarshalJSONIndent(ctx *RuntimeContext, code *Opcode, b []byte, p unsa
 	}
 	if m.nilIsNull && p == nil {
 		return AppendNull(ctx, b), nil
+	}
+	if m.appendOutput != nil {
+		// the output of a type of the standard library is one token, which has nothing to indent.
+		if out, ok := m.appendOutput(b, p); ok {
+			return out, nil
+		}
 	}
 	var bb []byte
 	var err error
@@ -711,9 +733,20 @@ func AppendMarshalText(ctx *RuntimeContext, code *Opcode, b []byte, p unsafe.Poi
 	if m.nilIsNull && p == nil {
 		return appendNilText(ctx, code, b), nil
 	}
-	bytes, err := m.call(p)
-	if err != nil {
-		return nil, &errors.MarshalerError{Type: m.recv, Err: err}
+	var bytes []byte
+	appended := false
+	if m.appendOutput != nil {
+		// the text of a type of the standard library is appended to a buffer of the context, not allocated.
+		bytes, appended = m.appendOutput(ctx.MarshalBuf[:0], p)
+		if appended {
+			ctx.MarshalBuf = bytes
+		}
+	}
+	if !appended {
+		var err error
+		if bytes, err = m.call(p); err != nil {
+			return nil, &errors.MarshalerError{Type: m.recv, Err: err}
+		}
 	}
 	// appendText, written here: it is not inlined, and this is the text of the key of most maps of texts.
 	n := len(b)

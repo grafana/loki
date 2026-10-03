@@ -3,8 +3,6 @@ package encoder
 import (
 	"encoding/binary"
 	"reflect"
-	"slices"
-	"strings"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/runtime"
@@ -18,7 +16,7 @@ import (
 // go-json read them through linknames of the runtime for years. Instead, a map with keys of a string kind is
 // ranged over as a map of the same layout: the layout of a map depends only on the size and the alignment of
 // the key and of the value, and the hash depends only on the key. So map[K]V, with K of a string kind and
-// V of up to 128 bytes, is read as map[string][n]uint64 by the code the compiler makes for a range: no
+// V of up to 256 bytes, is read as map[string][n]uint64 by the code the compiler makes for a range: no
 // allocation, no call for an entry, and no dependence on the runtime beyond the layout of a map being what
 // its type says. A map of another key is read by reflect.MapIter, which is slower but is the public way.
 
@@ -32,7 +30,7 @@ type MapLayout struct {
 	// string kind and the values are written by one opcode of a scalar ( ScalarValue: the map is ranged over
 	// as a map of a value of ValueWords words, appendMapScalarValues ), or when the values are of interface{},
 	// the map of a JSON object as a value of interface{} ( InterfaceValue: the values which hold a scalar are
-	// written, and the others are read into the context, appendMapScalarEntries ).
+	// written, and the others are read into the context, appendMapAsRead ).
 	ScalarValue    bool
 	InterfaceValue bool
 	// ValueWords is the number of the words of a value when the map is ranged over as a map of the same layout,
@@ -49,8 +47,10 @@ type MapLayout struct {
 const MapScalarValueWords = 3
 
 // mapValueWords is the number of the words of a value up to which a map is ranged over as a map of the same
-// layout: a larger value is stored out of the map by the runtime, which changes the layout.
-const mapValueWords = 16
+// layout. A value of more than 128 bytes is stored out of the map by the runtime, but so is the value of the
+// map[string][n]uint64 of its size, so the layouts are still the same. Each size is a function of about a
+// kilobyte of code, so the sizes stop at twice that one of the runtime; a larger value is read by reflect.
+const mapValueWords = 32
 
 // NewMapLayout returns how the VM reads a map of the type.
 func NewMapLayout(typ reflect.Type) *MapLayout {
@@ -107,6 +107,22 @@ var stringKeyCollectors = [mapValueWords + 1]func(unsafe.Pointer, *MapContext){
 	collectStringKeys[[14]uint64],
 	collectStringKeys[[15]uint64],
 	collectStringKeys[[16]uint64],
+	collectStringKeys[[17]uint64],
+	collectStringKeys[[18]uint64],
+	collectStringKeys[[19]uint64],
+	collectStringKeys[[20]uint64],
+	collectStringKeys[[21]uint64],
+	collectStringKeys[[22]uint64],
+	collectStringKeys[[23]uint64],
+	collectStringKeys[[24]uint64],
+	collectStringKeys[[25]uint64],
+	collectStringKeys[[26]uint64],
+	collectStringKeys[[27]uint64],
+	collectStringKeys[[28]uint64],
+	collectStringKeys[[29]uint64],
+	collectStringKeys[[30]uint64],
+	collectStringKeys[[31]uint64],
+	collectStringKeys[[32]uint64],
 }
 
 // newReflectCollector returns the function which reads a map of the type by reflect.MapIter: the key and the
@@ -239,8 +255,9 @@ func (c *MapContext) ValueAt(i int) unsafe.Pointer {
 //
 // A comparison of two keys is by their first eight bytes as one number first, which decides it for most of
 // the keys of a JSON object, and by the strings only when those are the same: a comparison of strings is a
-// call which costs more than the rest of a sort of a small map. The insertion sort is for the small maps,
-// which most of the maps are ( see Mapslice.Sort ).
+// call which costs more than the rest of a sort of a small map. The sort is written here, so that the
+// comparisons are inlined into it: a sort which takes the comparison as a function, as slices.SortFunc does,
+// calls it for every one.
 func (c *MapContext) SortKeys() {
 	n := len(c.Keys)
 	if cap(c.Order) < n {
@@ -252,36 +269,81 @@ func (c *MapContext) SortKeys() {
 		order[i] = int32(i)
 		prefixes[i] = keyPrefix(key)
 	}
-	less := func(a, b int32) bool {
-		if prefixes[a] != prefixes[b] {
-			return prefixes[a] < prefixes[b]
-		}
-		return keys[a] < keys[b]
-	}
 	if n > maxItemsOfInsertionSort {
-		slices.SortFunc(order, func(a, b int32) int {
-			if prefixes[a] != prefixes[b] {
-				if prefixes[a] < prefixes[b] {
-					return -1
-				}
-				return 1
-			}
-			return strings.Compare(keys[a], keys[b])
-		})
+		sortKeyOrder(order, prefixes, keys)
 	} else {
-		for i := 1; i < n; i++ {
-			e := order[i]
-			if !less(e, order[i-1]) {
-				continue
-			}
-			j := i
-			for ; j > 0 && less(e, order[j-1]); j-- {
-				order[j] = order[j-1]
-			}
-			order[j] = e
-		}
+		insertionSortKeyOrder(order, prefixes, keys)
 	}
 	c.Order = order
+}
+
+// keyLess is whether the key of the entry a comes before the one of b.
+func keyLess(a, b int32, prefixes []uint64, keys []string) bool {
+	if pa, pb := prefixes[a], prefixes[b]; pa != pb {
+		return pa < pb
+	}
+	return keys[a] < keys[b]
+}
+
+// sortKeyOrder sorts the entries of order by their keys: by quicksort, with the median of three entries as the
+// pivot, down to the parts of up to maxItemsOfInsertionSort entries, which are sorted by insertion. The smaller
+// part is sorted first, and the larger one by the loop, so that the depth is logarithmic.
+func sortKeyOrder(order []int32, prefixes []uint64, keys []string) {
+	for len(order) > maxItemsOfInsertionSort {
+		last := len(order) - 1
+		mid := last / 2
+		// the median of the first, the middle and the last entries, at the middle
+		if keyLess(order[mid], order[0], prefixes, keys) {
+			order[0], order[mid] = order[mid], order[0]
+		}
+		if keyLess(order[last], order[mid], prefixes, keys) {
+			order[mid], order[last] = order[last], order[mid]
+			if keyLess(order[mid], order[0], prefixes, keys) {
+				order[0], order[mid] = order[mid], order[0]
+			}
+		}
+		pivot := order[mid]
+		// Hoare's partition: the keys are distinct, so an entry equals the pivot only if it is the pivot.
+		i, j := 0, last
+		for {
+			for keyLess(order[i], pivot, prefixes, keys) {
+				i++
+			}
+			for keyLess(pivot, order[j], prefixes, keys) {
+				j--
+			}
+			if i >= j {
+				break
+			}
+			order[i], order[j] = order[j], order[i]
+			i++
+			j--
+		}
+		if j+1 < len(order)-j-1 {
+			sortKeyOrder(order[:j+1], prefixes, keys)
+			order = order[j+1:]
+		} else {
+			sortKeyOrder(order[j+1:], prefixes, keys)
+			order = order[:j+1]
+		}
+	}
+	insertionSortKeyOrder(order, prefixes, keys)
+}
+
+// insertionSortKeyOrder sorts the entries of order by their keys by insertion, which is the fastest sort of a few
+// entries.
+func insertionSortKeyOrder(order []int32, prefixes []uint64, keys []string) {
+	for i := 1; i < len(order); i++ {
+		e := order[i]
+		if !keyLess(e, order[i-1], prefixes, keys) {
+			continue
+		}
+		j := i
+		for ; j > 0 && keyLess(e, order[j-1], prefixes, keys); j-- {
+			order[j] = order[j-1]
+		}
+		order[j] = e
+	}
 }
 
 // keyPrefix returns the first eight bytes of the key as a number which compares as the bytes do, with zeros
