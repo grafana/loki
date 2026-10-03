@@ -334,52 +334,46 @@ func TestValuesEmptyMatcher(t *testing.T) {
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	// The index object is built from section builders, so that it can hold a
+	// second tenant like the index objects written before every index object
+	// held one tenant. A query must not resolve the other tenant's sections.
+	appendStream := func(streamsBuilder *streams.Builder, pointersBuilder *pointers.Builder, section, idInIndex int64, lbls labels.Labels, minTs, maxTs time.Time, size int64) {
+		idInObject := streamsBuilder.Record(lbls, minTs, size)
+		_ = streamsBuilder.Record(lbls, maxTs, 0)
+		pointersBuilder.ObserveStream("test-path", section, idInObject, idInIndex, maxTs, size)
+	}
+	newSectionBuilders := func(tenant string) (*streams.Builder, *pointers.Builder) {
+		streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 1024*1024, 10000)
+		streamsBuilder.SetTenant(tenant)
+		pointersBuilder := pointers.NewBuilder(pointers.NewMetrics(), 1024*1024, 10000)
+		pointersBuilder.SetTenant(tenant)
+		return streamsBuilder, pointersBuilder
+	}
 
+	tenantStreams, tenantPointers := newSectionBuilders(tenantID)
 	for i, ts := range testStreams {
 		lbls, err := syntax.ParseLabels(ts.Labels)
 		require.NoError(t, err)
-
-		newIdx, err := builder.AppendStream(tenantID, streams.Stream{
-			ID:               int64(i),
-			Labels:           lbls,
-			MinTimestamp:     ts.Entries[0].Timestamp,
-			MaxTimestamp:     ts.Entries[0].Timestamp,
-			UncompressedSize: 0,
-		})
-		require.NoError(t, err)
-		err = builder.ObserveLogLine(tenantID, "test-path", 1, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
-		require.NoError(t, err)
+		timestamp := ts.Entries[0].Timestamp
+		appendStream(tenantStreams, tenantPointers, 1, int64(i), lbls, timestamp, timestamp, int64(len(ts.Entries[0].Line)))
 	}
+	minTime, maxTime := tenantStreams.TimeRange()
 
-	// Add one more stream for a different tenant to ensure it is not resolved.
 	altTenant := "tenant-alt"
 	altTenantSection := int64(99) // Emulate a different section from a log object that doesn't collide with the main tenant's section
-	newIdx, err := builder.AppendStream(altTenant, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
-	err = builder.ObserveLogLine(altTenant, "test-path", altTenantSection, newIdx, 1, now.Add(-2*time.Hour), 5)
-	require.NoError(t, err)
+	altStreams, altPointers := newSectionBuilders(altTenant)
+	appendStream(altStreams, altPointers, altTenantSection, 1,
+		labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
+		now.Add(-3*time.Hour), now.Add(-2*time.Hour), 5)
 
-	// Build and store the object
-	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 2)
-
-	obj, closer, err := builder.Flush()
+	objBuilder := dataobj.NewBuilder(nil)
+	for _, section := range []dataobj.SectionBuilder{tenantStreams, tenantPointers, altStreams, altPointers} {
+		require.NoError(t, objBuilder.Append(section))
+	}
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
+	require.ElementsMatch(t, []string{tenantID, altTenant}, obj.Tenants())
 
 	bucket := objstore.NewInMemBucket()
 
@@ -390,7 +384,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
+	err = metastoreTocWriter.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{Path: path, StartTime: minTime, EndTime: maxTime})
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
