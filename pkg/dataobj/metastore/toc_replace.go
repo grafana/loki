@@ -25,6 +25,23 @@ type TableOfContentsEntry struct {
 	EndTime   time.Time
 }
 
+// validate returns an error if e does not start after the Unix epoch, or if
+// EndTime is before StartTime.
+//
+// The index pointers section stores a timestamp of 0 as a missing value, so a
+// row that starts at the epoch can't be read back. A zero time.Time lands in
+// a window that no query reads. An entry that ends before it starts overlaps
+// no window.
+func (e TableOfContentsEntry) validate() error {
+	if !e.StartTime.After(time.Unix(0, 0)) {
+		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
+	}
+	if e.EndTime.Before(e.StartTime) {
+		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
+	}
+	return nil
+}
+
 // replaceBackoffConfig bounds ReplaceIndexPointers retries on conditional-write
 // rejection (412 PreconditionFailed) or transient bucket errors.
 var replaceBackoffConfig = backoff.Config{
@@ -47,7 +64,8 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 // - both oldPaths and newEntries are empty
 // - oldPaths do not exist in TOC (race-loss)
 // - TOC doesn't exist
-// Returns (false, error) if an error happened (including retry exhaustion).
+// Returns (false, error) if an error happened (including retry exhaustion),
+// or if an entry in newEntries has no valid time range.
 //
 // Race-loss is detected on an ANY-match basis: if ANY oldPath is still
 // present in the target tenant's current section, the swap proceeds and
@@ -84,6 +102,11 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	case !oldEmpty && newEmpty:
 		return false, errors.New("replace-index-pointers: no old entries")
 	default:
+		for _, e := range newEntries {
+			if err := e.validate(); err != nil {
+				return false, err
+			}
+		}
 		return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 	}
 }
