@@ -155,58 +155,50 @@ var minmaxFuncs = struct {
 	ui64 func([]uint64) (uint64, uint64)
 }{}
 
-// GetMinMaxInt8 returns the min and max for a int8 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxInt8 returns the min and max for an int8 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxInt8(v []int8) (min, max int8) {
 	return minmaxFuncs.i8(v)
 }
 
-// GetMinMaxUint8 returns the min and max for a uint8 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxUint8 returns the min and max for a uint8 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxUint8(v []uint8) (min, max uint8) {
 	return minmaxFuncs.ui8(v)
 }
 
-// GetMinMaxInt16 returns the min and max for a int16 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxInt16 returns the min and max for an int16 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxInt16(v []int16) (min, max int16) {
 	return minmaxFuncs.i16(v)
 }
 
-// GetMinMaxUint16 returns the min and max for a uint16 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxUint16 returns the min and max for a uint16 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxUint16(v []uint16) (min, max uint16) {
 	return minmaxFuncs.ui16(v)
 }
 
-// GetMinMaxInt32 returns the min and max for a int32 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxInt32 returns the min and max for an int32 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxInt32(v []int32) (min, max int32) {
 	return minmaxFuncs.i32(v)
 }
 
-// GetMinMaxUint32 returns the min and max for a uint32 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxUint32 returns the min and max for a uint32 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxUint32(v []uint32) (min, max uint32) {
 	return minmaxFuncs.ui32(v)
 }
 
-// GetMinMaxInt64 returns the min and max for a int64 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxInt64 returns the min and max for an int64 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxInt64(v []int64) (min, max int64) {
 	return minmaxFuncs.i64(v)
 }
 
-// GetMinMaxUint64 returns the min and max for a uint64 slice, using AVX2 or
-// SSE4 cpu extensions if available, falling back to a pure go implementation
-// if they are unavailable or built with the noasm tag.
+// GetMinMaxUint64 returns the min and max for a uint64 slice, using a SIMD
+// implementation if available and falling back to pure Go otherwise.
 func GetMinMaxUint64(v []uint64) (min, max uint64) {
 	return minmaxFuncs.ui64(v)
 }

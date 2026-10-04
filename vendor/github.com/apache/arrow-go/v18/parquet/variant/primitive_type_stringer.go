@@ -37,9 +37,9 @@ const _PrimitiveType_name = "UnknownNullBoolTrueBoolFalseInt8Int16Int32Int64Doub
 var _PrimitiveType_index = [...]uint8{0, 7, 11, 19, 28, 32, 37, 42, 47, 53, 62, 71, 81, 85, 102, 122, 127, 133, 139, 154, 170, 189, 193}
 
 func (i PrimitiveType) String() string {
-	i -= -1
-	if i < 0 || i >= PrimitiveType(len(_PrimitiveType_index)-1) {
-		return "PrimitiveType(" + strconv.FormatInt(int64(i+-1), 10) + ")"
+	idx := int(i) - -1
+	if i < -1 || idx >= len(_PrimitiveType_index)-1 {
+		return "PrimitiveType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _PrimitiveType_name[_PrimitiveType_index[i]:_PrimitiveType_index[i+1]]
+	return _PrimitiveType_name[_PrimitiveType_index[idx]:_PrimitiveType_index[idx+1]]
 }

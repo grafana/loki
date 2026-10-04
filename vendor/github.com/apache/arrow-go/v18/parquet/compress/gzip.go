@@ -20,11 +20,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/klauspost/compress/gzip"
 )
 
 type gzipCodec struct{}
+
+var gzipWriterPools [gzip.BestCompression - gzip.StatelessCompression + 1]sync.Pool
 
 const (
 	gzipHeaderSize              = 10
@@ -84,18 +87,48 @@ func (g gzipCodec) EncodeLevel(dst, src []byte, level int) []byte {
 		dst = make([]byte, 0, maxlen)
 	}
 	buf := bytes.NewBuffer(dst[:0])
-	w, err := gzip.NewWriterLevel(buf, level)
+	pool := gzipWriterPool(level)
+	var w *gzip.Writer
+	if pool != nil {
+		if cached := pool.Get(); cached != nil {
+			w = cached.(*gzip.Writer)
+			w.Reset(buf)
+		}
+	}
+	var err error
+	if w == nil {
+		w, err = gzip.NewWriterLevel(buf, level)
+	}
 	if err != nil {
 		panic(err)
 	}
 	_, err = w.Write(src)
 	if err != nil {
+		releaseGzipWriter(pool, w)
 		panic(err)
 	}
 	if err := w.Close(); err != nil {
+		releaseGzipWriter(pool, w)
 		panic(err)
 	}
-	return buf.Bytes()
+	compressed := buf.Bytes()
+	releaseGzipWriter(pool, w)
+	return compressed
+}
+
+func gzipWriterPool(level int) *sync.Pool {
+	if level < gzip.StatelessCompression || level > gzip.BestCompression {
+		return nil
+	}
+	return &gzipWriterPools[level-gzip.StatelessCompression]
+}
+
+func releaseGzipWriter(pool *sync.Pool, w *gzip.Writer) {
+	if pool == nil {
+		return
+	}
+	w.Reset(nil)
+	pool.Put(w)
 }
 
 func (g gzipCodec) Encode(dst, src []byte) []byte {
