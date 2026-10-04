@@ -238,7 +238,7 @@ github.com/NYTimes/gziphandler
 ## explicit; go 1.14
 github.com/RoaringBitmap/roaring
 github.com/RoaringBitmap/roaring/internal
-# github.com/Workiva/go-datastructures v1.1.7
+# github.com/Workiva/go-datastructures v1.1.8
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
