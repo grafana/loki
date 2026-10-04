@@ -305,6 +305,11 @@ type TLSClientConfigOptions struct {
 	//			ServerName: "example.com",
 	//		})
 	ServerName string
+
+	// NextProtos is the list of ALPN protocols offered during the TLS
+	// handshake. If empty, ClientOptions.NextProtos is used; if that is also
+	// empty, HTTP/2 ("h2") is offered.
+	NextProtos []string
 }
 
 // TLSClientConfigFactory defines the interface for a client TLS config factory.
@@ -337,6 +342,7 @@ func NewTLSClientConfigFactory(opts *ClientOptions) (TLSClientConfigFactory, err
 			serverAuthorizationPolicy: opts.serverAuthorizationPolicy,
 			getStream:                 opts.getS2AStream,
 			localIdentity:             localIdentity,
+			nextProtos:                opts.NextProtos,
 		}, nil
 	}
 	return &s2aTLSClientConfigFactory{
@@ -347,6 +353,7 @@ func NewTLSClientConfigFactory(opts *ClientOptions) (TLSClientConfigFactory, err
 		serverAuthorizationPolicy: opts.serverAuthorizationPolicy,
 		getStream:                 opts.getS2AStream,
 		localIdentity:             localIdentity,
+		nextProtos:                opts.NextProtos,
 	}, nil
 }
 
@@ -359,15 +366,22 @@ type s2aTLSClientConfigFactory struct {
 	getStream                 stream.GetS2AStream
 	// localIdentity should only be used by the client.
 	localIdentity *commonpb.Identity
+	nextProtos    []string
 }
 
 func (f *s2aTLSClientConfigFactory) Build(
 	ctx context.Context, opts *TLSClientConfigOptions) (*tls.Config, error) {
 	serverName := ""
-	if opts != nil && opts.ServerName != "" {
-		serverName = opts.ServerName
+	nextProtos := f.nextProtos
+	if opts != nil {
+		if opts.ServerName != "" {
+			serverName = opts.ServerName
+		}
+		if len(opts.NextProtos) > 0 {
+			nextProtos = opts.NextProtos
+		}
 	}
-	return v2.NewClientTLSConfig(ctx, f.s2av2Address, f.transportCreds, f.tokenManager, f.verificationMode, serverName, f.serverAuthorizationPolicy, f.getStream, f.localIdentity)
+	return v2.NewClientTLSConfig(ctx, f.s2av2Address, f.transportCreds, f.tokenManager, f.verificationMode, serverName, f.serverAuthorizationPolicy, f.getStream, f.localIdentity, nextProtos)
 }
 
 func getVerificationMode(verificationMode VerificationModeType) s2av2pb.ValidatePeerCertificateChainReq_VerificationMode {
