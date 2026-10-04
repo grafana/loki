@@ -12,7 +12,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/Workiva/go-datastructures v1.1.7
+	github.com/Workiva/go-datastructures v1.1.8
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
