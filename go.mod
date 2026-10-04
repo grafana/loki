@@ -186,7 +186,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/cenkalti/backoff/v7 v7.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260922123528-4e49372c11f9 // indirect
 	github.com/charmbracelet/x/ansi v0.11.8 // indirect
