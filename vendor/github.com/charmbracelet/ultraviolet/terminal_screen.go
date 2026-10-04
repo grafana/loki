@@ -205,7 +205,6 @@ func (s *TerminalScreen) Resize(width, height int) {
 	s.rbuf.Resize(width, height)
 	s.rend.Resize(width, height)
 	s.rend.Erase()
-	s.rbuf.Touched = nil
 }
 
 // Display clears the screen and draws the given [Drawable] onto the terminal
