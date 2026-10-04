@@ -21,6 +21,7 @@ package thrift
 
 import (
 	"context"
+	"slices"
 )
 
 // ProcessorMiddleware is a function that can be passed to WrapProcessor to wrap the
@@ -40,8 +41,8 @@ func WrapProcessor(processor TProcessor, middlewares ...ProcessorMiddleware) TPr
 	for name, processorFunc := range processor.ProcessorMap() {
 		wrapped := processorFunc
 		// Add middlewares in reverse so the first in the list is the outermost.
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			wrapped = middlewares[i](name, wrapped)
+		for _, middleware := range slices.Backward(middlewares) {
+			wrapped = middleware(name, wrapped)
 		}
 		processor.AddToProcessorMap(name, wrapped)
 	}
@@ -98,8 +99,8 @@ var (
 //	Middlewares[0] -> Middlewares[1] -> ... -> Middlewares[n]
 func WrapClient(client TClient, middlewares ...ClientMiddleware) TClient {
 	// Add middlewares in reverse so the first in the list is the outermost.
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		client = middlewares[i](client)
+	for _, middleware := range slices.Backward(middlewares) {
+		client = middleware(client)
 	}
 	return client
 }
