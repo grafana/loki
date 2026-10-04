@@ -145,7 +145,7 @@ jobs:
           version: v4.3.0
 
       - name: Install Flux CLI
-        uses: fluxcd/flux2/action@dd233c4fadef306a62b7893204f8e3817fecc2b2  # v2.9.5
+        uses: fluxcd/flux2/action@b9c17924adb533d3617ec7de97a7b0f4acc07b39  # v2.9.6
 
       - name: Install Kind CLI
         uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2  # v1.15.0
