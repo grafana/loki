@@ -17,6 +17,8 @@
 package extensions
 
 import (
+	"fmt"
+
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
@@ -35,4 +37,32 @@ func init() {
 			panic(err)
 		}
 	}
+
+	// arrow-go originally registered Variant as parquet.variant. Keep that
+	// name in the registry so older IPC still deserializes. Seed default
+	// storage so GetExtensionType("parquet.variant") is a complete type.
+	if err := arrow.RegisterExtensionType(&legacyVariantType{VariantType: *NewDefaultVariantType()}); err != nil {
+		panic(err)
+	}
+}
+
+// legacyVariantType is a compatibility adapter for the historical
+// parquet.variant name. Deserialize always returns a canonical VariantType;
+// newly written IPC uses VariantExtensionName.
+type legacyVariantType struct {
+	VariantType
+}
+
+func (*legacyVariantType) ExtensionName() string { return LegacyVariantExtensionName }
+
+func (v *legacyVariantType) String() string {
+	return fmt.Sprintf("extension<%s>", v.ExtensionName())
+}
+
+func (v *legacyVariantType) ExtensionEquals(other arrow.ExtensionType) bool {
+	return variantExtensionEquals(v.StorageType(), other)
+}
+
+func (*legacyVariantType) Deserialize(storageType arrow.DataType, _ string) (arrow.ExtensionType, error) {
+	return NewVariantType(storageType)
 }

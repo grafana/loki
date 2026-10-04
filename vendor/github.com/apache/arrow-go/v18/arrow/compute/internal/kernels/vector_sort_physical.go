@@ -34,9 +34,9 @@ type physicalColumnBase struct {
 	validityNulls bool
 }
 
-func newPhysicalColumnBase(chunks []arrow.Array, numRows int, validityNulls bool) physicalColumnBase {
-	var rowMap logicalRowMap
-	if len(chunks) > 1 {
+func newPhysicalColumnBase(chunks []arrow.Array, numRows int, validityNulls bool, rowMap logicalRowMap) physicalColumnBase {
+	// A non-nil row map can be shared by aligned multi-key columns.
+	if len(chunks) > 1 && rowMap.cells == nil {
 		rowMap = newLogicalRowMap(chunks, numRows)
 	}
 	return physicalColumnBase{chunks: chunks, rowMap: rowMap, validityNulls: validityNulls}
@@ -81,8 +81,8 @@ func (b *physicalColumnBase) columnHasValidityNulls() bool { return b.validityNu
 
 type physicalSortInt8Column struct{ base physicalColumnBase }
 
-func newPhysicalSortInt8Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortInt8Column {
-	return &physicalSortInt8Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortInt8Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortInt8Column {
+	return &physicalSortInt8Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortInt8Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -106,8 +106,8 @@ func (c *physicalSortInt8Column) columnHasValidityNulls() bool {
 
 type physicalSortInt16Column struct{ base physicalColumnBase }
 
-func newPhysicalSortInt16Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortInt16Column {
-	return &physicalSortInt16Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortInt16Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortInt16Column {
+	return &physicalSortInt16Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortInt16Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -131,8 +131,8 @@ func (c *physicalSortInt16Column) columnHasValidityNulls() bool {
 
 type physicalSortInt32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortInt32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortInt32Column {
-	return &physicalSortInt32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortInt32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortInt32Column {
+	return &physicalSortInt32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortInt32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -156,8 +156,8 @@ func (c *physicalSortInt32Column) columnHasValidityNulls() bool {
 
 type physicalSortDate32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDate32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDate32Column {
-	return &physicalSortDate32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDate32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDate32Column {
+	return &physicalSortDate32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDate32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -181,8 +181,8 @@ func (c *physicalSortDate32Column) columnHasValidityNulls() bool {
 
 type physicalSortTime32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortTime32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortTime32Column {
-	return &physicalSortTime32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortTime32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortTime32Column {
+	return &physicalSortTime32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortTime32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -206,8 +206,8 @@ func (c *physicalSortTime32Column) columnHasValidityNulls() bool {
 
 type physicalSortInt64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortInt64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortInt64Column {
-	return &physicalSortInt64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortInt64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortInt64Column {
+	return &physicalSortInt64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortInt64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -231,8 +231,8 @@ func (c *physicalSortInt64Column) columnHasValidityNulls() bool {
 
 type physicalSortDate64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDate64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDate64Column {
-	return &physicalSortDate64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDate64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDate64Column {
+	return &physicalSortDate64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDate64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -256,8 +256,8 @@ func (c *physicalSortDate64Column) columnHasValidityNulls() bool {
 
 type physicalSortTime64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortTime64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortTime64Column {
-	return &physicalSortTime64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortTime64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortTime64Column {
+	return &physicalSortTime64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortTime64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -281,8 +281,8 @@ func (c *physicalSortTime64Column) columnHasValidityNulls() bool {
 
 type physicalSortTimestampColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortTimestampColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortTimestampColumn {
-	return &physicalSortTimestampColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortTimestampColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortTimestampColumn {
+	return &physicalSortTimestampColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortTimestampColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -306,8 +306,8 @@ func (c *physicalSortTimestampColumn) columnHasValidityNulls() bool {
 
 type physicalSortDurationColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortDurationColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortDurationColumn {
-	return &physicalSortDurationColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDurationColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDurationColumn {
+	return &physicalSortDurationColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDurationColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -331,8 +331,8 @@ func (c *physicalSortDurationColumn) columnHasValidityNulls() bool {
 
 type physicalSortUint8Column struct{ base physicalColumnBase }
 
-func newPhysicalSortUint8Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortUint8Column {
-	return &physicalSortUint8Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortUint8Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortUint8Column {
+	return &physicalSortUint8Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortUint8Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -356,8 +356,8 @@ func (c *physicalSortUint8Column) columnHasValidityNulls() bool {
 
 type physicalSortUint16Column struct{ base physicalColumnBase }
 
-func newPhysicalSortUint16Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortUint16Column {
-	return &physicalSortUint16Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortUint16Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortUint16Column {
+	return &physicalSortUint16Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortUint16Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -381,8 +381,8 @@ func (c *physicalSortUint16Column) columnHasValidityNulls() bool {
 
 type physicalSortUint32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortUint32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortUint32Column {
-	return &physicalSortUint32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortUint32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortUint32Column {
+	return &physicalSortUint32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortUint32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -406,8 +406,8 @@ func (c *physicalSortUint32Column) columnHasValidityNulls() bool {
 
 type physicalSortUint64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortUint64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortUint64Column {
-	return &physicalSortUint64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortUint64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortUint64Column {
+	return &physicalSortUint64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortUint64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -431,8 +431,8 @@ func (c *physicalSortUint64Column) columnHasValidityNulls() bool {
 
 type physicalSortFloat16Column struct{ base physicalColumnBase }
 
-func newPhysicalSortFloat16Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortFloat16Column {
-	return &physicalSortFloat16Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortFloat16Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortFloat16Column {
+	return &physicalSortFloat16Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortFloat16Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -469,8 +469,8 @@ func (c *physicalSortFloat16Column) columnHasValidityNulls() bool {
 
 type physicalSortFloat32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortFloat32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortFloat32Column {
-	return &physicalSortFloat32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortFloat32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortFloat32Column {
+	return &physicalSortFloat32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortFloat32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -507,8 +507,8 @@ func (c *physicalSortFloat32Column) columnHasValidityNulls() bool {
 
 type physicalSortFloat64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortFloat64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortFloat64Column {
-	return &physicalSortFloat64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortFloat64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortFloat64Column {
+	return &physicalSortFloat64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortFloat64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -545,8 +545,8 @@ func (c *physicalSortFloat64Column) columnHasValidityNulls() bool {
 
 type physicalSortDecimal32Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDecimal32Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDecimal32Column {
-	return &physicalSortDecimal32Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDecimal32Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDecimal32Column {
+	return &physicalSortDecimal32Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDecimal32Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -570,8 +570,8 @@ func (c *physicalSortDecimal32Column) columnHasValidityNulls() bool {
 
 type physicalSortDecimal64Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDecimal64Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDecimal64Column {
-	return &physicalSortDecimal64Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDecimal64Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDecimal64Column {
+	return &physicalSortDecimal64Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDecimal64Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -595,8 +595,8 @@ func (c *physicalSortDecimal64Column) columnHasValidityNulls() bool {
 
 type physicalSortDecimal128Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDecimal128Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDecimal128Column {
-	return &physicalSortDecimal128Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDecimal128Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDecimal128Column {
+	return &physicalSortDecimal128Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDecimal128Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -620,8 +620,8 @@ func (c *physicalSortDecimal128Column) columnHasValidityNulls() bool {
 
 type physicalSortDecimal256Column struct{ base physicalColumnBase }
 
-func newPhysicalSortDecimal256Column(chunks []arrow.Array, numRows int, vn bool) *physicalSortDecimal256Column {
-	return &physicalSortDecimal256Column{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDecimal256Column(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDecimal256Column {
+	return &physicalSortDecimal256Column{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDecimal256Column) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -645,8 +645,8 @@ func (c *physicalSortDecimal256Column) columnHasValidityNulls() bool {
 
 type physicalSortMonthIntervalColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortMonthIntervalColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortMonthIntervalColumn {
-	return &physicalSortMonthIntervalColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortMonthIntervalColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortMonthIntervalColumn {
+	return &physicalSortMonthIntervalColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortMonthIntervalColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -672,8 +672,8 @@ func (c *physicalSortMonthIntervalColumn) columnHasValidityNulls() bool {
 
 type physicalSortDayTimeColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortDayTimeColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortDayTimeColumn {
-	return &physicalSortDayTimeColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortDayTimeColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortDayTimeColumn {
+	return &physicalSortDayTimeColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortDayTimeColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -697,8 +697,8 @@ func (c *physicalSortDayTimeColumn) columnHasValidityNulls() bool {
 
 type physicalSortMonthDayNanoColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortMonthDayNanoColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortMonthDayNanoColumn {
-	return &physicalSortMonthDayNanoColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortMonthDayNanoColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortMonthDayNanoColumn {
+	return &physicalSortMonthDayNanoColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortMonthDayNanoColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -722,8 +722,8 @@ func (c *physicalSortMonthDayNanoColumn) columnHasValidityNulls() bool {
 
 type physicalSortBoolColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortBoolColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortBoolColumn {
-	return &physicalSortBoolColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortBoolColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortBoolColumn {
+	return &physicalSortBoolColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortBoolColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -747,8 +747,8 @@ func (c *physicalSortBoolColumn) columnHasValidityNulls() bool {
 
 type physicalSortStringColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortStringColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortStringColumn {
-	return &physicalSortStringColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortStringColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortStringColumn {
+	return &physicalSortStringColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortStringColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -772,8 +772,8 @@ func (c *physicalSortStringColumn) columnHasValidityNulls() bool {
 
 type physicalSortLargeStringColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortLargeStringColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortLargeStringColumn {
-	return &physicalSortLargeStringColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortLargeStringColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortLargeStringColumn {
+	return &physicalSortLargeStringColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortLargeStringColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -797,8 +797,8 @@ func (c *physicalSortLargeStringColumn) columnHasValidityNulls() bool {
 
 type physicalSortBinaryColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortBinaryColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortBinaryColumn {
-	return &physicalSortBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortBinaryColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortBinaryColumn {
+	return &physicalSortBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortBinaryColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -822,8 +822,8 @@ func (c *physicalSortBinaryColumn) columnHasValidityNulls() bool {
 
 type physicalSortLargeBinaryColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortLargeBinaryColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortLargeBinaryColumn {
-	return &physicalSortLargeBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortLargeBinaryColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortLargeBinaryColumn {
+	return &physicalSortLargeBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortLargeBinaryColumn) compareRowsForKey(i, j uint64, key SortKey) int {
@@ -847,8 +847,8 @@ func (c *physicalSortLargeBinaryColumn) columnHasValidityNulls() bool {
 
 type physicalSortFixedSizeBinaryColumn struct{ base physicalColumnBase }
 
-func newPhysicalSortFixedSizeBinaryColumn(chunks []arrow.Array, numRows int, vn bool) *physicalSortFixedSizeBinaryColumn {
-	return &physicalSortFixedSizeBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn)}
+func newPhysicalSortFixedSizeBinaryColumn(chunks []arrow.Array, numRows int, vn bool, rowMap logicalRowMap) *physicalSortFixedSizeBinaryColumn {
+	return &physicalSortFixedSizeBinaryColumn{base: newPhysicalColumnBase(chunks, numRows, vn, rowMap)}
 }
 
 func (c *physicalSortFixedSizeBinaryColumn) compareRowsForKey(i, j uint64, key SortKey) int {

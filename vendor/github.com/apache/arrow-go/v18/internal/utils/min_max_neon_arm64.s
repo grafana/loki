@@ -1,8 +1,286 @@
 //+build !noasm !appengine
 
 // ARROW-15336: optimized NEON min/max for ARM64
+// 8-bit functions use .16b (128-bit Q registers, 16 lanes) processing 32 elements/iteration
+// 16-bit functions use .8h (128-bit Q registers, 8 lanes) processing 16 elements/iteration
 // 32-bit functions use .4s (128-bit Q registers, 4 lanes) processing 8 elements/iteration
 // 64-bit functions use BIT/BIF instead of BSL+MOV to eliminate register saves
+
+// func _int8_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+TEXT ·_int8_max_min_neon(SB), $0-32
+
+	MOVD    values+0(FP), R0
+	MOVD    length+8(FP), R1
+	MOVD    minout+16(FP), R2
+	MOVD    maxout+24(FP), R3
+
+	WORD $0x7100043f // cmp    w1, #1
+	BLT int8_early_exit
+
+	WORD $0x71007c3f // cmp    w1, #31
+	WORD $0x2a0103e8 // mov    w8, w1
+	BHI int8_neon
+
+	WORD $0xaa1f03e9 // mov    x9, xzr
+	WORD $0x5280100b // mov    w11, #128
+	WORD $0x52800fea // mov    w10, #127
+	JMP int8_scalar
+int8_early_exit:
+	WORD $0x52800fea // mov    w10, #127
+	WORD $0x5280100b // mov    w11, #128
+	WORD $0x3900006b // strb   w11, [x3]
+	WORD $0x3900004a // strb   w10, [x2]
+	RET
+int8_neon:
+	WORD $0x927be909 // and    x9, x8, #0xffffffffffffffe0
+	WORD $0x4f03e7e0 // movi   v0.16b, #127
+	WORD $0x4f03e7e1 // movi   v1.16b, #127
+	WORD $0x4f04e402 // movi   v2.16b, #128
+	WORD $0x4f04e403 // movi   v3.16b, #128
+	WORD $0x9100400a // add    x10, x0, #16
+	WORD $0xaa0903eb // mov    x11, x9
+int8_loop:
+	WORD $0xad7f9544 // ldp    q4, q5, [x10, #-16]
+	WORD $0x4e246c00 // smin   v0.16b, v0.16b, v4.16b
+	WORD $0x4e256c21 // smin   v1.16b, v1.16b, v5.16b
+	WORD $0x4e246442 // smax   v2.16b, v2.16b, v4.16b
+	WORD $0x4e256463 // smax   v3.16b, v3.16b, v5.16b
+	WORD $0xf100816b // subs   x11, x11, #32
+	WORD $0x9100814a // add    x10, x10, #32
+	BNE int8_loop
+
+	WORD $0x4e216c00 // smin   v0.16b, v0.16b, v1.16b
+	WORD $0x4e236442 // smax   v2.16b, v2.16b, v3.16b
+	WORD $0x4e31a800 // sminv  b0, v0.16b
+	WORD $0x4e30a841 // smaxv  b1, v2.16b
+	WORD $0xeb08013f // cmp    x9, x8
+	WORD $0x1e26000a // fmov   w10, s0
+	WORD $0x1e26002b // fmov   w11, s1
+	BEQ int8_done
+int8_scalar:
+	WORD $0x8b09000c // add    x12, x0, x9
+	WORD $0xcb090108 // sub    x8, x8, x9
+int8_scalar_loop:
+	WORD $0x38c01589 // ldrsb  w9, [x12], #1
+	WORD $0x13001d4a // sxtb   w10, w10
+	WORD $0x6b09015f // cmp    w10, w9
+	WORD $0x1a89b14a // csel   w10, w10, w9, lt
+	WORD $0x13001d6b // sxtb   w11, w11
+	WORD $0x6b09017f // cmp    w11, w9
+	WORD $0x1a89c16b // csel   w11, w11, w9, gt
+	WORD $0xf1000508 // subs   x8, x8, #1
+	BNE int8_scalar_loop
+int8_done:
+	WORD $0x3900006b // strb   w11, [x3]
+	WORD $0x3900004a // strb   w10, [x2]
+	RET
+
+// func _uint8_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+TEXT ·_uint8_max_min_neon(SB), $0-32
+
+	MOVD    values+0(FP), R0
+	MOVD    length+8(FP), R1
+	MOVD    minout+16(FP), R2
+	MOVD    maxout+24(FP), R3
+
+	WORD $0x7100043f // cmp    w1, #1
+	BLT uint8_early_exit
+
+	WORD $0x71007c3f // cmp    w1, #31
+	WORD $0x2a0103e8 // mov    w8, w1
+	BHI uint8_neon
+
+	WORD $0xaa1f03e9 // mov    x9, xzr
+	WORD $0x5280000b // mov    w11, #0
+	WORD $0x52801fea // mov    w10, #255
+	JMP uint8_scalar
+uint8_early_exit:
+	WORD $0x5280000b // mov    w11, #0
+	WORD $0x52801fea // mov    w10, #255
+	WORD $0x3900006b // strb   w11, [x3]
+	WORD $0x3900004a // strb   w10, [x2]
+	RET
+uint8_neon:
+	WORD $0x927be909 // and    x9, x8, #0xffffffffffffffe0
+	WORD $0x6f07e7e0 // mvni   v0.16b, #0
+	WORD $0x6f07e7e1 // mvni   v1.16b, #0
+	WORD $0x6f00e402 // movi   v2.16b, #0
+	WORD $0x6f00e403 // movi   v3.16b, #0
+	WORD $0x9100400a // add    x10, x0, #16
+	WORD $0xaa0903eb // mov    x11, x9
+uint8_loop:
+	WORD $0xad7f9544 // ldp    q4, q5, [x10, #-16]
+	WORD $0x6e246c00 // umin   v0.16b, v0.16b, v4.16b
+	WORD $0x6e256c21 // umin   v1.16b, v1.16b, v5.16b
+	WORD $0x6e246442 // umax   v2.16b, v2.16b, v4.16b
+	WORD $0x6e256463 // umax   v3.16b, v3.16b, v5.16b
+	WORD $0xf100816b // subs   x11, x11, #32
+	WORD $0x9100814a // add    x10, x10, #32
+	BNE uint8_loop
+
+	WORD $0x6e216c00 // umin   v0.16b, v0.16b, v1.16b
+	WORD $0x6e236442 // umax   v2.16b, v2.16b, v3.16b
+	WORD $0x6e31a800 // uminv  b0, v0.16b
+	WORD $0x6e30a841 // umaxv  b1, v2.16b
+	WORD $0xeb08013f // cmp    x9, x8
+	WORD $0x1e26000a // fmov   w10, s0
+	WORD $0x1e26002b // fmov   w11, s1
+	BEQ uint8_done
+uint8_scalar:
+	WORD $0x8b09000c // add    x12, x0, x9
+	WORD $0xcb090108 // sub    x8, x8, x9
+uint8_scalar_loop:
+	WORD $0x38401589 // ldrb   w9, [x12], #1
+	WORD $0x12001d4a // and    w10, w10, #0xff
+	WORD $0x6b09015f // cmp    w10, w9
+	WORD $0x1a89314a // csel   w10, w10, w9, lo
+	WORD $0x12001d6b // and    w11, w11, #0xff
+	WORD $0x6b09017f // cmp    w11, w9
+	WORD $0x1a89816b // csel   w11, w11, w9, hi
+	WORD $0xf1000508 // subs   x8, x8, #1
+	BNE uint8_scalar_loop
+uint8_done:
+	WORD $0x3900006b // strb   w11, [x3]
+	WORD $0x3900004a // strb   w10, [x2]
+	RET
+
+// func _int16_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+TEXT ·_int16_max_min_neon(SB), $0-32
+
+	MOVD    values+0(FP), R0
+	MOVD    length+8(FP), R1
+	MOVD    minout+16(FP), R2
+	MOVD    maxout+24(FP), R3
+
+	WORD $0x7100043f // cmp    w1, #1
+	BLT int16_early_exit
+
+	WORD $0x71003c3f // cmp    w1, #15
+	WORD $0x2a0103e8 // mov    w8, w1
+	BHI int16_neon
+
+	WORD $0xaa1f03e9 // mov    x9, xzr
+	WORD $0x5290000b // mov    w11, #32768
+	WORD $0x528fffea // mov    w10, #32767
+	JMP int16_scalar
+int16_early_exit:
+	WORD $0x528fffea // mov    w10, #32767
+	WORD $0x5290000b // mov    w11, #32768
+	WORD $0x7900006b // strh   w11, [x3]
+	WORD $0x7900004a // strh   w10, [x2]
+	RET
+int16_neon:
+	WORD $0x927ced09 // and    x9, x8, #0xfffffffffffffff0
+	WORD $0x6f04a400 // mvni   v0.8h, #32768
+	WORD $0x6f04a401 // mvni   v1.8h, #32768
+	WORD $0x4f04a402 // movi   v2.8h, #32768
+	WORD $0x4f04a403 // movi   v3.8h, #32768
+	WORD $0x9100400a // add    x10, x0, #16
+	WORD $0xaa0903eb // mov    x11, x9
+int16_loop:
+	WORD $0xad7f9544 // ldp    q4, q5, [x10, #-16]
+	WORD $0x4e646c00 // smin   v0.8h, v0.8h, v4.8h
+	WORD $0x4e656c21 // smin   v1.8h, v1.8h, v5.8h
+	WORD $0x4e646442 // smax   v2.8h, v2.8h, v4.8h
+	WORD $0x4e656463 // smax   v3.8h, v3.8h, v5.8h
+	WORD $0xf100416b // subs   x11, x11, #16
+	WORD $0x9100814a // add    x10, x10, #32
+	BNE int16_loop
+
+	WORD $0x4e616c00 // smin   v0.8h, v0.8h, v1.8h
+	WORD $0x4e636442 // smax   v2.8h, v2.8h, v3.8h
+	WORD $0x4e71a800 // sminv  h0, v0.8h
+	WORD $0x4e70a841 // smaxv  h1, v2.8h
+	WORD $0xeb08013f // cmp    x9, x8
+	WORD $0x1e26000a // fmov   w10, s0
+	WORD $0x1e26002b // fmov   w11, s1
+	BEQ int16_done
+int16_scalar:
+	WORD $0x8b09040c // add    x12, x0, x9, lsl #1
+	WORD $0xcb090108 // sub    x8, x8, x9
+int16_scalar_loop:
+	WORD $0x78c02589 // ldrsh  w9, [x12], #2
+	WORD $0x13003d4a // sxth   w10, w10
+	WORD $0x6b09015f // cmp    w10, w9
+	WORD $0x1a89b14a // csel   w10, w10, w9, lt
+	WORD $0x13003d6b // sxth   w11, w11
+	WORD $0x6b09017f // cmp    w11, w9
+	WORD $0x1a89c16b // csel   w11, w11, w9, gt
+	WORD $0xf1000508 // subs   x8, x8, #1
+	BNE int16_scalar_loop
+int16_done:
+	WORD $0x7900006b // strh   w11, [x3]
+	WORD $0x7900004a // strh   w10, [x2]
+	RET
+
+// func _uint16_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
+TEXT ·_uint16_max_min_neon(SB), $0-32
+
+	MOVD    values+0(FP), R0
+	MOVD    length+8(FP), R1
+	MOVD    minout+16(FP), R2
+	MOVD    maxout+24(FP), R3
+
+	WORD $0x7100043f // cmp    w1, #1
+	BLT uint16_early_exit
+
+	WORD $0x71003c3f // cmp    w1, #15
+	WORD $0x2a0103e8 // mov    w8, w1
+	BHI uint16_neon
+
+	WORD $0xaa1f03e9 // mov    x9, xzr
+	WORD $0x5280000b // mov    w11, #0
+	WORD $0x529fffea // mov    w10, #65535
+	JMP uint16_scalar
+uint16_early_exit:
+	WORD $0x5280000b // mov    w11, #0
+	WORD $0x529fffea // mov    w10, #65535
+	WORD $0x7900006b // strh   w11, [x3]
+	WORD $0x7900004a // strh   w10, [x2]
+	RET
+uint16_neon:
+	WORD $0x927ced09 // and    x9, x8, #0xfffffffffffffff0
+	WORD $0x6f07e7e0 // mvni   v0.8h, #0
+	WORD $0x6f07e7e1 // mvni   v1.8h, #0
+	WORD $0x6f00e402 // movi   v2.8h, #0
+	WORD $0x6f00e403 // movi   v3.8h, #0
+	WORD $0x9100400a // add    x10, x0, #16
+	WORD $0xaa0903eb // mov    x11, x9
+uint16_loop:
+	WORD $0xad7f9544 // ldp    q4, q5, [x10, #-16]
+	WORD $0x6e646c00 // umin   v0.8h, v0.8h, v4.8h
+	WORD $0x6e656c21 // umin   v1.8h, v1.8h, v5.8h
+	WORD $0x6e646442 // umax   v2.8h, v2.8h, v4.8h
+	WORD $0x6e656463 // umax   v3.8h, v3.8h, v5.8h
+	WORD $0xf100416b // subs   x11, x11, #16
+	WORD $0x9100814a // add    x10, x10, #32
+	BNE uint16_loop
+
+	WORD $0x6e616c00 // umin   v0.8h, v0.8h, v1.8h
+	WORD $0x6e636442 // umax   v2.8h, v2.8h, v3.8h
+	WORD $0x6e71a800 // uminv  h0, v0.8h
+	WORD $0x6e70a841 // umaxv  h1, v2.8h
+	WORD $0xeb08013f // cmp    x9, x8
+	WORD $0x1e26000a // fmov   w10, s0
+	WORD $0x1e26002b // fmov   w11, s1
+	BEQ uint16_done
+uint16_scalar:
+	WORD $0x8b09040c // add    x12, x0, x9, lsl #1
+	WORD $0xcb090108 // sub    x8, x8, x9
+uint16_scalar_loop:
+	WORD $0x78402589 // ldrh   w9, [x12], #2
+	WORD $0x12003d4a // and    w10, w10, #0xffff
+	WORD $0x6b09015f // cmp    w10, w9
+	WORD $0x1a89314a // csel   w10, w10, w9, lo
+	WORD $0x12003d6b // and    w11, w11, #0xffff
+	WORD $0x6b09017f // cmp    w11, w9
+	WORD $0x1a89816b // csel   w11, w11, w9, hi
+	WORD $0xf1000508 // subs   x8, x8, #1
+	BNE uint16_scalar_loop
+uint16_done:
+	WORD $0x7900006b // strh   w11, [x3]
+	WORD $0x7900004a // strh   w10, [x2]
+	RET
 
 // func _int32_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 TEXT ·_int32_max_min_neon(SB), $0-32
@@ -12,13 +290,7 @@ TEXT ·_int32_max_min_neon(SB), $0-32
 	MOVD    minout+16(FP), R2
 	MOVD    maxout+24(FP), R3
 
-	// The Go ABI saves the frame pointer register one word below the
-	// caller's frame. Make room so we don't overwrite it. Needs to stay
-	// 16-byte aligned
-	SUB $16, RSP
-	WORD $0xa9bf7bfd // stp    x29, x30, [sp, #-16]!
 	WORD $0x7100043f // cmp    w1, #1
-	WORD $0x910003fd // mov    x29, sp
 	BLT int32_early_exit
 
 	WORD $0x71001c3f // cmp    w1, #7
@@ -34,9 +306,6 @@ int32_early_exit:
 	WORD $0x52b0000b // mov    w11, #-2147483648
 	WORD $0xb900006b // str    w11, [x3]
 	WORD $0xb900004a // str    w10, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 int32_neon:
 	WORD $0x927d7109 // and    x9, x8, #0xfffffff8
@@ -78,9 +347,6 @@ int32_scalar_loop:
 int32_done:
 	WORD $0xb900006b // str    w11, [x3]
 	WORD $0xb900004a // str    w10, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 
 // func _uint32_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
@@ -91,13 +357,7 @@ TEXT ·_uint32_max_min_neon(SB), $0-32
 	MOVD    minout+16(FP), R2
 	MOVD    maxout+24(FP), R3
 
-	// The Go ABI saves the frame pointer register one word below the
-	// caller's frame. Make room so we don't overwrite it. Needs to stay
-	// 16-byte aligned
-	SUB $16, RSP
-	WORD $0xa9bf7bfd // stp    x29, x30, [sp, #-16]!
 	WORD $0x7100043f // cmp    w1, #1
-	WORD $0x910003fd // mov    x29, sp
 	BLT uint32_early_exit
 
 	WORD $0x71001c3f // cmp    w1, #7
@@ -113,9 +373,6 @@ uint32_early_exit:
 	WORD $0x1280000b // mov    w11, #-1
 	WORD $0xb900006a // str    w10, [x3]
 	WORD $0xb900004b // str    w11, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 uint32_neon:
 	WORD $0x927d7109 // and    x9, x8, #0xfffffff8
@@ -157,9 +414,6 @@ uint32_scalar_loop:
 uint32_done:
 	WORD $0xb900006a // str    w10, [x3]
 	WORD $0xb900004b // str    w11, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 
 // func _int64_max_min_neon(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
@@ -170,13 +424,7 @@ TEXT ·_int64_max_min_neon(SB), $0-32
 	MOVD    minout+16(FP), R2
 	MOVD    maxout+24(FP), R3
 
-	// The Go ABI saves the frame pointer register one word below the
-	// caller's frame. Make room so we don't overwrite it. Needs to stay
-	// 16-byte aligned
-	SUB $16, RSP
-	WORD $0xa9bf7bfd // stp    x29, x30, [sp, #-16]!
 	WORD $0x7100043f // cmp    w1, #1
-	WORD $0x910003fd // mov    x29, sp
 	BLT int64_early_exit
 
 	WORD $0x2a0103e8 // mov    w8, w1
@@ -192,9 +440,6 @@ int64_early_exit:
 	WORD $0xd2f0000b // mov    x11, #-9223372036854775808
 	WORD $0xf900006b // str    x11, [x3]
 	WORD $0xf900004a // str    x10, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 int64_neon:
 	WORD $0x927e7509 // and    x9, x8, #0xfffffffc
@@ -246,9 +491,6 @@ int64_scalar_loop:
 int64_done:
 	WORD $0xf900006b // str    x11, [x3]
 	WORD $0xf900004a // str    x10, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 
 
@@ -260,13 +502,7 @@ TEXT ·_uint64_max_min_neon(SB), $0-32
 	MOVD    minout+16(FP), R2
 	MOVD    maxout+24(FP), R3
 
-	// The Go ABI saves the frame pointer register one word below the
-	// caller's frame. Make room so we don't overwrite it. Needs to stay
-	// 16-byte aligned
-	SUB $16, RSP
-	WORD $0xa9bf7bfd // stp    x29, x30, [sp, #-16]!
 	WORD $0x7100043f // cmp    w1, #1
-	WORD $0x910003fd // mov    x29, sp
 	BLT uint64_early_exit
 
 	WORD $0x71000c3f // cmp    w1, #3
@@ -282,9 +518,6 @@ uint64_early_exit:
 	WORD $0x9280000b // mov    x11, #-1
 	WORD $0xf900006a // str    x10, [x3]
 	WORD $0xf900004b // str    x11, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET
 uint64_neon:
 	WORD $0x927e7509 // and    x9, x8, #0xfffffffc
@@ -336,7 +569,4 @@ uint64_scalar_loop:
 uint64_done:
 	WORD $0xf900006a // str    x10, [x3]
 	WORD $0xf900004b // str    x11, [x2]
-	WORD $0xa8c17bfd // ldp    x29, x30, [sp], #16
-	// Put the stack pointer back where it was
-	ADD $16, RSP
 	RET

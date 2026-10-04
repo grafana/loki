@@ -161,6 +161,13 @@ func (a *String) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *String) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *String) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -232,15 +239,21 @@ func (a *String) ValidateFull() error {
 }
 
 func arrayEqualString(left, right *String) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && left.Value(i) != right.Value(i) {
+				return false
+			}
 		}
-		if left.Value(i) != right.Value(i) {
-			return false
-		}
+		return true
 	}
-	return true
+	return arrayEqualVariableWidth(
+		left.offsets, right.offsets,
+		left.values, right.values,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		equalStrings,
+	)
 }
 
 // String represents an immutable sequence of variable-length UTF-8 strings.
@@ -369,6 +382,13 @@ func (a *LargeString) GetOneForMarshal(i int) interface{} {
 	return nil
 }
 
+func (a *LargeString) ValueAsAny(i int) any {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
 func (a *LargeString) MarshalJSON() ([]byte, error) {
 	vals := make([]interface{}, a.Len())
 	for i := 0; i < a.Len(); i++ {
@@ -436,15 +456,25 @@ func (a *LargeString) ValidateFull() error {
 }
 
 func arrayEqualLargeString(left, right *LargeString) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
+	if useScalarVariableWidthEquality(left) {
+		for i := range left.Len() {
+			if !left.IsNull(i) && left.Value(i) != right.Value(i) {
+				return false
+			}
 		}
-		if left.Value(i) != right.Value(i) {
-			return false
-		}
+		return true
 	}
-	return true
+	return arrayEqualVariableWidth(
+		left.offsets, right.offsets,
+		left.values, right.values,
+		left.Offset(), right.Offset(), left.Len(),
+		left.NullN(), left.NullBitmapBytes(),
+		equalStrings,
+	)
+}
+
+func equalStrings(left, right string) bool {
+	return left == right
 }
 
 type StringView struct {
@@ -501,6 +531,22 @@ func (a *StringView) ValueLen(i int) int {
 	return s.Len()
 }
 
+func (a *StringView) Validate() error {
+	return validateViewLayout(a, "string view")
+}
+
+func (a *StringView) ValidateFull() error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	return validateViewValues(a, a.dataBuffers, func(i int, value []byte) error {
+		if !utf8.Valid(value) {
+			return fmt.Errorf("arrow/array: string view at slot %d is not valid utf8", i)
+		}
+		return nil
+	})
+}
+
 func (a *StringView) String() string {
 	var o strings.Builder
 	o.WriteString("[")
@@ -527,6 +573,13 @@ func (a *StringView) ValueStr(i int) string {
 }
 
 func (a *StringView) GetOneForMarshal(i int) interface{} {
+	if a.IsNull(i) {
+		return nil
+	}
+	return a.Value(i)
+}
+
+func (a *StringView) ValueAsAny(i int) any {
 	if a.IsNull(i) {
 		return nil
 	}

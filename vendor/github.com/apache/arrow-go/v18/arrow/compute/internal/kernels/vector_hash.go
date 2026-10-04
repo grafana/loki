@@ -23,9 +23,11 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/hashing"
 )
@@ -78,11 +80,172 @@ func (emptyAction) ShouldEncodeNulls() bool           { return true }
 
 type uniqueAction = emptyAction
 
+type NullEncodingBehavior int8
+
+const (
+	// NullEncodingMask keeps null input values null in the indices array.
+	// It is the zero value and default behavior.
+	NullEncodingMask NullEncodingBehavior = iota
+	// NullEncodingEncode adds null input values to the dictionary as a regular entry.
+	NullEncodingEncode
+)
+
+type DictionaryEncodeOptions struct {
+	// NullEncoding controls how null input values are represented.
+	NullEncoding NullEncodingBehavior `compute:"null_encoding_behavior"`
+}
+
+func (DictionaryEncodeOptions) TypeName() string { return "DictionaryEncodeOptions" }
+
+func (opts DictionaryEncodeOptions) ToScalar() (scalar.Scalar, error) {
+	var encoded uint32
+	switch opts.NullEncoding {
+	case NullEncodingEncode:
+		encoded = 0
+	case NullEncodingMask:
+		encoded = 1
+	default:
+		return nil, fmt.Errorf("%w: invalid null encoding behavior %d", arrow.ErrInvalid, opts.NullEncoding)
+	}
+
+	return scalar.NewStructScalarWithNames(
+		[]scalar.Scalar{
+			scalar.NewUint32Scalar(encoded),
+			scalar.NewBinaryScalar(memory.NewBufferBytes([]byte(opts.TypeName())), arrow.BinaryTypes.Binary),
+		},
+		[]string{"null_encoding_behavior", "_type_name"},
+	)
+}
+
+func (opts *DictionaryEncodeOptions) FromStructScalar(sc *scalar.Struct) error {
+	value, err := sc.Field("null_encoding_behavior")
+	if err != nil {
+		return err
+	}
+
+	encoded, ok := value.(*scalar.Uint32)
+	if !ok || !encoded.IsValid() {
+		return fmt.Errorf("%w: null_encoding_behavior must be a valid uint32 scalar", arrow.ErrInvalid)
+	}
+
+	var behavior NullEncodingBehavior
+	switch encoded.Value {
+	case 0:
+		behavior = NullEncodingEncode
+	case 1:
+		behavior = NullEncodingMask
+	default:
+		return fmt.Errorf("%w: invalid null encoding behavior %d", arrow.ErrInvalid, encoded.Value)
+	}
+
+	opts.NullEncoding = behavior
+	return nil
+}
+
+type dictionaryEncodeAction struct {
+	nullEncoding NullEncodingBehavior
+	indices      *bufferBuilder[int32]
+	validity     validityBuilder
+	length       int
+	nulls        int
+	err          error
+}
+
+func (a *dictionaryEncodeAction) Reset() error {
+	a.indices.reset()
+	a.validity.reset()
+	a.length = 0
+	a.nulls = 0
+	a.err = nil
+	return nil
+}
+
+func (a *dictionaryEncodeAction) Reserve(n int) error {
+	a.indices.reserve(n)
+	a.validity.Reserve(int64(n))
+	return nil
+}
+
+func (a *dictionaryEncodeAction) appendIndex(idx int, valid bool) {
+	if !valid {
+		idx = 0
+	}
+	if idx < 0 || int64(idx) > int64(1<<31-1) {
+		if a.err == nil {
+			a.err = fmt.Errorf("%w: dictionary index %d does not fit in int32", arrow.ErrInvalid, idx)
+		}
+		return
+	}
+
+	a.indices.unsafeAppend(int32(idx))
+	a.validity.UnsafeAppend(valid)
+	a.length++
+	if !valid {
+		a.nulls++
+	}
+}
+
+func (a *dictionaryEncodeAction) Flush(out *exec.ExecResult) error {
+	if a.err != nil {
+		return a.err
+	}
+
+	out.Len = int64(a.length)
+	out.Nulls = int64(a.nulls)
+	if a.length != 0 {
+		out.Buffers[1].WrapBuffer(a.indices.finish())
+	} else {
+		a.indices.finish().Release()
+	}
+
+	validity := a.validity.Finish()
+	if a.nulls != 0 {
+		out.Buffers[0].WrapBuffer(validity)
+	} else if validity != nil {
+		validity.Release()
+	}
+
+	a.length = 0
+	a.nulls = 0
+	return nil
+}
+
+func (a *dictionaryEncodeAction) FlushFinal(*exec.ExecResult) error {
+	return nil
+}
+
+func (a *dictionaryEncodeAction) ObserveFound(idx int) {
+	a.appendIndex(idx, true)
+}
+
+func (a *dictionaryEncodeAction) ObserveNotFound(idx int) error {
+	a.appendIndex(idx, true)
+	return a.err
+}
+
+func (a *dictionaryEncodeAction) ObserveNullFound(idx int) {
+	if a.nullEncoding == NullEncodingMask {
+		a.appendIndex(0, false)
+	} else {
+		a.appendIndex(idx, true)
+	}
+}
+
+func (a *dictionaryEncodeAction) ObserveNullNotFound(idx int) error {
+	a.ObserveNullFound(idx)
+	return a.err
+}
+
+func (a *dictionaryEncodeAction) ShouldEncodeNulls() bool {
+	return a.nullEncoding == NullEncodingEncode
+}
+
 type regularHashState struct {
-	mem       memory.Allocator
-	typ       arrow.DataType
-	memoTable hashing.MemoTable
-	action    Action
+	mem          memory.Allocator
+	typ          arrow.DataType
+	memoTable    hashing.MemoTable
+	action       Action
+	memoReleased bool
 
 	doAppend func(Action, hashing.MemoTable, *exec.ArraySpan) error
 }
@@ -92,7 +255,16 @@ func (rhs *regularHashState) Allocator() memory.Allocator { return rhs.mem }
 func (rhs *regularHashState) ValueType() arrow.DataType { return rhs.typ }
 
 func (rhs *regularHashState) Reset() error {
-	rhs.memoTable.Reset()
+	if rhs.memoReleased {
+		memoTable, err := newMemoTable(rhs.mem, rhs.typ.ID())
+		if err != nil {
+			return err
+		}
+		rhs.memoTable = memoTable
+		rhs.memoReleased = false
+	} else {
+		rhs.memoTable.Reset()
+	}
 	return rhs.action.Reset()
 }
 
@@ -114,6 +286,10 @@ func (rhs *regularHashState) GetDictionary() (arrow.ArrayData, error) {
 }
 
 func doAppendBinary[OffsetT int32 | int64](action Action, memo hashing.MemoTable, arr *exec.ArraySpan) error {
+	if arr.Len == 0 {
+		return nil
+	}
+
 	var (
 		bitmap            = arr.Buffers[0].Buf
 		offsets           = exec.GetSpanOffsets[OffsetT](arr, 1)
@@ -142,6 +318,7 @@ func doAppendBinary[OffsetT int32 | int64](action Action, memo hashing.MemoTable
 			idx, found := memo.GetOrInsertNull()
 			if found {
 				action.ObserveNullFound(idx)
+				return nil
 			}
 			return action.ObserveNullNotFound(idx)
 		})
@@ -173,17 +350,19 @@ func doAppendFixedSize(action Action, memo hashing.MemoTable, arr *exec.ArraySpa
 			idx, found := memo.GetOrInsertNull()
 			if found {
 				action.ObserveNullFound(idx)
+				return nil
 			}
 			return action.ObserveNullNotFound(idx)
 		})
 }
 
-func doAppendNumeric[T arrow.IntType | arrow.UintType | arrow.FloatType](action Action, memo hashing.MemoTable, arr *exec.ArraySpan) error {
+func doAppendNumeric[T uint8 | uint16 | uint32 | uint64](action Action, memo hashing.MemoTable, arr *exec.ArraySpan) error {
 	arrData := exec.GetSpanValues[T](arr, 1)
 	shouldEncodeNulls := action.ShouldEncodeNulls()
+	typedMemo := memo.(hashing.TypedMemoTable[T])
 	return bitutils.VisitBitBlocksShort(arr.Buffers[0].Buf, arr.Offset, arr.Len,
 		func(pos int64) error {
-			idx, found, err := memo.GetOrInsert(arrData[pos])
+			idx, found, err := typedMemo.InsertOrGet(arrData[pos])
 			if err != nil {
 				return err
 			}
@@ -200,6 +379,43 @@ func doAppendNumeric[T arrow.IntType | arrow.UintType | arrow.FloatType](action 
 			idx, found := memo.GetOrInsertNull()
 			if found {
 				action.ObserveNullFound(idx)
+				return nil
+			}
+			return action.ObserveNullNotFound(idx)
+		})
+}
+
+func doAppendBoolean(action Action, memo hashing.MemoTable, arr *exec.ArraySpan) error {
+	if arr.Len == 0 {
+		return nil
+	}
+
+	values := arr.Buffers[1].Buf
+	shouldEncodeNulls := action.ShouldEncodeNulls()
+	return bitutils.VisitBitBlocksShort(arr.Buffers[0].Buf, arr.Offset, arr.Len,
+		func(pos int64) error {
+			value := uint8(0)
+			if bitutil.BitIsSet(values, int(arr.Offset+pos)) {
+				value = 1
+			}
+			idx, found, err := memo.GetOrInsert(value)
+			if err != nil {
+				return err
+			}
+			if found {
+				action.ObserveFound(idx)
+				return nil
+			}
+			return action.ObserveNotFound(idx)
+		}, func() error {
+			if !shouldEncodeNulls {
+				return action.ObserveNullNotFound(-1)
+			}
+
+			idx, found := memo.GetOrInsertNull()
+			if found {
+				action.ObserveNullFound(idx)
+				return nil
 			}
 			return action.ObserveNullNotFound(idx)
 		})
@@ -217,6 +433,7 @@ func (nhs *nullHashState) Allocator() memory.Allocator { return nhs.mem }
 func (nhs *nullHashState) ValueType() arrow.DataType { return nhs.typ }
 
 func (nhs *nullHashState) Reset() error {
+	nhs.seenNull = false
 	return nhs.action.Reset()
 }
 
@@ -252,6 +469,39 @@ func (nhs *nullHashState) GetDictionary() (arrow.ArrayData, error) {
 	data.Retain()
 	out.Release()
 	return data, nil
+}
+
+func dictionaryEncodeIdentity(_ *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+	data := batch.Values[0].Array.MakeData()
+	defer data.Release()
+	out.TakeOwnership(data)
+	return nil
+}
+
+func dictionaryEncodeIdentityChunked(_ *exec.KernelCtx, batch []*arrow.Chunked, _ *exec.ExecResult) ([]*exec.ExecResult, error) {
+	if len(batch) != 1 {
+		return nil, fmt.Errorf("%w: dictionary_encode expects one input", arrow.ErrInvalid)
+	}
+
+	chunks := batch[0].Chunks()
+	if len(chunks) == 0 {
+		result := &exec.ExecResult{}
+		exec.FillZeroLength(batch[0].DataType(), result)
+		return []*exec.ExecResult{result}, nil
+	}
+
+	results := make([]*exec.ExecResult, 0, len(chunks))
+	for _, chunk := range chunks {
+		result := &exec.ExecResult{}
+		result.TakeOwnership(chunk.Data())
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func initDictionaryEncodeIdentity(_ *exec.KernelCtx, args exec.KernelInitArgs) (exec.KernelState, error) {
+	_, err := parseDictionaryEncodeOptions(args.Options)
+	return nil, err
 }
 
 type dictionaryHashState struct {
@@ -329,10 +579,14 @@ func (dhs *dictionaryHashState) Append(ctx *exec.KernelCtx, arr *exec.ArraySpan)
 func nullHashInit(actionInit initAction) exec.KernelInitFn {
 	return func(ctx *exec.KernelCtx, args exec.KernelInitArgs) (exec.KernelState, error) {
 		mem := exec.GetAllocator(ctx.Ctx)
+		action, err := actionInit(args.Inputs[0], args.Options, mem)
+		if err != nil {
+			return nil, err
+		}
 		ret := &nullHashState{
 			mem:    mem,
 			typ:    args.Inputs[0],
-			action: actionInit(args.Inputs[0], args.Options, mem),
+			action: action,
 		}
 		ret.Reset()
 		return ret, nil
@@ -341,7 +595,7 @@ func nullHashInit(actionInit initAction) exec.KernelInitFn {
 
 func newMemoTable(mem memory.Allocator, dt arrow.Type) (hashing.MemoTable, error) {
 	switch dt {
-	case arrow.INT8, arrow.UINT8:
+	case arrow.BOOL, arrow.INT8, arrow.UINT8:
 		return hashing.NewMemoTable[uint8](0), nil
 	case arrow.INT16, arrow.UINT16:
 		return hashing.NewMemoTable[uint16](0), nil
@@ -367,6 +621,10 @@ func newMemoTable(mem memory.Allocator, dt arrow.Type) (hashing.MemoTable, error
 func regularHashInit(dt arrow.DataType, actionInit initAction, appendFn func(Action, hashing.MemoTable, *exec.ArraySpan) error) exec.KernelInitFn {
 	return func(ctx *exec.KernelCtx, args exec.KernelInitArgs) (exec.KernelState, error) {
 		mem := exec.GetAllocator(ctx.Ctx)
+		action, err := actionInit(args.Inputs[0], args.Options, mem)
+		if err != nil {
+			return nil, err
+		}
 		memoTable, err := newMemoTable(mem, dt.ID())
 		if err != nil {
 			return nil, err
@@ -376,7 +634,7 @@ func regularHashInit(dt arrow.DataType, actionInit initAction, appendFn func(Act
 			mem:       mem,
 			typ:       args.Inputs[0],
 			memoTable: memoTable,
-			action:    actionInit(args.Inputs[0], args.Options, mem),
+			action:    action,
 			doAppend:  appendFn,
 		}
 		ret.Reset()
@@ -415,12 +673,14 @@ func dictionaryHashInit(actionInit initAction) exec.KernelInitFn {
 	}
 }
 
-type initAction func(arrow.DataType, any, memory.Allocator) Action
+type initAction func(arrow.DataType, any, memory.Allocator) (Action, error)
 
 func getHashInit(typeID arrow.Type, actionInit initAction) exec.KernelInitFn {
 	switch typeID {
 	case arrow.NULL:
 		return nullHashInit(actionInit)
+	case arrow.BOOL:
+		return regularHashInit(arrow.FixedWidthTypes.Boolean, actionInit, doAppendBoolean)
 	case arrow.INT8, arrow.UINT8:
 		return regularHashInit(arrow.PrimitiveTypes.Uint8, actionInit, doAppendNumeric[uint8])
 	case arrow.INT16, arrow.UINT16:
@@ -514,6 +774,13 @@ func uniqueFinalizeDictionary(ctx *exec.KernelCtx, result []*exec.ArraySpan) (ou
 
 func addHashKernels(base exec.VectorKernel, actionInit initAction, outTy exec.OutputType) []exec.VectorKernel {
 	kernels := make([]exec.VectorKernel, 0)
+	base.Init = getHashInit(arrow.BOOL, actionInit)
+	base.Signature = &exec.KernelSignature{
+		InputTypes: []exec.InputType{exec.NewExactInput(arrow.FixedWidthTypes.Boolean)},
+		OutType:    outTy,
+	}
+	kernels = append(kernels, base)
+
 	for _, ty := range primitiveTypes {
 		base.Init = getHashInit(ty.ID(), actionInit)
 		base.Signature = &exec.KernelSignature{
@@ -538,8 +805,81 @@ func addHashKernels(base exec.VectorKernel, actionInit initAction, outTy exec.Ou
 	return kernels
 }
 
-func initUnique(dt arrow.DataType, _ any, mem memory.Allocator) Action {
-	return uniqueAction{mem: mem, dt: dt}
+func initUnique(dt arrow.DataType, _ any, mem memory.Allocator) (Action, error) {
+	return uniqueAction{mem: mem, dt: dt}, nil
+}
+
+func parseDictionaryEncodeOptions(options any) (DictionaryEncodeOptions, error) {
+	opts := DictionaryEncodeOptions{}
+	switch v := options.(type) {
+	case nil:
+	case DictionaryEncodeOptions:
+		opts = v
+	case *DictionaryEncodeOptions:
+		if v != nil {
+			opts = *v
+		}
+	default:
+		return opts, fmt.Errorf("%w: expected DictionaryEncodeOptions, got %T", arrow.ErrInvalid, options)
+	}
+
+	if opts.NullEncoding != NullEncodingMask && opts.NullEncoding != NullEncodingEncode {
+		return opts, fmt.Errorf("%w: invalid null encoding behavior %d", arrow.ErrInvalid, opts.NullEncoding)
+	}
+	return opts, nil
+}
+
+func initDictionaryEncode(_ arrow.DataType, options any, mem memory.Allocator) (Action, error) {
+	opts, err := parseDictionaryEncodeOptions(options)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dictionaryEncodeAction{
+		nullEncoding: opts.NullEncoding,
+		indices:      newBufferBuilder[int32](mem),
+		validity:     validityBuilder{mem: mem},
+	}, nil
+}
+
+var outputDictionaryType = exec.NewComputedOutputType(func(_ *exec.KernelCtx, args []arrow.DataType) (arrow.DataType, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("%w: dictionary_encode expects one input type", arrow.ErrInvalid)
+	}
+	return &arrow.DictionaryType{
+		IndexType: arrow.PrimitiveTypes.Int32,
+		ValueType: args[0],
+	}, nil
+})
+
+func dictionaryEncodeFinalize(ctx *exec.KernelCtx, results []*exec.ArraySpan) ([]*exec.ArraySpan, error) {
+	impl, ok := ctx.State.(HashState)
+	if !ok {
+		return nil, fmt.Errorf("%w: HashState in invalid state", arrow.ErrInvalid)
+	}
+	defer releaseHashMemo(impl)
+
+	dict, err := impl.GetDictionary()
+	if err != nil {
+		return nil, err
+	}
+	defer dict.Release()
+
+	for _, result := range results {
+		var dictSpan exec.ArraySpan
+		dictSpan.TakeOwnership(dict)
+		result.SetDictionary(&dictSpan)
+	}
+	return results, nil
+}
+
+func releaseHashMemo(hash HashState) {
+	if state, ok := hash.(*regularHashState); ok {
+		if memo, ok := state.memoTable.(*hashing.BinaryMemoTable); ok && !state.memoReleased {
+			memo.Release()
+			state.memoReleased = true
+		}
+	}
 }
 
 func GetVectorHashKernels() (unique, valueCounts, dictEncode []exec.VectorKernel) {
@@ -560,6 +900,23 @@ func GetVectorHashKernels() (unique, valueCounts, dictEncode []exec.VectorKernel
 		OutType:    OutputFirstType,
 	}
 	unique = append(unique, base)
+
+	// dictionary encode
+	base.Finalize = dictionaryEncodeFinalize
+	base.OutputChunked = true
+	base.NullHandling = exec.NullComputedNoPrealloc
+	base.MemAlloc = exec.MemNoPrealloc
+	dictEncode = addHashKernels(base, initDictionaryEncode, outputDictionaryType)
+	identity := exec.NewVectorKernelWithSig(
+		&exec.KernelSignature{
+			InputTypes: []exec.InputType{exec.NewIDInput(arrow.DICTIONARY)},
+			OutType:    OutputFirstType,
+		},
+		dictionaryEncodeIdentity,
+		initDictionaryEncodeIdentity)
+	identity.CanExecuteChunkWise = false
+	identity.ExecChunked = dictionaryEncodeIdentityChunked
+	dictEncode = append(dictEncode, identity)
 
 	return
 }

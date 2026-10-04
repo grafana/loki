@@ -120,13 +120,13 @@ func valueSize(v []byte) int {
 		}
 
 		sz := readLEU32(v[1 : 1+szBytes])
-		idSize, offsetSize := ((typeInfo>>2)&0b11)+1, uint32((typeInfo&0b11)+1)
-		idStart := 1 + szBytes
-		offsetStart := uint32(idStart) + sz*uint32(idSize)
-		dataStart := offsetStart + (sz+1)*offsetSize
+		idSize, offsetSize := ((typeInfo>>2)&0b11)+1, uint64((typeInfo&0b11)+1)
+		idStart := uint64(1 + szBytes)
+		offsetStart := idStart + uint64(sz)*uint64(idSize)
+		dataStart := offsetStart + (uint64(sz)+1)*offsetSize
 
-		idx := offsetStart + sz*uint32(offsetSize)
-		return int(dataStart + readLEU32(v[idx:idx+offsetSize]))
+		idx := offsetStart + uint64(sz)*offsetSize
+		return int(dataStart + uint64(readLEU32(v[idx:idx+offsetSize])))
 	case byte(BasicArray):
 		var szBytes uint8 = 1
 		if ((typeInfo >> 2) & 0x1) != 0 {
@@ -134,11 +134,11 @@ func valueSize(v []byte) int {
 		}
 
 		sz := readLEU32(v[1 : 1+szBytes])
-		offsetSize, offsetStart := uint32((typeInfo&0b11)+1), uint32(1+szBytes)
-		dataStart := offsetStart + (sz+1)*offsetSize
+		offsetSize, offsetStart := uint64((typeInfo&0b11)+1), uint64(1+szBytes)
+		dataStart := offsetStart + (uint64(sz)+1)*offsetSize
 
-		idx := offsetStart + sz*uint32(offsetSize)
-		return int(dataStart + readLEU32(v[idx:idx+offsetSize]))
+		idx := offsetStart + uint64(sz)*offsetSize
+		return int(dataStart + uint64(readLEU32(v[idx:idx+offsetSize])))
 	default:
 		switch PrimitiveType(typeInfo) {
 		case PrimitiveNull, PrimitiveBoolTrue, PrimitiveBoolFalse:
