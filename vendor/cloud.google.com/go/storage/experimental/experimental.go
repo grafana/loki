@@ -52,7 +52,7 @@ func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
 	return internal.WithMeterProvider.(func(*metric.MeterProvider) option.ClientOption)(mp)
 }
 
-// WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient].
+// WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient] or [storage.NewGRPCClient].
 // It enables the client to retry stalled requests when starting a download from
 // Cloud Storage. If the timeout elapses with no response from the server, the request
 // is automatically retried.
@@ -60,9 +60,8 @@ func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
 // latency across all read requests from the client for each bucket accessed, and can
 // adjust the timeout higher to the target percentile when latency for request to that
 // bucket is high.
-// Currently, this is supported only for downloads ([storage.NewReader] and
-// [storage.NewRangeReader] calls) and only for the XML API. Other read APIs (gRPC & JSON)
-// will be supported soon.
+// Currently, this is supported for downloads ([storage.NewReader] and
+// [storage.NewRangeReader] calls) on the XML API and gRPC API (not implemented for JSON API).
 func WithReadStallTimeout(rstc *ReadStallTimeoutConfig) option.ClientOption {
 	return internal.WithReadStallTimeout.(func(config *ReadStallTimeoutConfig) option.ClientOption)(rstc)
 }
