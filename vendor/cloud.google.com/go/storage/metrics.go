@@ -371,7 +371,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 
 		stallDuration, err = meter.Float64Histogram(
 			"gcp.storage.client.stall.duration",
-			metric.WithDescription("Duration a connection was stalled waiting for the first byte before being aborted."),
+			metric.WithDescription("Stall timeout after which a read attempt was aborted while waiting for the initial response (response headers for HTTP, first response message for gRPC)."),
 			metric.WithUnit("s"),
 		)
 		if err != nil {
