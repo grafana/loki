@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 )
 
 type RegexOptions int32
@@ -79,6 +80,7 @@ const (
 	ErrMissingBrace               = "missing closing }"
 	ErrInvalidRepeatOp            = "invalid nested repetition operator"
 	ErrMissingRepeatArgument      = "missing argument to repetition operator"
+	ErrQuantifiedAssertion        = "assertion cannot be quantified"
 	ErrConditionalExpression      = "illegal conditional (?(...)) expression"
 	ErrTooManyAlternates          = "too many | in (?()|)"
 	ErrUnrecognizedGrouping       = "unrecognized grouping construct: (%v"
@@ -700,6 +702,10 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 			//maintain odd C# assignment order -- not sure if required, could clean up?
 			p.addConcatenate()
 			goto ContinueOuterScan
+		}
+
+		if p.useOptionE() && p.unit != nil && !p.isECMAQuantifiable(p.unit) {
+			return nil, p.getErr(ErrQuantifiedAssertion)
 		}
 
 		ch = p.moveRightGetChar()
@@ -1379,7 +1385,7 @@ func (p *parser) scanBackslash(scanOnly bool) (*RegexNode, error) {
 			return nil, err
 		}
 		cc := &CharSet{}
-		cc.addCategory(prop, (ch != 'p'), p.useOptionI())
+		p.addProperty(cc, prop, (ch != 'p'), p.useOptionI())
 		if p.useOptionI() {
 			cc.addLowercase()
 		}
@@ -1604,7 +1610,11 @@ func (p *parser) parseProperty() (string, error) {
 		return "", p.getErr(ErrIncompleteSlashP)
 	}
 
-	canonical, ok := canonicalUnicodeCatName(capname)
+	resolve := canonicalUnicodeCatName
+	if p.useOptionE() && p.useOptionU() {
+		resolve = canonicalECMAProperty
+	}
+	canonical, ok := resolve(capname)
 	if !ok {
 		return "", p.getErr(ErrUnknownSlashP, capname)
 	}
@@ -1705,13 +1715,19 @@ func (p *parser) scanECMACapname() (string, error) {
 			escaped = true
 			p.moveRight(1)
 			if p.charsRight() > 0 && p.rightChar(0) == '{' {
-				if !p.useOptionU() {
-					return "", p.getErr(ErrInvalidECMAGroupName)
-				}
 				p.moveRight(1)
 				ch, err = p.scanHexUntilBrace()
 			} else {
 				ch, err = p.scanHex(4)
+				if err == nil && ch >= 0xD800 && ch <= 0xDBFF && p.charsRight() >= 6 && p.rightChar(0) == '\\' && p.rightChar(1) == 'u' {
+					pos := p.textpos()
+					p.moveRight(2)
+					if lo, err := p.scanHex(4); err == nil && lo >= 0xDC00 && lo <= 0xDFFF {
+						ch = utf16.DecodeRune(ch, lo)
+					} else {
+						p.textto(pos)
+					}
+				}
 			}
 			if err != nil {
 				return "", err
@@ -1903,11 +1919,16 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 					if inRange {
 						return nil, p.getErr(ErrShorthandClassInCharRange, string(ch))
 					}
-					cc.addCategory(prop, (ch != 'p'), caseInsensitive)
+					p.addProperty(cc, prop, (ch != 'p'), caseInsensitive)
 				} else {
 					if _, err := p.parseProperty(); err != nil {
 						return nil, err
 					}
+				}
+				if p.useOptionE() && p.useOptionU() && p.charsRight() >= 2 && p.rightChar(0) == '-' && p.rightChar(1) != ']' {
+					// A property escape denotes a set, so it cannot start a range.
+					// https://tc39.es/ecma262/#sec-patterns-static-semantics-early-errors
+					return nil, p.getErr(ErrShorthandClassInCharRange, string(ch))
 				}
 
 				continue
@@ -2631,6 +2652,17 @@ func isStopperX(ch rune) bool {
 // Returns true for those characters that begin a quantifier.
 func isQuantifier(ch rune) bool {
 	return (ch <= '{' && _category[ch] >= Q)
+}
+
+// Returns false for assertions, which cannot be quantified in ECMAScript except for lookaheads without the Unicode option.
+func (p *parser) isECMAQuantifiable(n *RegexNode) bool {
+	switch n.T {
+	case NtBol, NtEol, NtBeginning, NtEndZ, NtEnd, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+		return false
+	case NtPosLook, NtNegLook:
+		return n.Options&RightToLeft == 0 && !p.useOptionU()
+	}
+	return true
 }
 
 func (p *parser) isTrueQuantifier() bool {
