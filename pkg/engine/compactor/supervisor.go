@@ -13,8 +13,11 @@ import (
 // tenantsSupervisor keeps one worker goroutine running for each tenant that has
 // compaction work and is enabled for compaction.
 //
-// A tenantsSupervisor is single use. Run owns runningWorkers and wg, so they need no
-// locking.
+// A tenantsSupervisor is single use. workersMu guards runningWorkers, because
+// worker goroutines remove their own entry when they exit.
+//
+// A stopped worker keeps its entry until its goroutine exits. This prevents
+// two workers for the same tenant from running at once.
 type tenantsSupervisor struct {
 	logger       log.Logger
 	pollInterval time.Duration
@@ -28,22 +31,9 @@ type tenantsSupervisor struct {
 	// return earlier, in which case the supervisor restarts it on a later pass.
 	runTenant func(ctx context.Context, tenant string)
 
-	runningWorkers map[string]*tenantWorker
+	workersMu      sync.Mutex
+	runningWorkers map[string]context.CancelFunc
 	wg             sync.WaitGroup
-}
-
-type tenantWorker struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-func (w *tenantWorker) exited() bool {
-	select {
-	case <-w.done:
-		return true
-	default:
-		return false
-	}
 }
 
 func newTenantsSupervisor(
@@ -59,7 +49,7 @@ func newTenantsSupervisor(
 		discover:       discover,
 		enabled:        enabled,
 		runTenant:      runTenant,
-		runningWorkers: make(map[string]*tenantWorker),
+		runningWorkers: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -84,22 +74,22 @@ func (s *tenantsSupervisor) Run(ctx context.Context) error {
 }
 
 // reconcile starts and stops runningWorkers to match the current discovery result.
-// It also drops workers that exited on their own, so a later pass can restart them.
+// A worker that exited on its own is absent from runningWorkers, so reconcile
+// restarts it if its tenant still has work.
+//
 // When discovery fails, reconcile only stops disabled workers. It starts none,
 // because a partial result could make a tenant with work look absent.
 //
 // A stopped worker deletes its per-tenant metric series when its goroutine
 // exits, not here, so a draining worker cannot recreate a series after stop.
 func (s *tenantsSupervisor) reconcile(ctx context.Context) {
+	running := s.running()
 	discovered, err := s.discover(ctx)
 	if err != nil {
 		level.Warn(s.logger).Log("msg", "tenant discovery failed; stopping only disabled workers", "err", err)
-		discovered = s.running()
+		discovered = running
 	}
-	start, stop := reconcileWorkers(s.running(), discovered, s.enabled)
-	if err != nil {
-		start = nil
-	}
+	start, stop := reconcileWorkers(running, discovered, s.enabled)
 	for _, tenant := range stop {
 		s.stop(tenant)
 	}
@@ -109,12 +99,10 @@ func (s *tenantsSupervisor) reconcile(ctx context.Context) {
 }
 
 func (s *tenantsSupervisor) running() map[string]struct{} {
+	s.workersMu.Lock()
+	defer s.workersMu.Unlock()
 	out := make(map[string]struct{}, len(s.runningWorkers))
-	for tenant, w := range s.runningWorkers {
-		if w.exited() {
-			delete(s.runningWorkers, tenant)
-			continue
-		}
+	for tenant := range s.runningWorkers {
 		out[tenant] = struct{}{}
 	}
 	return out
@@ -122,25 +110,37 @@ func (s *tenantsSupervisor) running() map[string]struct{} {
 
 func (s *tenantsSupervisor) start(ctx context.Context, tenant string) {
 	level.Debug(s.logger).Log("msg", "starting compaction worker", "tenant", tenant)
+
 	wctx, cancel := context.WithCancel(ctx)
-	w := &tenantWorker{cancel: cancel, done: make(chan struct{})}
-	s.runningWorkers[tenant] = w
+
+	s.workersMu.Lock()
+	defer s.workersMu.Unlock()
+	s.runningWorkers[tenant] = cancel
 	s.wg.Go(func() {
-		defer close(w.done)
 		s.runTenant(wctx, tenant)
+
+		s.workersMu.Lock()
+		defer s.workersMu.Unlock()
+		delete(s.runningWorkers, tenant)
 	})
 }
 
 func (s *tenantsSupervisor) stop(tenant string) {
 	level.Debug(s.logger).Log("msg", "stopping compaction worker", "tenant", tenant)
-	s.runningWorkers[tenant].cancel()
-	delete(s.runningWorkers, tenant)
+
+	s.workersMu.Lock()
+	defer s.workersMu.Unlock()
+	if cancel, ok := s.runningWorkers[tenant]; ok {
+		cancel()
+	}
 }
 
 func (s *tenantsSupervisor) stopAll() {
-	for tenant := range s.runningWorkers {
-		s.stop(tenant)
+	s.workersMu.Lock()
+	for _, cancel := range s.runningWorkers {
+		cancel()
 	}
+	s.workersMu.Unlock()
 	s.wg.Wait()
 }
 
@@ -160,10 +160,7 @@ func reconcileWorkers(running, discovered map[string]struct{}, enabled func(stri
 		}
 	}
 	for tenant := range discovered {
-		if _, ok := running[tenant]; ok {
-			continue
-		}
-		if enabled(tenant) {
+		if _, ok := running[tenant]; !ok && enabled(tenant) {
 			start = append(start, tenant)
 		}
 	}

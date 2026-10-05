@@ -205,8 +205,8 @@ func TestSupervisor(t *testing.T) {
 		enabled = false
 		s.discover = func(context.Context) (map[string]struct{}, error) { return nil, errors.New("read failed") }
 		s.reconcile(t.Context())
-		require.Empty(t, s.runningWorkers)
-		require.Eventually(t, func() bool { return len(workers.liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond)
+		require.Eventually(t, func() bool { return len(s.running()) == 0 }, 2*time.Second, 5*time.Millisecond)
+		require.Empty(t, workers.liveTenants())
 	})
 
 	t.Run("a worker that exits on its own is restarted on the next reconcile", func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestSupervisor(t *testing.T) {
 		defer s.stopAll()
 
 		s.reconcile(t.Context())
-		require.Eventually(t, func() bool { return s.runningWorkers["acme"].exited() }, 2*time.Second, 5*time.Millisecond)
+		require.Eventually(t, func() bool { return len(s.running()) == 0 }, 2*time.Second, 5*time.Millisecond)
 
 		s.reconcile(t.Context())
 		require.Eventually(t, func() bool { return starts.Load() == 2 }, 2*time.Second, 5*time.Millisecond)
@@ -236,7 +236,7 @@ func TestSupervisor(t *testing.T) {
 		s.reconcile(t.Context())
 		enabled = false
 		s.reconcile(t.Context())
-		require.Eventually(t, func() bool { return len(workers.liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond)
+		require.Eventually(t, func() bool { return len(s.running()) == 0 }, 2*time.Second, 5*time.Millisecond)
 
 		enabled = true
 		s.reconcile(t.Context())
