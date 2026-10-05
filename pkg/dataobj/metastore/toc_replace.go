@@ -25,17 +25,17 @@ type TableOfContentsEntry struct {
 	EndTime   time.Time
 }
 
-// validate returns an error if a ToC can't store e so that a query finds it:
-//   - StartTime is not after the Unix epoch. The index pointers section stores
-//     a timestamp of 0 as "no value", so a row that starts at the epoch can't
-//     be read back. This also rejects a zero time.Time, which would land in
-//     the ToC of year 1, where no query looks.
-//   - EndTime is before StartTime. Such an entry overlaps no ToC window, so
-//     nothing would be written.
+// validate returns an error if e has no valid time range for a ToC.
 func (e TableOfContentsEntry) validate() error {
+	// The index pointers section stores a timestamp of 0 as "no value", so a
+	// row that starts at the epoch can't be read back. This check also rejects
+	// a zero time.Time, which would land in the ToC of year 1, where no query
+	// looks.
 	if !e.StartTime.After(time.Unix(0, 0)) {
 		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
 	}
+	// An entry that ends before it starts overlaps no ToC window, so the
+	// writer would write nothing for it.
 	if e.EndTime.Before(e.StartTime) {
 		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
 	}
