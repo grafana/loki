@@ -1,7 +1,8 @@
 # Authoring LogQL `.logqltest` scripts
 
 Guide for **writing** the `testdata/*.logqltest` correctness scripts. For DSL **syntax**
-(`load` / `clear` / `eval`, timestamps, sample notation) see [`README.md`](../README.md).
+(`load` / `flush` / `clear` / `eval`, timestamps, sample notation) see
+[`README.md`](../README.md).
 
 ## Scenario
 
@@ -159,9 +160,27 @@ eval select from 0 to 30s forward {app="a"} | label_format level=lvl
   {app="a"} "boom" @ 10s [metadata trace_id="abc"] [parsed level="error"]
 ```
 
+## Deduplication scenarios
+
+The store compares samples for deduplication between two chunks of one stream that overlap in
+time. Nothing else in the harness deduplicates. So:
+
+1. **Split the stream with `flush`.** Entries loaded on either side of a `flush` go to different
+   chunks (see README.md "flush"). Without it a stream has one chunk and deduplication never runs.
+2. **Make the two chunks overlap.** Give each one an entry at the same timestamp, or let their
+   time ranges cross. Chunks that only touch end to end go in the same non-overlapping run.
+3. **Give each chunk an entry of its own.** Two chunks with identical contents collapse into one,
+   which silently removes the comparison the scenario is for.
+4. **Defeat the sample identity.** Load several entries at one identical timestamp, on one stream,
+   with the same raw line, told apart only by a label the query's grouping drops. Entries that
+   differ in their line or timestamp hash apart, so they prove nothing.
+5. **Assert the entry count, not the series count.** `count()` counts series, so it hides a
+   dropped sample. `sum()` does not.
+
 ## Files
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
 `functions` (`label_replace`, `vector`), `conversions`, `log_selection` (stream selectors, line
-filters, as opposed to a metric aggregation), … add more as coverage grows (`line_filters`,
-`label_filters`, `parsers`, `formatters`, …).
+filters, as opposed to a metric aggregation), `deduplication` (repeated samples across a stream's
+chunks), … add more as coverage grows (`line_filters`, `label_filters`, `parsers`, `formatters`,
+…).
