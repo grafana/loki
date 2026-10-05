@@ -54,14 +54,11 @@ func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Re
 		cancel:        cancel,
 	}
 
-	go tm.loop()
+	tm.wg.Go(tm.loop)
 	return &tm, nil
 }
 
 func (tm *tableManager) loop() {
-	tm.wg.Add(1)
-	defer tm.wg.Done()
-
 	if err := tm.UploadTables(context.Background()); err != nil {
 		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "startup", "err", err)
 	}
