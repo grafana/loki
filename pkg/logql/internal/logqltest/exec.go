@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -49,8 +49,8 @@ func isKnownStackName(name string) bool {
 type executionStack interface {
 	// name identifies the stack in subtest output.
 	name() string
-	// setStreams (re)builds the stack's store with the provided log streams.
-	setStreams(streams []logproto.Stream)
+	// setStores rebuilds the stack's querier over stores.
+	setStores(stores *scriptStores)
 	// eval runs cmd and returns the query result.
 	eval(cmd evalCmd) (logqlmodel.Result, error)
 	// isQueryShardingSupported reports whether this stack runs queries with sharding enabled.
@@ -85,19 +85,19 @@ func isQueryShardingSupported(query string) bool {
 	return shardable
 }
 
-// newScriptQuerierFunc builds the querier of an execution stack over streams.
-type newScriptQuerierFunc func(t *testing.T, streams []logproto.Stream) *testingQuerier
+// newScriptQuerierFunc builds the querier of an execution stack over stores.
+type newScriptQuerierFunc func(t *testing.T, stores *scriptStores) logql.Querier
 
-// newChunkQuerier returns a querier that reads streams from chunks only.
-func newChunkQuerier(t *testing.T, streams []logproto.Stream) *testingQuerier {
-	return newScriptQuerier(t, streams, time.Time{})
+// newChunkQuerier returns a querier that reads the streams from the chunk store.
+func newChunkQuerier(t *testing.T, stores *scriptStores) logql.Querier {
+	return newScriptQuerier(t, stores, time.Time{})
 }
 
-// newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the tenant's
-// stream-first data from dataObjStart on from data objects.
+// newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the streams of
+// stream-first queries from the data objects for the time range from dataObjStart on.
 func newDataObjQuerierFunc(dataObjStart time.Time) newScriptQuerierFunc {
-	return func(t *testing.T, streams []logproto.Stream) *testingQuerier {
-		return newScriptQuerier(t, streams, dataObjStart)
+	return func(t *testing.T, stores *scriptStores) logql.Querier {
+		return newScriptQuerier(t, stores, dataObjStart)
 	}
 }
 
@@ -128,7 +128,7 @@ func (execLimits) DebugEngineStreams(string) bool { return false }
 // chunks, which the results alone cannot show, because chunks hold every stream too.
 //
 // Only a stream-first query reads data objects. A sample comes only from data objects when its
-// whole range window is at or after dataObjStart. A zero dataObjStart disables the check.
+// whole range window is at or after dataObjStart. A zero-value dataObjStart disables the check.
 func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Time) error {
 	if dataObjStart.IsZero() {
 		return nil

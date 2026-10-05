@@ -50,9 +50,9 @@ type queryFrontendExecutionStack struct {
 	// objects. It is zero when the querier reads no data objects.
 	dataObjStart time.Time
 
-	// storeMu guards the swap against reads from in-flight sharded subqueries.
-	storeMu sync.RWMutex
-	store   *testingQuerier
+	// querierMu guards the swap of querier against reads from in-flight sharded subqueries.
+	querierMu sync.RWMutex
+	querier   logql.Querier
 }
 
 // newQueryFrontendTimestampFirstStack returns the query-frontend stack in timestamp-first order,
@@ -236,27 +236,11 @@ func (*queryFrontendExecutionStack) isEvalSupported(_ evalCmd, exp expectations)
 	return exp.scalar == nil
 }
 
-func (s *queryFrontendExecutionStack) setStreams(streams []logproto.Stream) {
-	store := s.newQuerier(s.t, streams)
-	s.storeMu.Lock()
-	old := s.store
-	s.store = store
-	s.storeMu.Unlock()
-
-	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
-	// No query runs between evals, so the old store is idle here.
-	if old != nil {
-		old.close()
-	}
-}
-
-func (s *queryFrontendExecutionStack) querier() logql.Querier {
-	s.storeMu.RLock()
-	defer s.storeMu.RUnlock()
-	if s.store == nil {
-		return nil
-	}
-	return s.store.querier()
+func (s *queryFrontendExecutionStack) setStores(stores *scriptStores) {
+	q := s.newQuerier(s.t, stores)
+	s.querierMu.Lock()
+	s.querier = q
+	s.querierMu.Unlock()
 }
 
 func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
@@ -323,9 +307,11 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 			}, nil
 		}
 
-		q := s.querier()
+		s.querierMu.RLock()
+		q := s.querier
+		s.querierMu.RUnlock()
 		if q == nil {
-			return nil, fmt.Errorf("store not ready")
+			return nil, fmt.Errorf("querier not ready")
 		}
 
 		var opts logql.EngineOpts

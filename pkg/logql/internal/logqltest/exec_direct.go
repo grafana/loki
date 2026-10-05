@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -22,7 +21,7 @@ type directExecutionStack struct {
 	stackName  string
 	limits     logql.Limits
 	newQuerier newScriptQuerierFunc
-	store      *testingQuerier
+	querier    logql.Querier
 
 	// dataObjStart is the time from which the querier reads stream-first queries from data
 	// objects. It is zero when the querier reads no data objects.
@@ -63,18 +62,14 @@ func (*directExecutionStack) isEvalSupported(evalCmd, expectations) bool {
 	return true
 }
 
-func (s *directExecutionStack) setStreams(streams []logproto.Stream) {
-	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
-	if s.store != nil {
-		s.store.close()
-	}
-	s.store = s.newQuerier(s.t, streams)
+func (s *directExecutionStack) setStores(stores *scriptStores) {
+	s.querier = s.newQuerier(s.t, stores)
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	var opts logql.EngineOpts
 	flagext.DefaultValues(&opts)
-	engine := logql.NewEngine(opts, s.store.querier(), s.limits, log.NewNopLogger())
+	engine := logql.NewEngine(opts, s.querier, s.limits, log.NewNopLogger())
 
 	start, end, step := cmd.getTimeRange()
 	params, err := logql.NewLiteralParams(

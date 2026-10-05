@@ -4,28 +4,23 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/user"
-	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/querier"
 )
 
-// newTestingDataObjStoreWithStreams builds data objects from streams and returns a store that
-// reads them. It hands the requests it does not serve to chunks.
+// newTestingDataObjectsWithStreams builds data objects from streams. It returns the bucket that
+// holds them and the metastore that resolves them.
 //
-// It returns nil when there are no streams.
-func newTestingDataObjStoreWithStreams(t *testing.T, chunks *testingChunkStore, streams []logproto.Stream) querier.Store {
+// streams must not be empty, because objtest.Builder.Close fails on a builder with no logs.
+func newTestingDataObjectsWithStreams(t *testing.T, streams []logproto.Stream) (objstore.Bucket, metastore.Metastore) {
 	t.Helper()
-	if len(streams) == 0 {
-		return nil
-	}
 
 	builder := objtest.NewBuilder(t)
 	builder.Append(user.InjectOrgID(t.Context(), tenant), streams...)
 	builder.Close()
 
-	store, err := querier.NewDataObjStore(chunks.store, builder.Location().Bucket, builder.Metastore(), nil)
-	require.NoError(t, err)
-	return store
+	return builder.Location().Bucket, builder.Metastore()
 }

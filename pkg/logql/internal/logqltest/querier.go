@@ -11,28 +11,23 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// testingQuerier serves queries through the production querier over the streams of a script.
+// newScriptQuerier returns the production querier over stores.
 //
-// The querier reads from chunks, and optionally reads stream-first metric queries from data
-// objects. The data objects and the chunks both hold every stream, so the querier's routing alone
-// decides which one a sample comes from.
-type testingQuerier struct {
-	chunks *testingChunkStore
-	q      *querier.SingleTenantQuerier
-}
-
-// newScriptQuerier builds a testingQuerier over streams. The querier reads the tenant's
-// stream-first data from dataObjStart on from data objects. A zero dataObjStart makes it read
-// only chunks.
-func newScriptQuerier(t *testing.T, streams []logproto.Stream, dataObjStart time.Time) *testingQuerier {
+// From dataObjStart on, the querier reads stream-first queries from data objects. It reads
+// everything else from chunks. A zero-value dataObjStart makes it read only chunks.
+//
+// The querier is valid until the next stores.setStreams, which stops its chunk store.
+//
+// The data objects and the chunks both hold every stream, so the querier's routing alone decides
+// which one a sample comes from.
+func newScriptQuerier(t *testing.T, stores *scriptStores, dataObjStart time.Time) logql.Querier {
 	t.Helper()
-	chunks := newTestingChunkStoreWithStreams(t, streams)
+	chunks := stores.chunks
 
 	var cfg querier.Config
 	flagext.DefaultValues(&cfg)
@@ -43,10 +38,14 @@ func newScriptQuerier(t *testing.T, streams []logproto.Stream, dataObjStart time
 	flagext.DefaultValues(&limits)
 
 	var dataObjStore querier.Store
-	if !dataObjStart.IsZero() {
+	// A script that loads no stream has no data objects to read.
+	if !dataObjStart.IsZero() && stores.dataObjBucket != nil {
 		cfg.DataObjEnabled = true
 		limits.DataObjQueryStartTime = flagext.Time(dataObjStart)
-		dataObjStore = newTestingDataObjStoreWithStreams(t, chunks, streams)
+
+		store, err := querier.NewDataObjStore(chunks.store, stores.dataObjBucket, stores.dataObjMetastore, nil)
+		require.NoError(t, err)
+		dataObjStore = store
 	}
 
 	overrides, err := validation.NewOverrides(limits, nil)
@@ -55,17 +54,7 @@ func newScriptQuerier(t *testing.T, streams []logproto.Stream, dataObjStart time
 	q, err := querier.New(cfg, chunks.store, dataObjStore, nil, overrides, noDeletes{}, log.NewNopLogger(), nil, 0, 0)
 	require.NoError(t, err)
 
-	return &testingQuerier{chunks: chunks, q: q}
-}
-
-func (s *testingQuerier) querier() logql.Querier {
-	return s.q
-}
-
-// close stops the querier's stores. It is safe to call more than once: setStreams closes the
-// previous querier on refresh, and a t.Cleanup closes the final one at test end.
-func (s *testingQuerier) close() {
-	s.chunks.close()
+	return q
 }
 
 // noDeletes is a deletion.DeleteGetter with no delete requests.

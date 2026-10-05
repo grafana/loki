@@ -40,13 +40,17 @@ func RunScript(t *testing.T, name, script string) {
 	streamsChanged := true
 	stacks := newExecutionStacks(t, name)
 
+	// Every stack reads the same stores, which are expensive to build.
+	stores := newScriptStores(t)
+
 	// refreshStreams gives every stack the current data before an eval.
 	refreshStreams := func() {
 		if !streamsChanged {
 			return
 		}
+		stores.setStreams(streams.get())
 		for _, s := range stacks {
-			s.setStreams(streams.get())
+			s.setStores(stores)
 		}
 		streamsChanged = false
 	}
@@ -98,8 +102,8 @@ func RunScript(t *testing.T, name, script string) {
 	}
 }
 
-// newExecutionStacks builds the execution stacks a script runs on. Each stack owns everything it
-// needs to run a query, including its store.
+// newExecutionStacks builds the execution stacks a script runs on. Each stack owns its querier.
+// The stacks read the script's shared stores.
 func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
 	t.Helper()
 
