@@ -2045,9 +2045,3 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 		})
 	}
 }
-
-// keepErroredLinesFilter is the `| __error__!=""` stage, which asks the pipeline to keep the
-// errored lines instead of failing the query.
-func keepErroredLinesFilter() Stage {
-	return NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, ""))
-}

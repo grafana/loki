@@ -265,8 +265,10 @@ func TestRecordingExtractedLabels(t *testing.T) {
 }
 
 func TestLabelFiltersInParseHints(t *testing.T) {
+	parser := func() log.Stage { return log.NewLogfmtParser(false, false) }
+
 	t.Run("it rejects the line when label matchers don't match the label", func(t *testing.T) {
-		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
+		s := []log.Stage{parser(), log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewLabelFilterHints(s)
 
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
@@ -274,20 +276,21 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 	})
 
 	t.Run("it returns true when the label doesn't have a matcher", func(t *testing.T) {
-		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
+		s := []log.Stage{parser(), log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewLabelFilterHints(s)
 
 		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
 	})
 
-	t.Run("it keeps each filter aligned with its label when an unwrap has no post filter", func(t *testing.T) {
+	t.Run("it keeps each filter aligned with its label past a stage that requires no label name", func(t *testing.T) {
 		s := []log.Stage{
+			parser(),
 			log.ReduceAndLabelFilter(nil),
 			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "HTTP/2.0")),
 			log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "response", "200")),
 		}
-		require.Empty(t, s[0].RequiredLabelNames(), "the first stage must require no label name")
+		require.Empty(t, s[1].RequiredLabelNames(), "the second stage must require no label name")
 
 		h := log.NewLabelFilterHints(s)
 
@@ -297,6 +300,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 
 	t.Run("it ignores a binary filter spanning two different labels", func(t *testing.T) {
 		s := []log.Stage{
+			parser(),
 			log.ReduceAndLabelFilter([]log.LabelFilterer{
 				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing")),
 				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "response", "something")),
@@ -313,6 +317,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		// and is eligible -- unlike a binary filter spanning two different labels, there's no
 		// ambiguity about which label it answers for.
 		s := []log.Stage{
+			parser(),
 			log.ReduceAndLabelFilter([]log.LabelFilterer{
 				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing")),
 				log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "something")),
@@ -365,12 +370,11 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 			`{app="foo"} | logfmt | ipaddr=ip("1.2.3.4")`,
 			`{app="foo"} | logfmt foo="bar_field" | foo="bar"`,
 			`{app="foo"} | json foo="a.b" | foo="bar"`,
-			// No parser at all: a filter here reads an already-present label rather than one a
-			// parser is about to produce, so there's no extraction-order ambiguity to protect
-			// against (unlike the "label filter positioned before a parser" cases below, which
-			// do have a parser later in the pipeline).
-			`{app="foo"} | foo="bar"`,
-			`{app="foo"} |= "hello" | foo="bar"`,
+			// A filter before the parser is simply skipped, not a reason to give up on filters
+			// after the parser -- they're on an unrelated label the pre-parser filter has no say
+			// over.
+			`{app="foo"} | foo="bar" | logfmt | baz="bat"`,
+			`{app="foo"} | foo="" | logfmt | bar="baz"`,
 		} {
 			t.Run(query, func(t *testing.T) {
 				h := log.NewLabelFilterHints(stagesFor(t, query))
@@ -384,9 +388,13 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 			// no label filter at all
 			`{app="foo"} | logfmt`,
 
-			// label filter positioned before a parser
+			// label filter positioned before a parser, with nothing after it to collect
 			`{app="foo"} | foo="bar" | logfmt`,
-			`{app="foo"} | foo="" | logfmt | bar="baz"`,
+
+			// no parser at all: nothing ever calls ShouldContinueParsingLine without one (see
+			// parser.go), so there's no hint to build regardless of what the filter would say.
+			`{app="foo"} | foo="bar"`,
+			`{app="foo"} |= "hello" | foo="bar"`,
 
 			// label modifying stage before any label filters
 			`{app="foo"} | logfmt | label_format foo="bar" | foo="bar"`,
@@ -438,6 +446,18 @@ func TestNewLabelFilterHintsMatchers(t *testing.T) {
 				{"foo", labels.FromStrings("foo", "bar"), true},
 				{"foo", labels.FromStrings("foo", "nope"), false},
 				{"other", labels.FromStrings("other", "anything"), true}, // no matcher for this label
+			},
+		},
+		{
+			// foo="bar" is before the parser and gets skipped, but that doesn't disable the
+			// optimization for baz, which is unrelated and comes after the parser.
+			name:  "a label filter before the parser is skipped, not disabling",
+			query: `{app="foo"} | foo="bar" | logfmt | baz="bat"`,
+			checks: []check{
+				{"baz", labels.FromStrings("baz", "bat"), true},
+				{"baz", labels.FromStrings("baz", "nope"), false},
+				// foo was only ever filtered before the parser, so there's no hint for it: always true.
+				{"foo", labels.FromStrings("foo", "nope"), true},
 			},
 		},
 		{

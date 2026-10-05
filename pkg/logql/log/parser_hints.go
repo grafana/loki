@@ -190,15 +190,15 @@ func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *Labe
 // NewLabelFilterHints scans stages for label filters so a parser can stop
 // extracting a line as soon as one of them fails to match a label it just extracted.
 //
-// A filter positioned between two parsers is ambiguous -- either parser could be the one to
-// actually extract its label, making the hint answer a question no real pipeline stage is
-// asking -- so 2 or more parsers in the pipeline disable the optimization entirely. With
-// exactly one parser, only a filter positioned after it is eligible (plus the first
-// label-mutating stage after it, if that stage is itself a single-label filter), since
-// ShouldContinueParsingLine is order independent and can't account for a filter that ran
-// before extraction happened. With zero parsers (e.g. a filter placed after an unwrap, which
-// reads an already-present label rather than one a parser is about to produce), there's no
-// such ambiguity, so every eligible filter anywhere in the pipeline is collected.
+// The optimization works only with a single parser in the pipeline. With multiple parser
+// there is potentially an optimization here but this should rarely happen and would complicate
+// the below logic.
+//
+// If there is exactly one parser than the optimization can be applied to any label filter after the parser
+// and before any stage that modifies labels. If there is a single label filter before the parser it also
+// cannot be applied b/c the optimization is order independent.
+//
+// See TestNewLabelFilterHints_Boundary for the full list of supported and unsupported shapes.
 func NewLabelFilterHints(stages Stages) LabelFilterHints {
 	var labelNames []string
 	var labelFilters []LabelFilterer
@@ -225,54 +225,30 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 	}
 
 	parserCount := 0
-	for _, s := range stages {
+	parserIdx := -1
+	for i, s := range stages {
 		if isParser(s) {
+			parserIdx = i
 			parserCount++
 		}
 	}
-	if parserCount > 1 {
+	if parserCount != 1 {
 		return NoLabelFilterHints()
 	}
 
-	if parserCount == 0 {
-		// No parser at all: there's no extraction order to reason about, so every eligible
-		// filter anywhere in the pipeline is safe to collect.
-		for _, s := range stages {
-			addIfLabelFilterer(s)
-		}
-		if len(labelNames) == 0 {
-			return NoLabelFilterHints()
-		}
-		return &labelFilterHints{labelFilters: labelFilters, labelNames: labelNames}
-	}
-
-	foundParser := false
-	for _, s := range stages {
-		if isParser(s) {
-			foundParser = true
-			continue
-		}
-
-		// we found a stage that modifies labels, all future filters are not eligible for the optimization since ShouldContinueParsingLine is order independent
-		if s.Hints().CanModifyLabels {
-			addIfLabelFilterer(s) // the _very first_ label modifier is ok to include if it's a label filterer
-			break
-		}
-
-		// let's find some filters
-		_, ok := s.(LabelFilterer)
-		if !ok {
-			continue
-		}
-
-		if !foundParser { // we found a label, but no parser. we can't optimize since ShouldContinueParsingLine is order independent
-			return NoLabelFilterHints()
-		}
+	for i := parserIdx + 1; i < len(stages); i++ {
+		s := stages[i]
 
 		addIfLabelFilterer(s)
+
+		// we found a stage that modifies labels, all future filters are not eligible for the optimization
+		// since ShouldContinueParsingLine is order independent
+		if s.Hints().CanModifyLabels {
+			break
+		}
 	}
 
-	if !foundParser || len(labelNames) == 0 {
+	if len(labelNames) == 0 {
 		return NoLabelFilterHints()
 	}
 
