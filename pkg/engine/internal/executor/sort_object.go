@@ -48,6 +48,10 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: opening source %q: %w", node.SourceObjectPath, err)
 	}
+	tenants := source.Tenants()
+	if len(tenants) != 1 {
+		return nil, fmt.Errorf("SortObject: source %q holds %d tenants, want 1", node.SourceObjectPath, len(tenants))
+	}
 
 	builder, err := logsobj.NewBuilder(
 		c.logsobjCfg,
