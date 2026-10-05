@@ -169,6 +169,21 @@ func TestCountMinSketchEvalStepEvaluator_Next(t *testing.T) {
 		require.NoError(t, ev.Close())
 	})
 
+	t.Run("reports the error when the next step evaluator succeeds but also reports an error", func(t *testing.T) {
+		nextEvErr := errors.New("next step evaluator loaded a partial result")
+		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
+			return &fakeEvaluator{ok: true, result: CountMinSketchVector{T: 42}, err: nextEvErr}, nil
+		})
+
+		ev, err := NewCountMinSketchEvalStepEvaluator(context.Background(), factory, expr, instantParams)
+		require.NoError(t, err)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorIs(t, ev.Error(), nextEvErr)
+		require.NoError(t, ev.Close())
+	})
+
 	t.Run("reports no error when the next step evaluator is exhausted cleanly", func(t *testing.T) {
 		factory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
 			return &fakeEvaluator{}, nil

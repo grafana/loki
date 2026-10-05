@@ -443,8 +443,8 @@ func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
 	defer func() { e.closeErr = nextEv.Close() }()
 
 	ok, _, results := nextEv.Next()
-	if !ok {
-		e.err = nextEv.Error()
+	e.err = nextEv.Error()
+	if !ok || e.err != nil {
 		return false, 0, CountMinSketchVector{}
 	}
 
