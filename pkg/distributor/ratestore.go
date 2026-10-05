@@ -331,11 +331,14 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) perTenantStreamRate {
 	var maxRate int64
 	streamRates := perTenantStreamRate{}
+	var totalSize uint64
 	for i := 0; i < totalResponses; i++ {
 		resp := <-responses
 		if resp == nil {
 			continue
 		}
+
+		totalSize += uint64(resp.Size())
 
 		for _, rate := range resp.StreamRates {
 			maxRate = max(maxRate, rate.Rate)
@@ -354,6 +357,8 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 			streamRates[rate.Tenant][rate.StreamHash] = rate
 		}
 	}
+
+	level.Info(util_log.Logger).Log("msg", "getRates total size", "value", util.HumanizeBytes(totalSize))
 
 	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
 	return streamRates
