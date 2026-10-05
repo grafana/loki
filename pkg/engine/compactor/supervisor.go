@@ -121,7 +121,10 @@ func (s *tenantsSupervisor) start(ctx context.Context, tenant string) {
 
 		s.workersMu.Lock()
 		defer s.workersMu.Unlock()
-		delete(s.runningWorkers, tenant)
+		if cancelFn, ok := s.runningWorkers[tenant]; ok {
+			delete(s.runningWorkers, tenant)
+			cancelFn()
+		}
 	})
 }
 
