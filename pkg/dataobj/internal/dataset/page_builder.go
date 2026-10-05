@@ -22,8 +22,9 @@ type pageBuilder struct {
 	// (NULL). This bitmap always uses bitmap encoding regardless of the encoding
 	// type used for values.
 	//
-	// The second set of data is the encoded set of non-NULL values. As an
-	// optimization, the zero value is treated as NULL.
+	// The second set of data is the encoded set of non-NULL values. Only a nil
+	// [Value] is NULL. A zero value, such as 0 or an empty string, is present,
+	// and the builder encodes it like any other value.
 	//
 	// The two sets of data are accmumulated into separate buffers, with the
 	// presence bitmap being written uncompresed and the values being written
