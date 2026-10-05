@@ -133,14 +133,14 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Ti
 	if dataObjStart.IsZero() {
 		return nil
 	}
-	rng, ok := streamFirstRangeAggregation(query)
+	rangeAgg, ok := streamFirstRangeAggregation(query)
 	if !ok {
 		return nil
 	}
 
 	// The window of the sample at t is (t - offset - interval, t - offset].
 	windowStart := func(t int64) time.Time {
-		return time.UnixMilli(t).Add(-rng.Left.Offset - rng.Left.Interval)
+		return time.UnixMilli(t).Add(-rangeAgg.Left.Offset - rangeAgg.Left.Interval)
 	}
 	needsDataObj := false
 	switch data := res.Data.(type) {
@@ -174,9 +174,9 @@ func streamFirstRangeAggregation(query string) (*syntax.RangeAggregationExpr, bo
 	if !ok || vec.Operation != syntax.OpTypeSum {
 		return nil, false
 	}
-	rng, ok := vec.Left.(*syntax.RangeAggregationExpr)
-	if !ok || rng.Operation != syntax.OpRangeTypeCount {
+	rangeAgg, ok := vec.Left.(*syntax.RangeAggregationExpr)
+	if !ok || rangeAgg.Operation != syntax.OpRangeTypeCount {
 		return nil, false
 	}
-	return rng, true
+	return rangeAgg, true
 }

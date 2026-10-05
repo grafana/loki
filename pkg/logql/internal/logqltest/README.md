@@ -283,9 +283,9 @@ Each `eval` runs on multiple execution stacks:
 - `direct (timestamp-first)` — the query runs straight through `logql.Engine` and the production
   querier over the chunk store.
 - `direct (stream-first)` — the same, with stream-first execution enabled.
-- `direct (dataobj)` — the direct stack with stream-first execution on. The querier reads
-  stream-first queries from data objects and every other query from chunks. A stream-first query
-  that returns data must read data-object rows, or the eval fails.
+- `direct (dataobj)` — the direct stack with stream-first execution and data objects on. The
+  querier reads stream-first queries from data objects and every other query from chunks. A
+  stream-first query that returns data must read data-object rows, or the eval fails.
 - `query-frontend + query-scheduler (no sharding, timestamp-first)` — a real frontend, scheduler, and querier loop.
 - `query-frontend + query-scheduler (sharding, timestamp-first)` — the same loop with query sharding on.
 - `query-frontend + query-scheduler (sharding, stream-first)` — the same loop with query sharding
