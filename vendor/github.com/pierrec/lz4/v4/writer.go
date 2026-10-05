@@ -255,7 +255,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 		if !done && !w.isNotConcurrent() {
 			// The buffer will be returned automatically by go routines (safe=true)
-			// so get a new one fo the next round.
+			// so get a new one for the next round.
 			data = size.Get()
 		}
 	}

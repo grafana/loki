@@ -34,3 +34,9 @@ cmd/*/*exe
 .idea
 
 fuzz/*.zip
+
+# Fetched by testdata/fetch_silesia.sh; C-CLI encodings of it made in CI.
+testdata/silesia.tar
+testdata/silesia.tar.*.lz4
+# Go test binaries (go test -c)
+*.test
