@@ -438,6 +438,7 @@ func NewCountDistinctSketchMatrixStepEvaluator(m CountDistinctSketchMatrix, para
 // CountDistinctSketchVectorStepEvaluator estimates one sketch vector per step.
 type CountDistinctSketchVectorStepEvaluator struct {
 	inner StepEvaluator
+	err   error
 }
 
 var _ StepEvaluator = NewCountDistinctSketchVectorStepEvaluator(nil)
@@ -447,15 +448,20 @@ func NewCountDistinctSketchVectorStepEvaluator(inner StepEvaluator) *CountDistin
 }
 
 func (e *CountDistinctSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
-	ok, ts, r := e.inner.Next()
-	if !ok {
+	if e.err != nil {
 		return false, 0, SampleVector{}
 	}
-	return ok, ts, r.CountDistinctSketchVec().Estimate()
+
+	ok, ts, r := e.inner.Next()
+	e.err = e.inner.Error()
+	if !ok || e.err != nil {
+		return false, 0, SampleVector{}
+	}
+	return true, ts, r.CountDistinctSketchVec().Estimate()
 }
 
-func (*CountDistinctSketchVectorStepEvaluator) Close() error { return nil }
-func (*CountDistinctSketchVectorStepEvaluator) Error() error { return nil }
+func (e *CountDistinctSketchVectorStepEvaluator) Close() error { return e.inner.Close() }
+func (e *CountDistinctSketchVectorStepEvaluator) Error() error { return e.err }
 func (e *CountDistinctSketchVectorStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctSketchVector")
 }
