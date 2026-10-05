@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,10 +15,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -36,15 +40,11 @@ func (d *Detector) onGCE() bool {
 }
 
 // GCEHostType returns the machine type of the instance on which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostType() (string, error) {
 	return d.metadata.GetWithContext(context.TODO(), machineTypeMetadataAttr)
 }
 
 // GCEHostID returns the instance ID of the instance on which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostID() (string, error) {
 	return d.instanceID()
 }
@@ -52,8 +52,6 @@ func (d *Detector) GCEHostID() (string, error) {
 // GCEHostName returns the instance name of the instance on which this program is running.
 // Recommended to use GCEInstanceName() or GCEInstanceHostname() to more accurately reflect which
 // value is returned.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEHostName() (string, error) {
 	return d.metadata.InstanceNameWithContext(context.TODO())
 }
@@ -61,30 +59,24 @@ func (d *Detector) GCEHostName() (string, error) {
 // GCEInstanceName returns the instance name of the instance on which this program is running.
 // This is the value visible in the Cloud Console UI, and the prefix for the default hostname
 // of the instance as defined by the default internal DNS name (see https://cloud.google.com/compute/docs/internal-dns#instance-fully-qualified-domain-names).
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEInstanceName() (string, error) {
 	return d.metadata.InstanceNameWithContext(context.TODO())
 }
 
 // GCEInstanceHostname returns the full value of the default or custom hostname of the instance
 // on which this program is running. See https://cloud.google.com/compute/docs/instances/custom-hostname-vm.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEInstanceHostname() (string, error) {
 	return d.metadata.HostnameWithContext(context.TODO())
 }
 
 // GCEAvailabilityZoneAndRegion returns the zone and region in which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEAvailabilityZoneAndRegion() (string, string, error) {
 	zone, err := d.metadata.ZoneWithContext(context.TODO())
 	if err != nil {
 		return "", "", err
 	}
 	if zone == "" {
-		return "", "", fmt.Errorf("no zone detected from GCE metadata server")
+		return "", "", errors.New("no zone detected from GCE metadata server")
 	}
 	splitZone := strings.SplitN(zone, "-", 3)
 	if len(splitZone) != 3 {
@@ -93,9 +85,6 @@ func (d *Detector) GCEAvailabilityZoneAndRegion() (string, string, error) {
 	return zone, strings.Join(splitZone[0:2], "-"), nil
 }
 
-// ManagedInstanceGroup describes a Google Compute Engine Managed Instance Group.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 type ManagedInstanceGroup struct {
 	Name     string
 	Location string
@@ -104,12 +93,9 @@ type ManagedInstanceGroup struct {
 
 var createdByMIGRE = regexp.MustCompile(`^projects/[^/]+/(zones|regions)/([^/]+)/instanceGroupManagers/([^/]+)$`)
 
-// GCEManagedInstanceGroup returns the managed instance group that created this VM, if any.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GCEManagedInstanceGroup() (ManagedInstanceGroup, error) {
 	createdBy, err := d.metadata.InstanceAttributeValueWithContext(context.TODO(), createdByInstanceAttr)
-	if _, ok := err.(metadata.NotDefinedError); ok {
+	if _, ok := errors.AsType[metadata.NotDefinedError](err); ok {
 		return ManagedInstanceGroup{}, nil
 	} else if err != nil {
 		return ManagedInstanceGroup{}, err

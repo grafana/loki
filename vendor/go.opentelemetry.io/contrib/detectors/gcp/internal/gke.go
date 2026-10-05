@@ -1,3 +1,6 @@
+// Copyright The OpenTelemetry Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +15,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcp
+package internal
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -51,22 +55,16 @@ func (d *Detector) onGKE() bool {
 }
 
 // GKEHostID returns the instance ID of the instance on which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEHostID() (string, error) {
 	return d.GCEHostID()
 }
 
-// GKEClusterName returns the name if the GKE cluster in which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
+// GKEClusterName returns the name of the GKE cluster in which this program is running.
 func (d *Detector) GKEClusterName() (string, error) {
 	return d.metadata.InstanceAttributeValueWithContext(context.TODO(), clusterNameMetadataAttr)
 }
 
 // GKEHostType returns the machine type of the instance on which this program is running.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEHostType() (string, error) {
 	ctx := context.TODO()
 	projectID, err := d.ProjectID()
@@ -104,7 +102,7 @@ func (d *Detector) computeInstanceMachineType(ctx context.Context, projectID, zo
 		url.PathEscape(zone),
 		url.PathEscape(instanceName),
 	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return "", err
 	}
@@ -123,7 +121,7 @@ func (d *Detector) computeInstanceMachineType(ctx context.Context, projectID, zo
 		return "", err
 	}
 	if instance.MachineType == "" {
-		return "", fmt.Errorf("compute instances.get response missing machineType")
+		return "", errors.New("compute instances.get response missing machineType")
 	}
 	return instance.MachineType, nil
 }
@@ -143,12 +141,10 @@ func lastPathSegment(s string) string {
 	return s
 }
 
-// LocationType represents the location type (Zone or Region).
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
+// LocationType represents the type of location (zone or region).
 type LocationType int64
 
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
+// Supported location types.
 const (
 	UndefinedLocation LocationType = iota
 	Zone
@@ -156,8 +152,6 @@ const (
 )
 
 // GKEAvailabilityZoneOrRegion returns the location of the cluster and whether the cluster is zonal or regional.
-//
-// Deprecated: Use [go.opentelemetry.io/contrib/detectors/gcp] instead.
 func (d *Detector) GKEAvailabilityZoneOrRegion() (string, LocationType, error) {
 	clusterLocation, err := d.metadata.InstanceAttributeValueWithContext(context.TODO(), clusterLocationMetadataAttr)
 	if err != nil {
