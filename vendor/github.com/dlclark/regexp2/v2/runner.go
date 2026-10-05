@@ -475,8 +475,17 @@ func executeDefault(r *Runner) error {
 			mark := r.stackPeek()
 			count := r.stackPeekN(1)
 			matched := r.textPos() - mark
+			if matched == 0 && count > 0 && len(r.re.duplicateCapnames) > 0 {
+				// ECMAScript 2025 §22.2.2.3.1 RepeatMatcher, step 2.2,
+				// rejects an empty iteration once no required repeats remain.
+				// Fail the iteration so its captures are undone and any remaining
+				// alternatives in the body can still be tried.
+				// https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-repeatmatcher
+				r.stackPush2(mark, count)
+				break
+			}
 
-			if count >= r.operand(1) || (matched == 0 && count >= 0) { // Max loops or empty match -> straight now
+			if count >= r.operand(1) || (matched == 0 && count >= 0 && len(r.re.duplicateCapnames) == 0) { // Max loops or empty match -> straight now
 				r.trackPushNeg2(mark, count) // Save old mark, count
 				r.advance(2)                 // Straight
 			} else { // Nonempty match -> count+loop now
@@ -519,6 +528,11 @@ func executeDefault(r *Runner) error {
 			r.stackPopN(2)
 			mark := r.stackPeek()
 			count := r.stackPeekN(1)
+			if r.textPos() == mark && count > 0 && len(r.re.duplicateCapnames) > 0 {
+				// RepeatMatcher step 2.2 applies to lazy quantifiers too.
+				r.stackPush2(mark, count)
+				break
+			}
 
 			if count < 0 { // Negative count -> loop now
 				r.trackPushNeg1(mark)                        // Save old mark
@@ -542,7 +556,9 @@ func executeDefault(r *Runner) error {
 			mark := r.trackPeek()
 			textpos := r.trackPeekN(2)
 
-			if r.trackPeekN(1) < r.operand(1) && textpos != mark { // Under limit and not empty match -> loop
+			// RepeatMatcher permits a required empty iteration, then tries
+			// another iteration; step 2.2 rejects it only if it is also empty.
+			if r.trackPeekN(1) < r.operand(1) && (textpos != mark || (r.trackPeekN(1) == 0 && len(r.re.duplicateCapnames) > 0)) { // Under limit and another iteration is permitted
 				r.textto(textpos)                            // Recall position
 				r.stackPush2(textpos, r.trackPeekN(1)+1)     // Make new mark, incr count
 				r.trackPushNeg1(mark)                        // Save old mark
@@ -2129,6 +2145,14 @@ func (r *Runner) Capture(capnum, start, end int) {
 
 	r.crawl(capnum)
 	r.runmatch.addMatch(capnum, start, end-start)
+}
+
+// TransferCapture removes the last capture from uncapnum and optionally
+// captures its interval with [start, end) into capnum. Use -1 for capnum to
+// only remove the capture. uncapnum must be matched, and both group numbers
+// must already be mapped to dense capture slots. UncaptureUntil can undo it.
+func (r *Runner) TransferCapture(capnum, uncapnum, start, end int) {
+	r.transferCapture(capnum, uncapnum, start, end)
 }
 
 // transferCapture captures a subexpression. Note that the

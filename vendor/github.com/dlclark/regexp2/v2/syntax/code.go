@@ -142,31 +142,39 @@ type DispatchTable struct {
 // captureSlotsInUse returns the capture slots whose values can affect matching.
 // Group 0 is always retained as the success marker. Ordinary captures that are
 // never referenced by the pattern may be omitted by bool-only matching APIs.
-func captureSlotsInUse(codes []int, capsize int) []bool {
+func captureSlotsInUse(root *RegexNode, capsize int, caps map[int]int) []bool {
 	inUse := make([]bool, capsize)
 	if capsize > 0 {
 		inUse[0] = true
 	}
-	for pos := 0; pos < len(codes); {
-		op := InstOp(codes[pos]) & Mask
-		switch op {
-		case Ref, Testref:
-			capnum := codes[pos+1]
-			if capnum >= 0 && capnum < len(inUse) {
-				inUse[capnum] = true
-			}
-		case Capturemark:
+	mark := func(number int) {
+		if number < 0 {
+			return
+		}
+		slot := number
+		if caps != nil {
+			slot = caps[number]
+		}
+		inUse[slot] = true
+	}
+	stack := []*RegexNode{root}
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		switch node.T {
+		case NtRef, NtBackRefCond:
+			mark(node.M)
+		case NtCapture:
 			// Balancing groups both observe and mutate capture state. Keep both
 			// sides live even if no later backreference refers to them.
-			if codes[pos+2] != -1 {
-				for _, capnum := range codes[pos+1 : pos+3] {
-					if capnum >= 0 && capnum < len(inUse) {
-						inUse[capnum] = true
-					}
-				}
+			if node.N != -1 {
+				mark(node.M)
+				mark(node.N)
 			}
 		}
-		pos += opcodeSize(op)
+		// Synthetic resets mutate state but do not observe it. A slot only
+		// needs retaining if an actual reference or balancing group uses it.
+		stack = append(stack, node.Children...)
 	}
 	return inUse
 }
