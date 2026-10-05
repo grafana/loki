@@ -2,62 +2,64 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/twmb/franz-go/pkg/kerr"
 
 	"github.com/grafana/loki/v3/pkg/kafkav2"
 )
 
 type downscalePermittedFunc func(context.Context) (bool, error)
 
-// newOffsetCommittedDownscaleFunc returns a downscalePermittedFunc that checks
-// if the consumer has committed all records up to the end offset.
+// newOffsetCommittedDownscaleFunc returns a downscalePermittedFunc that
+// permits a downscale when the consumer has no records left to consume in the
+// partition. A record is left to consume when it is after the last committed
+// offset and retention has not deleted it.
 func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partitionID int32, logger log.Logger) downscalePermittedFunc {
 	return func(ctx context.Context) (bool, error) {
+		// Read the start offset before the end offset. Both offsets only grow,
+		// so the start offset we read is never more than the end offset.
+		startOffset, err := offsetReader.StartOffset(ctx, partitionID)
+		if errors.Is(err, kerr.UnknownTopicOrPartition) {
+			// A missing partition has no records to consume. Kafka can add
+			// partitions but cannot remove them, so the partition never had
+			// records. This happens when there are more replicas than
+			// partitions.
+			level.Debug(logger).Log("msg", "partition does not exist, nothing to consume", "err", err)
+			return true, nil
+		}
+		if err != nil {
+			return false, fmt.Errorf("failed to get start offset: %w", err)
+		}
+		// The end offset is the offset of the next record to be produced.
 		endOffset, err := offsetReader.EndOffset(ctx, partitionID)
 		if err != nil {
 			return false, fmt.Errorf("failed to get end offset: %w", err)
 		}
-		// The end offset is the offset of the next record to be produced. If the
-		// end offset is zero this means no records have been produced for this
-		// partition, which in turn means we can downscale.
-		if endOffset == 0 {
-			level.Debug(logger).Log("msg", "no records produced for partition")
-			return true, nil
-		}
-		// If some records have been produced for this partition we need to make sure
-		// the consumer has processed and committed all of them otherwise we risk data
-		// loss. If no offsets have been committed, the last committed offset is -1.
+		// The last committed offset is negative if the group never committed.
 		lastCommittedOffset, err := offsetReader.LastCommittedOffset(ctx, partitionID)
 		if err != nil {
 			return false, fmt.Errorf("failed to get last committed offset: %w", err)
 		}
-		// The end offset is the offset of the next record, so we need to
-		// subtract one to get the offset of last record.
-		isDownscalePermitted := lastCommittedOffset == endOffset-1
-		if isDownscalePermitted {
-			level.Debug(logger).Log(
-				"msg",
-				"all offsets have been committed",
-				"last_committed_offset",
-				lastCommittedOffset,
-				"end_offset",
-				endOffset,
-			)
-		} else {
-			level.Debug(logger).Log(
-				"msg",
-				"there are uncommitted offsets",
-				"last_committed_offset",
-				lastCommittedOffset,
-				"end_offset",
-				endOffset,
-				"delta",
-				endOffset-lastCommittedOffset-1,
-			)
+		// The consumer commits the offset of the last record it processed, so
+		// it resumes at the next offset. If retention deleted that record, or
+		// the group never committed, it resumes at the start offset instead.
+		nextOffset := max(lastCommittedOffset+1, startOffset)
+		isDownscalePermitted := nextOffset >= endOffset
+		msg := "no records left to consume"
+		if !isDownscalePermitted {
+			msg = "there are records left to consume"
 		}
+		level.Debug(logger).Log(
+			"msg", msg,
+			"start_offset", startOffset,
+			"end_offset", endOffset,
+			"last_committed_offset", lastCommittedOffset,
+			"remaining", max(endOffset-nextOffset, 0),
+		)
 		return isDownscalePermitted, nil
 	}
 }
