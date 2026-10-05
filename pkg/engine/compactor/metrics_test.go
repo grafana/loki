@@ -2,10 +2,14 @@ package compactor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 )
 
 func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
@@ -72,4 +76,42 @@ func TestWorkerMetrics_LogMergeObserver(t *testing.T) {
 		require.Equal(t, 15.0, testutil.ToFloat64(m.logMergeInputBytesTotal.WithLabelValues("0")))
 		require.Equal(t, 7.0, testutil.ToFloat64(m.logMergeInputBytesTotal.WithLabelValues("3")))
 	})
+}
+
+func TestWorkerMetrics_ObserveLogMerge(t *testing.T) {
+	t.Run("observes task input bytes for every outcome so the sum pairs with the duration sum", func(t *testing.T) {
+		m := newWorkerMetrics(prometheus.NewRegistry())
+
+		m.ObserveLogMerge("acme", executor.LogMergeObservedStats{Outcome: "success", InputBytes: 300}, 3*time.Second)
+		m.ObserveLogMerge("acme", executor.LogMergeObservedStats{Outcome: "empty"}, time.Second)
+
+		inputBytes := writeHistogram(t, m.logMergeTaskInputBytes.WithLabelValues("acme"))
+		duration := writeHistogram(t, m.logMergeDurationSeconds.WithLabelValues("acme"))
+		require.Equal(t, uint64(2), inputBytes.GetSampleCount())
+		require.Equal(t, duration.GetSampleCount(), inputBytes.GetSampleCount())
+		require.Equal(t, 300.0, inputBytes.GetSampleSum())
+		require.Equal(t, 4.0, duration.GetSampleSum())
+	})
+
+	t.Run("exposes task input bytes and duration as native histograms without classic buckets", func(t *testing.T) {
+		m := newWorkerMetrics(prometheus.NewRegistry())
+
+		m.ObserveLogMerge("acme", executor.LogMergeObservedStats{Outcome: "success", InputBytes: 1 << 30}, 20*time.Minute)
+
+		for name, o := range map[string]prometheus.Observer{
+			"task input bytes": m.logMergeTaskInputBytes.WithLabelValues("acme"),
+			"duration":         m.logMergeDurationSeconds.WithLabelValues("acme"),
+		} {
+			h := writeHistogram(t, o)
+			require.Empty(t, h.GetBucket(), name)
+			require.NotEmpty(t, h.GetPositiveSpan(), name)
+		}
+	})
+}
+
+func writeHistogram(t *testing.T, o prometheus.Observer) *dto.Histogram {
+	t.Helper()
+	var out dto.Metric
+	require.NoError(t, o.(prometheus.Metric).Write(&out))
+	return out.GetHistogram()
 }

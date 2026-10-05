@@ -270,7 +270,7 @@ type workerMetrics struct {
 	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
 	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
-	logMergeInputBytesPerSecond   *prometheus.HistogramVec // tenant
+	logMergeTaskInputBytes        *prometheus.HistogramVec // tenant
 	logMergeDuplicateRecordsTotal *prometheus.CounterVec   // tenant
 	logMergeInputBytesTotal       *prometheus.CounterVec   // thread
 }
@@ -278,7 +278,6 @@ type workerMetrics struct {
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
 	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
-	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_compressed",
@@ -295,19 +294,25 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Help: "LogMerge tasks by outcome. success = compacted log objects uploaded, short_circuit = output index already present, empty = no source data or records.",
 		}, []string{labelTenant, labelOutcome}),
 		logMergeDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_duration_seconds",
-			Help:    "Wall-clock duration of a LogMerge task on the worker.",
-			Buckets: durationBuckets,
+			Name: "loki_dataobj_compaction_log_merge_duration_seconds",
+			Help: "Wall-clock duration of a LogMerge task on the worker.",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}, []string{labelTenant}),
 		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
-		logMergeInputBytesPerSecond: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_input_bytes_per_second",
-			Help:    "Input throughput of a successful LogMerge task: log line and structured metadata value bytes divided by task duration. One observation per task.",
-			Buckets: byteBuckets,
+		logMergeTaskInputBytes: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "loki_dataobj_compaction_log_merge_task_input_bytes",
+			Help: "Log line and structured metadata value bytes merged by a LogMerge task. One observation per task, for the same tasks as loki_dataobj_compaction_log_merge_duration_seconds. Divide the rate of the two sums for bytes-weighted throughput.",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}, []string{labelTenant}),
 		logMergeDuplicateRecordsTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_duplicate_records_total",
@@ -368,14 +373,12 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	}
 	m.logMergeTasksTotal.WithLabelValues(tenant, outcome).Inc()
 	m.logMergeDurationSeconds.WithLabelValues(tenant).Observe(duration.Seconds())
+	m.logMergeTaskInputBytes.WithLabelValues(tenant).Observe(float64(stats.InputBytes))
 	if stats.Outcome != "success" {
 		return
 	}
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
-	}
-	if duration > 0 {
-		m.logMergeInputBytesPerSecond.WithLabelValues(tenant).Observe(float64(stats.InputBytes) / duration.Seconds())
 	}
 	m.logMergeDuplicateRecordsTotal.WithLabelValues(tenant).Add(float64(stats.DuplicateRecords))
 }
