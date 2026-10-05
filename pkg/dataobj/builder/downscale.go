@@ -34,6 +34,7 @@ func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partiti
 		if err != nil {
 			return false, fmt.Errorf("failed to get resume offset: %w", err)
 		}
+		// resumeOffset is kafkav2.OffsetStart (-2) if the group never committed.
 		nextOffsetToConsume := max(resumeOffset, startOffset)
 		recordsLeftToConsume := max(endOffset-nextOffsetToConsume, 0)
 		level.Debug(logger).Log(
