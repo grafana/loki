@@ -94,7 +94,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return nil, err
 		}
-		size := recordBytes(rec)
+		size := rec.UncompressedSize()
 		inputBytes += size
 		c.observeLogMergeInputBytes(size)
 		dups.observe(rec)

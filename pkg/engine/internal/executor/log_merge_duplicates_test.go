@@ -93,15 +93,3 @@ func TestDuplicateCounter(t *testing.T) {
 		})
 	}
 }
-
-func TestRecordBytes(t *testing.T) {
-	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	t.Run("counts only the line when there is no metadata", func(t *testing.T) {
-		require.Equal(t, int64(5), recordBytes(testRecord(1, ts, "hello")))
-	})
-
-	t.Run("counts line bytes and metadata value bytes but not metadata names", func(t *testing.T) {
-		require.Equal(t, int64(5+3+1), recordBytes(testRecord(1, ts, "hello", "trace_id", "abc", "user", "z")))
-	})
-}

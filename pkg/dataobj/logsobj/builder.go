@@ -291,10 +291,7 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sz := int64(len(record.Line))
-	record.Metadata.Range(func(lb labels.Label) {
-		sz += int64(len(lb.Value))
-	})
+	sz := record.UncompressedSize()
 
 	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
 		_ = yield(record, sz)

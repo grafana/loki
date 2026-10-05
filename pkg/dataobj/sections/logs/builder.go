@@ -41,6 +41,20 @@ type Record struct {
 	StreamHash uint64
 }
 
+// UncompressedSize returns the line bytes plus the structured metadata value
+// bytes of r. It matches streams.Stream.UncompressedSize and the index
+// statistics, so every producer reports the same quantity.
+//
+// Metadata names are not counted because the section stores each name once
+// per column, not once per record.
+func (r *Record) UncompressedSize() int64 {
+	size := int64(len(r.Line))
+	r.Metadata.Range(func(l labels.Label) {
+		size += int64(len(l.Value))
+	})
+	return size
+}
+
 // Reset clears r so it can be reused for another row.
 //
 // The line is truncated rather than dropped, so it keeps its capacity and a reused Record
@@ -237,10 +251,7 @@ func recordSize(record Record) int {
 
 	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
-	size += len(record.Line)
+	size += int(record.UncompressedSize())
 
 	return size
 }

@@ -2,6 +2,7 @@ package executor
 
 import (
 	"bytes"
+	"slices"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -39,30 +40,45 @@ type trackedRecord struct {
 // The cost is quadratic in the group size, but each comparison is one uint64
 // compare unless the line hashes match.
 func (c *duplicateCounter) observe(rec logs.Record) {
-	if len(c.group) == 0 || rec.StreamID != c.groupStreamID || !rec.Timestamp.Equal(c.groupTimestamp) {
-		clear(c.group)
-		c.group = c.group[:0]
-		c.groupStreamID = rec.StreamID
-		c.groupTimestamp = rec.Timestamp
+	if !c.inCurrentGroup(rec) {
+		c.startGroup(rec)
 	}
 
-	lineHash := xxhash.Sum64(rec.Line)
-	for _, prev := range c.group {
-		if prev.lineHash == lineHash && bytes.Equal(prev.line, rec.Line) && labels.Equal(prev.metadata, rec.Metadata) {
-			c.duplicates++
-			return
-		}
+	tracked := newTrackedRecord(rec)
+	if c.seenInGroup(tracked) {
+		c.duplicates++
+		return
 	}
-	c.group = append(c.group, trackedRecord{lineHash: lineHash, line: rec.Line, metadata: rec.Metadata})
+	c.group = append(c.group, tracked)
 }
 
-// recordBytes returns the size of the line plus all structured metadata
-// values. Metadata names are not counted because the logs section stores
-// each name once per column, not once per record.
-func recordBytes(rec logs.Record) int64 {
-	size := int64(len(rec.Line))
-	rec.Metadata.Range(func(l labels.Label) {
-		size += int64(len(l.Value))
-	})
-	return size
+// inCurrentGroup reports whether rec has the stream and timestamp of the
+// current group.
+func (c *duplicateCounter) inCurrentGroup(rec logs.Record) bool {
+	return rec.StreamID == c.groupStreamID && rec.Timestamp.Equal(c.groupTimestamp)
+}
+
+// startGroup forgets the records of the current group and starts a new group
+// for the stream and timestamp of rec.
+func (c *duplicateCounter) startGroup(rec logs.Record) {
+	clear(c.group) // Drop references to line and metadata buffers.
+	c.group = c.group[:0]
+	c.groupStreamID = rec.StreamID
+	c.groupTimestamp = rec.Timestamp
+}
+
+// seenInGroup reports whether the current group already has a record equal
+// to r.
+func (c *duplicateCounter) seenInGroup(r trackedRecord) bool {
+	return slices.ContainsFunc(c.group, r.equal)
+}
+
+func newTrackedRecord(rec logs.Record) trackedRecord {
+	return trackedRecord{lineHash: xxhash.Sum64(rec.Line), line: rec.Line, metadata: rec.Metadata}
+}
+
+// equal reports whether r and o have the same line and metadata. It compares
+// the line hashes first because they differ for almost every pair of records.
+func (r trackedRecord) equal(o trackedRecord) bool {
+	return r.lineHash == o.lineHash && bytes.Equal(r.line, o.line) && labels.Equal(r.metadata, o.metadata)
 }
