@@ -45,7 +45,7 @@ Set `-tsdb.shipper.index-gateway-client.max-retries` to a non-negative value to 
 
 The candidate instances are the healthy instances the ring or DNS reports, so an instance that already failed its heartbeat is not counted against the budget. If you leave `-index-gateway.shard-size` at its default of `0`, a request can choose from the whole index gateway fleet.
 
-Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, doubled when the shadow index gateway client is enabled, so the process-wide limit is this value multiplied by the number of clients.
+Set `-tsdb.shipper.index-gateway-client.max-in-flight-requests` to a positive value to limit in-flight requests. The default of `0` disables this limit. Requests that arrive when the limit is reached fail immediately with an HTTP 503 status, so the query-frontend retries them. The limit applies per client: Loki builds one client for each `schema_config` period, so the process-wide limit is this value multiplied by the number of clients.
 
 ### `frontend.encoding` default changed to `protobuf`
 

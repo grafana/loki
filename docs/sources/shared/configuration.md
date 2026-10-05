@@ -6772,10 +6772,9 @@ tsdb_shipper:
     # rejected immediately with an HTTP 503 status instead of waiting, which
     # bounds the resources this process commits to an index gateway that is
     # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, doubled when the shadow index gateway
-    # client is enabled, so the process-wide number of in-flight requests can
-    # reach this value multiplied by the number of clients. 0 disables the
-    # limit.
+    # is built per schema period config, so the process-wide number of in-flight
+    # requests can reach this value multiplied by the number of clients. 0
+    # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
 
