@@ -313,7 +313,7 @@ quantile_over_time(
 	) by (cluster)
 ```
 
-A range aggregation's `by (...)` (e.g. `count_over_time()`) keeps the error labels next to the labels it names, so an errored sample still reports `__error__`. A vector aggregation's `by (...)` (e.g. `count()`) drops them, like any other label it does not name.
+A range aggregation's `by (...)` (e.g. `count_over_time()`) keeps the error labels next to the labels it names, so an errored sample still reports `__error__`. `without (...)` behaves the same way: it keeps the error labels alongside whatever labels it doesn't exclude. A vector aggregation's `by (...)` (e.g. `count()`) drops them, like any other label it does not name.
 
 In a `__error__` filter joined by `and` or `or`, only a part that asks to keep the errored lines keeps them:
 
