@@ -1815,8 +1815,8 @@ go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/observ
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/retry
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/transform
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/x
-# go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.22.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.23.0
+## explicit; go 1.26.0
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/observ
@@ -1919,8 +1919,8 @@ go.opentelemetry.io/otel/sdk/trace
 go.opentelemetry.io/otel/sdk/trace/internal/env
 go.opentelemetry.io/otel/sdk/trace/internal/observ
 go.opentelemetry.io/otel/sdk/trace/tracetest
-# go.opentelemetry.io/otel/sdk/log v0.22.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/otel/sdk/log v1.47.0
+## explicit; go 1.26.0
 go.opentelemetry.io/otel/sdk/log
 go.opentelemetry.io/otel/sdk/log/internal/attrnorm
 go.opentelemetry.io/otel/sdk/log/internal/counter
