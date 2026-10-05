@@ -158,8 +158,13 @@ type QuantileSketchStepEvaluator struct {
 }
 
 func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.err != nil {
+		return false, 0, ProbabilisticQuantileVector{}
+	}
+
 	next := e.iter.Next()
-	if !next {
+	e.err = e.iter.Error()
+	if !next || e.err != nil {
 		return false, 0, ProbabilisticQuantileVector{}
 	}
 	ts, r := e.iter.At()
@@ -173,12 +178,7 @@ func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 
 func (e *QuantileSketchStepEvaluator) Close() error { return e.iter.Close() }
 
-func (e *QuantileSketchStepEvaluator) Error() error {
-	if e.err != nil {
-		return e.err
-	}
-	return e.iter.Error()
-}
+func (e *QuantileSketchStepEvaluator) Error() error { return e.err }
 
 func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 	parent.Child("QuantileSketch")
@@ -338,8 +338,13 @@ func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64)
 }
 
 func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.err != nil {
+		return false, 0, SampleVector{}
+	}
+
 	ok, ts, r := e.inner.Next()
-	if !ok {
+	e.err = e.inner.Error()
+	if !ok || e.err != nil {
 		return false, 0, SampleVector{}
 	}
 	quantileSketchVec := r.QuantileSketchVec()
@@ -360,9 +365,9 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 		}
 	}
 
-	return ok, ts, SampleVector(vec)
+	return true, ts, SampleVector(vec)
 }
 
-func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
+func (e *QuantileSketchVectorStepEvaluator) Close() error { return e.inner.Close() }
 
 func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }

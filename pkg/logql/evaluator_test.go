@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -335,7 +336,7 @@ func TestEmptyNestedEvaluator(t *testing.T) {
 		},
 		{
 			desc: "BinOpStepEvaluator",
-			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}},
+			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}, lse: &emptyEvaluator{}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -344,6 +345,193 @@ func TestEmptyNestedEvaluator(t *testing.T) {
 		})
 	}
 
+}
+
+func TestBinOpStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and records the error when duplicate right-hand labels make the match many-to-many", func(t *testing.T) {
+		rse := newReturnVectorEvaluator([]float64{1, 2})
+		lse := newReturnVectorEvaluator([]float64{1})
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Error(t, ev.Error())
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call rse or lse again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		rse := &fakeEvaluator{
+			ok: true,
+			result: SampleVector{
+				{Metric: labels.FromStrings("foo", "bar"), F: 1},
+				{Metric: labels.FromStrings("foo", "bar"), F: 2},
+			},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+		require.Error(t, ev.Error())
+	})
+
+	t.Run("surfaces an error that lives only in a child evaluator and skips the other child", func(t *testing.T) {
+		lseCalls := 0
+		rseErr := errors.New("rse error present before Next")
+		rse := &fakeEvaluator{err: rseErr}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+	})
+
+	t.Run("does not call rse when lse already carries a known error", func(t *testing.T) {
+		rseCalls := 0
+		lseErr := errors.New("lse error present before Next")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{err: lseErr}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, rseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, rseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+	})
+
+	t.Run("a second call after rse reveals an error mid-step stays exhausted and does not call either child again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		rseErr := errors.New("rse failed mid-iteration")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return rseErr },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 0, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+	})
+
+	t.Run("a second call after lse reveals an error mid-step stays exhausted and does not call either child again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		lseErr := errors.New("lse failed mid-iteration")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return lseErr },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+	})
 }
 
 func TestLiteralStepEvaluator(t *testing.T) {
