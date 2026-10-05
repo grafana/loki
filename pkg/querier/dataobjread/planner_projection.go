@@ -158,6 +158,10 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		needAllMetadata: derivesLabels || anyWithout || !reducesOutputLabels(expr),
 	}
 	if !plan.needAllMetadata {
+		// A metadata key named after an error label sets the pipeline error, the same way a
+		// failed stage does. So read those columns even when the query does not name them.
+		metadataNames[logqlmodel.ErrorLabel] = struct{}{}
+		metadataNames[logqlmodel.ErrorDetailsLabel] = struct{}{}
 		plan.metadataNames = slices.Sorted(maps.Keys(metadataNames))
 	}
 	if !queryDerivesLabels {
@@ -315,11 +319,11 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 }
 
 // pushdownCandidate returns matcher as a pushdown candidate, or nil when it is not one.
-//
-// A filter on __error__ or __error_details__ reads the error the builder holds, never a stored
-// column, so neither is a metadata matcher in any direction: pushing one down would filter rows
-// against a column no object has, and handing one to the metastore would drop every section.
 func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
+	// A filter on an error label reads the error the builder holds, not a column. A failed stage
+	// or a stored metadata key can set that error, so a predicate on the column does not match the
+	// filter. Pushing one down would drop rows the pipeline keeps, and handing one to the metastore
+	// would drop sections the query needs.
 	if matcher == nil || logqlmodel.IsPipelineErrorLabel(matcher.Name) {
 		return nil
 	}

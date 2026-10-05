@@ -123,6 +123,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyIngesterReplicationFactor(r)
 		applyLoglineKafkaConfig(r)
 		applyLoglineIndexConfig(r)
+		applyQuerierDataObjConfig(r)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -786,4 +787,11 @@ func applyLoglineIndexConfig(r *ConfigWrapper) {
 // from the root kafka_config.
 func applyLoglineKafkaConfig(r *ConfigWrapper) {
 	r.Logline.Builder.Kafka.ApplyDefaultsFrom(r.KafkaConfig)
+}
+
+// applyQuerierDataObjConfig copies the data-object settings the querier reads, which have no
+// flag or YAML key of their own in the querier config.
+func applyQuerierDataObjConfig(r *ConfigWrapper) {
+	r.Querier.DataObjEnabled = r.DataObj.Enabled
+	r.Querier.DataObjStorageLag = r.DataObj.StorageLag
 }
