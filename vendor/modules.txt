@@ -1747,8 +1747,8 @@ go.opentelemetry.io/collector/processor
 # go.opentelemetry.io/collector/processor/xprocessor v0.162.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor/xprocessor
-# go.opentelemetry.io/contrib/bridges/prometheus v0.71.0
-## explicit; go 1.25.0
+# go.opentelemetry.io/contrib/bridges/prometheus v0.72.0
+## explicit; go 1.26.0
 go.opentelemetry.io/contrib/bridges/prometheus
 # go.opentelemetry.io/contrib/detectors/gcp v1.47.0
 ## explicit; go 1.26.0

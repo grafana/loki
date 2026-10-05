@@ -878,8 +878,8 @@ go.opentelemetry.io/collector/processor/processortest v0.162.0 h1:g0SIBikwHtef5i
 go.opentelemetry.io/collector/processor/processortest v0.162.0/go.mod h1:GP5NXAzjn6BYhRwlXeLV00honI5fGZXo9sEUyAK9khk=
 go.opentelemetry.io/collector/processor/xprocessor v0.162.0 h1:QoufkdyslKxsyRa01feBG7RoeytyipWK2YN5ilAJgJc=
 go.opentelemetry.io/collector/processor/xprocessor v0.162.0/go.mod h1:oZc1ehka+zY6Bl8uK2eIR/83I7ZyhtuCHzLauVzuCAw=
-go.opentelemetry.io/contrib/bridges/prometheus v0.71.0 h1:9qgxsFLskbDMXl8WMqThoF6w8yGJgCumn9qRc67OmnI=
-go.opentelemetry.io/contrib/bridges/prometheus v0.71.0/go.mod h1:2rCjF4F2siiTeLCzJsaGZ3CK0XIoimCSKXEBPdv+Je0=
+go.opentelemetry.io/contrib/bridges/prometheus v0.72.0 h1:OUIUu7ovHCEvG4IE5LQd2PNBH2eVYh50w/1ROwHEM7M=
+go.opentelemetry.io/contrib/bridges/prometheus v0.72.0/go.mod h1:pCrnkC07AZ5+h+0A0Z/1GYyqB+xu3A8LaEEhxvv9s6o=
 go.opentelemetry.io/contrib/detectors/gcp v1.47.0 h1:Ct6+aaiSO6Nk5SOb6PYcR7iWp+83YF/pL1OJcGqOmbg=
 go.opentelemetry.io/contrib/detectors/gcp v1.47.0/go.mod h1:3N259ss0b1AVOs+fYw7lOO0mcUwNqSIpQ+Zitpuqx00=
 go.opentelemetry.io/contrib/exporters/autoexport v0.71.0 h1:VCsJbp0YLyPtx2tu5Vgv2a2/qLoaMCj8hT2uZ34+Mx0=
