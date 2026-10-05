@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	chunkexpcorrectness "github.com/grafana/loki/v3/pkg/chunkexp/correctness"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
@@ -157,6 +158,7 @@ const (
 	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
 	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
 	LoglineCorrectness              = "logline-correctness"
+	ChunkExpCorrectness             = "chunk-exp-correctness"
 	UIRing                          = "ui-ring"
 	UI                              = "ui"
 	All                             = "all"
@@ -2769,4 +2771,9 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 
 	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
+}
+
+func (t *Loki) initChunkExpCorrectness() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", ChunkExpCorrectness)
+	return chunkexpcorrectness.New(t.Cfg.ChunkExpCorrectness, logger, prometheus.DefaultRegisterer)
 }

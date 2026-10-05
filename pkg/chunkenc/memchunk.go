@@ -33,6 +33,11 @@ const (
 	ChunkFormatV2
 	ChunkFormatV3
 	ChunkFormatV4
+	// ChunkFormatV5 is V4 with each block's lines stored in one contiguous region.
+	ChunkFormatV5
+	// ChunkFormatV6 is V5 with the lines region dictionary-coded, so a line filter
+	// can skip a block without decompressing it.
+	ChunkFormatV6
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -359,9 +364,9 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 	if chunkFmt == ChunkFormatV2 && head != OrderedHeadBlockFmt {
 		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
 	}
-	if chunkFmt == ChunkFormatV4 && head != UnorderedWithStructuredMetadataHeadBlockFmt {
+	if chunkFmt >= ChunkFormatV4 && head != UnorderedWithStructuredMetadataHeadBlockFmt {
 		fmt.Println("received head fmt", head.String())
-		panic("only UnorderedWithStructuredMetadataHeadBlockFmt is supported for V4 chunks")
+		panic(fmt.Sprintf("only UnorderedWithStructuredMetadataHeadBlockFmt is supported for chunk format %d", chunkFmt))
 	}
 }
 
@@ -415,7 +420,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	switch version {
 	case ChunkFormatV1:
 		bc.encoding = compression.GZIP
-	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
+	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4, ChunkFormatV5, ChunkFormatV6:
 		// format v2+ has a byte for block encoding.
 		enc := compression.Codec(db.byte())
 		if db.err() != nil {
@@ -962,7 +967,17 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
+	var (
+		b      []byte
+		rawLen int
+		err    error
+	)
+	if c.format >= ChunkFormatV5 {
+		b, rawLen, err = c.cutLayoutBlock()
+	} else {
+		b, err = c.head.Serialise(compression.GetWriterPool(c.encoding))
+		rawLen = c.head.UncompressedSize()
+	}
 	if err != nil {
 		return err
 	}
@@ -973,13 +988,39 @@ func (c *MemChunk) cut() error {
 		numEntries:       c.head.Entries(),
 		mint:             mint,
 		maxt:             maxt,
-		uncompressedSize: c.head.UncompressedSize(),
+		uncompressedSize: rawLen,
 	})
 
 	c.cutBlockSize += len(b)
 
 	c.head.Reset()
 	return nil
+}
+
+// cutLayoutBlock encodes the head as one V5 or V6 block. The head stays the
+// unordered structured-metadata format until it is cut.
+func (c *MemChunk) cutLayoutBlock() ([]byte, int, error) {
+	hb, ok := c.head.(*unorderedHeadBlock)
+	if !ok {
+		return nil, 0, fmt.Errorf("chunk format %d requires an unordered head block", c.format)
+	}
+	entries := make([]layoutEntry, 0, hb.lines)
+	err := hb.forEntries(context.Background(), logproto.FORWARD, 0, math.MaxInt64, func(_ *stats.Context, ts int64, line string, syms symbols) error {
+		entries = append(entries, layoutEntry{
+			ts:       ts,
+			line:     []byte(line),
+			metadata: appendMetadataSection(nil, syms),
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	writers := compression.GetWriterPool(c.encoding)
+	if c.format == ChunkFormatV5 {
+		return encodeV5Block(entries, writers)
+	}
+	return encodeV6Block(entries, writers)
 }
 
 // Bounds implements Chunk.
@@ -1161,6 +1202,9 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 // Filter.Func would be called for each log entry, and the ones for which it returns true would be removed.
 // The new chunk would have data in the same order as the original chunk.
 func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
+	if c.format >= ChunkFormatV5 {
+		return nil, fmt.Errorf("rewrite does not support chunk format %d", c.format)
+	}
 	// Blocks cite symbols by position and unchanged ones are copied over as they
 	// are, so the new table has to number those strings identically. Symbols the
 	// removed entries leave behind are blanked below, not dropped, which would
@@ -1281,6 +1325,9 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
+	if b.format >= ChunkFormatV5 {
+		return newLayoutEntryIterator(ctx, b, pipeline)
+	}
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
@@ -1290,6 +1337,9 @@ func (b encBlock) SampleIterator(
 ) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
+	}
+	if b.format >= ChunkFormatV5 {
+		return newLayoutSampleIterator(ctx, b, extractor)
 	}
 	return newSampleIterator(
 		ctx,
