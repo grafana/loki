@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Push endpoints reject unknown JSON fields
+
+Both `/loki/api/v1/push` and the deprecated legacy `/api/prom/push` endpoint now return HTTP 400 if a JSON push payload contains a field name that the endpoint's schema does not recognize. For example, sending the legacy `labels`/`entries` payload shape to `/loki/api/v1/push`, or the regular `stream`/`values` payload shape to `/api/prom/push`, now fails with an error containing `found unknown field: <field>`.
+
+This check only applies to JSON-encoded push requests (`Content-Type: application/json`). Protobuf-encoded push requests, the default for most clients, are not affected.
+
+Previously, Loki silently ignored unknown fields, which could cause unnoticed data loss, for example a client could send a malformed payload and have it accepted with an HTTP 204 response while none of its log lines were actually ingested. Make sure any client sending JSON payloads only includes fields that match the schema documented for the endpoint it uses. See [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) for the supported JSON payload format.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
