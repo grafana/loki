@@ -1434,11 +1434,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
-    # Experimental: Number of older metastore windows to compact in addition to
-    # the current window. 0 compacts only the current window; 1 also compacts
-    # the previous window.
+    # Experimental: Number of prior metastore windows to compact in addition to
+    # the current window. Must be at least 1, which compacts the current and
+    # immediately prior window.
     # CLI flag: -dataobj.compaction.window-lookback
-    [window_lookback: <int> | default = 0]
+    [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
