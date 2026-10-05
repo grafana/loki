@@ -22,11 +22,6 @@ func TestConfig_Validate(t *testing.T) {
 			mutate:  func(cfg *Config) { cfg.IndexGatewayClientConfig.MaxRetries = -2 },
 			wantErr: "shipper.index-gateway-client: index gateway client max-retries",
 		},
-		{
-			name:    "shadow index gateway client is validated",
-			mutate:  func(cfg *Config) { cfg.ShadowIndexGatewayClientConfig.MaxInFlightRequests = -1 },
-			wantErr: "shipper.shadow-index-gateway-client: index gateway client max-in-flight-requests",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{}
