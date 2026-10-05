@@ -663,6 +663,63 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	require.Equal(t, 1, observer.stats[0].DuplicateRecords)
 }
 
+func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	entries := []push.Entry{{Timestamp: ts, Line: "same line"}}
+
+	// mergeDuplicates merges objA and objB and returns the duplicate count plus
+	// each object's local stream ID for every label set.
+	mergeDuplicates := func(t *testing.T, objA, objB []testStream) (int, map[string]map[string]int64) {
+		ctx := context.Background()
+		dataBucket := objstore.NewInMemBucket()
+		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{tenant: objA})
+		buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{tenant: objB})
+
+		observer := &recordingLogMergeObserver{}
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		c.logMergeObserver = observer
+		node := &physical.LogMerge{Tenant: tenant, SortSchema: sortSchema, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}
+
+		sources, err := c.collectLogSources(ctx, node)
+		require.NoError(t, err)
+		localIDs := make(map[string]map[string]int64)
+		for _, src := range sources {
+			localIDs[src.path] = make(map[string]int64)
+			for id, stream := range src.streams {
+				localIDs[src.path][stream.Labels.String()] = id
+			}
+		}
+
+		_, err = c.doLogObjectMerge(ctx, node)
+		require.NoError(t, err)
+		require.Len(t, observer.stats, 1)
+		return observer.stats[0].DuplicateRecords, localIDs
+	}
+
+	t.Run("counts a duplicate when the stream has a different local ID in each object", func(t *testing.T) {
+		duplicates, localIDs := mergeDuplicates(t,
+			[]testStream{{labels: `{app="a"}`, entries: entries}, {labels: `{app="b"}`, entries: entries}},
+			[]testStream{{labels: `{app="a"}`, entries: entries}},
+		)
+
+		require.NotEqual(t, localIDs["objA"][`{app="a"}`], localIDs["objB"][`{app="a"}`])
+		require.Equal(t, 1, duplicates)
+	})
+
+	t.Run("does not count records from different streams that share a local ID", func(t *testing.T) {
+		duplicates, localIDs := mergeDuplicates(t,
+			[]testStream{{labels: `{app="a"}`, entries: entries}},
+			[]testStream{{labels: `{app="b"}`, entries: entries}},
+		)
+
+		require.Equal(t, localIDs["objA"][`{app="a"}`], localIDs["objB"][`{app="b"}`])
+		require.Equal(t, 0, duplicates)
+	})
+}
+
 func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 	want := logs.SortLayout{
 		SchemaLabels: []string{"label:app"},

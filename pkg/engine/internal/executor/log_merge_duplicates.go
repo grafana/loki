@@ -16,6 +16,11 @@ import (
 //
 // Records must arrive grouped by stream ID and timestamp, as the merge
 // iterator yields them. The order of records within a group does not matter.
+//
+// Stream IDs must be global IDs from one stream table, so that equal IDs mean
+// equal labels. Local IDs from different source objects are not comparable.
+// sortmerge.MixedRunIterator yields global IDs because it remaps every section
+// through its source's local-to-global map.
 type duplicateCounter struct {
 	duplicates int
 
