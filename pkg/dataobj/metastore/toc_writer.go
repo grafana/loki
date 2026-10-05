@@ -239,6 +239,9 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		}
 		for {
 			n, err := indexPointersReader.Read(ctx, pbuf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return fmt.Errorf("reading index pointers: %w", err)
+			}
 			for _, indexPointer := range pbuf[:n] {
 				if err := m.tocBuilder.AppendIndexPointer(tenantID, indexPointer); err != nil {
 					return fmt.Errorf("appending index pointers: %w", err)
@@ -246,9 +249,6 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 			}
 			if errors.Is(err, io.EOF) {
 				break
-			}
-			if err != nil {
-				return fmt.Errorf("reading index pointers: %w", err)
 			}
 		}
 	}
