@@ -142,11 +142,24 @@ func (r *OffsetReader) ResumeOffset(ctx context.Context, partition int32) (int64
 	return initialOffset, nil
 }
 
+// StartOffset returns the start offset. It is the offset of the oldest record
+// that retention has not deleted. It equals the end offset when the partition
+// has no records left.
+func (r *OffsetReader) StartOffset(ctx context.Context, partition int32) (int64, error) {
+	return r.listOffset(ctx, partition, OffsetStart)
+}
+
 // EndOffset returns the end offset.
 func (r *OffsetReader) EndOffset(ctx context.Context, partition int32) (int64, error) {
+	return r.listOffset(ctx, partition, OffsetEnd)
+}
+
+// listOffset returns the offset for the special timestamp OffsetStart or
+// OffsetEnd.
+func (r *OffsetReader) listOffset(ctx context.Context, partition int32, timestamp int64) (int64, error) {
 	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
 	partitionReq.Partition = partition
-	partitionReq.Timestamp = OffsetEnd
+	partitionReq.Timestamp = timestamp
 
 	topicReq := kmsg.NewListOffsetsRequestTopic()
 	topicReq.Topic = r.topic

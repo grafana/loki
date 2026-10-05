@@ -164,3 +164,82 @@ func TestOffsetReader_EndOffset(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), offset)
 }
+
+func TestOffsetReader_StartOffset(t *testing.T) {
+	const (
+		testTopic         = "test-topic"
+		testConsumerGroup = "test-consumer-group"
+	)
+
+	newTestReader := func(t *testing.T) (*kgo.Client, *OffsetReader) {
+		t.Helper()
+		cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(1, testTopic))
+		require.NoError(t, err)
+		t.Cleanup(cluster.Close)
+		client := mustKafkaClient(t, cluster.ListenAddrs()[0])
+		return client, NewOffsetReader(client, testTopic, testConsumerGroup, log.NewNopLogger())
+	}
+
+	produce := func(t *testing.T, client *kgo.Client, n int) {
+		t.Helper()
+		for range n {
+			res := client.ProduceSync(t.Context(), &kgo.Record{
+				Topic:     testTopic,
+				Value:     []byte("foo"),
+				Timestamp: time.Now(),
+			})
+			require.NoError(t, res.FirstErr())
+		}
+	}
+
+	deleteRecordsBefore := func(t *testing.T, client *kgo.Client, offset int64) {
+		t.Helper()
+		offsets := kadm.Offsets{}
+		offsets.AddOffset(testTopic, 0, offset, -1)
+		res, err := kadm.NewClient(client).DeleteRecords(t.Context(), offsets)
+		require.NoError(t, err)
+		require.NoError(t, res.Error())
+	}
+
+	t.Run("returns zero when no records were produced", func(t *testing.T) {
+		_, r := newTestReader(t)
+		offset, err := r.StartOffset(t.Context(), 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), offset)
+	})
+
+	t.Run("returns zero when no records were deleted", func(t *testing.T) {
+		client, r := newTestReader(t)
+		produce(t, client, 3)
+		offset, err := r.StartOffset(t.Context(), 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), offset)
+	})
+
+	t.Run("returns the offset after the deleted records", func(t *testing.T) {
+		client, r := newTestReader(t)
+		produce(t, client, 3)
+		deleteRecordsBefore(t, client, 2)
+		offset, err := r.StartOffset(t.Context(), 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), offset)
+	})
+
+	t.Run("returns the end offset when every record was deleted", func(t *testing.T) {
+		client, r := newTestReader(t)
+		produce(t, client, 3)
+		deleteRecordsBefore(t, client, 3)
+		start, err := r.StartOffset(t.Context(), 0)
+		require.NoError(t, err)
+		end, err := r.EndOffset(t.Context(), 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(3), start)
+		require.Equal(t, end, start)
+	})
+
+	t.Run("returns an error when the partition does not exist", func(t *testing.T) {
+		_, r := newTestReader(t)
+		_, err := r.StartOffset(t.Context(), 1)
+		require.ErrorIs(t, err, kerr.UnknownTopicOrPartition)
+	})
+}
