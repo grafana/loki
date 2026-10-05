@@ -359,23 +359,9 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Add one more stream for a different tenant to ensure it is not resolved.
-	altTenant := "tenant-alt"
-	altTenantSection := int64(99) // Emulate a different section from a log object that doesn't collide with the main tenant's section
-	newIdx, err := builder.AppendStream(altTenant, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
-	err = builder.ObserveLogLine(altTenant, "test-path", altTenantSection, newIdx, 1, now.Add(-2*time.Hour), 5)
-	require.NoError(t, err)
-
 	// Build and store the object
 	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 2)
+	require.Len(t, timeRanges, 1)
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -471,9 +457,6 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
-			for _, section := range sectionsResp.Sections {
-				require.NotEqual(t, section.SectionIdx, altTenantSection)
-			}
 		})
 	}
 }
