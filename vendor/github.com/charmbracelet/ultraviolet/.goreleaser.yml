@@ -1,5 +1,0 @@
-# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
-version: 2
-includes:
-  - from_url:
-      url: charmbracelet/meta/main/goreleaser-lib.yaml
