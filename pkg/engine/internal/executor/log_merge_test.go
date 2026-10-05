@@ -610,6 +610,52 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
 }
 
+type recordingLogMergeObserver struct {
+	stats []LogMergeObservedStats
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMerge(_ string, stats LogMergeObservedStats, _ time.Duration) {
+	o.stats = append(o.stats, stats)
+}
+
+func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	entry := func(line, traceID string) push.Entry {
+		return push.Entry{Timestamp: ts, Line: line, StructuredMetadata: push.LabelsAdapter{{Name: "trace_id", Value: traceID}}}
+	}
+
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: []push.Entry{entry("line", "1")}}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: []push.Entry{entry("line", "1"), entry("line", "22")}}},
+	})
+
+	observer := &recordingLogMergeObserver{}
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	c.logMergeObserver = observer
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+	}
+
+	_, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+
+	require.Len(t, observer.stats, 1)
+	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
+	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)
+	require.Equal(t, 1, observer.stats[0].DuplicateRecords)
+}
+
 func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 	want := logs.SortLayout{
 		SchemaLabels: []string{"label:app"},
