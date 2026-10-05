@@ -37,15 +37,15 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Optional nested push protos
+### Optional deferred OTLP attribute expansion
 
-The distributor can now use nested push protos for OTLP processing and Kafka writes. This is disabled by default; no action is needed unless you enable it.
+By default, Loki copies OTLP resource and scope attributes configured as structured metadata into each log entry during parsing.
 
-To enable it, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). Nested protos keep OTLP resource and scope attributes shared across log entries during processing and in Kafka, avoiding a copy of those attributes on every entry.
+To defer expansion, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). This keeps those attributes shared during distributor processing and Kafka writes until downstream components need them expanded, reducing repeated copying. The option defaults to `false`.
 
-Before enabling this option, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) have been upgraded to a Loki version that supports nested push protos.
+Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) have been upgraded to a Loki version that supports the Kafka record format used by deferred attribute expansion.
 
-Disabling this option restores the previous format for new Kafka writes, but these services must continue to support nested protos while records in that format remain in Kafka.
+Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must continue to support records written while the option was enabled for as long as those records remain in Kafka.
 
 ### Optional index gateway client request limits
 
