@@ -26,29 +26,25 @@ import (
 
 const prefetchBytes = 2 * 1024 * 1024
 
+var errNoShardBucketColumn = errors.New("postings section has no ShardBuckets column")
+
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
-	Path                 string
-	Start                time.Time
-	End                  time.Time
-	FileSize             uint64
-	UncompressedLogsSize uint64
+	Path  string
+	Start time.Time
+	End   time.Time
 }
 
-type sortKey struct {
-	shard     uint32
-	labels    []string
-	timestamp int64
+type logSortPrefix struct {
+	shard  uint32
+	labels []string
 }
 
-func compareSortKey(a, b sortKey) int {
+func compareLogSortPrefix(a, b logSortPrefix) int {
 	if n := cmp.Compare(a.shard, b.shard); n != 0 {
 		return n
 	}
-	if n := slices.Compare(a.labels, b.labels); n != 0 {
-		return n
-	}
-	return cmp.Compare(a.timestamp, b.timestamp)
+	return slices.Compare(a.labels, b.labels)
 }
 
 type indexSortKey struct {
@@ -77,14 +73,11 @@ func indexKey(row postings.Row) indexSortKey {
 	}
 }
 
-// tenantIndexes maps tenant ID → ordered list of indexes the ToC references
-// for that tenant. Slice order reflects ToC enumeration order and is not
-// part of the contract — callers must not rely on it for correctness.
-type tenantIndexes map[string][]indexEntry
-
-// loadTenantIndexes returns the window's ToC entries grouped by tenant.
-func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time) (tenantIndexes, error) {
-	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
+// loadTenantIndexes returns the entries of the tenant's ToC for the window.
+// Entry order reflects ToC enumeration order and is not part of the contract
+// — callers must not rely on it for correctness.
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time, tenant string) ([]indexEntry, error) {
+	tocPath := metastore.TableOfContentsPath(tenant, window.UTC().Truncate(metastore.MetastoreWindowSize))
 
 	r, err := bucket.Get(ctx, tocPath)
 	if err != nil {
@@ -102,23 +95,26 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	}
 
 	// Hoist the Reader and the per-batch decode scratch above the section
-	// loop. A ToC has one indexpointers section per tenant; in large
-	// deployments that can be hundreds. Reader.Reset(...) at each iteration
-	// reuses the reader's internal allocator + record-batch state — matches
-	// the upstream pattern in metastore/iter.go's forEachIndexPointer.
+	// loop. Reader.Reset(...) at each iteration reuses the reader's internal
+	// allocator + record-batch state — matches the upstream pattern in
+	// metastore/iter.go's forEachIndexPointer.
 	var reader indexpointers.Reader
 	defer reader.Close()
 	const batchSize = 1024
 	scratch := make([]indexEntry, batchSize)
 
-	out := make(tenantIndexes, len(obj.Tenants()))
+	var out []indexEntry
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		tenant := section.Tenant
+		// ToCs are written per tenant, so another tenant's section means the
+		// metastore is corrupt. Compacting it could merge indexes across tenants.
+		if section.Tenant != tenant {
+			panic(fmt.Sprintf("ToC %s of tenant %q holds a section of tenant %q", tocPath, tenant, section.Tenant))
+		}
 		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
 		if err != nil {
 			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
 		}
-		out[tenant] = append(out[tenant], entries...)
+		out = append(out, entries...)
 	}
 
 	return out, nil
@@ -130,8 +126,7 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 //
 // Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
 // the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
-// predicate — the compactor reads every row from every tenant in the
-// most-recent ToC.
+// predicate — the compactor reads every row of the tenant's ToC.
 func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
 	sec, err := indexpointers.Open(ctx, section)
 	if err != nil {
@@ -187,22 +182,6 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 						continue
 					}
 					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
-				}
-			case indexpointers.ColumnTypeFileSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].FileSize = uint64(values.Value(rIdx))
-				}
-			case indexpointers.ColumnTypeUncompressedLogsSize:
-				values := col.(*array.Int64)
-				for rIdx := range numRows {
-					if col.IsNull(rIdx) {
-						continue
-					}
-					scratch[rIdx].UncompressedLogsSize = uint64(values.Value(rIdx))
 				}
 			}
 		}
@@ -342,11 +321,12 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 	return columns, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath, together with the index's sort schema and shard count.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[logSortPrefix], []string, int64, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, nil, 0, fmt.Errorf("open source index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -360,7 +340,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		schemaName string
 		reader     stats.Reader
 
-		bySection = make(map[sectionID]*v2.Section[sortKey])
+		bySection = make(map[sectionID]*v2.Section[logSortPrefix])
 	)
 	defer reader.Close()
 
@@ -373,18 +353,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, nil, 0, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, nil, 0, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, nil, 0, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -394,7 +374,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, nil, 0, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			for _, stat := range rows[:n] {
@@ -402,10 +382,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					schemaName = stat.SortSchema
 					schema, labelNames, err = parseSortSchema(stat.SortSchema)
 					if err != nil {
-						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
+						return nil, nil, 0, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 					}
 				} else if stat.SortSchema != schemaName {
-					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
+					return nil, nil, 0, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
 				}
 
 				var labels []string
@@ -415,35 +395,34 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MaxTimestamp}
+				key := logSortPrefix{shard: stat.ShardBucket, labels: labels}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
-					bySection[id] = &v2.Section[sortKey]{
+					bySection[id] = &v2.Section[logSortPrefix]{
 						Ref: &compactionv2pb.SectionRef{
 							ObjectPath:       stat.ObjectPath,
 							SectionIndex:     stat.SectionIndex,
-							MinKey:           minKey.labels,
-							MaxKey:           maxKey.labels,
-							MinTimestamp:     minKey.timestamp,
-							MaxTimestamp:     maxKey.timestamp,
+							MinKey:           key.labels,
+							MaxKey:           key.labels,
+							MinTimestamp:     stat.MinTimestamp,
+							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
-						Min: minKey,
-						Max: maxKey,
+						Min: key,
+						Max: key,
 					}
 					continue
 				}
 
-				if compareSortKey(minKey, bounded.Min) < 0 {
-					bounded.Min = minKey
-					bounded.Ref.MinKey = minKey.labels
+				if compareLogSortPrefix(key, bounded.Min) < 0 {
+					bounded.Min = key
+					bounded.Ref.MinKey = key.labels
 				}
-				if compareSortKey(maxKey, bounded.Max) > 0 {
-					bounded.Max = maxKey
-					bounded.Ref.MaxKey = maxKey.labels
+				if compareLogSortPrefix(key, bounded.Max) > 0 {
+					bounded.Max = key
+					bounded.Ref.MaxKey = key.labels
 				}
 				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
 				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
@@ -456,17 +435,92 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
-	refs := make([]v2.Section[sortKey], 0, len(bySection))
+	// Scan the postings section to determine the shard count
+	// TODO(benclive): Copy the shard count to the stats section to avoid this step
+	shardCount, err := getShardCount(ctx, obj, tenant)
+	if err != nil {
+		if !errors.Is(err, errNoShardBucketColumn) {
+			return nil, nil, 0, fmt.Errorf("get shard count tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+		shardCount = 0
+	}
+
+	refs := make([]v2.Section[logSortPrefix], 0, len(bySection))
 	for _, ref := range bySection {
 		refs = append(refs, *ref)
 	}
-	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {
+	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {
 		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
 			return n
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, schema, nil
+	return refs, schema, shardCount, nil
+}
+
+func getShardCount(ctx context.Context, obj *dataobj.Object, tenant string) (shardCount int64, finalErr error) {
+	var (
+		haveShardCount bool
+	)
+	for _, section := range obj.Sections().Filter(postings.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := postings.Open(ctx, section)
+		if err != nil {
+			return 0, fmt.Errorf("open postings section: %w", err)
+		}
+
+		shardBucketColumns := columnsOfType(opened.Columns(), postings.ColumnTypeShardBuckets)
+		if len(shardBucketColumns) != 1 {
+			return 0, errNoShardBucketColumn
+		}
+
+		inner := postings.NewReader(postings.ReaderOptions{Columns: shardBucketColumns})
+		if err := inner.Open(ctx); err != nil {
+			return 0, fmt.Errorf("opening postings reader: %w", err)
+		}
+
+		// Wrap the read in an inline func to close the reader after each loop
+		err = func() error {
+			rowReader := postings.NewRowReader(ctx, inner)
+			defer func() {
+				closeErr := rowReader.Close()
+				if finalErr == nil {
+					finalErr = closeErr
+				}
+			}()
+
+			for rowReader.Next() {
+				row := rowReader.At()
+				if !haveShardCount {
+					shardCount = row.ShardBuckets
+					haveShardCount = true
+				} else if row.ShardBuckets != shardCount {
+					return fmt.Errorf("detected multiple shard counts within index file: %d and %d", shardCount, row.ShardBuckets)
+				}
+			}
+			if err := rowReader.Err(); err != nil {
+				return fmt.Errorf("reading postings: %w", err)
+			}
+			return nil
+		}()
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return shardCount, nil
+}
+
+func columnsOfType(columns []*postings.Column, typ postings.ColumnType) []*postings.Column {
+	var foundColumns []*postings.Column
+	for _, column := range columns {
+		if column.Type == typ {
+			foundColumns = append(foundColumns, column)
+		}
+	}
+	return foundColumns
 }
 
 func parseSortSchema(value string) (schema, labelNames []string, _ error) {

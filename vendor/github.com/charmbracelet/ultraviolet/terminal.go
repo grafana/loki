@@ -191,14 +191,28 @@ func (t *Terminal) Start() error {
 	}
 
 	// input loop
+	//
+	// The loop holds its own reference to the reader for its lifetime. Stop
+	// sets t.pr to nil, and a loop that reads the field on every iteration
+	// can evaluate it after that has happened and dereference nil. Cancel
+	// and Close on the reader are what stop this loop; nilling the field is
+	// only bookkeeping for a later Start.
+	pr := t.pr
 	t.errg.Go(func() error {
 		for {
-			n, err := t.pr.Read(t.buf)
+			n, err := pr.Read(t.buf)
 			if err != nil {
 				return fmt.Errorf("reading terminal input: %w", err)
 			}
+			// Hand the event loop its own copy. t.buf is reused by the
+			// next Read, and the receiver only copies out of the slice
+			// after the send has completed, so sending t.buf[:n] lets
+			// one read's bytes be overwritten by the next before they
+			// have been consumed.
+			data := make([]byte, n)
+			copy(data, t.buf[:n])
 			select {
-			case bufc <- t.buf[:n]:
+			case bufc <- data:
 			case <-t.donec:
 				return nil
 			}

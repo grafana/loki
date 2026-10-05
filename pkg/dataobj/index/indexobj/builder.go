@@ -8,13 +8,11 @@ import (
 	"io"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -38,9 +36,7 @@ var (
 // synchronization.
 type Builder struct {
 	cfg     logsobj.BuilderBaseConfig
-	metrics *builderMetrics
-
-	labelCache *lru.Cache[string, labels.Labels]
+	metrics *BuilderMetrics
 
 	currentSizeEstimate int
 	builderFull         bool
@@ -80,25 +76,16 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store) (*Builder, error) {
+func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	labelCache, err := lru.New[string, labels.Labels](5000)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
-	}
-
-	// TODO: Add metrics for number of tenants in each object
-	metrics := newBuilderMetrics()
 	metrics.ObserveConfig(cfg)
 
 	return &Builder{
 		cfg:     cfg,
 		metrics: metrics,
-
-		labelCache: labelCache,
 
 		builder:       dataobj.NewBuilder(scratchStore),
 		streams:       make(map[string]*streams.Builder),
@@ -287,7 +274,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, pointer indexpointers.Inde
 	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
-	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs, pointer.FileSize, pointer.UncompressedLogsSize)
+	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
 
 	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
@@ -460,7 +447,7 @@ func (b *Builder) estimatedSize() int {
 // TimeRanges returns the time range of the data in the builder, by tenant.
 // For each tenant, the range is the union of its streams and postings ranges;
 // a source with no observations (zero time range) does not contribute.
-func (b *Builder) TimeRanges() []multitenancy.TimeRange {
+func (b *Builder) TimeRanges() []dataobj.TimeRange {
 	tenantIDs := make(map[string]struct{}, len(b.streams)+len(b.postings))
 	for tenantID := range b.streams {
 		tenantIDs[tenantID] = struct{}{}
@@ -469,7 +456,7 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		tenantIDs[tenantID] = struct{}{}
 	}
 
-	timeRanges := make([]multitenancy.TimeRange, 0, len(tenantIDs))
+	timeRanges := make([]dataobj.TimeRange, 0, len(tenantIDs))
 	for tenantID := range tenantIDs {
 		var minTime, maxTime time.Time
 
@@ -485,7 +472,7 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		if minTime.IsZero() && maxTime.IsZero() {
 			continue
 		}
-		timeRanges = append(timeRanges, multitenancy.TimeRange{
+		timeRanges = append(timeRanges, dataobj.TimeRange{
 			Tenant:  tenantID,
 			MinTime: minTime,
 			MaxTime: maxTime,
@@ -510,12 +497,16 @@ func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending
-// data and allow new data to be appended.
+// On success the caller owns the returned [io.Closer] and must close it to
+// release the object's backing scratch storage; reads of the object fail once
+// it is closed. If an error is returned the closer is always nil.
+//
+// Flush always resets Builder.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
+	defer b.Reset()
 
 	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
@@ -563,10 +554,11 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
-	err = b.observeObject(context.Background(), obj)
+	if err := b.observeObject(context.Background(), obj); err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("observing object: %w", err), closer.Close())
+	}
 
-	b.Reset()
-	return obj, closer, err
+	return obj, closer, nil
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
@@ -619,18 +611,4 @@ func (b *Builder) Reset() {
 	b.unflushedSizeEstimate = 0
 	b.builderFull = false
 	b.state = builderStateEmpty
-}
-
-// RegisterMetrics registers metrics about builder to report to reg. All
-// metrics will have a tenant label set to the tenant ID of the Builder.
-//
-// If multiple Builders for the same tenant are running in the same process,
-// reg must contain additional labels to differentiate between them.
-func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
-}
-
-// UnregisterMetrics unregisters metrics about builder from reg.
-func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
-	b.metrics.Unregister(reg)
 }

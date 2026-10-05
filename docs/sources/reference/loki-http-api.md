@@ -12,10 +12,22 @@ weight: 500
 Loki exposes an HTTP API for pushing, querying, and tailing log data, as well
 as for viewing and managing cluster information.
 
-{{< admonition type="note" >}}
-Note that authorization is not part of the Loki API.
-Authorization needs to be done separately, for example, using an open-source load-balancer such as NGINX.
-{{< /admonition >}}
+## Authentication
+
+Authentication and authorization are not part of the Loki API itself. How you authenticate depends on how Loki is deployed:
+
+- **Self-hosted, single-tenant Loki**: Loki doesn't enforce authentication. If you need to restrict access, put a reverse proxy (such as NGINX or Envoy) in front of Loki to handle authentication separately.
+- **Self-hosted, multi-tenant Loki**: Set the `X-Scope-OrgID` header on each request to identify the tenant. For details and examples, refer to [Multi-tenant queries](#multi-tenant-queries).
+- **Grafana Enterprise Logs (GEL)**: Use HTTP Basic Authentication, with the tenant name as the username and an access policy token as the password. For an example, refer to [Multi-tenant queries](#multi-tenant-queries).
+- **Grafana Cloud**: Use HTTP Basic Authentication, with your Loki instance ID (the **User** value from the Cloud Portal) as the username and a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/) as the password:
+
+  ```bash
+  curl -u "<LOKI_INSTANCE_ID>:<CLOUD_ACCESS_POLICY_TOKEN>" \
+    -G -s "<LOKI_URL>/loki/api/v1/query" \
+    --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+  ```
+
+  For step-by-step instructions on finding your Loki instance ID, URL, and creating an access policy token, refer to [Authenticate to query Cloud Logs](https://grafana.com/docs/grafana-cloud/send-data/logs/authenticate-to-query-logs/) in the Grafana Cloud documentation.
 
 ## Endpoints
 
@@ -225,7 +237,7 @@ POST /loki/api/v1/push
 `/loki/api/v1/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a [Snappy](https://github.com/google/snappy)-compressed [Protocol Buffer](https://github.com/protocolbuffers/protobuf) message:
 
-- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/logproto/logproto.proto)
+- [Protocol Buffer definition](https://github.com/grafana/loki/blob/main/pkg/push/push.proto)
 - [Go client library](https://github.com/grafana/loki/blob/main/clients/pkg/promtail/client/client.go)
 
 These POST requests require the `Content-Type` HTTP header to be `application/x-protobuf`.
@@ -427,6 +439,8 @@ gave this response:
 }
 ```
 
+#### Multi-tenant queries
+
 If your cluster has
 [Grafana Loki Multi-Tenancy](../../operations/multi-tenancy/) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
@@ -459,13 +473,7 @@ curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
-To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
-
-```bash
-curl -u "User:$API_TOKEN" \
-  -G -s "<URL_PROVIDED_IN_LOKI_DATA_SOURCE_SETTINGS>/loki/api/v1/query" \
-  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
-```
+To query against your hosted log tenant in Grafana Cloud, use HTTP Basic Authentication with your Loki instance ID and an access policy token, as described in [Authentication](#authentication) above.
 
 ## Query logs within a range of time
 
@@ -1252,7 +1260,7 @@ GET /config
 ```
 
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
-modify the output. If it has the value `diffs` only the differences between the default configuration
+modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.

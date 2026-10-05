@@ -756,6 +756,91 @@ func TestLimits_PolicyRateOverrides(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestLimits_PolicyInheritLimits(t *testing.T) {
+	limits := &Limits{
+		IngestionRateMB:         5,
+		IngestionBurstSizeMB:    10,
+		MaxLocalStreamsPerUser:  100,
+		MaxGlobalStreamsPerUser: 1000,
+		PerStreamRateLimit:      flagext.ByteSize(9 * 1024 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(11 * 1024 * 1024),
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			// Inherit everything: same values as the tenant, but reported as overridden so usage
+			// is tracked in a policy-specific bucket.
+			"inherit-all": {InheritLimits: true},
+			// Explicit fields win; the rest inherit the tenant value (still overridden).
+			"inherit-partial": {InheritLimits: true, IngestionRateMB: ptr(2.0), MaxLocalStreamsPerUser: ptr(7)},
+		},
+	}
+
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+
+	// inherit-all: every accessor returns the tenant value with overridden=true.
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, float64(5*bytesInMB), rateBytes)
+	burstBytes, ok := overrides.PolicyIngestionBurstSizeBytes("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 10*bytesInMB, burstBytes)
+	v, ok := overrides.PolicyMaxLocalStreamsPerUser("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 100, v)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+	psrl, ok := overrides.PolicyPerStreamRateLimit("tenant1", "inherit-all")
+	require.True(t, ok)
+	require.Equal(t, RateLimit{Limit: rate.Limit(9 * 1024 * 1024), Burst: 11 * 1024 * 1024}, psrl)
+
+	// inherit-partial: explicit fields win, the rest inherit with overridden=true.
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, float64(2*bytesInMB), rateBytes)
+	v, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 7, v)
+	burstBytes, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 10*bytesInMB, burstBytes)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "inherit-partial")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+
+	// Other policies and tenants without an entry are unaffected.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "other")
+	require.False(t, ok)
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "")
+	require.False(t, ok)
+}
+
+func TestLimits_PolicyInheritLimitsYAML(t *testing.T) {
+	var limits Limits
+	yamlConfig := `
+ingestion_rate_mb: 5
+max_global_streams_per_user: 1000
+policy_override_limits:
+  finance:
+    inherit_limits: true
+  ops:
+    inherit_limits: true
+    ingestion_rate_mb: 2
+`
+	require.NoError(t, yaml.Unmarshal([]byte(yamlConfig), &limits))
+
+	overrides := &Overrides{defaultLimits: &limits, tenantLimits: nil}
+
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, float64(5*bytesInMB), rateBytes)
+	v, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 1000, v)
+
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, float64(2*bytesInMB), rateBytes)
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)
@@ -1271,5 +1356,46 @@ func TestSortSchema_RegisterFlags(t *testing.T) {
 		l.RegisterFlags(fs)
 		require.NoError(t, fs.Parse([]string{"-limits.sort-schema=label:app,label:app"}))
 		require.Error(t, l.Validate())
+	})
+}
+
+func Test_LoglineQueryLimits(t *testing.T) {
+	var defaults Limits
+	dskit_flagext.DefaultValues(&defaults)
+	require.Equal(t, "", defaults.LoglineQueryMode, "unset leaves the mode to logline.query and the request header")
+	require.Equal(t, int64(defaultLoglineQueryMinQueryBytesForIndex), defaults.LoglineQueryMinQueryBytesForIndex)
+
+	// A tenant overrides both in the runtime config, like any other limit.
+	tenant := defaults
+	require.NoError(t, yaml.Unmarshal([]byte(`
+logline_query_mode: live
+logline_query_min_query_bytes_for_index: 0
+`), &tenant))
+	overrides, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"live-tenant": &tenant}))
+	require.NoError(t, err)
+
+	require.Equal(t, "live", overrides.LoglineQueryMode("live-tenant"))
+	require.Equal(t, int64(0), overrides.LoglineQueryMinQueryBytesForIndex("live-tenant"), "an explicit 0 disables the check for that tenant")
+
+	// A tenant without an entry, including a multi-tenant query, gets the defaults.
+	for _, other := range []string{"other", "live-tenant|other"} {
+		require.Equal(t, "", overrides.LoglineQueryMode(other))
+		require.Equal(t, int64(defaultLoglineQueryMinQueryBytesForIndex), overrides.LoglineQueryMinQueryBytesForIndex(other))
+	}
+
+	t.Run("validation", func(t *testing.T) {
+		for _, mode := range []string{"", "off", "dry_run", "live"} {
+			l := defaults
+			l.LoglineQueryMode = mode
+			require.NoError(t, l.Validate(), "mode %q", mode)
+		}
+
+		bad := defaults
+		bad.LoglineQueryMode = "on"
+		require.ErrorContains(t, bad.Validate(), "logline_query_mode")
+
+		negative := defaults
+		negative.LoglineQueryMinQueryBytesForIndex = -1
+		require.ErrorContains(t, negative.Validate(), "logline_query_min_query_bytes_for_index")
 	})
 }

@@ -31,6 +31,22 @@ type StreamTransport struct {
 	io.Writer
 	isReadWriter bool
 	closed       bool
+
+	// knownSize is the number of bytes the caller knows the reader holds, or
+	// zero when it does not know. See setKnownSize.
+	knownSize int64
+}
+
+// setKnownSize records how many bytes the reader is known to hold, for callers
+// that are told the length up front - an HTTP request with a Content-Length,
+// for example. A value of zero or less means unknown and is ignored.
+//
+// The recorded value is an upper bound and is deliberately not decremented as
+// bytes are consumed: over-reporting only makes the container check accept a
+// count it could have rejected, while under-reporting would reject a message
+// that is in fact complete.
+func (p *StreamTransport) setKnownSize(size int64) {
+	p.knownSize = size
 }
 
 type StreamTransportFactory struct {
@@ -209,8 +225,10 @@ func (p *StreamTransport) WriteString(s string) (n int, err error) {
 }
 
 func (p *StreamTransport) RemainingBytes() (num_bytes uint64) {
-	const maxSize = ^uint64(0)
-	return maxSize // the truth is, we just don't know unless framed is used
+	if p.knownSize > 0 {
+		return uint64(p.knownSize)
+	}
+	return UnknownRemainingBytes
 }
 
 // SetTConfiguration implements TConfigurationSetter for propagation.

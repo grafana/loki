@@ -693,10 +693,9 @@ type ObjectStorageSchema struct {
 type ObjectStorageSpec struct {
 	// Schemas for reading and writing logs.
 	//
-	// +optional
-	// +kubebuilder:validation:Optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems:=1
-	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
 	Schemas []ObjectStorageSchema `json:"schemas"`
 
 	// Secret for object storage authentication.
@@ -1413,6 +1412,8 @@ const (
 	ReasonInvalidGatewayTLSConfig LokiStackConditionReason = "InvalidGatewayTLSConfig"
 	// ReasonInvalidPassthroughConfiguration when the passthrough configuration is invalid.
 	ReasonInvalidPassthroughConfiguration LokiStackConditionReason = "InvalidPassthroughConfiguration"
+	// ReasonMissingPassthroughConfiguration when the passthrough configuration is missing.
+	ReasonMissingPassthroughConfiguration LokiStackConditionReason = "MissingPassthroughConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.

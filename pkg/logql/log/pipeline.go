@@ -2,10 +2,9 @@ package log
 
 import (
 	"context"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
-
-	"unsafe"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -32,8 +31,70 @@ type StreamPipeline interface {
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type Stage interface {
+	// Process runs the stage on a single log line at timestamp ts. It reads and may modify the line's
+	// labels through lbs: it can add, remove, or replace a label, or set __error__. It returns the
+	// resulting line and whether the line passes the stage. A false result means the line is filtered
+	// out, and the returned line is then unspecified.
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
+
 	RequiredLabelNames() []string
+
+	// Hints reports static properties of the stage, so a caller can reason about a whole pipeline
+	// without running it.
+	Hints() StageHints
+}
+
+// Stages is the ordered sequence of stages a pipeline runs on a line.
+type Stages []Stage
+
+// RequiredLabelNames returns the label names every stage reads, in stage order and with duplicates.
+func (s Stages) RequiredLabelNames() []string {
+	var names []string
+	for _, stage := range s {
+		names = append(names, stage.RequiredLabelNames()...)
+	}
+	return names
+}
+
+// Hints returns the hints of the stages as one.
+func (s Stages) Hints() StageHints {
+	var hints StageHints
+	for _, stage := range s {
+		hints = hints.Merge(stage.Hints())
+	}
+	return hints
+}
+
+// StageHints holds static properties of a Stage, or of a reduced pipeline of stages.
+//
+// Every field must be mergeable between two hints.
+type StageHints struct {
+	// CanModifyLabels reports whether the stage can change a line's output labels: add, remove, or
+	// replace a label, or set __error__.
+	CanModifyLabels bool
+
+	// ReadsErrorLabel reports whether the stage compares __error__ or __error_details__, whatever
+	// it does with the value.
+	//
+	// Only a label filter reports it. A converting comparison against either label cannot report
+	// it, and the parser rejects that form instead.
+	ReadsErrorLabel bool
+
+	// KeepsErroredLines reports whether the stage asks to keep the lines that carry __error__.
+	//
+	// The hints of a pipeline answer for the whole of it rather than per stage: they report true
+	// when any stage asks. A filter on __error__ therefore also covers an error returned by a
+	// stage placed after the __error__ filter.
+	KeepsErroredLines bool
+}
+
+// Merge combines the hints of two stages that both run on a line.
+func (h StageHints) Merge(other StageHints) StageHints {
+	return StageHints{
+		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
+		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
+		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
+	}
 }
 
 // PipelineWrapper takes a pipeline, wraps it is some desired functionality and
@@ -107,15 +168,37 @@ type noopStage struct{}
 func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
+
+// Hints implements Stage.
+func (noopStage) Hints() StageHints {
+	// It does nothing, so it changes no labels.
+	return StageHints{CanModifyLabels: false}
+}
+
 func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
 	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	requiredLabels []string
+	hints          StageHints
+}
+
+// NewStageFunc builds a StageFunc from its required label names, its hints, and its process function.
+func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)) StageFunc {
+	return StageFunc{
+		process:        process,
+		requiredLabels: requiredLabels,
+		hints:          hints,
+	}
 }
 
 func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	return fn.process(ts, line, lbs)
+}
+
+// Hints implements Stage.
+func (fn StageFunc) Hints() StageHints {
+	return fn.hints
 }
 
 func (fn StageFunc) RequiredLabelNames() []string {
@@ -155,12 +238,17 @@ type AnalyzablePipeline interface {
 }
 
 // NewPipeline creates a new pipeline for a given set of stages.
-func NewPipeline(stages []Stage) Pipeline {
+func NewPipeline(stages Stages) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
 	}
 
 	hints := NewParserHint(nil, nil, false, false, "", stages)
+
+	// A log query returns an errored line either way, so it must not record the answer. Otherwise
+	// every errored entry would report a __preserve_error__ label of its own.
+	hints.shouldPreserveError = false
+
 	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)
 	return &pipeline{
 		stages:          stages,
@@ -328,27 +416,20 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structur
 }
 
 // ReduceStages reduces multiple stages into one.
-func ReduceStages(stages []Stage) Stage {
+func ReduceStages(stages Stages) Stage {
 	if len(stages) == 0 {
 		return NoopStage
 	}
-	var requiredLabelNames []string
-	for _, s := range stages {
-		requiredLabelNames = append(requiredLabelNames, s.RequiredLabelNames()...)
-	}
-	return StageFunc{
-		process: func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-			var ok bool
-			for _, p := range stages {
-				line, ok = p.Process(ts, line, lbs)
-				if !ok {
-					return nil, false
-				}
+	return NewStageFunc(stages.RequiredLabelNames(), stages.Hints(), func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+		var ok bool
+		for _, p := range stages {
+			line, ok = p.Process(ts, line, lbs)
+			if !ok {
+				return nil, false
 			}
-			return line, true
-		},
-		requiredLabels: requiredLabelNames,
-	}
+		}
+		return line, true
+	})
 }
 
 func unsafeGetBytes(s string) []byte {

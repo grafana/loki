@@ -279,6 +279,15 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 	return logSelector, nil
 }
 
+// MustParseLogSelector parses a log selector, and panics when the input does not parse.
+func MustParseLogSelector(input string, validate bool) LogSelectorExpr {
+	expr, err := ParseLogSelector(input, validate)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
+
 // ParseLabels parses labels from a string using logql parser.
 func ParseLabels(lbs string) (labels.Labels, error) {
 	if len(lbs) > maxStreamLabelsSize {

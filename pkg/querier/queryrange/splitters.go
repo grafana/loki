@@ -50,6 +50,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 				EndTs:          end,
 				Plan:           r.Plan,
 				CachingOptions: r.CachingOptions,
+				HintRanges:     clipHintTimeRanges(r.HintRanges, start, end),
 			})
 		}
 	case *LokiSeriesRequest:
@@ -251,6 +252,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 			EndTs:          end,
 			Plan:           lokiReq.Plan,
 			CachingOptions: lokiReq.CachingOptions,
+			HintRanges:     clipHintTimeRanges(lokiReq.HintRanges, start, end),
 		})
 	}
 

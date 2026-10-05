@@ -2,7 +2,6 @@ package wire
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
-	"golang.org/x/net/http2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 )
@@ -393,12 +391,15 @@ var _ Dialer = (*HTTP2Dialer)(nil)
 // NewHTTP2Dialer creates a [Dialer] that can open HTTP/2 connections to the
 // specified address.
 func NewHTTP2Dialer(path string) *HTTP2Dialer {
+	// No TLS. HTTP1 must stay disabled: Protocols only dials unencrypted
+	// HTTP/2 with prior knowledge for http:// URLs when HTTP1 is excluded.
+	protocols := http.Protocols{}
+	protocols.SetUnencryptedHTTP2(true)
 	return &HTTP2Dialer{
 		client: &http.Client{
-			Transport: &http2.Transport{
-				// No TLS
-				AllowHTTP: true,
-				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+			Transport: &http.Transport{
+				Protocols: &protocols,
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return (&net.Dialer{}).DialContext(ctx, network, addr)
 				},
 			},

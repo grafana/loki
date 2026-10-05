@@ -98,7 +98,7 @@ type Translator interface {
 	// returns the locales narrow weekday given the 'weekday' provided
 	WeekdayNarrow(weekday time.Weekday) string
 
-	// WeekdaysNarrowreturns the locales narrow weekdays
+	// WeekdaysNarrow returns the locales narrow weekdays
 	WeekdaysNarrow() []string
 
 	// returns the locales short weekday given the 'weekday' provided
@@ -113,7 +113,7 @@ type Translator interface {
 	// returns the locales wide weekdays
 	WeekdaysWide() []string
 
-	// The following Functions are common Formatting functionsfor the Translator's Locale
+	// The following Functions are common Formatting functions for the Translator's Locale
 
 	// returns 'num' with digits/precision of 'v' for locale and handles both Whole and Real numbers based on 'v'
 	FmtNumber(num float64, v uint64) string
@@ -228,14 +228,14 @@ func W(n float64, v uint64) (w int64) {
 
 	s := strconv.FormatFloat(n-float64(int64(n)), 'f', int(v), 64)
 
-	// with either be '0' or '0.xxxx', so if 1 then w will be zero
+	// will either be '0' or '0.xxxx', so if 1 then w will be zero
 	// otherwise need to parse
 	if len(s) != 1 {
 
 		s = s[2:]
-		end := len(s) + 1
+		end := 0
 
-		for i := end; i >= 0; i-- {
+		for i := len(s) - 1; i >= 0; i-- {
 			if s[i] != '0' {
 				end = i + 1
 				break
@@ -253,7 +253,7 @@ func F(n float64, v uint64) (f int64) {
 
 	s := strconv.FormatFloat(n-float64(int64(n)), 'f', int(v), 64)
 
-	// with either be '0' or '0.xxxx', so if 1 then f will be zero
+	// will either be '0' or '0.xxxx', so if 1 then f will be zero
 	// otherwise need to parse
 	if len(s) != 1 {
 
@@ -270,14 +270,14 @@ func T(n float64, v uint64) (t int64) {
 
 	s := strconv.FormatFloat(n-float64(int64(n)), 'f', int(v), 64)
 
-	// with either be '0' or '0.xxxx', so if 1 then t will be zero
+	// will either be '0' or '0.xxxx', so if 1 then t will be zero
 	// otherwise need to parse
 	if len(s) != 1 {
 
 		s = s[2:]
-		end := len(s) + 1
+		end := 0
 
-		for i := end; i >= 0; i-- {
+		for i := len(s) - 1; i >= 0; i-- {
 			if s[i] != '0' {
 				end = i + 1
 				break
@@ -286,8 +286,11 @@ func T(n float64, v uint64) (t int64) {
 
 		// ignoring error, because it can't fail as we generated
 		// the string internally from a real number
-		t, _ = strconv.ParseInt(s[:end], 10, 64)
+		if end > 0 {
+			t, _ = strconv.ParseInt(s[:end], 10, 64)
+		}
 	}
 
 	return
 }
+

@@ -514,7 +514,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
-		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, q.TenantID()))
+		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(q.TenantID()))
 	}
 
 	planner := physical.NewPlanner(plannerCtx, catalog)

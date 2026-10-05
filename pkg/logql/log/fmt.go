@@ -264,11 +264,17 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 		}
 	}()
 	if err := lf.Execute(lf.buf, m); err != nil {
-		lbs.SetErr(errTemplateFormat)
-		lbs.SetErrorDetails(err.Error())
+		lbs.SetErr(errTemplateFormat, err)
 		return line, true
 	}
 	return lf.buf.Bytes(), true
+}
+
+// Hints implements Stage.
+func (lf *LineFormatter) Hints() StageHints {
+	// line_format rewrites the line, but it sets __error__ when the template fails, which changes the
+	// output labels.
+	return StageHints{CanModifyLabels: true}
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -438,13 +444,18 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.IntoMap(m)
 		}
 		if err := f.tmpl.Execute(lf.buf, m); err != nil {
-			lbs.SetErr(errTemplateFormat)
-			lbs.SetErrorDetails(err.Error())
+			lbs.SetErr(errTemplateFormat, err)
 			continue
 		}
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
+}
+
+// Hints implements Stage.
+func (lf *LabelsFormatter) Hints() StageHints {
+	// label_format renames or sets labels.
+	return StageHints{CanModifyLabels: true}
 }
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
@@ -511,6 +522,13 @@ func NewDecolorizer() (*Decolorizer, error) {
 func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return ansiRegex.ReplaceAll(line, []byte{}), true
 }
+
+// Hints implements Stage.
+func (Decolorizer) Hints() StageHints {
+	// It strips ANSI colors from the line, never touching labels.
+	return StageHints{CanModifyLabels: false}
+}
+
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }
 
 // substring creates a substring of the given string.

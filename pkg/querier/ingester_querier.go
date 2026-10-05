@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -257,6 +258,18 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+	// Resolve the decoder before the fan-out, so an unknown order fails without opening a gRPC
+	// stream per ingester that nothing then reads.
+	var newClientIterator func(iter.QuerySampleClient) iter.SampleIterator
+	switch params.Order {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		newClientIterator = iter.NewTimestampFirstSampleQueryClientIterator
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		newClientIterator = iter.NewStreamFirstSampleQueryClientIterator
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", params.Order)
+	}
+
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
 		return client.QuerySample(ctx, params.SampleQueryRequest)
@@ -267,7 +280,7 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 
 	iterators := make([]iter.SampleIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewTimestampFirstSampleQueryClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
+		iterators[i] = newClientIterator(resps[i].response.(logproto.Querier_QuerySampleClient))
 	}
 	return iterators, nil
 }

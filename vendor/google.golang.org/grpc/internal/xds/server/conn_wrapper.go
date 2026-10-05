@@ -26,7 +26,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/credentials/tls/certprovider"
-	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
+	"google.golang.org/grpc/internal/credentials/xds"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/transport"
 )
 
@@ -49,9 +50,6 @@ type connWrapper struct {
 	// A reference to the listenerWrapper on which this connection was accepted.
 	parent *listenerWrapper
 
-	// The certificate providers created for this connection.
-	rootProvider, identityProvider certprovider.Provider
-
 	// The connection deadline as configured by the grpc.Server on the rawConn
 	// that is returned by a call to Accept(). This is set to the connection
 	// timeout value configured by the user (or to a default value) before
@@ -63,6 +61,8 @@ type connWrapper struct {
 	mu       sync.Mutex
 	st       transport.ServerTransport
 	draining bool
+	closed   bool
+	hi       *grpcsync.RefCounted[*xds.HandshakeInfo]
 
 	// The virtual hosts with matchable routes and instantiated HTTP Filters per
 	// route, or an error.
@@ -91,13 +91,13 @@ func (c *connWrapper) GetDeadline() time.Time {
 // XDSHandshakeInfo returns a HandshakeInfo with appropriate security
 // configuration for this connection. This method is invoked by the
 // ServerHandshake() method of the XdsCredentials.
-func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
+func (c *connWrapper) XDSHandshakeInfo() (*grpcsync.RefCounted[*xds.HandshakeInfo], error) {
 	if c.filterChain.securityCfg == nil {
 		// If the security config is empty, this means that the control plane
 		// did not provide any security configuration and therefore we should
-		// return an empty HandshakeInfo here so that the xdsCreds can use the
-		// configured fallback credentials.
-		return xdsinternal.NewHandshakeInfo(nil, nil, nil, false, "", false, false), nil
+		// return nil here so that the xdsCreds can use the configured fallback
+		// credentials.
+		return nil, nil
 	}
 
 	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs()
@@ -113,13 +113,27 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 	if instance, cert := secCfg.RootInstanceName, secCfg.RootCertName; instance != "" {
 		rp, err = buildProviderFunc(cpc, instance, cert, false, true)
 		if err != nil {
+			ip.Close()
 			return nil, err
 		}
 	}
-	c.identityProvider = ip
-	c.rootProvider = rp
 
-	return xdsinternal.NewHandshakeInfo(c.rootProvider, c.identityProvider, nil, secCfg.RequireClientCert, "", false, false), nil
+	// Note that this method is invoked when a connection is accepted, and the
+	// xdsCredentials are doing a handshake on it. This can only ever be called
+	// once per connection. So, we do not need to worry about decrementing the
+	// reference count for the existing HandshakeInfo, which will always be nil.
+	// The reference count will be decremented when the connection is closed.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		if rp != nil {
+			rp.Close()
+		}
+		ip.Close()
+		return nil, fmt.Errorf("xds: connection closed")
+	}
+	c.hi = xds.NewHandshakeInfo(rp, ip, nil, "", secCfg.RequireClientCert, false, false)
+	return c.hi, nil
 }
 
 // PassServerTransport drains the passed in ServerTransport if draining is set,
@@ -148,12 +162,19 @@ func (c *connWrapper) Drain() {
 
 // Close closes the providers and the underlying connection.
 func (c *connWrapper) Close() error {
-	if c.identityProvider != nil {
-		c.identityProvider.Close()
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
 	}
-	if c.rootProvider != nil {
-		c.rootProvider.Close()
+	c.closed = true
+	hi := c.hi
+	c.mu.Unlock()
+
+	if hi != nil {
+		hi.Decrement()
 	}
+
 	c.parent.removeConn(c)
 	return c.Conn.Close()
 }

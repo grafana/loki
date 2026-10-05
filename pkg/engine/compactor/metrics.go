@@ -47,16 +47,17 @@ type coordinatorMetrics struct {
 	// iteration (IndexMerge or LogMerge).
 	cycleDurationSeconds prometheus.Histogram
 
+	// cycleBackoffSeconds measures the wait a worker applies between phases. A
+	// rising distribution means workers are increasingly idle (converged, empty,
+	// or failing) and backing off rather than hammering object storage.
+	cycleBackoffSeconds prometheus.Histogram
+
 	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
 	// duration. Excludes the converged-skip path.
 	tenantCycleDurationSeconds *prometheus.HistogramVec // outcome=compacted|failed
 
-	// fileSizeStatDurationSeconds measures the latency of a single
-	// bucket.Attributes call issued while filling in index FileSize. These
-	// stats run concurrently before a ToC replace; the histogram surfaces
-	// per-call latency early so it can be caught before it dominates a cycle.
-	fileSizeStatDurationSeconds prometheus.Histogram
-	indexInputRuns              prometheus.Histogram
+	// indexInputRuns measures the number of Runs in a tenant's index compaction cycle.
+	indexInputRuns prometheus.Histogram
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -105,16 +106,16 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
 		}),
+		cycleBackoffSeconds: f.NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_cycle_backoff_seconds",
+			Help:    "Wait a worker applies between phases. Grows exponentially for idle (converged/empty) or failing tenants up to max-backoff.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s .. ~68m
+		}),
 		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_tenant_cycle_duration_seconds",
 			Help:    "Per-tenant cycle wall-clock duration. Excludes the converged-skip path.",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14),
 		}, []string{"outcome"}),
-		fileSizeStatDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_file_size_stat_duration_seconds",
-			Help:    "Latency of a single object-storage Attributes call issued to fill in index file size before a ToC replace.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms .. ~8s
-		}),
 		indexInputRuns: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_input_runs",
 			Help:    "Number of strict index runs offered to the task planner.",
@@ -175,6 +176,14 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 	}
 	m.cyclesTotal.WithLabelValues(outcome).Inc()
 	m.cycleDurationSeconds.Observe(duration.Seconds())
+}
+
+// observeBackoff records the wait a worker applies between phases.
+func (m *coordinatorMetrics) observeBackoff(wait time.Duration) {
+	if m == nil {
+		return
+	}
+	m.cycleBackoffSeconds.Observe(wait.Seconds())
 }
 
 // observeTenantCycle records per-tenant index-compaction cycle outcomes and
@@ -248,15 +257,6 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.tasksTotal.DeleteLabelValues(tenant)
 	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
-}
-
-// observeFileSizeStat records the latency of a single bucket.Attributes call.
-// Safe to call concurrently from the fillFileSizes goroutines.
-func (m *coordinatorMetrics) observeFileSizeStat(duration time.Duration) {
-	if m == nil {
-		return
-	}
-	m.fileSizeStatDurationSeconds.Observe(duration.Seconds())
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

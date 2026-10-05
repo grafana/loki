@@ -2,6 +2,7 @@ package ring
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -80,7 +81,7 @@ func (m *PartitionRingDesc) tokens() Tokens {
 	return allTokens
 }
 
-// partitionByToken returns a map where they key is a registered token and the value is ID of the partition
+// partitionByToken returns a map where the key is a registered token and the value is ID of the partition
 // that registered that token.
 func (m *PartitionRingDesc) partitionByToken() map[Token]int32 {
 	out := make(map[Token]int32, len(m.Partitions)*optimalTokensPerInstance)
@@ -442,7 +443,7 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 // MergeContent implements memberlist.Mergeable.
 func (m *PartitionRingDesc) MergeContent() []string {
-	result := make([]string, len(m.Partitions)+len(m.Owners))
+	result := make([]string, 0, len(m.Partitions)+len(m.Owners))
 
 	// We're assuming that partition IDs and instance IDs are not colliding (ie. no instance is called "1").
 	for pid := range m.Partitions {
@@ -482,18 +483,21 @@ func (m *PartitionRingDesc) RemoveTombstones(limit time.Time) (total, removed in
 	return
 }
 
-// Clone implements memberlist.Mergeable.
+// Clone copies the ring description and its maps. Partition tokens remain shared
+// and must be treated as immutable.
 func (m *PartitionRingDesc) Clone() memberlist.Mergeable {
-	clone := proto.Clone(m).(*PartitionRingDesc)
-
-	// Ensure empty maps are preserved (easier to compare with a deep equal in tests).
-	if m.Partitions != nil && clone.Partitions == nil {
-		clone.Partitions = map[int32]PartitionDesc{}
+	// Non-nullable protobuf map values already share their token slices; typed
+	// copies preserve that ownership without reflection on every memberlist read.
+	clone := &PartitionRingDesc{}
+	// Size by live entries so removed partitions and owners don't retain capacity.
+	if m.Partitions != nil {
+		clone.Partitions = make(map[int32]PartitionDesc, len(m.Partitions))
+		maps.Copy(clone.Partitions, m.Partitions)
 	}
-	if m.Owners != nil && clone.Owners == nil {
-		clone.Owners = map[string]OwnerDesc{}
+	if m.Owners != nil {
+		clone.Owners = make(map[string]OwnerDesc, len(m.Owners))
+		maps.Copy(clone.Owners, m.Owners)
 	}
-
 	return clone
 }
 

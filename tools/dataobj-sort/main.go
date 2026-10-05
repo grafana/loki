@@ -9,7 +9,7 @@ import (
 
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -39,15 +39,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          64 << 10,
-			MaxPageRows:             1000,
-			TargetObjectSize:        512 << 20,
-			TargetSectionSize:       512 << 20,
-			BufferSize:              16 << 20,
-			SectionStripeMergeLimit: 8,
-		},
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          64 << 10,
+		MaxPageRows:             1000,
+		TargetObjectSize:        512 << 20,
+		TargetSectionSize:       512 << 20,
+		BufferSize:              16 << 20,
+		SectionStripeMergeLimit: 8,
 	}
 	scr, err := scratch.NewFilesystem(gokitlog.NewNopLogger(), os.TempDir())
 	if err != nil {

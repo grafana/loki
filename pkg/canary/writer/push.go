@@ -65,7 +65,7 @@ type Push struct {
 // is either a `Push` instance (which sends each log line immediately to Loki), or a `BatchedPush`
 // instance which sends log lines to Loki in batches.
 func NewPush(
-	lokiAddr, tenantID string,
+	lokiAddr, pathPrefix, tenantID string,
 	timeout time.Duration,
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
@@ -111,10 +111,15 @@ func NewPush(
 		scheme = "https"
 	}
 
+	pushPath, err := url.JoinPath(pathPrefix, pushEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   lokiAddr,
-		Path:   pushEndpoint,
+		Path:   pushPath,
 	}
 
 	p := &Push{

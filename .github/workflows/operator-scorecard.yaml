@@ -23,13 +23,13 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
     - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
       with:
-        version: "v0.30.0"
+        version: "v0.33.0"
     - name: Run scorecard
       run: make scorecard
       working-directory: ./operator

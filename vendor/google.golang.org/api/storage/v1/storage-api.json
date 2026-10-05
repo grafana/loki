@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3138323634323934313536353633333331373333\"",
+  "etag": "\"3132373433353833303733323234363038313037\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4167,6 +4167,57 @@
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control"
           ]
+        },
+        "viewFullContext": {
+          "description": "Retrieves a specific object context with its extended data for a given object.",
+          "httpMethod": "GET",
+          "id": "storage.objects.viewFullContext",
+          "parameterOrder": [
+            "bucket",
+            "object"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the object resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "contextKey": {
+              "description": "Key identifying the object context to retrieve.",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "generation": {
+              "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "object": {
+              "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/o/{object}/viewFullContext",
+          "response": {
+            "$ref": "ObjectFullContext"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
         }
       }
     },
@@ -4731,7 +4782,7 @@
       }
     }
   },
-  "revision": "20260821",
+  "revision": "20260926",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -6524,8 +6575,60 @@
           "format": "date-time",
           "type": "string"
         },
+        "extendedDataTypeUrl": {
+          "description": "The type URL of the object context's extended data.",
+          "type": "string"
+        },
         "updateTime": {
           "description": "The time at which the object context was last updated in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the object context.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ObjectFullContext": {
+      "description": "A full representation of an object context.",
+      "id": "ObjectFullContext",
+      "properties": {
+        "createTime": {
+          "description": "The time at which the object context was created. This value is in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "extendedData": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "The extended data of the object context.",
+          "type": "object"
+        },
+        "key": {
+          "description": "The key of the object context.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "storage#objectFullContext",
+          "description": "The kind of item this is. For ObjectFullContext, this is always storage#objectFullContext.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of the object context.",
+          "enum": [
+            "CUSTOM"
+          ],
+          "enumDescriptions": [
+            "Custom object context."
+          ],
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "The time at which the object context was last updated. This value is in RFC 3339 format.",
           "format": "date-time",
           "type": "string"
         },

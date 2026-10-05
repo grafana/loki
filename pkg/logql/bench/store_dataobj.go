@@ -15,10 +15,11 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -74,15 +75,13 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2 * 1024 * 1024, // 2MB
-			MaxPageRows:             1000,
-			TargetObjectSize:        128 * 1024 * 1024, // 128MB
-			TargetSectionSize:       16 * 1024 * 1024,  // 16MB
-			BufferSize:              16 * 1024 * 1024,  // 16MB
-			SectionStripeMergeLimit: 2,
-		},
+	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2 * 1024 * 1024, // 2MB
+		MaxPageRows:             1000,
+		TargetObjectSize:        128 * 1024 * 1024, // 128MB
+		TargetSectionSize:       16 * 1024 * 1024,  // 16MB
+		BufferSize:              16 * 1024 * 1024,  // 16MB
+		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
@@ -140,7 +139,7 @@ func (s *DataObjStore) flush() error {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	if err = s.logsMetastoreToc.WriteEntry(context.Background(), path, timeRanges); err != nil {
+	if err = objtest.WriteTableOfContentsEntries(context.Background(), s.logsMetastoreToc, path, timeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -192,7 +191,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
+		err = objtest.WriteTableOfContentsEntries(context.Background(), s.indexMetastoreToc, key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}
@@ -207,12 +206,12 @@ func (s *DataObjStore) buildIndex() error {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-	}, nil)
+	}, nil, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return fmt.Errorf("failed to create index builder: %w", err)
 	}
 
-	calculator := index.NewCalculator(builder)
+	calculator := index.NewCalculator(builder, index.NewCalculatorMetrics(nil))
 	cnt := 0
 	objectsPerIndex := 16
 	err = s.bucket.Iter(context.Background(), "", func(name string) error {

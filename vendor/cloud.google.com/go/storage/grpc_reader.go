@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"time"
 
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
@@ -134,7 +135,7 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 		var err error
 		var decoder *readObjectResponseDecoder
 
-		err = run(cc, func(ctx context.Context) error {
+		openStream := func(ctx context.Context) error {
 			stream, err = c.raw.ReadObject(ctx, req, s.gax...)
 			if err != nil {
 				return err
@@ -157,6 +158,18 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 			}
 			err = decoder.readFullObjectResponse()
 			return err
+		}
+
+		err = run(cc, func(ctx context.Context) error {
+			decoder = nil
+			return executeWithReadStallTimeout(ctx, c.readStallMgr, params.bucket, openStream, func(stallTimeout time.Duration) {
+				target := stripPort(metricsStateFromContext(ctx).getTarget())
+				c.metrics.recordStallDuration(ctx, stallTimeout, "ReadObject", "grpc", target)
+				if decoder != nil && decoder.databufs != nil {
+					decoder.databufs.Free()
+					decoder = nil
+				}
+			})
 		}, s.retry, s.idempotent, withOperation("ReadObject"), withBucket(params.bucket), withObject(params.object))
 		if err != nil {
 			// Close the stream context we just created to ensure we don't leak

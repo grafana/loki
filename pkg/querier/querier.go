@@ -17,6 +17,8 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
@@ -28,6 +30,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
+	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
@@ -48,6 +52,19 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/querier")
+
+var queryTermBatchesProcessed = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "logline_querier_query_term_batches_processed",
+	Help:    "Term batches processed by QueryMultiple per index query",
+	Buckets: []float64{1, 2, 3, 4, 5, 8, 10, 15, 20},
+}, []string{"reason"})
+
+func observeQueryMultipleTermBatches(reason string, termBatchesProcessed int) {
+	if termBatchesProcessed <= 0 {
+		return
+	}
+	queryTermBatchesProcessed.WithLabelValues(reason).Observe(float64(termBatchesProcessed))
+}
 
 // Config for a querier.
 type Config struct {
@@ -98,6 +115,7 @@ type Querier interface {
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error)
 	IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
@@ -126,17 +144,18 @@ type Store interface {
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
-	cfg             Config
-	store           Store
-	limits          querier_limits.Limits
-	ingesterQuerier *IngesterQuerier
-	patternQuerier  pattern.PatterQuerier
-	deleteGetter    deletion.DeleteGetter
-	logger          log.Logger
+	cfg                 Config
+	store               Store
+	limits              querier_limits.Limits
+	ingesterQuerier     *IngesterQuerier
+	patternQuerier      pattern.PatterQuerier
+	deleteGetter        deletion.DeleteGetter
+	logger              log.Logger
+	loglineHintProvider *hintprovider.LoglineHintProvider
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -144,6 +163,21 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+	}
+
+	if loglineStore != nil {
+		p, err := hintprovider.NewLoglineHintProvider(
+			loglineStore,
+			ngramLength,
+			maxHintParallel,
+			observeQueryMultipleTermBatches,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
+		if err != nil {
+			return nil, err
+		}
+		q.loglineHintProvider = p
 	}
 
 	return q, nil
@@ -173,11 +207,12 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := iter.NewHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.Overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.QueryRequest
@@ -197,7 +232,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 		sp.AddEvent("querying store", trace.WithAttributes(
@@ -210,13 +245,19 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 		iters = append(iters, storeIter)
 	}
-	if len(iters) == 1 {
-		return iters[0], nil
+	var result iter.EntryIterator
+	switch len(iters) {
+	case 0:
+		result = iter.NoopEntryIterator
+	case 1:
+		result = iters[0]
+	default:
+		result = iter.NewMergeEntryIterator(ctx, iters, params.Direction)
 	}
-	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
+	return iter.NewHintEntryIterator(result, hintRanges), nil
 }
 
-func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (_ iter.SampleIterator, returnErr error) {
 	// Create a new partition context for the query
 	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
 	ctx = NewPartitionContext(ctx)
@@ -239,10 +280,23 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
+	hintRanges := iter.NewHintTimeRanges(params.GetHintRanges(), params.Start, params.End)
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+
+	// If SelectSamples returns an error below, close every iterator opened so far, so neither
+	// a later source's error nor a rejected order leaks them.
+	defer func() {
+		if returnErr == nil {
+			return
+		}
+		for _, opened := range iters {
+			listutil.LogErrorWithContext(ctx, "closing per-source sample iterator after SelectSamples failed", opened.Close)
+		}
+	}()
+
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil && hintRanges.Overlaps(ingesterQueryInterval.start, ingesterQueryInterval.end) {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.SampleQueryRequest
@@ -260,7 +314,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, ingesterIters...)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
@@ -271,7 +325,17 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+
+	var result iter.SampleIterator
+	switch params.Order {
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		result = iter.NewStreamFirstMergeSampleIterator(ctx, iters)
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		result = iter.NewTimestampFirstMergeSampleIterator(ctx, iters)
+	default:
+		return nil, errors.Errorf("unknown sample order %v", params.Order)
+	}
+	return iter.NewHintSampleIterator(result, hintRanges), nil
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
@@ -554,6 +618,17 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		model.TimeFromUnixNano(end.UnixNano()),
 		matchers...,
 	)
+}
+
+func (q *SingleTenantQuerier) LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+	if q.loglineHintProvider == nil {
+		return nil, errors.New("logline hint provider is not configured")
+	}
+	expr, err := syntax.ParseExpr(req.Expr)
+	if err != nil {
+		return nil, err
+	}
+	return q.loglineHintProvider.QueryHints(ctx, expr, req)
 }
 
 func (q *SingleTenantQuerier) IndexShards(

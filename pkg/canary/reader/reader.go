@@ -54,6 +54,7 @@ type Reader struct {
 	clientTLSConfig *tls.Config
 	caFile          string
 	addr            string
+	pathPrefix      string
 	user            string
 	pass            string
 	tenantID        string
@@ -101,6 +102,7 @@ func NewReader(writer io.Writer,
 	tlsConfig *tls.Config,
 	caFile, certFile, keyFile string,
 	address string,
+	pathPrefix string,
 	user string,
 	pass string,
 	tenantID string,
@@ -155,12 +157,18 @@ func NewReader(writer io.Writer,
 		return nil, err
 	}
 
+	prefix, err := url.JoinPath(pathPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	rd := Reader{
 		header:          h,
 		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
+		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
 		tenantID:        tenantID,
@@ -218,14 +226,21 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query")
+	if err != nil {
+		return 0, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query",
+		Path:   queryPath,
 		RawQuery: "query=" + url.QueryEscape(r.buildMetricQuery(queryRange)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
+
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v, cache: %v\n", u.String(), cache)
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
@@ -312,10 +327,16 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryRangePath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query_range")
+	if err != nil {
+		return nil, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query_range",
+		Path:   queryRangePath,
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
 			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)) +
 			"&limit=1000",
@@ -478,10 +499,17 @@ func (r *Reader) closeAndReconnect() {
 		if r.useTLS {
 			scheme = "wss"
 		}
+
+		tailPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/tail")
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to build tail URL: %v\n", err)
+			return
+		}
+
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
-			Path:     "/loki/api/v1/tail",
+			Path:     tailPath,
 			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)),
 		}
 

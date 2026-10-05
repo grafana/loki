@@ -93,11 +93,11 @@ func parseConfig(cfg proto.Message) (httpfilter.FilterConfig, error) {
 	return config{config: msg}, nil
 }
 
-func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, error) {
+func (builder) ParseFilterConfig(cfg proto.Message, _ httpfilter.ParseOptions) (httpfilter.FilterConfig, error) {
 	return parseConfig(cfg)
 }
 
-func (builder) ParseFilterConfigOverride(override proto.Message) (httpfilter.FilterConfig, error) {
+func (builder) ParseFilterConfigOverride(override proto.Message, _ httpfilter.ParseOptions) (httpfilter.FilterConfig, error) {
 	return parseConfig(override)
 }
 

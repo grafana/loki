@@ -28,8 +28,12 @@ const (
 // chunk store and each query runs through the production storage read path + logql.Engine, so
 // the full chunk-decode/parsing/extraction pipeline is exercised end-to-end.
 //
-// Every query runs on three execution stacks: the direct querier, and a real query-frontend +
-// query-scheduler + querier loop with sharding off and on.
+// Every query runs on these execution stacks:
+//   - the direct querier, in timestamp-first order.
+//   - the direct querier, in stream-first order.
+//   - a query-frontend + query-scheduler + querier loop, without sharding.
+//   - the same loop, with sharding.
+//   - the same loop, with sharding and stream-first order.
 func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
@@ -37,12 +41,15 @@ func RunScript(t *testing.T, name, script string) {
 	streamsChanged := true
 
 	// Each stack owns everything it needs to run a query, including its store.
-	directStack := newDirectStack(t)
-	frontendWithoutShardingStack, err := newQueryFrontendStack(t, false)
-	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=false)", name)
-	frontendWithSharding, err := newQueryFrontendStack(t, true)
-	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true)", name)
-	stacks := []executionStack{directStack, frontendWithoutShardingStack, frontendWithSharding}
+	directTimestampFirstStack := newDirectTimestampFirstStack(t)
+	directStreamFirstStack := newDirectStreamFirstStack(t)
+	frontendWithoutShardingTimestampFirstStack, err := newQueryFrontendTimestampFirstStack(t, false)
+	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=false, timestamp-first)", name)
+	frontendWithShardingTimestampFirst, err := newQueryFrontendTimestampFirstStack(t, true)
+	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true, timestamp-first)", name)
+	frontendWithShardingStreamFirst, err := newQueryFrontendStreamFirstStack(t)
+	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true, stream-first)", name)
+	stacks := []executionStack{directTimestampFirstStack, directStreamFirstStack, frontendWithoutShardingTimestampFirstStack, frontendWithShardingTimestampFirst, frontendWithShardingStreamFirst}
 
 	// refreshStreams gives every stack the current data before an eval.
 	refreshStreams := func() {

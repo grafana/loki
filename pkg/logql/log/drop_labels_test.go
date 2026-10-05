@@ -139,7 +139,7 @@ func Test_DropLabels(t *testing.T) {
 			dropLabels := NewDropLabels(tt.dropLabels)
 			lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			lbls.Reset()
-			lbls.SetErr(tt.err)
+			lbls.SetErr(tt.err, nil)
 			lbls.SetErrorDetails(tt.errDetails)
 			dropLabels.Process(0, []byte(""), lbls)
 			require.Equal(t, tt.want, lbls.LabelsResult().Labels())

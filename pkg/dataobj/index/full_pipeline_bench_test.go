@@ -46,7 +46,7 @@ func BenchmarkFullPostingsPipeline(b *testing.B) {
 			stats := makePipelineBenchStats(metaCols, tc.metaCardinality)
 
 			for b.Loop() {
-				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 				if err != nil {
 					b.Fatal(err)
 				}

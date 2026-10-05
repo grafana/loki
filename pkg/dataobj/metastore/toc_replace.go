@@ -15,18 +15,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// TableOfContentsEntry describes an index-pointer row to add to a ToC for a
-// given tenant. Used by ReplaceIndexPointers as the "to add" set.
+// TableOfContentsEntry describes an index-pointer row to add to a tenant's ToC.
+// Used by WriteEntry and as the "to add" set of ReplaceIndexPointers.
 type TableOfContentsEntry struct {
 	// Path is the object-storage path of the index object.
 	Path string
 	// StartTime / EndTime bound the time range covered by the index.
 	StartTime time.Time
 	EndTime   time.Time
-	// FileSize is the encoded on-disk size of the index object, in bytes.
-	FileSize uint64
-	// UncompressedLogsSize is the uncompressed log volume the index references, in bytes.
-	UncompressedLogsSize uint64
 }
 
 // replaceBackoffConfig bounds ReplaceIndexPointers retries on conditional-write
@@ -43,9 +39,8 @@ var replaceBackoffConfig = backoff.Config{
 var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 
 // ReplaceIndexPointers atomically swaps a set of index pointers in the
-// ToC for the given window. For the target tenant, every row in oldPaths
-// is removed and every entry in newEntries is added; all other tenants'
-// entries are preserved unchanged.
+// tenant's ToC for the given window. Every row in oldPaths is removed and
+// every entry in newEntries is added.
 //
 // Returns (true, nil) if the swap was applied.
 // Returns (false, nil) if there's nothing to do, examples are:
@@ -68,9 +63,9 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 // oldPaths/newEntries is a no-op.
 //
 // Callers must serialize overlapping ReplaceIndexPointers calls for the
-// same window within a process; the method allocates per-call state but
-// does not coordinate across goroutines. Concurrent processes racing on
-// the same window are safe because each call goes through a fresh
+// same tenant and window within a process; the method allocates per-call
+// state but does not coordinate across goroutines. Concurrent processes
+// racing on the same ToC are safe because each call goes through a fresh
 // GetAndReplace with conditional-PUT semantics.
 func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	ctx context.Context,
@@ -104,7 +99,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 	newEntries []TableOfContentsEntry,
 	backoffCfg backoff.Config,
 ) (bool, error) {
-	tocPath := TableOfContentsPath(window.Truncate(MetastoreWindowSize).UTC())
+	tocPath := TableOfContentsPath(tenant, window.Truncate(MetastoreWindowSize).UTC())
 
 	oldSet := make(map[string]struct{}, len(oldPaths))
 	for _, p := range oldPaths {
@@ -157,7 +152,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			}
 
 			// Pass 2: rebuild ToC, dropping target tenant's oldPaths and appending newEntries.
-			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil)
+			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 			if berr != nil {
 				return nil, fmt.Errorf("creating ToC builder: %w", berr)
 			}
@@ -168,11 +163,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			for _, e := range newEntries {
 				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
-					Path:                 e.Path,
-					StartTs:              e.StartTime,
-					EndTs:                e.EndTime,
-					FileSize:             e.FileSize,
-					UncompressedLogsSize: e.UncompressedLogsSize,
+					Path:    e.Path,
+					StartTs: e.StartTime,
+					EndTs:   e.EndTime,
 				}); err != nil {
 					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}

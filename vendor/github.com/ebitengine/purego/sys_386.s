@@ -129,6 +129,7 @@ TEXT syscallX(SB), NOSPLIT|NOFRAME, $0-0
 	MOVL PTR_ADDRESS(SP), BX
 	MOVL AX, syscallArgs_a1(BX) // return value r1
 	MOVL DX, syscallArgs_a2(BX) // return value r2 (for 64-bit returns)
+	MOVL $0, syscallArgs_a3(BX) // no errno here: clear the input argument
 
 	// Save x87 FPU return value (ST0) to f1 field
 	// On i386 System V ABI, float/double returns are in ST(0)

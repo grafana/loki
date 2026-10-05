@@ -1,6 +1,6 @@
 # loki
 
-![Version: 7.3.0](https://img.shields.io/badge/Version-7.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.6.12](https://img.shields.io/badge/AppVersion-3.6.12-informational?style=flat-square)
+![Version: 7.4.0](https://img.shields.io/badge/Version-7.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.6.14](https://img.shields.io/badge/AppVersion-3.6.14-informational?style=flat-square)
 
 Helm chart for Grafana Enterprise Logs supporting monolithic, simple scalable, and microservices modes.
 
@@ -17,7 +17,7 @@ As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [gr
 
 | Repository | Name | Version |
 |------------|------|---------|
-| https://charts.min.io/ | minio(minio) | 5.4.0 |
+| https://github.com/pgsty/silo | minio(minio) | 5.4.0 |
 | https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.2 |
 | https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.47.0 |
 

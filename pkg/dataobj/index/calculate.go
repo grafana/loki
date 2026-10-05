@@ -11,13 +11,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -73,26 +71,17 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 type Calculator struct {
 	indexobjBuilder      *indexobj.Builder
 	builderMtx           sync.Mutex
-	metrics              *calculatorMetrics
+	metrics              *CalculatorMetrics
 	uncompressedByTenant map[string]uint64
 }
 
-func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
+// NewCalculator returns a [Calculator].
+func NewCalculator(indexobjBuilder *indexobj.Builder, metrics *CalculatorMetrics) *Calculator {
 	return &Calculator{
 		indexobjBuilder:      indexobjBuilder,
-		metrics:              newCalculatorMetrics(),
+		metrics:              metrics,
 		uncompressedByTenant: make(map[string]uint64),
 	}
-}
-
-// RegisterMetrics registers the calculator's prometheus metrics with the given registerer.
-func (c *Calculator) RegisterMetrics(reg prometheus.Registerer) error {
-	return c.metrics.register(reg)
-}
-
-// UnregisterMetrics unregisters the calculator's prometheus metrics.
-func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
-	c.metrics.unregister(reg)
 }
 
 func (c *Calculator) Reset() {
@@ -100,7 +89,7 @@ func (c *Calculator) Reset() {
 	clear(c.uncompressedByTenant)
 }
 
-func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
+func (c *Calculator) TimeRanges() []dataobj.TimeRange {
 	ranges := c.indexobjBuilder.TimeRanges()
 	for i := range ranges {
 		ranges[i].UncompressedLogsSize = c.uncompressedByTenant[ranges[i].Tenant]
@@ -114,7 +103,7 @@ func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
 // the builder, so we clear the accumulator in the same step to keep the two in
 // sync. Otherwise a failed upload or ToC write followed by a Kafka retry would
 // add the reprocessed bytes on top of the stale count.
-func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []dataobj.TimeRange, error) {
 	ranges := c.TimeRanges()
 
 	obj, closer, err := c.indexobjBuilder.Flush()
@@ -254,6 +243,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
+// The provided section index only counts logs sections across all tenants, matching the indexes yielded by Filter, not positions in reader.Sections().
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
 	logsBuf := make([]logs.Record, 8192)
 
@@ -292,7 +282,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	lockFreeContext := *calculationContext
 	lockFreeContext.builder = nil
 
-	calculationSteps := getLogsCalculationSteps(sectionSortSchema(schemaLabels))
+	calculationSteps := getLogsCalculationSteps(schemaLabels)
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))

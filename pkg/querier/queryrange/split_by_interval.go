@@ -282,8 +282,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		})
 	}
 
-	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {

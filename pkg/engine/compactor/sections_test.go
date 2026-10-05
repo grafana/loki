@@ -16,15 +16,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
+func TestLoadTenantIndexes_ReadsTenantToC(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -39,15 +39,14 @@ func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
 		},
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
+	// Each tenant's entries come from its own ToC, never another tenant's.
+	gotA, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.NoError(t, err)
-	require.Len(t, got, 2, "two tenants written")
+	requireIndexPaths(t, gotA, "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
 
-	require.Len(t, got["tenant-a"], 2)
-	require.Len(t, got["tenant-b"], 1)
-
-	requireIndexPaths(t, got["tenant-a"], "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
-	requireIndexPaths(t, got["tenant-b"], "indexes/cc/idx-b-0")
+	gotB, err := loadTenantIndexes(ctx, bucket, window, "tenant-b")
+	require.NoError(t, err)
+	requireIndexPaths(t, gotB, "indexes/cc/idx-b-0")
 }
 
 // TestLoadTenantIndexes_MissingToCReturnsNotFound verifies the no-ToC case
@@ -58,22 +57,37 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
-	_, err := loadTenantIndexes(ctx, bucket, window)
+	_, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.Error(t, err)
 	require.True(t, bucket.IsObjNotFoundErr(err),
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
 }
 
-// testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
-type testIndex struct {
-	path                 string
-	start                time.Time
-	end                  time.Time
-	fileSize             uint64
-	uncompressedLogsSize uint64
+func TestLoadTenantIndexes_PanicsOnAnotherTenantsSection(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-b": {{path: "indexes/aa/idx-b-0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
+	})
+	// Put tenant-b's ToC where tenant-a's belongs.
+	r, err := bucket.Get(ctx, metastore.TableOfContentsPath("tenant-b", window))
+	require.NoError(t, err)
+	defer r.Close()
+	require.NoError(t, bucket.Upload(ctx, metastore.TableOfContentsPath("tenant-a", window), r))
+
+	require.Panics(t, func() { _, _ = loadTenantIndexes(ctx, bucket, window, "tenant-a") })
 }
 
-// writeToCWithIndexes writes a synthetic ToC containing one index pointer per
+// testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
+type testIndex struct {
+	path  string
+	start time.Time
+	end   time.Time
+}
+
+// writeToCWithIndexes writes synthetic per-tenant ToCs containing one index pointer per
 // (tenant, path) entry. Each entry's time range must fall inside the
 // MetastoreWindowSize window the ToC covers (otherwise WriteEntry will route
 // it to a different ToC file).
@@ -82,13 +96,11 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	w := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
 	for tenant, paths := range entries {
 		for _, e := range paths {
-			require.NoError(t, w.WriteEntry(ctx, e.path, []multitenancy.TimeRange{{
-				Tenant:               tenant,
-				MinTime:              e.start,
-				MaxTime:              e.end,
-				FileSize:             e.fileSize,
-				UncompressedLogsSize: e.uncompressedLogsSize,
-			}}))
+			require.NoError(t, w.WriteEntry(ctx, tenant, metastore.TableOfContentsEntry{
+				Path:      e.path,
+				StartTime: e.start,
+				EndTime:   e.end,
+			}))
 		}
 	}
 }
@@ -196,10 +208,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -210,8 +222,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: sortKey{labels: []string{"auth"}, timestamp: 500},
-			Max: sortKey{labels: []string{"billing"}, timestamp: 900},
+			Min: logSortPrefix{labels: []string{"auth"}},
+			Max: logSortPrefix{labels: []string{"billing"}},
 		},
 	}, refs)
 }
@@ -230,7 +242,7 @@ func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
 			Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
 	})
 
-	sections, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	sections, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Len(t, sections, 3)
 	require.Equal(t, []string{"logs/log-a", "logs/log-b", "logs/log-b"}, []string{
@@ -255,10 +267,10 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
-	require.Equal(t, []v2.Section[sortKey]{
+	require.Equal(t, []v2.Section[logSortPrefix]{
 		{
 			Ref: &compactionv2pb.SectionRef{
 				ObjectPath:       "logs/log-0",
@@ -268,8 +280,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
-			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
+			Min: logSortPrefix{labels: []string{"auth", "eu"}},
+			Max: logSortPrefix{labels: []string{"auth", "eu"}},
 		},
 	}, refs)
 }
@@ -284,12 +296,14 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{timestamp: 10}, refs[0].Min)
-	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
+	require.Equal(t, logSortPrefix{}, refs[0].Min)
+	require.Equal(t, logSortPrefix{}, refs[0].Max)
+	require.Equal(t, int64(10), refs[0].Ref.MinTimestamp)
+	require.Equal(t, int64(20), refs[0].Ref.MaxTimestamp)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
@@ -306,44 +320,67 @@ func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
 			Labels: map[string]string{"namespace": "prod"}, MinTimestamp: 10, MaxTimestamp: 20},
 	})
 
-	_, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	_, _, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.ErrorContains(t, err, `contains log sort schemas "label:service_name" and "label:namespace"`)
 }
 
-// TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
-// populates indexEntry.FileSize and indexEntry.UncompressedLogsSize from a ToC
-// whose rows were written with non-zero sizes.
-func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
+func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	const tenant = "acme"
 
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"tenant-a": {
-			{path: "indexes/aa/idx-a-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
-				fileSize: 1024, uncompressedLogsSize: 2048},
-			{path: "indexes/bb/idx-a-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour),
-				fileSize: 512, uncompressedLogsSize: 4096},
-		},
+	t.Run("current index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/current"
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      tenant,
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/current", SortSchema: "label:service_name",
+			}},
+			postings: []postings.Row{{
+				Kind: postings.KindLabel, ObjectPath: "logs/current",
+				ColumnName: "service_name", LabelValue: "api",
+				ShardBuckets: streams.ShardFactor,
+			}},
+		})
+
+		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.NoError(t, err)
+		require.Equal(t, int64(streams.ShardFactor), shardCount)
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
-	require.NoError(t, err)
-	require.Len(t, got["tenant-a"], 2)
+	t.Run("legacy index has no shard count", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/legacy"
+		buildIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{{
+			ObjectPath: "logs/legacy", SortSchema: "label:service_name",
+		}})
 
-	// Build map by path to avoid order-dependent assertions (ToC order is not a contract).
-	byPath := make(map[string]indexEntry)
-	for _, e := range got["tenant-a"] {
-		byPath[e.Path] = e
-	}
+		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.NoError(t, err)
+		require.Zero(t, shardCount)
+	})
 
-	idx0 := byPath["indexes/aa/idx-a-0"]
-	require.Equal(t, uint64(1024), idx0.FileSize)
-	require.Equal(t, uint64(2048), idx0.UncompressedLogsSize)
+	t.Run("mixed shard counts are invalid", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		path := "indexes/mixed-shards"
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      tenant,
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/mixed", SortSchema: "label:service_name",
+			}},
+			postings: []postings.Row{
+				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "api", ShardBuckets: streams.ShardFactor},
+				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "worker"},
+			},
+		})
 
-	idx1 := byPath["indexes/bb/idx-a-1"]
-	require.Equal(t, uint64(512), idx1.FileSize)
-	require.Equal(t, uint64(4096), idx1.UncompressedLogsSize)
+		_, _, _, err := logSectionRefsFor(ctx, bucket, tenant, path)
+		require.ErrorContains(t, err, "detected multiple shard counts within index file")
+	})
 }
 
 func TestCompareIndexSortKey(t *testing.T) {

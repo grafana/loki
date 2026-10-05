@@ -126,6 +126,9 @@ func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {
 			"finance": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(10.0)},
 			"ops":     {IngestionRateMB: ptr(5.0)},                                 // rate set, burst unset -> falls back to tenant burst
 			"blocked": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(0.0)}, // explicit 0 burst must be honored (blocks), not fall back
+			// inherit_limits: unset fields resolve to the tenant values (in their own bucket).
+			"inherit":         {InheritLimits: true},
+			"inherit-partial": {InheritLimits: true, IngestionRateMB: ptr(5.0)}, // explicit rate wins, burst inherits
 		},
 	}
 	overrides, err := validation.NewOverrides(limits, nil)
@@ -152,6 +155,14 @@ func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {
 
 		// policy with an explicit 0 burst -> 0 is honored (blocks ingestion), not the tenant burst.
 		assert.Equal(t, 0, s.Burst(encodeRateLimitKey("123", "blocked")))
+
+		// inherit_limits policy -> tenant rate/burst, applied to the policy's own bucket key.
+		assert.Equal(t, 1.0*float64(bytesInMB), s.Limit(encodeRateLimitKey("123", "inherit")))
+		assert.Equal(t, int(2.0*float64(bytesInMB)), s.Burst(encodeRateLimitKey("123", "inherit")))
+
+		// inherit_limits + explicit rate -> explicit rate wins, burst inherits the tenant burst.
+		assert.Equal(t, 5.0*float64(bytesInMB), s.Limit(encodeRateLimitKey("123", "inherit-partial")))
+		assert.Equal(t, int(2.0*float64(bytesInMB)), s.Burst(encodeRateLimitKey("123", "inherit-partial")))
 	})
 
 	t.Run("global divides policy rate by distributor count", func(t *testing.T) {

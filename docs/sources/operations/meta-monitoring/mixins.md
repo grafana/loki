@@ -2,7 +2,7 @@
 title: Install dashboards, alerts, and recording rules
 menuTitle: Install Mixins
 description: Describes the Loki mixins, how to configure and install the dashboards, alerts, and recording rules.
-weight: 100
+weight: 300
 ---
 
 # Install dashboards, alerts, and recording rules

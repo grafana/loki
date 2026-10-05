@@ -62,6 +62,7 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			AST: params.GetExpression(),
 		},
 		StoreChunks:    params.GetStoreChunks(),
+		HintRanges:     params.GetHintRanges(),
 		CachingOptions: params.CachingOptions(),
 	}
 }

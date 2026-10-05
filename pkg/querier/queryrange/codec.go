@@ -71,6 +71,7 @@ func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Requ
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
+	clone.HintRanges = clipHintTimeRanges(r.HintRanges, s, e)
 	return &clone
 }
 
@@ -89,6 +90,25 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 	clone := *r
 	clone.Shards = shards.Encode()
 	return &clone
+}
+
+func clipHintTimeRanges(ranges []logproto.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
+	if len(ranges) == 0 {
+		return nil
+	}
+	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
+	for _, hint := range ranges {
+		if hint.Start.Before(start) {
+			hint.Start = start
+		}
+		if hint.End.After(end) {
+			hint.End = end
+		}
+		if hint.Start.Before(hint.End) {
+			clipped = append(clipped, hint)
+		}
+	}
+	return clipped
 }
 
 func (r *LokiRequest) LogToSpan(sp trace.Span) {
@@ -776,6 +796,13 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			}
 			params["storeChunks"] = []string{string(b)}
 		}
+		if len(request.HintRanges) > 0 {
+			hintRanges, err := marshalHintTimeRanges(request.HintRanges)
+			if err != nil {
+				return nil, err
+			}
+			params["hintRanges"] = []string{string(hintRanges)}
+		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
 			Path:     "/loki/api/v1/query_range",
@@ -995,6 +1022,8 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.LoglineIndexRequest:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "LoglineIndexRequest requires frontend.encoding=protobuf")
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -1018,6 +1047,9 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/query"
 	case *logproto.IndexStatsRequest:
 		return "/loki/api/v1/index/stats"
+	case *logproto.LoglineIndexRequest:
+		// Internal scheduler request. Not an HTTP route.
+		return "logline_index"
 	case *logproto.VolumeRequest:
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
@@ -1268,6 +1300,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetLabels().WithHeaders(headers), nil
 	case *logproto.IndexStatsRequest:
 		return resp.GetStats().WithHeaders(headers), nil
+	case *logproto.LoglineIndexRequest:
+		return resp.GetHints().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
 	case *DetectedLabelsRequest:
@@ -1887,6 +1921,10 @@ func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsRangeWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return p.HintRanges
+}
+
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
 	return p.LokiRequest.CachingOptions
 }
@@ -1921,6 +1959,10 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsInstantWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
 }
 
 func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
@@ -1960,6 +2002,10 @@ func (p paramsSeriesWrapper) Shards() []string {
 }
 
 func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsSeriesWrapper) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
@@ -2003,6 +2049,10 @@ func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsLabelWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
 func (p paramsLabelWrapper) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }
@@ -2040,6 +2090,10 @@ func (p paramsStatsWrapper) Shards() []string {
 }
 
 func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsStatsWrapper) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
@@ -2139,6 +2193,14 @@ func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
 	return nil
 }
 
+func (p paramsDetectedLabelsWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
+func (p paramsDetectedFieldsWrapper) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
 func (p paramsDetectedLabelsWrapper) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }
@@ -2206,6 +2268,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 	case *logproto.IndexStatsRequest:
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{},
+		}, nil
+	case *logproto.LoglineIndexRequest:
+		return &LoglineIndexResponse{
+			Response: &logproto.LoglineIndexResponse{},
 		}, nil
 	case *logproto.VolumeRequest:
 		return &VolumeResponse{
@@ -2281,6 +2347,11 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		return nil, err
 	}
 
+	hintRanges, err := parseHintTimeRanges(r)
+	if err != nil {
+		return nil, err
+	}
+
 	return &LokiRequest{
 		Query:       rangeQuery.Query,
 		Limit:       rangeQuery.Limit,
@@ -2292,6 +2363,7 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      rangeQuery.Shards,
 		StoreChunks: storeChunks,
+		HintRanges:  hintRanges,
 		Plan: &plan.QueryPlan{
 			AST: parsed,
 		},
@@ -2336,6 +2408,25 @@ func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
 			return nil, errors.Wrap(err, "unmarshaling storeChunks")
 		}
 		return storeChunks, nil
+	}
+	return nil, nil
+}
+
+func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]byte, error) {
+	data, err := (&logproto.HintTimeRanges{Ranges: ranges}).Marshal()
+	if err != nil {
+		return nil, errors.Wrap(err, "marshaling hint time ranges")
+	}
+	return data, nil
+}
+
+func parseHintTimeRanges(r *http.Request) ([]logproto.HintTimeRange, error) {
+	if value := r.Form.Get("hintRanges"); value != "" {
+		hintRanges := &logproto.HintTimeRanges{}
+		if err := hintRanges.Unmarshal([]byte(value)); err != nil {
+			return nil, errors.Wrap(err, "unmarshaling hint time ranges")
+		}
+		return hintRanges.Ranges, nil
 	}
 	return nil, nil
 }

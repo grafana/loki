@@ -95,6 +95,61 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+// TestNewContainerClientSkipsTLSWhenNotConfigured checks that when HTTPConfig is
+// all zero values the TLS code path is skipped and defaultClientFactory is called
+// (the mock transport set by the factory is what the client ends up using).
+func TestNewContainerClientSkipsTLSWhenNotConfigured(t *testing.T) {
+	factoryCalled := false
+	defaultClientFactory = func() *http.Client {
+		factoryCalled = true
+		return &http.Client{Transport: http.DefaultTransport}
+	}
+
+	b := &BlobStorage{
+		cfg: &BlobStorageConfig{
+			ContainerName: "foo",
+			Environment:   azureGlobal,
+			MaxRetries:    1,
+			// HTTPConfig intentionally left at zero value
+		},
+		metrics: metrics,
+	}
+
+	_, err := b.newContainerClient(hedging.Config{}, false)
+	// The client creation itself may error (no real Azure creds), but what we
+	// care about is that defaultClientFactory was called and no TLS error surfaced.
+	require.True(t, factoryCalled, "defaultClientFactory should have been called")
+	require.NoError(t, err)
+}
+
+// TestNewContainerClientAppliesTLSWhenConfigured checks that setting at least one
+// TLS option (here InsecureSkipVerify) causes the TLS code path to execute and
+// that the resulting transport actually has the option applied.
+func TestNewContainerClientAppliesTLSWhenConfigured(t *testing.T) {
+	var capturedTransport *http.Transport
+	defaultClientFactory = func() *http.Client {
+		capturedTransport = &http.Transport{}
+		return &http.Client{Transport: capturedTransport}
+	}
+
+	b := &BlobStorage{
+		cfg: &BlobStorageConfig{
+			ContainerName: "foo",
+			Environment:   azureGlobal,
+			MaxRetries:    1,
+			HTTPConfig: BlobStorageHTTPConfig{
+				InsecureSkipVerify: true,
+			},
+		},
+		metrics: metrics,
+	}
+
+	_, err := b.newContainerClient(hedging.Config{}, false)
+	require.NoError(t, err)
+	require.NotNil(t, capturedTransport.TLSClientConfig, "TLSClientConfig should have been set")
+	require.True(t, capturedTransport.TLSClientConfig.InsecureSkipVerify, "InsecureSkipVerify should be true")
+}
+
 func Test_DefaultContainerURL(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
