@@ -253,15 +253,21 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 // countingBucket counts GetAndReplace calls and passes them through.
 type countingBucket struct {
 	objstore.Bucket
-	mu    sync.Mutex
-	calls int
+	callsMu sync.Mutex
+	calls   int
 }
 
 func (b *countingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
-	b.mu.Lock()
+	b.callsMu.Lock()
 	b.calls++
-	b.mu.Unlock()
+	b.callsMu.Unlock()
 	return b.Bucket.GetAndReplace(ctx, name, fn)
+}
+
+func (b *countingBucket) Calls() int {
+	b.callsMu.Lock()
+	defer b.callsMu.Unlock()
+	return b.calls
 }
 
 func TestReplaceIndexPointers(t *testing.T) {
@@ -279,7 +285,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		)
 		require.ErrorContains(t, err, "idx/a-new")
 		require.False(t, swapped)
-		require.Zero(t, bucket.calls)
+		require.Zero(t, bucket.Calls())
 	})
 }
 
