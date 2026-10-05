@@ -611,11 +611,16 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 }
 
 type recordingLogMergeObserver struct {
-	stats []LogMergeObservedStats
+	stats      []LogMergeObservedStats
+	inputBytes []int64
 }
 
 func (o *recordingLogMergeObserver) ObserveLogMerge(_ string, stats LogMergeObservedStats, _ time.Duration) {
 	o.stats = append(o.stats, stats)
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytes(bytes int64) {
+	o.inputBytes = append(o.inputBytes, bytes)
 }
 
 func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
@@ -650,6 +655,8 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	_, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
 
+	wantRecordBytes := []int64{int64(len("line1")), int64(len("line1")), int64(len("line22"))}
+	require.ElementsMatch(t, wantRecordBytes, observer.inputBytes, "input bytes must be reported once per record")
 	require.Len(t, observer.stats, 1)
 	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
 	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)

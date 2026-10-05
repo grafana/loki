@@ -95,10 +95,19 @@ type IndexMergeObserver interface {
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
-// LogMergeObserver receives per-task compaction summaries from LogMerge.
+// LogMergeObserver receives LogMerge statistics from one worker thread.
 type LogMergeObserver interface {
+	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
+
+	// ObserveLogMergeInputBytes receives the size of each merged record while
+	// the task runs. It is called once per record, so it must be cheap.
+	ObserveLogMergeInputBytes(bytes int64)
 }
+
+// NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
+// with the given index.
+type NewLogMergeObserverFunc func(thread int) LogMergeObserver
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{

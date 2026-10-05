@@ -82,7 +82,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	if err != nil {
 		return nil, err
 	}
-	var input mergeInputTracker
+	var (
+		inputBytes int64
+		dups       duplicateCounter
+	)
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -91,7 +94,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		if err != nil {
 			return nil, err
 		}
-		input.observe(rec)
+		size := recordBytes(rec)
+		inputBytes += size
+		c.observeLogMergeInputBytes(size)
+		dups.observe(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
@@ -122,8 +128,8 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	for _, run := range inputs.runs {
 		stats.InputSections += len(run)
 	}
-	stats.InputBytes = input.bytes
-	stats.DuplicateRecords = input.duplicates
+	stats.InputBytes = inputBytes
+	stats.DuplicateRecords = dups.duplicates
 
 	duration := time.Since(start)
 	level.Info(c.logger).Log(
@@ -172,6 +178,12 @@ type logMergeStats struct {
 func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
 	if c.logMergeObserver != nil {
 		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
+	}
+}
+
+func (c *Context) observeLogMergeInputBytes(bytes int64) {
+	if c.logMergeObserver != nil {
+		c.logMergeObserver.ObserveLogMergeInputBytes(bytes)
 	}
 }
 

@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +14,7 @@ import (
 const (
 	labelTenant  = "tenant"
 	labelOutcome = "outcome"
+	labelThread  = "thread"
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
@@ -270,6 +272,7 @@ type workerMetrics struct {
 	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
 	logMergeInputBytesPerSecond   *prometheus.HistogramVec // tenant
 	logMergeDuplicateRecordsTotal *prometheus.CounterVec   // tenant
+	logMergeInputBytesTotal       *prometheus.CounterVec   // thread
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
@@ -310,6 +313,10 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Name: "loki_dataobj_compaction_log_merge_duplicate_records_total",
 			Help: "Records in successful LogMerge tasks that repeat an earlier record's stream, timestamp, line, and structured metadata. Duplicates are kept in the output.",
 		}, []string{labelTenant}),
+		logMergeInputBytesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_input_bytes_total",
+			Help: "Log line and structured metadata value bytes merged by LogMerge tasks, counted per record while tasks run. Includes tasks that later fail. A thread runs one task at a time, so rate() per thread gives the throughput of its running task.",
+		}, []string{labelThread}),
 	}
 }
 
@@ -325,6 +332,28 @@ func (m *workerMetrics) ObserveIndexMergeOutput(tenant string, compressed, uncom
 	if uncompressed > 0 {
 		m.outputBytesUncompressed.WithLabelValues(tenant).Observe(float64(uncompressed))
 	}
+}
+
+// logMergeObserver returns the executor.LogMergeObserver for one worker
+// thread. It satisfies executor.NewLogMergeObserverFunc.
+func (m *workerMetrics) logMergeObserver(thread int) executor.LogMergeObserver {
+	return &threadLogMergeMetrics{
+		workerMetrics: m,
+		inputBytes:    m.logMergeInputBytesTotal.WithLabelValues(strconv.Itoa(thread)),
+	}
+}
+
+// threadLogMergeMetrics is the executor.LogMergeObserver for one worker
+// thread. It holds the thread's input bytes counter, so the per-record path
+// does no label lookup.
+type threadLogMergeMetrics struct {
+	*workerMetrics
+	inputBytes prometheus.Counter
+}
+
+// ObserveLogMergeInputBytes satisfies executor.LogMergeObserver.
+func (m *threadLogMergeMetrics) ObserveLogMergeInputBytes(bytes int64) {
+	m.inputBytes.Add(float64(bytes))
 }
 
 // ObserveLogMerge satisfies executor.LogMergeObserver. Called by the LogMerge

@@ -57,3 +57,19 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 1, testutil.CollectAndCount(m.tenantCyclesTotal), "other tenant's cycle series survives")
 	require.Equal(t, 1, testutil.CollectAndCount(m.cyclesTotal), "non-tenant-labeled metric survives")
 }
+
+func TestWorkerMetrics_LogMergeObserver(t *testing.T) {
+	t.Run("adds input bytes to the series of the observer's thread only", func(t *testing.T) {
+		m := newWorkerMetrics(prometheus.NewRegistry())
+		thread0 := m.logMergeObserver(0)
+		thread3 := m.logMergeObserver(3)
+
+		thread0.ObserveLogMergeInputBytes(10)
+		thread0.ObserveLogMergeInputBytes(5)
+		thread3.ObserveLogMergeInputBytes(7)
+
+		require.Equal(t, 2, testutil.CollectAndCount(m.logMergeInputBytesTotal))
+		require.Equal(t, 15.0, testutil.ToFloat64(m.logMergeInputBytesTotal.WithLabelValues("0")))
+		require.Equal(t, 7.0, testutil.ToFloat64(m.logMergeInputBytesTotal.WithLabelValues("3")))
+	})
+}
