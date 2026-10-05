@@ -452,50 +452,14 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("by() reports __preserve_error__ although it is not a group key", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, &Hints{shouldPreserveError: true}, false, false).ForLabels(lbs, labels.StableHash(lbs))
-		b.Reset()
-		b.SetErr("JSONParserErr", nil)
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
-	t.Run("noLabels reports __preserve_error__ next to the error", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping(nil, &Hints{shouldPreserveError: true}, false, true).ForLabels(lbs, labels.StableHash(lbs))
-		b.Reset()
-		b.SetErr("JSONParserErr", nil)
-
-		assertLabelResult(t, labels.FromStrings(
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
-	t.Run("by() ignores a __preserve_error__ stream label, so a stream cannot switch off the failure", func(t *testing.T) {
-		base := labels.FromStrings(logqlmodel.PreserveErrorLabel, "true", "pod", "p1")
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(base, labels.StableHash(base))
-		b.Reset()
-		b.SetErr("JSONParserErr", nil)
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-		), b.GroupedLabels())
-	})
-
 	t.Run("without() reports each error label once", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, &Hints{shouldPreserveError: true}, true, false).ForLabels(lbs, labels.StableHash(lbs))
+		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.SetErr("JSONParserErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
 			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
 		), b.GroupedLabels())
 	})
 
@@ -566,24 +530,6 @@ func TestLabelsBuilder_SetErr(t *testing.T) {
 		require.False(t, b.HasErrorDetails())
 	})
 
-	t.Run("reports __preserve_error__ when the query asked to keep the errored lines", func(t *testing.T) {
-		b := newBuilder(&Hints{shouldPreserveError: true})
-		b.SetErr("JSONParserErr", nil)
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.LabelsResult())
-	})
-
-	t.Run("reports no __preserve_error__ when the query did not ask for the errored lines", func(t *testing.T) {
-		b := newBuilder(nil)
-		b.SetErr("JSONParserErr", nil)
-
-		require.False(t, b.LabelsResult().Labels().Has(logqlmodel.PreserveErrorLabel))
-	})
-
 	t.Run("a replacing error drops the details of the one before it", func(t *testing.T) {
 		b := newBuilder(nil)
 		b.SetErr("JSONParserErr", errors.New("Malformed JSON error"))
@@ -592,40 +538,47 @@ func TestLabelsBuilder_SetErr(t *testing.T) {
 		require.Equal(t, "SampleExtractionErr", b.GetErr())
 		require.False(t, b.HasErrorDetails())
 	})
+}
 
-	t.Run("drops a __preserve_error__ label the line carried, whichever category it came in, when the query doesn't filter on __error__", func(t *testing.T) {
+// TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel checks that __preserve_error__ has no special
+// meaning to the builder. A line that carries it, from any category, keeps it unchanged even
+// when the line errors.
+func TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel(t *testing.T) {
+	const preserveErrorLabel = "__preserve_error__"
+
+	buildErrored := func(category LabelCategory, groups []string, without bool) *LabelsBuilder {
+		base := labels.FromStrings("pod", "p1")
+		if category == StreamLabel {
+			base = labels.FromStrings("pod", "p1", preserveErrorLabel, "true")
+		}
+		b := NewBaseLabelsBuilderWithGrouping(groups, nil, without, false).ForLabels(base, labels.StableHash(base))
+		b.Reset()
+		if category != StreamLabel {
+			b.Set(category, preserveErrorLabel, "true")
+		}
+		b.SetErr("SampleExtractionErr", nil)
+		return b
+	}
+
+	t.Run("survives an errored line with no grouping, whichever category it came from", func(t *testing.T) {
 		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
-			b := newBuilder(nil)
-			b.Set(category, logqlmodel.PreserveErrorLabel, "true")
-			b.SetErr("SampleExtractionErr", nil)
-
-			require.False(t, b.LabelsResult().Labels().Has(logqlmodel.PreserveErrorLabel))
-			require.False(t, b.GroupedLabels().Labels().Has(logqlmodel.PreserveErrorLabel))
+			b := buildErrored(category, nil, false)
+			require.Equal(t, "true", b.LabelsResult().Labels().Get(preserveErrorLabel), "category %v", category)
 		}
 	})
 
-	t.Run("drops a __preserve_error__ label the line carried under a grouping, when the query doesn't filter on __error__", func(t *testing.T) {
+	t.Run("without(pod) keeps it, whichever category it came from", func(t *testing.T) {
 		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
-			for _, without := range []bool{true, false} {
-				b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, without, false).ForLabels(lbs, labels.StableHash(lbs))
-				b.Reset()
-				b.Set(category, logqlmodel.PreserveErrorLabel, "true")
-				b.SetErr("SampleExtractionErr", nil)
-
-				require.False(t, b.GroupedLabels().Labels().Has(logqlmodel.PreserveErrorLabel))
-			}
+			b := buildErrored(category, []string{"pod"}, true)
+			require.Equal(t, "true", b.GroupedLabels().Labels().Get(preserveErrorLabel), "category %v", category)
 		}
 	})
 
-	t.Run("ResetError() drops the __preserve__error__", func(t *testing.T) {
-		b := newBuilder(&Hints{shouldPreserveError: true})
-		// The details outlive ResetError, and the parsed label defeats the memoized fast path, so
-		// the result is built rather than returned whole.
-		b.Set(ParsedLabel, "ok", "1")
-		b.SetErr("JSONParserErr", errors.New("boom"))
-		b.ResetError()
-
-		require.False(t, b.LabelsResult().Labels().Has(logqlmodel.PreserveErrorLabel))
+	t.Run("by(pod) drops it like any other label the grouping does not name, whichever category it came from", func(t *testing.T) {
+		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
+			b := buildErrored(category, []string{"pod"}, false)
+			require.False(t, b.GroupedLabels().Labels().Has(preserveErrorLabel), "category %v", category)
+		}
 	})
 }
 

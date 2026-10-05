@@ -375,11 +375,11 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m])
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
   expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
   expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 8
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 8
 eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod) # non-overlapping
   expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
   expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p1"} 7 8
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 7 8
 # Dropping the errored lines leaves no sample to take a quantile of.
 eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
   expect empty
@@ -542,7 +542,7 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
   {app="a"} 1
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__!="" [1m])
-  {__error__="LogfmtParserErr", __error_details__="logfmt syntax error at pos 23 : unterminated quoted value", __preserve_error__="true", app="a"} 1
+  {__error__="LogfmtParserErr", __error_details__="logfmt syntax error at pos 23 : unterminated quoted value", app="a"} 1
 
 # approx_count_distinct() with a large set.
 #
@@ -884,7 +884,7 @@ eval instant at 60s rate({app="err"} | unwrap v [1m])
 eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
 eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
-  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", __preserve_error__="true", app="err"} 0
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="err"} 0
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -1203,11 +1203,11 @@ load
 
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__=~".*" [1m]) by (pod)
   {pod="p1"} 5
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__="" [1m]) by (pod)
   {pod="p1"} 5
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__!="" [1m]) by (pod)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", pod="p2"} 8
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
 # A post-unwrap filter on __error_details__ doesn't keep errors.
 eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error_details__="" [1m]) by (pod)
   expect fail msg: JSONParserErr
@@ -1688,7 +1688,7 @@ eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__="
 # A query that reads both lines reports the failed conversion as a 0.
 eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m])
   {app="a"} 5
-  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", __preserve_error__="true", app="a"} 0
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="a"} 0
 eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
   {} 0
 eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
