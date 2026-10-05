@@ -138,7 +138,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 					return
 				}
 
-				//Check for new stream.
+				// Check for a new stream.
 				r.Reset(r.src)
 				if err = r.init(); r.state.next(err) {
 					return
@@ -174,10 +174,10 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	return
 }
 
-// read uncompresses the next block as follow:
+// read uncompresses the next block as follows:
 //   - if buf has enough room, the block is uncompressed into it directly
-//     and the lenght of used space is returned
-//   - else, the uncompress data is stored in r.data and 0 is returned
+//     and the length of used space is returned
+//   - else, the uncompressed data is stored in r.data and 0 is returned
 func (r *Reader) read(buf []byte) (int, error) {
 	block := r.frame.Blocks.Block
 	_, err := block.Read(r.frame, r.src, r.cum)
@@ -201,10 +201,7 @@ func (r *Reader) read(buf []byte) (int, error) {
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		if len(r.dict)+len(dst) > 128*1024 {
-			preserveSize := 64*1024 - len(dst)
-			if preserveSize < 0 {
-				preserveSize = 0
-			}
+			preserveSize := max(64*1024-len(dst), 0)
 			r.dict = r.dict[len(r.dict)-preserveSize:]
 		}
 		r.dict = append(r.dict, dst...)
