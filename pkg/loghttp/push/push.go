@@ -79,7 +79,7 @@ var (
 		Namespace: constants.Loki,
 		Name:      "distributor_streams_per_push_request",
 		Help:      "The number of streams in a single push request.",
-		Buckets:   []float64{1, 2, 3, 4, 5, 6, 8, 16, 32, 64, 128},
+		Buckets:   []float64{1, 2, 4, 8, 16, 32, 64, 128, 512, 2048},
 	}, []string{"format"})
 
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
