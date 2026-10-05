@@ -561,9 +561,36 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
+	var (
+		dataObjBucket    objstore.Bucket
+		dataObjMetastore metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable || t.Cfg.DataObj.Enabled {
+		dataObjBucket, err = t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		dataObjMetastore = metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
+	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
+	// data-object store.
+	var dataObjStore querier.Store
+	if t.Cfg.DataObj.Enabled {
+		var storeOpts []querier.DataObjStoreOption
+		if t.lbacChunkFilterer != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
+		}
+		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	t.Querier, err = querier.New(
 		t.Cfg.Querier,
 		t.Store,
+		dataObjStore,
 		t.ingesterQuerier,
 		t.Overrides,
 		deleteStore,
@@ -608,19 +635,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.NewPrepopulateMiddleware(),
 	}
 
-	var (
-		store objstore.Bucket
-		ms    metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable {
-		store, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-	}
-
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, dataObjMetastore, t.Querier, t.Overrides, dataObjBucket, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -2531,7 +2546,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
+	q, err := querier.New(t.Cfg.Querier, t.Store, nil, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

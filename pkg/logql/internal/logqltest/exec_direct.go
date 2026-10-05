@@ -3,6 +3,7 @@ package logqltest
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -17,20 +18,37 @@ import (
 // directExecutionStack runs queries straight through the v1 engine, with no query-frontend in
 // front of it.
 type directExecutionStack struct {
-	t         *testing.T
-	stackName string
-	limits    logql.Limits
-	store     *testingChunkStore
+	t          *testing.T
+	stackName  string
+	limits     logql.Limits
+	newQuerier newScriptQuerierFunc
+	store      *testingQuerier
+
+	// dataObjStart is the time from which the querier reads stream-first queries from data
+	// objects. It is zero when the querier reads no data objects.
+	dataObjStart time.Time
 }
 
 // newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
 func newDirectTimestampFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}}
+	return &directExecutionStack{t: t, stackName: directTimestampFirstStackName, limits: execLimits{}, newQuerier: newChunkQuerier}
 }
 
 // newDirectStreamFirstStack returns the direct stack with stream-first execution enabled.
 func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
-	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}}
+	return &directExecutionStack{t: t, stackName: directStreamFirstStackName, limits: execLimits{streamFirstExecutionEnabled: true}, newQuerier: newChunkQuerier}
+}
+
+// newDirectDataObjStack returns the direct stack with stream-first execution enabled. The stack
+// reads all the data of stream-first queries from data objects.
+func newDirectDataObjStack(t *testing.T) *directExecutionStack {
+	return &directExecutionStack{
+		t:            t,
+		stackName:    directDataObjStackName,
+		limits:       execLimits{streamFirstExecutionEnabled: true},
+		newQuerier:   newDataObjQuerierFunc(epoch),
+		dataObjStart: epoch,
+	}
 }
 
 func (s *directExecutionStack) name() string {
@@ -50,7 +68,7 @@ func (s *directExecutionStack) setStreams(streams []logproto.Stream) {
 	if s.store != nil {
 		s.store.close()
 	}
-	s.store = newScriptStore(s.t, streams)
+	s.store = s.newQuerier(s.t, streams)
 }
 
 func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
@@ -71,5 +89,10 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), tenant)
 	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
 	ctx = httpreq.AddEncodingFlagsToContext(ctx, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
-	return engine.Query(params).Exec(ctx)
+	res, err := engine.Query(params).Exec(ctx)
+	if err != nil {
+		return res, err
+	}
+
+	return res, checkDataObjReads(cmd.query, res, s.dataObjStart)
 }

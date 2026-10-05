@@ -81,6 +81,10 @@ type Config struct {
 
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
+
+	// DataObjEnabled and DataObjStorageLag mirror -dataobj.enabled and -dataobj.storage-lag.
+	DataObjEnabled    bool          `yaml:"-"`
+	DataObjStorageLag time.Duration `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -105,6 +109,20 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
+	}
+
+	// The querier does not deduplicate data objects against other sources. It reads them up to
+	// now - storage lag. The config assumes that ingesters hold no data older than
+	// now - query_ingesters_within. A lower lag lets both sources return the same sample.
+	//
+	// A store-only or an ingester-only querier reads one source, so the checks skip it.
+	if cfg.DataObjEnabled && !cfg.QueryStoreOnly && !cfg.QueryIngesterOnly {
+		if cfg.QueryIngestersWithin <= 0 {
+			return errors.New("querier.query_ingesters_within must be greater than 0 when data objects are enabled, or the querier asks the ingesters for data that data objects also hold")
+		}
+		if cfg.DataObjStorageLag < cfg.QueryIngestersWithin {
+			return errors.Errorf("dataobj.storage_lag (%s) must not be lower than querier.query_ingesters_within (%s) when data objects are enabled, or data objects and ingesters return the same data", cfg.DataObjStorageLag, cfg.QueryIngestersWithin)
+		}
 	}
 	return nil
 }
@@ -145,24 +163,35 @@ type Store interface {
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg                 Config
-	store               Store
+	chunkStore          Store
 	limits              querier_limits.Limits
 	ingesterQuerier     *IngesterQuerier
 	patternQuerier      pattern.PatterQuerier
 	deleteGetter        deletion.DeleteGetter
 	logger              log.Logger
 	loglineHintProvider *hintprovider.LoglineHintProvider
+
+	// dataObjStore reads samples from data objects. It is nil when the querier reads no data
+	// objects.
+	dataObjStore Store
+	now          func() time.Time
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
+//
+// The querier reads stream-first sample requests from dataObjStore, from the tenant's data-object
+// start time to now minus the storage lag. A nil dataObjStore makes the querier read no data
+// objects.
+func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
-		store:           store,
+		chunkStore:      chunkStore,
+		dataObjStore:    dataObjStore,
 		ingesterQuerier: ingesterQuerier,
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+		now:             time.Now,
 	}
 
 	if loglineStore != nil {
@@ -238,7 +267,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		sp.AddEvent("querying store", trace.WithAttributes(
 			attribute.Stringer("params", params),
 		))
-		storeIter, err := q.store.SelectLogs(ctx, params)
+		storeIter, err := q.chunkStore.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +347,11 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
-		storeIter, err := q.store.SelectSamples(ctx, params)
+		store, err := q.storeForSelectSamples(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		storeIter, err := store.SelectSamples(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -336,6 +369,40 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, errors.Errorf("unknown sample order %v", params.Order)
 	}
 	return iter.NewHintSampleIterator(result, hintRanges), nil
+}
+
+// storeForSelectSamples returns the store that serves the store part of a sample request.
+func (q *SingleTenantQuerier) storeForSelectSamples(ctx context.Context, params logql.SelectSampleParams) (Store, error) {
+	// For a stream-first request of a tenant with a data-object start time, the store reads
+	// [start time, now - storage lag) from data objects and the rest from chunks. For any other
+	// request, or one that does not overlap that range, it returns the chunk store.
+	if q.dataObjStore == nil || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
+		return q.chunkStore, nil
+	}
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	dataObjStart := q.limits.DataObjQueryStartTime(userID)
+	dataObjEnd := q.now().Add(-q.cfg.DataObjStorageLag)
+	if dataObjStart.IsZero() || !dataObjStart.Before(dataObjEnd) || !params.Start.Before(dataObjEnd) || !params.End.After(dataObjStart) {
+		return q.chunkStore, nil
+	}
+
+	// The data-object band returns its samples in no order, while the stream-first merges of the
+	// store combiner and of SelectSamples expect ordered inputs. They still return each sample
+	// once, because no other source holds a sample of the band. The chunk bands cover other
+	// times. Config.Validate makes the config keep ingester data newer than the band.
+	//
+	// The first chunk band starts at model.Earliest, not at 0. A data-object start at or before
+	// the Unix epoch then still sorts after it. Otherwise the store combiner could give the band
+	// to the chunks.
+	return NewStoreCombiner([]StoreConfig{
+		{Store: q.chunkStore, From: model.Earliest},
+		{Store: q.dataObjStore, From: model.TimeFromUnixNano(dataObjStart.UnixNano())},
+		{Store: q.chunkStore, From: model.TimeFromUnixNano(dataObjEnd.UnixNano())},
+	}), nil
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {
@@ -418,9 +485,9 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			)
 
 			if req.Values {
-				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
+				storeValues, err = q.chunkStore.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
-				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+				storeValues, err = q.chunkStore.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			}
 			return err
 		})
@@ -571,7 +638,7 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 		}
 	}
 
-	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
+	ids, err := q.chunkStore.SelectSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,
@@ -611,7 +678,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	return q.store.Stats(
+	return q.chunkStore.Stats(
 		ctx,
 		userID,
 		model.TimeFromUnixNano(start.UnixNano()),
@@ -656,7 +723,7 @@ func (q *SingleTenantQuerier) IndexShards(
 		return nil, err
 	}
 
-	shards, err := q.store.GetShards(
+	shards, err := q.chunkStore.GetShards(
 		ctx,
 		userID,
 		model.TimeFromUnixNano(start.UnixNano()),
@@ -735,7 +802,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	}
 
 	if queryStore {
-		resp, err := q.store.Volume(
+		resp, err := q.chunkStore.Volume(
 			ctx,
 			userID,
 			model.TimeFromUnix(storeQueryInterval.start.Unix()),
@@ -802,9 +869,9 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			var err error
 			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
-			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
+			storeLabels, err := q.chunkStore.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
 			for _, label := range storeLabels {
-				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
+				values, err := q.chunkStore.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
 				if err != nil {
 					return err
 				}
