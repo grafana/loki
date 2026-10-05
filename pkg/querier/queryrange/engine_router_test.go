@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
@@ -385,4 +386,39 @@ func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
 			return resp, nil
 		})
 	})
+}
+
+func TestEngineRouterPreservesUsageOnMergeFailure(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fail=%t", fail), func(t *testing.T) {
+			partial, ctx := stats.NewPartialContext(context.Background())
+			merger := &responseMergerWithInjectedError{}
+			if fail {
+				merger.err = errors.New("cannot merge responses")
+			}
+			next := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				return logResponseWithScanUsage(100), nil
+			})
+			start := time.Unix(0, 0)
+			router := &engineRouter{
+				v1Next: next, v2Next: next, merger: merger,
+				v2Range:      func() (time.Time, time.Time) { return start.Add(time.Hour), start.Add(2 * time.Hour) },
+				validV2Query: func(logql.Params) bool { return true },
+			}
+			response, err := router.Do(ctx, &LokiRequest{
+				Query: `{app="test"}`, StartTs: start, EndTs: start.Add(3 * time.Hour),
+				Direction: logproto.FORWARD, Limit: 0,
+			})
+			require.Equal(t, 3, merger.responseCount)
+			if fail {
+				require.ErrorIs(t, err, merger.err)
+				require.Nil(t, response)
+				require.Equal(t, int64(300), partial.Result().Summary.TotalBytesProcessed)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, int64(300), response.(*LokiResponse).Statistics.Summary.TotalBytesProcessed)
+				require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+			}
+		})
+	}
 }

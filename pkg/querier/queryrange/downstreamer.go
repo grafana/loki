@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -170,7 +171,16 @@ func (in instance) For(
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	discardedUsage := &discardedResponseStats[int]{}
+	defer func() {
+		cancel()
+		uncollectedStats, hasUncollectedStats := discardedUsage.closeAndAggregate()
+		if hasUncollectedStats {
+			// DownstreamEvaluator records the statistics returned by acc.Result().
+			// Add only responses that were never passed to acc.Accumulate here.
+			stats.JoinPartial(ctx, uncollectedStats)
+		}
+	}()
 
 	ch := make(chan logql.Resp)
 
@@ -183,6 +193,15 @@ func (in instance) For(
 			if err != nil {
 				return err
 			}
+			// Retain usage before delivery: a sibling failure or cancellation can
+			// discard this completed result before it reaches the accumulator.
+			responseStats := res.Statistics
+			// Use the same default as the accumulator: zero means no shard count
+			// was supplied, so count this response as one shard. Preserve nonzero counts.
+			if responseStats.Summary.Shards == 0 {
+				responseStats.Summary.Shards = 1
+			}
+			discardedUsage.recordStatistics(i, responseStats)
 			response := logql.Resp{
 				I:   i,
 				Res: res,
@@ -230,6 +249,10 @@ func (in instance) For(
 				continue
 			}
 			err = acc.Accumulate(ctx, resp.Res, resp.I)
+			// Accumulate retains the statistics even when it returns an error.
+			// Remove them from the tracker to avoid counting them again. Responses
+			// skipped by the error check above stay in the tracker until finalization.
+			discardedUsage.markResponseCollected(resp.I)
 		}
 	}
 }

@@ -402,6 +402,14 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
 			})
 		}
 
+		// Keep later intervals genuinely in flight until the failure cancels them.
+		// Otherwise they can finish before the failure is observed and legitimately
+		// contribute additional completed usage.
+		if interval > failAfterInterval {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -120,7 +122,8 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			acc := NewStreamAccumulator(params)
 			for i := 0; i < nQueries; i++ {
 				err := acc.Accumulate(context.Background(), logqlmodel.Result{
-					Data: payloads[i],
+					Data:       payloads[i],
+					Statistics: stats.Result{Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: 100}}}},
 				}, i)
 				require.Nil(t, err)
 			}
@@ -128,6 +131,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			got, ok := acc.Result()[0].Data.(logqlmodel.Streams)
 			require.Equal(t, true, ok)
 			require.Equal(t, int64(nQueries), acc.Result()[0].Statistics.Summary.Shards)
+			require.Equal(t, int64(100*nQueries), acc.Result()[0].Statistics.Summary.TotalBytesProcessed)
 
 			// each stream should have the top 3 entries
 			for i := 0; i < streamsPerQuery; i++ {
@@ -425,4 +429,112 @@ func newRandomSketch() sketch.QuantileSketch {
 		_ = s.Add(r.Float64())
 	}
 	return s
+}
+
+func TestAccumulatorStatistics(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		newAccumulator   func() Accumulator
+		newValue         func(*testing.T, int) parser.Value
+		incompatibleSize bool
+	}{
+		{
+			name:           "streams",
+			newAccumulator: func() Accumulator { return NewStreamAccumulator(LiteralParams{limit: 1}) },
+			newValue:       func(*testing.T, int) parser.Value { return logqlmodel.Streams{} },
+		},
+		{
+			name:             "quantile",
+			newAccumulator:   func() Accumulator { return newQuantileSketchAccumulator() },
+			newValue:         func(_ *testing.T, size int) parser.Value { return make(ProbabilisticQuantileMatrix, size) },
+			incompatibleSize: true,
+		},
+		{
+			name:             "count distinct",
+			newAccumulator:   func() Accumulator { return newCountDistinctSketchAccumulator() },
+			newValue:         func(_ *testing.T, size int) parser.Value { return make(CountDistinctSketchMatrix, size) },
+			incompatibleSize: true,
+		},
+		{
+			name:           "count min",
+			newAccumulator: func() Accumulator { return newCountMinSketchAccumulator() },
+			newValue: func(t *testing.T, size int) parser.Value {
+				cms, err := sketch.NewCountMinSketch(uint32(size), 2)
+				require.NoError(t, err)
+				return CountMinSketchVector{F: cms}
+			},
+			incompatibleSize: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			type input struct {
+				data          parser.Value
+				wantError     bool
+				errorContains string
+			}
+			type scenario struct {
+				name   string
+				inputs []input
+			}
+			scenarios := []scenario{
+				{
+					name: "merge results",
+					inputs: []input{
+						{data: tc.newValue(t, 1)},
+						{data: tc.newValue(t, 1)},
+					},
+				},
+				{
+					name: "invalid type",
+					// A scalar is invalid for every accumulator in this test.
+					inputs: []input{{data: promql.Scalar{}, wantError: true, errorContains: "unexpected"}},
+				},
+			}
+			// Stream results have no matrix length or sketch width to mismatch.
+			if tc.incompatibleSize {
+				scenarios = append(scenarios, scenario{
+					name: "merge failure",
+					inputs: []input{
+						{data: tc.newValue(t, 1)},
+						// Different matrix lengths or sketch widths prevent merging.
+						{data: tc.newValue(t, 2), wantError: true},
+					},
+				})
+			}
+
+			for _, scenario := range scenarios {
+				t.Run(scenario.name, func(t *testing.T) {
+					acc := tc.newAccumulator()
+					var wantBytes int64
+					for i, input := range scenario.inputs {
+						bytesScanned := int64(100 * (i + 1))
+						result := logqlmodel.Result{
+							Data: input.data,
+							Statistics: stats.Result{
+								Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: bytesScanned}}},
+							},
+						}
+
+						err := acc.Accumulate(context.Background(), result, i)
+						if input.wantError {
+							require.Error(t, err)
+							if input.errorContains != "" {
+								require.ErrorContains(t, err, input.errorContains)
+							}
+						} else {
+							require.NoError(t, err)
+						}
+
+						// Rejected input still consumed bytes. Check after each
+						// call so both lost usage and duplicate merges are caught.
+						wantBytes += bytesScanned
+						results := acc.Result()
+						require.Len(t, results, 1)
+						require.Equal(t, wantBytes, results[0].Statistics.Summary.TotalBytesProcessed)
+						require.Equal(t, int64(i+1), results[0].Statistics.Summary.Shards)
+					}
+				})
+			}
+		})
+	}
 }

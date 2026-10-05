@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -1367,7 +1368,19 @@ func Test_splitMetricQuery(t *testing.T) {
 
 func Test_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	const intervals = 4
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		req := r.(*LokiRequest)
+		// Limited cases collect two intervals. Keep later intervals in flight
+		// so their completion cannot change the expected split count.
+		intervalIndex := int(req.StartTs.Sub(time.Unix(0, 0)) / time.Hour)
+		if req.Direction == logproto.BACKWARD {
+			intervalIndex = intervals - 1 - intervalIndex
+		}
+		if req.Limit == 2 && intervalIndex >= 2 {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -1947,9 +1960,18 @@ func Test_splitByInterval_Process_compactsOverLimit(t *testing.T) {
 	const intervals = 3
 
 	next := func(calls *atomic.Int32) queryrangebase.Handler {
-		return queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			req := r.(*LokiRequest)
-			time.Sleep(time.Millisecond) // match Test_ExitEarly: keep unused splits from starting
+			// Two intervals fill the limit. A worker may start the third after
+			// delivering the second, but it must not complete before cancellation.
+			intervalIndex := int(req.StartTs.Sub(time.Unix(0, 0)) / time.Hour)
+			if req.Direction == logproto.BACKWARD {
+				intervalIndex = intervals - 1 - intervalIndex
+			}
+			if intervalIndex >= 2 {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
 			calls.Add(1)
 			return &LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
@@ -2057,8 +2079,18 @@ func Test_splitByInterval_firstIntervalFillsLimit(t *testing.T) {
 	const limit uint32 = 3
 	const intervals = 3
 
-	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		req := r.(*LokiRequest)
+		firstStart := time.Unix(0, 0)
+		if req.Direction == logproto.BACKWARD {
+			firstStart = time.Unix(0, int64((intervals-1)*time.Hour))
+		}
+		if !req.StartTs.Equal(firstStart) {
+			// This test completes only the first interval; completed discarded
+			// intervals are covered separately by TestQueryUsageHTTPFlow.
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: req.Direction,
@@ -2128,5 +2160,49 @@ func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
 			equal := assert.Equal(t, exp, act)
 			t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
 		}
+	}
+}
+
+// responseMergerWithInjectedError lets the test fail after successful response collection.
+type responseMergerWithInjectedError struct {
+	err           error
+	responseCount int
+}
+
+func (m *responseMergerWithInjectedError) MergeResponse(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
+	m.responseCount = len(responses)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return DefaultCodec.MergeResponse(responses...)
+}
+
+func TestSplitByIntervalPreservesUsageOnMergeFailure(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fail=%t", fail), func(t *testing.T) {
+			partial, ctx := stats.NewPartialContext(user.InjectOrgID(context.Background(), "test"))
+			merger := &responseMergerWithInjectedError{}
+			if fail {
+				merger.err = errors.New("cannot merge responses")
+			}
+			limits := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+			handler := SplitByIntervalMiddleware(testSchemas, limits, merger, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+				return logResponseWithScanUsage(100), nil
+			}))
+			response, err := handler.Do(ctx, &LokiRequest{
+				Query: `{app="test"}`, StartTs: time.Unix(0, 0), EndTs: time.Unix(0, int64(2*time.Hour)),
+				Direction: logproto.FORWARD, Limit: 0,
+			})
+			require.Equal(t, 2, merger.responseCount)
+			if fail {
+				require.ErrorIs(t, err, merger.err)
+				require.Nil(t, response)
+				require.Equal(t, int64(200), partial.Result().Summary.TotalBytesProcessed)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, int64(200), response.(*LokiResponse).Statistics.Summary.TotalBytesProcessed)
+				require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+			}
+		})
 	}
 }

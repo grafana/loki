@@ -101,9 +101,10 @@ func FromContext(ctx context.Context) *Context {
 	return v
 }
 
-// PartialContext accumulates statistics from sub-queries that completed before
-// the overall query failed. It has its own context key so that the nested stats
-// Contexts opened deeper in the query path do not shadow it.
+// PartialContext accumulates statistics from completed work discarded by failed
+// sub-queries. These statistics must not also be included in returned responses.
+// The root query can still succeed if another interval satisfies its line limit.
+// Its own context key prevents nested stats Contexts from shadowing it.
 type PartialContext struct {
 	mtx    sync.Mutex
 	result Result
