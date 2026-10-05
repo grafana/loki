@@ -79,6 +79,55 @@ func TestReaderWithoutPredicate(t *testing.T) {
 	}
 }
 
+func TestZeroValues(t *testing.T) {
+	var (
+		epochStart = indexpointers.IndexPointer{Path: "path1", StartTs: unixTime(0), EndTs: unixTime(10)}
+		emptyPath  = indexpointers.IndexPointer{Path: "", StartTs: unixTime(10), EndTs: unixTime(20)}
+	)
+
+	t.Run("Reader returns an epoch start timestamp as a non-NULL value", func(t *testing.T) {
+		sec := buildSection(t, []indexpointers.IndexPointer{epochStart})
+		r := indexpointers.NewReader(indexpointers.ReaderOptions{
+			Columns:   sec.Columns(),
+			Allocator: memory.DefaultAllocator,
+		})
+
+		table, err := readTable(context.Background(), r)
+		require.NoError(t, err)
+		actual, err := arrowtest.TableRows(memory.DefaultAllocator, table)
+		require.NoError(t, err)
+		require.Equal(t, arrowtest.Rows{
+			{"path.path.utf8": "path1", "min_timestamp.min_timestamp.timestamp": unixTime(0).UTC(), "max_timestamp.max_timestamp.timestamp": unixTime(10).UTC()},
+		}, actual)
+	})
+
+	t.Run("RowReader returns an error for an epoch start timestamp", func(t *testing.T) {
+		sec := buildSection(t, []indexpointers.IndexPointer{epochStart})
+		_, err := readAllIndexPointers(context.Background(), indexpointers.NewRowReader(sec))
+		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
+	})
+
+	t.Run("Reader returns an empty path as a non-NULL empty string", func(t *testing.T) {
+		sec := buildSection(t, []indexpointers.IndexPointer{emptyPath})
+		r := indexpointers.NewReader(indexpointers.ReaderOptions{
+			Columns:   sec.Columns()[:1],
+			Allocator: memory.DefaultAllocator,
+		})
+
+		table, err := readTable(context.Background(), r)
+		require.NoError(t, err)
+		actual, err := arrowtest.TableRows(memory.DefaultAllocator, table)
+		require.NoError(t, err)
+		require.Equal(t, arrowtest.Rows{{"path.path.utf8": ""}}, actual)
+	})
+
+	t.Run("RowReader returns an error for an empty path", func(t *testing.T) {
+		sec := buildSection(t, []indexpointers.IndexPointer{emptyPath})
+		_, err := readAllIndexPointers(context.Background(), indexpointers.NewRowReader(sec))
+		require.ErrorContains(t, err, "nil or zero value for path")
+	})
+}
+
 func TestReader_ReadBeforeOpen(t *testing.T) {
 	sec := buildSection(t, []indexpointers.IndexPointer{
 		{Path: "path1", StartTs: unixTime(10), EndTs: unixTime(20)},

@@ -184,6 +184,68 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	require.Equal(t, in, actual)
 }
 
+func Test_pageBuilder_ZeroValues(t *testing.T) {
+	t.Run("an INT64 zero reads back as 0 and a nil reads back as NULL", func(t *testing.T) {
+		opts := BuilderOptions{
+			PageSizeHint: 1024,
+			Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"},
+			Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+			Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		}
+		b, err := newPageBuilder(opts)
+		require.NoError(t, err)
+		require.True(t, b.Append(Int64Value(0)))
+		require.True(t, b.Append(Value{}))
+		require.True(t, b.Append(Int64Value(10)))
+
+		page, err := b.Flush()
+		require.NoError(t, err)
+		require.Equal(t, 3, page.Desc.RowCount)
+		require.Equal(t, 2, page.Desc.ValuesCount)
+
+		var alloc memory.Allocator
+		arr, err := readPage(&alloc, newPageReader(page, opts.Type.Physical, opts.Compression), 10)
+		require.NoError(t, err)
+		ints := arr.(*columnar.Number[int64])
+		require.Equal(t, 3, ints.Len())
+		require.False(t, ints.IsNull(0))
+		require.Equal(t, int64(0), ints.Get(0))
+		require.True(t, ints.IsNull(1))
+		require.False(t, ints.IsNull(2))
+		require.Equal(t, int64(10), ints.Get(2))
+	})
+
+	t.Run("an empty BINARY reads back as an empty value and a nil reads back as NULL", func(t *testing.T) {
+		opts := BuilderOptions{
+			PageSizeHint: 1024,
+			Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+			Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		}
+		b, err := newPageBuilder(opts)
+		require.NoError(t, err)
+		require.True(t, b.Append(BinaryValue([]byte{})))
+		require.True(t, b.Append(Value{}))
+		require.True(t, b.Append(BinaryValue([]byte("a"))))
+
+		page, err := b.Flush()
+		require.NoError(t, err)
+		require.Equal(t, 3, page.Desc.RowCount)
+		require.Equal(t, 2, page.Desc.ValuesCount)
+
+		var alloc memory.Allocator
+		arr, err := readPage(&alloc, newPageReader(page, opts.Type.Physical, opts.Compression), 10)
+		require.NoError(t, err)
+		strs := arr.(*columnar.UTF8)
+		require.Equal(t, 3, strs.Len())
+		require.False(t, strs.IsNull(0))
+		require.Empty(t, strs.Get(0))
+		require.True(t, strs.IsNull(1))
+		require.False(t, strs.IsNull(2))
+		require.Equal(t, "a", string(strs.Get(2)))
+	})
+}
+
 func Test_pageBuilder_Fill(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1_500_000,

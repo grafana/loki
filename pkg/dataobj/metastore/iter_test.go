@@ -3,10 +3,14 @@ package metastore
 import (
 	"testing"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -181,4 +185,30 @@ func TestBuildLabelPredicate_MatchRegexp(t *testing.T) {
 				tc.regex, tc.labelValue, tc.shouldMatch, result)
 		})
 	}
+}
+
+func TestForEachIndexPointer(t *testing.T) {
+	t.Run("returns a ToC row that starts at the Unix epoch with its epoch start time", func(t *testing.T) {
+		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.NoError(t, builder.AppendIndexPointer("tenant", indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+
+		var (
+			ctx    = user.InjectOrgID(t.Context(), "tenant")
+			sStart = scalar.NewTimestampScalar(arrow.Timestamp(unixTime(0).UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+			sEnd   = scalar.NewTimestampScalar(arrow.Timestamp(unixTime(100).UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+			got    []indexpointers.IndexPointer
+		)
+		err = forEachIndexPointer(ctx, obj, sStart, sEnd, func(p indexpointers.IndexPointer) {
+			got = append(got, p)
+		})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, "indexes/a", got[0].Path)
+		require.True(t, unixTime(0).Equal(got[0].StartTs), "got start %s", got[0].StartTs)
+		require.True(t, unixTime(10).Equal(got[0].EndTs), "got end %s", got[0].EndTs)
+	})
 }

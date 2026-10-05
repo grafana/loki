@@ -174,7 +174,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 	}
 
-	t.Run("copyFromExistingToc returns an error when the first row of a section has a zero start time, which decodes as missing", func(t *testing.T) {
+	t.Run("copyFromExistingToc returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
 		source, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		require.NoError(t, source.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
@@ -187,6 +187,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket(), target)
 		err = writer.copyFromExistingToc(context.Background(), obj)
 		require.ErrorContains(t, err, "reading index pointers")
+		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
 	})
 
 	t.Run("WriteEntry writes the tenant's ToC for every window it overlaps", func(t *testing.T) {
