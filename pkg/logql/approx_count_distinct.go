@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -357,13 +356,9 @@ func (e *countDistinctSketchEvaluator) Next() (bool, int64, StepResult) {
 	}
 	ts, r := e.iter.At()
 	vec := r.CountDistinctSketchVec()
-	if !e.keepsErroredLines {
-		for _, s := range vec {
-			if s.Metric.Has(logqlmodel.ErrorLabel) {
-				e.err = logqlmodel.NewPipelineErr(s.Metric)
-				return false, 0, CountDistinctSketchVector{}
-			}
-		}
+	if err := pipelineErr(e.keepsErroredLines, vec, func(s CountDistinctSketchSample) labels.Labels { return s.Metric }); err != nil {
+		e.err = err
+		return false, 0, CountDistinctSketchVector{}
 	}
 	return true, ts, vec
 }

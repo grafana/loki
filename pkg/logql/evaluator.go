@@ -903,13 +903,9 @@ func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	if !r.keepsErroredLines {
-		for _, s := range vec.SampleVector() {
-			if s.Metric.Has(logqlmodel.ErrorLabel) {
-				r.err = logqlmodel.NewPipelineErr(s.Metric)
-				return false, 0, SampleVector{}
-			}
-		}
+	if err := pipelineErr(r.keepsErroredLines, vec.SampleVector(), sampleMetric); err != nil {
+		r.err = err
+		return false, 0, SampleVector{}
 	}
 	return true, ts, vec
 }
@@ -940,13 +936,9 @@ func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	if !r.keepsErroredLines {
-		for _, s := range vec.SampleVector() {
-			if s.Metric.Has(logqlmodel.ErrorLabel) {
-				r.err = logqlmodel.NewPipelineErr(s.Metric)
-				return false, 0, SampleVector{}
-			}
-		}
+	if err := pipelineErr(r.keepsErroredLines, vec.SampleVector(), sampleMetric); err != nil {
+		r.err = err
+		return false, 0, SampleVector{}
 	}
 	if len(vec.SampleVector()) > 0 {
 		return next, ts, SampleVector{}
@@ -1530,3 +1522,19 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	}
 	return m, nil
 }
+
+// pipelineErr returns the error for the first sample whose metric carries __error__, or nil when
+// the query asked to keep such samples, or none of them carry one.
+func pipelineErr[T any](keepsErroredLines bool, samples []T, metric func(T) labels.Labels) error {
+	if keepsErroredLines {
+		return nil
+	}
+	for _, s := range samples {
+		if m := metric(s); m.Has(logqlmodel.ErrorLabel) {
+			return logqlmodel.NewPipelineErr(m)
+		}
+	}
+	return nil
+}
+
+func sampleMetric(s promql.Sample) labels.Labels { return s.Metric }

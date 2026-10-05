@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -165,13 +164,9 @@ func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	}
 	ts, r := e.iter.At()
 	vec := r.QuantileSketchVec()
-	if !e.keepsErroredLines {
-		for _, s := range vec {
-			if s.Metric.Has(logqlmodel.ErrorLabel) {
-				e.err = logqlmodel.NewPipelineErr(s.Metric)
-				return false, 0, ProbabilisticQuantileVector{}
-			}
-		}
+	if err := pipelineErr(e.keepsErroredLines, vec, func(s ProbabilisticQuantileSample) labels.Labels { return s.Metric }); err != nil {
+		e.err = err
+		return false, 0, ProbabilisticQuantileVector{}
 	}
 	return true, ts, vec
 }

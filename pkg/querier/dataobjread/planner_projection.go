@@ -66,7 +66,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	)
 
 	addMetadataName := func(name string) {
-		if name == "" || isPipelineErrorLabel(name) {
+		if name == "" || logqlmodel.IsPipelineErrorLabel(name) {
 			return
 		}
 		metadataNames[name] = struct{}{}
@@ -314,20 +314,14 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 	return nil
 }
 
+// pushdownCandidate returns matcher as a pushdown candidate, or nil when it is not one.
+//
+// A filter on __error__ or __error_details__ reads the error the builder holds, never a stored
+// column, so neither is a metadata matcher in any direction: pushing one down would filter rows
+// against a column no object has, and handing one to the metastore would drop every section.
 func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
-	if matcher == nil || isPipelineErrorLabel(matcher.Name) {
+	if matcher == nil || logqlmodel.IsPipelineErrorLabel(matcher.Name) {
 		return nil
 	}
 	return []*labels.Matcher{matcher}
-}
-
-// isPipelineErrorLabel reports whether a name is one of the labels the pipeline sets when a
-// stage fails.
-//
-// A filter on one of them reads the error the builder holds, never a stored column, so none is a
-// metadata matcher in any direction: pushing one down would filter rows against a column no
-// object has, and handing one to the metastore would drop every section.
-func isPipelineErrorLabel(name string) bool {
-	return name == logqlmodel.ErrorLabel ||
-		name == logqlmodel.ErrorDetailsLabel
 }
