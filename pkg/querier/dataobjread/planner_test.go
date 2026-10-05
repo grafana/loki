@@ -25,7 +25,7 @@ func TestPlanner_Plan(t *testing.T) {
 	// the metastore resolved for them.
 	newTestPlanner := func(t *testing.T, ms metastore.Metastore) (*Planner, metastore.DataobjSectionDescriptors) {
 		t.Helper()
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -57,7 +57,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -79,7 +79,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -96,7 +96,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a stream missing from a shard bucket-pruned read is taken as out of shard rather than an error", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -122,7 +122,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a section the metastore lists with no stream fails the query", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -137,7 +137,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a section the metastore lists twice fails the query rather than counting it twice", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -164,7 +164,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("no task is planned when the access-control filter denies every stream", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -189,7 +189,7 @@ func TestPlanner_Plan(t *testing.T) {
 // query instead of the process. Nothing above the planner can recover it, because it runs on a
 // goroutine of its own.
 func TestPlanner_RecoversPanics(t *testing.T) {
-	fixture := newObjectsFixture(t, "", logproto.Stream{
+	fixture := newObjectsFixture(t, logproto.Stream{
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})
