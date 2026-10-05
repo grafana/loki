@@ -85,8 +85,7 @@ func (m *TableOfContentsWriter) initBuilder() error {
 // overlaps. It writes one window at a time and retries each window until the
 // write succeeds or ctx is done.
 //
-// WriteEntry returns an error without retrying if entry fails validation. If a
-// window fails, the windows written before it keep the entry.
+// WriteEntry returns an error without retrying if entry fails validation.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
