@@ -1964,6 +1964,12 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.accepted-streams-cache-ttl-jitter
   [accepted_streams_cache_ttl_jitter: <duration> | default = 15s]
 
+  # [Experimental]: TTL for caching CheckLimitsAndShard results per stream.
+  # Pushes arriving while an entry is cached are combined into a single backend
+  # request once it goes stale. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.shard-cache-ttl
+  [shard_cache_ttl: <duration> | default = 0s]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
