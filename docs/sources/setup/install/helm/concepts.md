@@ -23,7 +23,7 @@ The Loki chart supports three methods of deployment:
 - [Simple Scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/)
 - [Microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-microservices/)
 
-By default, the chart installs in [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) mode (`deploymentMode: Monolithic`). For production at scale, we recommend deploying Loki in *microservices* (`deploymentMode: Distributed`) mode. To understand the differences between deployment methods, see the [Loki deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) documentation.
+By default, the chart installs in [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) mode (`deploymentMode: SingleBinary`). For production at scale, we recommend deploying Loki in *microservices* (`deploymentMode: Distributed`) mode. To understand the differences between deployment methods, see the [Loki deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/) documentation.
 
 {{< admonition type="note" >}}
 Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
@@ -57,7 +57,7 @@ loki:
     enabled: true
 ```
 
-In Monolithic or SimpleScalable mode, enable it via Loki configuration only:
+In SingleBinary or SimpleScalable mode, enable it via Loki configuration only:
 
 ```yaml
 loki:
