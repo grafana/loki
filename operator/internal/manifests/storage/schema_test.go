@@ -47,11 +47,12 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	spec := lokiv1.ObjectStorageSpec{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV13,
+				//nolint:staticcheck
+				Version:       lokiv1.ObjectStorageSchemaV12,
 				EffectiveDate: "2020-10-01",
 			},
 			{
-				Version:       "test-v14", // we do not have an actual "future schema version" yet
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2021-10-01",
 			},
 		},
@@ -59,7 +60,8 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	status := lokiv1.LokiStackStorageStatus{
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV13,
+				//nolint:staticcheck
+				Version:       lokiv1.ObjectStorageSchemaV12,
 				EffectiveDate: "2020-10-01",
 			},
 		},
@@ -68,11 +70,12 @@ func TestBuildSchemaConfig_AddSchema_WithStatuses_WithValidDate(t *testing.T) {
 	actual, err := BuildSchemaConfig(utcTime, spec, status, nil)
 	expected := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV13,
+			//nolint:staticcheck
+			Version:       lokiv1.ObjectStorageSchemaV12,
 			EffectiveDate: "2020-10-01",
 		},
 		{
-			Version:       "test-v14",
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-01",
 		},
 	}
