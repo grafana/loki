@@ -138,6 +138,27 @@ message Index {
   // In addition to internal calculations this is also returned by the HTTP API.
   // Grafana expects time values to be returned in seconds as float.
   double bloomFilterTime = 7 [(gogoproto.jsontag) = "bloomFilterTime"];
+
+  // The logline* fields are set only for queries that went through the
+  // logline index query-frontend middleware.
+
+  // How the logline hint lookup ended: ok, unsupported, error, canceled,
+  // incomplete or ingester_window.
+  string loglineHintStatus = 8 [(gogoproto.jsontag) = "loglineHintStatus,omitempty"];
+  // Nanosecond wall time of the logline hint lookup.
+  int64 loglineHintLookupTime = 9 [(gogoproto.jsontag) = "loglineHintLookupTime,omitempty"];
+  // Number of hint ranges the lookup returned.
+  int64 loglineHintRanges = 10 [(gogoproto.jsontag) = "loglineHintRanges,omitempty"];
+  // Nanosecond sum of the hint range durations, clipped to the query bounds.
+  int64 loglineHintRangesDuration = 11 [(gogoproto.jsontag) = "loglineHintRangesDuration,omitempty"];
+  // Sub-requests answered without calling a querier.
+  int64 loglineSkippedRequests = 12 [(gogoproto.jsontag) = "loglineSkippedRequests,omitempty"];
+  // Sub-requests sent to queriers with hint ranges.
+  int64 loglineNarrowedRequests = 13 [(gogoproto.jsontag) = "loglineNarrowedRequests,omitempty"];
+  // Nanosecond sum of the time covered by sub-requests that reached the logline filter.
+  int64 loglineTotalTime = 14 [(gogoproto.jsontag) = "loglineTotalTime,omitempty"];
+  // Nanosecond part of loglineTotalTime that queriers never looked up chunks for.
+  int64 loglineSkippedTime = 15 [(gogoproto.jsontag) = "loglineSkippedTime,omitempty"];
 }
 
 message Querier {
@@ -207,6 +228,11 @@ message Store {
   // counted even when propagateChunkFetchErrors tolerated the failure instead
   // of failing the query outright.
   int64 chunkFetchFailures = 15 [(gogoproto.jsontag) = "chunkFetchFailures"];
+
+  // Chunk refs found on requests with logline hint ranges, before hint filtering.
+  int64 loglineChunkRefs = 16 [(gogoproto.jsontag) = "loglineChunkRefs,omitempty"];
+  // Chunk refs dropped because they overlap no logline hint range.
+  int64 loglineFilteredChunks = 17 [(gogoproto.jsontag) = "loglineFilteredChunks,omitempty"];
 }
 
 message Dataobj {

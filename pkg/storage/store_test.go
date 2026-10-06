@@ -1566,6 +1566,74 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.False(t, it.Next())
 }
 
+func TestLokiStore_SelectLogs_CountsLoglineFilteredChunks(t *testing.T) {
+	periodConfig := config.PeriodConfig{
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
+	}
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	at := func(ms int64) time.Time { return time.Unix(0, ms*int64(time.Millisecond)) }
+	mkChunk := func(ms ...int64) chunk.Chunk {
+		entries := make([]logproto.Entry, 0, len(ms))
+		for _, m := range ms {
+			entries = append(entries, logproto.Entry{Timestamp: at(m), Line: fmt.Sprint(m)})
+		}
+		return newChunk(chunkfmt, headfmt, logproto.Stream{Labels: `{foo="bar"}`, Entries: entries})
+	}
+	chunks := []chunk.Chunk{
+		mkChunk(1, 2),
+		mkChunk(5, 6), // between the two hint ranges
+		mkChunk(9, 10),
+		mkChunk(20), // outside the hint bounds, dropped before hint filtering
+	}
+	s := &LokiStore{
+		Store:        &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
+		cfg:          Config{MaxChunkBatchSize: 10},
+		chunkMetrics: NilMetrics,
+	}
+
+	for _, tc := range []struct {
+		name             string
+		hintRanges       []logproto.HintTimeRange
+		expectedRefs     int64
+		expectedFiltered int64
+	}{
+		{
+			name: "hinted request",
+			hintRanges: []logproto.HintTimeRange{
+				{Start: at(0), End: at(3)},
+				{Start: at(8), End: at(11)},
+			},
+			expectedRefs:     3,
+			expectedFiltered: 1,
+		},
+		{
+			name: "no hints",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "test-user"))
+			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+				Selector:   `{foo="bar"}`,
+				Limit:      1000,
+				Direction:  logproto.FORWARD,
+				Start:      at(0),
+				End:        at(30),
+				Plan:       testutil.MustPlan(`{foo="bar"}`),
+				HintRanges: tc.hintRanges,
+			}})
+			require.NoError(t, err)
+			require.NoError(t, it.Close())
+
+			res := statsCtx.Result(0, 0, 0)
+			require.Equal(t, tc.expectedRefs, res.LoglineChunkRefs())
+			require.Equal(t, tc.expectedFiltered, res.LoglineFilteredChunks())
+		})
+	}
+}
+
 func Test_GetSeries(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:   config.DayTime{Time: 0},

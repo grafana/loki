@@ -226,6 +226,90 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 	})
 }
 
+func TestAppendLoglineStats(t *testing.T) {
+	loglineIndex := stats.Index{
+		LoglineHintStatus:         "ok",
+		LoglineHintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
+		LoglineHintRanges:         3,
+		LoglineHintRangesDuration: (90 * time.Minute).Nanoseconds(),
+		LoglineSkippedRequests:    6,
+		LoglineNarrowedRequests:   2,
+		LoglineTotalTime:          (10 * time.Hour).Nanoseconds(),
+		LoglineSkippedTime:        (9 * time.Hour).Nanoseconds(),
+	}
+
+	for _, tc := range []struct {
+		name     string
+		stats    stats.Result
+		expected []interface{}
+	}{
+		{
+			name:     "no hint lookup",
+			stats:    stats.Result{Index: stats.Index{TotalChunks: 10}},
+			expected: []interface{}{},
+		},
+		{
+			name: "all fields",
+			stats: stats.Result{
+				Index: loglineIndex,
+				Querier: stats.Querier{Store: stats.Store{
+					LoglineChunkRefs:      30,
+					LoglineFilteredChunks: 20,
+				}},
+				Ingester: stats.Ingester{Store: stats.Store{
+					LoglineChunkRefs:      10,
+					LoglineFilteredChunks: 10,
+				}},
+			},
+			expected: []interface{}{
+				"logline_hint_status", "ok",
+				"logline_hint_lookup_time", 150 * time.Millisecond,
+				"logline_hint_ranges", int64(3),
+				"logline_hint_ranges_duration", 90 * time.Minute,
+				"logline_skipped_requests", int64(6),
+				"logline_narrowed_requests", int64(2),
+				"logline_skipped_time_ratio", "0.90",
+				"logline_chunk_filter_ratio", "0.75",
+			},
+		},
+		{
+			name:  "ratios omitted without denominators",
+			stats: stats.Result{Index: stats.Index{LoglineHintStatus: "incomplete"}},
+			expected: []interface{}{
+				"logline_hint_status", "incomplete",
+				"logline_hint_lookup_time", time.Duration(0),
+				"logline_hint_ranges", int64(0),
+				"logline_hint_ranges_duration", time.Duration(0),
+				"logline_skipped_requests", int64(0),
+				"logline_narrowed_requests", int64(0),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, appendLoglineStats([]interface{}{}, tc.stats))
+		})
+	}
+}
+
+func TestRecordLoglineIndexQueryMetrics(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	now := time.Now()
+
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "200", stats.Result{}, &logproto.HintQueryStats{
+		ObjectStorageRequests: 12,
+		TotalIOBytes:          2048,
+		TotalIOWait:           40 * time.Millisecond,
+	})
+	require.Contains(t, buf.String(), "query_type=logline_index")
+	require.Contains(t, buf.String(), "logline_object_requests=12 logline_io_bytes=2.0kB logline_io_wait=40ms")
+
+	buf.Reset()
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "500", stats.Result{}, nil)
+	require.NotContains(t, buf.String(), "logline_object_requests")
+}
+
 func TestRecordBytesProcessedTotal(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 

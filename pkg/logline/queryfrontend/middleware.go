@@ -92,26 +92,8 @@ type hintPrefetchResult struct {
 	queryStart     time.Time     // original query start
 	queryEnd       time.Time     // original query end
 	ingesterCutoff time.Time     // data after this is in ingester window only
+	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
-
-	// Per-query impact counters, updated from the filter layer and logged once
-	// after the full query pipeline finishes.
-	totalIntervals        atomic.Int64
-	skippedIntervals      atomic.Int64
-	narrowedIntervals     atomic.Int64
-	passthroughIntervals  atomic.Int64
-	originalDurationNanos atomic.Int64
-	queryDurationNanos    atomic.Int64
-}
-
-type hintImpactSnapshot struct {
-	totalIntervals       int64
-	skippedIntervals     int64
-	narrowedIntervals    int64
-	passthroughIntervals int64
-	originalDuration     time.Duration
-	queryDuration        time.Duration
-	timeReductionRatio   float64
 }
 
 type dryRunLookupResult struct {
@@ -122,59 +104,92 @@ type dryRunLookupResult struct {
 	done     chan struct{}
 }
 
-func (r *hintPrefetchResult) recordSkipped(intervalDuration time.Duration) {
-	if r == nil {
-		return
+// Values of the loglineHintStatus statistic.
+const (
+	hintStatusOK             = "ok"
+	hintStatusUnsupported    = "unsupported"
+	hintStatusError          = "error"
+	hintStatusCanceled       = "canceled"
+	hintStatusIncomplete     = "incomplete"
+	hintStatusIngesterWindow = "ingester_window"
+)
+
+// status reports how the lookup ended. It must be called after the query
+// pipeline returns, so a lookup still running is reported as incomplete.
+func (r *hintPrefetchResult) status() string {
+	select {
+	case <-r.done:
+	default:
+		return hintStatusIncomplete
 	}
-	r.totalIntervals.Add(1)
-	r.skippedIntervals.Add(1)
-	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
+	switch {
+	case r.err == nil && !r.ingesterCutoff.After(r.queryStart):
+		return hintStatusIngesterWindow
+	case r.err == nil:
+		return hintStatusOK
+	case errors.Is(r.err, hintprovider.ErrUnsupported):
+		return hintStatusUnsupported
+	case isCancel(r.err):
+		return hintStatusCanceled
+	default:
+		return hintStatusError
+	}
 }
 
-func (r *hintPrefetchResult) recordNarrowed(originalDuration, queriedDuration time.Duration) {
-	if r == nil {
+// attachLoglineStats sets the lookup-level logline statistics on the final
+// query response. The stats collector aliases the response's statistics, so
+// these values reach the frontend metrics.go line.
+func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult) {
+	lokiResp, ok := resp.(*queryrange.LokiResponse)
+	if !ok || result == nil {
 		return
 	}
-	r.totalIntervals.Add(1)
-	r.narrowedIntervals.Add(1)
-	r.originalDurationNanos.Add(originalDuration.Nanoseconds())
-	r.queryDurationNanos.Add(queriedDuration.Nanoseconds())
-}
-
-func (r *hintPrefetchResult) recordPassthrough(intervalDuration time.Duration) {
-	if r == nil {
+	idx := &lokiResp.Statistics.Index
+	idx.LoglineHintStatus = result.status()
+	if idx.LoglineHintStatus == hintStatusIncomplete {
 		return
 	}
-	r.totalIntervals.Add(1)
-	r.passthroughIntervals.Add(1)
-	r.originalDurationNanos.Add(intervalDuration.Nanoseconds())
-	r.queryDurationNanos.Add(intervalDuration.Nanoseconds())
+	idx.LoglineHintLookupTime = result.lookupDuration.Nanoseconds()
+	idx.LoglineHintRanges = int64(len(result.ranges))
+	idx.LoglineHintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
 }
 
-func (r *hintPrefetchResult) impactSnapshot() hintImpactSnapshot {
-	if r == nil {
-		return hintImpactSnapshot{}
-	}
-
-	originalNanos := r.originalDurationNanos.Load()
-	queryNanos := r.queryDurationNanos.Load()
-	ratio := 0.0
-	if originalNanos > 0 {
-		ratio = float64(originalNanos-queryNanos) / float64(originalNanos)
-		if ratio < 0 {
-			ratio = 0
+// indexedHintDuration sums the hint ranges clipped to [start, end], leaving out
+// the pre-min-date passthrough range, which has no index coverage.
+func indexedHintDuration(ranges []hintprovider.HintTimeRange, start, end time.Time) time.Duration {
+	indexed := make([]hintprovider.HintTimeRange, 0, len(ranges))
+	for _, r := range ranges {
+		if !r.IsPassthrough() {
+			indexed = append(indexed, r)
 		}
 	}
+	return hintCoverageDuration(indexed, start, end)
+}
 
-	return hintImpactSnapshot{
-		totalIntervals:       r.totalIntervals.Load(),
-		skippedIntervals:     r.skippedIntervals.Load(),
-		narrowedIntervals:    r.narrowedIntervals.Load(),
-		passthroughIntervals: r.passthroughIntervals.Load(),
-		originalDuration:     time.Duration(originalNanos),
-		queryDuration:        time.Duration(queryNanos),
-		timeReductionRatio:   ratio,
+// loglineRequestStats is what one sub-request adds to the logline statistics.
+// It travels on the sub-request's response, so the split and shard merges add
+// it up and discarded responses (retries, canceled provisional queries) drop it.
+type loglineRequestStats struct {
+	skipped     bool
+	narrowed    bool
+	totalTime   time.Duration
+	skippedTime time.Duration
+}
+
+func (s loglineRequestStats) addTo(resp queryrangebase.Response) {
+	lokiResp, ok := resp.(*queryrange.LokiResponse)
+	if !ok {
+		return
 	}
+	idx := &lokiResp.Statistics.Index
+	if s.skipped {
+		idx.LoglineSkippedRequests++
+	}
+	if s.narrowed {
+		idx.LoglineNarrowedRequests++
+	}
+	idx.LoglineTotalTime += s.totalTime.Nanoseconds()
+	idx.LoglineSkippedTime += s.skippedTime.Nanoseconds()
 }
 
 func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
@@ -372,6 +387,7 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 
 	start := model.Time(from.UnixMilli())
 	end := model.Time(through.UnixMilli())
+	ctx = queryrange.WithInternalRequest(ctx)
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
@@ -565,19 +581,6 @@ func summarizeDryRunHints(
 
 func roundTo1Decimal(v float64) float64 {
 	return math.Round(v*10) / 10
-}
-
-// hintRangesTotalSeconds returns the unclipped sum of non-passthrough hint
-// range durations, formatted to one decimal place for log output.
-func hintRangesTotalSeconds(ranges []hintprovider.HintTimeRange) string {
-	var total float64
-	for _, r := range ranges {
-		if r.IsPassthrough() {
-			continue
-		}
-		total += intervalDuration(r.Start.UTC(), r.End.UTC()).Seconds()
-	}
-	return fmt.Sprintf("%.1f", roundTo1Decimal(total))
 }
 
 func (h *loglinePrefetchHandler) doDryRun(
@@ -883,55 +886,29 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		start := time.Now()
 		defer func() {
 			dur := time.Since(start)
+			result.lookupDuration = dur
 			h.metrics.hintProviderDuration.Observe(dur.Seconds())
 			if isCancel(result.err) {
 				level.Info(logger).Log("msg", "hint prefetch canceled", "duration", dur)
 				return
 			}
+			// The metrics.go line carries the status, lookup time and range
+			// count and duration. This line keeps the remaining detail.
+			logValues := []any{
+				"msg", "hint prefetch completed",
+				"query_bytes", result.queryBytes,
+				"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
+				"err", result.err,
+			}
 			if result.stats != nil {
 				result.stats.SetWallTime(dur)
 				snap := result.stats.Snapshot()
-				level.Info(logger).Log(
-					"msg", "hint prefetch completed",
-					"duration", dur,
-					"query_bytes", result.queryBytes,
-					"ranges", len(result.ranges),
-					"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
-					"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
-					"err", result.err,
-					"object_requests", snap.ObjectStorageRequests,
-					"header_reads", snap.HeaderReads,
-					"metadata_reads", snap.MetadataReads,
-					"term_dict_reads", snap.TermDictReads,
-					"bitmap_reads", snap.BitmapReads,
-					"header_cache_misses", snap.HeaderCacheMisses,
-					"metadata_cache_misses", snap.MetadataCacheMisses,
-					"io_wait", snap.TotalIOWait,
-					"io_bytes", snap.TotalIOBytes,
-					"peak_concurrency", snap.PeakConcurrency,
-					"effective_concurrency", snap.EffectiveConcurrency,
+				logValues = append(logValues,
 					"prefetch_calls", snap.PrefetchCalls,
 					"prefetch_timeouts", snap.PrefetchTimeouts,
-					"index_queries_total", snap.IndexQueriesTotal,
-					"index_queries_term_miss", snap.IndexQueriesTermMiss,
-					"index_queries_empty_and", snap.IndexQueriesEmptyAnd,
-					"index_queries_positive", snap.IndexQueriesPositive,
-					"term_batches_processed_total", snap.TotalTermBatchesProcessed,
-					"hint_cache_result", snap.HintCacheResult,
-					"hint_cache_days_fetched", snap.HintCacheDaysFetched,
-					"hint_cache_days_hit", snap.HintCacheDaysHit,
 				)
-				return
 			}
-			level.Info(logger).Log(
-				"msg", "hint prefetch completed",
-				"duration", dur,
-				"query_bytes", result.queryBytes,
-				"ranges", len(result.ranges),
-				"hint_ranges_detail", hintprovider.FormatHintRanges(result.ranges),
-				"hint_total_seconds", hintRangesTotalSeconds(result.ranges),
-				"err", result.err,
-			)
+			level.Debug(logger).Log(appendHintStats(logValues, result.stats)...)
 		}()
 
 		eligibleEnd := ingesterCutoff
@@ -963,7 +940,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			return resp, err
 		}
 
-		h.logHintImpact(logger, resp, result)
+		attachLoglineStats(resp, result)
 		return resp, nil
 	}
 
@@ -984,7 +961,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		if provisional.err != nil {
 			return provisional.resp, provisional.err
 		}
-		h.logHintImpact(logger, provisional.resp, result)
+		attachLoglineStats(provisional.resp, result)
 		return provisional.resp, nil
 	case <-result.done:
 		select {
@@ -993,7 +970,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			if provisional.err != nil {
 				return provisional.resp, provisional.err
 			}
-			h.logHintImpact(logger, provisional.resp, result)
+			attachLoglineStats(provisional.resp, result)
 			return provisional.resp, nil
 		default:
 		}
@@ -1005,7 +982,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 			if provisional.err != nil {
 				return provisional.resp, provisional.err
 			}
-			h.logHintImpact(logger, provisional.resp, result)
+			attachLoglineStats(provisional.resp, result)
 			return provisional.resp, nil
 		}
 
@@ -1020,62 +997,9 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		if err != nil {
 			return resp, err
 		}
-		h.logHintImpact(logger, resp, result)
+		attachLoglineStats(resp, result)
 		return resp, nil
 	}
-}
-
-func (h *loglinePrefetchHandler) logHintImpact(logger log.Logger, resp queryrangebase.Response, result *hintPrefetchResult) {
-	if result == nil {
-		return
-	}
-
-	select {
-	case <-result.done:
-	default:
-		return
-	}
-
-	if result.err != nil {
-		return
-	}
-
-	impact := result.impactSnapshot()
-	logValues := []any{
-		"msg", "query hint impact",
-		"query_start", result.queryStart.Format(time.RFC3339Nano),
-		"query_end", result.queryEnd.Format(time.RFC3339Nano),
-		"query_range", result.queryEnd.Sub(result.queryStart),
-		"hint_ranges", len(result.ranges),
-		"total_intervals", impact.totalIntervals,
-		"skipped_intervals", impact.skippedIntervals,
-		"narrowed_intervals", impact.narrowedIntervals,
-		"passthrough_intervals", impact.passthroughIntervals,
-		"original_duration", impact.originalDuration,
-		"queried_duration", impact.queryDuration,
-		"time_reduction_ratio", impact.timeReductionRatio,
-	}
-
-	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok {
-		totalChunksRef := lokiResp.Statistics.Querier.Store.GetTotalChunksRef() +
-			lokiResp.Statistics.Ingester.Store.GetTotalChunksRef()
-		totalChunksDownloaded := lokiResp.Statistics.Querier.Store.GetTotalChunksDownloaded() +
-			lokiResp.Statistics.Ingester.Store.GetTotalChunksDownloaded()
-		totalDecompressedBytes := lokiResp.Statistics.Querier.Store.Chunk.GetDecompressedBytes() +
-			lokiResp.Statistics.Ingester.Store.Chunk.GetDecompressedBytes()
-		totalDecompressedLines := lokiResp.Statistics.Querier.Store.Chunk.GetDecompressedLines() +
-			lokiResp.Statistics.Ingester.Store.Chunk.GetDecompressedLines()
-
-		logValues = append(logValues,
-			"total_chunks_ref", totalChunksRef,
-			"total_chunks_downloaded", totalChunksDownloaded,
-			"decompressed_bytes", totalDecompressedBytes,
-			"decompressed_lines", totalDecompressedLines,
-			"total_entries_returned", lokiResp.Statistics.Summary.GetTotalEntriesReturned(),
-		)
-	}
-
-	level.Info(logger).Log(logValues...)
 }
 
 // NewLoglineFilterMiddleware intercepts each interval sub-request from
@@ -1130,54 +1054,88 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return nil, ctx.Err()
 	case <-timer.C:
 		result.stats.ObservePrefetchCall(true)
-		result.recordPassthrough(originalDuration)
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req, originalDuration)
 	}
 
 	if result.err != nil {
-		result.recordPassthrough(originalDuration)
 		if errors.Is(result.err, hintprovider.ErrUnsupported) {
 			h.metrics.hintPassthrough.WithLabelValues("unsupported").Inc()
 		} else {
 			h.metrics.hintPassthrough.WithLabelValues("error").Inc()
 			level.Warn(logger).Log("msg", "hint provider error, passing through", "err", result.err)
 		}
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req, originalDuration)
 	}
 
 	if intervalEnd.After(result.ingesterCutoff) {
-		result.recordPassthrough(originalDuration)
 		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req, originalDuration)
 	}
 
 	overlapping := rangesOverlapping(result.ranges, intervalStart, intervalEnd)
 	if len(overlapping) == 0 {
-		result.recordSkipped(originalDuration)
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return emptyLokiResponse(lokiReq), nil
+		return skippedLokiResponse(lokiReq, originalDuration), nil
 	}
 
 	hints := clipHintRangesForInterval(overlapping, intervalStart, intervalEnd)
 	if len(hints) == 0 {
-		result.recordSkipped(originalDuration)
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return emptyLokiResponse(lokiReq), nil
+		return skippedLokiResponse(lokiReq, originalDuration), nil
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
 	if passthroughCoversInterval(overlapping, hints, intervalStart, intervalEnd) {
-		result.recordPassthrough(originalDuration)
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.next.Do(ctx, req)
+		return h.passthrough(ctx, req, originalDuration)
 	}
 
-	result.recordNarrowed(originalDuration, hintRangesDuration(hints))
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
-	return h.next.Do(ctx, withHintRanges(lokiReq, hints))
+	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
+	if err != nil {
+		return resp, err
+	}
+	// Queriers look up chunks only between the first hint start and the last
+	// hint end, so the rest of the interval is skipped time.
+	loglineRequestStats{
+		narrowed:    true,
+		totalTime:   originalDuration,
+		skippedTime: originalDuration - hintSpan(hints),
+	}.addTo(resp)
+	return resp, nil
+}
+
+// passthrough forwards the sub-request unchanged. Its interval counts toward
+// the total time but none of it is skipped.
+func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangebase.Request, originalDuration time.Duration) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if err != nil {
+		return resp, err
+	}
+	loglineRequestStats{totalTime: originalDuration}.addTo(resp)
+	return resp, nil
+}
+
+func skippedLokiResponse(req *queryrange.LokiRequest, originalDuration time.Duration) *queryrange.LokiResponse {
+	resp := emptyLokiResponse(req)
+	loglineRequestStats{
+		skipped:     true,
+		totalTime:   originalDuration,
+		skippedTime: originalDuration,
+	}.addTo(resp)
+	return resp
+}
+
+// hintSpan returns the time from the first hint start to the last hint end.
+// hints must be sorted and merged, as clipHintRangesForInterval returns them.
+func hintSpan(hints []logproto.HintTimeRange) time.Duration {
+	if len(hints) == 0 {
+		return 0
+	}
+	return intervalDuration(hints[0].Start, hints[len(hints)-1].End)
 }
 
 // withHintRanges clones the request and sets hint ranges. The caller's

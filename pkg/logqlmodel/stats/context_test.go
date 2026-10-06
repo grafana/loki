@@ -422,6 +422,56 @@ func TestResultMerge_DataobjSectionsResolutionMaxTime(t *testing.T) {
 	})
 }
 
+func TestResult_Merge_LoglineStats(t *testing.T) {
+	lookup := Index{
+		LoglineHintStatus:         "ok",
+		LoglineHintLookupTime:     int64(100 * time.Millisecond),
+		LoglineHintRanges:         2,
+		LoglineHintRangesDuration: int64(30 * time.Minute),
+	}
+	skipped := Result{Index: Index{
+		LoglineSkippedRequests: 1,
+		LoglineTotalTime:       int64(time.Hour),
+		LoglineSkippedTime:     int64(time.Hour),
+	}}
+	narrowed := Result{
+		Index: Index{
+			LoglineNarrowedRequests: 1,
+			LoglineTotalTime:        int64(time.Hour),
+			LoglineSkippedTime:      int64(40 * time.Minute),
+		},
+		Querier: Querier{Store: Store{LoglineChunkRefs: 8, LoglineFilteredChunks: 6}},
+	}
+
+	var res Result
+	res.Merge(skipped)
+	res.Merge(narrowed)
+	res.Merge(narrowed)
+	res.Merge(Result{Index: lookup})
+	// A second lookup-level value must not overwrite the first.
+	res.Merge(Result{Index: Index{LoglineHintStatus: "error", LoglineHintRanges: 5}})
+
+	require.Equal(t, "ok", res.Index.LoglineHintStatus)
+	require.Equal(t, int64(100*time.Millisecond), res.Index.LoglineHintLookupTime)
+	require.Equal(t, int64(2), res.Index.LoglineHintRanges)
+	require.Equal(t, int64(30*time.Minute), res.Index.LoglineHintRangesDuration)
+	require.Equal(t, int64(1), res.Index.LoglineSkippedRequests)
+	require.Equal(t, int64(2), res.Index.LoglineNarrowedRequests)
+	require.Equal(t, int64(3*time.Hour), res.Index.LoglineTotalTime)
+	require.Equal(t, int64(140*time.Minute), res.Index.LoglineSkippedTime)
+	require.Equal(t, int64(16), res.LoglineChunkRefs())
+	require.Equal(t, int64(12), res.LoglineFilteredChunks())
+}
+
+func TestContext_LoglineChunkStats(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+	statsCtx.AddLoglineChunkRefs(10)
+	statsCtx.AddLoglineFilteredChunks(7)
+	res := statsCtx.Result(0, 0, 0)
+	require.Equal(t, int64(10), res.LoglineChunkRefs())
+	require.Equal(t, int64(7), res.LoglineFilteredChunks())
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
