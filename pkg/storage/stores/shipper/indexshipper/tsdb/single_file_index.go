@@ -305,7 +305,12 @@ func (i *TSDBIndex) forPostings(
 	var err error
 	postingsCache, postingsID := i.postingsCache, i.postingsID
 	if postingsCache != nil {
-		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, fpFilter, matchers), compute)
+		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, matchers), func() (index.Postings, error) {
+			return PostingsForMatchers(i.reader, nil, matchers...)
+		})
+		if err == nil {
+			p = i.reader.ShardPostings(p, fpFilter)
+		}
 	} else {
 		p, err = compute()
 	}

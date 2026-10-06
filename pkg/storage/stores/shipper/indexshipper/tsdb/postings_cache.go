@@ -75,7 +75,7 @@ func encodeKeyParts(parts ...string) string {
 	return string(buf)
 }
 
-func postingsKey(identity string, fpFilter index.FingerprintFilter, matchers []*labels.Matcher) string {
+func postingsKey(identity string, matchers []*labels.Matcher) string {
 	canonical := make([]labels.Matcher, len(matchers))
 	for i, matcher := range matchers {
 		canonical[i] = labels.Matcher{Type: matcher.Type, Name: matcher.Name, Value: matcher.Value}
@@ -105,15 +105,8 @@ func postingsKey(identity string, fpFilter index.FingerprintFilter, matchers []*
 		canonicalMatchers = append(canonicalMatchers, matcher.Value...)
 	}
 
-	shard := "all"
-	if fpFilter != nil {
-		shardFrom, shardThrough := fpFilter.GetFromThrough()
-		buf := make([]byte, 0, 2*binary.MaxVarintLen64)
-		buf = binary.AppendUvarint(buf, uint64(shardFrom))
-		buf = binary.AppendUvarint(buf, uint64(shardThrough))
-		shard = string(buf)
-	}
-	return encodeKeyParts(identity, string(canonicalMatchers), shard)
+	// A distinct key namespace separates complete results from legacy sharded entries.
+	return encodeKeyParts("unsharded-v1", identity, string(canonicalMatchers))
 }
 
 func encodePostings(key string, refs []storage.SeriesRef) ([]byte, error) {

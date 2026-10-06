@@ -951,3 +951,21 @@ func TestShardedPostings(t *testing.T) {
 	}
 	require.Equal(t, false, shardedPostings.Next())
 }
+
+func TestShardedPostingsSeekDoesNotEscapeShard(t *testing.T) {
+	for _, refs := range [][]storage.SeriesRef{{20}, {1, 20}, {10}, {}} {
+		for _, seek := range []bool{false, true} {
+			p := NewShardedPostings(NewListPostings(refs), NewShard(1, 4), FingerprintOffsets{
+				{0, 0}, {5, 1 << 62}, {10, 1 << 63}, {15, 3 << 62},
+			})
+			if seek {
+				require.False(t, p.Seek(5), "refs=%v", refs)
+			} else {
+				for p.Next() {
+					require.Less(t, p.At(), storage.SeriesRef(10), "refs=%v", refs)
+				}
+			}
+			require.NoError(t, p.Err())
+		}
+	}
+}

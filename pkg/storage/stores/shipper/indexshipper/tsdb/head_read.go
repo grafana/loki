@@ -226,3 +226,9 @@ func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, err
 	sort.Strings(names)
 	return names, nil
 }
+
+// ShardPostings leaves head postings unchanged: head references are not ordered
+// by fingerprint. Callers check exact fingerprints when reading series.
+func (h *headIndexReader) ShardPostings(p index.Postings, _ index.FingerprintFilter) index.Postings {
+	return p
+}

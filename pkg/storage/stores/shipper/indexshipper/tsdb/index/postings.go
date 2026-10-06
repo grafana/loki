@@ -894,7 +894,7 @@ func (sp *ShardedPostings) Seek(v storage.SeriesRef) (res bool) {
 	if v < storage.SeriesRef(sp.minOffset) {
 		v = storage.SeriesRef(sp.minOffset)
 	}
-	return sp.p.Seek(v)
+	return sp.p.Seek(v) && sp.p.At() < storage.SeriesRef(sp.maxOffset)
 }
 
 // At returns the value at the current iterator position.
