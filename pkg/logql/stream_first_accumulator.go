@@ -30,6 +30,27 @@ func newStepAccumulatorFuncFor(expr *syntax.RangeAggregationExpr) (newStepAccumu
 	}
 }
 
+// StreamFirstRangeAggregation returns the range aggregation of query, and true, when the engine
+// is capable of running query in stream-first sample order.
+func StreamFirstRangeAggregation(query string) (*syntax.RangeAggregationExpr, bool) {
+	expr, err := syntax.ParseExpr(query)
+	if err != nil {
+		return nil, false
+	}
+	vec, ok := expr.(*syntax.VectorAggregationExpr)
+	if !ok || vec.Operation != syntax.OpTypeSum {
+		return nil, false
+	}
+	rng, ok := vec.Left.(*syntax.RangeAggregationExpr)
+	if !ok {
+		return nil, false
+	}
+	if _, ok := newStepAccumulatorFuncFor(rng); !ok {
+		return nil, false
+	}
+	return rng, true
+}
+
 // countAccumulator counts the samples of each step.
 type countAccumulator struct {
 	// counts holds the +1/-1 marks before finish, with one extra slot after the last step. After

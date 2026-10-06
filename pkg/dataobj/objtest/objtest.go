@@ -49,6 +49,10 @@ type Option func(*builderOptions)
 
 type builderOptions struct {
 	targetSectionSize flagext.Bytes
+	targetPageSize    flagext.Bytes
+	targetObjectSize  flagext.Bytes
+	bufferSize        flagext.Bytes
+	maxPageRows       int
 }
 
 // WithTargetSectionSize targets the uncompressed data one logs section holds, so a small value
@@ -61,10 +65,34 @@ func WithTargetSectionSize(size flagext.Bytes) Option {
 	return func(o *builderOptions) { o.targetSectionSize = size }
 }
 
+// WithTargetPageSize targets the uncompressed data one encoded page holds. Zero keeps the
+// builder's default.
+func WithTargetPageSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.targetPageSize = size }
+}
+
+// WithTargetObjectSize targets the compressed, encoded data one object holds before Append
+// flushes it and starts a new one, so a small value splits a corpus across many objects instead
+// of the few the builder's default otherwise produces. Zero keeps the builder's default.
+func WithTargetObjectSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.targetObjectSize = size }
+}
+
+// WithBufferSize sets the size of the buffer the builder accumulates encoded data in before
+// flushing it. Zero keeps the builder's default.
+func WithBufferSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.bufferSize = size }
+}
+
+// WithMaxPageRows caps the row count of an encoded page. Zero keeps the builder's default.
+func WithMaxPageRows(rows int) Option {
+	return func(o *builderOptions) { o.maxPageRows = rows }
+}
+
 // Builder is a bucket holding logs data objects and index data objects. Append logs with
 // [Builder.Append], then call [Builder.Close] to write the indexes that make them resolvable.
 type Builder struct {
-	t      *testing.T // Test associated with the store
+	t      testing.TB // Test associated with the store
 	dir    string     // Actual directory holding data
 	logger log.Logger
 
@@ -79,7 +107,7 @@ type Builder struct {
 }
 
 // NewBuilder creates a builder that can be used for accumulating logs.
-func NewBuilder(t *testing.T, opts ...Option) *Builder {
+func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	var options builderOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -103,6 +131,18 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire the remaining defaults
 	if options.targetSectionSize > 0 {
 		builderConfig.TargetSectionSize = options.targetSectionSize
+	}
+	if options.targetPageSize > 0 {
+		builderConfig.TargetPageSize = options.targetPageSize
+	}
+	if options.targetObjectSize > 0 {
+		builderConfig.TargetObjectSize = options.targetObjectSize
+	}
+	if options.bufferSize > 0 {
+		builderConfig.BufferSize = options.bufferSize
+	}
+	if options.maxPageRows > 0 {
+		builderConfig.MaxPageRows = options.maxPageRows
 	}
 
 	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
