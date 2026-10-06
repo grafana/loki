@@ -27,7 +27,10 @@ const (
 )
 
 type Config struct {
-	Enabled bool `yaml:"enabled" json:"enabled" doc:"description=Automatically shard streams to keep them under the per-stream rate limit. Sharding is dictated by the desired rate."`
+	// Enabled is a global-only setting: it can be set here or on the command line, but a tenant or
+	// policy override of it is ignored (see validation.Overrides.ShardStreams/PolicyShardStreams),
+	// with a warning logged at startup.
+	Enabled bool `yaml:"enabled" json:"enabled" doc:"deprecated|description=Automatically shard streams to keep them under the per-stream rate limit. Sharding is dictated by the desired rate. This can only be set globally; a per-tenant or per-policy override is ignored."`
 
 	TimeShardingEnabled bool `yaml:"time_sharding_enabled" json:"time_sharding_enabled" doc:"description=Automatically shard streams by adding a __time_shard__ label, with values calculated from the log timestamps divided by MaxChunkAge/2. This allows the out-of-order ingestion of very old logs. If both flags are enabled, time-based sharding will happen before rate-based sharding."`
 

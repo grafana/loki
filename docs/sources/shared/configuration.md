@@ -4695,8 +4695,9 @@ discover_generic_fields:
 
 # Define streams sharding behavior.
 shard_streams:
-  # Automatically shard streams to keep them under the per-stream rate limit.
-  # Sharding is dictated by the desired rate.
+  # Deprecated: Automatically shard streams to keep them under the per-stream
+  # rate limit. Sharding is dictated by the desired rate. This can only be set
+  # globally; a per-tenant or per-policy override is ignored.
   # CLI flag: -shard-streams.enabled
   [enabled: <boolean> | default = true]
 

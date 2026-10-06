@@ -37,6 +37,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `shard_streams.enabled` can no longer be overwritten per tenant or policy
+
+The configuration option `shard_streams.enabled` has become a global-only setting: it can still be set in `limits_config` or on the command line, but a per-tenant override or a per-policy override is ignored.
+Other `shard_streams` settings, such as `desired_rate` and `time_sharding_enabled`, remain overridable per tenant and per policy as before.
+If you relied on disabling stream sharding for a specific tenant or policy while leaving it enabled globally, that tenant or policy is now sharded too.
+
+The `shard_streams.enabled` setting has been deprecated and may be completely removed in a future Loki release.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
