@@ -58,6 +58,10 @@ func (*directExecutionStack) isQueryShardingSupported() bool {
 	return false
 }
 
+func (s *directExecutionStack) isStreamFirstEnabled() bool {
+	return s.limits.StreamFirstExecutionEnabled(tenant)
+}
+
 func (*directExecutionStack) isEvalSupported(evalCmd, expectations) bool {
 	return true
 }

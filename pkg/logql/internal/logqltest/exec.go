@@ -55,6 +55,8 @@ type executionStack interface {
 	eval(cmd evalCmd) (logqlmodel.Result, error)
 	// isQueryShardingSupported reports whether this stack runs queries with sharding enabled.
 	isQueryShardingSupported() bool
+	// isStreamFirstEnabled reports whether this stack runs eligible queries in stream-first order.
+	isStreamFirstEnabled() bool
 	// isEvalSupported reports whether this stack can run the given cmd and exp.
 	isEvalSupported(cmd evalCmd, exp expectations) bool
 }

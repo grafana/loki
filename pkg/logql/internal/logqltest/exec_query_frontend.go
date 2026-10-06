@@ -231,6 +231,10 @@ func (s *queryFrontendExecutionStack) isQueryShardingSupported() bool {
 	return s.queryShardingEnabled
 }
 
+func (s *queryFrontendExecutionStack) isStreamFirstEnabled() bool {
+	return s.limits.StreamFirstExecutionEnabled(tenant)
+}
+
 func (*queryFrontendExecutionStack) isEvalSupported(_ evalCmd, exp expectations) bool {
 	// A scalar cannot round-trip the response codec.
 	return exp.scalar == nil
