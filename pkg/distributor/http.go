@@ -224,10 +224,12 @@ func (d *Distributor) logPushRequestStreams(
 
 // ServeHTTP implements the distributor ring status page.
 //
-// If the rate limiting strategy is local instead of global, no ring is used by
-// the distributor and as such, no ring status is returned from this function.
+// The ring is used by the global strategy and by the shadow strategy, which
+// enforces through the same ring while the external throttler only observes.
+// For local and exact there is no distributor ring, and as such, no ring
+// status is returned from this function.
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if d.rateLimitStrat == validation.GlobalIngestionRateStrategy {
+	if d.rateLimitStrat == validation.GlobalIngestionRateStrategy || d.rateLimitStrat == validation.ShadowIngestionRateStrategy {
 		d.distributorsLifecycler.ServeHTTP(w, r)
 		return
 	}

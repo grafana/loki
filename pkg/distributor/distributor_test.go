@@ -3320,10 +3320,11 @@ func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) 
 }
 
 // prepareGlobalThrottlerDistributor builds a single, real, running Distributor configured for
-// validation.ExactIngestionRateStrategy, backed by a real external throttler server
-// (server.NewTextServer over server.NewInMemoryThrottler) started on an ephemeral local port --
-// as opposed to prepareButDontStart, which is shared by the local/ring-based "global" cases and
-// has no use for either a throttler server or a distributor-side ring here.
+// validation.ExactIngestionRateStrategy (or ShadowIngestionRateStrategy, whichever limits
+// selects), backed by a real external throttler server (server.NewTextServer over
+// server.NewInMemoryThrottler) started on an ephemeral local port -- as opposed to
+// prepareButDontStart, which is shared by the local/ring-based "global" cases and has no use
+// for a throttler server.
 func prepareGlobalThrottlerDistributor(t *testing.T, limits *validation.Limits) *Distributor {
 	t.Helper()
 
@@ -3382,6 +3383,9 @@ func prepareGlobalThrottlerDistributor(t *testing.T, limits *validation.Limits) 
 	var distributorConfig Config
 	var clientConfig client.Config
 	flagext.DefaultValues(&distributorConfig, &clientConfig)
+	// Only the shadow strategy actually uses a distributor ring; exact never reads these.
+	distributorConfig.DistributorRing.InstanceID = strconv.Itoa(rand.Int())
+	distributorConfig.DistributorRing.KVStore.Mock = kvStore
 	distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
 	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
 	distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {

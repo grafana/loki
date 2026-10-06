@@ -63,6 +63,25 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NotContains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 	})
 
+	t.Run("renders ring status for shadow rate limiting, which enforces through the ring", func(t *testing.T) {
+		shadowLimits := &validation.Limits{}
+		flagext.DefaultValues(shadowLimits)
+		shadowLimits.IngestionRateStrategy = validation.ShadowIngestionRateStrategy
+		d := prepareGlobalThrottlerDistributor(t, shadowLimits)
+
+		svr := httptest.NewServer(http.HandlerFunc(d.ServeHTTP))
+		defer svr.Close()
+
+		resp, err := svr.Client().Get(svr.URL)
+		require.NoError(t, err)
+
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "<th>Instance ID</th>")
+		require.NotContains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
+	})
+
 	t.Run("doesn't return ring status for local rate limiting", func(t *testing.T) {
 		limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
 		svr := runServer()
