@@ -2,7 +2,10 @@ package distributor
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/grafana/dskit/limiter"
 	"golang.org/x/time/rate"
@@ -137,6 +140,7 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 		if b.hasOverride {
 			key = encodeRateLimitKey(tenantID, b.policy)
 		}
+		key = escapeThrottlerKey(key)
 
 		order = append(order, b)
 		entries = append(entries, throttler.RequestEntry{
@@ -173,6 +177,42 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 		}
 	}
 	return exceeded, err
+}
+
+// escapeThrottlerKey makes key safe to send to the external throttler, whose
+// wire protocol forbids keys containing whitespace or '|' -- its client
+// reports such an entry as throttled unconditionally, even with fail_open,
+// which would turn every push for that bucket into a permanent 429 (and the
+// request's other buckets would still be charged). Tenant IDs can't contain
+// those characters (see tenant.ValidTenantID), but policy names come from
+// operator config and are unconstrained.
+//
+// Offending characters, and '%' itself, are percent-escaped byte by byte, so
+// the mapping is injective -- two different keys never collide into one
+// bucket -- and a key with none of them (every valid tenant ID, and any
+// ordinary policy name) is returned unchanged.
+func escapeThrottlerKey(key string) string {
+	needsEscape := func(r rune) bool { return r == '%' || r == '|' || unicode.IsSpace(r) }
+	if !strings.ContainsFunc(key, needsEscape) {
+		return key
+	}
+
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(key); {
+		r, size := utf8.DecodeRuneInString(key[i:])
+		if r != utf8.RuneError && needsEscape(r) {
+			for _, c := range []byte(key[i : i+size]) {
+				b.WriteByte('%')
+				b.WriteByte(hex[c>>4])
+				b.WriteByte(hex[c&0xF])
+			}
+		} else {
+			b.WriteString(key[i : i+size])
+		}
+		i += size
+	}
+	return b.String()
 }
 
 // shadowTimeout bounds how long a shadow check may run once detached from

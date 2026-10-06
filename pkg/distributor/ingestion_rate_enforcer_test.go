@@ -3,8 +3,10 @@ package distributor
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -317,4 +319,54 @@ func (b *blockingThrottleCaller) Throttle(ctx context.Context, _ string, entries
 		results[i] = throttler.ResponseEntry{Key: e.Key}
 	}
 	return results, nil
+}
+
+func TestEscapeThrottlerKey(t *testing.T) {
+	forbidden := func(key string) bool {
+		return strings.ContainsFunc(key, func(r rune) bool { return r == '|' || unicode.IsSpace(r) })
+	}
+
+	t.Run("keys without forbidden characters are unchanged", func(t *testing.T) {
+		for _, key := range []string{"t1", "t1:premium", "tenant-1.a_b*(x)!'", "t1:team:finance:eu"} {
+			require.Equal(t, key, escapeThrottlerKey(key))
+		}
+	})
+
+	t.Run("whitespace and pipe are escaped", func(t *testing.T) {
+		for _, key := range []string{"t1:a b", "t1:a|b", "t1:a\tb", "t1:a\u00a0b", "t1:a\u2003b", "t1:a\vb"} {
+			got := escapeThrottlerKey(key)
+			require.False(t, forbidden(got), "%q escaped to %q", key, got)
+		}
+		require.Equal(t, "t1:a%20b%7Cc", escapeThrottlerKey("t1:a b|c"))
+	})
+
+	t.Run("escaping is injective", func(t *testing.T) {
+		// A policy literally containing the escape sequence must not collide with the one it escapes to.
+		require.NotEqual(t, escapeThrottlerKey("t1:a b"), escapeThrottlerKey("t1:a%20b"))
+		require.Equal(t, "t1:a%2520b", escapeThrottlerKey("t1:a%20b"))
+	})
+
+	t.Run("enforce sends only valid keys for a policy with forbidden characters", func(t *testing.T) {
+		limits, err := validation.NewOverrides(validation.Limits{
+			IngestionRateMB:      1.0,
+			IngestionBurstSizeMB: 2.0,
+			PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+				"my policy|x": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(10.0)},
+			},
+		}, nil)
+		require.NoError(t, err)
+
+		caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+		e := newThrottlerEnforcer(limits, caller)
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+			"":            {policy: "", bytes: 100, lines: 1},
+			"my policy|x": {policy: "my policy|x", hasOverride: true, bytes: 200, lines: 2},
+		})
+		require.NoError(t, err)
+		require.Empty(t, exceeded)
+		require.Len(t, caller.gotEntries, 2)
+		for _, entry := range caller.gotEntries {
+			require.False(t, forbidden(entry.Key), "sent key %q", entry.Key)
+		}
+	})
 }
