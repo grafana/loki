@@ -66,6 +66,10 @@ func HasKey(key string, raw []byte) bool {
 		if UnsafeString(field) == key {
 			return true
 		}
+		bts, err = Skip(bts)
+		if err != nil {
+			return false
+		}
 	}
 	return false
 }

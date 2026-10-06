@@ -184,7 +184,7 @@ type Writer struct {
 	//
 	// For parallel uploads, progress is reported when each part is successfully uploaded.
 	// Therefore, the progress may be delayed relative to the standard upload,
-	// and jump in increments of PartSize (e.g. 16MiB).
+	// and jump in increments of the part size used (e.g. 16MiB).
 	//
 	// ProgressFunc should return quickly without blocking.
 	ProgressFunc func(int64)

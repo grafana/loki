@@ -75,6 +75,7 @@ func (l *Loki) initStoreChunkFilterer() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing store chunk filterer")
 	filterer := labelaccess.RequestChunkFilterer{}
 	l.Store.SetChunkFilterer(&filterer)
+	l.lbacChunkFilterer = &filterer
 	return nil, nil
 }
 

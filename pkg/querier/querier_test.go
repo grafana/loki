@@ -235,9 +235,13 @@ func TestQuerier_HintRanges(t *testing.T) {
 				Config{QueryStoreOnly: true},
 				store,
 				nil,
+				nil,
 				limits,
 				&mockDeleteGettter{},
 				log.NewNopLogger(),
+				nil,
+				0,
+				0,
 			)
 			require.NoError(t, err)
 
@@ -290,9 +294,13 @@ func TestQuerier_HintRanges(t *testing.T) {
 				Config{QueryStoreOnly: true},
 				store,
 				nil,
+				nil,
 				limits,
 				&mockDeleteGettter{},
 				log.NewNopLogger(),
+				nil,
+				0,
+				0,
 			)
 			require.NoError(t, err)
 
@@ -1531,7 +1539,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, log.NewNopLogger())
+	return New(cfg, store, nil, iq, limits, dg, log.NewNopLogger(), nil, 0, 0)
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
@@ -1924,5 +1932,231 @@ func BenchmarkQuerierDetectedLabels(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := querier.DetectedLabels(ctx, &request)
 		assert.NoError(b, err)
+	}
+}
+
+func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
+	var (
+		now        = time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+		storageLag = 3 * time.Hour
+		lagEdge    = now.Add(-storageLag)
+		hour       = func(h int) time.Time { return time.Date(2026, 1, 10, h, 0, 0, 0, time.UTC) }
+	)
+
+	type timeRange struct{ start, end time.Time }
+
+	// selectRanges returns the time ranges the chunk store and the data-object store were asked
+	// for, when the querier reads the store leg of a request from start to end.
+	selectRanges := func(t *testing.T, tenantStart time.Time, withDataObjStore bool, order logproto.SampleOrder, start, end time.Time) (chunks, dataObjs []timeRange) {
+		t.Helper()
+		chunkStore, dataObjStore := &mockStore{}, &mockStore{}
+
+		var querierDataObjStore Store
+		if withDataObjStore {
+			querierDataObjStore = dataObjStore
+		}
+		cfg := Config{DataObjStorageLag: storageLag}
+		q, err := New(cfg, chunkStore, querierDataObjStore, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: tenantStart}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0)
+		require.NoError(t, err)
+		q.now = func() time.Time { return now }
+
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: start, End: end, Order: order}}
+		ctx := user.InjectOrgID(context.Background(), "tenant")
+		store, err := q.storeForSelectSamples(ctx, params)
+		require.NoError(t, err)
+		it, err := store.SelectSamples(ctx, params)
+		require.NoError(t, err)
+		require.NoError(t, it.Close())
+
+		for _, req := range chunkStore.receivedSampleReqs {
+			chunks = append(chunks, timeRange{req.Start.UTC(), req.End.UTC()})
+		}
+		for _, req := range dataObjStore.receivedSampleReqs {
+			dataObjs = append(dataObjs, timeRange{req.Start.UTC(), req.End.UTC()})
+		}
+		return chunks, dataObjs
+	}
+
+	t.Run("reads only chunks for a tenant without a data-object start time", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, time.Time{}, true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks for a timestamp-first request", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), true, logproto.SAMPLE_ORDER_BY_TIMESTAMP, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks when the querier has no data-object store", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), false, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads data objects for a tenant start time at the Unix epoch", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, time.Unix(0, 0).UTC(), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Empty(t, chunks)
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, dataObjs)
+	})
+
+	t.Run("reads data objects for a tenant start time before the Unix epoch", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, time.Unix(-3600, 0).UTC(), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Empty(t, chunks)
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, dataObjs)
+	})
+
+	t.Run("reads only data objects for a request inside the data-object range", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Empty(t, chunks)
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, dataObjs)
+	})
+
+	t.Run("reads chunks before the tenant start time and data objects after it", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(2), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(3))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Equal(t, []timeRange{{hour(2), hour(3)}}, dataObjs)
+	})
+
+	t.Run("reads data objects up to now minus the storage lag and chunks after it", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(8), now)
+		require.Equal(t, []timeRange{{lagEdge, now}}, chunks)
+		require.Equal(t, []timeRange{{hour(8), lagEdge}}, dataObjs)
+	})
+
+	t.Run("reads chunks before the tenant start time, data objects up to now minus the storage lag, and chunks after it", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(2), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), now)
+		require.Equal(t, []timeRange{{hour(1), hour(2)}, {lagEdge, now}}, chunks)
+		require.Equal(t, []timeRange{{hour(2), lagEdge}}, dataObjs)
+	})
+
+	t.Run("reads only chunks for a request that ends exactly at the tenant start time", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(2), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks for a request that starts exactly at now minus the storage lag", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), true, logproto.SAMPLE_ORDER_BY_STREAM, lagEdge, now)
+		require.Equal(t, []timeRange{{lagEdge, now}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("returns an error for a stream-first request without a tenant", func(t *testing.T) {
+		q, err := New(Config{DataObjStorageLag: storageLag}, &mockStore{}, &mockStore{}, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: hour(0)}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0)
+		require.NoError(t, err)
+
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: hour(1), End: hour(2), Order: logproto.SAMPLE_ORDER_BY_STREAM}}
+		_, err = q.storeForSelectSamples(context.Background(), params)
+		require.Error(t, err)
+	})
+
+	t.Run("reads only chunks for a request that ends before the tenant start time", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(3), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks for a request that starts after now minus the storage lag", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, hour(0), true, logproto.SAMPLE_ORDER_BY_STREAM, lagEdge.Add(time.Minute), now)
+		require.Equal(t, []timeRange{{lagEdge.Add(time.Minute), now}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks when the tenant start time is after now minus the storage lag", func(t *testing.T) {
+		chunks, dataObjs := selectRanges(t, lagEdge.Add(time.Minute), true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), now)
+		require.Equal(t, []timeRange{{hour(1), now}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+}
+
+func TestConfig_Validate(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		overrideConfig func(cfg *Config)
+		wantErr        string
+	}{
+		{
+			name:           "accepts the default config",
+			overrideConfig: func(*Config) {},
+		},
+		{
+			name: "rejects a querier that is both store-only and ingester-only",
+			overrideConfig: func(cfg *Config) {
+				cfg.QueryStoreOnly = true
+				cfg.QueryIngesterOnly = true
+			},
+			wantErr: "querier.query_store_only and querier.query_ingester_only cannot both be true",
+		},
+		{
+			name: "accepts any ingester lookback when data objects are disabled",
+			overrideConfig: func(cfg *Config) {
+				cfg.QueryIngestersWithin = 0
+			},
+		},
+		{
+			name: "accepts a store-only querier without an ingester lookback",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryStoreOnly = true
+				cfg.QueryIngestersWithin = 0
+			},
+		},
+		{
+			name: "accepts an ingester-only querier without an ingester lookback",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryIngesterOnly = true
+				cfg.QueryIngestersWithin = 0
+			},
+		},
+		{
+			name: "accepts a storage lag equal to the ingester lookback",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryIngestersWithin = 3 * time.Hour
+				cfg.DataObjStorageLag = 3 * time.Hour
+			},
+		},
+		{
+			name: "accepts a storage lag greater than the ingester lookback",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryIngestersWithin = 2 * time.Hour
+				cfg.DataObjStorageLag = 3 * time.Hour
+			},
+		},
+		{
+			name: "rejects a querier that sends every query to the ingesters",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryIngestersWithin = 0
+				cfg.DataObjStorageLag = 3 * time.Hour
+			},
+			wantErr: "querier.query_ingesters_within must be greater than 0",
+		},
+		{
+			name: "rejects a storage lag lower than the ingester lookback",
+			overrideConfig: func(cfg *Config) {
+				cfg.DataObjEnabled = true
+				cfg.QueryIngestersWithin = 3 * time.Hour
+				cfg.DataObjStorageLag = 2 * time.Hour
+			},
+			wantErr: "dataobj.storage_lag (2h0m0s) must not be lower than querier.query_ingesters_within (3h0m0s)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			tc.overrideConfig(&cfg)
+
+			err := cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
 	}
 }

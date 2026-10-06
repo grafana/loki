@@ -11,7 +11,10 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -220,12 +223,34 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		require.Len(t, got, len(manyStreams))
 	})
 
-	t.Run("another tenant's sections in the same object are not read", func(t *testing.T) {
-		store := newTestDataObjStore(t, []logproto.Stream{appStream},
-			withOtherTenantStream("other-tenant", logproto.Stream{
-				Labels:  `{app="a", env="prod"}`,
-				Entries: []push.Entry{entry(t, 1, "not mine"), entry(t, 2, "not mine either")},
-			}))
+	t.Run("another tenant's sections that come first in the same object are not read", func(t *testing.T) {
+		theirs := fixtures.NewLogsFixtureBuilder(t)
+		theirs.ForStream(appStream.Labels).Entry(1, "{}", "not mine").Entry(2, "{}", "not mine either")
+
+		mine := fixtures.NewLogsFixtureBuilder(t)
+		mine.ForStream(appStream.Labels).Entry(1, "{}", "one").Entry(2, "{}", "two").Entry(3, "{}", "three")
+
+		bucket := objstore.NewInMemBucket()
+		path := fixtures.StoredDataObject(t, bucket,
+			fixtures.StreamsSection(t, "other-tenant", theirs.Streams()),
+			fixtures.LogsSection(t, "other-tenant", theirs.Logs()),
+			fixtures.StreamsSection(t, objtest.Tenant, mine.Streams()),
+			fixtures.LogsSection(t, objtest.Tenant, mine.Logs()),
+		)
+
+		ms := &fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{{
+			SectionKey: metastore.SectionKey{ObjectPath: path, SectionIdx: 1},
+			StreamIDs:  []int64{mine.Streams()[0].ID},
+			RowCount:   len(mine.Logs()),
+			Start:      at(1),
+			End:        at(3),
+		}}}
+		dataObjStore, err := NewDataObjStore(&chunkStoreSpy{}, bucket, ms, nil)
+		require.Equal(t, int64(1), ms.descriptors[0].SectionIdx,
+			"this tenant's logs section comes after the other tenant's, so a read that counted from zero per tenant would return the other tenant's rows")
+		require.NoError(t, err)
+		store := &testDataObjStore{t: t, store: dataObjStore}
+
 		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
 		require.Equal(t, []sampleRow{
 			{Labels: `{app="a"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
@@ -354,6 +379,22 @@ func TestDataObjStore_Unwrap(t *testing.T) {
 			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
 		}, got)
 	})
+
+	t.Run("a failed conversion reports a sample with the grouped labels even with no __error__ filter", func(t *testing.T) {
+		store := newTestDataObjStore(t, []logproto.Stream{stream})
+
+		got := store.selectSamples(testCtx(t), `sum by (app) (sum_over_time({app="u"} | unwrap duration [1m]))`, at(0), at(10))
+		require.Equal(t, []sampleRow{
+			{
+				Labels:       `{__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"not-a-number\": invalid syntax", app="u"}`,
+				TimestampSec: 3,
+				Value:        0,
+				StreamHash:   streamHashOf(stream.Labels),
+			},
+			{Labels: `{app="u"}`, TimestampSec: 1, Value: 2, StreamHash: streamHashOf(stream.Labels)},
+			{Labels: `{app="u"}`, TimestampSec: 2, Value: 3, StreamHash: streamHashOf(stream.Labels)},
+		}, got)
+	})
 }
 
 // denyAppFilterer denies every stream whose app label has the given value.
@@ -375,6 +416,20 @@ func (f denyEverythingFilterer) ForRequest(context.Context) chunk.Filterer { ret
 func (f denyEverythingFilterer) ShouldFilter(labels.Labels) bool { return true }
 
 func (f denyEverythingFilterer) RequiredLabelNames() []string { return nil }
+
+// fixedMetastore returns the descriptors a test supplies from every Sections call. A test uses it
+// for an object that no real index can describe, such as one that holds two tenants: the index
+// Calculator rejects such an object. Its embedded Metastore is nil, so a call to any other
+// method panics rather than returning an empty answer.
+type fixedMetastore struct {
+	metastore.Metastore
+
+	descriptors metastore.DataobjSectionDescriptors
+}
+
+func (m *fixedMetastore) Sections(context.Context, metastore.SectionsRequest) (metastore.SectionsResponse, error) {
+	return metastore.SectionsResponse{Sections: m.descriptors}, nil
+}
 
 // chunkStoreSpy counts the SelectSamples calls that reach the chunk store.
 type chunkStoreSpy struct {
@@ -408,11 +463,9 @@ type testDataObjStore struct {
 }
 
 type testStoreOptions struct {
-	sectionSize       flagext.Bytes
-	flushEveryStream  bool
-	filterer          chunk.RequestChunkFilterer
-	otherTenant       string
-	otherTenantStream *logproto.Stream
+	sectionSize      flagext.Bytes
+	flushEveryStream bool
+	filterer         chunk.RequestChunkFilterer
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -431,15 +484,6 @@ func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
 	return func(o *testStoreOptions) { o.filterer = filterer }
 }
 
-// withOtherTenantStream writes a stream for a second tenant into the same objects, so a read
-// that miscounted the logs-relative section index would return that tenant's rows.
-func withOtherTenantStream(tenant string, stream logproto.Stream) testStoreOption {
-	return func(o *testStoreOptions) {
-		o.otherTenant = tenant
-		o.otherTenantStream = &stream
-	}
-}
-
 func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testStoreOption) *testDataObjStore {
 	t.Helper()
 
@@ -456,9 +500,6 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	builder := objtest.NewBuilder(t, builderOpts...)
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
 
-	if options.otherTenantStream != nil {
-		builder.AppendFor(ctx, options.otherTenant, *options.otherTenantStream)
-	}
 	for _, stream := range streams {
 		builder.Append(ctx, stream)
 		if options.flushEveryStream {

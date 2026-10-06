@@ -112,7 +112,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
 
-			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 		}
 
@@ -230,7 +230,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			require.NoError(b, err)
 
 			metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 
 			mstore := newTestObjectMetastore(bucket)

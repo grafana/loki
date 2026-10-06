@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -19,8 +20,9 @@ type Config struct {
 	// to the top-level Enabled flag opts the deployment in.
 	Compaction compactor.Config `yaml:"compaction"`
 	// StorageBucketPrefix is the prefix to use for the storage bucket.
-	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
-	Enabled             bool   `yaml:"enabled"`
+	StorageBucketPrefix string        `yaml:"storage_bucket_prefix"`
+	Enabled             bool          `yaml:"enabled"`
+	StorageLag          time.Duration `yaml:"storage_lag" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -39,6 +41,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"dataobj.enabled",
 		false,
 		"Enable data objects.",
+	)
+	f.DurationVar(
+		&cfg.StorageLag,
+		"dataobj.storage-lag",
+		3*time.Hour,
+		"Delay after which data objects hold all the data.",
 	)
 }
 

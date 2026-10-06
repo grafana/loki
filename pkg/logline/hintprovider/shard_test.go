@@ -449,7 +449,7 @@ func TestMergeSources_NormalizeRanges_BoundedGrowth(t *testing.T) {
 			Source: "index=2026-03-30/idx" + string(rune('A'+i%26)) + ",doc=0,min=x,max=y",
 		}
 	}
-	out := normalizeRanges(ranges)
+	out := NormalizeRanges(ranges)
 	require.Len(t, out, 1)
 	require.LessOrEqual(t, len(out[0].Source), maxMergedSourceLen)
 }

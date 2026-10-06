@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -85,7 +85,7 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	return obj, m.flushCloser, nil
 }
 
-func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
+func (m *mockBuilder) TimeRanges() []dataobj.TimeRange {
 	return m.builder.TimeRanges()
 }
 
@@ -135,31 +135,31 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 		return index.Result{}, err
 	}
 	return index.Result{
-		Path:       "index/" + objPath,
-		TimeRanges: []multitenancy.TimeRange{{Tenant: "test"}},
+		Path:      "index/" + objPath,
+		TimeRange: dataobj.TimeRange{Tenant: "test"},
 	}, nil
 }
 
 // mockTOCWriter implements the tocWriter interface, recording the entries it
 // was asked to write.
 type mockTOCWriter struct {
-	paths      []string
-	timeRanges [][]multitenancy.TimeRange
-	err        error
+	paths   []string
+	tenants []string
+	err     error
 	// afterWrite, if set, runs after an entry is recorded, letting tests act
 	// between updating the ToC and committing the offset.
 	afterWrite func()
 }
 
-func (m *mockTOCWriter) WriteEntry(_ context.Context, idxPath string, tenantTimeRanges []multitenancy.TimeRange) error {
+func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metastore.TableOfContentsEntry) error {
 	if m.afterWrite != nil {
 		defer m.afterWrite()
 	}
 	if m.err != nil {
 		return m.err
 	}
-	m.paths = append(m.paths, idxPath)
-	m.timeRanges = append(m.timeRanges, tenantTimeRanges)
+	m.paths = append(m.paths, entry.Path)
+	m.tenants = append(m.tenants, tenant)
 	return nil
 }
 
@@ -188,7 +188,7 @@ func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason
 type testBuilderFactory struct {
 	metrics *logsobj.BuilderMetrics
 	// created counts how many builders have been handed out. Tests use it to
-	// assert that builders are reused per window rather than recreated.
+	// assert that builders are reused per scope rather than recreated.
 	created int
 	// failAt, when non-negative, makes NewBuilder fail once created reaches
 	// this value. A value of -1 (the default) never fails.
@@ -207,25 +207,25 @@ func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
 	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
 }
 
-// mockMultiBuilder wraps the production [TOCAlignedMultiBuilder] so processor
+// mockMultiBuilder wraps the production [MultiObjectBuilder] so processor
 // tests can drive real builder behaviour while still being able to force the
 // group to report itself as full.
 type mockMultiBuilder struct {
-	*TOCAlignedMultiBuilder
+	*MultiObjectBuilder
 	forceFull bool
 }
 
 var _ multiBuilder = (*mockMultiBuilder)(nil)
 
 func (m *mockMultiBuilder) IsFull() bool {
-	return m.forceFull || m.TOCAlignedMultiBuilder.IsFull()
+	return m.forceFull || m.MultiObjectBuilder.IsFull()
 }
 
-// newTestMultiBuilder returns a multiBuilder backed by real per-window
+// newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
-		TOCAlignedMultiBuilder: NewTOCAlignedMultiBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
 	}
 }
 

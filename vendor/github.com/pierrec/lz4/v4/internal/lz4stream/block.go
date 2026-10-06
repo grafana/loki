@@ -175,13 +175,13 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				data, err := block.Uncompress(f, size.Get(), nil, false)
+				buf, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
 					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
 				} else {
-					c <- data
+					c <- buf
 				}
 			}()
 		}

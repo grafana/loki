@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -57,12 +57,39 @@ func TestFlushCommitter(t *testing.T) {
 		require.Equal(t, []*dataobj.Object{flusher.obj}, indexer.objs)
 		// The built index is recorded in the ToC before the offset is committed.
 		require.Equal(t, []string{"index/object_001"}, tocWriter.paths)
-		require.Equal(t, [][]multitenancy.TimeRange{{{Tenant: "test"}}}, tocWriter.timeRanges)
+		require.Equal(t, []string{"test"}, tocWriter.tenants)
 		require.Equal(t, []int64{1}, committer.offsets)
 		// The object is released once indexing is done with it.
 		require.Equal(t, 1, flusher.closer.closed)
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
 	})
+
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "should fail without retrying when the object is not single-tenant", err: index.ErrNotSingleTenant},
+		{name: "should fail without retrying when the error wraps ErrUnprocessableObject", err: fmt.Errorf("%w: test", index.ErrUnprocessableObject)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				reg            = prometheus.NewRegistry()
+				flusher        = &mockFlusher{obj: &dataobj.Object{}}
+				indexer        = &mockIndexer{errs: []error{fmt.Errorf("calculate object: %w", tc.err)}}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			)
+			b := newTestFlushBuilder(t, reg)
+			err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
+			require.ErrorIs(t, err, tc.err)
+			// A retry would have succeeded, as the mock only fails once.
+			require.Len(t, indexer.paths, 1)
+			require.Empty(t, tocWriter.paths)
+			require.Empty(t, committer.offsets)
+			requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
+		})
+	}
 
 	t.Run("should fail when the flush fails", func(t *testing.T) {
 		var (
@@ -92,7 +119,7 @@ func TestFlushCommitter(t *testing.T) {
 			committer      = &mockCommitter{}
 			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
 		)
-		// Build a slice of builders, mimicking a partition split across windows.
+		// Build a slice of builders, mimicking a partition split across tenants and windows.
 		var builders []builder
 		for i := 0; i < 3; i++ {
 			builders = append(builders, newTestFlushBuilder(t, prometheus.NewRegistry()))
@@ -100,7 +127,7 @@ func TestFlushCommitter(t *testing.T) {
 
 		require.NoError(t, flushCommitter.Flush(t.Context(), builders, "test", 7))
 		// Each builder is flushed and indexed separately, keeping one index
-		// object per window.
+		// object per tenant and window.
 		require.Equal(t, 3, flusher.flushes)
 		require.Equal(t, []string{"object_001", "object_002", "object_003"}, indexer.paths)
 		require.Equal(t, []string{"index/object_001", "index/object_002", "index/object_003"}, tocWriter.paths)

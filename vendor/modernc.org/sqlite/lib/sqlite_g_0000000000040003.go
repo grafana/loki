@@ -4,4 +4,4 @@
 
 package sqlite3
 
-const __USER_LABEL_PREFIX__ = 0
+const __USER_LABEL_PREFIX__ = "_"

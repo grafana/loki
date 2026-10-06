@@ -2,8 +2,11 @@ package metastore
 
 import (
 	"context"
+	"io"
 	"os"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -76,7 +80,9 @@ type testDataBuilder struct {
 	uploader *uploader.Uploader
 }
 
-func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) {
+// addStreamAndFlush flushes stream into its own object, records it in the
+// tenant's ToCs and returns the object's path.
+func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) string {
 	err := b.builder.Append(tenant, stream, now)
 	require.NoError(b.t, err)
 
@@ -88,7 +94,116 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
+	require.NoError(b.t, writeTimeRanges(context.Background(), b.meta, path, timeRanges))
+	return path
+}
+
+// getRecordingBucket records the names of every object read through Get.
+type getRecordingBucket struct {
+	objstore.Bucket
+
+	mtx   sync.Mutex
+	names []string
+}
+
+func (b *getRecordingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	b.mtx.Lock()
+	b.names = append(b.names, name)
+	b.mtx.Unlock()
+	return b.Bucket.Get(ctx, name)
+}
+
+func (b *getRecordingBucket) tocReads() []string {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	var out []string
+	for _, name := range b.names {
+		if strings.HasPrefix(name, TocPrefix) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
+	const (
+		tenantA = "tenant-a"
+		tenantB = "tenant-b"
+	)
+
+	builder := newTestDataBuilder(t)
+	var pathsA, pathsB []string
+	for _, stream := range testStreams {
+		pathsA = append(pathsA, builder.addStreamAndFlush(tenantA, stream))
+		pathsB = append(pathsB, builder.addStreamAndFlush(tenantB, logproto.Stream{
+			Labels:  `{app="only-in-b"}`,
+			Entries: stream.Entries,
+		}))
+	}
+
+	var (
+		start = now.Add(-24 * time.Hour)
+		end   = now.Add(24 * time.Hour)
+	)
+
+	// Tenant B's objects are reachable through its own ToCs, so tenant A not
+	// seeing them below is down to ToC isolation rather than missing data.
+	gotB, err := newTestObjectMetastore(builder.bucket).DataObjects(user.InjectOrgID(context.Background(), tenantB), start, end)
+	require.NoError(t, err)
+	require.ElementsMatch(t, pathsB, gotB)
+
+	for _, tc := range []struct {
+		name  string
+		query func(ctx context.Context, t *testing.T, mstore *ObjectMetastore)
+	}{
+		{
+			name: "GetIndexes",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				resp, err := mstore.GetIndexes(ctx, GetIndexesRequest{Start: start, End: end})
+				require.NoError(t, err)
+				require.NotEmpty(t, resp.TableOfContentsPaths)
+				for _, path := range resp.TableOfContentsPaths {
+					require.True(t, strings.HasSuffix(path, "/"+tenantA+"/toc.toc"), "unexpected ToC path %s", path)
+				}
+				var got []string
+				for _, idx := range resp.Indexes {
+					got = append(got, idx.Path)
+				}
+				require.ElementsMatch(t, pathsA, got)
+			},
+		},
+		{
+			name: "DataObjects",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				got, err := mstore.DataObjects(ctx, start, end)
+				require.NoError(t, err)
+				require.ElementsMatch(t, pathsA, got)
+			},
+		},
+		{
+			name: "Values",
+			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
+				got, err := mstore.Values(ctx, start, end)
+				require.NoError(t, err)
+				require.NotContains(t, got, "only-in-b")
+				require.Contains(t, got, "foo")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := &getRecordingBucket{Bucket: builder.bucket}
+			mstore := newTestObjectMetastore(bucket)
+			ctx := user.InjectOrgID(context.Background(), tenantA)
+
+			tc.query(ctx, t, mstore)
+
+			tocReads := bucket.tocReads()
+			require.NotEmpty(t, tocReads)
+			for _, name := range tocReads {
+				require.True(t, strings.HasSuffix(name, "/"+tenantA+"/toc.toc"), "read ToC %s of another tenant", name)
+			}
+		})
+	}
 }
 
 func TestLabels(t *testing.T) {
@@ -244,23 +359,9 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Add one more stream for a different tenant to ensure it is not resolved.
-	altTenant := "tenant-alt"
-	altTenantSection := int64(99) // Emulate a different section from a log object that doesn't collide with the main tenant's section
-	newIdx, err := builder.AppendStream(altTenant, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
-	err = builder.ObserveLogLine(altTenant, "test-path", altTenantSection, newIdx, 1, now.Add(-2*time.Hour), 5)
-	require.NoError(t, err)
-
 	// Build and store the object
 	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 2)
+	require.Len(t, timeRanges, 1)
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -275,7 +376,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -356,9 +457,6 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
-			for _, section := range sectionsResp.Sections {
-				require.NotEqual(t, section.SectionIdx, altTenantSection)
-			}
 		})
 	}
 }
@@ -414,7 +512,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -546,7 +644,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -975,4 +1073,132 @@ func TestCollectSections_PostingsAndLegacyParity(t *testing.T) {
 	require.Equal(t, legacyDesc.SectionKey, postingsDesc.SectionKey)
 	require.ElementsMatch(t, legacyDesc.StreamIDs, postingsDesc.StreamIDs)
 	require.ElementsMatch(t, legacyDesc.AmbiguousPredicates, postingsDesc.AmbiguousPredicates)
+}
+
+func TestIterTableOfContentsPaths(t *testing.T) {
+	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		name     string
+		start    time.Time
+		end      time.Time
+		expected []string
+	}{
+		{
+			name:     "within single window",
+			start:    now,
+			end:      now.Add(1 * time.Hour),
+			expected: []string{"tocs/2025-01-01T12_00_00Z/tenant/toc.toc"},
+		},
+		{
+			name:     "same start and end",
+			start:    now,
+			end:      now,
+			expected: []string{"tocs/2025-01-01T12_00_00Z/tenant/toc.toc"},
+		},
+		{
+			name:  "begin at start of window",
+			start: now.Add(-3 * time.Hour),
+			end:   now,
+			expected: []string{
+				"tocs/2025-01-01T12_00_00Z/tenant/toc.toc",
+			},
+		},
+		{
+			name:  "end at start of next window",
+			start: now.Add(-4 * time.Hour),
+			end:   now.Add(-3 * time.Hour),
+			expected: []string{
+				"tocs/2025-01-01T00_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant/toc.toc",
+			},
+		},
+		{
+			name:  "start and end in different windows",
+			start: now.Add(-12 * time.Hour),
+			end:   now,
+			expected: []string{
+				"tocs/2025-01-01T00_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-01T12_00_00Z/tenant/toc.toc",
+			},
+		},
+		{
+			name:  "span several windows",
+			start: now,
+			end:   now.Add(48 * time.Hour),
+			expected: []string{
+				"tocs/2025-01-01T12_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-02T00_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-02T12_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-03T00_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-03T12_00_00Z/tenant/toc.toc",
+			},
+		},
+		{
+			name:  "start and end in different years",
+			start: time.Date(2024, 12, 31, 3, 0, 0, 0, time.UTC),
+			end:   time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC),
+			expected: []string{
+				"tocs/2024-12-31T00_00_00Z/tenant/toc.toc",
+				"tocs/2024-12-31T12_00_00Z/tenant/toc.toc",
+				"tocs/2025-01-01T00_00_00Z/tenant/toc.toc",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			iter := IterTableOfContentsPaths("tenant", tc.start, tc.end)
+			actual := []string{}
+			for path := range iter {
+				actual = append(actual, path)
+			}
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestTableOfContentsPath(t *testing.T) {
+	window := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, "tocs/2025-01-01T12_00_00Z/", TableOfContentsWindowPrefix(window))
+	require.Equal(t, "tocs/2025-01-01T12_00_00Z/tenant/toc.toc", TableOfContentsPath("tenant", window))
+}
+
+func TestListTableOfContentsTenants(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		bucket func(t *testing.T) objstore.Bucket
+	}{
+		{name: "in-memory", bucket: func(*testing.T) objstore.Bucket { return objstore.NewInMemBucket() }},
+		{name: "filesystem", bucket: func(t *testing.T) objstore.Bucket {
+			bucket, err := filesystem.NewBucket(t.TempDir())
+			require.NoError(t, err)
+			return bucket
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				ctx    = t.Context()
+				window = time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+				other  = window.Add(MetastoreWindowSize)
+				bucket = tc.bucket(t)
+			)
+			for _, name := range []string{
+				TableOfContentsPath("tenant-b", window),
+				TableOfContentsPath("tenant-a", window),
+				TableOfContentsPath("tenant-c", other),
+				TableOfContentsWindowPrefix(window) + "not-a-toc.txt",
+				// A shared ToC from before ToCs were split per tenant.
+				"tocs/2025-01-01T12_00_00Z.toc",
+			} {
+				require.NoError(t, bucket.Upload(ctx, name, strings.NewReader("")))
+			}
+
+			tenants, err := ListTableOfContentsTenants(ctx, bucket, window)
+			require.NoError(t, err)
+			require.Equal(t, []string{"tenant-a", "tenant-b"}, tenants)
+
+			tenants, err = ListTableOfContentsTenants(ctx, bucket, window.Add(-MetastoreWindowSize))
+			require.NoError(t, err)
+			require.Empty(t, tenants)
+		})
+	}
 }

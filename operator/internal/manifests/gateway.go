@@ -321,7 +321,8 @@ func NewPassthroughGatewayDeployment(opts Options) *appsv1.Deployment {
 					Limits:   opts.ResourceRequirements.Gateway.Limits,
 					Requests: opts.ResourceRequirements.Gateway.Requests,
 				},
-				Args: args,
+				Command: []string{"/bin/passthrough-gateway"},
+				Args:    args,
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          gatewayInternalPortName,
@@ -556,7 +557,7 @@ func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, 
 
 	// TODO remove nolint and reformat once updated to Go 1.27
 	return &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{ //nolint:gci,goimports
+			TypeMeta: metav1.TypeMeta{ //nolint:gci,gofumpt,goimports
 				Kind:       "ConfigMap",
 				APIVersion: corev1.SchemeGroupVersion.String(),
 			},

@@ -1235,8 +1235,8 @@ func (r *LogRangeExpr) HasUnwrapPostFilterOnErrorLabel() bool {
 	}
 
 	for _, f := range r.Unwrap.PostFilters {
-		// It reads the hints rather than the required label names, because the hints are what the
-		// pipeline reads to decide whether the query keeps the errored lines.
+		// ReadsErrorLabel is true for any filter that touches __error__ or __error_details__,
+		// whether it asks to keep or to drop the errored lines.
 		if f.Hints().ReadsErrorLabel {
 			return true
 		}

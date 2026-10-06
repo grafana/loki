@@ -8,15 +8,21 @@ const EOF = -1
 
 const FOPEN_MAX = 20
 
-const HUGE_VAL = 0
+const IOC_IN = 2147483648
 
-const HUGE_VALL = 0
+const IOC_INOUT = 3221225472
+
+const IOC_OUT = 1073741824
+
+const IOC_VOID = 536870912
 
 const SEEK_CUR = 1
 
 const SEEK_END = 2
 
 const SEEK_SET = 0
+
+const SIOCATMARK = 1074033415
 
 const SQLITE_MUTEX_NOOP = 1
 

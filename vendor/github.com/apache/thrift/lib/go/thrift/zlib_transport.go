@@ -30,6 +30,7 @@ import (
 type TZlibTransportFactory struct {
 	level   int
 	factory TTransportFactory
+	cfg     *TConfiguration
 }
 
 // TZlibTransport is a TTransport implementation that makes use of zlib compression.
@@ -46,14 +47,23 @@ type TZlibTransport struct {
 func (p *TZlibTransportFactory) GetTransport(trans TTransport) (TTransport, error) {
 	if p.factory != nil {
 		// wrap other factory
+		PropagateTConfiguration(trans, p.cfg)
 		var err error
 		trans, err = p.factory.GetTransport(trans)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return NewTZlibTransport(trans, p.level)
+	return NewTZlibTransportConf(trans, p.level, p.cfg)
 }
+
+// SetTConfiguration implements TConfigurationSetter for propagation.
+func (p *TZlibTransportFactory) SetTConfiguration(conf *TConfiguration) {
+	PropagateTConfiguration(p.factory, conf)
+	p.cfg = conf
+}
+
+var _ TConfigurationSetter = (*TZlibTransportFactory)(nil)
 
 // NewTZlibTransportFactory constructs a new instance of NewTZlibTransportFactory
 func NewTZlibTransportFactory(level int) *TZlibTransportFactory {
@@ -64,6 +74,24 @@ func NewTZlibTransportFactory(level int) *TZlibTransportFactory {
 // as a wrapper over existing transport factory
 func NewTZlibTransportFactoryWithFactory(level int, factory TTransportFactory) *TZlibTransportFactory {
 	return &TZlibTransportFactory{level: level, factory: factory}
+}
+
+// NewTZlibTransportFactoryConf constructs a new instance of TZlibTransportFactory
+// whose transports use conf, as a wrapper over factory if it is not nil
+func NewTZlibTransportFactoryConf(level int, factory TTransportFactory, conf *TConfiguration) *TZlibTransportFactory {
+	PropagateTConfiguration(factory, conf)
+	return &TZlibTransportFactory{level: level, factory: factory, cfg: conf}
+}
+
+// NewTZlibTransportConf constructs a new instance of TZlibTransport that uses
+// conf, and passes conf on to trans
+func NewTZlibTransportConf(trans TTransport, level int, conf *TConfiguration) (*TZlibTransport, error) {
+	z, err := NewTZlibTransport(trans, level)
+	if err != nil {
+		return nil, err
+	}
+	z.SetTConfiguration(conf)
+	return z, nil
 }
 
 // NewTZlibTransport constructs a new instance of TZlibTransport
@@ -136,8 +164,12 @@ func (z *TZlibTransport) Read(p []byte) (int, error) {
 
 // RemainingBytes returns the size in bytes of the data that is still to be
 // read.
+//
+// The underlying transport counts compressed bytes, which are no bound on the
+// bytes this transport can still produce, so the answer is always
+// UnknownRemainingBytes.
 func (z *TZlibTransport) RemainingBytes() uint64 {
-	return z.transport.RemainingBytes()
+	return UnknownRemainingBytes
 }
 
 func (z *TZlibTransport) Write(p []byte) (int, error) {

@@ -111,8 +111,9 @@ func (p *LoglineHintProvider) executeQuery(
 	filters []string,
 	overlapping []store.Meta,
 	stats *QueryStats,
+	ngramLength, maxParallel int,
 ) (map[shardKey][]HintTimeRange, error) {
-	jobs, metasByID, err := buildTermJobs(filters, overlapping, p.ngramLength)
+	jobs, metasByID, err := buildTermJobs(filters, overlapping, ngramLength)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,7 @@ func (p *LoglineHintProvider) executeQuery(
 		return byShard, nil
 	}
 
-	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats)
+	readersByID, err := p.openReadersForMetas(ctx, metasByID, stats, maxParallel)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func (p *LoglineHintProvider) executeQuery(
 
 	state := newQueryExecutionState(readersByID)
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 
 	for _, job := range jobs {
 		if !state.shouldEnqueue(job.readerID) {
@@ -266,7 +267,7 @@ func buildTermJobs(
 	// the whole query passes through to a full Loki scan.
 	for _, ok := range hasTerms {
 		if !ok {
-			return nil, nil, ErrUnsupported
+			return nil, nil, ErrUnconstrained
 		}
 	}
 	return jobs, metasByID, nil
@@ -276,6 +277,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 	ctx context.Context,
 	metasByID map[string]store.Meta,
 	stats *QueryStats,
+	maxParallel int,
 ) (map[string]*readerResult, error) {
 	readersByID := make(map[string]*readerResult, len(metasByID))
 	if len(metasByID) == 0 {
@@ -284,7 +286,7 @@ func (p *LoglineHintProvider) openReadersForMetas(
 
 	var mu sync.Mutex
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(p.maxParallel)
+	g.SetLimit(maxParallel)
 	for readerID, meta := range metasByID {
 		g.Go(func() error {
 			if gCtx.Err() != nil {

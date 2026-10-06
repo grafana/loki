@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -51,8 +50,8 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetSectionSize: 1,
 }
 
-// createTestLogObject creates a test data object with both streams and logs sections
-func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
+// testLogsFixture returns two streams with two entries each, at seconds 10 to 25.
+func testLogsFixture(t *testing.T) *fixtures.LogFixtureBuilder {
 	t.Helper()
 
 	lr := fixtures.NewLogsFixtureBuilder(t)
@@ -62,6 +61,16 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	lr.ForStream(`{cluster="test",app="bar",env="dev"}`).
 		Entry(20, `{trace_id="abc",user_id="user123"}`, "hello from bar").
 		Entry(25, `{trace_id="def",level="error"}`, "error message from bar")
+	return lr
+}
+
+// createTestLogObject creates a test data object with a logs and a streams
+// section for each of the tenants "tenant-0" to "tenant-<tenants-1>", in that
+// order.
+func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
+	t.Helper()
+
+	lr := testLogsFixture(t)
 
 	var allTenantSections []dataobj.SectionBuilder
 	for i := range tenants {
@@ -231,38 +240,38 @@ func TestCalculator_Calculate(t *testing.T) {
 	})
 }
 
-func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testing.T) {
+func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	ctx := context.Background()
-	const path = "objects/section-index-test"
+	const (
+		path   = "objects/section-index-test"
+		tenant = "A"
+	)
 	sourceBuilder := dataobj.NewBuilder(nil)
-	// Physical sections: streams A, logs A, logs A, streams B, logs B, logs B.
-	// References must be 0,1 for A and 2,3 for B, rather than physical indexes
-	// 1,2,4,5 or tenant-local indexes 0,1 for both tenants.
-	for _, tenant := range []string{"A", "B"} {
-		streamBuilder := streams.NewBuilder(nil, 2048, 10000)
-		streamBuilder.SetTenant(tenant)
-		ts := time.Unix(10, 0).UTC()
-		id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
-		require.NoError(t, sourceBuilder.Append(streamBuilder))
-		for range 2 {
-			logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-				PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
-			})
-			logBuilder.SetTenant(tenant)
-			logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line"), Metadata: labels.FromStrings("trace_id", "trace")})
-			require.NoError(t, sourceBuilder.Append(logBuilder))
-		}
+	ts := time.Unix(10, 0).UTC()
+	streamBuilder := streams.NewBuilder(nil, 2048, 10000)
+	streamBuilder.SetTenant(tenant)
+	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
+	appendLogsSection := func() {
+		logBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint: 2048, BufferSize: 2048, StripeMergeLimit: 2, SortOrder: logs.SortStreamASC,
+		})
+		logBuilder.SetTenant(tenant)
+		logBuilder.Append(logs.Record{StreamID: id, Timestamp: ts, Line: []byte("line"), Metadata: labels.FromStrings("trace_id", "trace")})
+		require.NoError(t, sourceBuilder.Append(logBuilder))
 	}
+	// Physical sections: logs, streams, logs. References must be 0 and 1,
+	// rather than physical indexes 0 and 2.
+	appendLogsSection()
+	require.NoError(t, sourceBuilder.Append(streamBuilder))
+	appendLogsSection()
+
 	source, sourceCloser, err := sourceBuilder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sourceCloser.Close()) })
-	require.Len(t, source.Sections(), 6)
-	for _, i := range []int{0, 3} {
-		require.True(t, streams.CheckSection(source.Sections()[i]))
-	}
-	for _, i := range []int{1, 2, 4, 5} {
-		require.True(t, logs.CheckSection(source.Sections()[i]))
-	}
+	require.Len(t, source.Sections(), 3)
+	require.True(t, logs.CheckSection(source.Sections()[0]))
+	require.True(t, streams.CheckSection(source.Sections()[1]))
+	require.True(t, logs.CheckSection(source.Sections()[2]))
 
 	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
@@ -272,8 +281,8 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testin
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-	want := map[string]map[int64]bool{"A": {0: true, 1: true}, "B": {2: true, 3: true}}
-	postingIndexes := map[string]map[int64]bool{}
+	want := map[int64]bool{0: true, 1: true}
+	postingIndexes := map[int64]bool{}
 	for _, section := range obj.Sections().Filter(postings.CheckSection) {
 		sec, err := postings.Open(ctx, section)
 		require.NoError(t, err)
@@ -283,18 +292,15 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testin
 		for reader.Next() {
 			row := reader.At()
 			require.Equal(t, path, row.ObjectPath)
-			require.True(t, want[section.Tenant][row.SectionIndex], "unexpected posting reference for tenant %s: %d", section.Tenant, row.SectionIndex)
-			if postingIndexes[section.Tenant] == nil {
-				postingIndexes[section.Tenant] = map[int64]bool{}
-			}
-			postingIndexes[section.Tenant][row.SectionIndex] = true
+			require.True(t, want[row.SectionIndex], "unexpected posting reference: %d", row.SectionIndex)
+			postingIndexes[row.SectionIndex] = true
 		}
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 	}
 	require.Equal(t, want, postingIndexes)
 
-	statsIndexes := map[string]map[int64]bool{}
+	statsIndexes := map[int64]bool{}
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		sec, err := stats.Open(ctx, section)
 		require.NoError(t, err)
@@ -302,10 +308,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogsAcrossTenants(t *testin
 		for reader.Next() {
 			row := reader.At()
 			require.Equal(t, path, row.ObjectPath)
-			if statsIndexes[section.Tenant] == nil {
-				statsIndexes[section.Tenant] = map[int64]bool{}
-			}
-			statsIndexes[section.Tenant][row.SectionIndex] = true
+			statsIndexes[row.SectionIndex] = true
 		}
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
@@ -451,7 +454,7 @@ func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
 	require.Equal(t, firstSize, secondSize, "retry must not double uncompressed_logs_size")
 }
 
-func tenantUncompressed(t *testing.T, ranges []multitenancy.TimeRange, tenant string) uint64 {
+func tenantUncompressed(t *testing.T, ranges []dataobj.TimeRange, tenant string) uint64 {
 	t.Helper()
 	for _, r := range ranges {
 		if r.Tenant == tenant {

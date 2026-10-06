@@ -15,18 +15,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// TableOfContentsEntry describes an index-pointer row to add to a ToC for a
-// given tenant. Used by ReplaceIndexPointers as the "to add" set.
+// TableOfContentsEntry describes an index-pointer row to add to a tenant's ToC.
+// Used by WriteEntry and as the "to add" set of ReplaceIndexPointers.
 type TableOfContentsEntry struct {
 	// Path is the object-storage path of the index object.
 	Path string
 	// StartTime / EndTime bound the time range covered by the index.
 	StartTime time.Time
 	EndTime   time.Time
-	// FileSize is the encoded on-disk size of the index object, in bytes.
-	FileSize uint64
-	// UncompressedLogsSize is the uncompressed log volume the index references, in bytes.
-	UncompressedLogsSize uint64
+}
+
+// validate returns an error if e has no valid time range for a ToC.
+func (e TableOfContentsEntry) validate() error {
+	// The index pointers section stores a timestamp of 0 as "no value", so a
+	// row that starts at the epoch can't be read back. This check also rejects
+	// a zero time.Time, which would land in the ToC of year 1, where no query
+	// looks.
+	if !e.StartTime.After(time.Unix(0, 0)) {
+		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
+	}
+	// An entry that ends before it starts overlaps no ToC window, so the
+	// writer would write nothing for it.
+	if e.EndTime.Before(e.StartTime) {
+		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
+	}
+	return nil
 }
 
 // replaceBackoffConfig bounds ReplaceIndexPointers retries on conditional-write
@@ -43,16 +56,16 @@ var replaceBackoffConfig = backoff.Config{
 var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 
 // ReplaceIndexPointers atomically swaps a set of index pointers in the
-// ToC for the given window. For the target tenant, every row in oldPaths
-// is removed and every entry in newEntries is added; all other tenants'
-// entries are preserved unchanged.
+// tenant's ToC for the given window. Every row in oldPaths is removed and
+// every entry in newEntries is added.
 //
 // Returns (true, nil) if the swap was applied.
 // Returns (false, nil) if there's nothing to do, examples are:
 // - both oldPaths and newEntries are empty
 // - oldPaths do not exist in TOC (race-loss)
 // - TOC doesn't exist
-// Returns (false, error) if an error happened (including retry exhaustion).
+// Returns (false, error) if an error happened (including retry exhaustion),
+// or if an entry in newEntries has no valid time range.
 //
 // Race-loss is detected on an ANY-match basis: if ANY oldPath is still
 // present in the target tenant's current section, the swap proceeds and
@@ -68,9 +81,9 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 // oldPaths/newEntries is a no-op.
 //
 // Callers must serialize overlapping ReplaceIndexPointers calls for the
-// same window within a process; the method allocates per-call state but
-// does not coordinate across goroutines. Concurrent processes racing on
-// the same window are safe because each call goes through a fresh
+// same tenant and window within a process; the method allocates per-call
+// state but does not coordinate across goroutines. Concurrent processes
+// racing on the same ToC are safe because each call goes through a fresh
 // GetAndReplace with conditional-PUT semantics.
 func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	ctx context.Context,
@@ -89,6 +102,11 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	case !oldEmpty && newEmpty:
 		return false, errors.New("replace-index-pointers: no old entries")
 	default:
+		for _, e := range newEntries {
+			if err := e.validate(); err != nil {
+				return false, err
+			}
+		}
 		return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 	}
 }
@@ -104,7 +122,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 	newEntries []TableOfContentsEntry,
 	backoffCfg backoff.Config,
 ) (bool, error) {
-	tocPath := TableOfContentsPath(window.Truncate(MetastoreWindowSize).UTC())
+	tocPath := TableOfContentsPath(tenant, window.Truncate(MetastoreWindowSize).UTC())
 
 	oldSet := make(map[string]struct{}, len(oldPaths))
 	for _, p := range oldPaths {
@@ -168,11 +186,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			for _, e := range newEntries {
 				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
-					Path:                 e.Path,
-					StartTs:              e.StartTime,
-					EndTs:                e.EndTime,
-					FileSize:             e.FileSize,
-					UncompressedLogsSize: e.UncompressedLogsSize,
+					Path:    e.Path,
+					StartTs: e.StartTime,
+					EndTs:   e.EndTime,
 				}); err != nil {
 					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}

@@ -51,6 +51,12 @@ func (e *MarshalerError) Unwrap() error { return e.Err }
 type SyntaxError struct {
 	msg    string // description of error
 	Offset int64  // error occurred after reading Offset bytes
+	// atEnd is whether the error is the end of the input, where more of it would have been read: a stream
+	// reports it as io.ErrUnexpectedEOF.
+	atEnd bool
+	// valueAt is the position of the byte of the error, which is not the start of a value where one is waited
+	// for, plus one, or 0 for any other error ( see ValueStartAt ).
+	valueAt int64
 }
 
 func (e *SyntaxError) Error() string { return e.msg }
@@ -77,17 +83,18 @@ type UnmarshalTypeError struct {
 	Value  string       // description of JSON value - "bool", "array", "number -5"
 	Type   reflect.Type // type of Go value it could not be assigned to
 	Offset int64        // error occurred after reading Offset bytes
-	Struct string       // name of the struct type containing the field
+	Struct string       // name of the struct type containing the field, or of the root type ( see Error )
 	Field  string       // the full path from root node to the field
+	Err    error        // the cause of the error, which encoding/json of Go 1.27 reports, or nil
 }
 
+// Error returns the message of encoding/json of the Go version ( see typeErrorMessage ).
 func (e *UnmarshalTypeError) Error() string {
-	if e.Struct != "" || e.Field != "" {
-		return fmt.Sprintf("json: cannot unmarshal %s into Go struct field %s.%s of type %s",
-			e.Value, e.Struct, e.Field, e.Type,
-		)
-	}
-	return fmt.Sprintf("json: cannot unmarshal %s into Go value of type %s", e.Value, e.Type)
+	return typeErrorMessage(e)
+}
+
+func (e *UnmarshalTypeError) Unwrap() error {
+	return e.Err
 }
 
 // An UnsupportedTypeError is returned by Marshal when attempting
@@ -111,6 +118,34 @@ func (e *UnsupportedValueError) Error() string {
 
 func ErrSyntax(msg string, offset int64) *SyntaxError {
 	return &SyntaxError{msg: msg, Offset: offset}
+}
+
+// ErrSyntaxAtEnd is ErrSyntax for the end of the input, where more of it would have been read.
+func ErrSyntaxAtEnd(msg string, offset int64) *SyntaxError {
+	return &SyntaxError{msg: msg, Offset: offset, atEnd: true}
+}
+
+// WithValueStartAt marks e as the error of the byte at cursor, which is not the start of a value where one is
+// waited for, and returns it.
+func WithValueStartAt(e *SyntaxError, cursor int64) *SyntaxError {
+	e.valueAt = cursor + 1
+	return e
+}
+
+// ValueStartAt returns the position of the byte of err, if it is the syntax error of a byte which is not the start
+// of a value where one is waited for ( see WithValueStartAt ).
+func ValueStartAt(err error) (int64, bool) {
+	e, ok := err.(*SyntaxError)
+	if !ok || e.valueAt == 0 {
+		return 0, false
+	}
+	return e.valueAt - 1, true
+}
+
+// IsAtEnd reports whether err is a syntax error of the end of the input ( see ErrSyntaxAtEnd ).
+func IsAtEnd(err error) bool {
+	e, ok := err.(*SyntaxError)
+	return ok && e.atEnd
 }
 
 func ErrMarshaler(typ reflect.Type, err error, msg string) *MarshalerError {
@@ -171,7 +206,7 @@ func (e *PathError) Error() string {
 	return fmt.Sprintf("json: invalid path format: %s", e.msg)
 }
 
-func ErrInvalidPath(msg string, args ...interface{}) *PathError {
+func ErrInvalidPath(msg string, args ...any) *PathError {
 	if len(args) != 0 {
 		return &PathError{msg: fmt.Sprintf(msg, args...)}
 	}

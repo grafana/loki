@@ -11,11 +11,14 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
-	tenant = "fake"
+	// tenant is the tenant every stack writes and queries. It is the objtest tenant, because an
+	// objtest.Builder stores logs for that tenant only.
+	tenant = objtest.Tenant
 
 	// defaultEpsilon is the tolerance used when comparing floating point results.
 	defaultEpsilon = 1e-9
@@ -25,32 +28,29 @@ const (
 //
 // A script describes log streams to load and metric queries to evaluate against absolute
 // expected results, in a DSL documented in README.md. Loaded streams are encoded into a real
-// chunk store and each query runs through the production storage read path + logql.Engine, so
-// the full chunk-decode/parsing/extraction pipeline is exercised end-to-end.
+// chunk store and each query runs through logql.Engine, the production querier and storage read
+// path, so the full chunk-decode/parsing/extraction pipeline is exercised end-to-end.
 //
-// Every query runs on three execution stacks: the direct querier, and a real query-frontend +
-// query-scheduler + querier loop with sharding off and on.
+// Every query runs on several execution stacks. They differ in the query path, the sample order
+// and the data source. README.md lists them.
 func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
 	streams := newStreamsParser()
 	streamsChanged := true
+	stacks := newExecutionStacks(t, name)
 
-	// Each stack owns everything it needs to run a query, including its store.
-	directStack := newDirectStack(t)
-	frontendWithoutShardingStack, err := newQueryFrontendStack(t, false)
-	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=false)", name)
-	frontendWithSharding, err := newQueryFrontendStack(t, true)
-	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true)", name)
-	stacks := []executionStack{directStack, frontendWithoutShardingStack, frontendWithSharding}
+	// Every stack reads the same stores, which are expensive to build.
+	stores := newScriptStores(t)
 
 	// refreshStreams gives every stack the current data before an eval.
 	refreshStreams := func() {
 		if !streamsChanged {
 			return
 		}
+		stores.setStreams(streams.get())
 		for _, s := range stacks {
-			s.setStreams(streams.get())
+			s.setStores(stores)
 		}
 		streamsChanged = false
 	}
@@ -99,6 +99,32 @@ func RunScript(t *testing.T, name, script string) {
 		default:
 			t.Fatalf("%s: unexpected command %q", name, fields[0])
 		}
+	}
+}
+
+// newExecutionStacks builds the execution stacks a script runs on. Each stack owns its querier.
+// The stacks read the script's shared stores.
+func newExecutionStacks(t *testing.T, scriptName string) []executionStack {
+	t.Helper()
+
+	must := func(stack *queryFrontendExecutionStack, err error) executionStack {
+		t.Helper()
+		require.NoErrorf(t, err, "%s: build query-frontend stack", scriptName)
+		return stack
+	}
+
+	return []executionStack{
+		// The engine runs straight over the querier.
+		newDirectTimestampFirstStack(t),
+		newDirectStreamFirstStack(t),
+		newDirectDataObjStack(t),
+
+		// The engine runs behind a query-frontend and a query-scheduler.
+		must(newQueryFrontendTimestampFirstStack(t, false)),
+		must(newQueryFrontendTimestampFirstStack(t, true)),
+		must(newQueryFrontendStreamFirstStack(t)),
+		must(newQueryFrontendDataObjStack(t)),
+		must(newQueryFrontendDataObjAndChunkStack(t)),
 	}
 }
 

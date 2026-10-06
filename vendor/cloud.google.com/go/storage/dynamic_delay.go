@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -234,4 +235,67 @@ func (b *bucketDelayManager) update(bucketName string, latency time.Duration) {
 // getValue returns the desired delay to wait before retrying the operation for the given bucket.
 func (b *bucketDelayManager) getValue(bucketName string) time.Duration {
 	return b.getDelay(bucketName).getValue()
+}
+
+// executeWithReadStallTimeout executes openStream with dynamic delay stall retry tracking.
+func executeWithReadStallTimeout(
+	ctx context.Context,
+	dm *bucketDelayManager,
+	bucket string,
+	openStream func(ctx context.Context) error,
+	onStall func(stallTimeout time.Duration),
+) error {
+	if dm == nil {
+		return openStream(ctx)
+	}
+
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if cancel != nil {
+			cancel()
+		}
+	}()
+	var (
+		innerErr error
+		done     = make(chan struct{}, 1)
+	)
+
+	go func() {
+		reqStartTime := time.Now()
+		innerErr = openStream(cancelCtx)
+		if innerErr == nil {
+			reqLatency := time.Since(reqStartTime)
+			dm.update(bucket, reqLatency)
+		} else if ctx.Err() == nil && cancelCtx.Err() != nil {
+			dm.increase(bucket)
+		}
+		done <- struct{}{}
+	}()
+
+	stallTimeout := dm.getValue(bucket)
+	timer := time.NewTimer(stallTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		// If openStream completed at the same time the timer fired, select may
+		// pick either case. Prefer the real result over reporting a stall.
+		select {
+		case <-done:
+		default:
+			cancel()
+			<-done
+			if onStall != nil {
+				onStall(stallTimeout)
+			}
+			return context.DeadlineExceeded
+		}
+	case <-done:
+	}
+	if innerErr == nil {
+		// Keep the stream context alive for the caller; it is released when
+		// the parent context is cancelled.
+		cancel = nil
+	}
+	return innerErr
 }

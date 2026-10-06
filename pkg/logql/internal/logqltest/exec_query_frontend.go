@@ -42,30 +42,72 @@ type queryFrontendExecutionStack struct {
 	t                    *testing.T
 	stackName            string
 	queryShardingEnabled bool
+	limits               logql.Limits
+	newQuerier           newScriptQuerierFunc
 	handler              http.Handler
 
-	// storeMu guards the swap against reads from in-flight sharded subqueries.
-	storeMu sync.RWMutex
-	store   *testingChunkStore
+	// dataObjStart is the time from which the querier reads stream-first queries from data
+	// objects. It is zero when the querier reads no data objects.
+	dataObjStart time.Time
+
+	// querierMu guards the swap of querier against reads from in-flight sharded subqueries.
+	querierMu sync.RWMutex
+	querier   logql.Querier
+}
+
+// newQueryFrontendTimestampFirstStack returns the query-frontend stack in timestamp-first order,
+// with query sharding on or off.
+func newQueryFrontendTimestampFirstStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
+	stackName := queryFrontendNoShardTimestampFirstStackName
+	if queryShardingEnabled {
+		stackName = queryFrontendShardTimestampFirstStackName
+	}
+	return newQueryFrontendStack(t, stackName, queryShardingEnabled, execLimits{}, newChunkQuerier)
+}
+
+// newQueryFrontendStreamFirstStack returns the query-frontend stack with query sharding and
+// stream-first execution on.
+func newQueryFrontendStreamFirstStack(t *testing.T) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendStack(t, queryFrontendShardStreamFirstStackName, true, execLimits{streamFirstExecutionEnabled: true}, newChunkQuerier)
+}
+
+// newQueryFrontendDataObjStack returns the query-frontend stack with query sharding and
+// stream-first execution on. The stack reads all the data of stream-first queries from data
+// objects.
+func newQueryFrontendDataObjStack(t *testing.T) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjStackName, epoch)
+}
+
+// newQueryFrontendDataObjAndChunkStack returns the query-frontend stack with query sharding and
+// stream-first execution on. The stack reads the data of stream-first queries from chunks before
+// splitDataObjStart and from data objects after.
+func newQueryFrontendDataObjAndChunkStack(t *testing.T) (*queryFrontendExecutionStack, error) {
+	return newQueryFrontendDataObjStackFrom(t, queryFrontendShardDataObjAndChunkStackName, epoch.Add(splitDataObjStart))
+}
+
+// newQueryFrontendDataObjStackFrom returns the query-frontend stack with query sharding and
+// stream-first execution on. The stack reads the data of stream-first queries from data objects
+// from dataObjStart on.
+func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjStart time.Time) (*queryFrontendExecutionStack, error) {
+	s, err := newQueryFrontendStack(t, stackName, true, execLimits{streamFirstExecutionEnabled: true}, newDataObjQuerierFunc(dataObjStart))
+	if err != nil {
+		return nil, err
+	}
+	s.dataObjStart = dataObjStart
+	return s, nil
 }
 
 // newQueryFrontendStack builds a self-contained query-frontend + query-scheduler +
-// querier-worker loop wired over gRPC.
-func newQueryFrontendStack(t *testing.T, queryShardingEnabled bool) (*queryFrontendExecutionStack, error) {
+// querier-worker loop wired over gRPC. The querier runs queries with limits, over the querier
+// that newQuerier builds.
+func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, newQuerier newScriptQuerierFunc) (*queryFrontendExecutionStack, error) {
 	var (
 		logger       = log.NewNopLogger()
 		ctx          = context.Background()
 		schemaConfig = newQueryFrontendSchemaConfig()
-		stackName    string
 	)
 
-	if queryShardingEnabled {
-		stackName = queryFrontendShardStackName
-	} else {
-		stackName = queryFrontendNoShardStackName
-	}
-
-	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName}
+	s := &queryFrontendExecutionStack{t: t, queryShardingEnabled: queryShardingEnabled, stackName: stackName, limits: limits, newQuerier: newQuerier}
 
 	var shutdown []func()
 	stop := func() {
@@ -194,27 +236,11 @@ func (*queryFrontendExecutionStack) isEvalSupported(_ evalCmd, exp expectations)
 	return exp.scalar == nil
 }
 
-func (s *queryFrontendExecutionStack) setStreams(streams []logproto.Stream) {
-	store := newScriptStore(s.t, streams)
-	s.storeMu.Lock()
-	old := s.store
-	s.store = store
-	s.storeMu.Unlock()
-
-	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
-	// No query runs between evals, so the old store is idle here.
-	if old != nil {
-		old.close()
-	}
-}
-
-func (s *queryFrontendExecutionStack) querier() logql.Querier {
-	s.storeMu.RLock()
-	defer s.storeMu.RUnlock()
-	if s.store == nil {
-		return nil
-	}
-	return s.store.querier()
+func (s *queryFrontendExecutionStack) setStores(stores *scriptStores) {
+	q := s.newQuerier(s.t, stores)
+	s.querierMu.Lock()
+	s.querier = q
+	s.querierMu.Unlock()
 }
 
 func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
@@ -263,7 +289,11 @@ func (s *queryFrontendExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, erro
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	return queryrange.ResponseToResult(respObj)
+	res, err := queryrange.ResponseToResult(respObj)
+	if err != nil {
+		return res, err
+	}
+	return res, checkDataObjReads(cmd.query, res, s.dataObjStart)
 }
 
 // queryHandler creates and returns a query handler function.
@@ -277,21 +307,23 @@ func (s *queryFrontendExecutionStack) queryHandler(logger log.Logger) queryrange
 			}, nil
 		}
 
-		q := s.querier()
+		s.querierMu.RLock()
+		q := s.querier
+		s.querierMu.RUnlock()
 		if q == nil {
-			return nil, fmt.Errorf("store not ready")
+			return nil, fmt.Errorf("querier not ready")
 		}
 
 		var opts logql.EngineOpts
 		flagext.DefaultValues(&opts)
-		engine := logql.NewEngine(opts, q, logql.NoLimits, logger)
+		engine := logql.NewEngine(opts, q, s.limits, logger)
 
 		params, err := queryrange.ParamsFromRequest(req)
 		if err != nil {
 			return nil, err
 		}
 
-		// Chunks are written under the package tenant, so run the query as that tenant.
+		// The streams are written under the package tenant, so run the query as that tenant.
 		execCtx := user.InjectOrgID(ctx, tenant)
 		res, err := engine.Query(params).Exec(execCtx)
 		if err != nil {

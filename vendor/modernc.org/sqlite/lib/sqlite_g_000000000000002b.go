@@ -10,13 +10,19 @@ import (
 	"modernc.org/libc"
 )
 
+const RSIZE_MAX = 9223372036854775807
+
 type Tvm_offset_t = uint64
 
 type Tvm_size_t = uint64
 
+const __INTMAX_C_SUFFIX__ = "L"
+
 const __INTMAX_FMTd__ = "ld"
 
 const __INTMAX_FMTi__ = "li"
+
+const __UINTMAX_C_SUFFIX__ = "UL"
 
 const __UINTMAX_FMTX__ = "lX"
 
@@ -25,6 +31,8 @@ const __UINTMAX_FMTo__ = "lo"
 const __UINTMAX_FMTu__ = "lu"
 
 const __UINTMAX_FMTx__ = "lx"
+
+const __WORDSIZE = 64
 
 // C documentation
 //
@@ -579,7 +587,7 @@ func _unixRemapfile(tls *libc.TLS, pFd uintptr, nNew Ti64) {
 	if pNew == uintptr(-libc.Int32FromInt32(1)) {
 		pNew = uintptr(0)
 		nNew = 0
-		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45992))
+		_unixLogErrorAtLine(tls, SQLITE_OK, zErr, (*TunixFile)(unsafe.Pointer(pFd)).FzPath, int32(45996))
 		/* If the mmap() above failed, assume that all subsequent mmap() calls
 		 ** will probably fail too. Fall back to using xRead/xWrite exclusively
 		 ** in this case.  */

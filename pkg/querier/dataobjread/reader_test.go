@@ -256,7 +256,7 @@ func TestLogReader(t *testing.T) {
 // and the scans do: several goroutines asking for one path at once. Only one opened object may
 // win, because the sections it holds are opened lazily behind its own lock.
 func TestLogReader_ConcurrentObjectOpens(t *testing.T) {
-	fixture := newObjectsFixture(t, "", logproto.Stream{
+	fixture := newObjectsFixture(t, logproto.Stream{
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})
@@ -307,7 +307,7 @@ type readerFixture struct {
 func newReaderFixture(t *testing.T, streams ...logproto.Stream) readerFixture {
 	t.Helper()
 
-	fixture := newObjectsFixture(t, "", streams...)
+	fixture := newObjectsFixture(t, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)
 

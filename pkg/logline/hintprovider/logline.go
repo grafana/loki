@@ -2,6 +2,7 @@ package hintprovider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/store"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -37,7 +39,7 @@ func NewLoglineHintProvider(
 	ngramLength, maxParallel int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
-	reg prometheus.Registerer,
+	cacheReg prometheus.Registerer,
 ) (*LoglineHintProvider, error) {
 	if indexStore == nil {
 		return nil, fmt.Errorf("indexStore cannot be nil")
@@ -58,25 +60,84 @@ func NewLoglineHintProvider(
 		maxParallel:           maxParallel,
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
-		cache:                 newMetadataCache(defaultMetadataCacheEntries, reg),
 	}
-	p.startCacheInvalidationLoop()
+	// Only create a metadata cache on queriers
+	if cacheReg != nil {
+		p.cache = newMetadataCache(defaultMetadataCacheEntries, cacheReg)
+		p.startCacheInvalidationLoop()
+	}
 	return p, nil
 }
 
-func (p *LoglineHintProvider) ProvideHints(
+func (p *LoglineHintProvider) QueryHints(
 	ctx context.Context,
+	expr syntax.Expr,
+	req *logproto.LoglineIndexRequest,
+) (*logproto.LoglineIndexResponse, error) {
+	if req == nil {
+		req = &logproto.LoglineIndexRequest{}
+	}
+
+	ngramLength, maxParallel := p.lookupParams(req)
+	filters := SupportedQuery(expr, ngramLength)
+	stats := NewQueryStats()
+	through := req.GetEnd()
+
+	if len(filters) == 0 {
+		snap := stats.Snapshot()
+		return &logproto.LoglineIndexResponse{
+			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
+			Stats:      &snap,
+		}, nil
+	}
+
+	started := time.Now()
+	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel)
+	stats.SetWallTime(time.Since(started))
+	snap := stats.Snapshot()
+
+	if errors.Is(err, ErrUnconstrained) {
+		return &logproto.LoglineIndexResponse{
+			TimeRanges: ToProtoRanges([]HintTimeRange{passthroughForInclusiveThrough(through)}),
+			Stats:      &snap,
+		}, nil
+	}
+	if err != nil {
+		return &logproto.LoglineIndexResponse{Stats: &snap}, err
+	}
+
+	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+}
+
+func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
+	ngramLength, maxParallel = p.ngramLength, p.maxParallel
+	if req.NgramLength > 0 {
+		ngramLength = int(req.NgramLength)
+	}
+	if req.MaxParallel > 0 {
+		maxParallel = int(req.MaxParallel)
+	}
+	return
+}
+
+func (p *LoglineHintProvider) PlanHints(
 	tenant string,
 	expr syntax.Expr,
 	from, through model.Time,
-) (*Hints, *QueryStats, error) {
+) (HintPlan, error) {
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
+	plan := HintPlan{
+		Stats:       stats,
+		NgramLength: int32(p.ngramLength),
+		MaxParallel: int32(p.maxParallel),
+	}
 
 	filters := SupportedQuery(expr, p.ngramLength)
 	if len(filters) == 0 {
-		return nil, stats, ErrUnsupported
+		return plan, ErrUnsupported
 	}
+	plan.Filters = filters
 
 	start := from.Time().UTC()
 	end := through.Time().UTC()
@@ -94,22 +155,49 @@ func (p *LoglineHintProvider) ProvideHints(
 		})
 		// Entire query window is pre-min-date: passthrough hint already fully covers it.
 		if !end.After(minDate) {
-			return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+			plan.Ranges = NormalizeRanges(ranges)
+			return plan, nil
 		}
 	}
 
 	overlapping := p.store.IndexesForRange(start, end)
+	plan.Indexes = overlapping
+	plan.Ranges = ranges
 	if len(overlapping) == 0 {
-		return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+		plan.Ranges = NormalizeRanges(ranges)
 	}
+	return plan, nil
+}
 
-	shardRanges, err := p.executeQuery(ctx, filters, overlapping, stats)
+func (p *LoglineHintProvider) ProvideHints(
+	ctx context.Context,
+	tenant string,
+	expr syntax.Expr,
+	from, through model.Time,
+) (*Hints, *QueryStats, error) {
+	plan, err := p.PlanHints(tenant, expr, from, through)
+	if err != nil || len(plan.Indexes) == 0 {
+		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
+	}
+	resp, err := p.QueryHints(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
 	if err != nil {
-		return nil, stats, err
+		return nil, plan.Stats, err
 	}
+	ranges := append(plan.Ranges, FromProtoRanges(resp.TimeRanges)...)
+	return &Hints{TimeRanges: NormalizeRanges(ranges)}, FromProtoStats(resp.Stats), nil
+}
 
-	ranges = append(ranges, aggregateShardRanges(shardRanges)...)
-	return &Hints{TimeRanges: normalizeRanges(ranges)}, stats, nil
+func loglineIndexRequest(
+	expr syntax.Expr, from, through model.Time, plan HintPlan, ngram, parallel int,
+) *logproto.LoglineIndexRequest {
+	return &logproto.LoglineIndexRequest{
+		From:        from,
+		Through:     through,
+		Expr:        expr.String(),
+		Indexes:     ToProtoIndexMetas(plan.Indexes),
+		NgramLength: int32(ngram),
+		MaxParallel: int32(parallel),
+	}
 }
 
 // MinDate returns the configured minimum trusted date boundary used by the
@@ -128,22 +216,24 @@ func (p *LoglineHintProvider) openIndexReader(
 ) (logline.Reader, error) {
 	indexID := meta.ID()
 
-	storeReader := p.store.GetIndexReaderAt(ctx, meta)
+	storeReader := p.store.GetIndexReaderAt(ctx, meta.IndexPath())
 
-	if cached, ok := p.cache.get(indexID); ok {
-		trackedReader := newTrackingReaderAt(storeReader, stats)
-		reader, err := logline.OpenReaderCached(meta.Version, trackedReader, 0, meta.SizeBytes, cached.state)
-		if err == nil {
-			trackedReader.SetClassifier(reader)
-			return reader, nil
+	if p.cache != nil {
+		if cached, ok := p.cache.get(indexID); ok {
+			trackedReader := newTrackingReaderAt(storeReader, stats)
+			reader, err := logline.OpenReaderCached(meta.Version, trackedReader, 0, meta.SizeBytes, cached.state)
+			if err == nil {
+				trackedReader.SetClassifier(reader)
+				return reader, nil
+			}
+			// Cache entry may be stale/corrupt; evict it before uncached reopen.
+			p.cache.delete(indexID)
 		}
-		// Cache entry may be stale/corrupt; evict it before uncached reopen.
-		p.cache.delete(indexID)
+		stats.ObserveMetadataCacheMiss()
 	}
 
-	stats.ObserveMetadataCacheMiss()
 	if meta.IndexHeader == nil {
-		return nil, fmt.Errorf("index %s is missing required meta.index_header", indexID)
+		return nil, fmt.Errorf("index %s is missing required index_header", indexID)
 	}
 
 	trackedReader := newTrackingReaderAt(storeReader, stats)
@@ -152,8 +242,7 @@ func (p *LoglineHintProvider) openIndexReader(
 		return nil, fmt.Errorf("open reader: %w", err)
 	}
 	trackedReader.SetClassifier(reader)
-
-	if cachedState != nil {
+	if p.cache != nil && cachedState != nil {
 		p.cache.put(indexID, cachedMetadata{
 			headerInfo: *meta.IndexHeader,
 			state:      cachedState,
@@ -205,7 +294,7 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 	for _, byValue := range groups {
 		var groupResult []HintTimeRange
 		for _, ranges := range byValue {
-			normalized := normalizeRanges(ranges)
+			normalized := NormalizeRanges(ranges)
 			if groupResult == nil {
 				groupResult = normalized
 			} else {
@@ -219,13 +308,13 @@ func aggregateShardRanges(byKey map[shardKey][]HintTimeRange) []HintTimeRange {
 		allRanges = append(allRanges, groupResult...)
 	}
 
-	return normalizeRanges(allRanges)
+	return NormalizeRanges(allRanges)
 }
 
-// normalizeRanges sorts, drops empty [start, end) windows, and merges
+// NormalizeRanges sorts, drops empty [start, end) windows, and merges
 // overlapping or abutting ranges. Abutting ranges (a.End == b.Start) merge
 // because they form a contiguous half-open cover.
-func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
+func NormalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -263,7 +352,7 @@ func normalizeRanges(ranges []HintTimeRange) []HintTimeRange {
 }
 
 // maxMergedSourceLen caps merged source strings. Source is diagnostic-only
-// provenance; during normalizeRanges and intersectRanges across many indexes
+// provenance; during NormalizeRanges and intersectRanges across many indexes
 // the string would grow quadratically without a cap. 32 KiB keeps enough
 // detail for false-negative diagnosis while staying well under the multi-MiB
 // sizes that caused OOM in production.

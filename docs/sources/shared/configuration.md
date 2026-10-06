@@ -1594,6 +1594,10 @@ dataobj:
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
 
+  # Delay after which data objects hold all the data.
+  # CLI flag: -dataobj.storage-lag
+  [storage_lag: <duration> | default = 3h]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
@@ -4540,6 +4544,16 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
+# When enabled, the querier evaluates eligible metric queries in stream-first
+# order, which reads samples one stream at a time instead of in timestamp order.
+# CLI flag: -querier.stream-first-execution-enabled
+[stream_first_execution_enabled: <boolean> | default = false]
+
+# Time, inclusive, from which the querier reads stream-first metric queries from
+# data objects. 0 disables it.
+# CLI flag: -querier.dataobj-query-start-time
+[dataobj_query_start_time: <time> | default = 0]
+
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.
@@ -6767,10 +6781,9 @@ tsdb_shipper:
     # rejected immediately with an HTTP 503 status instead of waiting, which
     # bounds the resources this process commits to an index gateway that is
     # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, doubled when the shadow index gateway
-    # client is enabled, so the process-wide number of in-flight requests can
-    # reach this value multiplied by the number of clients. 0 disables the
-    # limit.
+    # is built per schema period config, so the process-wide number of in-flight
+    # requests can reach this value multiplied by the number of clients. 0
+    # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
 

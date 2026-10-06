@@ -155,6 +155,21 @@ func streamResponseWithEntries(entries ...logproto.Entry) *queryrange.LokiRespon
 	}
 }
 
+// prefetchMiddlewareForTest injects a QueryHintProvider directly. Production
+// NewLoglinePrefetchMiddleware wraps the concrete provider with the remote
+// adapter and the hint cache, which these tests replace with a mock.
+func prefetchMiddlewareForTest(
+	hp hintprovider.QueryHintProvider,
+	cfg Config,
+	limits logline_query_limits.Limits,
+	metrics *Metrics,
+	logger log.Logger,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return newLoglinePrefetchHandler(next, hp, cfg, limits, metrics, logger)
+	})
+}
+
 // buildStack wires prefetch + filter middleware the same way integration.go does,
 // except the "Loki tripperware" is replaced by a transparent pass-through.
 // This lets us test the two-layer interaction in isolation.
@@ -174,7 +189,7 @@ func buildStack(
 	if len(limits) > 0 {
 		settings = limits[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, settings, metrics, nil)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -195,7 +210,7 @@ func buildStackWithLogger(
 	if len(limits) > 0 {
 		settings = limits[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, logger)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, settings, metrics, logger)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -1530,7 +1545,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	}
 
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, Config{RequireOptInHeader: true}, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, Config{RequireOptInHeader: true}, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Millisecond, metrics, nil)
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1778,7 +1793,7 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 
 	var mu sync.Mutex
 	type subReqInfo struct {
@@ -1864,7 +1879,7 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
@@ -1936,7 +1951,7 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 
 	cfg := Config{QueryIngestersWithin: 2 * time.Hour}
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var prefetchResult *hintPrefetchResult
