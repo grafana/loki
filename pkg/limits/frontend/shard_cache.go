@@ -20,10 +20,10 @@ type shardCacheKey struct {
 	hash   uint64
 }
 
-// pendingShard is resolved once, by whichever call dispatches the backend
-// request for a stream's current version. Every other call that finds a
-// shardCacheEntry with pending set rides along, waiting on done, instead of
-// dispatching a second backend call for the same stream.
+// pendingShard is resolved once, by whichever call dispatches the backend request
+// for a stream's current version.
+// Every other call that finds a [shardCacheEntry] with pending set waits until done,
+// instead of dispatching a second backend call for the same stream.
 type pendingShard struct {
 	done   chan struct{}
 	result *proto.StreamShardResult
@@ -36,28 +36,36 @@ type shardCacheEntry struct {
 	accumPushes uint32
 	cachedAt    time.Time
 
-	// version is bumped each time a new backend call is dispatched for this
-	// stream. A call's write-back is only applied while its own version is
-	// still the entry's current one, so a call dispatched before a newer one
-	// started cannot overwrite the newer call's result after the fact,
+	// version is increased each time a new backend call is dispatched for this
+	// stream. The write-back of the backend call's responsed is only applied while
+	// its own version is still the entry's current one, so a call dispatched before
+	// a newer one started cannot overwrite the newer call's result after the fact,
 	// regardless of which of the two completes first.
 	version uint64
-
-	// pending is set for as long as the backend call that produced the
-	// entry's current version is in flight.
 	pending *pendingShard
+}
+
+// dispatchedShard is one stream the CheckLimitsAndShard call forwards to the backend itself,
+// carrying the version and pendingShard recorded for it at dispatch time so
+// the write-back can resolve them without re-reading the cache entry, which
+// may have moved on to a newer version by then.
+type dispatchedShard struct {
+	metadata *proto.StreamMetadata
+	version  uint64
+	pending  *pendingShard
 }
 
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
 // Pushes arriving while a cached result is within ttl are answered from the
-// cache and their size and count are accumulated; once the entry goes stale
-// the accumulated pushes are combined with the triggering push into a single
-// backend request. Pushes for a stream with no usable cached result, arriving
+// cache and their size and count are accumulated.
+// Once the entry goes stale the accumulated pushes are combined with the triggering
+// push into a single backend request.
+// Pushes for a stream with no usable cached result, arriving
 // while a backend call for it is already in flight, ride along on that call
-// instead of each dispatching their own.
+// instead of each dispatching their own, see [pendingShard].
 type shardCacheLimitsClient struct {
 	ttl    time.Duration
-	onMiss limitsClient
+	onMiss limitsClient // client that performs the downstream request to the backend
 
 	mtx       sync.Mutex
 	entries   map[shardCacheKey]*shardCacheEntry
@@ -81,18 +89,9 @@ func newShardCacheLimitsClient(ttl time.Duration, onMiss limitsClient, reg prome
 }
 
 // ExceedsLimits implements the [limitsClient] interface.
+// This is unsed and would always pass-through to the downstream client.
 func (c *shardCacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	return c.onMiss.ExceedsLimits(ctx, req)
-}
-
-// dispatchedShard is one stream this call forwards to the backend itself,
-// carrying the version and pendingShard recorded for it at dispatch time so
-// the write-back can resolve them without re-reading the cache entry, which
-// may have moved on to a newer version by then.
-type dispatchedShard struct {
-	metadata *proto.StreamMetadata
-	version  uint64
-	pending  *pendingShard
 }
 
 // CheckLimitsAndShard implements the [limitsClient] interface.
@@ -123,6 +122,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			continue
 		}
 		if cached && entry.result != nil && now.Sub(entry.cachedAt) < c.ttl {
+			// Found a valid cache entry for the stream, accumulate push/bytes and yield sharding result.
 			entry.accumSize += m.TotalSize
 			entry.accumPushes++
 			results = append(results, entry.result)
@@ -150,7 +150,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	}
 	c.mtx.Unlock()
 
-	// Wait for the calls we are riding along on before dispatching our own,
+	// Wait for the calls inflight before dispatching our own,
 	// so a slow backend cannot be asked twice for the same stream just
 	// because this call also happened to lead on a different one. A failure
 	// or cancellation here must not skip dispatching below: the placeholders
@@ -199,6 +199,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	}
 
 	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	for _, d := range dispatched {
 		key := shardCacheKey{req.Tenant, d.metadata.StreamHash}
 		res := byHash[d.metadata.StreamHash]
@@ -226,7 +227,6 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		d.pending.err = err
 		close(d.pending.done)
 	}
-	c.mtx.Unlock()
 
 	if err != nil {
 		return nil, err
