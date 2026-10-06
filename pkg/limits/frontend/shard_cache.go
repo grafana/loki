@@ -20,6 +20,16 @@ type shardCacheKey struct {
 	hash   uint64
 }
 
+// pendingShard is resolved once, by whichever call dispatches the backend
+// request for a stream's current version. Every other call that finds a
+// shardCacheEntry with pending set rides along, waiting on done, instead of
+// dispatching a second backend call for the same stream.
+type pendingShard struct {
+	done   chan struct{}
+	result *proto.StreamShardResult
+	err    error
+}
+
 type shardCacheEntry struct {
 	result      *proto.StreamShardResult
 	accumSize   uint64
@@ -32,13 +42,19 @@ type shardCacheEntry struct {
 	// started cannot overwrite the newer call's result after the fact,
 	// regardless of which of the two completes first.
 	version uint64
+
+	// pending is set for as long as the backend call that produced the
+	// entry's current version is in flight.
+	pending *pendingShard
 }
 
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
 // Pushes arriving while a cached result is within ttl are answered from the
 // cache and their size and count are accumulated; once the entry goes stale
 // the accumulated pushes are combined with the triggering push into a single
-// backend request.
+// backend request. Pushes for a stream with no usable cached result, arriving
+// while a backend call for it is already in flight, ride along on that call
+// instead of each dispatching their own.
 type shardCacheLimitsClient struct {
 	ttl    time.Duration
 	onMiss limitsClient
@@ -69,21 +85,38 @@ func (c *shardCacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.E
 	return c.onMiss.ExceedsLimits(ctx, req)
 }
 
+// dispatchedShard is one stream this call forwards to the backend itself,
+// carrying the version and pendingShard recorded for it at dispatch time so
+// the write-back can resolve them without re-reading the cache entry, which
+// may have moved on to a newer version by then.
+type dispatchedShard struct {
+	metadata *proto.StreamMetadata
+	version  uint64
+	pending  *pendingShard
+}
+
 // CheckLimitsAndShard implements the [limitsClient] interface.
 func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	now := time.Now()
 	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
-	forward := make([]*proto.StreamMetadata, 0, len(req.Streams))
-	// versions holds the dispatch version assigned to each stream forwarded
-	// by this call, so its write-back can tell whether it is still the most
-	// recently dispatched call for that stream.
-	versions := make(map[uint64]uint64, len(req.Streams))
+	dispatched := make([]dispatchedShard, 0, len(req.Streams))
+	var awaited []*pendingShard
 
 	c.mtx.Lock()
 	c.sweep(now)
 	for _, m := range req.Streams {
 		key := shardCacheKey{req.Tenant, m.StreamHash}
 		entry, cached := c.entries[key]
+
+		if cached && entry.pending != nil {
+			// A backend call for this stream is already in flight: ride along
+			// on its result instead of dispatching a second one. This push
+			// still counts once the entry next goes stale.
+			entry.accumSize += m.TotalSize
+			entry.accumPushes++
+			awaited = append(awaited, entry.pending)
+			continue
+		}
 		if cached && entry.result != nil && now.Sub(entry.cachedAt) < c.ttl {
 			entry.accumSize += m.TotalSize
 			entry.accumPushes++
@@ -97,42 +130,105 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			pushes += entry.accumPushes
 		}
 		c.seq++
-		versions[m.StreamHash] = c.seq
-		c.entries[key] = &shardCacheEntry{cachedAt: now, version: c.seq}
+		pending := &pendingShard{done: make(chan struct{})}
+		c.entries[key] = &shardCacheEntry{cachedAt: now, version: c.seq, pending: pending}
 		c.combinedPushes.Observe(float64(pushes))
-		forward = append(forward, &proto.StreamMetadata{
-			StreamHash:      m.StreamHash,
-			TotalSize:       size,
-			IngestionPolicy: m.IngestionPolicy,
+		dispatched = append(dispatched, dispatchedShard{
+			metadata: &proto.StreamMetadata{
+				StreamHash:      m.StreamHash,
+				TotalSize:       size,
+				IngestionPolicy: m.IngestionPolicy,
+			},
+			version: c.seq,
+			pending: pending,
 		})
 	}
 	c.mtx.Unlock()
 
-	if len(forward) == 0 {
+	// Wait for the calls we are riding along on before dispatching our own,
+	// so a slow backend cannot be asked twice for the same stream just
+	// because this call also happened to lead on a different one. A failure
+	// or cancellation here must not skip dispatching below: the placeholders
+	// this call created in the loop above are this call's responsibility to
+	// resolve, and any caller riding along on them would otherwise wait on a
+	// done channel nobody closes.
+	var awaitErr error
+	for _, p := range awaited {
+		select {
+		case <-p.done:
+			switch {
+			case p.err != nil && awaitErr == nil:
+				awaitErr = p.err
+			case p.result != nil:
+				results = append(results, p.result)
+			}
+		case <-ctx.Done():
+			if awaitErr == nil {
+				awaitErr = ctx.Err()
+			}
+		}
+		if awaitErr != nil {
+			break
+		}
+	}
+
+	if len(dispatched) == 0 {
+		if awaitErr != nil {
+			return nil, awaitErr
+		}
 		return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 	}
 
+	forward := make([]*proto.StreamMetadata, len(dispatched))
+	for i, d := range dispatched {
+		forward[i] = d.metadata
+	}
 	resp, err := c.onMiss.CheckLimitsAndShard(ctx, &proto.CheckLimitsAndShardRequest{
 		Tenant:  req.Tenant,
 		Streams: forward,
 	})
-	if err != nil {
-		return nil, err
+
+	byHash := make(map[uint64]*proto.StreamShardResult, len(resp.GetResults()))
+	for _, res := range resp.GetResults() {
+		byHash[res.StreamHash] = res
 	}
 
 	c.mtx.Lock()
-	for _, res := range resp.Results {
-		key := shardCacheKey{req.Tenant, res.StreamHash}
+	for _, d := range dispatched {
+		key := shardCacheKey{req.Tenant, d.metadata.StreamHash}
+		res := byHash[d.metadata.StreamHash]
 		// Drop this write if a call dispatched after ours for the same stream
-		// has already completed and cached its result: that call is strictly
-		// more recent, and must not be regressed by our older answer just
-		// because it finished later.
-		if cur, ok := c.entries[key]; ok && versions[res.StreamHash] < cur.version {
-			continue
+		// has already taken over: that call is strictly more recent and must
+		// not be regressed by our older answer just because it finished
+		// later. Carry over whatever this stream accumulated while our call
+		// was in flight, since those pushes were not part of our request and
+		// still need to reach the backend once the entry next goes stale.
+		if cur, ok := c.entries[key]; !ok || d.version >= cur.version {
+			var accumSize uint64
+			var accumPushes uint32
+			if ok {
+				accumSize, accumPushes = cur.accumSize, cur.accumPushes
+			}
+			c.entries[key] = &shardCacheEntry{
+				result:      res,
+				cachedAt:    now,
+				version:     d.version,
+				accumSize:   accumSize,
+				accumPushes: accumPushes,
+			}
 		}
-		c.entries[key] = &shardCacheEntry{result: res, cachedAt: now, version: versions[res.StreamHash]}
+		d.pending.result = res
+		d.pending.err = err
+		close(d.pending.done)
 	}
 	c.mtx.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+	if awaitErr != nil {
+		return nil, awaitErr
+	}
 
 	return &proto.CheckLimitsAndShardResponse{Results: append(results, resp.Results...)}, nil
 }
@@ -146,7 +242,7 @@ func (c *shardCacheLimitsClient) sweep(now time.Time) {
 	c.lastSwept = now
 	cutoff := now.Add(-maxAge)
 	for k, e := range c.entries {
-		if e.cachedAt.Before(cutoff) {
+		if e.pending == nil && e.cachedAt.Before(cutoff) {
 			delete(c.entries, k)
 		}
 	}
