@@ -25,6 +25,13 @@ type shardCacheEntry struct {
 	accumSize   uint64
 	accumPushes uint32
 	cachedAt    time.Time
+
+	// version is bumped each time a new backend call is dispatched for this
+	// stream. A call's write-back is only applied while its own version is
+	// still the entry's current one, so a call dispatched before a newer one
+	// started cannot overwrite the newer call's result after the fact,
+	// regardless of which of the two completes first.
+	version uint64
 }
 
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
@@ -39,6 +46,7 @@ type shardCacheLimitsClient struct {
 	mtx       sync.Mutex
 	entries   map[shardCacheKey]*shardCacheEntry
 	lastSwept time.Time
+	seq       uint64
 
 	combinedPushes prometheus.Histogram
 }
@@ -66,6 +74,10 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	now := time.Now()
 	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
 	forward := make([]*proto.StreamMetadata, 0, len(req.Streams))
+	// versions holds the dispatch version assigned to each stream forwarded
+	// by this call, so its write-back can tell whether it is still the most
+	// recently dispatched call for that stream.
+	versions := make(map[uint64]uint64, len(req.Streams))
 
 	c.mtx.Lock()
 	c.sweep(now)
@@ -84,7 +96,9 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			size += entry.accumSize
 			pushes += entry.accumPushes
 		}
-		c.entries[key] = &shardCacheEntry{cachedAt: now}
+		c.seq++
+		versions[m.StreamHash] = c.seq
+		c.entries[key] = &shardCacheEntry{cachedAt: now, version: c.seq}
 		c.combinedPushes.Observe(float64(pushes))
 		forward = append(forward, &proto.StreamMetadata{
 			StreamHash:      m.StreamHash,
@@ -108,7 +122,15 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 
 	c.mtx.Lock()
 	for _, res := range resp.Results {
-		c.entries[shardCacheKey{req.Tenant, res.StreamHash}] = &shardCacheEntry{result: res, cachedAt: now}
+		key := shardCacheKey{req.Tenant, res.StreamHash}
+		// Drop this write if a call dispatched after ours for the same stream
+		// has already completed and cached its result: that call is strictly
+		// more recent, and must not be regressed by our older answer just
+		// because it finished later.
+		if cur, ok := c.entries[key]; ok && versions[res.StreamHash] < cur.version {
+			continue
+		}
+		c.entries[key] = &shardCacheEntry{result: res, cachedAt: now, version: versions[res.StreamHash]}
 	}
 	c.mtx.Unlock()
 
