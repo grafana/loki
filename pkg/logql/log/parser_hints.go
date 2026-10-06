@@ -1,9 +1,12 @@
 package log
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func NoParserHints() ParserHint {
-	return &Hints{}
+	return &ParserHints{}
 }
 
 // ParserHint are hints given to LogQL parsers about which label keys to extract.
@@ -55,18 +58,18 @@ type LabelFilterHints interface {
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 }
 
-type Hints struct {
+type ParserHints struct {
 	noLabels       bool
 	requiredLabels []string
 	extracted      map[string]struct{}
 }
 
-func (p *Hints) Extracted(key string) bool {
+func (p *ParserHints) Extracted(key string) bool {
 	_, ok := p.extracted[key] // It's safe to read from a nil map.
 	return ok
 }
 
-func (p *Hints) ShouldExtract(key string) bool {
+func (p *ParserHints) ShouldExtract(key string) bool {
 	// The result of ShouldExtract gets cached in parser stages, so we must
 	// return consistent results throughout the lifetime of a query; this means
 	// we can't account for p.extracted here.
@@ -80,7 +83,7 @@ func (p *Hints) ShouldExtract(key string) bool {
 	return len(p.requiredLabels) == 0
 }
 
-func (p *Hints) ShouldExtractPrefix(prefix string) bool {
+func (p *ParserHints) ShouldExtractPrefix(prefix string) bool {
 	if len(p.requiredLabels) == 0 {
 		return true
 	}
@@ -93,18 +96,18 @@ func (p *Hints) ShouldExtractPrefix(prefix string) bool {
 	return false
 }
 
-func (p *Hints) NoLabels() bool {
+func (p *ParserHints) NoLabels() bool {
 	return p.noLabels || p.AllRequiredExtracted()
 }
 
-func (p *Hints) RecordExtracted(key string) {
+func (p *ParserHints) RecordExtracted(key string) {
 	if p.extracted == nil {
 		p.extracted = make(map[string]struct{})
 	}
 	p.extracted[key] = struct{}{}
 }
 
-func (p *Hints) AllRequiredExtracted() bool {
+func (p *ParserHints) AllRequiredExtracted() bool {
 	if len(p.requiredLabels) == 0 || len(p.extracted) < len(p.requiredLabels) {
 		return false
 	}
@@ -119,12 +122,12 @@ func (p *Hints) AllRequiredExtracted() bool {
 	return len(p.requiredLabels) == found
 }
 
-func (p *Hints) Reset() {
+func (p *ParserHints) Reset() {
 	clear(p.extracted)
 }
 
 // NewParserHint creates a new set of extraction hints using the list of labels that are seen and required in a query.
-func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *Hints {
+func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, metricLabelName string) *ParserHints {
 	hints := make([]string, 0, 2*(len(requiredLabelNames)+len(groups)+1))
 	hints = appendLabelHints(hints, requiredLabelNames...)
 	hints = appendLabelHints(hints, groups...)
@@ -134,19 +137,19 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	extracted := make(map[string]struct{}, len(hints))
 	if noLabels {
 		if len(hints) > 0 {
-			return &Hints{requiredLabels: hints, extracted: extracted}
+			return &ParserHints{requiredLabels: hints, extracted: extracted}
 		}
-		return &Hints{noLabels: true}
+		return &ParserHints{noLabels: true}
 	}
 
 	// we don't know what is required when a without clause is used.
 	// Same is true when there's no grouping.
 	// no hints available then.
 	if without || len(groups) == 0 {
-		return &Hints{}
+		return &ParserHints{}
 	}
 
-	return &Hints{requiredLabels: hints, extracted: extracted}
+	return &ParserHints{requiredLabels: hints, extracted: extracted}
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
@@ -207,8 +210,16 @@ func NewLabelFilterHints(stages Stages) LabelFilterHints {
 		switch s.(type) {
 		case *JSONParser, *LogfmtParser, *RegexpParser, *UnpackParser, *PatternParser, *LogfmtExpressionParser, *JSONExpressionParser:
 			return true
+		case *DropLabels, *KeepLabels, *LineFormatter, *LabelsFormatter, *Decolorizer,
+			*IPLineFilter, *IPLabelFilter,
+			*BinaryLabelFilter, *NoopLabelFilter, *BytesLabelFilter, *DurationLabelFilter,
+			*NumericLabelFilter, *StringLabelFilter, *LineFilterLabelFilter,
+			*noopStage, StageFunc:
+			return false
+		default:
+			// Fail loudly so a new Stage implementation is categorized explicitly.
+			panic(fmt.Sprintf("NewLabelFilterHints: unhandled stage type %T, add it to the isParser switch", s))
 		}
-		return false
 	}
 
 	addIfLabelFilterer := func(s Stage) {
