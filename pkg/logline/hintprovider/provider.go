@@ -32,6 +32,11 @@ const hintRangeTimeFormat = "2006-01-02T15:04:05.000Z07:00"
 // required behavior because Source is intentionally omitted from cache payloads.
 const HintSourcePreMinDate = "pre_min_date"
 
+// HintSourceIngesterWindow marks synthetic diagnostic provenance for ranges
+// covering indexes that are skipped because their records are still within
+// the ingester window. Like HintSourcePreMinDate, it is diagnostic only.
+const HintSourceIngesterWindow = "ingester_window"
+
 // QueryHintProvider inspects a query and returns narrowed scan hints.
 type QueryHintProvider interface {
 	ProvideHints(ctx context.Context, tenant string, expr syntax.Expr, from, through model.Time) (*Hints, *QueryStats, error)

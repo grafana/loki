@@ -528,6 +528,72 @@ func TestLoglineHintProvider_ProvideHints_PrependsPreMinDateRange(t *testing.T) 
 	require.Equal(t, docMax.UTC(), hints.TimeRanges[1].End)
 }
 
+// A backfill has old log timestamps but was ingested just now. Loki does not
+// query ingesters for an old range, so the index skipped for being in the
+// ingester window must still yield a range, or the backfill is hidden.
+func TestLoglineHintProvider_ProvideHints_IngesterWindowIndexIsScanned(t *testing.T) {
+	indexStore := newTestStoreWithIngesterWindow(t, 3*time.Hour)
+	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+	ingestedAt := time.Now().UTC().Add(-time.Hour)
+	writeTestIndexWithRecordTs(t, indexStore, "dddddddddddddddd", "9fA81cD2Ef0077aa", docMin, docMax, ingestedAt, ingestedAt)
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	hints, stats, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`),
+		model.TimeFromUnixNano(docMin.Add(-time.Hour).UnixNano()),
+		model.TimeFromUnixNano(docMax.Add(time.Hour).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+	require.Len(t, hints.TimeRanges, 1)
+	require.Equal(t, docMin, hints.TimeRanges[0].Start)
+	require.Equal(t, docMax.Add(time.Millisecond), hints.TimeRanges[0].End)
+	require.Contains(t, hints.TimeRanges[0].Source, HintSourceIngesterWindow)
+	require.False(t, hints.TimeRanges[0].IsPassthrough())
+	require.Zero(t, stats.Snapshot().IndexQueriesTotal, "an ingester-window index must not be queried")
+}
+
+func TestLoglineHintProvider_ProvideHints_IngesterWindowRangeUnionsWithIndexHits(t *testing.T) {
+	indexStore := newTestStoreWithIngesterWindow(t, 3*time.Hour)
+	needle := "9fA81cD2Ef0077aa"
+
+	liveMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
+	liveMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
+	writeTestIndexWithRecordTs(t, indexStore, "eeeeeeeeeeeeeeee", needle, liveMin, liveMax, liveMin, liveMax)
+
+	backfillMin := time.Date(2026, 2, 26, 14, 0, 0, 0, time.UTC)
+	backfillMax := time.Date(2026, 2, 26, 14, 5, 0, 0, time.UTC)
+	ingestedAt := time.Now().UTC().Add(-time.Hour)
+	writeTestIndexWithRecordTs(t, indexStore, "ffffffffffffffff", "zzQ7yy3xxW1v", backfillMin, backfillMax, ingestedAt, ingestedAt)
+
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	hints, _, err := provider.ProvideHints(
+		context.Background(),
+		"test-tenant",
+		mustParseExpr(t, `{job="api"} |= "9fA81cD2Ef0077aa"`),
+		model.TimeFromUnixNano(time.Date(2026, 2, 26, 0, 0, 0, 0, time.UTC).UnixNano()),
+		model.TimeFromUnixNano(time.Date(2026, 2, 26, 23, 59, 59, 0, time.UTC).UnixNano()),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, hints)
+	require.Len(t, hints.TimeRanges, 2)
+
+	require.Equal(t, liveMin, hints.TimeRanges[0].Start)
+	require.Equal(t, liveMax, hints.TimeRanges[0].End)
+	require.NotContains(t, hints.TimeRanges[0].Source, HintSourceIngesterWindow)
+
+	require.Equal(t, backfillMin, hints.TimeRanges[1].Start)
+	require.Equal(t, backfillMax.Add(time.Millisecond), hints.TimeRanges[1].End)
+	require.Contains(t, hints.TimeRanges[1].Source, HintSourceIngesterWindow)
+}
+
 func TestNormalizeRanges(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	m := time.Minute
@@ -778,7 +844,22 @@ func newTestStoreWithMinDate(t *testing.T, minDate string) *store.Store {
 	return indexStore
 }
 
+func newTestStoreWithIngesterWindow(t *testing.T, queryIngestersWithin time.Duration) *store.Store {
+	t.Helper()
+	bucket := objstore.NewInMemBucket()
+	indexStore, err := store.NewStore(bucket, store.Config{MinDate: "0001-01-01", QueryIngestersWithin: queryIngestersWithin}, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	return indexStore
+}
+
 func writeTestIndex(t *testing.T, indexStore *store.Store, hash, needle string, docMin, docMax time.Time) {
+	t.Helper()
+	writeTestIndexWithRecordTs(t, indexStore, hash, needle, docMin, docMax, docMin, docMax)
+}
+
+// writeTestIndexWithRecordTs takes record bounds separately from log bounds;
+// a recent minRecordTs places the index in the ingester window.
+func writeTestIndexWithRecordTs(t *testing.T, indexStore *store.Store, hash, needle string, docMin, docMax, minRecordTs, maxRecordTs time.Time) {
 	t.Helper()
 	indexBytes, headerInfo := buildIndexBytes(t, needle, docMin, docMax)
 
@@ -788,8 +869,8 @@ func writeTestIndex(t *testing.T, indexStore *store.Store, hash, needle string, 
 		Version:     logline.CurrentVersion,
 		MinLogTs:    docMin.UTC(),
 		MaxLogTs:    docMax.UTC(),
-		MinRecordTs: docMin.UTC(),
-		MaxRecordTs: docMax.UTC(),
+		MinRecordTs: minRecordTs.UTC(),
+		MaxRecordTs: maxRecordTs.UTC(),
 		IndexHeader: headerInfo,
 		SizeBytes:   int64(len(indexBytes)),
 	}

@@ -160,6 +160,16 @@ func (p *LoglineHintProvider) PlanHints(
 		}
 	}
 
+	// Indexes still in the ingester window are not queried, but their data is
+	// not necessarily served by ingesters: Loki picks ingesters by log time, so
+	// backfilled or late data with old timestamps is only in object storage.
+	// Scan their log-time span instead of letting it be skipped.
+	for _, m := range p.store.IndexesExcludedByIngesterWindow(start, end) {
+		r := hintTimeRangeForMeta(m)
+		r.Source = HintSourceIngesterWindow + ",index=" + m.ID()
+		ranges = append(ranges, r)
+	}
+
 	overlapping := p.store.IndexesForRange(start, end)
 	plan.Indexes = overlapping
 	plan.Ranges = ranges

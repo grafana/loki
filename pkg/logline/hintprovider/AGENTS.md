@@ -84,3 +84,11 @@ Query-shape support and hint lookup for logline index lookups.
       separators.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.
+14. **Ingester-window indexes are scanned, never skipped**
+    - `Store.IndexesForRange` drops indexes whose `MinRecordTs` is within
+      `QueryIngestersWithin`. Loki picks ingesters by log time, so for
+      backfilled or late data (old log time, recent record time) ingesters do
+      not cover it.
+    - `PlanHints` therefore adds each such index's `[MinLogTs, MaxLogTs]` as a
+      hint range without opening it. Dropping them would hide that data until
+      the window passes.

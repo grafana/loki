@@ -74,7 +74,10 @@ func TestRunVerificationCycle_FalseNegative(t *testing.T) {
 	require.Equal(t, 1, report.FalsePositives)
 }
 
-func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
+// An index in the ingester window used to be dropped from hints, so its
+// matches were false negatives. The hint provider now scans its log-time span,
+// so the cycle is correct; the diagnostic still finds the excluded index.
+func TestRunVerificationCycle_ExcludedIndexIsScanned(t *testing.T) {
 	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 	witnessTS := base.Add(1 * time.Minute)
 	needle := "9fA81cD2Ef0077aa"
@@ -103,11 +106,11 @@ func TestRunVerificationCycle_ExcludedIndexCoveringFN(t *testing.T) {
 	report, err := svc.runVerificationCycle(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, report.SkippedReason)
-	require.False(t, report.Correct)
-	require.Greater(t, report.FalseNegatives, 0)
+	require.True(t, report.Correct)
+	require.Zero(t, report.FalseNegatives)
 
 	covering := svc.excludedIndexesCoveringFNs(
-		report.FalseNegativeTimestamps,
+		[]time.Time{witnessTS},
 		base,
 		base.Add(2*time.Minute),
 	)

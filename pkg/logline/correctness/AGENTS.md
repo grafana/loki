@@ -41,7 +41,7 @@ Continuously verifies that queryable terms in Loki are reflected by overlapping 
 4. **Operator visibility**
    - Every non-skipped cycle emits a `msg="correctness cycle step"` log at each major step: `picked_range`, `picked_label_value`, `fetched_sample_logs`, `picked_needle`, `fetched_verification_results`.
    - Final outcome is logged as `msg="correctness cycle completed"` with the cycle report (selector, range, needle, candidate counts, true/false positives, correctness).
-   - On incorrect cycles, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe).
+   - On incorrect cycles, `correctness failure detail` includes `excluded_covering_fn_count`, and each matching index is logged as `correctness failure FN covered by ingester-window index` — candidates for the Loki event-time vs logline `min_rec_ts` asymmetry (metadata only; no term probe). The hint provider scans these indexes' log-time span (`pkg/logline/hintprovider` invariant 14), so such FNs are not expected; one showing up means that invariant broke.
    - Aggregate counters are exported via Prometheus metrics.
 
 5. **Queryable token requirement**
