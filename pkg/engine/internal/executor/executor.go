@@ -100,8 +100,9 @@ type LogMergeObserver interface {
 	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
 
-	// ObserveLogMergeInputBytes receives the size of each merged record while
-	// the task runs. It is called once per record, so it must be cheap.
+	// ObserveLogMergeInputBytes receives the size of a batch of merged records
+	// while the task runs. It reports during the task, not once at the end,
+	// so that rate() stays steady for tasks that run for many minutes.
 	ObserveLogMergeInputBytes(bytes int64)
 }
 

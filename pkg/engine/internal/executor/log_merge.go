@@ -83,9 +83,16 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, err
 	}
 	var (
-		inputBytes int64
-		dups       duplicateCounter
+		inputBytesTotal int64
+		dups            duplicateCounter
+		inputBytesBatch int64
+		count           int
 	)
+	batchRecords := 1000
+	observeBatch := func() {
+		c.observeLogMergeInputBytes(inputBytesBatch)
+		inputBytesTotal += inputBytesBatch
+	}
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -95,13 +102,20 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 			return nil, err
 		}
 		size := rec.UncompressedSize()
-		inputBytes += size
-		c.observeLogMergeInputBytes(size)
+		inputBytesBatch += size
+		count += 1
+		if count%batchRecords == 0 {
+			observeBatch()
+			inputBytesBatch = 0
+			count = 0
+		}
 		dups.observe(rec)
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
 		}
 	}
+	// Count any remaining records that haven't been added to the metric yet
+	observeBatch()
 	stats, err := w.finish(ctx)
 	if err != nil {
 		return nil, err
@@ -128,17 +142,21 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	for _, run := range inputs.runs {
 		stats.InputSections += len(run)
 	}
-	stats.InputBytes = inputBytes
+	stats.InputBytes = inputBytesTotal
 	stats.DuplicateRecords = dups.duplicates
 
 	duration := time.Since(start)
+	var inputBytesPerSecond int64
+	if duration > 0 {
+		inputBytesPerSecond = int64(float64(stats.InputBytes) / duration.Seconds())
+	}
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
 		"tenant", node.Tenant,
 		"source_objects", stats.SourceObjects,
 		"input_sections", stats.InputSections,
 		"input_bytes", stats.InputBytes,
-		"input_bytes_per_second", int64(float64(stats.InputBytes)/duration.Seconds()),
+		"input_bytes_per_second", inputBytesPerSecond,
 		"duplicate_records", stats.DuplicateRecords,
 		"output_objects", stats.OutputObjects,
 		"output_bytes", stats.OutputBytesCompressed,

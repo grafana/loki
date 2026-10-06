@@ -267,16 +267,12 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 
 	recordIter := func(yield func(logs.Record, int64) bool) {
 		for _, entry := range stream.Entries {
-			sz := int64(len(entry.Line))
-			for _, md := range entry.StructuredMetadata {
-				sz += int64(len(md.Value))
-			}
-			ok := yield(logs.Record{
+			rec := logs.Record{
 				Timestamp: entry.Timestamp,
 				Metadata:  convertMetadata(entry.StructuredMetadata),
 				Line:      []byte(entry.Line),
-			}, sz)
-			if !ok {
+			}
+			if !yield(rec, rec.UncompressedSize()) {
 				return
 			}
 		}

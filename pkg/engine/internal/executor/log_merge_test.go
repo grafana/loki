@@ -655,8 +655,8 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	_, err := c.doLogObjectMerge(ctx, node)
 	require.NoError(t, err)
 
-	wantRecordBytes := []int64{int64(len("line1")), int64(len("line1")), int64(len("line22"))}
-	require.ElementsMatch(t, wantRecordBytes, observer.inputBytes, "input bytes must be reported once per record")
+	wantBytes := int64(len("line1") + len("line1") + len("line22"))
+	require.Equal(t, []int64{wantBytes}, observer.inputBytes, "records below one batch must be reported in one report")
 	require.Len(t, observer.stats, 1)
 	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
 	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)

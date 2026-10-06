@@ -26,7 +26,7 @@ type duplicateCounter struct {
 
 	groupStreamID  int64
 	groupTimestamp time.Time
-	group          []trackedRecord
+	groupRecords   []trackedRecord
 }
 
 type trackedRecord struct {
@@ -54,7 +54,7 @@ func (c *duplicateCounter) observe(rec logs.Record) {
 		c.duplicates++
 		return
 	}
-	c.group = append(c.group, tracked)
+	c.groupRecords = append(c.groupRecords, tracked)
 }
 
 // inCurrentGroup reports whether rec has the stream and timestamp of the
@@ -66,8 +66,7 @@ func (c *duplicateCounter) inCurrentGroup(rec logs.Record) bool {
 // startGroup forgets the records of the current group and starts a new group
 // for the stream and timestamp of rec.
 func (c *duplicateCounter) startGroup(rec logs.Record) {
-	clear(c.group) // Drop references to line and metadata buffers.
-	c.group = c.group[:0]
+	c.groupRecords = c.groupRecords[:0]
 	c.groupStreamID = rec.StreamID
 	c.groupTimestamp = rec.Timestamp
 }
@@ -75,7 +74,7 @@ func (c *duplicateCounter) startGroup(rec logs.Record) {
 // seenInGroup reports whether the current group already has a record equal
 // to r.
 func (c *duplicateCounter) seenInGroup(r trackedRecord) bool {
-	return slices.ContainsFunc(c.group, r.equal)
+	return slices.ContainsFunc(c.groupRecords, r.equal)
 }
 
 func newTrackedRecord(rec logs.Record) trackedRecord {
