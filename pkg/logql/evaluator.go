@@ -441,15 +441,7 @@ func sampleOrderFor(ctx context.Context, expr syntax.SampleExpr, limits Limits, 
 		return timestampFirst
 	}
 
-	vecExpr, ok := expr.(*syntax.VectorAggregationExpr)
-	if !ok || vecExpr.Operation != syntax.OpTypeSum {
-		return timestampFirst
-	}
-	rangExpr, ok := vecExpr.Left.(*syntax.RangeAggregationExpr)
-	if !ok {
-		return timestampFirst
-	}
-	if _, ok := newStepAccumulatorFuncFor(rangExpr); !ok {
+	if _, ok := StreamFirstRangeAggregation(expr.String()); !ok {
 		return timestampFirst
 	}
 
