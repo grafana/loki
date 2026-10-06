@@ -405,12 +405,12 @@ func TestScanner_MatcherHits_PredicateTypes(t *testing.T) {
 	)
 	defer closer()
 
-	collect := func(t *testing.T, matchers []*labels.Matcher) (map[postings.PredicateValue]struct{}, map[string]struct{}) {
+	collect := func(t *testing.T, predicates []*labels.Matcher) (map[postings.PredicateValue]struct{}, map[string]struct{}) {
 		t.Helper()
 		bloom := make(map[postings.PredicateValue]struct{})
 		names := make(map[string]struct{})
 		for _, sec := range secs {
-			hits, ambiguous, err := scannerFactory(ctx, t, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
+			hits, ambiguous, err := scannerFactory(ctx, t, nil, nil, predicates)(sec).MatcherHits(ctx, predicates)
 			require.NoError(t, err)
 			for pv := range hits[ref] {
 				bloom[pv] = struct{}{}

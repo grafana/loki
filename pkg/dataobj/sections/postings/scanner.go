@@ -40,9 +40,9 @@ type ScannerReaders struct {
 // NewScannerReaders creates the readers needed to scan sec. The returned
 // readers must be opened before they are passed to [NewScanner].
 //
-// predicates may hold matchers of any type. Bloom lookups use only the
-// equality matchers, and their names must be distinct. The stream label lookup
-// uses every predicate name.
+// predicates may be of any matcher type. Bloom lookups use only the equality
+// predicates, and their names must be distinct. The stream label lookup uses
+// every predicate name.
 func NewScannerReaders(
 	sec *Section,
 	matchers []CompiledMatcher,
@@ -65,7 +65,7 @@ func NewScannerReaders(
 		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
 	}
 
-	equal := equalMatchers(predicates)
+	equal := equalPredicates(predicates)
 	if err := validateMatcherNames(equal); err != nil {
 		return nil, err
 	}
@@ -95,9 +95,9 @@ func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
 	return byName
 }
 
-func equalMatchers(matchers []*labels.Matcher) []*labels.Matcher {
+func equalPredicates(predicates []*labels.Matcher) []*labels.Matcher {
 	var out []*labels.Matcher
-	for _, m := range matchers {
+	for _, m := range predicates {
 		if m.Type == labels.MatchEqual {
 			out = append(out, m)
 		}
@@ -389,14 +389,14 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 	return out
 }
 
-// MatcherHits scans the section against [matchers]. The first return is the
-// per-section (name,value) bloom hits of the equality matchers. The second is
-// the per-section set of matcher names, of any matcher type, that occur as a
+// MatcherHits scans the section against [predicates]. The first return is the
+// per-section (name,value) bloom hits of the equality predicates. The second is
+// the per-section set of predicate names, of any matcher type, that occur as a
 // stream label. Returns nil maps when the section lacks the kind or name column.
 // A section without a bloom column has no bloom hits but still reports stream
 // label names.
-func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
-	if len(matchers) == 0 {
+func (s *Scanner) MatcherHits(ctx context.Context, predicates []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+	if len(predicates) == 0 {
 		return nil, nil, nil
 	}
 
@@ -410,11 +410,11 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 		return nil, nil, errors.New("matcher hits readers not provided")
 	}
 
-	// Bloom lookups use only equality matchers, and their names are distinct.
-	// The scanner readers check this when they are created. Other matcher types
+	// Bloom lookups use only equality predicates, and their names are distinct.
+	// The scanner readers check this when they are created. Other predicate types
 	// are skipped here.
-	byName := make(map[string]*labels.Matcher, len(matchers))
-	for _, p := range matchers {
+	byName := make(map[string]*labels.Matcher, len(predicates))
+	for _, p := range predicates {
 		if p.Type == labels.MatchEqual {
 			byName[p.Name] = p
 		}
