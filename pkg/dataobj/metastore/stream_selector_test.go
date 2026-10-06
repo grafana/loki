@@ -266,6 +266,55 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 	require.ElementsMatch(t, []string{"trace_id"}, res[0].AmbiguousNames)
 }
 
+func TestStreamSelector_NonEqualityPredicateAmbiguousNames(t *testing.T) {
+	secs, closer := buildLabelBloomSection(t, []labelPosting{
+		{name: "app", value: "web", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		{name: "provider", value: "idology", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+	}, nil)
+	defer closer()
+	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "web")}
+
+	tests := []struct {
+		name  string
+		preds []*labels.Matcher
+		want  []string
+	}{
+		{
+			name:  "reports a stream label named by a regex predicate",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
+			want:  []string{"provider"},
+		},
+		{
+			name:  "reports a stream label named by a not-equal predicate",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "provider", "other")},
+			want:  []string{"provider"},
+		},
+		{
+			name: "reports a name once when several predicates share it",
+			preds: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
+				labels.MustNewMatcher(labels.MatchNotRegexp, "provider", "oth.*"),
+			},
+			want: []string{"provider"},
+		},
+		{
+			name:  "reports nothing for a name that is not a stream label",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*")},
+			want:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000))
+			res, err := openAndSelectStreams(context.Background(), t, r, secs)
+			require.NoError(t, err)
+			require.Len(t, res, 1)
+			require.ElementsMatch(t, tt.want, res[0].AmbiguousNames)
+		})
+	}
+}
+
 func TestStreamSelector_BloomFilters(t *testing.T) {
 	ctx := context.Background()
 	secs, closer := buildLabelBloomSection(t,

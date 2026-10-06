@@ -39,6 +39,10 @@ type ScannerReaders struct {
 
 // NewScannerReaders creates the readers needed to scan sec. The returned
 // readers must be opened before they are passed to [NewScanner].
+//
+// predicates may hold matchers of any type. Only the equality matchers drive
+// bloom lookups, and their names must be distinct. Every predicate name drives
+// the stream label lookup.
 func NewScannerReaders(
 	sec *Section,
 	matchers []CompiledMatcher,
@@ -62,11 +66,14 @@ func NewScannerReaders(
 	}
 
 	if len(predicates) > 0 && kindCol != nil && nameCol != nil && bloomCol != nil {
-		if err := validateMatcherNames(predicates); err != nil {
+		equal := equalMatchers(predicates)
+		if err := validateMatcherNames(equal); err != nil {
 			return nil, err
 		}
 
-		readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, predicates), bloomStats)
+		if len(equal) > 0 {
+			readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, equal), bloomStats)
+		}
 		readers.LabelNames = newScannerReader(sec, matcherLabelNamesPredicate(kindCol, nameCol, predicates), nil)
 	}
 
@@ -87,6 +94,16 @@ func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
 		byName[cm.matcher.Name] = append(byName[cm.matcher.Name], i)
 	}
 	return byName
+}
+
+func equalMatchers(matchers []*labels.Matcher) []*labels.Matcher {
+	var out []*labels.Matcher
+	for _, m := range matchers {
+		if m.Type == labels.MatchEqual {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func validateMatcherNames(matchers []*labels.Matcher) error {
@@ -374,9 +391,9 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 }
 
 // MatcherHits scans the section against [matchers]. The first return is the
-// per-section (name,value) bloom hits. The second is the per-section set of
-// matcher names that occur as a stream label. Returns nil maps when the section
-// lacks the required columns.
+// per-section (name,value) bloom hits of the equality matchers. The second is
+// the per-section set of matcher names, of any matcher type, that occur as a
+// stream label. Returns nil maps when the section lacks the required columns.
 func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
 	if len(matchers) == 0 {
 		return nil, nil, nil
@@ -388,7 +405,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 	if kindCol == nil || nameCol == nil || bloomCol == nil {
 		return nil, nil, nil
 	}
-	if s.readers == nil || s.readers.BloomMatches == nil || s.readers.LabelNames == nil {
+	if s.readers == nil || s.readers.LabelNames == nil {
 		return nil, nil, errors.New("matcher hits readers not provided")
 	}
 
@@ -396,7 +413,9 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 	// name, which is validated when the scanner readers are created.
 	byName := make(map[string]*labels.Matcher, len(matchers))
 	for _, p := range matchers {
-		byName[p.Name] = p
+		if p.Type == labels.MatchEqual {
+			byName[p.Name] = p
+		}
 	}
 
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
