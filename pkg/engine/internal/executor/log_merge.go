@@ -425,6 +425,9 @@ type fixedSortSchema []string
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
 
 func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.MultiSourceRankedStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+	// Merging an object should not modify an object by dropping duplicates
+	c.logsobjCfg.DropDuplicates = false
+
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,

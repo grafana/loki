@@ -53,6 +53,8 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 		return nil, fmt.Errorf("SortObject: source %q holds %d tenants, want 1", node.SourceObjectPath, len(tenants))
 	}
 
+	// Sorting an object should not modify the object by dropping duplicates
+	c.logsobjCfg.DropDuplicates = false
 	builder, err := logsobj.NewBuilder(
 		c.logsobjCfg,
 		c.scratchStore,

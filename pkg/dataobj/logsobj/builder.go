@@ -79,6 +79,10 @@ type BuilderBaseConfig struct {
 	// Higher values allow more data to accumulate before the builder reports
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
+
+	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during Flush.
+	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	DropDuplicates bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -208,6 +212,7 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 			SchemaLabels:              b.schemaLabelsFor(tenant),
 			StreamOrder:               logs.StreamOrderStableHashV1,
 			ShardCount:                streams.ShardFactor,
+			DropDuplicates:            b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -548,6 +553,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				SchemaLabels:     schemaLabels,
 				StreamOrder:      logs.StreamOrderStableHashV1,
 				ShardCount:       streams.ShardFactor,
+				DropDuplicates:   b.cfg.DropDuplicates,
 			})
 			lb.SetTenant(tenant)
 

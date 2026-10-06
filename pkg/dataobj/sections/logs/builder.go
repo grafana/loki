@@ -161,6 +161,10 @@ type BuilderOptions struct {
 	// ShardCount is the number of physical shard buckets in the sort layout.
 	// Zero means unspecified.
 	ShardCount uint32
+
+	// DropDuplicates indicates whether duplicate records should be dropped or retained during Flush.
+	// Records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	DropDuplicates bool
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -275,7 +279,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
 		buf = &b.sectionBuffer
 	}
-	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder, b.opts.DropDuplicates)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
