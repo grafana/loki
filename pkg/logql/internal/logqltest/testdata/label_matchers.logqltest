@@ -344,15 +344,15 @@ eval select from 0 to 30s forward {app="s"} | name="parsed" | logfmt
 # Only the second form can test a parsed value, so `| name="parsed" | logfmt` is a well-defined
 # query that never matches.
 #
-# BUG: a matcher before a parser is applied a second time, against the value that the parser
-# writes. A parser stops on a matcher that a just-extracted name fails, which is a valid
-# optimization for a matcher DOWNSTREAM of the parser, because that line was going to be dropped
-# anyway. The hint builder collects the matcher of every stage though, and never tests where the
-# stage sits, so it applies an upstream matcher downstream as well.
+# Fixed (#24565): a matcher before a parser used to be applied a second time, against the value
+# that the parser writes. A parser stops on a matcher that a just-extracted name fails, which is a
+# valid optimization for a matcher DOWNSTREAM of the parser, because that line was going to be
+# dropped anyway. The hint builder used to collect the matcher of every stage without testing
+# where the stage sits, so it applied an upstream matcher downstream as well.
 #
-# The nil/empty conflation decides which queries reach the second test. A matcher only survives to
-# the parser when it passes against an absent name, so `=""` and `!="<value>"` are exposed, and
-# `="<value>"` and `!=""` are not.
+# The nil/empty conflation decided which queries reached that second test. A matcher only survives
+# to the parser when it passes against an absent name, so `=""` and `!="<value>"` were exposed,
+# and `="<value>"` and `!=""` were not. The scenarios below are regression guards for the fix.
 #
 # Correct: a matcher reads only the label set that exists when its stage runs.
 clear
@@ -370,18 +370,18 @@ eval select from 0 to 30s forward {app="a"} | name="parsed" | logfmt
 # `name=""`: after the parser the name holds "parsed", so the line goes. Correct.
 eval select from 0 to 30s forward {app="a"} | logfmt | name=""
   expect empty
-# BUG: the name is absent before the parser, and an absent name equals "", so the matcher keeps
-# the line. The parser then re-applies the matcher to `name=parsed` and drops it.
+# Fixed: the name is absent before the parser, and an absent name equals "", so the matcher keeps
+# the line. The parser then runs normally and is not re-applied.
 eval select from 0 to 30s forward {app="a"} | name="" | logfmt
-  expect empty
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
 
 # `name!="parsed"`: after the parser the value is equal, so the line goes. Correct.
 eval select from 0 to 30s forward {app="a"} | logfmt | name!="parsed"
   expect empty
-# BUG: the absent name reads as "", which is not equal to "parsed", so the matcher keeps the line.
-# The parser then re-applies the matcher and drops it.
+# Fixed: the absent name reads as "", which is not equal to "parsed", so the matcher keeps the
+# line and the parser runs normally afterward.
 eval select from 0 to 30s forward {app="a"} | name!="parsed" | logfmt
-  expect empty
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
 
 # `name!=""`: the absent name reads as "", so the matcher drops the line before the parser runs.
 # Both results are correct and they differ, because the two queries ask different questions.
@@ -402,20 +402,19 @@ eval select from 0 to 30s forward {app="a"} | name!="other" | logfmt
 eval select from 0 to 30s forward {app="a"} | name!="parsed" or name="never" | logfmt
   {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
 
-# BUG: the same query gives a different result as a metric query, because a `by` clause makes the
-# hint builder drop the collected matchers, which turns the second test off. All four queries
-# below read the same line.
-#
-# Correct: all four count 1, which is what the `by (app)` and `by (name)` forms already give.
+# Fixed: all four queries below read the same line and now agree, each counting 1. A `by` clause
+# used to make the hint builder drop the collected matchers, which turned the second (buggy)
+# re-application off for the grouped forms — the reason they already gave the correct count
+# before the fix below.
 eval instant at 60s count_over_time({app="a"} | name!="parsed" | logfmt [1m])
-  expect empty
+  {app="a", name="parsed"} 1
 eval instant at 60s sum(count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
-  expect empty
+  {} 1
 eval instant at 60s sum by (app) (count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
   {app="a"} 1
-# The series carries `name="parsed"` from a `name!="parsed"` query. That reads wrong but follows
-# the rule: the matcher ran before the parser, where the name was absent, so it never saw the
-# parsed value. This form is the correct one, and the two `expect empty` results above are not.
+# The series carries `name="parsed"` from a `name!="parsed"` query. That is correct: the matcher
+# ran before the parser, where the name was absent, so it compared against "" and passed; the
+# parser then ran normally and wrote the parsed value.
 eval instant at 60s sum by (name) (count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
   {name="parsed"} 1
 
