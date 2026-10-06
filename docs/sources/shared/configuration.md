@@ -4311,7 +4311,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Whether the ingestion rate limit should be applied individually to each
 # distributor instance (local), evenly shared across the cluster via a
 # distributors ring (global), enforced exactly via an external distributed
-# throttler (exact), or enforced as global while only observing what exact would
+# throttler (exact), or enforced as global while only observing what "exact" would
 # have decided (shadow). The ingestion rate strategy cannot be overridden on a
 # per-tenant basis.
 # - local: enforces the limit on a per distributor basis. The actual effective
