@@ -84,7 +84,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.TLSMinVersion, "tls-min-version", "VersionTLS12", "Minimum TLS version (VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13).")
 	f.StringVar(&c.TLSMaxVersion, "tls-max-version", "", "Maximum TLS version (VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13). Empty means no maximum.")
 	f.Var(&c.TLSCipherSuites, "tls-cipher-suites", "Comma-separated list of TLS cipher suites.")
-	f.Var(&c.TLSCurvePrefs, "tls-curve-preferences", "Comma-separated list of curve preferences (X25519, CurveP256, CurveP384, CurveP521).")
+	f.Var(&c.TLSCurvePrefs, "tls-curve-preferences", "Comma-separated list of key exchange groups. Values are IANA \"TLS Supported Groups\" names (e.g. X25519, secp256r1, X25519MLKEM768); Go crypto/tls constant names (e.g. CurveP256) are also accepted for the classic curves.")
 }
 
 // Validate checks that all required configuration is provided and valid.
