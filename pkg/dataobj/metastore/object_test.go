@@ -943,7 +943,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 }
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, Config{ReadPostingsSections: true}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }
 
 // uploadIndexObject uploads obj to a fresh in-memory bucket and returns a
@@ -1008,7 +1008,7 @@ func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
 }
 
 // unwrapReader returns the reader that IndexSectionsReader selected, unwrapping
-// the metrics decorator applied when read_postings_sections is enabled.
+// the metrics decorator.
 func unwrapReader(r ArrowRecordBatchReader) ArrowRecordBatchReader {
 	if ir, ok := r.(*instrumentedReader); ok {
 		return ir.ArrowRecordBatchReader

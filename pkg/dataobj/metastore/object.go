@@ -54,11 +54,10 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	readPostingsSections bool
-	bucket               objstore.Bucket
-	parallelism          int
-	logger               log.Logger
-	metrics              *ObjectMetastoreMetrics
+	bucket      objstore.Bucket
+	parallelism int
+	logger      log.Logger
+	metrics     *ObjectMetastoreMetrics
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -239,11 +238,10 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	}
 
 	store := &ObjectMetastore{
-		readPostingsSections: cfg.ReadPostingsSections,
-		bucket:               b,
-		parallelism:          64,
-		logger:               logger,
-		metrics:              metrics,
+		bucket:      b,
+		parallelism: 64,
+		logger:      logger,
+		metrics:     metrics,
 	}
 
 	return store
@@ -715,7 +713,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 
 	var reader ArrowRecordBatchReader
 	flow := flowStreams
-	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
+	if hasPostingsSection(idxObj, tenant) {
 		flow = flowPostings
 		reader = newPostingsIndexSectionsReader(
 			m.logger,
