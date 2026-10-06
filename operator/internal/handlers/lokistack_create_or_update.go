@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -49,17 +50,35 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	// Check for deprecated BoltDB schema versions (v11, v12)
+	// Reject v11/v12 unless already migrated to an active v13
+	now := time.Now().UTC()
 	for _, schema := range stack.Spec.Storage.Schemas {
 		//nolint:staticcheck
 		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
-			degradedErr := &status.DegradedError{
-				Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Please migrate to v13.", schema.Version),
-				Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
-				Requeue: false,
+			schemaDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(schema.EffectiveDate))
+			if err == nil {
+				// Check if already migrated to a newer active v13
+				migrated := false
+				for _, other := range stack.Spec.Storage.Schemas {
+					if other.Version == lokiv1.ObjectStorageSchemaV13 {
+						otherDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(other.EffectiveDate))
+						if err == nil && otherDate.After(schemaDate) && !otherDate.After(now) {
+							migrated = true
+							break
+						}
+					}
+				}
+
+				if !migrated {
+					degradedErr := &status.DegradedError{
+						Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Please migrate to v13.", schema.Version),
+						Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
+						Requeue: false,
+					}
+					ll.Error(degradedErr, "deprecated schema will not be reconciled")
+					return nil, degradedErr
+				}
 			}
-			ll.Error(degradedErr, "deprecated schema will not be reconciled")
-			return nil, degradedErr
 		}
 	}
 

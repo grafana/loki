@@ -742,19 +742,65 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 }
 
 func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *testing.T) {
+	// Note: This test only covers error cases (deprecated schemas are rejected).
+	// Successful cases (historical v11/v12 with current v13) are covered by integration tests
+	// as they require full reconciliation setup.
 	tests := []struct {
 		name          string
-		schemaVersion lokiv1.ObjectStorageSchemaVersion
+		schemas       []lokiv1.ObjectStorageSchema
+		errorContains string
 	}{
 		{
-			name: "v11 schema is deprecated",
-			//nolint:staticcheck
-			schemaVersion: lokiv1.ObjectStorageSchemaV11,
+			name: "current v11 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-01-01",
+				},
+			},
+			errorContains: "v11",
 		},
 		{
-			name: "v12 schema is deprecated",
-			//nolint:staticcheck
-			schemaVersion: lokiv1.ObjectStorageSchemaV12,
+			name: "current v12 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2020-01-01",
+				},
+			},
+			errorContains: "v12",
+		},
+		{
+			name: "future v11 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2020-01-01",
+				},
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2030-01-01",
+				},
+			},
+			errorContains: "v11",
+		},
+		{
+			name: "future v12 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2020-01-01",
+				},
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2030-01-01",
+				},
+			},
+			errorContains: "v12",
 		},
 	}
 
@@ -781,12 +827,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 				Spec: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXExtraSmall,
 					Storage: lokiv1.ObjectStorageSpec{
-						Schemas: []lokiv1.ObjectStorageSchema{
-							{
-								Version:       tc.schemaVersion,
-								EffectiveDate: "2023-05-22",
-							},
-						},
+						Schemas: tc.schemas,
 						Secret: lokiv1.ObjectStorageSecretSpec{
 							Name: defaultSecret.Name,
 							Type: lokiv1.ObjectStorageSecretS3,
@@ -817,7 +858,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 
 			degradedErr := err.(*status.DegradedError)
 			require.Contains(t, degradedErr.Message, "deprecated schema version")
-			require.Contains(t, degradedErr.Message, string(tc.schemaVersion))
+			require.Contains(t, degradedErr.Message, tc.errorContains)
 			require.Equal(t, lokiv1.ReasonInvalidObjectStorageSchema, degradedErr.Reason)
 			require.False(t, degradedErr.Requeue)
 		})
