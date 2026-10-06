@@ -50,26 +50,25 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	// Reject v11/v12 unless already migrated to an active v13
-	now := time.Now().UTC()
+	// Reject v11/v12 unless there's a newer v13 (active or scheduled)
 	for _, schema := range stack.Spec.Storage.Schemas {
 		//nolint:staticcheck
 		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
 			schemaDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(schema.EffectiveDate))
 			if err == nil {
-				// Check if already migrated to a newer active v13
-				migrated := false
+				// Check if there's a newer v13 (allows both migrated and scheduled migration)
+				hasNewerV13 := false
 				for _, other := range stack.Spec.Storage.Schemas {
 					if other.Version == lokiv1.ObjectStorageSchemaV13 {
 						otherDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(other.EffectiveDate))
-						if err == nil && otherDate.After(schemaDate) && !otherDate.After(now) {
-							migrated = true
+						if err == nil && otherDate.After(schemaDate) {
+							hasNewerV13 = true
 							break
 						}
 					}
 				}
 
-				if !migrated {
+				if !hasNewerV13 {
 					degradedErr := &status.DegradedError{
 						Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Please migrate to v13.", schema.Version),
 						Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
