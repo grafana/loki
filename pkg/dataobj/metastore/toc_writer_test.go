@@ -123,7 +123,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		dobj, err := dataobj.FromReaderAt(bytes.NewReader(object), int64(len(object)))
 		require.NoError(t, err)
 
-		err = writer.copyFromExistingToc(context.Background(), dobj)
+		err = writer.copyFromExistingToc(context.Background(), tenantID, dobj)
 		require.NoError(t, err)
 	})
 
@@ -185,7 +185,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		target, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket(), target)
-		err = writer.copyFromExistingToc(context.Background(), obj)
+		err = writer.copyFromExistingToc(context.Background(), "test", obj)
 		require.ErrorContains(t, err, "reading index pointers")
 		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
 	})
@@ -232,6 +232,32 @@ func TestTableOfContentsWriter(t *testing.T) {
 			require.Equal(t, tc.tenant, rows[0].Tenant, "a ToC must only hold its own tenant")
 			require.Equal(t, tc.path, rows[0].Path)
 		}
+	})
+
+	t.Run("WriteEntry returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant", func(t *testing.T) {
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
+		uploadToC(t, inner, tocPath, "tenant-b", "indexes/b")
+		before := readToC(context.Background(), t, inner, tocPath)
+
+		builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		bucket := &countingBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket, builder)
+
+		// WriteEntry retries other errors until the context is done, so the
+		// timeout turns a regression into a failure instead of a hang.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err = writer.WriteEntry(ctx, "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(20),
+		})
+		require.ErrorIs(t, err, errTenantMismatch)
+		require.NotErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 1, bucket.Calls())
+		require.Equal(t, before, readToC(context.Background(), t, inner, tocPath))
 	})
 }
 
