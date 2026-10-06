@@ -230,6 +230,62 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		require.Equal(t, uint32(1), entry.accumPushes)
 		require.Nil(t, entry.pending)
 	})
+
+	t.Run("a duplicate stream hash in one request is coalesced instead of deadlocking", func(t *testing.T) {
+		// The first occurrence would dispatch and the second would then await
+		// that same call's pending, which nothing resolves until this call
+		// reaches its own dispatch further down: without coalescing, this
+		// blocks until ctx runs out instead of returning.
+		onMiss := &mockLimitsClient{
+			t: t,
+			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 30}},
+			},
+			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 1}},
+			},
+		}
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		resp, err := c.CheckLimitsAndShard(ctx, &proto.CheckLimitsAndShardRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 10},
+				{StreamHash: 0x1, TotalSize: 20},
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+		require.Len(t, resp.Results, 1)
+		require.Equal(t, uint32(1), resp.Results[0].Shards)
+	})
+}
+
+func TestCoalesceDuplicateHashes(t *testing.T) {
+	t.Run("returns the input unmodified when there are no duplicates", func(t *testing.T) {
+		in := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 10},
+			{StreamHash: 0x2, TotalSize: 20},
+		}
+		out := coalesceDuplicateHashes(in)
+		require.Equal(t, in, out)
+	})
+
+	t.Run("sums the TotalSize of repeated hashes and keeps the first occurrence's position and policy", func(t *testing.T) {
+		in := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 10, IngestionPolicy: "p1"},
+			{StreamHash: 0x2, TotalSize: 5},
+			{StreamHash: 0x1, TotalSize: 20, IngestionPolicy: "p2"},
+		}
+		out := coalesceDuplicateHashes(in)
+		require.Equal(t, []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 30, IngestionPolicy: "p1"},
+			{StreamHash: 0x2, TotalSize: 5},
+		}, out)
+	})
 }
 
 // gatedMockLimitsClient blocks every CheckLimitsAndShard call until release

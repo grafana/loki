@@ -98,13 +98,18 @@ type dispatchedShard struct {
 // CheckLimitsAndShard implements the [limitsClient] interface.
 func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
 	now := time.Now()
-	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
-	dispatched := make([]dispatchedShard, 0, len(req.Streams))
+	// A stream repeated within req.Streams must still be processed once: the
+	// first occurrence would otherwise dispatch and the second would await
+	// that same, not-yet-dispatched call's pending, deadlocking this call on
+	// itself until ctx runs out.
+	streams := coalesceDuplicateHashes(req.Streams)
+	results := make([]*proto.StreamShardResult, 0, len(streams))
+	dispatched := make([]dispatchedShard, 0, len(streams))
 	var awaited []*pendingShard
 
 	c.mtx.Lock()
 	c.sweep(now)
-	for _, m := range req.Streams {
+	for _, m := range streams {
 		key := shardCacheKey{req.Tenant, m.StreamHash}
 		entry, cached := c.entries[key]
 
@@ -231,6 +236,33 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	}
 
 	return &proto.CheckLimitsAndShardResponse{Results: append(results, resp.Results...)}, nil
+}
+
+// coalesceDuplicateHashes merges streams that share a StreamHash into one,
+// summing their TotalSize, so a request listing the same stream more than
+// once is still processed as a single entry per stream. It returns streams
+// unmodified when there is nothing to merge.
+func coalesceDuplicateHashes(streams []*proto.StreamMetadata) []*proto.StreamMetadata {
+	index := make(map[uint64]int, len(streams))
+	out := make([]*proto.StreamMetadata, 0, len(streams))
+	dupe := false
+	for _, m := range streams {
+		if i, ok := index[m.StreamHash]; ok {
+			out[i] = &proto.StreamMetadata{
+				StreamHash:      m.StreamHash,
+				TotalSize:       out[i].TotalSize + m.TotalSize,
+				IngestionPolicy: out[i].IngestionPolicy,
+			}
+			dupe = true
+			continue
+		}
+		index[m.StreamHash] = len(out)
+		out = append(out, m)
+	}
+	if !dupe {
+		return streams
+	}
+	return out
 }
 
 // sweep must be called with mtx held.
