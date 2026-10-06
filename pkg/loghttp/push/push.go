@@ -137,7 +137,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error)
 	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
@@ -196,7 +196,7 @@ type Stats struct {
 	OTLPAttributes *otlpattrs.Accumulator
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.InternalPushRequest, *Stats, error) {
 	// If the X-Loki-Backfill-Shard header is set, validate it and stash the shard in the request
 	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
 	if shard, ok, err := ExtractAndValidateBackfillShard(r); err != nil {
@@ -462,7 +462,7 @@ func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, max
 	return nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
 	req, err := parsePushRequestBody(r, maxRecvMsgSize, maxDecompressedSize, pushStats)
@@ -559,7 +559,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		return nil, nil, err
 	}
 
-	return req, pushStats, nil
+	return logproto.FromPushRequest(req), pushStats, nil
 }
 
 // CalculateStreamsStats modifies pushStats with statistics about all the streams from req.
