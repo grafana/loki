@@ -58,6 +58,8 @@ Group 0 is embedded in the Match.  Group 0 is an automatically-assigned group th
 
 The __last__ capture is embedded in each group, so `g.String()` will return the same thing as `g.Capture.String()` and  `g.Captures[len(g.Captures)-1].String()`.
 
+In `ECMAScript` mode, duplicate group names are allowed in separate alternatives and keep distinct group numbers. `GroupByName(name)` selects the participating group (or the first if none participated); `GroupNumberFromName(name)` always returns the first declaration's number, which may differ from the selected group.
+
 If you want to find multiple matches from a single input string you should use the `FindNextMatch` method.  For example, to implement a function similar to `regexp.FindAllString`:
 
 ```go
