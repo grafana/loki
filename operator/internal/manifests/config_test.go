@@ -1336,6 +1336,7 @@ func TestConfigOptions_Shipper(t *testing.T) {
 					Storage: lokiv1.ObjectStorageSpec{
 						Schemas: []lokiv1.ObjectStorageSchema{
 							{
+								//nolint:staticcheck
 								Version:       lokiv1.ObjectStorageSchemaV11,
 								EffectiveDate: "2020-10-01",
 							},
@@ -1352,6 +1353,7 @@ func TestConfigOptions_Shipper(t *testing.T) {
 					Storage: lokiv1.ObjectStorageSpec{
 						Schemas: []lokiv1.ObjectStorageSchema{
 							{
+								//nolint:staticcheck
 								Version:       lokiv1.ObjectStorageSchemaV12,
 								EffectiveDate: "2020-02-05",
 							},
@@ -1384,10 +1386,12 @@ func TestConfigOptions_Shipper(t *testing.T) {
 					Storage: lokiv1.ObjectStorageSpec{
 						Schemas: []lokiv1.ObjectStorageSchema{
 							{
+								//nolint:staticcheck
 								Version:       lokiv1.ObjectStorageSchemaV11,
 								EffectiveDate: "2020-01-01",
 							},
 							{
+								//nolint:staticcheck
 								Version:       lokiv1.ObjectStorageSchemaV12,
 								EffectiveDate: "2021-01-01",
 							},
