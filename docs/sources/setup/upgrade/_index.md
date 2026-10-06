@@ -211,7 +211,7 @@ To preserve the previous location, set `-ruler.wal.dir` explicitly to the old pa
 
 ### OTLP log push endpoint returns HTTP 200 on success
 
-A successful push to `/otlp/v1/logs` now returns `200 OK` instead of `204 No Content`. The OTLP specification requires `200 OK` for a successful export, and some OpenTelemetry clients reject `204`. The `/loki/api/v1/push` endpoint still returns `204 No Content` on success.
+A successful push to `/otlp/v1/logs` now returns `200 OK` instead of `204 No Content`. The OTLP specification requires `200 OK` for a successful export, and some OpenTelemetry clients reject `204`. The response body and `Content-Type` now follow the specification too: a JSON request gets `{}` as `application/json`, and a protobuf request gets an empty `application/x-protobuf` body. The `/loki/api/v1/push` endpoint still returns `204 No Content` with no body on success.
 
 Clients that accept any `2xx` response are not affected. Clients that check for exactly `204` on the OTLP endpoint must be updated to accept `200`.
 

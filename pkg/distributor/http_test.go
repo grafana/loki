@@ -114,7 +114,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 		format          string
 		parser          push.RequestParser
 		errorWriter     push.ErrorWriter
-		successStatus   int
+		successWriter   push.SuccessWriter
 		buildBody       func(t *testing.T) []byte
 	}{
 		{
@@ -124,7 +124,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			format:        constants.Loki,
 			parser:        push.ParseLokiRequest,
 			errorWriter:   push.HTTPError,
-			successStatus: http.StatusNoContent,
+			successWriter: push.HTTPSuccess,
 			buildBody: func(_ *testing.T) []byte {
 				body, err := proto.Marshal(newPushRequest())
 				require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			format:        constants.Loki,
 			parser:        push.ParseLokiRequest,
 			errorWriter:   push.HTTPError,
-			successStatus: http.StatusNoContent,
+			successWriter: push.HTTPSuccess,
 			buildBody: func(_ *testing.T) []byte {
 				return []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 			},
@@ -150,7 +150,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			format:        constants.OTLP,
 			parser:        push.ParseOTLPRequest,
 			errorWriter:   push.OTLPError,
-			successStatus: http.StatusOK,
+			successWriter: push.OTLPSuccess,
 			buildBody: func(t *testing.T) []byte {
 				otlpLogs := plog.NewLogs()
 				rl := otlpLogs.ResourceLogs().AppendEmpty()
@@ -170,7 +170,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			format:        constants.Loki,
 			parser:        push.ParseLokiRequest,
 			errorWriter:   push.HTTPError,
-			successStatus: http.StatusNoContent,
+			successWriter: push.HTTPSuccess,
 			buildBody: func(t *testing.T) []byte {
 				protoBytes, err := proto.Marshal(newPushRequest())
 				require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestPushHandlerMaxPushSize(t *testing.T) {
 			before := testutil.ToFloat64(discardedBytes)
 
 			rec := httptest.NewRecorder()
-			distributors[0].pushHandler(rec, req, tc.parser, tc.errorWriter, tc.format, tc.successStatus)
+			distributors[0].pushHandler(rec, req, tc.parser, tc.errorWriter, tc.successWriter, tc.format)
 
 			require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 			require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
@@ -326,7 +326,7 @@ func TestPushHandlerLogPushRequestStreams(t *testing.T) {
 			}
 
 			rec := httptest.NewRecorder()
-			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki, http.StatusNoContent)
+			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, push.HTTPSuccess, constants.Loki)
 			require.Equal(t, http.StatusNoContent, rec.Code)
 
 			// Filter just "push request streams" lines from the output.
@@ -360,7 +360,7 @@ func (p *fakeTenantConfigProvider) TenantConfig(_ string) *runtime.Config {
 	return &p.cfg
 }
 
-func TestPushHandlerSuccessStatusCode(t *testing.T) {
+func TestPushHandlerSuccessResponse(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
@@ -374,7 +374,9 @@ func TestPushHandlerSuccessStatusCode(t *testing.T) {
 	lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
 	lr.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 	lr.Body().SetStr("hello")
-	otlpBody, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalProto()
+	otlpProto, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalProto()
+	require.NoError(t, err)
+	otlpJSON, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
 	require.NoError(t, err)
 
 	lokiProto, err := proto.Marshal(&logproto.PushRequest{
@@ -387,24 +389,38 @@ func TestPushHandlerSuccessStatusCode(t *testing.T) {
 	lokiBody := snappy.Encode(nil, lokiProto)
 
 	for _, tc := range []struct {
-		name        string
-		handler     http.HandlerFunc
-		path        string
-		body        []byte
-		contentType string
-		encoding    string
-		wantStatus  int
+		name            string
+		handler         http.HandlerFunc
+		path            string
+		body            []byte
+		contentType     string
+		encoding        string
+		wantStatus      int
+		wantContentType string
+		wantBody        string
 	}{
 		{
-			name:        "OTLP push returns 200 on success as required by the OTLP spec",
-			handler:     d.OTLPPushHandler,
-			path:        "/otlp/v1/logs",
-			body:        otlpBody,
-			contentType: "application/x-protobuf",
-			wantStatus:  http.StatusOK,
+			name:            "OTLP protobuf push returns 200 with an empty protobuf response",
+			handler:         d.OTLPPushHandler,
+			path:            "/otlp/v1/logs",
+			body:            otlpProto,
+			contentType:     "application/x-protobuf",
+			wantStatus:      http.StatusOK,
+			wantContentType: "application/x-protobuf",
+			wantBody:        "",
 		},
 		{
-			name:        "Loki push keeps returning 204 on success",
+			name:            "OTLP JSON push returns 200 with an empty JSON response",
+			handler:         d.OTLPPushHandler,
+			path:            "/otlp/v1/logs",
+			body:            otlpJSON,
+			contentType:     "application/json",
+			wantStatus:      http.StatusOK,
+			wantContentType: "application/json",
+			wantBody:        "{}",
+		},
+		{
+			name:        "Loki push keeps returning 204 with no body",
 			handler:     d.PushHandler,
 			path:        "/loki/api/v1/push",
 			body:        lokiBody,
@@ -424,6 +440,8 @@ func TestPushHandlerSuccessStatusCode(t *testing.T) {
 			rec := httptest.NewRecorder()
 			tc.handler(rec, req)
 			require.Equal(t, tc.wantStatus, rec.Code)
+			require.Equal(t, tc.wantContentType, rec.Header().Get("Content-Type"))
+			require.Equal(t, tc.wantBody, rec.Body.String())
 		})
 	}
 }
