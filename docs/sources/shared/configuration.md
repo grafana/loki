@@ -4329,7 +4329,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # - shadow: enforces exactly like global, while also sending every push to the
 # external throttler for observation only -- see the
 # distributor_exact_shadow_decisions_total metric. Requires both the distributor
-# ring and the distributor.global-throttler.* flags. Use this to validate exact
+# ring and the distributor.global-throttler.* flags. Use this to validate "exact"
 # against real traffic before switching enforcement to it.
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
