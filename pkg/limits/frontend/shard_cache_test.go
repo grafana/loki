@@ -122,9 +122,13 @@ func TestShardCacheLimitsClient(t *testing.T) {
 	})
 
 	t.Run("a call dispatched earlier does not clobber one dispatched later, however they complete", func(t *testing.T) {
-		// Two misses for the same stream dispatch independently (nothing yet
-		// stops that), gated so the second dispatches only once the first is
-		// confirmed in flight, and so the second completes before the first.
+		// Two independent dispatches for the same stream can now only arise if
+		// the first call's pending placeholder is evicted while it is still in
+		// flight (e.g. by sweep, on a short enough ttl): otherwise a second
+		// caller rides along on the first rather than dispatching its own, see
+		// "concurrent misses for the same stream ride along on one backend
+		// call" below. Simulate that eviction directly rather than racing
+		// sweep's timing.
 		onMiss := newGatedMockLimitsClient()
 		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
 
@@ -137,10 +141,13 @@ func TestShardCacheLimitsClient(t *testing.T) {
 			require.NoError(t, err)
 			firstDone <- resp
 		}()
-		// Wait until the first call has dispatched and is blocked in onMiss, so
-		// the second call below is guaranteed to see no usable cached result
-		// and dispatch a second, independent call rather than finding a hit.
+		// Wait until the first call has dispatched and is blocked in onMiss,
+		// then evict its placeholder so the second call below finds nothing to
+		// ride along on and dispatches a second, independent call instead.
 		<-onMiss.calls
+		c.mtx.Lock()
+		delete(c.entries, shardCacheKey{"test", 0x1})
+		c.mtx.Unlock()
 
 		secondDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
 		go func() {
@@ -165,6 +172,63 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		<-firstDone
 
 		require.Equal(t, uint32(2), c.entries[shardCacheKey{"test", 0x1}].result.Shards)
+	})
+
+	t.Run("concurrent misses for the same stream ride along on one backend call", func(t *testing.T) {
+		onMiss := newGatedMockLimitsClient()
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+
+		leaderDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			})
+			require.NoError(t, err)
+			leaderDone <- resp
+		}()
+		// The leader has dispatched and is blocked in onMiss, so its
+		// placeholder is visible to the follower started below.
+		<-onMiss.calls
+
+		followerDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 20}},
+			})
+			require.NoError(t, err)
+			followerDone <- resp
+		}()
+
+		// Wait until the follower has recorded its push on the leader's
+		// pending entry, which only happens once it has taken the "ride
+		// along" branch rather than dispatching a second call.
+		require.Eventually(t, func() bool {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+			e := c.entries[shardCacheKey{"test", 0x1}]
+			return e != nil && e.accumSize == 20
+		}, time.Second, time.Millisecond)
+
+		// Exactly one call ever reached the backend: a second dispatch would
+		// have shown up as a second entry on this channel.
+		require.Empty(t, onMiss.calls)
+
+		onMiss.release(10, &proto.StreamShardResult{StreamHash: 0x1, Shards: 4})
+
+		leaderResp := <-leaderDone
+		followerResp := <-followerDone
+		require.Equal(t, uint32(4), leaderResp.Results[0].Shards)
+		require.Equal(t, uint32(4), followerResp.Results[0].Shards)
+
+		// The follower's push was not part of the request sent to the
+		// backend (its size never reached onMiss), so it must still be
+		// queued for whenever the entry next goes stale.
+		entry := c.entries[shardCacheKey{"test", 0x1}]
+		require.Equal(t, uint64(20), entry.accumSize)
+		require.Equal(t, uint32(1), entry.accumPushes)
+		require.Nil(t, entry.pending)
 	})
 }
 
