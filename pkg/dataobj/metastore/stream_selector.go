@@ -28,8 +28,12 @@ type SectionStreams struct {
 // streamSelector evaluates a LogQL stream selector against one or more postings
 // sections via postings.Scanner
 type streamSelector struct {
-	matchers        []*labels.Matcher
-	predicates      []*labels.Matcher
+	matchers []*labels.Matcher
+	// predicates holds every non-nil predicate. The selector checks their
+	// names against stream labels.
+	predicates []*labels.Matcher
+	// equalPredicates holds only the equality predicates. They drive bloom
+	// admission. Other predicate types never prune a section.
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
 
@@ -473,9 +477,13 @@ func combineLabels(streamLabels, ambiguousNames map[string]struct{}) map[string]
 	return out
 }
 
-// refAdmitsPredicates reports whether every equal-predicate is satisfied for a
-// section: each predicate is either a stream label there or tests positive
-// against a bloom there.
+// refAdmitsPredicates reports whether a section can satisfy every equality
+// predicate. A predicate passes when its name is a stream label in the section.
+// Blooms index only structured metadata, so they cannot judge a stream label.
+// Otherwise the predicate value must hit the bloom for that name.
+//
+// Non-equality predicates never prune a section, because a bloom filter cannot
+// prove a value absent for them.
 func (s *streamSelector) refAdmitsPredicates(streamLabels map[string]struct{}, bloomHits map[postings.PredicateValue]struct{}) bool {
 	for _, p := range s.equalPredicates {
 		if _, isStreamLabel := streamLabels[p.Name]; isStreamLabel {

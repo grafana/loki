@@ -713,6 +713,8 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 
 	var reader ArrowRecordBatchReader
 	flow := flowStreams
+	// Index objects without a postings section for the tenant use the legacy
+	// streams-section reader.
 	if hasPostingsSection(idxObj, tenant) {
 		flow = flowPostings
 		reader = newPostingsIndexSectionsReader(
