@@ -103,7 +103,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		}
 		size := rec.UncompressedSize()
 		inputBytesBatch += size
-		count += 1
+		count++
 		if count%batchRecords == 0 {
 			observeBatch()
 			inputBytesBatch = 0
