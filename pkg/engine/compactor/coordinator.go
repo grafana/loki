@@ -323,7 +323,7 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, nil
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+	tasks := planLogMergeTasks(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 	if len(tasks) == 0 {
 		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
 	}
@@ -357,6 +357,24 @@ func (c *coordinator) compactTenantLogs(
 		level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
+}
+
+// sizedLevelStrategy uses the default base and ratio, which are valid by
+// construction, so the constructor error cannot occur.
+var sizedLevelStrategy, _ = v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio)
+
+// planLogMergeTasks plans tasks per size level, so each task merges runs of a
+// similar size.
+//
+// Every run lands in a task, including a run that is alone in its level. The
+// caller replaces the whole source index with the task outputs, so a run left
+// out of all tasks would drop out of the index.
+func planLogMergeTasks(runs []v2.Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
+	var tasks []*compactionv2pb.TaskSpec
+	for _, lvl := range sizedLevelStrategy.GroupByLevels(runs) {
+		tasks = append(tasks, v2.Plan(lvl, tenant, k, sortSchema)...)
+	}
+	return tasks
 }
 
 func (c *coordinator) sortTenantLogObjects(
