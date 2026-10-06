@@ -565,7 +565,6 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2024-07-01",
 				},
@@ -583,7 +582,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 			wantAllow: true,
 		},
 		{
-			desc: "disallow - v13 in future",
+			desc: "disallow - v12 current (v13 not yet active)",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
