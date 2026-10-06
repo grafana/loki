@@ -1548,6 +1548,13 @@ github.com/spiffe/go-spiffe/v2/internal/jwtutil
 github.com/spiffe/go-spiffe/v2/internal/pemutil
 github.com/spiffe/go-spiffe/v2/internal/x509util
 github.com/spiffe/go-spiffe/v2/spiffeid
+# github.com/spiridonov/deadhorse v0.1.1
+## explicit; go 1.24.0
+github.com/spiridonov/deadhorse
+github.com/spiridonov/deadhorse/client
+github.com/spiridonov/deadhorse/internal/dhp1
+github.com/spiridonov/deadhorse/internal/fnv1a
+github.com/spiridonov/deadhorse/server
 # github.com/stretchr/objx v0.5.3
 ## explicit; go 1.20
 github.com/stretchr/objx

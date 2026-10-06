@@ -44,6 +44,13 @@ type metrics struct {
 	// Track the max inflight bytes in the last 1 minute.
 	maxInflightBytes           prometheus.Gauge
 	inflightBytesHighWatermark prometheus.Summary
+
+	// metrics for the "shadow" ingestion-rate strategy: what the external
+	// throttler (the "exact" strategy) would have decided, observed
+	// alongside real enforcement by the ring-divided "global" strategy
+	// without affecting it. See shadowEnforcer.
+	exactShadowDecisions *prometheus.CounterVec
+	exactShadowFailed    *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -192,5 +199,16 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+
+		exactShadowDecisions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_exact_shadow_decisions_total",
+			Help:      "Per-push admit/throttled decisions the \"exact\" ingestion rate strategy would have made, observed in \"shadow\" mode without affecting real enforcement (see -distributor.ingestion-rate-limit-strategy=shadow).",
+		}, []string{"tenant", "decision"}),
+		exactShadowFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_exact_shadow_failed_total",
+			Help:      "Shadow calls to the external throttler that returned an error (e.g. unreachable). The decision metric is still recorded for these (the client fails open/closed per its own config); this tracks whether the shadow check is actually reaching the throttler.",
+		}, []string{"tenant"}),
 	}
 }

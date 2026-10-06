@@ -48,6 +48,24 @@ const (
 	// is used to keep track of the current number of healthy distributor replicas.
 	GlobalIngestionRateStrategy = "global"
 
+	// ExactIngestionRateStrategy represents an ingestion rate limiting strategy that enforces
+	// the limit globally and exactly, via an external distributed throttler, rather than
+	// approximating it by dividing a per-distributor local limit by the healthy distributor
+	// count. Unlike GlobalIngestionRateStrategy, this requires no distributor-side ring: every
+	// distributor asking about the same tenant is routed to the same throttler shard, so the
+	// limit doesn't drift with fleet size or traffic skew across replicas.
+	ExactIngestionRateStrategy = "exact"
+
+	// ShadowIngestionRateStrategy enforces exactly like GlobalIngestionRateStrategy
+	// (the ring-divided local limiter decides what's actually admitted or
+	// rejected), while also sending every push's buckets to the external
+	// throttler for observation only -- real requests, genuinely consuming its
+	// buckets, but never allowed to affect what's enforced. The
+	// distributor_exact_shadow_decisions_total metric reports what the "exact"
+	// strategy would have decided, so it can be validated against real traffic
+	// before switching enforcement over to it.
+	ShadowIngestionRateStrategy = "shadow"
+
 	bytesInMB = 1048576
 
 	defaultPerStreamRateLimit   = 3 << 20 // 3MB
@@ -360,7 +378,7 @@ type StreamRetention struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "global", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global). The ingestion rate strategy cannot be overridden on a per-tenant basis.\n- local: enforces the limit on a per distributor basis. The actual effective rate limit will be N times higher, where N is the number of distributor replicas.\n- global: enforces the limit globally, configuring a per-distributor local rate limiter as 'ingestion_rate / N', where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The global strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas.")
+	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "global", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), evenly shared across the cluster via a distributors ring (global), enforced exactly via an external distributed throttler (exact), or enforced as global while only observing what exact would have decided (shadow). The ingestion rate strategy cannot be overridden on a per-tenant basis.\n- local: enforces the limit on a per distributor basis. The actual effective rate limit will be N times higher, where N is the number of distributor replicas.\n- global: enforces the limit globally, configuring a per-distributor local rate limiter as 'ingestion_rate / N', where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The global strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas.\n- exact: enforces the limit globally and exactly, by asking an external throttler fleet (see the distributor.global-throttler.* flags) rather than dividing a local limit by the distributor count. Requires no distributor-side ring.\n- shadow: enforces exactly like global, while also sending every push to the external throttler for observation only -- see the distributor_exact_shadow_decisions_total metric. Requires both the distributor ring and the distributor.global-throttler.* flags. Use this to validate exact against real traffic before switching enforcement to it.")
 	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Sample size includes size of the logs line and the size of structured metadata labels. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. The burst size refers to the per-distributor local rate limiter even in the case of the 'global' strategy, and should be set at least to the maximum logs size expected in a single push request.")
 

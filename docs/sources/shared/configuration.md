@@ -3314,6 +3314,37 @@ rate_store:
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
 
+global_throttler:
+  # Comma-separated list of global throttler shard addresses (host:port), or a
+  # dns+/dnssrv+/dnssrvnoa+ name to resolve. Required when
+  # -distributor.ingestion-rate-limit-strategy=exact.
+  # CLI flag: -distributor.global-throttler.addresses
+  [addresses: <string> | default = ""]
+
+  # How often to re-resolve distributor.global-throttler.addresses and, on an
+  # actual change, rebuild the client.
+  # CLI flag: -distributor.global-throttler.discovery-interval
+  [discovery_interval: <duration> | default = 30s]
+
+  # Per-call network timeout to a global throttler shard.
+  # CLI flag: -distributor.global-throttler.timeout
+  [timeout: <duration> | default = 10ms]
+
+  # Treat an unreachable global throttler shard as not throttled rather than
+  # failing the push.
+  # CLI flag: -distributor.global-throttler.fail-open
+  [fail_open: <boolean> | default = true]
+
+  # Consecutive failures to a shard before its circuit breaker opens. 0 or less
+  # disables the breaker.
+  # CLI flag: -distributor.global-throttler.breaker-failure-threshold
+  [breaker_failure_threshold: <int> | default = 5]
+
+  # How long a shard's circuit breaker stays open (failing fast) before a trial
+  # call probes it again.
+  # CLI flag: -distributor.global-throttler.breaker-open-duration
+  [breaker_open_duration: <duration> | default = 1s]
+
 # Customize the logging of write failures.
 write_failures_logging:
   # Log volume allowed (per second). Default: 1KB.
@@ -4278,8 +4309,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
-# distributor instance (local), or evenly shared across the cluster (global).
-# The ingestion rate strategy cannot be overridden on a per-tenant basis.
+# distributor instance (local), evenly shared across the cluster via a
+# distributors ring (global), enforced exactly via an external distributed
+# throttler (exact), or enforced as global while only observing what exact would
+# have decided (shadow). The ingestion rate strategy cannot be overridden on a
+# per-tenant basis.
 # - local: enforces the limit on a per distributor basis. The actual effective
 # rate limit will be N times higher, where N is the number of distributor
 # replicas.
@@ -4288,6 +4322,15 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # replicas (it's automatically adjusted if the number of replicas change). The
 # global strategy requires the distributors to form their own ring, which is
 # used to keep track of the current number of healthy distributor replicas.
+# - exact: enforces the limit globally and exactly, by asking an external
+# throttler fleet (see the distributor.global-throttler.* flags) rather than
+# dividing a local limit by the distributor count. Requires no distributor-side
+# ring.
+# - shadow: enforces exactly like global, while also sending every push to the
+# external throttler for observation only -- see the
+# distributor_exact_shadow_decisions_total metric. Requires both the distributor
+# ring and the distributor.global-throttler.* flags. Use this to validate exact
+# against real traffic before switching enforcement to it.
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 

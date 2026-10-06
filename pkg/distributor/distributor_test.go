@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -39,6 +40,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	throttlerserver "github.com/spiridonov/deadhorse/server"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -2488,6 +2491,44 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+// TestDistributor_PushIngestionRateLimiter_GlobalThrottler mirrors
+// TestDistributor_PushIngestionRateLimiter's "global strategy" cases, but against a real,
+// locally-run external throttler instead of the ring-divided local limiter -- proving the
+// whole wire-up (config -> client -> a real over-the-network admission decision -> the
+// same 429 the ring-based strategy would return) actually works end to end.
+func TestDistributor_PushIngestionRateLimiter_GlobalThrottler(t *testing.T) {
+	type testPush struct {
+		bytes         int
+		expectedError error
+	}
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.ExactIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(100).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(100).MBytes()
+
+	d := prepareGlobalThrottlerDistributor(t, limits)
+
+	for _, push := range []testPush{
+		{bytes: 50, expectedError: nil},
+		{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 60)},
+		{bytes: 50, expectedError: nil},
+		{bytes: 40, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 40)},
+	} {
+		request := makeWriteRequest(1, push.bytes)
+		response, err := d.Push(ctx, request)
+
+		if push.expectedError == nil {
+			assert.NoError(t, err)
+			assert.Equal(t, success, response)
+		} else {
+			assert.Nil(t, response)
+			assert.Equal(t, push.expectedError, err)
+		}
+	}
+}
+
 func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -3276,6 +3317,134 @@ func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) 
 			return distributors[0].HealthyInstancesCount()
 		})
 	}
+}
+
+// prepareGlobalThrottlerDistributor builds a single, real, running Distributor configured for
+// validation.ExactIngestionRateStrategy, backed by a real external throttler server
+// (server.NewTextServer over server.NewInMemoryThrottler) started on an ephemeral local port --
+// as opposed to prepareButDontStart, which is shared by the local/ring-based "global" cases and
+// has no use for either a throttler server or a distributor-side ring here.
+func prepareGlobalThrottlerDistributor(t *testing.T, limits *validation.Limits) *Distributor {
+	t.Helper()
+
+	throttlerAddr := startTestThrottlerServer(t)
+
+	ingesterDescs := map[string]ring.InstanceDesc{
+		"ingester-0": {
+			Addr:                "ingester-0",
+			State:               ring.ACTIVE,
+			Timestamp:           time.Now().Unix(),
+			RegisteredTimestamp: time.Now().Add(-10 * time.Minute).Unix(),
+			Tokens:              []uint32{0},
+		},
+	}
+	ingester0 := &mockIngester{}
+
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	require.NoError(t, kvStore.CAS(context.Background(), ingester.RingKey,
+		func(_ interface{}) (interface{}, bool, error) {
+			return &ring.Desc{Ingesters: ingesterDescs}, true, nil
+		},
+	))
+
+	ingestersRing, err := ring.New(ring.Config{
+		KVStore:           kv.Config{Mock: kvStore},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 1,
+	}, ingester.RingKey, ingester.RingKey, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
+	t.Cleanup(ingestersRing.StopAsync)
+
+	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
+		Partitions: map[int32]ring.PartitionDesc{
+			0: {Id: 0, Tokens: []uint32{0}, State: ring.PartitionActive, StateTimestamp: time.Now().Unix()},
+		},
+		Owners: map[string]ring.OwnerDesc{
+			"owner0": {OwnedPartition: 0, State: ring.OwnerActive, UpdatedTimestamp: time.Now().Unix()},
+		},
+	})
+	require.NoError(t, err)
+	partitionRingReader := mockPartitionRingReader{ring: partitionRing}
+
+	limitsFrontendRing, err := ring.New(ring.Config{
+		KVStore:           kv.Config{Mock: kvStore},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 1,
+	}, limits_frontend.RingKey, limits_frontend.RingKey, nil, nil)
+	require.NoError(t, err)
+
+	loopbackName, err := loki_net.LoopbackInterfaceName()
+	require.NoError(t, err)
+
+	var distributorConfig Config
+	var clientConfig client.Config
+	flagext.DefaultValues(&distributorConfig, &clientConfig)
+	distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
+	distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
+	distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		if addr == "ingester-0" {
+			return ingester0, nil
+		}
+		return nil, fmt.Errorf("no mock ingester for addr %q", addr)
+	})
+	distributorConfig.GlobalThrottler.Addresses = throttlerAddr
+	distributorConfig.GlobalThrottler.DiscoveryInterval = time.Hour // no re-resolution needed within a test's lifetime
+
+	overrides, err := validation.NewOverrides(*limits, nil)
+	require.NoError(t, err)
+
+	d, err := New(distributorConfig, ingester.Config{MaxChunkAge: 2 * time.Hour}, clientConfig, runtime.DefaultTenantConfigs(),
+		ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil,
+		limits_frontend_client.Config{}, limitsFrontendRing, 1, log.NewNopLogger())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), d)) })
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+
+	return d
+}
+
+// startTestThrottlerServer starts a real external-throttler test server on an ephemeral local
+// port and returns its address. The port is grabbed via a throwaway listener rather than
+// hardcoded, then immediately freed for the real server to bind -- ListenAndServe only accepts
+// an address, not a pre-opened listener, so a short dial-retry (below, via the DNS-resolved
+// client's own connection attempts once the distributor is running) tolerates the small gap
+// between picking the port and the accept loop actually starting.
+func startTestThrottlerServer(t *testing.T) string {
+	t.Helper()
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	throttler := throttlerserver.NewInMemoryThrottler(0, 0)
+	textServer := throttlerserver.NewTextServer(throttler, 0)
+	t.Cleanup(func() {
+		assert.NoError(t, textServer.Close())
+		throttler.Close()
+	})
+
+	go func() {
+		err := textServer.ListenAndServe(addr)
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("test throttler server stopped: %v", err)
+		}
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		conn.Close()
+		return true
+	}, 5*time.Second, 10*time.Millisecond, "test throttler server never started listening on %s", addr)
+
+	return addr
 }
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {

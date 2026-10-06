@@ -1,0 +1,38 @@
+version: "2"
+
+linters:
+  # The default set (errcheck, govet, ineffassign, staticcheck, unused) is a
+  # reasonable, uncontroversial CI baseline -- not an exhaustive style
+  # mandate -- so there's deliberately no custom enable/disable list here.
+  settings:
+    errcheck:
+      # These are all deliberately-ignored, best-effort cleanup/write calls
+      # (closing a connection that's already being torn down, setting a
+      # deadline on a socket we're about to use anyway, writing to a
+      # buffered writer whose Flush error is what actually matters) rather
+      # than overlooked error handling -- see e.g. server/textserver.go's
+      # handleConn and client/conn.go's shardConn for the pattern.
+      exclude-functions:
+        - (net.Conn).Close
+        - (net.Conn).SetDeadline
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
+        - (net.Listener).Close
+        - (*bufio.Writer).Flush
+        - (*bufio.Writer).WriteString
+        - (*bufio.Writer).WriteByte
+        - fmt.Fprintf
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test files lean on the same ignored-Close/ignored-Throttle-result
+      # pattern even more heavily (cleanup helpers, fire-and-forget calls
+      # whose result the test doesn't care about) -- don't hold them to a
+      # stricter standard than the production code they're testing.
+      - path: _test\.go
+        linters:
+          - errcheck

@@ -37,24 +37,21 @@ func TestFlagDefaults(t *testing.T) {
 	f.SetOutput(&buf)
 	f.PrintDefaults()
 
-	const delim = '\n'
-
-	// Populate map with parsed default flags.
-	// Key is the flag and value is the default text.
+	// Populate map with parsed default flags. Key is the flag name; value is its full
+	// description, which may span several lines -- flag.PrintDefaults indents every line of a
+	// multi-line usage string (e.g. one with embedded "\n"s) the same way it indents a wrapped
+	// single-line one, so a flag's description can't be assumed to be exactly one line. Only a
+	// "  -name" line starts a new flag; every other line is a continuation of the current one.
 	gotFlags := make(map[string]string)
-	for {
-		line, err := buf.ReadString(delim)
-		if err == io.EOF {
-			break
+	var currentFlag string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.HasPrefix(line, "  -") {
+			currentFlag = strings.Fields(line)[0]
+			continue
 		}
-		require.NoError(t, err)
-
-		nextLine, err := buf.ReadString(delim)
-		require.NoError(t, err)
-
-		trimmedLine := strings.Trim(line, " \n")
-		splittedLine := strings.Split(trimmedLine, " ")[0]
-		gotFlags[splittedLine] = nextLine
+		if currentFlag != "" {
+			gotFlags[currentFlag] += line + "\n"
+		}
 	}
 
 	flagToCheck := "-server.grpc.keepalive.min-time-between-pings"
