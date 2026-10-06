@@ -5,6 +5,9 @@
   local compactor_job_matcher = if $._config.meta_monitoring.enabled
   then '(.*compactor|loki-single-binary)'
   else 'compactor',
+  local compactor_log_matcher = $.componentMatcher(
+    if $._config.meta_monitoring.enabled then '(compactor|loki)' else 'compactor'
+  ),
   grafanaDashboards+::
     {
       'loki-retention.json':
@@ -119,7 +122,7 @@
         .addRow(
           $.row('Logs')
           .addPanel(
-            $.logPanel('Compactor Logs', '{%s}' % $.jobMatcher(compactor_job_matcher)),
+            $.logPanel('Compactor Logs', '{%s, %s}' % [$.namespaceMatcher(), compactor_log_matcher]),
           )
         ),
     },

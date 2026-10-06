@@ -1367,7 +1367,7 @@
                   "span": 12,
                   "targets": [
                      {
-                        "expr": "{cluster=~\"$cluster\", job=~\"($namespace)/compactor\"}",
+                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"compactor\"}",
                         "refId": "A"
                      }
                   ],

@@ -2132,7 +2132,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} | logfmt | level=\"error\"[$__auto]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", container=~\"distributor\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2195,7 +2195,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"distributor\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -2825,7 +2825,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"} | logfmt | level=\"error\"[$__auto]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", container=~\"(ingester.*|partition-ingester.*)\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2888,7 +2888,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"(ingester.*|partition-ingester.*)\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -3770,7 +3770,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} | logfmt |  level=\"error\"[$__auto]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", container=~\"querier\"} | logfmt |  level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -3833,7 +3833,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"querier\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],

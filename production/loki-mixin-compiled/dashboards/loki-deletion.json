@@ -606,7 +606,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(.*compactor.*|loki-single-binary)\"} |~ \"Started processing delete request|delete request for user marked as processed\" | logfmt | line_format \"{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}\" ",
+                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"compactor\"} |~ \"Started processing delete request|delete request for user marked as processed\" | logfmt | line_format \"{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}\" ",
                         "refId": "A"
                      }
                   ],
@@ -619,7 +619,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(.*compactor.*|loki-single-binary)\"} |~ \"delete request for user added\" | logfmt | line_format \"{{.ts}} user={{.user}} query='{{.query}}'\"",
+                        "expr": "{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"compactor\"} |~ \"delete request for user added\" | logfmt | line_format \"{{.ts}} user={{.user}} query='{{.query}}'\"",
                         "refId": "A"
                      }
                   ],
