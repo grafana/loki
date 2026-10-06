@@ -56,7 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.AcceptedStreamsCacheTTL,
 		"ingest-limits-frontend.accepted-streams-cache-ttl",
 		time.Minute,
-		"The TTL for the accepted streams cache.",
+		"The time to live (TTL) for the accepted streams cache.",
 	)
 	f.DurationVar(
 		&cfg.AcceptedStreamsCacheTTLJitter,
@@ -68,7 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.ShardCacheTTL,
 		"ingest-limits-frontend.shard-cache-ttl",
 		0,
-		"[Experimental]: TTL for caching CheckLimitsAndShard results per stream. Pushes arriving while an entry is cached are combined into a single backend request once it goes stale. 0 disables the cache.",
+		"[Experimental]: The time to live (TTL) for caching CheckLimitsAndShard results per stream. Pushes arriving while an entry is cached are combined into a single backend request once it goes stale. 0 disables the cache.",
 	)
 }
 
