@@ -886,8 +886,8 @@ go.opentelemetry.io/contrib/exporters/autoexport v0.72.0 h1:TPXrl7vEkmh69tp7dHTp
 go.opentelemetry.io/contrib/exporters/autoexport v0.72.0/go.mod h1:0jE6K8nsOgeiF53rcEhy71cgakek+XEWi4OPROUqLoI=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0 h1:Tq+E65HaNbZTeqcLw6QUhsV+/EIWdkfUH2CQzcrlE5M=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0/go.mod h1:A+EVhDakAj1waJBPhmTszZaSr08ww8MRRKy1nB1rqck=
-go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.71.0 h1:oFNJW32h2SXnET7XXstgT7pVh4vN+jW+GfiIaBguIZE=
-go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.71.0/go.mod h1:+H3sPOFwag14eMHTPMElZtV0e4YfVZ/85KgrKUCB5FI=
+go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.72.0 h1:jva1c3z2ZFEQ5sTvnLG2tBALNehO+QvdXKQii6eKRoo=
+go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.72.0/go.mod h1:3pjFS5EnOVfjvYO6/NMdtJFHFQR+8uiGtrZ965nZP4w=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 h1:LxwW/9ctSCv+QkE/cLR7M91ZIkXNMqJtEMi1vCw9U8s=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0/go.mod h1:tOsftB4SslBwwErVEPaenU2RpThXWPIU8DoJHEC4dyw=
 go.opentelemetry.io/contrib/propagators/jaeger v1.46.0 h1:uxl0SGcmuBkHj/Adl9oftEAyiawQBPL5RzMAmt/Yvq4=
