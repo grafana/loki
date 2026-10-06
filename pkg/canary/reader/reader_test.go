@@ -178,7 +178,7 @@ func TestParseResponseOTLPAttributes(t *testing.T) {
 			before := testutil.ToFloat64(otlpValidationErrors)
 			got, err := r.parseResponse(&entry)
 			if tc.wantErr {
-				require.ErrorContains(t, err, "OTLP attribute validation failed")
+				require.ErrorContains(t, err, "otlp attribute validation failed")
 				require.Nil(t, got)
 				require.Equal(t, before+1, testutil.ToFloat64(otlpValidationErrors))
 			} else {

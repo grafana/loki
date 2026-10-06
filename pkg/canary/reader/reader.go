@@ -409,7 +409,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 			for _, entry := range stream.Entries {
 				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				tss = append(tss, *ts)
@@ -476,7 +476,7 @@ func (r *Reader) run() {
 			for _, entry := range stream.Entries {
 				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				r.recv <- *ts
@@ -575,7 +575,7 @@ func (r *Reader) parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 		want := strconv.FormatInt(ts, 10)
 		if got := entry.StructuredMetadata.Get("canary_timestamp"); got != want {
 			otlpValidationErrors.Inc()
-			return nil, fmt.Errorf("OTLP attribute validation failed for entry %s: canary_timestamp=%q, expected %q\n", sp[0], got, want)
+			return nil, fmt.Errorf("otlp attribute validation failed for entry %s: canary_timestamp=%q, expected %q", sp[0], got, want)
 		}
 	}
 	t := time.Unix(0, ts)
