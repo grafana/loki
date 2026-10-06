@@ -84,6 +84,7 @@ storage_config:
   tsdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
+    shadow_index_gateway_client: "The experimental shadow index gateway client is removed."
   aws:
     sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
     dynamodb: "Support for DynamoDB is removed."

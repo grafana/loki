@@ -109,7 +109,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		writer := newTableOfContentsWriter(t, bucket, builder)
 		err = writer.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
 			Path:      "testdata/metastore.obj",
-			StartTime: unixTime(0),
+			StartTime: unixTime(10),
 			EndTime:   unixTime(30),
 		})
 		require.NoError(t, err)
@@ -143,6 +143,51 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.ErrorIs(t, err, context.Canceled, "a caller must not treat an unwritten entry as recorded")
 		require.Empty(t, bucket.Objects())
+	})
+
+	for _, tc := range []struct {
+		name  string
+		entry TableOfContentsEntry
+	}{
+		{
+			name:  "WriteEntry returns an error and writes nothing when the entry has no time range",
+			entry: TableOfContentsEntry{Path: "indexes/a"},
+		},
+		{
+			name:  "WriteEntry returns an error and writes nothing when the entry starts at the Unix epoch",
+			entry: TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(0), EndTime: unixTime(10)},
+		},
+		{
+			name:  "WriteEntry returns an error and writes nothing when the entry ends before it starts",
+			entry: TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(20), EndTime: unixTime(10)},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			builder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+			require.NoError(t, err)
+			bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+			writer := newTableOfContentsWriter(t, bucket, builder)
+
+			err = writer.WriteEntry(context.Background(), "tenant-a", tc.entry)
+			require.ErrorContains(t, err, "indexes/a")
+			require.Zero(t, bucket.calls)
+		})
+	}
+
+	t.Run("copyFromExistingToc returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
+		source, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.NoError(t, source.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
+		obj, closer, err := source.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+
+		target, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket(), target)
+		err = writer.copyFromExistingToc(context.Background(), obj)
+		require.ErrorContains(t, err, "reading index pointers")
+		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
 	})
 
 	t.Run("WriteEntry writes the tenant's ToC for every window it overlaps", func(t *testing.T) {

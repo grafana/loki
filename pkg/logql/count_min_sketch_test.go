@@ -281,9 +281,21 @@ type fakeEvaluator struct {
 	err      error
 	closeErr error
 	onClose  func()
+
+	// onNext, if set, runs on every Next() call. A non-nil return becomes err,
+	// simulating an evaluator whose error is a side effect of stepping it,
+	// rather than one already known beforehand.
+	onNext func() error
 }
 
-func (e *fakeEvaluator) Next() (bool, int64, StepResult) { return e.ok, 0, e.result }
+func (e *fakeEvaluator) Next() (bool, int64, StepResult) {
+	if e.onNext != nil {
+		if err := e.onNext(); err != nil {
+			e.err = err
+		}
+	}
+	return e.ok, 0, e.result
+}
 
 func (e *fakeEvaluator) Close() error {
 	if e.onClose != nil {

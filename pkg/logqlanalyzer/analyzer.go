@@ -6,7 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -28,7 +27,7 @@ func (a logQLAnalyzer) analyze(query string, logs []string) (*Result, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "can not create pipeline")
 	}
-	streamLabels, err := parser.NewParser(parser.Options{}).ParseMetric(streamSelector)
+	streamLabels, err := syntax.ParseLabels(streamSelector)
 	if err != nil {
 		return nil, errors.Wrap(err, "can not parse labels from stream selector")
 	}

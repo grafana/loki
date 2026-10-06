@@ -362,7 +362,20 @@ func (m *Match) GroupCount() int {
 }
 
 // GroupByName returns a group based on the name of the group, or nil if the group name does not exist
+// For duplicate ECMAScript names, it selects the participating group, or the
+// first declaration if none participated.
 func (m *Match) GroupByName(name string) *Group {
+	// Participating selection follows ECMAScript 2025 §22.2.7.2 RegExpBuiltinExec,
+	// step 34.5;
+	// https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-regexpbuiltinexec
+	if slots := m.regex.duplicateCapnames[name]; len(slots) > 0 {
+		for _, slot := range slots {
+			if m.isMatched(slot) {
+				return m.groupByIndex(slot)
+			}
+		}
+		return m.groupByIndex(slots[0])
+	}
 	num := m.regex.GroupNumberFromName(name)
 	if num < 0 {
 		return nil
@@ -380,6 +393,10 @@ func (m *Match) GroupByNumber(num int) *Group {
 		}
 		num = newNum
 	}
+	return m.groupByIndex(num)
+}
+
+func (m *Match) groupByIndex(num int) *Group {
 	if num >= len(m.matchcount) || num < 0 {
 		return nil
 	}

@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -486,28 +485,33 @@ func Test_RangeVectorIterator(t *testing.T) {
 }
 
 func Test_RangeVectorIteratorBadLabels(t *testing.T) {
-	badIterator := iter.NewPeekingSampleIterator(
-		iter.NewSeriesIterator(logproto.Series{
-			Labels:  "{badlabels=}",
-			Samples: samples,
-		}))
-	it, err := newTimestampFirstRangeVectorIterator(badIterator,
-		&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
-		(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer cancel()
-		//nolint:revive
-		for it.Next() {
-		}
-	}()
-	select {
-	case <-time.After(1 * time.Second):
-		require.Fail(t, "goroutine took too long")
-	case <-ctx.Done():
+	newBadIterator := func() iter.PeekingSampleIterator {
+		return iter.NewPeekingSampleIterator(
+			iter.NewSeriesIterator(logproto.Series{
+				Labels:  "{badlabels=}",
+				Samples: samples,
+			}))
 	}
+
+	t.Run("batch iterator fails the query instead of skipping the series", func(t *testing.T) {
+		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
+			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (30 * time.Second).Nanoseconds(),
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		require.Error(t, it.Error())
+	})
+
+	t.Run("streaming iterator fails the query instead of skipping the series", func(t *testing.T) {
+		it, err := newTimestampFirstRangeVectorIterator(newBadIterator(),
+			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, (5 * time.Second).Nanoseconds(),
+			(30 * time.Second).Nanoseconds(), time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano(), 0)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		require.Error(t, it.Error())
+	})
 }
 
 func Test_InstantQueryRangeVectorAggregations(t *testing.T) {

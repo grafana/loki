@@ -1039,13 +1039,19 @@ func newBinOpStepEvaluator(
 }
 
 type BinOpStepEvaluator struct {
-	rse     StepEvaluator
-	lse     StepEvaluator
+	// rse and lse must never be nil. Next reads Error on both on every call.
+	rse StepEvaluator
+	lse StepEvaluator
+
 	expr    *syntax.BinOpExpr
 	lastErr error
 }
 
 func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.Error() != nil {
+		return false, 0, nil
+	}
+
 	var (
 		ts       int64
 		next     bool
@@ -1057,6 +1063,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	if !next {
 		return next, ts, nil
 	}
+	if err := e.rse.Error(); err != nil {
+		return false, ts, nil
+	}
 	rhs = r.SampleVector()
 	// build matching signature for each sample in right vector
 	rsigs := make([]uint64, len(rhs))
@@ -1067,6 +1076,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r = e.lse.Next()
 	if !next {
 		return next, ts, nil
+	}
+	if err := e.lse.Error(); err != nil {
+		return false, ts, nil
 	}
 	lhs = r.SampleVector()
 	// build matching signature for each sample in left vector
@@ -1085,6 +1097,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 		results = vectorUnless(lhs, rhs, lsigs, rsigs)
 	default:
 		results, e.lastErr = vectorBinop(e.expr.Op, e.expr.Opts, lhs, rhs, lsigs, rsigs)
+		if e.lastErr != nil {
+			return false, ts, nil
+		}
 	}
 	return true, ts, SampleVector(results)
 }

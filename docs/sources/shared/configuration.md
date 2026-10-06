@@ -1434,11 +1434,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
-    # Experimental: Number of older metastore windows to compact in addition to
-    # the current window. 0 compacts only the current window; 1 also compacts
-    # the previous window.
+    # Experimental: Number of prior metastore windows to compact in addition to
+    # the current window. Must be at least 1, which compacts the current and
+    # immediately prior window.
     # CLI flag: -dataobj.compaction.window-lookback
-    [window_lookback: <int> | default = 0]
+    [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
@@ -1593,6 +1593,10 @@ dataobj:
   # Enable data objects.
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
+
+  # Delay after which data objects hold all the data.
+  # CLI flag: -dataobj.storage-lag
+  [storage_lag: <duration> | default = 3h]
 
 ingest_limits:
   # Enable the ingest limits service.
@@ -4545,6 +4549,11 @@ discover_generic_fields:
 # CLI flag: -querier.stream-first-execution-enabled
 [stream_first_execution_enabled: <boolean> | default = false]
 
+# Time, inclusive, from which the querier reads stream-first metric queries from
+# data objects. 0 disables it.
+# CLI flag: -querier.dataobj-query-start-time
+[dataobj_query_start_time: <time> | default = 0]
+
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.
@@ -6772,10 +6781,9 @@ tsdb_shipper:
     # rejected immediately with an HTTP 503 status instead of waiting, which
     # bounds the resources this process commits to an index gateway that is
     # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, doubled when the shadow index gateway
-    # client is enabled, so the process-wide number of in-flight requests can
-    # reach this value multiplied by the number of clients. 0 disables the
-    # limit.
+    # is built per schema period config, so the process-wide number of in-flight
+    # requests can reach this value multiplied by the number of clients. 0
+    # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
 

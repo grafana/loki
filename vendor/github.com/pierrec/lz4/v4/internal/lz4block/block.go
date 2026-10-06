@@ -94,7 +94,7 @@ func (c *Compressor) put(h uint32, si int) {
 
 func (c *Compressor) reset() { c.inUse = [htSize / 32]uint32{} }
 
-var compressorPool = sync.Pool{New: func() interface{} { return new(Compressor) }}
+var compressorPool = sync.Pool{New: func() any { return new(Compressor) }}
 
 func CompressBlock(src, dst []byte) (int, error) {
 	c := compressorPool.Get().(*Compressor)
@@ -450,7 +450,7 @@ func runLength(src []byte, i int, b byte, max int) int {
 	return max
 }
 
-var compressorHCPool = sync.Pool{New: func() interface{} { return new(CompressorHC) }}
+var compressorHCPool = sync.Pool{New: func() any { return new(CompressorHC) }}
 
 func CompressBlockHC(src, dst []byte, depth CompressionLevel) (int, error) {
 	c := compressorHCPool.Get().(*CompressorHC)
@@ -572,10 +572,7 @@ func compressBlockHC[T hcPosition](t *hcTables[T], src, dst []byte, depth Compre
 			// chain each to its predecessor and leave the last one in the
 			// hash table. The loop rolls its 4-byte hash input forward from
 			// si, so this is only done when it starts at si+1.
-			n := k - minMatch
-			if n > mLen-1 {
-				n = mLen - 1
-			}
+			n := min(k-minMatch, mLen-1)
 			for j := si + 1; j <= si+n; j++ {
 				t.chainTable[j&winMask] = T(j - 1)
 			}

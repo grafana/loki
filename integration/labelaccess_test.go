@@ -49,6 +49,7 @@ func buildLBACPolicyHeaders(tenantID string, policies []types.LabelPolicy) []str
 // newPolicy builds a LabelPolicy fixture from a selector string, panicking on
 // malformed input.
 func newPolicy(selector string) types.LabelPolicy {
+	//nolint:forbidigo // parses a matcher selector with regexes, not a plain label set
 	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(selector)
 	if err != nil {
 		panic(err)

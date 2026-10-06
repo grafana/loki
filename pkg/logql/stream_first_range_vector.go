@@ -7,7 +7,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -232,7 +231,7 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 
 	// The labels come from the sample extractor or an ingester, which always render valid labels.
 	// A parse failure means a bug or corrupted data, so it fails the query.
-	metric, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+	metric, err := syntax.ParseMetric(lbs)
 	if err != nil {
 		return nil, fmt.Errorf("parsing series labels %q: %w", lbs, err)
 	}
