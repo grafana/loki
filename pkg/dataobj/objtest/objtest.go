@@ -292,15 +292,12 @@ func (b *Builder) Location() Location {
 
 // Metastore returns a metastore that resolves the builder's objects. Call it after
 // [Builder.Close], which writes the indexes it reads.
-//
-// It reads postings sections. That is the opt-in flow, because ReadPostingsSections defaults to
-// off, so a test through this metastore does not cover the default streams-section flow.
 func (b *Builder) Metastore() *metastore.ObjectMetastore {
 	require.True(b.t, b.closed, "call Close before Metastore: without the indexes it resolves nothing and a query returns an empty result")
 
 	return metastore.NewObjectMetastore(
 		b.bucket,
-		metastore.Config{IndexStoragePrefix: indexPrefix, ReadPostingsSections: true},
+		metastore.Config{IndexStoragePrefix: indexPrefix},
 		b.logger,
 		metastore.NewObjectMetastoreMetrics(nil),
 	)
