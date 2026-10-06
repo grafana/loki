@@ -132,6 +132,7 @@ type StreamResolver interface {
 type (
 	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
+	SuccessWriter func(w http.ResponseWriter, r *http.Request, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -681,3 +682,28 @@ func HTTPError(w http.ResponseWriter, errorStr string, code int, _ log.Logger) {
 }
 
 var _ ErrorWriter = HTTPError
+
+func HTTPSuccess(w http.ResponseWriter, _ *http.Request, _ log.Logger) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+var _ SuccessWriter = HTTPSuccess
+
+// OTLPSuccess answers with 200 OK and an empty ExportLogsServiceResponse in the
+// request's encoding, as required by the OTLP/HTTP specification.
+func OTLPSuccess(w http.ResponseWriter, r *http.Request, logger log.Logger) {
+	if r.Header.Get(contentType) != applicationJSON {
+		w.Header().Set(contentType, pbContentType)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.Header().Set(contentType, applicationJSON)
+	w.WriteHeader(http.StatusOK)
+	// An empty JSON-encoded ExportLogsServiceResponse.
+	if _, err := w.Write([]byte("{}")); err != nil {
+		level.Error(logger).Log("msg", "failed to write success response", "error", err)
+	}
+}
+
+var _ SuccessWriter = OTLPSuccess
