@@ -43,9 +43,9 @@ By default, Loki copies OTLP resource and scope attributes configured as structu
 
 To defer expansion, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). This keeps those attributes shared during distributor processing and Kafka writes until downstream components need them expanded, reducing repeated copying. The option defaults to `false`.
 
-Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) have been upgraded to a Loki version that supports the Kafka record format used by deferred attribute expansion.
+Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) are running Loki 4.0 or later.
 
-Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must continue to support records written while the option was enabled for as long as those records remain in Kafka.
+Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
 
 ### Optional index gateway client request limits
 
