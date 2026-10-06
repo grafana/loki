@@ -49,6 +49,20 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
+	// Check for deprecated BoltDB schema versions (v11, v12)
+	for _, schema := range stack.Spec.Storage.Schemas {
+		//nolint:staticcheck
+		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
+			degradedErr := &status.DegradedError{
+				Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Please migrate to v13.", schema.Version),
+				Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
+				Requeue: false,
+			}
+			ll.Error(degradedErr, "deprecated schema will not be reconciled")
+			return nil, degradedErr
+		}
+	}
+
 	img := os.Getenv(manifests.EnvRelatedImageLoki)
 	if img == "" {
 		img = manifests.DefaultContainerImage
