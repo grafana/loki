@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
@@ -419,6 +420,64 @@ func TestEngineRouterPreservesUsageOnMergeFailure(t *testing.T) {
 				require.Equal(t, int64(300), response.(*LokiResponse).Statistics.Summary.TotalBytesProcessed)
 				require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
 			}
+		})
+	}
+}
+
+func TestEngineRouterPreservesCompletedSplitUsage(t *testing.T) {
+	for _, limit := range []uint32{1, 2, 10} {
+		t.Run(fmt.Sprintf("limit=%d", limit), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				start := time.Unix(0, 0)
+				releaseFirst := make(chan struct{})
+				partial, ctx := stats.NewPartialContext(context.Background())
+
+				// Simulate three intervals, each returning one entry and 100 scanned
+				// bytes. Hold the first so the later two finish before collection.
+				next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					if req.GetStart().Equal(start) {
+						<-releaseFirst
+					}
+					response := logResponseWithScanUsage(100)
+					response.Limit = limit
+					response.Data.Result[0].Entries[0].Timestamp = req.GetStart()
+					return response, nil
+				})
+				router := &engineRouter{
+					v1Next: next, v2Next: next, merger: DefaultCodec,
+					v2Range:      func() (time.Time, time.Time) { return start.Add(time.Hour), start.Add(2 * time.Hour) },
+					validV2Query: func(logql.Params) bool { return true },
+				}
+				request := &LokiRequest{
+					Query: `{app="test"}`, StartTs: start, EndTs: start.Add(3 * time.Hour),
+					Limit: limit, Direction: logproto.FORWARD,
+				}
+
+				var response queryrangebase.Response
+				var queryErr error
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					response, queryErr = router.Do(ctx, request)
+				}()
+
+				// Both later responses have registered their statistics and are
+				// blocked on delivery. Let the first response satisfy the limit
+				// alone, with the second response, or not at all.
+				synctest.Wait()
+				close(releaseFirst)
+				<-done
+				synctest.Wait()
+
+				require.NoError(t, queryErr)
+				result := response.(*LokiResponse)
+				require.Equal(t, int64(300), result.Statistics.Summary.TotalBytesProcessed)
+				require.Equal(t, int64(3), result.Statistics.Summary.Splits,
+					"the final merge must preserve the count of completed, discarded intervals")
+				require.Equal(t, int64(min(limit, 3)), result.Count())
+				require.Zero(t, partial.Result().Summary.TotalBytesProcessed,
+					"successful response statistics must not also be recorded as partial usage")
+			})
 		})
 	}
 }
