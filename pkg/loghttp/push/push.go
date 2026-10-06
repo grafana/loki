@@ -75,6 +75,13 @@ var (
 		Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
 	}, []string{"tenant", "userAgent", "format"})
 
+	streamsPerPushRequest = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_streams_per_push_request",
+		Help:      "The number of streams in a single push request.",
+		Buckets:   []float64{1, 2, 4, 8, 16, 32, 64, 128, 512, 2048},
+	}, []string{"format"})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
@@ -269,6 +276,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 		totalNumLines += numLines
 	}
 	linesReceivedStats.Inc(totalNumLines)
+	streamsPerPushRequest.WithLabelValues(format).Observe(float64(len(req.Streams)))
 	mostRecentLagMs := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
 
 	logValues := []interface{}{
