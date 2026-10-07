@@ -235,7 +235,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.ErrorIs(t, err, errUnrecoverable)
 		require.NotErrorIs(t, err, context.DeadlineExceeded)
-		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, 1, bucket.Calls())
 		require.Equal(t, before, readToC(context.Background(), t, inner, tocPath))
 	})
 }

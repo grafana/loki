@@ -285,7 +285,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		)
 		require.ErrorIs(t, err, errUnrecoverable)
 		require.False(t, swapped)
-		require.Equal(t, 1, bucket.calls)
+		require.Equal(t, 1, bucket.Calls())
 		require.Equal(t, before, readToC(ctx, t, inner, tocPath))
 	})
 
