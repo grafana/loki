@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type hintCapturingQuerier struct {
@@ -796,6 +797,33 @@ func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
 	t.Run("returns timestamp-first when the context has no tenant", func(t *testing.T) {
 		got := evaluatorWith(limits).sampleOrderFor(context.Background(), count, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+}
+
+func TestDefaultEvaluator_SampleOrderStats(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	ctx := user.InjectOrgID(context.Background(), "a")
+
+	summaryFor := func(t *testing.T, enabled map[string]bool) stats.Summary {
+		t.Helper()
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: 100, timeout: time.Minute}, enabled: enabled}
+		params, err := NewLiteralParams(`sum by (app) (count_over_time({app="foo"}[1m]))`, start, start.Add(2*time.Minute), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+		require.NoError(t, err)
+		res, err := NewEngine(EngineOpts{}, &seriesQuerier{}, limits, nil).Query(params).Exec(ctx)
+		require.NoError(t, err)
+		return res.Statistics.Summary
+	}
+
+	t.Run("counts a stream-first query when the tenant enables it", func(t *testing.T) {
+		summary := summaryFor(t, map[string]bool{"a": true})
+		require.Equal(t, int64(1), summary.StreamFirstQueries)
+		require.Equal(t, int64(0), summary.TimestampFirstQueries)
+	})
+
+	t.Run("counts a timestamp-first query when the tenant does not enable stream-first", func(t *testing.T) {
+		summary := summaryFor(t, nil)
+		require.Equal(t, int64(0), summary.StreamFirstQueries)
+		require.Equal(t, int64(1), summary.TimestampFirstQueries)
 	})
 }
 

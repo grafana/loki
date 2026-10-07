@@ -318,6 +318,8 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	s.StreamFirstQueries += m.StreamFirstQueries
+	s.TimestampFirstQueries += m.TimestampFirstQueries
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
@@ -636,6 +638,16 @@ func (c *Context) AddCacheQueryLengthServed(t CacheType, i time.Duration) {
 
 func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
+}
+
+// AddStreamFirstQueries adds num to the count of range aggregations run in stream-first order.
+func (c *Context) AddStreamFirstQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.StreamFirstQueries, num)
+}
+
+// AddTimestampFirstQueries adds num to the count of range aggregations run in timestamp-first order.
+func (c *Context) AddTimestampFirstQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.TimestampFirstQueries, num)
 }
 
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {

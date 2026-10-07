@@ -364,6 +364,15 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
 }
 
+func TestSummaryMerge_AddsSampleOrderQueries(t *testing.T) {
+	s := Summary{StreamFirstQueries: 1, TimestampFirstQueries: 2}
+
+	s.Merge(Summary{StreamFirstQueries: 3, TimestampFirstQueries: 4})
+
+	require.Equal(t, int64(4), s.StreamFirstQueries)
+	require.Equal(t, int64(6), s.TimestampFirstQueries)
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)

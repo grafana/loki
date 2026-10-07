@@ -210,6 +210,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"stream_first_queries", stats.Summary.StreamFirstQueries,
+		"timestamp_first_queries", stats.Summary.TimestampFirstQueries,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
