@@ -25,13 +25,13 @@ var (
 	tenantStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_streams",
 		"The current number of streams per tenant, including streams outside the active window.",
-		[]string{"tenant"},
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	tenantActiveStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_active_streams",
 		"The current number of active streams per tenant.",
-		[]string{"tenant"},
+		[]string{"tenant", "policy"},
 		nil,
 	)
 )
@@ -336,40 +336,52 @@ func (s *usageStore) Describe(descs chan<- *prometheus.Desc) {
 func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
 		cutoff = s.clock.Now().Add(-s.activeWindow).UnixNano()
-		active = make(map[string]int)
-		total  = make(map[string]int)
+		active = make(map[string]map[string]int)
+		total  = make(map[string]map[string]int)
+		seen   = make(map[string]struct{})
 	)
 	// Count both the total number of active streams and the total number of
 	// streams for each tenants.
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
+			if _, ok := seen[tenant]; !ok {
+				active[tenant] = make(map[string]int)
+				total[tenant] = make(map[string]int)
+				seen[tenant] = struct{}{}
+			}
 			for _, policies := range partitions {
-				for _, streams := range policies {
+				for policy, streams := range policies {
 					for _, stream := range streams {
-						total[tenant]++
+						total[tenant][policy]++
 						if stream.lastSeenAt >= cutoff {
-							active[tenant]++
+							active[tenant][policy]++
 						}
 					}
 				}
 			}
 		}
 	})
-	for tenant, numActiveStreams := range active {
-		metrics <- prometheus.MustNewConstMetric(
-			tenantActiveStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numActiveStreams),
-			tenant,
-		)
+	for tenant, policies := range active {
+		for policy, numActiveStreams := range policies {
+			metrics <- prometheus.MustNewConstMetric(
+				tenantActiveStreamsDesc,
+				prometheus.GaugeValue,
+				float64(numActiveStreams),
+				tenant,
+				policy,
+			)
+		}
 	}
-	for tenant, numStreams := range total {
-		metrics <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numStreams),
-			tenant,
-		)
+	for tenant, policies := range active {
+		for policy, numStreams := range policies {
+			metrics <- prometheus.MustNewConstMetric(
+				tenantStreamsDesc,
+				prometheus.GaugeValue,
+				float64(numStreams),
+				tenant,
+				policy,
+			)
+		}
 	}
 }
 
