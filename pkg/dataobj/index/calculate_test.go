@@ -1,10 +1,12 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -223,6 +225,42 @@ func TestCalculator_Calculate(t *testing.T) {
 
 		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
 		requireValidPointers(t, obj)
+	})
+
+	t.Run("builds byte-identical index objects with one key from the same multi-section object", func(t *testing.T) {
+		prevProcs := runtime.GOMAXPROCS(max(runtime.GOMAXPROCS(0), 4))
+		t.Cleanup(func() { runtime.GOMAXPROCS(prevProcs) })
+
+		source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
+		t.Cleanup(cleanup)
+		require.Greater(t, source.Sections().Count(logs.CheckSection), runtime.GOMAXPROCS(0))
+
+		build := func() (string, []byte) {
+			indexBuilder, err := indexobj.NewBuilder(benchTenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+			require.NoError(t, err)
+			calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+			require.NoError(t, calculator.Calculate(context.Background(), logger, source, "test/path"))
+
+			obj, closer, _, err := calculator.Flush()
+			require.NoError(t, err)
+			defer closer.Close()
+
+			key, err := ObjectKey(context.Background(), obj)
+			require.NoError(t, err)
+			reader, err := obj.Reader(context.Background())
+			require.NoError(t, err)
+			defer reader.Close()
+			data, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			return key, data
+		}
+
+		wantKey, wantData := build()
+		for i := range 10 {
+			gotKey, gotData := build()
+			require.Equal(t, wantKey, gotKey, "object key differs on rebuild %d", i)
+			require.True(t, bytes.Equal(wantData, gotData), "object bytes differ on rebuild %d", i)
+		}
 	})
 
 	t.Run("returns ErrNotSingleTenant and leaves the builder empty when the object holds several tenants", func(t *testing.T) {

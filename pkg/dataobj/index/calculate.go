@@ -38,7 +38,8 @@ type logsIndexCalculation interface {
 	// with other sections' lock-free ProcessBatch calls (each section has its
 	// own calculation-step state, so there is no cross-section sharing).
 	ProcessBatchNeedsBuilderLock() bool
-	// Flush is called after all logs in a section have been processed.
+	// Flush is called once per section, in section order, after all logs
+	// sections of the object have been processed.
 	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
 }
@@ -124,6 +125,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
 
+	processed := make([]*processedLogsSection, reader.Sections().Count(logs.CheckSection))
 	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
@@ -131,13 +133,31 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			sectionLogger := log.With(logger, "section", i)
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup, streamLabels, shardBuckets); err != nil {
+			p, err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup, streamLabels, shardBuckets)
+			if err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
+			processed[i] = p
 			return nil
 		})
 	}
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	// Flush the sections one at a time in section order, so that the index
+	// object is the same on each build. The flush order sets the order of
+	// pointers and stats rows, and where the builder cuts their sections.
+	//
+	// Prepare and ProcessBatch can still run concurrently. The builder only
+	// aggregates their observations, and sorts the result before it encodes
+	// it, so their order does not change the index object.
+	for i, p := range processed {
+		if err := c.flushLogsSection(ctx, p); err != nil {
+			return fmt.Errorf("failed to flush logs section path=%s section=%d: %w", objectPath, i, err)
+		}
+	}
+	return nil
 }
 
 func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
@@ -194,25 +214,36 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	return streamLabels, shardBuckets, nil
 }
 
+// processedLogsSection holds the calculation steps of a logs section between
+// processLogsSection and flushLogsSection.
+type processedLogsSection struct {
+	logger        log.Logger
+	calcCtx       *logsCalculationContext
+	steps         []logsIndexCalculation
+	stepDurations []time.Duration
+	rows          int
+}
+
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
+// The caller must pass the result to flushLogsSection to complete the section index.
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
 	logsBuf := make([]logs.Record, 8192)
 
 	logsSection, err := logs.Open(ctx, section)
 	if err != nil {
-		return fmt.Errorf("failed to open logs section: %w", err)
+		return nil, fmt.Errorf("failed to open logs section: %w", err)
 	}
 
 	schemaLabels, err := logsSection.SchemaLabels()
 	if err != nil {
-		return fmt.Errorf("failed to read logs section schema labels: %w", err)
+		return nil, fmt.Errorf("failed to read logs section schema labels: %w", err)
 	}
 
 	// Fetch the column statistics in order to init the bloom filters for each column
 	stats, err := logs.ReadStats(ctx, logsSection)
 	if err != nil {
-		return fmt.Errorf("failed to read log section stats: %w", err)
+		return nil, fmt.Errorf("failed to read log section stats: %w", err)
 	}
 
 	calculationContext := &logsCalculationContext{
@@ -246,7 +277,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	for _, calculation := range calculationSteps {
 		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
 			c.builderMtx.Unlock()
-			return fmt.Errorf("failed to prepare calculation: %w", err)
+			return nil, fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
 	c.builderMtx.Unlock()
@@ -256,14 +287,14 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	defer rowReader.Close()
 
 	if err := rowReader.Open(ctx); err != nil {
-		return fmt.Errorf("failed to open logs row reader: %w", err)
+		return nil, fmt.Errorf("failed to open logs row reader: %w", err)
 	}
 
 	var cnt int
 	for {
 		n, err := rowReader.Read(ctx, logsBuf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("failed to read logs section: %w", err)
+			return nil, fmt.Errorf("failed to read logs section: %w", err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
@@ -281,13 +312,13 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 			}
 			start := time.Now()
 			if err := calculation.ProcessBatch(ctx, &lockFreeContext, logsBuf[:n]); err != nil {
-				return fmt.Errorf("failed to process batch: %w", err)
+				return nil, fmt.Errorf("failed to process batch: %w", err)
 			}
 			stepDurations[i] += time.Since(start)
 		}
 
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 
 		// Second pass: run steps that require exclusive access to the shared
@@ -300,28 +331,37 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 			start := time.Now()
 			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
 				c.builderMtx.Unlock()
-				return fmt.Errorf("failed to process batch: %w", err)
+				return nil, fmt.Errorf("failed to process batch: %w", err)
 			}
 			stepDurations[i] += time.Since(start)
 		}
 		c.builderMtx.Unlock()
 	}
 
-	c.builderMtx.Lock()
-	for i, calculation := range calculationSteps {
+	return &processedLogsSection{
+		logger:        sectionLogger,
+		calcCtx:       calculationContext,
+		steps:         calculationSteps,
+		stepDurations: stepDurations,
+		rows:          cnt,
+	}, nil
+}
+
+// flushLogsSection flushes the calculation steps of p into the builder.
+// It must not run concurrently with other calls that use the builder.
+func (c *Calculator) flushLogsSection(ctx context.Context, p *processedLogsSection) error {
+	for i, calculation := range p.steps {
 		start := time.Now()
-		if err := calculation.Flush(ctx, calculationContext); err != nil {
-			c.builderMtx.Unlock()
+		if err := calculation.Flush(ctx, p.calcCtx); err != nil {
 			return fmt.Errorf("failed to flush calculation results: %w", err)
 		}
-		stepDurations[i] += time.Since(start)
-	}
-	c.builderMtx.Unlock()
-
-	for i, calculation := range calculationSteps {
-		c.metrics.observeStepDuration(calculation.Name(), stepDurations[i])
+		p.stepDurations[i] += time.Since(start)
 	}
 
-	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
+	for i, calculation := range p.steps {
+		c.metrics.observeStepDuration(calculation.Name(), p.stepDurations[i])
+	}
+
+	level.Info(p.logger).Log("msg", "finished processing logs section", "rowsProcessed", p.rows)
 	return nil
 }
