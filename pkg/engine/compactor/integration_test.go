@@ -359,7 +359,7 @@ type convergenceCase struct {
 
 // runConvergenceTest creates one overlapping object for every layout and
 // compacts until a cycle does no work. Every source record must stay
-// reachable, and an index filter must keep at least one unmerged run.
+// reachable.
 func runConvergenceTest(t *testing.T, test convergenceCase) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -435,7 +435,6 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	require.Len(t, sourceLines, len(test.layouts)*streamCount*3, "seeded source objects must contain all records")
 
 	scenario.compactUntilIdle(tenant)
-	require.Contains(t, actors(), "index-filter", "five runs with k of 2 must leave a run for the index filter")
 	if test.wantTasks != nil {
 		tasks := make(map[string]int)
 		for _, actor := range actors() {

@@ -779,7 +779,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 
 		dispatches := runner.snapshot()
 		require.Len(t, dispatches, 2)
-		require.Equal(t, 3, countMergeObjects(t, dispatches))
+		require.Equal(t, 3, countPlannedObjects(t, dispatches))
 	})
 
 	t.Run("index", func(t *testing.T) {
@@ -801,7 +801,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 
 		dispatches := runner.snapshot()
 		require.Len(t, dispatches, 2)
-		require.Equal(t, 3, countMergeObjects(t, dispatches))
+		require.Equal(t, 3, countPlannedObjects(t, dispatches))
 	})
 }
 
@@ -873,22 +873,25 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		require.Equal(t, time.Unix(0, 60).UTC(), swaps[0].newEntries[idx].EndTime)
 	})
 
-	t.Run("publishes the time range of the lone run for the filtered index", func(t *testing.T) {
-		large := stat("logs/large", 20<<30)
-		large.MinTimestamp, large.MaxTimestamp = 20, 50
-		_, runner, replacer := compact(t, []stats.Stat{stat("logs/small-a", 100), stat("logs/small-b", 100), large})
+	t.Run("keeps the unmerged runs of every level in one index filter", func(t *testing.T) {
+		leftover, large := stat("logs/small-c", 100), stat("logs/large", 20<<30)
+		leftover.MinTimestamp, leftover.MaxTimestamp = 5, 15
+		large.MinTimestamp, large.MaxTimestamp = 40, 70
+		got, runner, replacer := compact(t, []stats.Stat{stat("logs/small-a", 100), stat("logs/small-b", 100), leftover, large})
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, got)
 
-		filter := callByActor(t, runner.snapshot(), "index-filter")
+		calls := runner.snapshot()
+		require.Len(t, calls, 2)
+		merge, filter := callByActor(t, calls, "log-merge"), callByActor(t, calls, "index-filter")
+		require.Equal(t, []string{"logs/small-a", "logs/small-b"}, planObjectPaths(t, merge.plan))
+		require.Equal(t, []string{"logs/large", "logs/small-c"}, planObjectPaths(t, filter.plan))
+
 		swaps := replacer.snapshot()
 		require.Len(t, swaps, 1)
-		var filterEntry metastore.TableOfContentsEntry
-		for _, entry := range swaps[0].newEntries {
-			if entry.Path == filter.path {
-				filterEntry = entry
-			}
-		}
-		require.Equal(t, time.Unix(0, 20).UTC(), filterEntry.StartTime)
-		require.Equal(t, time.Unix(0, 50).UTC(), filterEntry.EndTime)
+		idx := slices.IndexFunc(swaps[0].newEntries, func(e metastore.TableOfContentsEntry) bool { return e.Path == filter.path })
+		require.NotEqual(t, -1, idx)
+		require.Equal(t, time.Unix(0, 5).UTC(), swaps[0].newEntries[idx].StartTime)
+		require.Equal(t, time.Unix(0, 70).UTC(), swaps[0].newEntries[idx].EndTime)
 	})
 }
 
@@ -943,10 +946,7 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		})
 	})
 
-	// Log compaction replaces a source index only after every merge and index
-	// filter task completes. Three equal runs with k of 2 give one merge and
-	// one index filter for logs/2.
-	t.Run("log merge", func(t *testing.T) {
+	t.Run("log compaction of three equal runs with one merge and one index filter", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		rows := make([]stats.Stat, 0, 3)
 		for i := range 3 {
@@ -978,9 +978,8 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-				// Fail the index filter, which keeps logs/2.
-				if slices.Contains(planObjectPaths(t, plan), "logs/2") {
+			runner.respond = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+				if slices.Equal(opts.Actor, []string{"compaction", "index-filter"}) {
 					return nil, taskErr
 				}
 				return &v2.ResultArtifact{Path: "indexes/out"}, nil
@@ -1079,7 +1078,7 @@ func TestReplaceLogIndex(t *testing.T) {
 	})
 }
 
-func countMergeObjects(t *testing.T, calls []runCall) int {
+func countPlannedObjects(t *testing.T, calls []runCall) int {
 	t.Helper()
 	objects := map[string]struct{}{}
 	for _, call := range calls {

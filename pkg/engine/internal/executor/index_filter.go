@@ -37,6 +37,9 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
+	if node.Tenant == "" || node.SourceIndexPath == "" {
+		return nil, fmt.Errorf("IndexFilter: malformed plan: tenant %q, source index %q", node.Tenant, node.SourceIndexPath)
+	}
 	if len(node.ObjectPaths) == 0 {
 		return nil, errors.New("IndexFilter: no object paths to keep")
 	}
@@ -89,7 +92,7 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 
 	artifact, _, _, err := c.uploadIndex(ctx, node.Tenant, builder)
 	if err != nil {
-		return nil, fmt.Errorf("index filter output: %w", err)
+		return nil, fmt.Errorf("index filter output for source index %q: %w", node.SourceIndexPath, err)
 	}
 	return artifact, nil
 }

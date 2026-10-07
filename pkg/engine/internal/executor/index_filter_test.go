@@ -239,6 +239,35 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ElementsMatch(t, []key{{"logs/a", 0}, {"logs/a", 1}}, got)
 	})
 
+	t.Run("copies every field of the kept postings and stats rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/a", 1), filterStatRow("logs/b", 0)})
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.NoError(t, err)
+
+		var wantPostings []postings.Row
+		for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, sourcePath) {
+			if row.ObjectPath == "logs/a" {
+				wantPostings = append(wantPostings, row)
+			}
+		}
+		var wantStats []stats.Stat
+		for _, row := range readAllStatsRowsFromBucket(t, bucket, sourcePath) {
+			if row.ObjectPath == "logs/a" {
+				wantStats = append(wantStats, row)
+			}
+		}
+		require.ElementsMatch(t, wantPostings, readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path))
+		require.ElementsMatch(t, wantStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path))
+	})
+
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{
@@ -298,6 +327,22 @@ func TestDoIndexFilter(t *testing.T) {
 			ObjectPaths: []string{"logs/a"},
 		})
 		require.ErrorContains(t, err, `no stats rows for object "logs/a"`)
+	})
+
+	t.Run("returns an error when the plan has no tenant or no source index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{"acme": {"logs/a"}})
+		execCtx := newTestExecutorContext(t, bucket)
+
+		_, err := execCtx.doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), SourceIndexPath: sourcePath, ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "malformed plan")
+
+		_, err = execCtx.doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "malformed plan")
 	})
 
 	t.Run("returns an error when no objects are listed", func(t *testing.T) {

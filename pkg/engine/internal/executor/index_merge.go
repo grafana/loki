@@ -115,14 +115,14 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 		Size:       func() (int64, error) { return compressedBytes, nil },
 	}
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index: %w", err), uploadReader.Close(), closer.Close())
+		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
 	}
 	if err := uploadReader.Close(); err != nil {
-		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader: %w", err), closer.Close())
+		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
 	}
 
 	if err := closer.Close(); err != nil {
-		return nil, 0, 0, fmt.Errorf("closing index: %w", err)
+		return nil, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
 	}
 	return &v2.ResultArtifact{Path: path}, compressedBytes, uncompressedBytes, nil
 }
