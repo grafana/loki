@@ -23,7 +23,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 
 	baseIndexSet := storage.NewIndexSet(storageClient, userID != "")
 	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
-		func(path string) (index.Index, error) {
+		func(path string, _ index.OpenOptions) (index.Index, error) {
 			return openMockIndexFile(t, path), nil
 		}, util_log.Logger, testDownloadTimeout)
 	require.NoError(t, err)
@@ -209,7 +209,7 @@ func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
 			baseIndexSet := storage.NewIndexSet(storageClient, userID != "")
 
 			idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
-				func(path string) (index.Index, error) {
+				func(path string, _ index.OpenOptions) (index.Index, error) {
 					return openMockIndexFile(t, path), nil
 				}, util_log.Logger, testDownloadTimeout)
 			require.NoError(t, err)

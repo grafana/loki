@@ -22,9 +22,9 @@ func TestTable_ForEach_RecordsOnDemand(t *testing.T) {
 	setupIndexesAtPath(t, "user1", tablePath, 0, 2)
 	setupIndexesAtPath(t, "user2", tablePath, 0, 2)
 
-	tbl := NewTable(tableName, t.TempDir(), buildTestStorageClient(t, tempDir), func(path string) (index.Index, error) {
+	tbl := newTable(tableName, t.TempDir(), buildTestStorageClient(t, tempDir), func(path string, _ index.OpenOptions) (index.Index, error) {
 		return openMockIndexFile(t, path), nil
-	}, newMetrics(nil), testDownloadTimeout).(*table)
+	}, newMetrics(nil), testDownloadTimeout, tableOptions{}).(*table)
 	defer tbl.Close()
 
 	// Preload the common index and user1, as query readiness would.
@@ -70,7 +70,7 @@ func TestIndexSet_ForEach_RecordsOnDemandWhileNotReady(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			idxSet, err := NewIndexSet(tableName, userID, filepath.Join(t.TempDir(), tableName, userID), baseIndexSet,
-				func(path string) (index.Index, error) {
+				func(path string, _ index.OpenOptions) (index.Index, error) {
 					return openMockIndexFile(t, path), nil
 				}, util_log.Logger, testDownloadTimeout)
 			require.NoError(t, err)

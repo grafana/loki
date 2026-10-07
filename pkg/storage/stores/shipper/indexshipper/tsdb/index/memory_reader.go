@@ -16,6 +16,9 @@ type PlacementFunc func(path string) bool
 // PlaceAll is a PlacementFunc that allows every index file to be held in memory.
 func PlaceAll(string) bool { return true }
 
+// PlaceNone is a PlacementFunc that allows no index file to be held in memory.
+func PlaceNone(string) bool { return false }
+
 const (
 	refusalReasonPlacement = "placement"
 	refusalReasonBudget    = "budget"

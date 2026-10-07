@@ -61,7 +61,7 @@ func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config
 			},
 		}
 	}
-	tblManager, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+	tblManager, err := NewTableManager(cfg, func(s string, _ index.OpenOptions) (index.Index, error) {
 		return openMockIndexFile(t, s), nil
 	}, indexStorageClient, nil, *tableRangeToHandle, nil, log.NewNopLogger())
 	require.NoError(t, err)
@@ -603,6 +603,10 @@ func (m *mockTable) EnsureQueryReadiness(_ context.Context, userIDs []string) er
 	return nil
 }
 
+func (m *mockTable) DropNotOwned(_ context.Context, _ TenantFilter) error {
+	return nil
+}
+
 type mockIndexStorageClient struct {
 	storage.Client
 	tablesInStorage     []string
@@ -669,7 +673,7 @@ func TestTableManager_DelayQueryReadinessUntilPreload(t *testing.T) {
 				Limits:                          &mockLimits{queryReadyIndexNumDaysDefault: 2},
 				DelayQueryReadinessUntilPreload: delayed,
 			}
-			tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+			tm, err := NewTableManager(cfg, func(s string, _ index.OpenOptions) (index.Index, error) {
 				return openMockIndexFile(t, s), nil
 			}, client, nil, tableRange, nil, log.NewNopLogger())
 			require.NoError(t, err)

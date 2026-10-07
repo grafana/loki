@@ -120,14 +120,22 @@ func (s *store) init(params storeInitParams) error {
 		}
 	}
 
+	// Files of index sets that are not query ready may be opened differently
+	// (in-memory placement owned_query_ready).
+	onDemandReaderOpts := indexshipper.OnDemandReaderOptions(params.indexShipperCfg, readerOpts)
+
 	s.indexShipper, err = indexshipper.NewIndexShipper(
 		params.prefix,
 		params.indexShipperCfg,
 		params.objectClient,
 		params.limits,
 		params.indexShipperCfg.TenantFilter,
-		func(p string) (shipperindex.Index, error) {
-			return openShippableTSDBWithPostingsCache(p, readerOpts, s.postingsCache, params.prefix, params.indexShipperCfg.CacheLocation)
+		func(p string, o shipperindex.OpenOptions) (shipperindex.Index, error) {
+			opts := onDemandReaderOpts
+			if o.QueryReady {
+				opts = readerOpts
+			}
+			return openShippableTSDBWithPostingsCache(p, opts, s.postingsCache, params.prefix, params.indexShipperCfg.CacheLocation)
 		},
 		params.tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", params.reg),
