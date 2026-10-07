@@ -124,6 +124,7 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 
 	order := make([]*rateLimitBucket, 0, len(rlBuckets))
 	entries := make([]throttler.RequestEntry, 0, len(rlBuckets))
+	var neverFits []*rateLimitBucket
 	for _, b := range rlBuckets {
 		rateBytes := e.limits.IngestionRateBytes(tenantID)
 		burstBytes := e.limits.IngestionBurstSizeBytes(tenantID)
@@ -142,6 +143,12 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 		}
 		key = escapeThrottlerKey(key)
 
+		capacity := throttlerCapacity(rateBytes, burstBytes)
+		cost := int64(b.bytes)
+		if throttler.EffectiveCost(cost) > capacity {
+			neverFits = append(neverFits, b)
+		}
+
 		order = append(order, b)
 		entries = append(entries, throttler.RequestEntry{
 			Key: key,
@@ -153,9 +160,21 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 			// zero, which the throttler treats as a nonsensical limit and
 			// fails closed on unconditionally, regardless of Capacity.
 			// Units/Period has no such ceiling.
-			Limit: throttler.Limit{Capacity: throttlerCapacity(rateBytes, burstBytes), Rate: throttler.Rate{Units: int64(rateBytes), Period: time.Second}},
-			Cost:  int64(b.bytes),
+			Limit: throttler.Limit{Capacity: capacity, Rate: throttler.Rate{Units: int64(rateBytes), Period: time.Second}},
+			Cost:  cost,
 		})
+	}
+
+	// A bucket whose cost exceeds its capacity can never admit this push, no
+	// matter what the throttler's state is -- the throttler would deny it
+	// too, and an all-or-none call with one such entry commits nothing. So
+	// answer locally: it saves the round trip, and, unlike asking, it still
+	// denies when the throttler is unreachable and fail_open would otherwise
+	// admit a push the local/global strategies would reject. Other buckets
+	// that are merely over rate at the moment aren't listed; the buckets that
+	// can never fit are the actual cause.
+	if len(neverFits) > 0 {
+		return neverFits, nil
 	}
 
 	results, err := e.caller.Throttle(ctx, tenantID, entries)

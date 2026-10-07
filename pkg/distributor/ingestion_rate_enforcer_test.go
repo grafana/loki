@@ -27,9 +27,11 @@ type fakeThrottleCaller struct {
 	byKey      map[string]throttler.ResponseEntry
 	err        error
 	gotEntries []throttler.RequestEntry
+	calls      int
 }
 
 func (f *fakeThrottleCaller) Throttle(_ context.Context, _ string, entries []throttler.RequestEntry) ([]throttler.ResponseEntry, error) {
+	f.calls++
 	f.gotEntries = entries
 	results := make([]throttler.ResponseEntry, len(entries))
 	for i, e := range entries {
@@ -371,34 +373,70 @@ func TestEscapeThrottlerKey(t *testing.T) {
 	})
 }
 
-func TestThrottlerEnforcer_ZeroRateSendsZeroCapacity(t *testing.T) {
+func TestThrottlerEnforcer_NeverFitsIsDeniedLocally(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{
 		IngestionRateMB:      1.0,
 		IngestionBurstSizeMB: 2.0,
 		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
 			"frozen": {IngestionRateMB: ptr(0.0), IngestionBurstSizeMB: ptr(10.0)},
+			"small":  {IngestionRateMB: ptr(1.0), IngestionBurstSizeMB: ptr(0.0001)},
 		},
 	}, nil)
 	require.NoError(t, err)
 
-	caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
-	e := newThrottlerEnforcer(limits, caller)
+	t.Run("a zero-rate bucket is denied without calling the throttler", func(t *testing.T) {
+		caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+		e := newThrottlerEnforcer(limits, caller)
 
-	_, err = e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
-		"":       {policy: "", bytes: 100, lines: 1},
-		"frozen": {policy: "frozen", hasOverride: true, bytes: 200, lines: 2},
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+			"":       {policy: "", bytes: 100, lines: 1},
+			"frozen": {policy: "frozen", hasOverride: true, bytes: 200, lines: 2},
+		})
+		require.NoError(t, err)
+		require.Zero(t, caller.calls)
+		require.Len(t, exceeded, 1)
+		require.Equal(t, "frozen", exceeded[0].policy)
 	})
-	require.NoError(t, err)
-	require.Len(t, caller.gotEntries, 2)
 
-	frozenKey := encodeRateLimitKey("t1", "frozen")
-	for _, entry := range caller.gotEntries {
-		if entry.Key == frozenKey {
-			require.EqualValues(t, 0, entry.Limit.Capacity, "a zero-rate bucket must never admit anything, burst notwithstanding")
-		} else {
-			require.EqualValues(t, int(2.0*float64(bytesInMB)), entry.Limit.Capacity, "other buckets keep their burst")
-		}
-	}
+	t.Run("a bucket whose cost exceeds its burst is denied without calling the throttler", func(t *testing.T) {
+		caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+		e := newThrottlerEnforcer(limits, caller)
+
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+			"":      {policy: "", bytes: 100, lines: 1},
+			"small": {policy: "small", hasOverride: true, bytes: 1000, lines: 2},
+		})
+		require.NoError(t, err)
+		require.Zero(t, caller.calls)
+		require.Len(t, exceeded, 1)
+		require.Equal(t, "small", exceeded[0].policy)
+	})
+
+	t.Run("every never-fits bucket is listed", func(t *testing.T) {
+		caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+		e := newThrottlerEnforcer(limits, caller)
+
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+			"frozen": {policy: "frozen", hasOverride: true, bytes: 200, lines: 2},
+			"small":  {policy: "small", hasOverride: true, bytes: 1000, lines: 2},
+		})
+		require.NoError(t, err)
+		require.Zero(t, caller.calls)
+		require.Len(t, exceeded, 2)
+	})
+
+	t.Run("a cost exactly at capacity still goes to the throttler", func(t *testing.T) {
+		caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+		e := newThrottlerEnforcer(limits, caller)
+
+		burst := int(2.0 * float64(bytesInMB))
+		exceeded, err := e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+			"": {policy: "", bytes: burst, lines: 1},
+		})
+		require.NoError(t, err)
+		require.Empty(t, exceeded)
+		require.Equal(t, 1, caller.calls)
+	})
 }
 
 func TestThrottlerCapacity(t *testing.T) {
