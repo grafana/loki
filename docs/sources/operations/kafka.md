@@ -52,13 +52,17 @@ flowchart LR
 
 The distributor writes each stream as one or more Kafka records to a topic. The topic has multiple partitions. Each ingester owns exactly one partition and consumes records only from that partition. Ingesters use the [partition ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components/#kafka-based-ingestion-experimental) to coordinate which ingester owns which partition.
 
+Each ingester process participates in both rings at the same time: the classic hash ring it already uses for gRPC writes, and the partition ring. Loki doesn't deploy a separate pool of "Kafka ingesters"; the same ingester replicas serve both roles. Because the two rings assign ownership of a tenant's streams differently (token-hash with replication, compared to shuffle-sharded partitions with a single owner), the querier has to be told explicitly which ring to use when it looks up ingesters. See [Read path](#read-path) and `querier.query_partition_ingesters` under [Configuration overview](#configuration-overview).
+
 {{< admonition type="note" >}}
 You can use any system that implements the Kafka wire protocol, such as WarpStream, instead of running Apache Kafka yourself. Loki only needs the broker address and, optionally, SASL credentials. No code changes are required.
 {{< /admonition >}}
 
-## Read path unchanged
+## Read path
 
-Enabling Kafka-based ingestion changes only the **write path**. The read path, meaning [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) queries handled by the querier, query frontend, and query scheduler, doesn't change. Queries still read recent data from ingester memory and older data from long-term object storage, the same way they do when Kafka-based ingestion is disabled.
+Enabling Kafka-based ingestion primarily changes the **write path**. [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) queries still read recent data from ingester memory and older data from long-term object storage, the same way they do when Kafka-based ingestion is disabled.
+
+However, the querier must be told which ring to use to find the ingesters that hold recent data: the classic hash ring (the default), or the partition ring that Kafka-based ingestion uses. Set `querier.query_partition_ingesters: true` to switch the querier, and any locally evaluating rulers, over to the partition ring. Until you set this, the querier keeps using the classic ring even if the distributor and ingesters are fully configured for Kafka-based ingestion. For the full migration sequence and when to flip this setting, refer to [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/).
 
 ## Configuration overview
 
@@ -67,6 +71,7 @@ This section groups the relevant configuration blocks at a high level. For the f
 - **`kafka_config`**: the Kafka client configuration shared by every Loki component that reads or writes Kafka records. It includes the broker addresses (`reader_config.address` and `writer_config.address`), the topic name, SASL credentials, producer tuning (`producer_linger`, `producer_max_inflight_requests_per_broker`, `producer_max_record_size_bytes`), and consumer tuning (`max_consumer_lag_at_startup`, `consumer_group_offset_commit_interval`, `max_consumer_workers`).
 - **`distributor.kafka_writes_enabled`** and **`distributor.ingester_writes_enabled`**: control whether the distributor writes to Kafka, to ingesters over gRPC, or both. At least one must be `true`.
 - **`ingester.kafka_ingestion`**: controls whether ingesters consume from Kafka, and configures the partition ring key-value store that ingesters, distributors, queriers, and rulers use to coordinate partition ownership.
+- **`querier.query_partition_ingesters`**: controls whether the querier, and any ruler evaluating rules locally, looks up ingesters using the partition ring instead of the classic hash ring. Set this to `true` only after the Kafka-consuming ingesters have caught up and held data for at least `querier.query_ingesters_within` (default: 3 hours); otherwise recent queries can return incomplete results. Defaults to `false`.
 - **`limits_config.ingestion_partitions_tenant_shard_size`**: the number of Kafka partitions a single tenant's data is shuffle-sharded across. The default, `0`, means a tenant's data uses all partitions.
 - **`ingest_limits`**: configuration for the optional ingest-limits service, which uses its own Kafka topic, partition count, and consumer group to track stream metadata.
 
@@ -128,7 +133,7 @@ This is the full list of Kafka-related metrics, organized by component. For the 
 
 ### Dual-write for a safe rollout
 
-Write to both Kafka and ingesters at the same time so you can validate Kafka-based ingestion before relying on it.
+Write to both Kafka and ingesters at the same time so you can validate Kafka-based ingestion before relying on it. Queries still use the classic hash ring at this stage (`querier.query_partition_ingesters` stays `false`).
 
 ```yaml
 distributor:
@@ -149,7 +154,7 @@ kafka_config:
 
 ### Kafka-only write path
 
-Once you've validated dual-write, you can disable the direct gRPC writes to ingesters.
+Once you've validated dual-write and switched queriers to the partition ring, you can disable the direct gRPC writes to ingesters. Refer to [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/) for the full, safely ordered sequence.
 
 ```yaml
 distributor:
@@ -159,6 +164,9 @@ distributor:
 ingester:
   kafka_ingestion:
     enabled: true
+
+querier:
+  query_partition_ingesters: true
 
 kafka_config:
   topic: loki-logs
