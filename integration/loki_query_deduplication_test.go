@@ -29,7 +29,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	kafkaAddr := kafkaCluster.ListenAddrs()[0]
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(cluster.LatestSchemaVersion)
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())

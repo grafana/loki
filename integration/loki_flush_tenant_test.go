@@ -38,7 +38,7 @@ import (
 // PUT /sync-indexes, which refreshes that cache and downloads the new index.
 func TestFlushTenant(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(cluster.LatestSchemaVersion)
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

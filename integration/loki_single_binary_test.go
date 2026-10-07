@@ -16,7 +16,7 @@ import (
 
 func TestSingleBinaryIngestQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(cluster.LatestSchemaVersion)
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

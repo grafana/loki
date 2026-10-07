@@ -30,7 +30,7 @@ type DetectedFieldResponse struct {
 
 func Test_ExploreLogsApis(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(cluster.LatestSchemaVersion)
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

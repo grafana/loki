@@ -77,7 +77,7 @@ func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 	t.Cleanup(server1.Close)
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(cluster.LatestSchemaVersion)
 	})
 	t.Cleanup(func() {
 		assert.NoError(t, clu.Cleanup())
