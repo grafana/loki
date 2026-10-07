@@ -3,6 +3,8 @@ package compactionv2
 import (
 	"fmt"
 	"math"
+
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
 const (
@@ -67,4 +69,30 @@ func (s *SizeLeveledStrategy) GroupByLevels(runs []Run) [][]Run {
 		levels[level] = append(levels[level], run)
 	}
 	return levels
+}
+
+// NeedsCompaction reports whether any level holds at least k runs.
+//
+// A window where every level holds fewer than k runs counts as converged,
+// even if its runs overlap. Each compaction then merges a full level, so
+// the number of runs drops and gradually converges.
+func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run, k int) bool {
+	for _, level := range s.GroupByLevels(runs) {
+		if len(level) >= k {
+			return true
+		}
+	}
+	return false
+}
+
+// Plan splits each level into tasks of at most k runs, so no task mixes
+// levels.
+//
+// Every run lands in exactly one task.
+func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
+	var tasks []*compactionv2pb.TaskSpec
+	for _, level := range s.GroupByLevels(runs) {
+		tasks = append(tasks, Plan(level, tenant, k, sortSchema)...)
+	}
+	return tasks
 }

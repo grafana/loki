@@ -209,7 +209,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
-		"Experimental: Maximum runs per LogMerge task (K for log compaction). Separate from max-runs-per-task to scale independently")
+		"Experimental: Maximum runs per LogMerge task (K for log compaction). Separate from max-runs-per-task to scale independently. Must be at least 2.")
 	_ = cfg.LogMinCompactionSize.Set("4MB")
 	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
 		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Converged windows below this floor are skipped.")
@@ -291,7 +291,7 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
 	}
-	if cfg.LogMaxRunsPerTask <= 0 {
+	if cfg.LogMaxRunsPerTask < 2 {
 		return errInvalidLogMaxRunsPerTask
 	}
 	if cfg.LogMinCompactionSize == 0 {
@@ -319,6 +319,6 @@ var (
 	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 1")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
-	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 )

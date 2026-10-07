@@ -190,7 +190,16 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		sleep:           sleepUntil,
 		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 		limits:          limits,
+
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t),
 	}
+}
+
+func newTestLogMergePlanningStrategy(t *testing.T) *v2.SizeLeveledStrategy {
+	t.Helper()
+	s, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio)
+	require.NoError(t, err)
+	return s
 }
 
 // fixedClock returns a clock function pinned to t.
@@ -755,6 +764,31 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		require.Len(t, dispatches, 2)
 		require.Equal(t, 3, countMergeObjects(t, dispatches))
 	})
+}
+
+func TestCompactTenantLogs_SkipsWhenNoSizeLevelHoldsKRuns(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	ctx := context.Background()
+	path := "indexes/aa/levels"
+	bucket := objstore.NewInMemBucket()
+	buildCurrentIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+		{ObjectPath: "logs/small", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+		{ObjectPath: "logs/large", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 20 << 30},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+		Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
+	})
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{}, stats)
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
 }
 
 func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {

@@ -509,6 +509,9 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		compactionCfg.LogsobjBuilder = *logsobjConfig
 	}
 	compactionCfg.LogMinCompactionSize = 0 // disabled
+	// The fixtures seed fewer runs than the default K, so they would never
+	// fill a size level and trigger a merge.
+	compactionCfg.LogMaxRunsPerTask = 2
 	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
 	require.NoError(t, compactionCfg.Validate())
 
@@ -546,6 +549,8 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		},
 		clock:   func() time.Time { return now },
 		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
+
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t),
 	}
 }
 
