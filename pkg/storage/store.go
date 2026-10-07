@@ -339,7 +339,11 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 
 	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 		// inject the index-gateway client into the index store
-		gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		// Each period gets its own client, which needs the period's tables to
+		// route requests by table.
+		gwCfg := s.cfg.TSDBShipperConfig.IndexGatewayClientConfig
+		gwCfg.TableRange = tableRange
+		gw, err := indexgateway.NewGatewayClient(gwCfg, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
