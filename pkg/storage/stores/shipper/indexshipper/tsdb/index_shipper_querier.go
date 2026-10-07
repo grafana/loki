@@ -49,6 +49,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
 				}
+				shipperindex.RecordFileAccess(ctx, string(indexTier(idx)))
 				if multitenant {
 					impl = NewMultiTenantIndex(impl)
 				}

@@ -351,6 +351,11 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 	t.indexSets[id] = indexSet
 
+	if forQuerying {
+		// This request is about to wait for the index set to be downloaded.
+		index.RecordOnDemand(ctx)
+	}
+
 	// initialize the index set in async mode
 	// it is up to the caller to wait for its readiness using IndexSet.AwaitReady()
 	go func() {
