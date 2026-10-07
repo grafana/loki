@@ -742,16 +742,15 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 }
 
 func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *testing.T) {
-	// Note: This test only covers error cases (deprecated schemas are rejected).
-	// Successful cases (historical v11/v12 with current v13) are covered by integration tests
-	// as they require full reconciliation setup.
+	// Any v11/v12 schema is rejected - only v13 is supported.
+	// Users must migrate to v13 and remove all v11/v12 schemas.
 	tests := []struct {
 		name          string
 		schemas       []lokiv1.ObjectStorageSchema
 		errorContains string
 	}{
 		{
-			name: "current v11 schema is rejected",
+			name: "v11 schema is rejected",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
@@ -762,7 +761,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 			errorContains: "v11",
 		},
 		{
-			name: "current v12 schema is rejected",
+			name: "v12 schema is rejected",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
@@ -773,7 +772,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 			errorContains: "v12",
 		},
 		{
-			name: "future v11 schema is rejected",
+			name: "v11 schema is rejected even with v13 present",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,
@@ -788,7 +787,7 @@ func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *test
 			errorContains: "v11",
 		},
 		{
-			name: "future v12 schema is rejected",
+			name: "v12 schema is rejected even with v13 present",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV13,
