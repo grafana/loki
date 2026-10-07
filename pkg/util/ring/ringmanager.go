@@ -57,6 +57,21 @@ type RingManager struct { // nolint:revive
 
 	RingLifecycler *ring.BasicLifecycler
 	Ring           *ring.Ring
+
+	// beforeActive, if set, runs in server mode once the instance is JOINING
+	// in the ring and before it becomes ACTIVE.
+	beforeActive func(context.Context) error
+}
+
+// SetBeforeActive sets fn to run in server mode after the instance is JOINING
+// in the ring and before it becomes ACTIVE, so that work that depends on the
+// ring (such as loading the data this instance owns) can finish before clients
+// route to it. An error from fn fails the start of the ring manager.
+//
+// It must be called before the ring manager starts. Without it the instance
+// becomes ACTIVE as soon as it is JOINING.
+func (rm *RingManager) SetBeforeActive(fn func(context.Context) error) {
+	rm.beforeActive = fn
 }
 
 // NewRingManager instantiates a new RingManager instance.
@@ -188,6 +203,13 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 		return err
 	}
 	level.Info(rm.logger).Log("msg", fmt.Sprintf("%s is JOINING in the ring", rm.name))
+
+	if rm.beforeActive != nil {
+		level.Info(rm.logger).Log("msg", fmt.Sprintf("running %s work before becoming ACTIVE in the ring", rm.name))
+		if err = rm.beforeActive(ctx); err != nil {
+			return errors.Wrapf(err, "%s ring manager work before becoming %s", rm.name, ring.ACTIVE)
+		}
+	}
 
 	if err = rm.RingLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 		return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)

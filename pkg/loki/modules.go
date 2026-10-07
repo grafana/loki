@@ -959,12 +959,26 @@ func (t *Loki) initStore() (services.Service, error) {
 		}
 	}
 
+	perIndexOwnership := t.usePerIndexOwnership()
+	if perIndexOwnership {
+		// Preload only the indexes this gateway owns, once it has joined the
+		// ring and can tell which those are (see below).
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
+		t.Cfg.StorageConfig.TSDBShipperConfig.DelayQueryReadinessUntilPreload = true
+	}
+
 	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}
 
 	t.Store = store
+
+	if perIndexOwnership {
+		logger := log.With(util_log.Logger, "component", "index-gateway")
+		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger))
+	}
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.Store.Stop()
@@ -2027,6 +2041,16 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	return t.indexGatewayRingManager, nil
+}
+
+// usePerIndexOwnership reports whether this process is an index gateway that
+// owns indexes per (tenant, table) in the ring.
+func (t *Loki) usePerIndexOwnership() bool {
+	return t.Cfg.IndexGateway.PerIndexOwnership.Enabled &&
+		t.Cfg.IndexGateway.Mode == indexgateway.RingMode &&
+		t.Cfg.isTarget(IndexGateway) &&
+		t.indexGatewayRingManager != nil &&
+		t.indexGatewayRingManager.Mode == lokiring.ServerMode
 }
 
 func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {

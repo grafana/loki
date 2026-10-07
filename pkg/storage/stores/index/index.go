@@ -138,6 +138,13 @@ type Syncer interface {
 	SyncStatus() SyncStatus
 }
 
+// Preloader is implemented by index stores that can run their initial query
+// readiness on demand, when it was delayed at construction.
+type Preloader interface {
+	// PreloadIndexes downloads the indexes that must be query ready.
+	PreloadIndexes(ctx context.Context) error
+}
+
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
 	metrics *metrics

@@ -175,6 +175,8 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		queryReadyNumDaysCfg int
 		queryReadinessLimits mockLimits
 		tableRangeToHandle   *config.TableRange
+		overrides            QueryReadyOverrides
+		tenantFilter         TenantFilter
 
 		expectedQueryReadinessDoneForUsers map[string][]string
 	}{
@@ -274,6 +276,142 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				buildTableName(3): {"user2"},
 			},
 		},
+		{
+			name: "override user1: 4 days, no limits",
+			overrides: QueryReadyOverrides{
+				NumDays: TenantDays{"user1": 4},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user1"},
+				buildTableName(2): {"user1"},
+				buildTableName(3): {"user1"},
+				buildTableName(4): {"user1"},
+			},
+		},
+		{
+			name: "override user1: 3 days, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			overrides: QueryReadyOverrides{
+				NumDays: TenantDays{"user1": 3},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user1", "user2"},
+				buildTableName(3): {"user1"},
+			},
+		},
+		{
+			name: "override user1: 0 days, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			overrides: QueryReadyOverrides{
+				NumDays: TenantDays{"user1": 0},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user2"},
+				buildTableName(1): {"user2"},
+				buildTableName(2): {"user2"},
+			},
+		},
+		{
+			name: "override all tenants: 1 day replaces user2: 20 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysByUser: map[string]int{"user2": 20},
+			},
+			overrides: QueryReadyOverrides{
+				NumDays: TenantDays{AllTenants: 1},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+			},
+		},
+		{
+			name: "override all tenants: 1 day, user2: 3 days",
+			overrides: QueryReadyOverrides{
+				NumDays: TenantDays{AllTenants: 1, "user2": 3},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1", "user2"},
+				buildTableName(1): {"user1", "user2"},
+				buildTableName(2): {"user2"},
+				buildTableName(3): {"user2"},
+			},
+		},
+		{
+			name: "include user2, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			overrides: QueryReadyOverrides{
+				TenantsInclude: []string{"user2"},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user2"},
+				buildTableName(1): {"user2"},
+				buildTableName(2): {"user2"},
+			},
+		},
+		{
+			name: "exclude user2, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			overrides: QueryReadyOverrides{
+				TenantsExclude: []string{"user2"},
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user1"},
+				buildTableName(2): {"user1"},
+			},
+		},
+		{
+			name: "tenant filter by table, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			// user1 owns its index in tables 0 and 2, user2 in table 1.
+			tenantFilter: func(table string, tenants []string) ([]string, error) {
+				owner := map[string]string{
+					buildTableName(0): "user1",
+					buildTableName(1): "user2",
+					buildTableName(2): "user1",
+				}[table]
+				var out []string
+				for _, tenant := range tenants {
+					if tenant == owner {
+						out = append(out, tenant)
+					}
+				}
+				return out, nil
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user2"},
+				buildTableName(2): {"user1"},
+			},
+		},
+		{
+			name: "tenant filter owns nothing, common index: 1 day, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			queryReadyNumDaysCfg: 1,
+			tenantFilter: func(_ string, _ []string) ([]string, error) {
+				return nil, nil
+			},
+			// the common index is still kept query ready.
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): nil,
+				buildTableName(1): nil,
+			},
+		},
 		// includes limited table range
 		{
 			name:                 "common index: 20 days",
@@ -325,6 +463,8 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			resetTables()
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
+			tableManager.cfg.QueryReadyOverrides = tc.overrides
+			tableManager.tenantFilter = tc.tenantFilter
 			if tc.tableRangeToHandle == nil {
 				tableManager.tableRangeToHandle = config.TableRange{
 					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
@@ -503,4 +643,49 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	tm.syncManager.Wait()
 	require.Equal(t, float64(1), testutil.ToFloat64(
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
+}
+
+type countingIndexStorageClient struct {
+	mockIndexStorageClient
+	listTablesCalls int
+}
+
+func (m *countingIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	m.listTablesCalls++
+	return m.mockIndexStorageClient.ListTables(ctx)
+}
+
+func TestTableManager_DelayQueryReadinessUntilPreload(t *testing.T) {
+	tableRange := config.TableRange{Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{}}
+
+	for _, delayed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("delayed=%t", delayed), func(t *testing.T) {
+			client := &countingIndexStorageClient{}
+			cfg := Config{
+				CacheDir:                        t.TempDir(),
+				SyncInterval:                    time.Hour,
+				CacheTTL:                        time.Hour,
+				DownloadTimeout:                 time.Minute,
+				Limits:                          &mockLimits{queryReadyIndexNumDaysDefault: 2},
+				DelayQueryReadinessUntilPreload: delayed,
+			}
+			tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+				return openMockIndexFile(t, s), nil
+			}, client, nil, tableRange, nil, log.NewNopLogger())
+			require.NoError(t, err)
+			defer tm.Stop()
+
+			// query readiness runs at construction unless delayed.
+			wantCalls := 1
+			if delayed {
+				wantCalls = 0
+			}
+			require.Equal(t, wantCalls, client.listTablesCalls)
+			require.Equal(t, !delayed, tm.(*tableManager).queryReadinessStarted.Load())
+
+			require.NoError(t, tm.EnsureQueryReadiness(context.Background()))
+			require.Equal(t, wantCalls+1, client.listTablesCalls)
+			require.True(t, tm.(*tableManager).queryReadinessStarted.Load())
+		})
+	}
 }
