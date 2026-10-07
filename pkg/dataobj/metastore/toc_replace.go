@@ -66,9 +66,9 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 // or if an entry in newEntries has no valid time range.
 //
 // Race-loss is detected on an ANY-match basis: if ANY oldPath is still
-// present in the target tenant's current section, the swap proceeds and
-// drops the matched subset (leaving non-matched oldPaths' replacements, if
-// they were already swapped in by a concurrent coordinator, untouched).
+// present in the tenant's ToC, the swap proceeds and drops the matched subset
+// (leaving non-matched oldPaths' replacements, if they were already swapped
+// in by a concurrent coordinator, untouched).
 // Only when ZERO oldPaths match is the call treated as a no-op. Callers
 // orchestrating per-cycle plans against a single ToC snapshot will see
 // all-or-nothing matches in practice; partial overlaps can only occur in
@@ -77,6 +77,9 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 //
 // The primitive is idempotent: re-invoking it with already-applied
 // oldPaths/newEntries is a no-op.
+//
+// A ToC holds one tenant. If it holds a section of another tenant,
+// ReplaceIndexPointers returns an error without retrying.
 //
 // Callers must serialize overlapping ReplaceIndexPointers calls for the
 // same tenant and window within a process; the method allocates per-call
@@ -160,8 +163,12 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 				return nil, fmt.Errorf("parsing existing ToC: %w", oerr)
 			}
 
-			// Pass 1: detect whether any oldPaths are still present in the target tenant.
-			anyMatched, scanErr := scanForMatches(ctx, obj, tenant, oldSet)
+			if err := checkTenant(obj, tenant); err != nil {
+				return nil, err
+			}
+
+			// Pass 1: detect whether any oldPaths are still present.
+			anyMatched, scanErr := scanForMatches(ctx, obj, oldSet)
 			if scanErr != nil {
 				return nil, scanErr
 			}
@@ -172,18 +179,18 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 				return nil, errReplaceNoOp
 			}
 
-			// Pass 2: rebuild ToC, dropping target tenant's oldPaths and appending newEntries.
-			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+			// Pass 2: rebuild ToC, dropping oldPaths and appending newEntries.
+			builder, berr := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 			if berr != nil {
 				return nil, fmt.Errorf("creating ToC builder: %w", berr)
 			}
 
-			if err := replayFiltered(ctx, obj, builder, tenant, oldSet); err != nil {
+			if err := replayFiltered(ctx, obj, builder, oldSet); err != nil {
 				return nil, err
 			}
 
 			for _, e := range newEntries {
-				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+				if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
 					Path:    e.Path,
 					StartTs: e.StartTime,
 					EndTs:   e.EndTime,
@@ -216,6 +223,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 		if errors.Is(err, errReplaceNoOp) {
 			return swapped, nil
 		}
+		if errors.Is(err, errUnrecoverable) {
+			return false, err
+		}
 		lastErr = err
 		b.Wait()
 	}
@@ -225,16 +235,13 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 	return false, lastErr
 }
 
-// scanForMatches reports whether any row in any section of obj is owned by
-// the target tenant AND has a path present in oldSet.
-func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, oldSet map[string]struct{}) (bool, error) {
+// scanForMatches reports whether a row in an index pointers section of obj
+// has a path in oldSet. It stops at the first match.
+func scanForMatches(ctx context.Context, obj *dataobj.Object, oldSet map[string]struct{}) (bool, error) {
 	var reader indexpointers.RowReader
 	defer reader.Close()
 	buf := make([]indexpointers.IndexPointer, 256)
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return false, fmt.Errorf("opening section: %w", err)
@@ -262,8 +269,8 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, old
 }
 
 // replayFiltered replays every row from every section of obj into builder,
-// EXCEPT rows belonging to the target tenant whose path is in oldSet.
-func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, tenant string, oldSet map[string]struct{}) error {
+// EXCEPT rows whose path is in oldSet.
+func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, oldSet map[string]struct{}) error {
 	var reader indexpointers.RowReader
 	defer reader.Close()
 	buf := make([]indexpointers.IndexPointer, 256)
@@ -272,7 +279,6 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
 		}
-		sectionTenant := section.Tenant
 		reader.Reset(sec)
 		if err := reader.Open(ctx); err != nil {
 			return fmt.Errorf("opening row reader: %w", err)
@@ -280,12 +286,10 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 		for {
 			n, err := reader.Read(ctx, buf)
 			for i := range n {
-				if sectionTenant == tenant {
-					if _, drop := oldSet[buf[i].Path]; drop {
-						continue
-					}
+				if _, drop := oldSet[buf[i].Path]; drop {
+					continue
 				}
-				if aerr := builder.AppendIndexPointer(sectionTenant, buf[i]); aerr != nil {
+				if aerr := builder.AppendIndexPointer(buf[i]); aerr != nil {
 					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}

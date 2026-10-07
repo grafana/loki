@@ -204,7 +204,7 @@ func WithAttributesDisabled() Option {
 	})
 }
 
-// samplingStrategyParser creates a Option that initializes sampling strategy parser.
+// withSamplingStrategyParser creates a Option that initializes sampling strategy parser.
 func withSamplingStrategyParser(parser samplingStrategyParser) Option {
 	return optionFunc(func(c *config) {
 		c.samplingParser = parser

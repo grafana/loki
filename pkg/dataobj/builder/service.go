@@ -54,15 +54,19 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	logger = log.With(logger, "component", "dataobj-builder")
 
 	// Each instance consumes exactly one partition, taken from the ordinal
-	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3).
-	// The hostname is also used as the Kafka consumer group.
+	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3),
+	// unless cfg.PartitionID overrides it. The hostname is also used as the
+	// Kafka consumer group.
 	instanceID, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
-	partitionID, err := partitionring.ExtractPartitionID(instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
+	partitionID := int32(cfg.PartitionID)
+	if cfg.PartitionID < 0 {
+		partitionID, err = partitionring.ExtractPartitionID(instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
+		}
 	}
 
 	// Set up the Kafka client that receives log entries. These entries are used to build
@@ -108,6 +112,9 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
+
+	// The dataobj-builder always drops duplicates for new objects
+	cfg.LogsobjBuilder.DropDuplicates = true
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)

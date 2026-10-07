@@ -202,7 +202,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
 			),
 			map[string][]string{},
-			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 			nil,
 		},
 		{
@@ -284,6 +284,7 @@ func TestKeyShortCircuit(t *testing.T) {
 	hints.keepGoing = false
 
 	lbs.parserKeyHints = hints
+	lbs.labelFilterHints = hints
 
 	for _, tt := range []struct {
 		name                 string
@@ -326,6 +327,7 @@ func TestLabelShortCircuit(t *testing.T) {
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	lbs.parserKeyHints = hints
+	lbs.labelFilterHints = hints
 
 	tests := []struct {
 		name string
@@ -674,7 +676,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				logqlmodel.ErrorLabel, errJSON,
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 			nil,
 		},
 		{
@@ -859,7 +861,7 @@ func Benchmark_Parser(b *testing.B) {
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
+				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -872,7 +874,8 @@ func Benchmark_Parser(b *testing.B) {
 				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
+				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
+				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
@@ -974,7 +977,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
+				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -1008,7 +1011,8 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
+				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
+				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
@@ -1046,7 +1050,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 	logFmt := []byte(`data="Click Here" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	lbs.parserKeyHints = NewParserHint([]string{"name"}, nil, false, true, "", nil)
+	lbs.parserKeyHints = NewParserHint([]string{"name"}, nil, false, true, "")
 
 	benchmarks := []struct {
 		name string
@@ -1205,7 +1209,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 			nil,
 		},
 		{
@@ -1824,7 +1828,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"__error_details__", "expecting json object(6), but it is not",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", []Stage{keepErroredLinesFilter()}),
+			NewParserHint([]string{"__error__"}, nil, false, true, ""),
 			nil,
 		},
 		{
@@ -2040,10 +2044,4 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 			}
 		})
 	}
-}
-
-// keepErroredLinesFilter is the `| __error__!=""` stage, which asks the pipeline to keep the
-// errored lines instead of failing the query.
-func keepErroredLinesFilter() Stage {
-	return NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, ""))
 }

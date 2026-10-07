@@ -130,7 +130,7 @@ func tryFindFirstCharClass(node *RegexNode, ccIn **CharSet) int {
 
 	// Zero-width elements.  These don't contribute to the starting set, so return null to indicate a caller
 	// should keep looking past them.
-	case NtEmpty, NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
+	case NtEmpty, NtResetCapture, NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
 		NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong, NtPosLook, NtNegLook:
 		return -1
 
@@ -837,7 +837,7 @@ func tryFindRawFixedSets(node *RegexNode, res *[]FixedDistanceSet, distance *int
 			*distance += node.M
 			return true
 		}
-	case NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEmpty, NtEnd, NtEndZ, NtEol,
+	case NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEmpty, NtResetCapture, NtEnd, NtEndZ, NtEol,
 		NtNonboundary, NtNonECMABoundary, NtUpdateBumpalong,
 		NtStart, NtNegLook, NtPosLook:
 		// Zero-width anchors and assertions.  In theory, for PositiveLookaround and NegativeLookaround we could also
@@ -1281,7 +1281,7 @@ func isZeroWidthLandmarkGap(node *RegexNode) bool {
 		return true
 	}
 	switch node.T {
-	case NtEmpty, NtUpdateBumpalong,
+	case NtEmpty, NtResetCapture, NtUpdateBumpalong,
 		NtBeginning, NtBol, NtStart, NtEndZ, NtEnd, NtEol,
 		NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
 		return true

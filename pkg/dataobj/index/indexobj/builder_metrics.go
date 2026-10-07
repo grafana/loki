@@ -28,9 +28,7 @@ type BuilderMetrics struct {
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
-	appendTime     prometheus.Histogram
-	appendFailures prometheus.Counter
-	appendsTotal   prometheus.Counter
+	appendsTotal prometheus.Counter
 
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
@@ -63,22 +61,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 			Name: "loki_indexobj_config_target_object_size_bytes",
 
 			Help: "Configured target object size in bytes.",
-		}),
-
-		appendTime: factory.NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_indexobj_append_time_seconds",
-
-			Help: "Time taken appending a set of log lines in a stream to a data object.",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-
-		appendFailures: factory.NewCounter(prometheus.CounterOpts{
-			Name: "loki_indexobj_append_failures_total",
-			Help: "Total number of append failures",
 		}),
 
 		appendsTotal: factory.NewCounter(prometheus.CounterOpts{

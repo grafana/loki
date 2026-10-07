@@ -145,8 +145,7 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	}
 
 	// WriteEntry retries each ToC window until it succeeds. It returns an
-	// error if the context is canceled, or on an error that retrying can't
-	// fix, such as an entry without a valid time range.
+	// error if the context is canceled, or on an unretryable error.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
 		Path:      res.Path,
 		StartTime: res.TimeRange.MinTime,

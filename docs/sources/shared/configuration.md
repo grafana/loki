@@ -1384,6 +1384,11 @@ dataobj:
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
+    # The Kafka partition to consume. A negative value derives it from the
+    # instance hostname instead.
+    # CLI flag: -dataobj.builder.partition-id
+    [partition_id: <int> | default = -1]
+
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
     # data objects.
@@ -1395,11 +1400,6 @@ dataobj:
     # for testing only.
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
-
-    # Experimental: When enabled, reads from new-format postings sections in
-    # index objects instead of the streams sections. Defaults to false.
-    # CLI flag: -dataobj-metastore.read-postings-sections
-    [read_postings_sections: <boolean> | default = false]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
@@ -1448,7 +1448,7 @@ dataobj:
     # Experimental: Maximum runs per LogMerge task (K for log compaction).
     # Separate from max-runs-per-task to scale independently
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
-    [logs_max_runs_per_task: <int> | default = 3]
+    [logs_max_runs_per_task: <int> | default = 8]
 
     # Experimental: Minimum total compactable data (sum of all runs'
     # uncompressed size) that justifies log compaction. Converged windows below
@@ -3342,6 +3342,11 @@ otlp_attribute_logging:
   [max_attributes: <int> | default = 20]
 
 otlp_config:
+  # Controls when OTLP resource and scope attributes are expanded: during
+  # parsing when false, or when needed by downstream components when true.
+  # CLI flag: -distributor.otlp.defer-attribute-expansion
+  [defer_attribute_expansion: <boolean> | default = false]
+
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
