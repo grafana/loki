@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 type Mode string
@@ -91,6 +92,57 @@ type IndexShipper interface {
 	Stop()
 }
 
+// InMemoryPlacement selects which downloaded TSDB index files may be held in memory.
+type InMemoryPlacement string
+
+const (
+	// InMemoryPlacementAll allows every downloaded index file to be held in
+	// memory, as long as the budget has room.
+	InMemoryPlacementAll InMemoryPlacement = "all"
+)
+
+// InMemoryIndexConfig configures the experimental tier that holds downloaded
+// TSDB index files in memory, up to a byte budget. Files that are not held in
+// memory are read with the configured index_reader_mode.
+type InMemoryIndexConfig struct {
+	Enabled   bool              `yaml:"enabled"`
+	MaxBytes  flagext.ByteSize  `yaml:"max_bytes"`
+	Placement InMemoryPlacement `yaml:"placement"`
+}
+
+// RegisterFlagsWithPrefix registers flags.
+func (cfg *InMemoryIndexConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
+		"Experimental. Hold downloaded TSDB index files in memory, up to max-bytes. Files that do not fit are read with -shipper.index-reader-mode.")
+	f.Var(&cfg.MaxBytes, prefix+"max-bytes",
+		"Experimental. Maximum total size of the TSDB index files held in memory. Must be greater than zero when the in-memory index is enabled.")
+	f.StringVar((*string)(&cfg.Placement), prefix+"placement", string(InMemoryPlacementAll),
+		"Experimental. Which downloaded TSDB index files may be held in memory. Supported values: all.")
+}
+
+// Validate validates the config.
+func (cfg *InMemoryIndexConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.MaxBytes == 0 {
+		return fmt.Errorf("shipper.in-memory-index.max-bytes must be greater than zero when the in-memory index is enabled")
+	}
+	if _, err := cfg.placementFunc(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cfg *InMemoryIndexConfig) placementFunc() (tsdbindex.PlacementFunc, error) {
+	switch cfg.Placement {
+	case InMemoryPlacementAll:
+		return tsdbindex.PlaceAll, nil
+	default:
+		return nil, fmt.Errorf("invalid shipper.in-memory-index.placement %q, must be one of: all", cfg.Placement)
+	}
+}
+
 type Config struct {
 	ActiveIndexDirectory     string                    `yaml:"active_index_directory"`
 	CacheLocation            string                    `yaml:"cache_location"`
@@ -103,6 +155,8 @@ type Config struct {
 
 	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
 	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
+
+	InMemoryIndex InMemoryIndexConfig `yaml:"in_memory_index" category:"experimental" doc:"hidden"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -117,6 +171,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.InMemoryIndex.RegisterFlagsWithPrefix(prefix+"shipper.in-memory-index.", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -145,6 +200,34 @@ func (cfg *Config) IndexReaderOptions() (tsdbindex.ReaderOptions, error) {
 	}
 }
 
+// NewReaderOptions returns the reader options for downloaded TSDB index files.
+// With the in-memory index disabled, these are exactly IndexReaderOptions.
+// Otherwise they hold files in memory under a new budget, whose metrics are
+// registered with reg, and fall back to IndexReaderOptions.
+//
+// Call it once per process: every caller gets its own budget.
+func NewReaderOptions(cfg Config, reg prometheus.Registerer) (tsdbindex.ReaderOptions, error) {
+	fallback, err := cfg.IndexReaderOptions()
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.InMemoryIndex.Enabled {
+		return fallback, nil
+	}
+	if err := cfg.InMemoryIndex.Validate(); err != nil {
+		return nil, err
+	}
+	placement, err := cfg.InMemoryIndex.placementFunc()
+	if err != nil {
+		return nil, err
+	}
+	return tsdbindex.InMemoryOptions{
+		Budget:    tsdbindex.NewMemoryBudget(int64(cfg.InMemoryIndex.MaxBytes), reg),
+		Placement: placement,
+		Fallback:  fallback,
+	}, nil
+}
+
 func (cfg *Config) Validate() error {
 	// set the default value for mode
 	if cfg.Mode == "" {
@@ -152,6 +235,10 @@ func (cfg *Config) Validate() error {
 	}
 
 	if _, err := cfg.IndexReaderOptions(); err != nil {
+		return err
+	}
+
+	if err := cfg.InMemoryIndex.Validate(); err != nil {
 		return err
 	}
 
