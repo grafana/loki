@@ -1,9 +1,10 @@
 package pointers
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -224,15 +225,30 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	return n, err
 }
 
-// sortPointerObjects sorts the pointers so all the column indexes are together and all the stream indexes are ordered by StreamID then Timestamp.
+// sortPointerObjects sorts stream index pointers by StreamID, and then column
+// index pointers by ColumnIndex.
+//
+// The other fields break ties, so the order is total. Pointers from different
+// sections share stream IDs and column indexes, and the order in which they
+// arrive can change between builds. A total order gives the same section bytes
+// for the same pointers.
 func (b *Builder) sortPointerObjects() {
-	sort.Slice(b.pointers, func(i, j int) bool {
-		if b.pointers[i].PointerKind == PointerKindColumnIndex && b.pointers[j].PointerKind == PointerKindColumnIndex {
-			return b.pointers[i].ColumnIndex < b.pointers[j].ColumnIndex
-		} else if b.pointers[i].PointerKind == PointerKindStreamIndex && b.pointers[j].PointerKind == PointerKindStreamIndex {
-			return b.pointers[i].StreamID < b.pointers[j].StreamID
+	slices.SortFunc(b.pointers, func(x, y *SectionPointer) int {
+		var byKind int
+		switch x.PointerKind {
+		case PointerKindStreamIndex:
+			byKind = cmp.Compare(x.StreamID, y.StreamID)
+		case PointerKindColumnIndex:
+			byKind = cmp.Compare(x.ColumnIndex, y.ColumnIndex)
 		}
-		return int64(b.pointers[i].PointerKind) < int64(b.pointers[j].PointerKind)
+		return cmp.Or(
+			cmp.Compare(x.PointerKind, y.PointerKind),
+			byKind,
+			cmp.Compare(x.Path, y.Path),
+			cmp.Compare(x.Section, y.Section),
+			cmp.Compare(x.StreamIDRef, y.StreamIDRef),
+			cmp.Compare(x.ColumnName, y.ColumnName),
+		)
 	})
 }
 

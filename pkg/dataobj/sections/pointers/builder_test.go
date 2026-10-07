@@ -3,6 +3,7 @@ package pointers
 import (
 	"context"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -154,4 +155,42 @@ func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
 		return nil, nil, err
 	}
 	return builder.Flush()
+}
+
+func TestBuilder_Flush(t *testing.T) {
+	t.Run("writes the same bytes when pointers with the same stream ID and column index arrive in another order", func(t *testing.T) {
+		type observation func(b *Builder)
+		observations := []observation{
+			func(b *Builder) { b.ObserveStream("obj", 0, 1, 7, time.Unix(10, 0), 5) },
+			func(b *Builder) { b.ObserveStream("obj", 1, 1, 7, time.Unix(20, 0), 6) },
+			func(b *Builder) { b.ObserveStream("obj", 2, 1, 7, time.Unix(30, 0), 7) },
+			func(b *Builder) { b.RecordColumnIndex("obj", 0, "trace_id", 3, []byte{0x01}) },
+			func(b *Builder) { b.RecordColumnIndex("obj", 1, "trace_id", 3, []byte{0x02}) },
+			func(b *Builder) { b.RecordColumnIndex("obj", 2, "trace_id", 3, []byte{0x03}) },
+		}
+
+		build := func(order []observation) []byte {
+			builder := NewBuilder(nil, 1024, 0)
+			for _, observe := range order {
+				observe(builder)
+			}
+			obj, closer, err := buildObject(builder)
+			require.NoError(t, err)
+			defer closer.Close()
+
+			reader, err := obj.Reader(context.Background())
+			require.NoError(t, err)
+			defer reader.Close()
+			data, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			return data
+		}
+
+		reversed := slices.Clone(observations)
+		slices.Reverse(reversed)
+
+		want := build(observations)
+		got := build(reversed)
+		require.Equal(t, want, got)
+	})
 }
