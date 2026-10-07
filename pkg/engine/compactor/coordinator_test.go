@@ -91,6 +91,10 @@ func (f *fakeRunner) assertUniqueObjects(t *testing.T) {
 				runs = n.Runs
 			case *physical.IndexMerge:
 				runs = n.Runs
+			case *physical.IndexFilter:
+				for _, path := range n.ObjectPaths {
+					runs = append(runs, &compactionv2pb.RunRef{Sections: []*compactionv2pb.SectionRef{{ObjectPath: path}}})
+				}
 			default:
 				return nil
 			}
@@ -228,6 +232,39 @@ func mergeNodeRuns(t *testing.T, plan *physical.Plan) []*compactionv2pb.RunRef {
 		t.Fatalf("plan root is %T, want LogMerge or IndexMerge", root)
 		return nil
 	}
+}
+
+// planObjectPaths returns the sorted object paths that a LogMerge,
+// IndexMerge, or IndexFilter plan reads.
+func planObjectPaths(t *testing.T, plan *physical.Plan) []string {
+	t.Helper()
+	root, err := plan.Root()
+	require.NoError(t, err)
+	var paths []string
+	if filter, ok := root.(*physical.IndexFilter); ok {
+		paths = slices.Clone(filter.ObjectPaths)
+	} else {
+		for _, run := range mergeNodeRuns(t, plan) {
+			for _, section := range run.Sections {
+				paths = append(paths, section.ObjectPath)
+			}
+		}
+	}
+	slices.Sort(paths)
+	return slices.Compact(paths)
+}
+
+// callByActor returns the only call in calls that ran under actor.
+func callByActor(t *testing.T, calls []runCall, actor string) runCall {
+	t.Helper()
+	var found []runCall
+	for _, call := range calls {
+		if slices.Equal(call.opts.Actor, []string{"compaction", actor}) {
+			found = append(found, call)
+		}
+	}
+	require.Len(t, found, 1, "want exactly one %s call", actor)
+	return found[0]
 }
 
 func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
@@ -797,25 +834,42 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		require.Empty(t, replacer.snapshot())
 	})
 
-	t.Run("rewrites every run in per-level tasks when one size level holds k runs", func(t *testing.T) {
+	t.Run("merges the full level and filters the source index for a lone run", func(t *testing.T) {
 		got, runner, replacer := compact(t, []stats.Stat{
 			stat("logs/small-a", 100), stat("logs/small-b", 100), stat("logs/large", 20<<30),
 		})
 		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, got)
 
-		var taskObjects [][]string
-		for _, call := range runner.snapshot() {
-			var objects []string
-			for _, run := range mergeNodeRuns(t, call.plan) {
-				for _, section := range run.Sections {
-					objects = append(objects, section.ObjectPath)
-				}
+		calls := runner.snapshot()
+		require.Len(t, calls, 2)
+		merge, filter := callByActor(t, calls, "log-merge"), callByActor(t, calls, "index-filter")
+		require.Equal(t, []string{"logs/small-a", "logs/small-b"}, planObjectPaths(t, merge.plan))
+		require.Equal(t, []string{"logs/large"}, planObjectPaths(t, filter.plan))
+		filterNode, err := filter.plan.Root()
+		require.NoError(t, err)
+		require.Equal(t, "indexes/aa/levels", filterNode.(*physical.IndexFilter).SourceIndexPath)
+
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.ElementsMatch(t, []string{merge.path, filter.path}, []string{swaps[0].newEntries[0].Path, swaps[0].newEntries[1].Path})
+	})
+
+	t.Run("publishes the time range of the lone run for the filtered index", func(t *testing.T) {
+		large := stat("logs/large", 20<<30)
+		large.MinTimestamp, large.MaxTimestamp = 20, 50
+		_, runner, replacer := compact(t, []stats.Stat{stat("logs/small-a", 100), stat("logs/small-b", 100), large})
+
+		filter := callByActor(t, runner.snapshot(), "index-filter")
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		var filterEntry metastore.TableOfContentsEntry
+		for _, entry := range swaps[0].newEntries {
+			if entry.Path == filter.path {
+				filterEntry = entry
 			}
-			slices.Sort(objects)
-			taskObjects = append(taskObjects, objects)
 		}
-		require.ElementsMatch(t, [][]string{{"logs/small-a", "logs/small-b"}, {"logs/large"}}, taskObjects)
-		require.Len(t, replacer.snapshot(), 1)
+		require.Equal(t, time.Unix(0, 20).UTC(), filterEntry.StartTime)
+		require.Equal(t, time.Unix(0, 50).UTC(), filterEntry.EndTime)
 	})
 }
 
@@ -904,13 +958,9 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
 			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-				// Fail the task that merges logs/2.
-				for _, run := range mergeNodeRuns(t, plan) {
-					for _, section := range run.Sections {
-						if section.ObjectPath == "logs/2" {
-							return nil, taskErr
-						}
-					}
+				// Fail the task that keeps logs/2.
+				if slices.Contains(planObjectPaths(t, plan), "logs/2") {
+					return nil, taskErr
 				}
 				return &v2.ResultArtifact{Path: "indexes/out"}, nil
 			}
@@ -919,6 +969,21 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			require.ErrorIs(t, err, taskErr)
 			require.Equal(t, compactionStats{}, result)
 			require.Empty(t, replacer.snapshot(), "a failed log task must not replace its source index")
+		})
+		t.Run("publishes nothing when a merge fails in the same batch as the index filter", func(t *testing.T) {
+			runner := &fakeRunner{}
+			replacer := &fakeReplacer{swapped: true}
+			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
+			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				if slices.Equal(opts.Actor, []string{"compaction", "log-merge"}) {
+					return nil, taskErr
+				}
+				return &v2.ResultArtifact{Path: "indexes/out"}, nil
+			}
+			result, err := run(c)
+			require.ErrorIs(t, err, taskErr)
+			require.Equal(t, compactionStats{}, result)
+			require.Empty(t, replacer.snapshot(), "a failed merge must not replace its source index")
 		})
 	})
 
@@ -997,10 +1062,8 @@ func countMergeObjects(t *testing.T, calls []runCall) int {
 	t.Helper()
 	objects := map[string]struct{}{}
 	for _, call := range calls {
-		for _, run := range mergeNodeRuns(t, call.plan) {
-			for _, section := range run.Sections {
-				objects[section.ObjectPath] = struct{}{}
-			}
+		for _, path := range planObjectPaths(t, call.plan) {
+			objects[path] = struct{}{}
 		}
 	}
 	return len(objects)
@@ -1695,7 +1758,7 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 	require.Equal(t, time.Unix(0, 1000).UTC(), calls[0].newEntries[0].EndTime)
 }
 
-func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
+func TestRunsToCEntry(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
 	// Task 1: sections with distinct timestamps
@@ -1735,13 +1798,13 @@ func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
 		},
 	}
 
-	min1, max1 := taskBounds(tasks[0])
-	require.Equal(t, task1Min, min1, "first task StartTime = min across sections")
-	require.Equal(t, task1Max, max1, "first task EndTime = max across sections")
+	entry1 := runsToCEntry(tasks[0].Runs)
+	require.Equal(t, time.Unix(0, task1Min).UTC(), entry1.StartTime, "first task StartTime = min across sections")
+	require.Equal(t, time.Unix(0, task1Max).UTC(), entry1.EndTime, "first task EndTime = max across sections")
 
-	min2, max2 := taskBounds(tasks[1])
-	require.Equal(t, task2Min, min2, "second task StartTime = min across sections")
-	require.Equal(t, task2Max, max2, "second task EndTime = max across sections")
+	entry2 := runsToCEntry(tasks[1].Runs)
+	require.Equal(t, time.Unix(0, task2Min).UTC(), entry2.StartTime, "second task StartTime = min across sections")
+	require.Equal(t, time.Unix(0, task2Max).UTC(), entry2.EndTime, "second task EndTime = max across sections")
 }
 
 func TestIndexTaskBounds(t *testing.T) {
