@@ -83,6 +83,17 @@ func (s *SizeLeveledStrategy) groupByLevels(runs []Run) [][]Run {
 	return levels
 }
 
+// RunsPerLevel returns the number of runs in each level, from level 0 up to
+// the highest level that holds a run.
+func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
+	levels := s.groupByLevels(runs)
+	counts := make([]int, len(levels))
+	for i, level := range levels {
+		counts[i] = len(level)
+	}
+	return counts
+}
+
 // NeedsCompaction reports whether any level holds at least k runs.
 //
 // A window where every level holds fewer than k runs counts as converged,

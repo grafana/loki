@@ -115,6 +115,17 @@ func taskPaths(tasks []*compactionv2pb.TaskSpec) [][]string {
 	return out
 }
 
+func TestSizeLeveledStrategyRunsPerLevel(t *testing.T) {
+	t.Run("returns no counts when there are no runs", func(t *testing.T) {
+		require.Empty(t, newStrategy(t, 2).RunsPerLevel(nil))
+	})
+
+	t.Run("counts the runs in each level and zero for empty levels", func(t *testing.T) {
+		runs := []Run{namedRun{"l0-a", 1 * gib}, namedRun{"l2", 200 * gib}, namedRun{"l0-b", 2 * gib}}
+		require.Equal(t, []int{2, 0, 1}, newStrategy(t, 2).RunsPerLevel(runs))
+	})
+}
+
 func TestSizeLeveledStrategyNeedsCompaction(t *testing.T) {
 	t.Run("returns false when there are no runs", func(t *testing.T) {
 		require.False(t, newStrategy(t, 2).NeedsCompaction(nil))

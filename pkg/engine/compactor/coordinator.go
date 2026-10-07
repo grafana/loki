@@ -244,7 +244,7 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks), "unmerged_runs", len(unmerged))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "tasks", len(tasks), "unmerged_runs", len(unmerged))
 	logMergeTaskDetails(entryLogger, tasks)
 
 	plans := make([]*physical.Plan, len(tasks), len(tasks)+1)
@@ -256,8 +256,8 @@ func (c *coordinator) compactTenantLogs(
 	if len(unmerged) > 0 {
 		// The new entries replace the whole source index, so unmerged runs need an
 		// index of their own. Filtering the source index keeps them without
-		// rewriting their log data. The filter runs in the same batch as the
-		// merges, so it adds no latency and any failure cancels the whole batch.
+		// rewriting their log data. The filter runs concurrently with the
+		// merges in one batch, and any failure cancels the whole batch.
 		plan, runRefs := indexFilterForUnmerged(tenant, sourceIndex, unmerged)
 		plans = append(plans, plan)
 		newToCEntries = append(newToCEntries, runsToCEntry(runRefs))

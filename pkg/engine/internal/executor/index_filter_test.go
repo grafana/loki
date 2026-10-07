@@ -26,30 +26,87 @@ func buildFilterSourceIndex(t *testing.T, bucket objstore.Bucket, path string, p
 	t.Helper()
 	objBuilder := dataobj.NewBuilder(nil)
 	for tenant, objects := range objectsByTenant {
-		postingsBuilder := postings.NewBuilder(nil, 0, 0, postingsSectionSize)
-		postingsBuilder.SetTenant(tenant)
-		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
-		statsBuilder.SetTenant(tenant)
-		for i, object := range objects {
-			ts := time.Unix(0, int64(1_000+i))
-			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-				ObjectPath: object, ColumnName: "service_name", LabelValue: object,
-				StreamID: 1, Timestamp: ts, UncompressedSize: 100,
-			})
-			statsBuilder.Append(stats.Stat{
-				ObjectPath: object, SortSchema: "label:service_name",
-				Labels:       map[string]string{"service_name": object},
-				MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.UnixNano() + 10,
-				RowCount: 1, UncompressedSize: 100,
-			})
+		appendFilterPostings(t, objBuilder, tenant, postingsSectionSize, objects, false)
+		var rows []stats.Stat
+		for _, object := range objects {
+			rows = append(rows, filterStatRow(object, 0))
 		}
-		require.NoError(t, objBuilder.Append(postingsBuilder))
-		require.NoError(t, objBuilder.Append(statsBuilder))
+		appendFilterStats(t, objBuilder, tenant, rows)
 	}
+	uploadFilterSourceIndex(t, bucket, path, objBuilder)
+}
+
+// appendFilterPostings appends one postings section builder with a label row
+// per object, and a bloom row per object when withBlooms is true.
+func appendFilterPostings(t *testing.T, objBuilder *dataobj.Builder, tenant string, sectionSize int, objects []string, withBlooms bool) {
+	t.Helper()
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, sectionSize)
+	postingsBuilder.SetTenant(tenant)
+	for i, object := range objects {
+		ts := time.Unix(0, int64(1_000+i))
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: object, ColumnName: "service_name", LabelValue: object,
+			StreamID: 1, Timestamp: ts, UncompressedSize: 100,
+		})
+		if withBlooms {
+			postingsBuilder.PrepareBloomColumn(object, 0, "trace_id", 1, 1)
+			require.NoError(t, postingsBuilder.ObserveBloomPosting(postings.BloomObservation{
+				ObjectPath: object, ShardBuckets: 1, ColumnName: "trace_id",
+				Value: "trace-" + object, StreamID: 1, Timestamp: ts,
+			}))
+		}
+	}
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+}
+
+// appendFilterStats appends one stats section with rows.
+func appendFilterStats(t *testing.T, objBuilder *dataobj.Builder, tenant string, rows []stats.Stat) {
+	t.Helper()
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder.SetTenant(tenant)
+	for _, row := range rows {
+		statsBuilder.Append(row)
+	}
+	require.NoError(t, objBuilder.Append(statsBuilder))
+}
+
+func filterStatRow(object string, sectionIndex int64) stats.Stat {
+	return stats.Stat{
+		ObjectPath: object, SectionIndex: sectionIndex, SortSchema: "label:service_name",
+		Labels:       map[string]string{"service_name": object},
+		MinTimestamp: 1_000 + sectionIndex, MaxTimestamp: 1_010 + sectionIndex,
+		RowCount: 1, UncompressedSize: 100,
+	}
+}
+
+func uploadFilterSourceIndex(t *testing.T, bucket objstore.Bucket, path string, objBuilder *dataobj.Builder) {
+	t.Helper()
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
 	defer closer.Close()
 	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
+}
+
+// readAllStatsRowsFromBucket reads the rows of every stats section of the
+// object at path.
+func readAllStatsRowsFromBucket(t *testing.T, bucket objstore.Bucket, path string) []stats.Stat {
+	t.Helper()
+	ctx := context.Background()
+	var rows []stats.Stat
+	for _, sec := range openObjectFromBucket(ctx, t, bucket, path).Sections() {
+		if !stats.CheckSection(sec) {
+			continue
+		}
+		statsSec, err := stats.Open(ctx, sec)
+		require.NoError(t, err)
+		reader := stats.NewRowReader(ctx, statsSec)
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
+	}
+	return rows
 }
 
 // indexObjectPaths returns the sorted, distinct log object paths that the
@@ -60,7 +117,7 @@ func indexObjectPaths(t *testing.T, bucket objstore.Bucket, path string) (postin
 	for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, path) {
 		postingsPaths = append(postingsPaths, row.ObjectPath)
 	}
-	for _, row := range readStatsRowsFromBucket(ctx, t, bucket, path) {
+	for _, row := range readAllStatsRowsFromBucket(t, bucket, path) {
 		statsPaths = append(statsPaths, row.ObjectPath)
 	}
 	slices.Sort(postingsPaths)
@@ -128,6 +185,60 @@ func TestDoIndexFilter(t *testing.T) {
 		require.Equal(t, []string{"logs/a", "logs/f"}, postingsPaths)
 	})
 
+	t.Run("keeps the bloom postings rows of the listed objects only", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, true)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.NoError(t, err)
+
+		var blooms []string
+		for _, row := range readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path) {
+			if row.Kind == postings.KindBloom {
+				blooms = append(blooms, row.ObjectPath)
+			}
+		}
+		require.Equal(t, []string{"logs/a"}, blooms)
+	})
+
+	t.Run("keeps every stats row of a listed object across several stats sections", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 1), filterStatRow("logs/b", 1)})
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+		sourceStats := 0
+		for _, sec := range openObjectFromBucket(ctx, t, bucket, sourcePath).Sections() {
+			if stats.CheckSection(sec) {
+				sourceStats++
+			}
+		}
+		require.Equal(t, 2, sourceStats, "the source index must hold two stats sections")
+
+		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.NoError(t, err)
+
+		type key struct {
+			object  string
+			section int64
+		}
+		var got []key
+		for _, row := range readAllStatsRowsFromBucket(t, bucket, artifact.Path) {
+			got = append(got, key{row.ObjectPath, row.SectionIndex})
+		}
+		require.ElementsMatch(t, []key{{"logs/a", 0}, {"logs/a", 1}}, got)
+	})
+
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{
@@ -161,6 +272,34 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ErrorContains(t, err, "logs/missing")
 	})
 
+	t.Run("returns an error when a listed object has stats rows but no postings rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/b"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, `no postings rows for object "logs/a"`)
+	})
+
+	t.Run("returns an error when a listed object has postings rows but no stats rows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/b", 0)})
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, `no stats rows for object "logs/a"`)
+	})
+
 	t.Run("returns an error when no objects are listed", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildFilterSourceIndex(t, bucket, sourcePath, 1<<20, map[string][]string{"acme": {"logs/a"}})
@@ -168,7 +307,7 @@ func TestDoIndexFilter(t *testing.T) {
 		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
 		})
-		require.Error(t, err)
+		require.ErrorContains(t, err, "no object paths")
 	})
 
 	t.Run("uploads the index with its size known before the upload reads it", func(t *testing.T) {

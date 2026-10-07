@@ -854,6 +854,25 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		require.ElementsMatch(t, []string{merge.path, filter.path}, []string{swaps[0].newEntries[0].Path, swaps[0].newEntries[1].Path})
 	})
 
+	t.Run("filters a lone object once and spans all its sections", func(t *testing.T) {
+		first, second := stat("logs/large", 10<<30), stat("logs/large", 10<<30)
+		first.MinTimestamp, first.MaxTimestamp = 20, 30
+		second.SectionIndex, second.MinTimestamp, second.MaxTimestamp = 1, 25, 60
+		_, runner, replacer := compact(t, []stats.Stat{stat("logs/small-a", 100), stat("logs/small-b", 100), first, second})
+
+		filter := callByActor(t, runner.snapshot(), "index-filter")
+		root, err := filter.plan.Root()
+		require.NoError(t, err)
+		require.Equal(t, []string{"logs/large"}, root.(*physical.IndexFilter).ObjectPaths)
+
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		idx := slices.IndexFunc(swaps[0].newEntries, func(e metastore.TableOfContentsEntry) bool { return e.Path == filter.path })
+		require.NotEqual(t, -1, idx)
+		require.Equal(t, time.Unix(0, 20).UTC(), swaps[0].newEntries[idx].StartTime)
+		require.Equal(t, time.Unix(0, 60).UTC(), swaps[0].newEntries[idx].EndTime)
+	})
+
 	t.Run("publishes the time range of the lone run for the filtered index", func(t *testing.T) {
 		large := stat("logs/large", 20<<30)
 		large.MinTimestamp, large.MaxTimestamp = 20, 50
@@ -924,7 +943,9 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		})
 	})
 
-	// LogMerge replaces a source index only after all its merge tasks complete.
+	// Log compaction replaces a source index only after every merge and index
+	// filter task completes. Three equal runs with k of 2 give one merge and
+	// one index filter for logs/2.
 	t.Run("log merge", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		rows := make([]stats.Stat, 0, 3)
@@ -953,12 +974,12 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			require.ElementsMatch(t, []string{calls[0].path, calls[1].path}, []string{swaps[0].newEntries[0].Path, swaps[0].newEntries[1].Path})
 			require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, result)
 		})
-		t.Run("publishes nothing when one task fails", func(t *testing.T) {
+		t.Run("publishes nothing when the index filter fails", func(t *testing.T) {
 			runner := &fakeRunner{}
 			replacer := &fakeReplacer{swapped: true}
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
 			runner.respond = func(_ context.Context, _ workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-				// Fail the task that keeps logs/2.
+				// Fail the index filter, which keeps logs/2.
 				if slices.Contains(planObjectPaths(t, plan), "logs/2") {
 					return nil, taskErr
 				}
@@ -1759,52 +1780,29 @@ func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
 }
 
 func TestRunsToCEntry(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-
-	// Task 1: sections with distinct timestamps
-	task1Min := window.UnixNano()
-	task1Mid := window.Add(30 * time.Minute).UnixNano()
-	task1Max := window.Add(2 * time.Hour).UnixNano()
-
-	// Task 2: sections with different distinct timestamps
-	task2Min := window.Add(10 * time.Minute).UnixNano()
-	task2Max := window.Add(3 * time.Hour).UnixNano()
-
-	tasks := []*compactionv2pb.TaskSpec{
-		{
-			Runs: []*compactionv2pb.RunRef{
-				{
-					Sections: []*compactionv2pb.SectionRef{
-						{MinTimestamp: task1Max, MaxTimestamp: task1Max, UncompressedSize: 100},
-						{MinTimestamp: task1Min, MaxTimestamp: task1Mid, UncompressedSize: 200},
-					},
-				},
-				{
-					Sections: []*compactionv2pb.SectionRef{
-						{MinTimestamp: task1Mid, MaxTimestamp: task1Max, UncompressedSize: 150},
-					},
-				},
-			},
-		},
-		{
-			Runs: []*compactionv2pb.RunRef{
-				{
-					Sections: []*compactionv2pb.SectionRef{
-						{MinTimestamp: task2Max, MaxTimestamp: task2Max, UncompressedSize: 300},
-						{MinTimestamp: task2Min, MaxTimestamp: task2Min, UncompressedSize: 50},
-					},
-				},
-			},
-		},
+	section := func(minTS, maxTS int64) *compactionv2pb.SectionRef {
+		return &compactionv2pb.SectionRef{MinTimestamp: minTS, MaxTimestamp: maxTS}
 	}
 
-	entry1 := runsToCEntry(tasks[0].Runs)
-	require.Equal(t, time.Unix(0, task1Min).UTC(), entry1.StartTime, "first task StartTime = min across sections")
-	require.Equal(t, time.Unix(0, task1Max).UTC(), entry1.EndTime, "first task EndTime = max across sections")
+	t.Run("spans the earliest start to the latest end across runs and sections", func(t *testing.T) {
+		entry := runsToCEntry([]*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{section(40, 40), section(10, 25)}},
+			{Sections: []*compactionv2pb.SectionRef{section(25, 50)}},
+		})
+		require.Equal(t, time.Unix(0, 10).UTC(), entry.StartTime)
+		require.Equal(t, time.Unix(0, 50).UTC(), entry.EndTime)
+	})
 
-	entry2 := runsToCEntry(tasks[1].Runs)
-	require.Equal(t, time.Unix(0, task2Min).UTC(), entry2.StartTime, "second task StartTime = min across sections")
-	require.Equal(t, time.Unix(0, task2Max).UTC(), entry2.EndTime, "second task EndTime = max across sections")
+	t.Run("uses the bounds of the only section of a single run", func(t *testing.T) {
+		entry := runsToCEntry([]*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section(20, 30)}}})
+		require.Equal(t, time.Unix(0, 20).UTC(), entry.StartTime)
+		require.Equal(t, time.Unix(0, 30).UTC(), entry.EndTime)
+	})
+
+	t.Run("leaves the path empty", func(t *testing.T) {
+		entry := runsToCEntry([]*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{section(20, 30)}}})
+		require.Empty(t, entry.Path)
+	})
 }
 
 func TestIndexTaskBounds(t *testing.T) {

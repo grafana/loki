@@ -56,17 +56,18 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
 
-	found := make(map[string]struct{}, len(keep))
+	foundPostings := make(map[string]struct{}, len(keep))
+	foundStats := make(map[string]struct{}, len(keep))
 	for _, sec := range source.Sections() {
 		if sec.Tenant != node.Tenant {
 			continue
 		}
 		switch {
 		case postings.CheckSection(sec):
-			err = copyRows(ctx, sec, openPostingsReader, keep, found, func(row postings.Row) string { return row.ObjectPath },
+			err = copyRows(ctx, sec, openPostingsReader, keep, foundPostings, func(row postings.Row) string { return row.ObjectPath },
 				func(row postings.Row) error { return c.writePostingsRow(builder, node.Tenant, row) })
 		case stats.CheckSection(sec):
-			err = copyRows(ctx, sec, openStatsReader, keep, found, func(row stats.Stat) string { return row.ObjectPath },
+			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
 		}
 		if err != nil {
@@ -74,13 +75,15 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	// A kept object without rows means the planner and the source index
-	// disagree. Fail rather than publish an index that drops the object.
-	if len(found) != len(keep) {
-		for path := range keep {
-			if _, ok := found[path]; !ok {
-				return nil, fmt.Errorf("source index %q has no rows for object %q", node.SourceIndexPath, path)
-			}
+	// A kept object without postings rows or without stats rows means the
+	// planner and the source index disagree. Fail rather than publish an
+	// index that cannot find the object, or cannot plan it.
+	for _, path := range node.ObjectPaths {
+		if _, ok := foundPostings[path]; !ok {
+			return nil, fmt.Errorf("source index %q has no postings rows for object %q", node.SourceIndexPath, path)
+		}
+		if _, ok := foundStats[path]; !ok {
+			return nil, fmt.Errorf("source index %q has no stats rows for object %q", node.SourceIndexPath, path)
 		}
 	}
 

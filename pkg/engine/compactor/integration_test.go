@@ -332,10 +332,10 @@ func TestE2ECompactionConvergence(t *testing.T) {
 			levelBase:   100_000,
 			levelRatio:  2,
 			wantRunsEnd: 2,
-			// Five level 0 runs give two merges and a one-run task. The two
-			// level 1 outputs then merge into level 2, and the lone level 0
-			// run is rewritten alone again.
-			wantTasks: map[string]int{"log-merge": 5},
+			// Five level 0 runs give two merges and a filter. The two level 1
+			// outputs then merge into level 2, and the lone level 0 run is
+			// filtered again.
+			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})
 	})
 }
@@ -359,7 +359,7 @@ type convergenceCase struct {
 
 // runConvergenceTest creates one overlapping object for every layout and
 // compacts until a cycle does no work. Every source record must stay
-// reachable.
+// reachable, and an index filter must keep at least one unmerged run.
 func runConvergenceTest(t *testing.T, test convergenceCase) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -435,6 +435,7 @@ func runConvergenceTest(t *testing.T, test convergenceCase) {
 	require.Len(t, sourceLines, len(test.layouts)*streamCount*3, "seeded source objects must contain all records")
 
 	scenario.compactUntilIdle(tenant)
+	require.Contains(t, actors(), "index-filter", "five runs with k of 2 must leave a run for the index filter")
 	if test.wantTasks != nil {
 		tasks := make(map[string]int)
 		for _, actor := range actors() {

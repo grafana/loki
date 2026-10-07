@@ -69,10 +69,12 @@ func TestPlanDispatcherRun(t *testing.T) {
 	t.Run("fails a plan whose root node is not a compaction node", func(t *testing.T) {
 		var g dag.Graph[physical.Node]
 		g.Add(&physical.Limit{})
-		d := &planDispatcher{runPlan: (&fakeRunner{}).run}
+		runner := &fakeRunner{}
+		d := &planDispatcher{runPlan: runner.run}
 
 		_, err := d.Run(context.Background(), "acme", []*physical.Plan{physical.FromGraph(g)})
 		require.ErrorContains(t, err, "unsupported compaction plan root")
+		require.Empty(t, runner.snapshot(), "an unsupported plan must not run")
 	})
 
 	for _, tc := range []struct {
