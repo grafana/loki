@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -50,34 +49,16 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	// Reject v11/v12 unless there's a newer v13 (active or scheduled)
+	// Reject any v11/v12 schemas - only v13 is supported
 	for _, schema := range stack.Spec.Storage.Schemas {
-		//nolint:staticcheck
-		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
-			schemaDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(schema.EffectiveDate))
-			if err == nil {
-				// Check if there's a newer v13 (allows both migrated and scheduled migration)
-				hasNewerV13 := false
-				for _, other := range stack.Spec.Storage.Schemas {
-					if other.Version == lokiv1.ObjectStorageSchemaV13 {
-						otherDate, err := time.Parse(string(lokiv1.StorageSchemaEffectiveDateFormat), string(other.EffectiveDate))
-						if err == nil && otherDate.After(schemaDate) {
-							hasNewerV13 = true
-							break
-						}
-					}
-				}
-
-				if !hasNewerV13 {
-					degradedErr := &status.DegradedError{
-						Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Please migrate to v13.", schema.Version),
-						Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
-						Requeue: false,
-					}
-					ll.Error(degradedErr, "deprecated schema will not be reconciled")
-					return nil, degradedErr
-				}
+		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 { //nolint:staticcheck
+			degradedErr := &status.DegradedError{
+				Message: fmt.Sprintf("LokiStack uses deprecated schema version %s. Only v13 is supported. Please migrate to v13 and remove all v11/v12 schemas.", schema.Version),
+				Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
+				Requeue: false,
 			}
+			ll.Error(degradedErr, "deprecated schema will not be reconciled")
+			return nil, degradedErr
 		}
 	}
 
