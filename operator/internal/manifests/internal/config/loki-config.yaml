@@ -338,11 +338,7 @@ schema_config:
         prefix: index_
       object_store: {{ $store }}
       schema: {{ .Version }}
-      {{- if or (eq .Version "v11") (eq .Version "v12")}}
-      store: boltdb-shipper
-      {{- else }}
       store: tsdb
-      {{- end}}
     {{- end }}
 {{ if .Ruler.Enabled }}
 ruler_storage:
@@ -599,31 +595,22 @@ server:
   log_level: info
 storage_config:
   use_thanos_objstore: true
-{{- range $_, $ship := .Shippers }}
-{{- if eq $ship "boltdb" }}
-  boltdb_shipper:
-    active_index_directory: {{ $.StorageDirectory }}/index
-    cache_location: {{ $.StorageDirectory }}/index_cache
-{{- end }}
-{{- if eq $ship "tsdb" }}
   tsdb_shipper:
-    active_index_directory: {{ $.StorageDirectory }}/tsdb-index
-    cache_location: {{ $.StorageDirectory }}/tsdb-cache
-{{- end }}
+    active_index_directory: {{ .StorageDirectory }}/tsdb-index
+    cache_location: {{ .StorageDirectory }}/tsdb-cache
     cache_ttl: 24h
     resync_interval: 5m
     index_gateway_client:
-      server_address: dns:///{{ $.IndexGateway.FQDN }}:{{ $.IndexGateway.Port }}
-{{- if $.Gates.GRPCEncryption }}
+      server_address: dns:///{{ .IndexGateway.FQDN }}:{{ .IndexGateway.Port }}
+{{- if .Gates.GRPCEncryption }}
       grpc_client_config:
         tls_enabled: true
-        tls_cert_path: {{ $.TLS.Paths.GRPC.Certificate }}
-        tls_key_path: {{ $.TLS.Paths.GRPC.Key }}
-        tls_ca_path: {{ $.TLS.Paths.CA }}
-        tls_server_name: {{ $.TLS.ServerNames.GRPC.IndexGateway }}
-        tls_cipher_suites: {{ $.TLS.CipherSuitesString }}
-        tls_min_version: {{ $.TLS.MinTLSVersion }}
-{{- end }}
+        tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+        tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+        tls_ca_path: {{ .TLS.Paths.CA }}
+        tls_server_name: {{ .TLS.ServerNames.GRPC.IndexGateway }}
+        tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+        tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
 tracing:
   enabled: false
