@@ -79,6 +79,10 @@ type BuilderBaseConfig struct {
 	// Higher values allow more data to accumulate before the builder reports
 	// full, producing larger objects. Set to either 0 or 1 to disable.
 	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
+
+	// DropDuplicates indicates whether duplicate Log records should be dropped or retained during Flush.
+	// Log records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	DropDuplicates bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -208,6 +212,7 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 			SchemaLabels:              b.schemaLabelsFor(tenant),
 			StreamOrder:               logs.StreamOrderStableHashV1,
 			ShardCount:                streams.ShardFactor,
+			DropDuplicates:            b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -262,16 +267,12 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 
 	recordIter := func(yield func(logs.Record, int64) bool) {
 		for _, entry := range stream.Entries {
-			sz := int64(len(entry.Line))
-			for _, md := range entry.StructuredMetadata {
-				sz += int64(len(md.Value))
-			}
-			ok := yield(logs.Record{
+			rec := logs.Record{
 				Timestamp: entry.Timestamp,
 				Metadata:  convertMetadata(entry.StructuredMetadata),
 				Line:      []byte(entry.Line),
-			}, sz)
-			if !ok {
+			}
+			if !yield(rec, rec.UncompressedSize()) {
 				return
 			}
 		}
@@ -291,10 +292,7 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sz := int64(len(record.Line))
-	record.Metadata.Range(func(lb labels.Label) {
-		sz += int64(len(lb.Value))
-	})
+	sz := record.UncompressedSize()
 
 	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
 		_ = yield(record, sz)
@@ -551,6 +549,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				SchemaLabels:     schemaLabels,
 				StreamOrder:      logs.StreamOrderStableHashV1,
 				ShardCount:       streams.ShardFactor,
+				DropDuplicates:   b.cfg.DropDuplicates,
 			})
 			lb.SetTenant(tenant)
 
