@@ -295,5 +295,9 @@ func TestPerIndexOwnershipConfig_Validate(t *testing.T) {
 	bad.WaitStabilityMaxDuration = time.Second
 	require.Error(t, bad.Validate(RingMode))
 
+	bad = cfg
+	bad.RingCheckPeriod = -time.Second
+	require.Error(t, bad.Validate(RingMode))
+
 	require.NoError(t, (&PerIndexOwnershipConfig{}).Validate(SimpleMode))
 }

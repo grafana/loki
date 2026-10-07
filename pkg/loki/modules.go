@@ -966,6 +966,9 @@ func (t *Loki) initStore() (services.Service, error) {
 		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
 		t.Cfg.StorageConfig.TSDBShipperConfig.DelayQueryReadinessUntilPreload = true
+		// Evict query ready indexes this gateway no longer owns, judged from
+		// the ACTIVE instances, on each query readiness run.
+		t.Cfg.StorageConfig.TSDBShipperConfig.DropFilter = filter.FilterTenantsToDrop
 	}
 
 	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.ClientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
@@ -975,15 +978,36 @@ func (t *Loki) initStore() (services.Service, error) {
 
 	t.Store = store
 
-	if perIndexOwnership {
-		logger := log.With(util_log.Logger, "component", "index-gateway")
-		t.indexGatewayRingManager.SetBeforeActive(indexgateway.NewOwnedIndexPreload(t.Cfg.IndexGateway.PerIndexOwnership, t.indexGatewayRingManager.Ring, store, logger))
-	}
-
-	return services.NewIdleService(nil, func(_ error) error {
+	stopStore := func(_ error) error {
 		t.Store.Stop()
 		return nil
-	}), nil
+	}
+
+	if perIndexOwnership {
+		ownershipCfg := t.Cfg.IndexGateway.PerIndexOwnership
+		logger := log.With(util_log.Logger, "component", "index-gateway")
+		preload := indexgateway.NewOwnedIndexPreload(ownershipCfg, t.indexGatewayRingManager.Ring, store, logger)
+		if ownershipCfg.RingCheckPeriod <= 0 {
+			t.indexGatewayRingManager.SetBeforeActive(preload)
+		} else {
+			// Reconcile owned indexes on ring changes too, once the initial
+			// preload has run.
+			watcher := indexgateway.NewIndexOwnershipWatcher(t.indexGatewayRingManager.Ring, ownershipCfg.RingCheckPeriod, store, logger)
+			t.indexGatewayRingManager.SetBeforeActive(func(ctx context.Context) error {
+				if err := preload(ctx); err != nil {
+					return err
+				}
+				watcher.Activate()
+				return nil
+			})
+			return services.NewBasicService(nil, func(ctx context.Context) error {
+				watcher.Run(ctx)
+				return nil
+			}, stopStore), nil
+		}
+	}
+
+	return services.NewIdleService(nil, stopStore), nil
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {

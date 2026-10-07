@@ -103,6 +103,12 @@ const (
 	// InMemoryPlacementAll allows every downloaded index file to be held in
 	// memory, as long as the budget has room.
 	InMemoryPlacementAll InMemoryPlacement = "all"
+	// InMemoryPlacementOwnedQueryReady allows only the files of index sets
+	// kept ready for queries (preloaded, or loaded by the periodic query
+	// readiness run) to be held in memory. With per-index ownership on the
+	// index gateway, those are the indexes it owns. Files downloaded on demand
+	// by a query are read with index_reader_mode.
+	InMemoryPlacementOwnedQueryReady InMemoryPlacement = "owned_query_ready"
 )
 
 // InMemoryIndexConfig configures the experimental tier that holds downloaded
@@ -121,7 +127,7 @@ func (cfg *InMemoryIndexConfig) RegisterFlagsWithPrefix(prefix string, f *flag.F
 	f.Var(&cfg.MaxBytes, prefix+"max-bytes",
 		"Experimental. Maximum total size of the TSDB index files held in memory. Must be greater than zero when the in-memory index is enabled.")
 	f.StringVar((*string)(&cfg.Placement), prefix+"placement", string(InMemoryPlacementAll),
-		"Experimental. Which downloaded TSDB index files may be held in memory. Supported values: all.")
+		"Experimental. Which downloaded TSDB index files may be held in memory. Supported values: all (every file), owned_query_ready (only files of index sets kept ready for queries, which with per-index ownership are the indexes the index gateway owns; files downloaded on demand by a query are read with -shipper.index-reader-mode).")
 }
 
 // Validate validates the config.
@@ -140,11 +146,33 @@ func (cfg *InMemoryIndexConfig) Validate() error {
 
 func (cfg *InMemoryIndexConfig) placementFunc() (tsdbindex.PlacementFunc, error) {
 	switch cfg.Placement {
-	case InMemoryPlacementAll:
+	case InMemoryPlacementAll, InMemoryPlacementOwnedQueryReady:
+		// owned_query_ready places every query ready file; the others are
+		// opened with OnDemandReaderOptions.
 		return tsdbindex.PlaceAll, nil
 	default:
-		return nil, fmt.Errorf("invalid shipper.in-memory-index.placement %q, must be one of: all", cfg.Placement)
+		return nil, fmt.Errorf("invalid shipper.in-memory-index.placement %q, must be one of: all, owned_query_ready", cfg.Placement)
 	}
+}
+
+// placementDependsOnQueryReadiness reports whether files are opened
+// differently depending on index.OpenOptions.QueryReady.
+func (cfg *InMemoryIndexConfig) placementDependsOnQueryReadiness() bool {
+	return cfg.Enabled && cfg.Placement == InMemoryPlacementOwnedQueryReady
+}
+
+// OnDemandReaderOptions returns the reader options for downloaded TSDB index
+// files that are not query ready (index.OpenOptions.QueryReady is false),
+// given opts, the ones NewReaderOptions returned. With placement
+// owned_query_ready these never go into memory, but still count in the
+// in-memory index metrics. Otherwise they are opts.
+func OnDemandReaderOptions(cfg Config, opts tsdbindex.ReaderOptions) tsdbindex.ReaderOptions {
+	inMemory, ok := opts.(tsdbindex.InMemoryOptions)
+	if !ok || !cfg.InMemoryIndex.placementDependsOnQueryReadiness() {
+		return opts
+	}
+	inMemory.Placement = tsdbindex.PlaceNone
+	return inMemory
 }
 
 type Config struct {
@@ -175,6 +203,11 @@ type Config struct {
 	// from construction to the first PreloadIndexes call, once TenantFilter can
 	// answer. It is set by the index gateway with per-index ownership.
 	DelayQueryReadinessUntilPreload bool `yaml:"-"`
+	// DropFilter, if set, answers which tenants in a table this instance no
+	// longer owns, so that their query ready index sets are evicted (see
+	// downloads.Config.DropFilter). It is set by the index gateway with
+	// per-index ownership.
+	DropFilter downloads.TenantFilter `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -370,6 +403,8 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 
 			QueryReadyOverrides:             s.cfg.QueryReadyOverrides,
 			DelayQueryReadinessUntilPreload: s.cfg.DelayQueryReadinessUntilPreload,
+			DropFilter:                      s.cfg.DropFilter,
+			ReopenOnQueryReady:              s.cfg.InMemoryIndex.placementDependsOnQueryReadiness(),
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {

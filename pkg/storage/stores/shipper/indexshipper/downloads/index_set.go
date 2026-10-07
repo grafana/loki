@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -30,6 +31,11 @@ const (
 
 var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
 
+// errIndexSetEvicted is returned to queries that reach an index set after it
+// was evicted because this instance no longer owns it, so that the client
+// retries another index gateway instead of getting no results.
+var errIndexSetEvicted = errors.New("index set was evicted because this index gateway no longer owns it, retry another index gateway")
+
 type IndexSet interface {
 	Init(forQuerying bool, logger log.Logger) error
 	Close()
@@ -41,6 +47,19 @@ type IndexSet interface {
 	UpdateLastUsedAt()
 	Sync(ctx context.Context) (err error)
 	AwaitReady(ctx context.Context, reason string) error
+	// QueryReady reports whether the index set is kept ready for queries, as
+	// opposed to downloaded on demand or found on local disk at startup.
+	QueryReady() bool
+	// MarkQueryReady marks the index set as kept ready for queries, so its
+	// files are opened with index.OpenOptions.QueryReady from then on. With
+	// reopen, files already open are reopened that way too. Callers set
+	// reopen only when the open function places files differently depending
+	// on QueryReady (placement owned_query_ready); otherwise reopening would
+	// re-read every file only to get the same readers back.
+	MarkQueryReady(ctx context.Context, reopen bool) error
+	// Evict drops the index set like DropAllDBs, and makes queries that still
+	// hold a reference to it fail rather than find it empty.
+	Evict() error
 }
 
 // indexSet is a collection of multiple files created for a same table by various ingesters.
@@ -59,10 +78,23 @@ type indexSet struct {
 	indexMtx   *mtxWithReadiness
 	err        error
 
+	// queryReady is passed to openIndexFileFunc as index.OpenOptions.QueryReady.
+	queryReady atomic.Bool
+	// promoteMtx serializes MarkQueryReady.
+	promoteMtx sync.Mutex
+	// evicted is set by Evict, under the write lock.
+	evicted atomic.Bool
+
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
+	return newIndexSet(tableName, userID, cacheLocation, baseIndexSet, openIndexFileFunc, logger, downloadTimeout, false)
+}
+
+// newIndexSet is NewIndexSet for an index set that is kept ready for queries
+// from the start when queryReady is set.
+func newIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration, queryReady bool) (*indexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -90,6 +122,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		indexMtx:          newMtxWithReadiness(),
 		cancelFunc:        func() {},
 	}
+	is.queryReady.Store(queryReady)
 
 	return &is, nil
 }
@@ -130,7 +163,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 
 		fullPath := filepath.Join(t.cacheLocation, entry.Name())
 		// if we fail to open an index file, lets skip it and let sync operation re-download the file from storage.
-		idx, err := t.openIndexFileFunc(fullPath)
+		idx, err := t.openIndexFileFunc(fullPath, t.openOptions())
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to open existing index file, removing and continuing to let the sync operation catch up", "path", fullPath, "err", err)
 			// Sometimes files get corrupted when the process gets killed in the middle of a download operation which can cause problems in reading the file.
@@ -189,6 +222,9 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	if t.err != nil {
 		return t.err
 	}
+	if t.evicted.Load() {
+		return errIndexSetEvicted
+	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
@@ -211,6 +247,9 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 
 	if t.err != nil {
 		return t.err
+	}
+	if t.evicted.Load() {
+		return errIndexSetEvicted
 	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
@@ -268,6 +307,110 @@ func (t *indexSet) DropAllDBs() error {
 	}
 
 	return os.RemoveAll(t.cacheLocation)
+}
+
+// Evict implements IndexSet.
+func (t *indexSet) Evict() error {
+	err := t.indexMtx.lock(context.Background())
+	if err != nil {
+		return err
+	}
+	defer t.indexMtx.unlock()
+
+	t.evicted.Store(true)
+	for fileName := range t.index {
+		if err := t.cleanupDB(fileName); err != nil {
+			return err
+		}
+	}
+
+	return os.RemoveAll(t.cacheLocation)
+}
+
+func (t *indexSet) openOptions() index.OpenOptions {
+	return index.OpenOptions{QueryReady: t.queryReady.Load()}
+}
+
+// QueryReady implements IndexSet.
+func (t *indexSet) QueryReady() bool {
+	return t.queryReady.Load()
+}
+
+// MarkQueryReady implements IndexSet.
+//
+// With reopen, each open file is reopened without holding the index set's
+// lock, so queries keep being served from the old readers meanwhile. The lock
+// is then taken only to swap in the new readers. A file that was replaced or
+// removed in the meantime keeps whatever is current, and a file that fails to
+// reopen keeps its old reader. If the index set is not ready yet, or is
+// broken, it is not marked, so that the next call tries again.
+func (t *indexSet) MarkQueryReady(ctx context.Context, reopen bool) error {
+	if !reopen {
+		t.queryReady.Store(true)
+		return nil
+	}
+
+	t.promoteMtx.Lock()
+	defer t.promoteMtx.Unlock()
+	if t.queryReady.Load() {
+		return nil
+	}
+
+	if err := t.indexMtx.rLock(ctx); err != nil {
+		return err
+	}
+	if t.err != nil || t.evicted.Load() {
+		t.indexMtx.rUnlock()
+		return nil
+	}
+	// Files synced from now on are opened as query ready.
+	t.queryReady.Store(true)
+	current := make(map[string]index.Index, len(t.index))
+	for name, idx := range t.index {
+		current[name] = idx
+	}
+	t.indexMtx.rUnlock()
+
+	reopened := make(map[string]index.Index, len(current))
+	defer func() {
+		for name, idx := range reopened {
+			if err := idx.Close(); err != nil {
+				level.Error(t.logger).Log("msg", "failed to close unused reopened index", "file", name, "err", err)
+			}
+		}
+	}()
+	for name, idx := range current {
+		if ctx.Err() != nil {
+			break
+		}
+		newIdx, err := t.openIndexFileFunc(idx.Path(), index.OpenOptions{QueryReady: true})
+		if err != nil {
+			// The file may have been removed by a sync since; the old reader,
+			// if still current, keeps serving.
+			level.Warn(t.logger).Log("msg", "failed to reopen index file as query ready, keeping the current reader", "file", name, "err", err)
+			continue
+		}
+		reopened[name] = newIdx
+	}
+
+	if err := t.indexMtx.lock(ctx); err != nil {
+		return err
+	}
+	defer t.indexMtx.unlock()
+	swapped := 0
+	for name, newIdx := range reopened {
+		if t.evicted.Load() || t.index[name] != current[name] {
+			continue
+		}
+		if err := current[name].Close(); err != nil {
+			level.Error(t.logger).Log("msg", "failed to close index file replaced by its query ready reopen", "file", name, "err", err)
+		}
+		t.index[name] = newIdx
+		delete(reopened, name)
+		swapped++
+	}
+	level.Info(t.logger).Log("msg", "reopened index set as query ready", "table", t.tableName, "user", t.userID, "files", swapped)
+	return nil
 }
 
 // Err returns the err which is usually set when there was any issue in Init.
@@ -373,7 +516,7 @@ func (t *indexSet) sync(ctx context.Context, lock, bypassListCache bool) (err er
 
 	for _, fileName := range downloadedFiles {
 		filePath := filepath.Join(t.cacheLocation, fileName)
-		idx, err := t.openIndexFileFunc(filePath)
+		idx, err := t.openIndexFileFunc(filePath, t.openOptions())
 		if err != nil {
 			return err
 		}

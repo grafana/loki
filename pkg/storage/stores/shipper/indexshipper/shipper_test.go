@@ -42,6 +42,14 @@ func TestConfig_Validate(t *testing.T) {
 			},
 		},
 		{
+			name: "in-memory index with placement owned_query_ready",
+			mutate: func(cfg *Config) {
+				cfg.InMemoryIndex.Enabled = true
+				cfg.InMemoryIndex.MaxBytes = 1 << 20
+				cfg.InMemoryIndex.Placement = InMemoryPlacementOwnedQueryReady
+			},
+		},
+		{
 			name:    "in-memory index enabled without a budget",
 			mutate:  func(cfg *Config) { cfg.InMemoryIndex.Enabled = true },
 			wantErr: "shipper.in-memory-index.max-bytes must be greater than zero",
@@ -137,5 +145,48 @@ loki_tsdb_shipper_in_memory_index_budget_bytes 1.048576e+06
 
 		_, err := NewReaderOptions(cfg, nil)
 		require.ErrorContains(t, err, "max-bytes must be greater than zero")
+	})
+}
+
+func TestOnDemandReaderOptions(t *testing.T) {
+	newCfg := func(enabled bool, placement InMemoryPlacement) Config {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+		cfg.InMemoryIndex.Enabled = enabled
+		cfg.InMemoryIndex.MaxBytes = 1 << 20
+		cfg.InMemoryIndex.Placement = placement
+		return cfg
+	}
+
+	t.Run("tier disabled", func(t *testing.T) {
+		cfg := newCfg(false, InMemoryPlacementOwnedQueryReady)
+		opts, err := NewReaderOptions(cfg, nil)
+		require.NoError(t, err)
+		require.Equal(t, opts, OnDemandReaderOptions(cfg, opts))
+		require.False(t, cfg.InMemoryIndex.placementDependsOnQueryReadiness())
+	})
+
+	t.Run("placement all", func(t *testing.T) {
+		cfg := newCfg(true, InMemoryPlacementAll)
+		opts, err := NewReaderOptions(cfg, nil)
+		require.NoError(t, err)
+		onDemand, ok := OnDemandReaderOptions(cfg, opts).(tsdbindex.InMemoryOptions)
+		require.True(t, ok)
+		require.True(t, onDemand.Placement("any"), "every file may go into memory")
+		require.False(t, cfg.InMemoryIndex.placementDependsOnQueryReadiness())
+	})
+
+	t.Run("placement owned_query_ready", func(t *testing.T) {
+		cfg := newCfg(true, InMemoryPlacementOwnedQueryReady)
+		opts, err := NewReaderOptions(cfg, nil)
+		require.NoError(t, err)
+		queryReady := opts.(tsdbindex.InMemoryOptions)
+		onDemand, ok := OnDemandReaderOptions(cfg, opts).(tsdbindex.InMemoryOptions)
+		require.True(t, ok)
+		require.True(t, queryReady.Placement("any"), "query ready files may go into memory")
+		require.False(t, onDemand.Placement("any"), "on-demand files never go into memory")
+		require.Same(t, queryReady.Budget, onDemand.Budget, "both share one budget and its metrics")
+		require.Equal(t, queryReady.Fallback, onDemand.Fallback)
+		require.True(t, cfg.InMemoryIndex.placementDependsOnQueryReadiness())
 	})
 }
