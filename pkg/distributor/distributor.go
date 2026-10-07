@@ -842,7 +842,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 					for _, stream := range rejected {
 						discardedStreams = append(discardedStreams, stream.Stream)
 					}
-					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+					d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit429, streamResolver, format, nil)
 
 					// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
 					// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any

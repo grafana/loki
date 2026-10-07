@@ -40,6 +40,7 @@ const (
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
+	StreamLimit429      = "stream_limit_429"
 	StreamLimitErrorMsg = "maximum active stream limit exceeded when trying to create stream %s, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
