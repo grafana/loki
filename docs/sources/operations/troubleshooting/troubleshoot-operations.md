@@ -2901,7 +2901,7 @@ The `kafka_config.producer_max_record_size_bytes` value is outside the allowed r
     producer_max_record_size_bytes: 15983616
   ```
 
-- We strongly recommend leaving this value at its default unless you're testing.
+- We strongly recommend leaving this value at its default unless you're testing in a development environment.
 
 **Properties:**
 
@@ -3015,6 +3015,14 @@ A single log line is larger than the configured `kafka_config.producer_max_recor
 **Resolution:**
 
 - **Reduce the size of the log line** at the source before sending it to Loki.
+- **Enforce a maximum log line size** with `limits_config.max_line_size` (default: 256KB). Lines that exceed this limit are discarded before they reach the Kafka producer. Set `limits_config.max_line_size_truncate: true` to truncate oversized lines instead of discarding them:
+
+  ```yaml
+  limits_config:
+    max_line_size: 256KB
+    max_line_size_truncate: true
+  ```
+
 - **Increase `producer_max_record_size_bytes`**, within the allowed range, if your Kafka cluster supports larger records:
 
   ```yaml
@@ -3027,7 +3035,7 @@ A single log line is larger than the configured `kafka_config.producer_max_recor
 - Enforced by: Kafka record encoding
 - Retryable: No
 - HTTP status: 400 (Bad Request)
-- Configurable per tenant: No
+- Configurable per tenant: No (`limits_config.max_line_size` and `limits_config.max_line_size_truncate` are configurable per tenant)
 
 ### Error: Dataobj builder topic required
 
@@ -3131,7 +3139,7 @@ The Kafka client received a response from the broker that it didn't expect, or c
 
 **Resolution:**
 
-- **Check your Kafka, or WarpStream, broker version** against the version supported by Loki's Kafka client ([franz-go](https://github.com/twmb/franz-go)).
+- **Check your Kafka broker version** against the version supported by Loki's Kafka client ([franz-go](https://github.com/twmb/franz-go)).
 - **Check network connectivity** between Loki and the Kafka brokers for packet loss or truncation.
 
 **Properties:**
