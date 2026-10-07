@@ -291,6 +291,16 @@ func (m *mockPoolClient) Push(
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }
 
+func (m *mockPoolClient) PushInternal(
+	ctx context.Context,
+	in *logproto.InternalPushRequest,
+	_ ...grpc.CallOption,
+) (*push.PushResponse, error) {
+	m.ctx = ctx
+	args := m.Called(ctx, in)
+	return args.Get(0).(*push.PushResponse), args.Error(1)
+}
+
 func (m *mockPoolClient) Query(
 	ctx context.Context,
 	in *logproto.QueryPatternsRequest,
