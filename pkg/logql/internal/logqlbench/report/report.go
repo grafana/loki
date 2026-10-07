@@ -20,6 +20,10 @@ var scenarios = []string{"chunk-timestamp-first", "chunk-stream-first", "dataobj
 // latencies is the fixed column order for the results table.
 var latencies = []string{"0s", "50ms", "250ms"}
 
+// maxParallelLatency is the latency at which the results table reports peak read parallelism: the
+// highest one, where reads overlap the most.
+var maxParallelLatency = latencies[len(latencies)-1]
+
 // queryKey identifies one query shape, independent of scenario and latency.
 type queryKey struct {
 	expr, shape, kind string
@@ -246,12 +250,13 @@ func generate(w io.Writer, rep *report) {
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprint(w, "| Query (shape) | Type | Store ops | Bytes fetched from storage | Memory allocations | Memory operations (bytes) |\n|---|---|---|---|---|---|\n")
+	fmt.Fprint(w, "| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) |\n|---|---|---|---|---|---|---|\n")
 	for _, q := range rep.order {
-		fmt.Fprintf(w, "| `%s`<br>%s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(w, "| `%s`<br>%s | %s | %s | %s | %s | %s | %s |\n",
 			q.expr, q.shape, q.kind,
 			cell(rep, q, "0s", formatCount("store_reqs/op")),
 			cell(rep, q, "0s", formatMB("store_bytes/op")),
+			cell(rep, q, maxParallelLatency, formatCount("store_max_parallel")),
 			cell(rep, q, "0s", formatMillions("allocs/op")),
 			cell(rep, q, "0s", formatMB("B/op")),
 		)
