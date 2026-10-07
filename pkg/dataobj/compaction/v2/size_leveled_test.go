@@ -215,14 +215,16 @@ func TestSizeLeveledStrategyConvergence(t *testing.T) {
 	const maxCycles = 100
 
 	tests := []struct {
-		name string
-		runs []Run
-		k    int
+		name     string
+		runs     []Run
+		k        int
+		wantRuns int
 	}{
 		{
-			name: "converges when many fresh runs fill level 0",
-			runs: repeatRuns("fresh", 50, 6*gib),
-			k:    8,
+			name:     "converges when many fresh runs fill level 0",
+			runs:     repeatRuns("fresh", 50, 6*gib),
+			k:        8,
+			wantRuns: 7,
 		},
 		{
 			name: "converges when lone runs in other levels are rewritten alongside a full level",
@@ -231,7 +233,8 @@ func TestSizeLeveledStrategyConvergence(t *testing.T) {
 				repeatRuns("l1", 9, 20*gib),
 				[]Run{namedRun{"l1-lone", 48 * gib}, namedRun{"l2-lone", 384 * gib}},
 			),
-			k: 8,
+			k:        8,
+			wantRuns: 6,
 		},
 		{
 			name: "converges with k of 2 and runs of mixed sizes",
@@ -240,7 +243,8 @@ func TestSizeLeveledStrategyConvergence(t *testing.T) {
 				repeatRuns("fresh", 5, 6*gib),
 				repeatRuns("big", 3, 200*gib),
 			),
-			k: 2,
+			k:        2,
+			wantRuns: 3,
 		},
 	}
 	for _, test := range tests {
@@ -248,6 +252,7 @@ func TestSizeLeveledStrategyConvergence(t *testing.T) {
 			cycles, final, converged := compactUntilConverged(t, s, test.runs, test.k, maxCycles)
 			require.True(t, converged, "compaction must stop within %d cycles", maxCycles)
 			require.Positive(t, cycles)
+			require.Len(t, final, test.wantRuns)
 			require.Equal(t, totalSize(test.runs), totalSize(final), "compaction must not drop data")
 			for level, runs := range s.GroupByLevels(final) {
 				require.Less(t, len(runs), test.k, "level %d must hold fewer than k runs", level)
