@@ -44,6 +44,7 @@ type storeInitParams struct {
 	name            string
 	prefix          string
 	indexShipperCfg indexshipper.Config
+	readerOpts      tsdbindex.ReaderOptions
 	schemaCfg       config.SchemaConfig
 	objectClient    client.ObjectClient
 	limits          downloads.Limits
@@ -53,9 +54,15 @@ type storeInitParams struct {
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
+//
+// readerOpts opens the downloaded index files. Callers that build several
+// stores (one per schema period) should share one value, from
+// indexshipper.NewReaderOptions, so they share one in-memory budget. Nil means
+// indexShipperCfg.IndexReaderOptions().
 func NewStore(
 	name, prefix string,
 	indexShipperCfg indexshipper.Config,
+	readerOpts tsdbindex.ReaderOptions,
 	schemaCfg config.SchemaConfig,
 	_ *fetcher.Fetcher,
 	objectClient client.ObjectClient,
@@ -78,6 +85,7 @@ func NewStore(
 		name:            name,
 		prefix:          prefix,
 		indexShipperCfg: indexShipperCfg,
+		readerOpts:      readerOpts,
 		schemaCfg:       schemaCfg,
 		objectClient:    objectClient,
 		limits:          limits,
@@ -104,9 +112,12 @@ func (s *store) init(params storeInitParams) error {
 		s.postingsCache = newPostingsCache(cache, postingsCfg.Prefix, params.cacheReg, s.logger)
 	}
 
-	readerOpts, err := params.indexShipperCfg.IndexReaderOptions()
-	if err != nil {
-		return err
+	readerOpts := params.readerOpts
+	if readerOpts == nil {
+		readerOpts, err = params.indexShipperCfg.IndexReaderOptions()
+		if err != nil {
+			return err
+		}
 	}
 
 	s.indexShipper, err = indexshipper.NewIndexShipper(

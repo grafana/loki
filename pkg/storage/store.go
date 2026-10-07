@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
@@ -126,6 +127,11 @@ type LokiStore struct {
 	// (FlushIndexes) and to refresh the object-listing cache + download newly
 	// shipped indexes on demand (TriggerSync/SyncStatuses).
 	syncerFlushers []namedSyncerFlusher
+
+	// tsdbReaderOpts opens downloaded TSDB index files. It is built on first
+	// use and shared by every period's store, so they share one in-memory
+	// index budget.
+	tsdbReaderOpts tsdbindex.ReaderOptions
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -291,6 +297,19 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
+// tsdbIndexReaderOptions returns the reader options shared by every period's
+// TSDB store, building them on first use.
+func (s *LokiStore) tsdbIndexReaderOptions() (tsdbindex.ReaderOptions, error) {
+	if s.tsdbReaderOpts == nil {
+		opts, err := indexshipper.NewReaderOptions(s.cfg.TSDBShipperConfig, s.registerer)
+		if err != nil {
+			return nil, err
+		}
+		s.tsdbReaderOpts = opts
+	}
+	return s.tsdbReaderOpts, nil
+}
+
 func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	// currently we only support one index type "tsdb" so all the code below here applies to tsdb only. this method will need to be improved should we ever support another type
 	if !slices.Contains(types.SupportedIndexTypes, p.IndexType) {
@@ -320,8 +339,13 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		return nil, nil, nil, err
 	}
 
+	readerOpts, err := s.tsdbIndexReaderOptions()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, readerOpts, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, s.registerer, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
 	}

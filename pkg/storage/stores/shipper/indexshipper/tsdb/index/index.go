@@ -1617,6 +1617,12 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 	return res, d.Err()
 }
 
+// Tier implements Reader. A ByteSliceReader opened by NewMmapFileReader is
+// backed by the file on disk; InMemoryReader overrides this.
+func (r *ByteSliceReader) Tier() Tier {
+	return TierDisk
+}
+
 // Close the reader and its underlying resources.
 func (r *ByteSliceReader) Close() error {
 	return r.c.Close()

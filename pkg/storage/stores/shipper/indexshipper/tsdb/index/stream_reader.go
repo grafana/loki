@@ -261,6 +261,11 @@ func (s *StreamReader) Size() int64 {
 	return s.size
 }
 
+// Tier implements Reader.
+func (s *StreamReader) Tier() Tier {
+	return TierDisk
+}
+
 func (s *StreamReader) Close() error {
 	return s.factory.Close()
 }

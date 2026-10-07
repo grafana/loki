@@ -15,6 +15,17 @@ type ReaderOptions interface {
 	OpenReader(path string) (Reader, error)
 }
 
+// Tier identifies where a Reader serves index bytes from.
+type Tier string
+
+const (
+	// TierMemory means the whole index file is held in process memory.
+	TierMemory Tier = "memory"
+	// TierDisk means the index is read from the file on disk, whether through
+	// mmap or streamed reads.
+	TierDisk Tier = "disk"
+)
+
 // Reader is the read-side interface implemented by every on-disk TSDB index reader.
 type Reader interface {
 	// Version returns the on-disk index format version.
@@ -49,6 +60,9 @@ type Reader interface {
 
 	// Size returns the size of the underlying index in bytes.
 	Size() int64
+
+	// Tier reports where the index bytes are served from.
+	Tier() Tier
 
 	// Close releases the underlying resources of the reader.
 	Close() error

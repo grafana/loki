@@ -30,6 +30,7 @@ func allReaderConstructors() []readerConstructor {
 	return []readerConstructor{
 		{name: "MmapReader", open: func(p string) (Reader, error) { return NewMmapFileReader(p) }},
 		{name: "StreamReader", open: func(p string) (Reader, error) { return NewStreamFileReader(p, DefaultStreamOptions()) }},
+		{name: "InMemoryReader", open: func(p string) (Reader, error) { return newUnboundedInMemoryOptions().OpenReader(p) }},
 	}
 }
 
