@@ -652,6 +652,20 @@ func TestClientConfig_Validate(t *testing.T) {
 			mutate:  func(cfg *ClientConfig) { cfg.MaxRetries = -2 },
 			wantErr: "max-retries",
 		},
+		{
+			name:   "per_index sharding",
+			mutate: func(cfg *ClientConfig) { cfg.Sharding = ShardingPerIndex },
+		},
+		{
+			name:    "unknown sharding",
+			mutate:  func(cfg *ClientConfig) { cfg.Sharding = "per_tenant" },
+			wantErr: "sharding",
+		},
+		{
+			name:    "zero per-index concurrency",
+			mutate:  func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrency = 0 },
+			wantErr: "per-index-max-concurrency",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := ClientConfig{}
@@ -674,6 +688,8 @@ func TestClientConfig_Defaults(t *testing.T) {
 
 	require.Zero(t, cfg.MaxInFlightRequests)
 	require.Equal(t, -1, cfg.MaxRetries)
+	require.Equal(t, ShardingDefault, cfg.Sharding)
+	require.Equal(t, 8, cfg.PerIndexMaxConcurrency)
 }
 
 func Test_jumpHashShuffleSharding(t *testing.T) {
