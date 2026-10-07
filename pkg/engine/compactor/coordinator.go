@@ -41,9 +41,8 @@ type coordinator struct {
 	sleep   func(ctx context.Context, d time.Duration)
 	metrics *coordinatorMetrics
 	limits  Limits
-	// logMergePlanningStrategy plans log merge tasks. Its Plan puts every run
-	// in a task, which compactTenantLogs needs because it replaces the whole
-	// source index with the task outputs.
+	// logMergePlanningStrategy decides when a log index needs compaction and
+	// groups its runs into merge tasks by size level.
 	logMergePlanningStrategy *v2.SizeLeveledStrategy
 }
 

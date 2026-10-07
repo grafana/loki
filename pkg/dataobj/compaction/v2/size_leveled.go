@@ -9,13 +9,15 @@ import (
 
 const (
 	// DefaultSizeLevelBase is the default upper bound of level 0, in bytes of
-	// uncompressed log data. A typical fresh run (composed of a single object) holds about 6GiB
-	// so 16GiB ensures that a merge will move up a level while accounting for size variance.
+	// uncompressed log data. Empirically, a fresh run is one object of about 6GiB. One
+	// fresh run stays in level 0, and a merge of three or more moves up a
+	// level.
 	DefaultSizeLevelBase uint64 = 16 << 30
 
 	// DefaultSizeLevelRatio is the default size ratio between levels. It
-	// matches a merge fan-in (K) of 8, so a merge of 8 runs from one level
-	// lands in the next level.
+	// matches the default log merge fan-in (K) of 8. For levels 1 and above,
+	// a merge of 8 runs from one level lands in the next level. Level 0 has
+	// no lower bound, so this does not hold there.
 	DefaultSizeLevelRatio uint64 = 8
 )
 
@@ -24,7 +26,7 @@ const (
 // amplification low.
 //
 // Level 0 holds runs below base. Level n, for n >= 1, holds runs in
-// [base*ratio^(n-1), base*ratio^n). The number of levels has no upper limit.
+// [base*ratio^(n-1), base*ratio^n). The top level has no upper size bound.
 type SizeLeveledStrategy struct {
 	base  uint64
 	ratio uint64
@@ -71,11 +73,12 @@ func (s *SizeLeveledStrategy) GroupByLevels(runs []Run) [][]Run {
 	return levels
 }
 
-// NeedsCompaction reports whether any level holds at least k runs.
+// NeedsCompaction reports whether any level holds at least k runs. k must
+// be at least 2, because with k of 1 a single run always needs compaction.
 //
 // A window where every level holds fewer than k runs counts as converged,
-// even if its runs overlap. Each compaction then merges a full level, so
-// the number of runs drops and gradually converges.
+// even if its runs overlap. Plan merges the k runs of a full level into one
+// run, so each compaction reduces the number of runs and compaction stops.
 func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run, k int) bool {
 	for _, level := range s.GroupByLevels(runs) {
 		if len(level) >= k {
@@ -88,7 +91,9 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run, k int) bool {
 // Plan splits each level into tasks of at most k runs, so no task mixes
 // levels.
 //
-// Every run lands in exactly one task.
+// Every run lands in exactly one task. A run alone in its level, or left over
+// after the split, becomes a task of one run that rewrites it without
+// merging. k must be at least 1.
 func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
 	var tasks []*compactionv2pb.TaskSpec
 	for _, level := range s.GroupByLevels(runs) {

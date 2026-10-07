@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -766,29 +767,55 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 	})
 }
 
-func TestCompactTenantLogs_SkipsWhenNoSizeLevelHoldsKRuns(t *testing.T) {
+func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	ctx := context.Background()
-	path := "indexes/aa/levels"
-	bucket := objstore.NewInMemBucket()
-	buildCurrentIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/small", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-		{ObjectPath: "logs/large", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 20 << 30},
+	stat := func(path string, size int64) stats.Stat {
+		return stats.Stat{ObjectPath: path, SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: size}
+	}
+	compact := func(t *testing.T, rows []stats.Stat) (compactionStats, *fakeRunner, *fakeReplacer) {
+		t.Helper()
+		path := "indexes/aa/levels"
+		bucket := objstore.NewInMemBucket()
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", path, rows)
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
+		})
+		require.NoError(t, err)
+		return stats, runner, replacer
+	}
+
+	t.Run("skips overlapping runs when no size level holds k runs", func(t *testing.T) {
+		stats, runner, replacer := compact(t, []stats.Stat{stat("logs/small", 100), stat("logs/large", 20<<30)})
+		require.Equal(t, compactionStats{}, stats)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
 	})
 
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	t.Run("rewrites every run in per-level tasks when one size level holds k runs", func(t *testing.T) {
+		stats, runner, replacer := compact(t, []stats.Stat{
+			stat("logs/small-a", 100), stat("logs/small-b", 100), stat("logs/large", 20<<30),
+		})
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
 
-	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
-		Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
+		var taskObjects [][]string
+		for _, call := range runner.snapshot() {
+			var objects []string
+			for _, run := range mergeNodeRuns(t, call.plan) {
+				for _, section := range run.Sections {
+					objects = append(objects, section.ObjectPath)
+				}
+			}
+			slices.Sort(objects)
+			taskObjects = append(taskObjects, objects)
+		}
+		require.ElementsMatch(t, [][]string{{"logs/small-a", "logs/small-b"}, {"logs/large"}}, taskObjects)
+		require.Len(t, replacer.snapshot(), 1)
 	})
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{}, stats)
-	require.Empty(t, runner.snapshot())
-	require.Empty(t, replacer.snapshot())
 }
 
 func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {

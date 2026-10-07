@@ -11,10 +11,15 @@ import (
 
 const gib uint64 = 1 << 30
 
-type sizedRun uint64
+type namedRun struct {
+	path string
+	size uint64
+}
 
-func (r sizedRun) Sections() []*compactionv2pb.SectionRef { return nil }
-func (r sizedRun) Size() uint64                           { return uint64(r) }
+func (r namedRun) Sections() []*compactionv2pb.SectionRef {
+	return []*compactionv2pb.SectionRef{{ObjectPath: r.path}}
+}
+func (r namedRun) Size() uint64 { return r.size }
 
 func TestNewSizeLeveledStrategy(t *testing.T) {
 	t.Run("returns an error when base is zero", func(t *testing.T) {
@@ -66,37 +71,27 @@ func TestSizeLeveledStrategyGroupByLevels(t *testing.T) {
 	})
 
 	t.Run("returns levels up to the highest level that holds a run", func(t *testing.T) {
-		levels := s.GroupByLevels([]Run{sizedRun(200 * gib)})
+		levels := s.GroupByLevels([]Run{namedRun{"big", 200 * gib}})
 		require.Len(t, levels, 3)
 		require.Nil(t, levels[0])
 		require.Nil(t, levels[1])
-		require.Equal(t, []Run{sizedRun(200 * gib)}, levels[2])
+		require.Equal(t, []Run{namedRun{"big", 200 * gib}}, levels[2])
 	})
 
-	t.Run("places the output of merging by the DefaultSizeLevelRatio runs one level up", func(t *testing.T) {
+	t.Run("places a merge of ratio fresh runs one level above a fresh run", func(t *testing.T) {
 		const fresh = 6 * gib
-		levels := s.GroupByLevels([]Run{sizedRun(fresh), sizedRun(8 * fresh), sizedRun(64 * fresh)})
-		require.Equal(t, []Run{sizedRun(fresh)}, levels[0])
-		require.Equal(t, []Run{sizedRun(8 * fresh)}, levels[1])
-		require.Equal(t, []Run{sizedRun(64 * fresh)}, levels[2])
+		levels := s.GroupByLevels([]Run{namedRun{"fresh", fresh}, namedRun{"fresh-x8", 8 * fresh}, namedRun{"fresh-x64", 64 * fresh}})
+		require.Equal(t, []Run{namedRun{"fresh", fresh}}, levels[0])
+		require.Equal(t, []Run{namedRun{"fresh-x8", 8 * fresh}}, levels[1])
+		require.Equal(t, []Run{namedRun{"fresh-x64", 64 * fresh}}, levels[2])
 	})
 
 	t.Run("keeps input order within a level", func(t *testing.T) {
-		levels := s.GroupByLevels([]Run{sizedRun(3 * gib), sizedRun(200 * gib), sizedRun(1 * gib)})
-		require.Equal(t, []Run{sizedRun(3 * gib), sizedRun(1 * gib)}, levels[0])
-		require.Equal(t, []Run{sizedRun(200 * gib)}, levels[2])
+		levels := s.GroupByLevels([]Run{namedRun{"a", 3 * gib}, namedRun{"big", 200 * gib}, namedRun{"b", 1 * gib}})
+		require.Equal(t, []Run{namedRun{"a", 3 * gib}, namedRun{"b", 1 * gib}}, levels[0])
+		require.Equal(t, []Run{namedRun{"big", 200 * gib}}, levels[2])
 	})
 }
-
-type namedRun struct {
-	path string
-	size uint64
-}
-
-func (r namedRun) Sections() []*compactionv2pb.SectionRef {
-	return []*compactionv2pb.SectionRef{{ObjectPath: r.path}}
-}
-func (r namedRun) Size() uint64 { return r.size }
 
 func taskPaths(tasks []*compactionv2pb.TaskSpec) [][]string {
 	out := make([][]string, len(tasks))
