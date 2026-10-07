@@ -1,7 +1,9 @@
 package metastore
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -14,6 +16,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -575,6 +578,268 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 		})
 	}
+}
+
+func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
+	// indexedLine is one log line an index object records for a section of a log object.
+	type indexedLine struct {
+		objectPath string
+		section    int64
+		streamID   int64
+		labels     string
+		timestamp  time.Time
+	}
+
+	// addIndexObject builds an index object holding lines, uploads it to bucket, adds it to the ToC
+	// and returns its path. The key of an uploaded object comes from its content, so two index
+	// objects need different lines to get different keys.
+	addIndexObject := func(t *testing.T, bucket objstore.Bucket, lines []indexedLine) string {
+		t.Helper()
+
+		builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			TargetPageSize:          1024 * 1024,
+			TargetObjectSize:        10 * 1024 * 1024,
+			TargetSectionSize:       128,
+			BufferSize:              1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		}, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		for _, line := range lines {
+			lbls, err := syntax.ParseLabels(line.labels)
+			require.NoError(t, err)
+
+			idx, err := builder.AppendStream(tenantID, streams.Stream{
+				ID:           line.streamID,
+				Labels:       lbls,
+				MinTimestamp: line.timestamp,
+				MaxTimestamp: line.timestamp,
+			})
+			require.NoError(t, err)
+			require.NoError(t, builder.ObserveLogLine(tenantID, line.objectPath, line.section, idx, line.streamID, line.timestamp, 1))
+		}
+
+		timeRanges := builder.TimeRanges()
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+
+		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+		path, err := up.Upload(context.Background(), obj)
+		require.NoError(t, err)
+
+		toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		require.NoError(t, writeTimeRanges(context.Background(), toc, path, timeRanges))
+		return path
+	}
+
+	// addPostingsIndexObject builds an index object with only a postings section, uploads it to
+	// bucket, adds it to the ToC and returns its path. The metastore reads it in the postings flow,
+	// which reports no row count or size.
+	addPostingsIndexObject := func(t *testing.T, bucket objstore.Bucket, observations []postings.LabelObservation) string {
+		t.Helper()
+
+		obj, closer := buildPostingsIndexObject(t, tenantID, observations)
+		t.Cleanup(closer)
+
+		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+		path, err := up.Upload(context.Background(), obj)
+		require.NoError(t, err)
+
+		toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		require.NoError(t, toc.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
+			Path:      path,
+			StartTime: now.Add(-time.Minute),
+			EndTime:   now.Add(time.Minute),
+		}))
+		return path
+	}
+
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	request := SectionsRequest{
+		Start:    now.Add(-time.Hour),
+		End:      now.Add(time.Hour),
+		Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+	}
+
+	sectionOfTestObject := []indexedLine{
+		{objectPath: "test-path", section: 1, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now},
+		{objectPath: "test-path", section: 1, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now.Add(time.Second)},
+		{objectPath: "test-path", section: 1, streamID: 2, labels: `{app="foo", env="dev"}`, timestamp: now},
+	}
+	sectionOfOtherObject := []indexedLine{
+		{objectPath: "other-path", section: 1, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now},
+	}
+
+	observe := func(objectPath string, streamID int64) postings.LabelObservation {
+		return postings.LabelObservation{ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: streamID, Timestamp: now}
+	}
+
+	newMetastore := func(bucket objstore.Bucket) (*ObjectMetastore, *prometheus.Registry, *bytes.Buffer) {
+		reg := prometheus.NewRegistry()
+		logs := bytes.NewBuffer(nil)
+		return NewObjectMetastore(bucket, Config{}, log.NewLogfmtLogger(logs), NewObjectMetastoreMetrics(reg)), reg, logs
+	}
+
+	requireDuplicateSections := func(t *testing.T, reg *prometheus.Registry, wantIdentical, wantDiverged int) {
+		t.Helper()
+
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+		# HELP loki_metastore_duplicate_sections_total Total number of duplicate sections found when more than one index object describes the same section. A section in N index objects counts N-1 with diverged=false. The copies of a diverged section disagree on the streams, the row count or the size. That fails the section lookup at the first one, so diverged=true counts at most one for each lookup
+		# TYPE loki_metastore_duplicate_sections_total counter
+		loki_metastore_duplicate_sections_total{diverged="false"} %d
+		loki_metastore_duplicate_sections_total{diverged="true"} %d
+		`, wantIdentical, wantDiverged)), "loki_metastore_duplicate_sections_total"))
+	}
+
+	t.Run("returns the duplicate section once when two index objects list the same streams", func(t *testing.T) {
+		single := objstore.NewInMemBucket()
+		addIndexObject(t, single, sectionOfTestObject)
+		singleMetastore, singleReg, _ := newMetastore(single)
+		want, err := singleMetastore.Sections(ctx, request)
+		require.NoError(t, err)
+		require.Len(t, want.Sections, 1)
+		requireDuplicateSections(t, singleReg, 0, 0)
+
+		duplicated := objstore.NewInMemBucket()
+		firstIndex := addIndexObject(t, duplicated, sectionOfTestObject)
+		secondIndex := addIndexObject(t, duplicated, append(append([]indexedLine{}, sectionOfTestObject...), sectionOfOtherObject...))
+		duplicatedMetastore, duplicatedReg, logs := newMetastore(duplicated)
+		got, err := duplicatedMetastore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		byKey := map[SectionKey]*DataobjSectionDescriptor{}
+		for _, section := range got.Sections {
+			byKey[section.SectionKey] = section
+		}
+		require.Len(t, got.Sections, len(byKey), "a section was returned twice")
+
+		duplicatedSection := byKey[want.Sections[0].SectionKey]
+		require.NotNil(t, duplicatedSection)
+		require.Equal(t, want.Sections[0].RowCount, duplicatedSection.RowCount)
+		require.Equal(t, want.Sections[0].Size, duplicatedSection.Size)
+		require.ElementsMatch(t, want.Sections[0].StreamIDs, duplicatedSection.StreamIDs)
+		requireDuplicateSections(t, duplicatedReg, 1, 0)
+		require.Contains(t, logs.String(), "level=info")
+		require.Contains(t, logs.String(), firstIndex)
+		require.Contains(t, logs.String(), secondIndex)
+	})
+
+	t.Run("keeps the sections of different objects", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		addIndexObject(t, bucket, sectionOfTestObject)
+		addIndexObject(t, bucket, sectionOfOtherObject)
+		mstore, reg, _ := newMetastore(bucket)
+
+		got, err := mstore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		var paths []string
+		for _, section := range got.Sections {
+			paths = append(paths, section.ObjectPath)
+		}
+		require.ElementsMatch(t, []string{"test-path", "other-path"}, paths)
+		requireDuplicateSections(t, reg, 0, 0)
+	})
+
+	t.Run("adds one to the duplicate sections metric per extra index object describing a section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		addIndexObject(t, bucket, sectionOfTestObject)
+		addIndexObject(t, bucket, append(append([]indexedLine{}, sectionOfTestObject...), sectionOfOtherObject...))
+		addIndexObject(t, bucket, append(append([]indexedLine{}, sectionOfTestObject...), indexedLine{
+			objectPath: "third-path", section: 1, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now,
+		}))
+		mstore, reg, _ := newMetastore(bucket)
+
+		_, err := mstore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		requireDuplicateSections(t, reg, 2, 0)
+	})
+
+	t.Run("returns the duplicate section once when two postings index objects list the same streams", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		addPostingsIndexObject(t, bucket, []postings.LabelObservation{observe("src-obj", 1), observe("src-obj", 2)})
+		addPostingsIndexObject(t, bucket, []postings.LabelObservation{observe("src-obj", 1), observe("src-obj", 2), observe("other-obj", 1)})
+		mstore, reg, _ := newMetastore(bucket)
+
+		got, err := mstore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		streamsByObject := map[string][]int64{}
+		for _, section := range got.Sections {
+			require.NotContains(t, streamsByObject, section.ObjectPath, "a section was returned twice")
+			streamsByObject[section.ObjectPath] = section.StreamIDs
+		}
+		require.ElementsMatch(t, []int64{1, 2}, streamsByObject["src-obj"])
+		require.Contains(t, streamsByObject, "other-obj")
+		requireDuplicateSections(t, reg, 1, 0)
+	})
+
+	t.Run("fails the lookup when two postings index objects list different streams of a section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		firstIndex := addPostingsIndexObject(t, bucket, []postings.LabelObservation{observe("src-obj", 1), observe("src-obj", 2)})
+		secondIndex := addPostingsIndexObject(t, bucket, []postings.LabelObservation{observe("src-obj", 1), observe("src-obj", 2), observe("src-obj", 3)})
+		mstore, reg, logs := newMetastore(bucket)
+
+		_, err := mstore.Sections(ctx, request)
+
+		require.ErrorIs(t, err, errDifferentSectionStatistics)
+		require.Contains(t, logs.String(), "level=error")
+		require.Contains(t, logs.String(), "object=src-obj")
+		require.Contains(t, logs.String(), "section=0")
+		require.Contains(t, logs.String(), firstIndex)
+		require.Contains(t, logs.String(), secondIndex)
+		requireDuplicateSections(t, reg, 0, 1)
+	})
+
+	t.Run("fails the lookup when two index objects report different row counts for a section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		addIndexObject(t, bucket, sectionOfTestObject)
+		addIndexObject(t, bucket, sectionOfTestObject[1:])
+		mstore, reg, _ := newMetastore(bucket)
+
+		_, err := mstore.Sections(ctx, request)
+
+		require.ErrorIs(t, err, errDifferentSectionStatistics)
+		requireDuplicateSections(t, reg, 0, 1)
+	})
+
+	t.Run("returns the duplicate section once when two index objects list the same streams in a different order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		prod := indexedLine{objectPath: "src-obj", section: 0, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now}
+		dev := indexedLine{objectPath: "src-obj", section: 0, streamID: 2, labels: `{app="foo", env="dev"}`, timestamp: now}
+		addIndexObject(t, bucket, []indexedLine{prod, dev})
+		addIndexObject(t, bucket, []indexedLine{dev, prod})
+		mstore, reg, _ := newMetastore(bucket)
+
+		got, err := mstore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		require.Len(t, got.Sections, 1)
+		require.ElementsMatch(t, []int64{1, 2}, got.Sections[0].StreamIDs)
+		requireDuplicateSections(t, reg, 1, 0)
+	})
+
+	t.Run("returns the duplicate section once when a legacy and a postings index object list the same streams", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		addIndexObject(t, bucket, []indexedLine{
+			{objectPath: "src-obj", section: 0, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now},
+			{objectPath: "src-obj", section: 0, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now.Add(time.Second)},
+			{objectPath: "src-obj", section: 0, streamID: 2, labels: `{app="foo", env="dev"}`, timestamp: now},
+		})
+		addPostingsIndexObject(t, bucket, []postings.LabelObservation{observe("src-obj", 1), observe("src-obj", 2)})
+		mstore, reg, _ := newMetastore(bucket)
+
+		got, err := mstore.Sections(ctx, request)
+		require.NoError(t, err)
+
+		require.Len(t, got.Sections, 1)
+		require.ElementsMatch(t, []int64{1, 2}, got.Sections[0].StreamIDs)
+		requireDuplicateSections(t, reg, 1, 0)
+	})
 }
 
 func TestSectionsForLabelsByStreamID(t *testing.T) {

@@ -93,6 +93,12 @@ func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
+// Values of the diverged label of the duplicate sections metric.
+const (
+	divergedFalse = "false"
+	divergedTrue  = "true"
+)
+
 type ObjectMetastoreMetrics struct {
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
@@ -109,6 +115,7 @@ type ObjectMetastoreMetrics struct {
 	indexReadFlowTotal        *prometheus.CounterVec
 	indexReadRowsPerObject    *prometheus.HistogramVec
 	resolvedSectionsPerObject prometheus.Histogram
+	duplicateSectionsTotal    *prometheus.CounterVec
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
@@ -221,7 +228,17 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		duplicateSectionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_metastore_duplicate_sections_total",
+			Help: "Total number of duplicate sections found when more than one index object describes the same section. A section in N index objects counts N-1 with diverged=false. The copies of a diverged section disagree on the streams, the row count or the size. That fails the section lookup at the first one, so diverged=true counts at most one for each lookup",
+		}, []string{"diverged"}),
 	}
+
+	// Report both outcomes from the start, so that a rate over diverged duplicates reads as
+	// zero rather than going missing until the first one happens.
+	metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse)
+	metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue)
+
 	metrics.register(reg)
 
 	return metrics
@@ -247,6 +264,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 		p.indexReadFlowTotal,
 		p.indexReadRowsPerObject,
 		p.resolvedSectionsPerObject,
+		p.duplicateSectionsTotal,
 	}
 
 	for _, collector := range collectors {

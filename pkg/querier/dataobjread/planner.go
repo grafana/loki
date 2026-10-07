@@ -142,10 +142,10 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 		return nil, err
 	}
 
-	// One task per section. The metastore concatenates the descriptors of every index object
-	// without merging across them, so two index objects describing one section would plan it
-	// twice and emit every one of its rows twice. Check before the streams read below, which
-	// costs a round trip to object storage.
+	// One task per section. The metastore drops duplicate sections, so a repeated section index
+	// means a bug upstream. Fail the query then, because planning a section twice emits each of
+	// its rows twice. Check before the streams read below, which costs a round trip to object
+	// storage.
 	planned := make(map[int64]struct{}, len(descriptors))
 	for _, descriptor := range descriptors {
 		if _, repeated := planned[descriptor.SectionIdx]; repeated {

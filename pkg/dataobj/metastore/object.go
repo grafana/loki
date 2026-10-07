@@ -18,6 +18,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,9 +49,20 @@ const (
 	TocPrefix = "tocs/"
 
 	tocFileName = "toc.toc"
+
+	// duplicatesLogsPerSecond and duplicatesLogsBurst set the rate limit of the duplicate
+	// sections logger.
+	duplicatesLogsPerSecond = 1
+	duplicatesLogsBurst     = 5
 )
 
-var tracer = otel.Tracer("pkg/dataobj/metastore")
+var (
+	tracer = otel.Tracer("pkg/dataobj/metastore")
+
+	// errDifferentSectionStatistics is the error of a lookup that finds one section described by more
+	// than one index object, with different statistics.
+	errDifferentSectionStatistics = errors.New("the same section was found in multiple index objects with different statistics")
+)
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
@@ -58,6 +70,10 @@ type ObjectMetastore struct {
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
+
+	// duplicatesLogger limits the logs of duplicate sections. One query can find thousands of
+	// them.
+	duplicatesLogger log.Logger
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -80,6 +96,10 @@ type DataobjSectionDescriptor struct {
 	// the section and in the LogQL query, and are therefore ambiguous. It is the
 	// deduped union across the section's streams.
 	AmbiguousPredicates []string
+
+	// indexPath is the path of the index object that listed the section. Only
+	// [ObjectMetastore.Sections] sets it.
+	indexPath string
 }
 
 // DataobjSectionDescriptors is a set of section descriptors. A resolution covers every object
@@ -179,6 +199,24 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	}
 }
 
+// sameStreamAndStatistics reports whether two descriptors of one section have the same streams,
+// row count and size.
+func (d *DataobjSectionDescriptor) sameStreamAndStatistics(other *DataobjSectionDescriptor) bool {
+	// The postings flow reports no row count and no size, so it skips a zero value.
+	return slices.Equal(sortedIDs(d.StreamIDs), sortedIDs(other.StreamIDs)) &&
+		(d.RowCount == 0 || other.RowCount == 0 || d.RowCount == other.RowCount) &&
+		(d.Size == 0 || other.Size == 0 || d.Size == other.Size)
+}
+
+// sortedIDs returns the IDs in ascending order. It returns ids itself when they already are, so
+// the caller must not modify the result. It never modifies ids.
+func sortedIDs(ids []int64) []int64 {
+	if slices.IsSorted(ids) {
+		return ids
+	}
+	return slices.Sorted(slices.Values(ids))
+}
+
 // TableOfContentsPath returns the path of the tenant's ToC for window.
 // window must be aligned to MetastoreWindowSize.
 func TableOfContentsPath(tenant string, window time.Time) string {
@@ -242,6 +280,8 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
+
+		duplicatesLogger: dslog.NewRateLimitedLogger(logger, duplicatesLogsPerSecond, duplicatesLogsBurst, nil),
 	}
 
 	return store
@@ -663,6 +703,9 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			sp := reader.(statsProvider)
 			totalSections.Add(sp.stats().ReadRows)
 
+			for _, section := range sectionsResp.SectionsResponse.Sections {
+				section.indexPath = indexEntry.Path
+			}
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
 
@@ -671,6 +714,11 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	}
 
 	if err := g.Wait(); err != nil {
+		return SectionsResponse{}, err
+	}
+
+	sections, err = m.dropDuplicateSections(ctx, sections)
+	if err != nil {
 		return SectionsResponse{}, err
 	}
 
@@ -693,6 +741,60 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	)
 
 	return SectionsResponse{sections}, nil
+}
+
+// dropDuplicateSections keeps the first descriptor of each section, unchanged,
+// and drops the others. The kept descriptors stay in input order.
+//
+// Two index objects can describe the same section, for example when the
+// builder indexes one log object twice after a failed flush. Both index the
+// same log object, so they must agree on the section. It returns an error when
+// a later copy disagrees with the first one.
+//
+// It filters sections in place and reuses its backing array. The caller must
+// use the returned slice and drop the input.
+func (m *ObjectMetastore) dropDuplicateSections(ctx context.Context, sections []*DataobjSectionDescriptor) ([]*DataobjSectionDescriptor, error) {
+	var (
+		seen = make(map[SectionKey]*DataobjSectionDescriptor, len(sections))
+		kept = sections[:0]
+	)
+
+	for _, section := range sections {
+		first, ok := seen[section.SectionKey]
+		if !ok {
+			seen[section.SectionKey] = section
+			kept = append(kept, section)
+			continue
+		}
+
+		if !first.sameStreamAndStatistics(section) {
+			m.metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue).Inc()
+
+			// This log carries the details the error lacks. It does not use duplicatesLogger,
+			// because each failed query logs once and the limit could drop it.
+			level.Error(utillog.WithContext(ctx, m.logger)).Log(
+				"msg", errDifferentSectionStatistics.Error(),
+				"object", first.ObjectPath,
+				"section", first.SectionIdx,
+				"first_index", first.indexPath,
+				"second_index", section.indexPath,
+			)
+			return nil, errDifferentSectionStatistics
+		}
+
+		level.Info(utillog.WithContext(ctx, m.duplicatesLogger)).Log(
+			"msg", "the same section was found in multiple index objects, deduplicating it",
+			"object", first.ObjectPath,
+			"section", first.SectionIdx,
+			"kept_index", first.indexPath,
+			"dropped_index", section.indexPath),
+		)
+		m.metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse).Inc()
+	}
+
+	// Clear the tail so the dropped descriptors are not reachable through the backing array.
+	clear(sections[len(kept):])
+	return kept, nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
