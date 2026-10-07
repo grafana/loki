@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/dataobjread"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -46,6 +47,31 @@ func TestNewDataObjStore(t *testing.T) {
 	t.Run("it fails without a metastore", func(t *testing.T) {
 		_, err := NewDataObjStore(&chunkStoreSpy{}, builder.Location().Bucket, nil, nil)
 		require.ErrorContains(t, err, "metastore")
+	})
+}
+
+func TestWithDataObjMaxConcurrency(t *testing.T) {
+	builder := objtest.NewBuilder(t)
+	builder.Append(testCtx(t), logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+	builder.Close()
+
+	newStore := func(opts ...DataObjStoreOption) *DataObjStore {
+		store, err := NewDataObjStore(&chunkStoreSpy{}, builder.Location().Bucket, builder.Metastore(), nil, opts...)
+		require.NoError(t, err)
+		return store
+	}
+
+	t.Run("the default is the reader's default concurrency", func(t *testing.T) {
+		require.Equal(t, dataobjread.DefaultMaxConcurrency, newStore().maxConcurrency)
+	})
+
+	t.Run("a positive value replaces the default", func(t *testing.T) {
+		require.Equal(t, 100, newStore(WithDataObjMaxConcurrency(100)).maxConcurrency)
+	})
+
+	t.Run("a value below one becomes one", func(t *testing.T) {
+		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(0)).maxConcurrency)
+		require.Equal(t, 1, newStore(WithDataObjMaxConcurrency(-5)).maxConcurrency)
 	})
 }
 
@@ -208,6 +234,21 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		store := newTestDataObjStore(t, manyStreams, withSectionSize(flagext.Bytes(1)))
 		got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
 		require.Len(t, got, len(manyStreams))
+	})
+
+	t.Run("every section is read at each concurrency, including a non-positive one", func(t *testing.T) {
+		var manyStreams []logproto.Stream
+		for i := 0; i < 8; i++ {
+			manyStreams = append(manyStreams, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="many", idx="%d"}`, i),
+				Entries: []push.Entry{entry(t, 1, "line")},
+			})
+		}
+		for _, concurrency := range []int{-1, 1, 100} {
+			store := newTestDataObjStore(t, manyStreams, withSectionSize(flagext.Bytes(1)), withMaxConcurrency(concurrency))
+			got := store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="many"}[1m]))`, at(0), at(10))
+			require.Len(t, got, len(manyStreams), "concurrency %d", concurrency)
+		}
 	})
 
 	t.Run("several objects are all read", func(t *testing.T) {
@@ -466,6 +507,7 @@ type testStoreOptions struct {
 	sectionSize      flagext.Bytes
 	flushEveryStream bool
 	filterer         chunk.RequestChunkFilterer
+	maxConcurrency   int
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -478,6 +520,10 @@ func withSectionSize(size flagext.Bytes) testStoreOption {
 // withObjectPerStream flushes after each stream, so each lands in its own data object.
 func withObjectPerStream() testStoreOption {
 	return func(o *testStoreOptions) { o.flushEveryStream = true }
+}
+
+func withMaxConcurrency(n int) testStoreOption {
+	return func(o *testStoreOptions) { o.maxConcurrency = n }
 }
 
 func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
@@ -511,6 +557,10 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 	var storeOpts []DataObjStoreOption
 	if options.filterer != nil {
 		storeOpts = append(storeOpts, WithDataObjStreamFilterer(options.filterer))
+	}
+
+	if options.maxConcurrency != 0 {
+		storeOpts = append(storeOpts, WithDataObjMaxConcurrency(options.maxConcurrency))
 	}
 
 	location := builder.Location()

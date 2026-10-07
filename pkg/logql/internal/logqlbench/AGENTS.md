@@ -29,8 +29,17 @@ go test -bench 'BenchmarkLogQLMetricQueries/query=sum.*high_input.*/scenario=dat
     ./pkg/logql/internal/logqlbench/...
 ```
 
-Each case reports `store_reqs/op` and `store_bytes/op` alongside the standard
-`ns/op`/`allocs/op`: the number of object-store calls and bytes actually read to answer the query.
+Each case reports:
+
+- `ns/op`, `allocs/op`: the standard Go benchmark time and allocations.
+- `store_reqs/op`: object-store calls made to answer the query.
+- `store_bytes/op`: bytes read from the object store.
+- `store_max_parallel`: peak object-store reads in flight at once, over all iterations. The results
+  table reports it at `latency=250ms`. Read it only with injected latency, because a read with no
+  delay can end before another starts.
+
+All three `store_*` metrics skip index reads (keys with the prefix `index`): the TSDB index of the
+chunk store and the metastore of the data-object store. Index reads also get no injected latency.
 
 ## Measuring peak memory
 
