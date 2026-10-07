@@ -442,6 +442,223 @@ func TestRingLimitsClient_ExceedsLimits(t *testing.T) {
 	}
 }
 
+func TestRingLimitsClient_CheckLimitsAndShard(t *testing.T) {
+	tests := []struct {
+		name    string
+		request *proto.CheckLimitsAndShardRequest
+		// Instances contains the complete set of instances that should be
+		// mocked. For example, if a test case is expected to make RPC calls
+		// to one instance, then just one InstanceDesc is required.
+		instances     []ring.InstanceDesc
+		numPartitions int
+		// The following request and response slices contain the expected
+		// RPCs for each instance, and MUST be the same size as the instances
+		// slice (otherwise the test will panic).
+		getAssignedPartitionsResponses      []*proto.GetAssignedPartitionsResponse
+		getAssignedPartitionsResponseErrs   []error
+		expectedCheckLimitsAndShardRequests []*proto.CheckLimitsAndShardRequest
+		checkLimitsAndShardResponses        []*proto.CheckLimitsAndShardResponse
+		checkLimitsAndShardResponseErrs     []error
+		// The results are sorted by StreamHash before asserting against the
+		// expected results.
+		expected    *proto.CheckLimitsAndShardResponse
+		expectedErr string
+	}{{
+		// Sanity check: a single zone that answers with a real decision is
+		// not retried, and its result is returned as-is.
+		name: "one stream, one zone, answered",
+		request: &proto.CheckLimitsAndShardRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1, // 0x1 is assigned to partition 0.
+			}},
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}},
+		numPartitions: 1,
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil},
+		expectedCheckLimitsAndShardRequests: []*proto.CheckLimitsAndShardRequest{{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+		}},
+		checkLimitsAndShardResponses: []*proto.CheckLimitsAndShardResponse{{
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     2,
+			}},
+		}},
+		checkLimitsAndShardResponseErrs: []error{nil},
+		expected: &proto.CheckLimitsAndShardResponse{
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     2,
+			}},
+		},
+	}, {
+		// Regression test: when zone a answers a stream with an explicit
+		// ReasonNotOwned result (e.g. because of a concurrent rebalance
+		// during a rolling restart), that is not a decision about the
+		// stream. The stream must be retried against zone b, and the final
+		// response must carry zone b's real decision rather than the
+		// ReasonNotOwned placeholder from zone a.
+		name: "two zones, zone a reports not owned, zone b answers",
+		request: &proto.CheckLimitsAndShardRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1, // 0x1 is assigned to partition 0.
+			}},
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions: 1,
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+		}, {
+			AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedCheckLimitsAndShardRequests: []*proto.CheckLimitsAndShardRequest{{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+		}, {
+			// zone b should receive the same request as zone a, since the
+			// stream was not actually answered by zone a.
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+		}},
+		checkLimitsAndShardResponses: []*proto.CheckLimitsAndShardResponse{{
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     1,
+				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
+			}},
+		}, {
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     3,
+			}},
+		}},
+		checkLimitsAndShardResponseErrs: []error{nil, nil},
+		expected: &proto.CheckLimitsAndShardResponse{
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     3,
+			}},
+		},
+	}, {
+		// When every zone reports ReasonNotOwned, the stream remains
+		// genuinely unanswered. CheckLimitsAndShard does not synthesize a
+		// result for unanswered streams (that is the frontend's job), so
+		// the final response must have no result at all for it.
+		name: "two zones, both report not owned",
+		request: &proto.CheckLimitsAndShardRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1, // 0x1 is assigned to partition 0.
+			}},
+		},
+		instances: []ring.InstanceDesc{{
+			Addr: "instance-a-0",
+			Zone: "a",
+		}, {
+			Addr: "instance-b-0",
+			Zone: "b",
+		}},
+		numPartitions: 1,
+		getAssignedPartitionsResponses: []*proto.GetAssignedPartitionsResponse{{
+			AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+		}, {
+			AssignedPartitions: map[int32]int64{0: time.Now().UnixNano()},
+		}},
+		getAssignedPartitionsResponseErrs: []error{nil, nil},
+		expectedCheckLimitsAndShardRequests: []*proto.CheckLimitsAndShardRequest{{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+		}, {
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}},
+		}},
+		checkLimitsAndShardResponses: []*proto.CheckLimitsAndShardResponse{{
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     1,
+				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
+			}},
+		}, {
+			Results: []*proto.StreamShardResult{{
+				StreamHash: 0x1,
+				Shards:     1,
+				Stats:      &proto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
+			}},
+		}},
+		checkLimitsAndShardResponseErrs: []error{nil, nil},
+		expected:                        &proto.CheckLimitsAndShardResponse{},
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Set up the mock clients, one for each set of mock RPC responses.
+			mockClients := make([]*mockLimitsProtoClient, len(test.instances))
+			for i := 0; i < len(test.instances); i++ {
+				expectedNumAssignedPartitionsRequests := 0
+				if test.getAssignedPartitionsResponses[i] != nil {
+					expectedNumAssignedPartitionsRequests = 1
+				}
+				expectedNumCheckLimitsAndShardRequests := 0
+				if test.expectedCheckLimitsAndShardRequests[i] != nil {
+					expectedNumCheckLimitsAndShardRequests = 1
+				}
+				mockClients[i] = &mockLimitsProtoClient{
+					t:                                      t,
+					getAssignedPartitionsResponse:          test.getAssignedPartitionsResponses[i],
+					getAssignedPartitionsResponseErr:       test.getAssignedPartitionsResponseErrs[i],
+					expectedCheckLimitsAndShardRequest:     test.expectedCheckLimitsAndShardRequests[i],
+					checkLimitsAndShardResponse:            test.checkLimitsAndShardResponses[i],
+					checkLimitsAndShardResponseErr:         test.checkLimitsAndShardResponseErrs[i],
+					expectedNumAssignedPartitionsRequests:  expectedNumAssignedPartitionsRequests,
+					expectedNumCheckLimitsAndShardRequests: expectedNumCheckLimitsAndShardRequests,
+				}
+				t.Cleanup(mockClients[i].Finished)
+			}
+			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
+			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+			r := newRingLimitsClient(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger(), prometheus.NewRegistry())
+
+			// Set a maximum upper bound on the test execution time.
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			actual, err := r.CheckLimitsAndShard(ctx, test.request)
+			if test.expectedErr != "" {
+				require.EqualError(t, err, test.expectedErr)
+				require.Nil(t, actual)
+			} else {
+				require.NoError(t, err)
+				slices.SortFunc(actual.Results, func(a, b *proto.StreamShardResult) int {
+					if a.StreamHash < b.StreamHash {
+						return -1
+					} else if a.StreamHash == b.StreamHash {
+						return 0
+					} else { //nolint:revive
+						return 1
+					}
+				})
+				require.Equal(t, test.expected, actual)
+			}
+		})
+	}
+}
+
 func TestRingLimitsClient_GetZoneAwarePartitionConsumers(t *testing.T) {
 	tests := []struct {
 		name                              string
