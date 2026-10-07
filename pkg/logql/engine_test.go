@@ -714,7 +714,7 @@ func TestHashingStability(t *testing.T) {
 		}
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 		return buf.String()
 	}
 

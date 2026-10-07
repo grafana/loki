@@ -322,7 +322,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data, err)
 	}
 
 	return logqlmodel.Result{

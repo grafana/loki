@@ -82,7 +82,7 @@ func recordQueryMetrics(data *queryData) {
 
 	switch data.queryType {
 	case queryTypeLog, queryTypeMetric:
-		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
+		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result, nil)
 	case queryTypeLabel:
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.QueryString(), data.status, *data.statistics)
 	case queryTypeSeries:
