@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -42,14 +43,15 @@ type Limits interface {
 }
 
 // TenantFilter is invoked by an IndexGateway instance and answers which
-// tenants from the given list of tenants are assigned to this instance.
+// tenants from the given list of tenants have their index in table assigned
+// to this instance.
 //
 // It is only relevant by an IndexGateway in the ring mode and if its result
 // does not contain a given tenant, that tenant will be ignored by this
-// IndexGateway during query readiness.
+// IndexGateway during query readiness of that table.
 //
-// It requires the same function signature as indexgateway.(*ShardingStrategy).FilterTenants
-type TenantFilter func([]string) ([]string, error)
+// It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
+type TenantFilter func(table string, tenants []string) ([]string, error)
 
 type TableManager interface {
 	Stop()
@@ -60,6 +62,10 @@ type TableManager interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
+	// EnsureQueryReadiness downloads the indexes that must be query ready and
+	// are missing. With Config.DelayQueryReadinessUntilPreload, its first call
+	// is the initial query readiness run.
+	EnsureQueryReadiness(ctx context.Context) error
 }
 
 type Config struct {
@@ -71,6 +77,17 @@ type Config struct {
 	// its files from object storage.
 	DownloadTimeout time.Duration
 	Limits          Limits
+	// QueryReadyOverrides changes the query readiness window per tenant for
+	// this process only.
+	QueryReadyOverrides QueryReadyOverrides
+	// DelayQueryReadinessUntilPreload moves the initial query readiness run out
+	// of NewTableManager to the first EnsureQueryReadiness call, which the
+	// caller must make. Query readiness itself is unchanged; it only starts
+	// later, and the periodic loop runs it only after that first call. The
+	// index gateway with per-index ownership needs this because its tenant
+	// filter can only tell which indexes it owns once it has joined the ring,
+	// which happens after the table manager is built.
+	DelayQueryReadinessUntilPreload bool
 }
 
 type tableManager struct {
@@ -89,6 +106,14 @@ type tableManager struct {
 	wg     sync.WaitGroup
 
 	tenantFilter TenantFilter
+
+	// queryReadinessMtx serializes query readiness runs.
+	queryReadinessMtx sync.Mutex
+	// queryReadinessStarted is set once query readiness may run in the
+	// periodic loop: at construction, or with
+	// cfg.DelayQueryReadinessUntilPreload on the first EnsureQueryReadiness
+	// call.
+	queryReadinessStarted atomic.Bool
 
 	// syncManager serializes periodic and on-demand index syncs and tracks their
 	// status (see TriggerSync/SyncStatus).
@@ -133,12 +158,14 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		return nil, err
 	}
 
-	// download the missing tables.
-	err = tm.ensureQueryReadiness(ctx)
-	if err != nil {
-		// call Stop to close open file references.
-		tm.Stop()
-		return nil, err
+	if !cfg.DelayQueryReadinessUntilPreload {
+		// download the missing tables.
+		err = tm.EnsureQueryReadiness(ctx)
+		if err != nil {
+			// call Stop to close open file references.
+			tm.Stop()
+			return nil, err
+		}
 	}
 
 	// Increment the WaitGroup counter here before starting the goroutine
@@ -164,7 +191,9 @@ func (tm *tableManager) loop() {
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
-			if err := tm.ensureQueryReadiness(tm.ctx); err != nil {
+			if !tm.queryReadinessStarted.Load() {
+				level.Debug(tm.logger).Log("msg", "skipping query readiness until the initial preload has run")
+			} else if err := tm.EnsureQueryReadiness(tm.ctx); err != nil {
 				level.Error(tm.logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
@@ -345,6 +374,15 @@ func (tm *tableManager) cleanupCache() error {
 	return nil
 }
 
+// EnsureQueryReadiness implements TableManager.
+func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
+	tm.queryReadinessStarted.Store(true)
+
+	tm.queryReadinessMtx.Lock()
+	defer tm.queryReadinessMtx.Unlock()
+	return tm.ensureQueryReadiness(ctx)
+}
+
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	start := time.Now()
@@ -375,6 +413,8 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 			}
 		}
 	}
+	// a tenant's override may be larger than every limit.
+	largestQueryReadinessNum = max(largestQueryReadinessNum, tm.cfg.QueryReadyOverrides.maxNumDays())
 
 	// return early if no table has to be downloaded for query readiness
 	if largestQueryReadinessNum == 0 {
@@ -421,7 +461,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
-		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
+		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableName, tableNumber, usersWithIndex, queryReadinessNumByUserID)
 		if err != nil {
 			return err
 		}
@@ -464,13 +504,22 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
-func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
+func (tm *tableManager) findUsersInTableForQueryReadiness(tableName string, tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
+	overrides := &tm.cfg.QueryReadyOverrides
 
 	for _, userID := range usersWithIndexInTable {
-		// use the query readiness config for the user if it exists or use the default config
-		queryReadyNumDays, ok := queryReadinessNumByUserID[userID]
+		if !overrides.allowed(userID) {
+			continue
+		}
+
+		// use this process's override for the user if there is one, else the
+		// query readiness config for the user if it exists, else the default config
+		queryReadyNumDays, ok := overrides.numDays(userID)
+		if !ok {
+			queryReadyNumDays, ok = queryReadinessNumByUserID[userID]
+		}
 		if !ok {
 			queryReadyNumDays = tm.cfg.Limits.DefaultLimits().QueryReadyIndexNumDays
 		}
@@ -484,7 +533,7 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 	}
 	if tm.tenantFilter != nil {
-		return tm.tenantFilter(usersToBeQueryReadyFor)
+		return tm.tenantFilter(tableName, usersToBeQueryReadyFor)
 	}
 	return usersToBeQueryReadyFor, nil
 }
