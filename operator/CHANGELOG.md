@@ -1,5 +1,42 @@
 ## Main
 
+## [0.12.0](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.12.0) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** Make schemas field required in storage spec ([#24716](https://github.com/grafana/loki/issues/24716))
+
+### Features
+
+* **operator:** Add CPU and memory utilization ratio telemetry recording rules ([#23379](https://github.com/grafana/loki/issues/23379)) ([4cc1c43](https://github.com/grafana/loki/commit/4cc1c43ebcce6ddb9daa9c2790def321aa292118))
+* **operator:** Add support for full TLS compliance for OCP 5.0 ([#24216](https://github.com/grafana/loki/issues/24216)) ([8ce415a](https://github.com/grafana/loki/commit/8ce415aed5014313ea1b735ac38ec8410c522664))
+* **operator:** Allow removal of expired schemas based on retention period ([#24456](https://github.com/grafana/loki/issues/24456)) ([16446f8](https://github.com/grafana/loki/commit/16446f87a3210d8db1836017b42e4a539e51403a))
+* **operator:** Enable flush_on_shutdown and increase ingester terminationGracePeriodSeconds ([#24325](https://github.com/grafana/loki/issues/24325)) ([90c3797](https://github.com/grafana/loki/commit/90c3797d8dfa463d0d6d7520e4f8d0d677a2467a))
+* **operator:** Make schemas field required in storage spec ([#24716](https://github.com/grafana/loki/issues/24716)) ([071148c](https://github.com/grafana/loki/commit/071148c19bc6051c6b2a7ec0027b54f893ea3275))
+* **operator:** Update Loki operand to 3.7.7 ([#24448](https://github.com/grafana/loki/issues/24448)) ([04417f4](https://github.com/grafana/loki/commit/04417f4851c5bf0bf826130242f2e083be516de9))
+* **operator:** Update Loki operand to 3.7.8 ([#24743](https://github.com/grafana/loki/issues/24743)) ([f1f1b23](https://github.com/grafana/loki/commit/f1f1b23ee27717f2f753abab323086a4eb524bd4))
+
+
+### Bug Fixes
+
+* **operator:** Align built-in certificate rotation defaults with OpenShift cert alert threshold ([#24106](https://github.com/grafana/loki/issues/24106)) ([32d3196](https://github.com/grafana/loki/commit/32d3196e508634630ab41a156de530231cce3480))
+* **operator:** Downgrade golangci-lint to Go 1.26 ([#24840](https://github.com/grafana/loki/issues/24840)) ([7ba6f55](https://github.com/grafana/loki/commit/7ba6f556340ded0e1d1f44af9816b3e494b1e6fa))
+* **operator:** Fix Go module and golangci-lint configuration ([#24346](https://github.com/grafana/loki/issues/24346)) ([101e8c4](https://github.com/grafana/loki/commit/101e8c4fece33f496e086f6369d738980aeba014))
+* **operator:** Migrate golangci-lint to use go tool instead of bingo ([#24823](https://github.com/grafana/loki/issues/24823)) ([aa902b4](https://github.com/grafana/loki/commit/aa902b4bd044c8a1b395ab0f9aa1590a3b668621))
+* **operator:** Set ingester terminationGracePeriodSeconds to 300s ([#24324](https://github.com/grafana/loki/issues/24324)) ([c0e79ac](https://github.com/grafana/loki/commit/c0e79ac4191f6171d16abdf779a5456d2b49e6dd))
+* **operator:** Update golangci-lint and add note for formatting conflict ([#24537](https://github.com/grafana/loki/issues/24537)) ([97d4cc7](https://github.com/grafana/loki/commit/97d4cc7f3f0c05639f1823004cc5a6e351149f72))
+* **operator:** Use explicit command for passthrough-gateway ([#24854](https://github.com/grafana/loki/issues/24854)) ([c376aea](https://github.com/grafana/loki/commit/c376aea05c6556c0a8c8eae08f6fd0fec72b3b1f))
+* **operator:** Validate passthrough gateway CA exists ([#23800](https://github.com/grafana/loki/issues/23800)) ([4e3fb38](https://github.com/grafana/loki/commit/4e3fb3853420f9b4794e8697f70e40ebc775959d))
+* **security/HIGH/operator:** Update module google.golang.org/grpc to v1.83.1 [SECURITY] (main) ([#24326](https://github.com/grafana/loki/issues/24326)) ([e9831ee](https://github.com/grafana/loki/commit/e9831eedac3f76a4eaee7c2929c07db520e7baee))
+* **security/HIGH/operator:** Update module google.golang.org/grpc to v1.83.2 [SECURITY] (main) ([#24427](https://github.com/grafana/loki/issues/24427)) ([89c21be](https://github.com/grafana/loki/commit/89c21becce99c9c4ca3da18beefe57599b4fb8bd))
+* **security/MEDIUM/operator/api/loki:** Update module golang.org/x/net to v0.55.0 [SECURITY] (main) ([#24597](https://github.com/grafana/loki/issues/24597)) ([c19e9bb](https://github.com/grafana/loki/commit/c19e9bba94e537e443683ef88dc19df4ca7f386f))
+* **security/UNKNOWN/operator/api/loki:** Update module golang.org/x/net to v0.56.0 [SECURITY] (main) ([#24862](https://github.com/grafana/loki/issues/24862)) ([f63d38a](https://github.com/grafana/loki/commit/f63d38a712f2dbb5086a2702f107f138aaf2af73))
+* **security/UNKNOWN/operator/api/loki:** Update module golang.org/x/text to v0.39.0 [SECURITY] (main) ([#24863](https://github.com/grafana/loki/issues/24863)) ([db962a4](https://github.com/grafana/loki/commit/db962a4f2baf6e3f619a068cc51f642e906c4c0e))
+* **security/UNKNOWN/operator:** Update module go.etcd.io/etcd/client/pkg/v3 to v3.6.14 [SECURITY] (main) ([#24059](https://github.com/grafana/loki/issues/24059)) ([a912e03](https://github.com/grafana/loki/commit/a912e03797de6827ed83c249e84f3d41c46cbcec))
+* **security/UNKNOWN/operator:** Update module go.etcd.io/etcd/client/pkg/v3 to v3.7.1 [SECURITY] (main) ([#24640](https://github.com/grafana/loki/issues/24640)) ([9211272](https://github.com/grafana/loki/commit/9211272117a8f69b2c3c5edf68f7bab5d76fa509))
+* **security/UNKNOWN/operator:** Update module golang.org/x/crypto to v0.56.0 [SECURITY] (main) ([#24334](https://github.com/grafana/loki/issues/24334)) ([185e3ae](https://github.com/grafana/loki/commit/185e3aea0ece2810dba04591b01575dd1263b005))
+
 ## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
 
 
