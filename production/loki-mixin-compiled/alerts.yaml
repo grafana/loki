@@ -76,3 +76,13 @@ groups:
           for: 1h
           labels:
             severity: critical
+        - alert: LokiUsingDeprecatedBoltDBStorage
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} is using the deprecated BoltDB storage backend. BoltDB has been deprecated and will be removed in a future release. Please migrate to TSDB (schema v13). See https://grafana.com/docs/loki/latest/operations/storage/schema/ for migration instructions.
+            summary: Loki is using deprecated BoltDB storage.
+          expr: |
+            count(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 0
+          for: 5m
+          labels:
+            severity: warning

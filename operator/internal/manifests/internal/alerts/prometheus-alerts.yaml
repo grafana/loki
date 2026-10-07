@@ -212,3 +212,19 @@ groups:
     for: 15m
     labels:
       severity: warning
+  - alert: LokistackDeprecatedBoltDBSchema
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using a deprecated BoltDB schema ({{ $labels.schema_version }}).
+        BoltDB storage schemas (v11 and v12) are deprecated and will be removed in a future release. Please migrate to schema v13 (TSDB).
+        Migration steps: https://grafana.com/docs/loki/latest/operations/storage/schema/
+      summary: "LokiStack is using deprecated BoltDB storage schema that must be migrated to v13."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Deprecated-BoltDB-Schema"
+    expr: |
+      sum (
+        lokistack_info{schema_version=~"v11|v12"}
+      ) by (stack_namespace, stack_name, schema_version)
+      > 0
+    for: 5m
+    labels:
+      severity: warning
