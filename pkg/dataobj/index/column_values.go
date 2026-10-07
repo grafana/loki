@@ -3,6 +3,8 @@ package index
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -71,7 +73,10 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 }
 
 func (c *columnValuesCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
-	for columnName := range c.columnIndexes {
+	// Append in sorted column order, because map order is random. The append
+	// order decides where AppendColumnIndex cuts pointers sections, so random
+	// order gives different index bytes on each build.
+	for _, columnName := range slices.Sorted(maps.Keys(c.columnIndexes)) {
 		bloomBytes, err := calcCtx.builder.BloomBytes(
 			calcCtx.objectPath, calcCtx.sectionIdx, columnName,
 		)
