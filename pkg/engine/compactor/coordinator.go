@@ -57,7 +57,7 @@ func newCoordinator(
 	reg prometheus.Registerer,
 	limits Limits,
 ) (*coordinator, error) {
-	logMergePlanningStrategy, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio)
+	logMergePlanningStrategy, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio, cfg.LogMaxRunsPerTask)
 	if err != nil {
 		return nil, fmt.Errorf("log merge planning strategy: %w", err)
 	}
@@ -233,12 +233,12 @@ func (c *coordinator) compactTenantLogs(
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	if v2.IsConvergedWithInclusiveOverlap(sections, compareLogSortPrefix) ||
 		v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
-		!c.logMergePlanningStrategy.NeedsCompaction(runs, c.cfg.LogMaxRunsPerTask) {
+		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
 
-	tasks := c.logMergePlanningStrategy.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+	tasks := c.logMergePlanningStrategy.Plan(runs, tenant, sortSchema)
 	if len(tasks) == 0 {
 		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
 	}

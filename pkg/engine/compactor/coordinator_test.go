@@ -172,16 +172,17 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	if limits == nil {
 		limits = newFakeLimits() // enables nothing by default
 	}
+	cfg := Config{
+		Enabled:              true,
+		PollingInterval:      5 * time.Minute,
+		MaxRunsPerTask:       2,
+		LogMaxRunsPerTask:    2,
+		LogMinCompactionSize: 1,
+		PlanVersion:          1,
+		Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
+	}
 	return &coordinator{
-		cfg: Config{
-			Enabled:              true,
-			PollingInterval:      5 * time.Minute,
-			MaxRunsPerTask:       2,
-			LogMaxRunsPerTask:    2,
-			LogMinCompactionSize: 1,
-			PlanVersion:          1,
-			Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
-		},
+		cfg:             cfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
 		indexDispatcher: &planDispatcher{runPlan: runner.run, limit: 4},
@@ -192,13 +193,13 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 		limits:          limits,
 
-		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t),
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, cfg.LogMaxRunsPerTask),
 	}
 }
 
-func newTestLogMergePlanningStrategy(t *testing.T) *v2.SizeLeveledStrategy {
+func newTestLogMergePlanningStrategy(t *testing.T, k int) *v2.SizeLeveledStrategy {
 	t.Helper()
-	s, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio)
+	s, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio, k)
 	require.NoError(t, err)
 	return s
 }
@@ -782,25 +783,25 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-		stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+		got, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
 			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
 		})
 		require.NoError(t, err)
-		return stats, runner, replacer
+		return got, runner, replacer
 	}
 
 	t.Run("skips overlapping runs when no size level holds k runs", func(t *testing.T) {
-		stats, runner, replacer := compact(t, []stats.Stat{stat("logs/small", 100), stat("logs/large", 20<<30)})
-		require.Equal(t, compactionStats{}, stats)
+		got, runner, replacer := compact(t, []stats.Stat{stat("logs/small", 100), stat("logs/large", 20<<30)})
+		require.Equal(t, compactionStats{}, got)
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
 	})
 
 	t.Run("rewrites every run in per-level tasks when one size level holds k runs", func(t *testing.T) {
-		stats, runner, replacer := compact(t, []stats.Stat{
+		got, runner, replacer := compact(t, []stats.Stat{
 			stat("logs/small-a", 100), stat("logs/small-b", 100), stat("logs/large", 20<<30),
 		})
-		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, got)
 
 		var taskObjects [][]string
 		for _, call := range runner.snapshot() {

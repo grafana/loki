@@ -550,7 +550,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		clock:   func() time.Time { return now },
 		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
 
-		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t),
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
 	}
 }
 
