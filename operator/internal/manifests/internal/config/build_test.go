@@ -111,12 +111,12 @@ func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		DiscoverLogLevels:     true,
 		HTTPTimeouts: HTTPTimeoutConfig{
@@ -280,12 +280,12 @@ func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
+		Shippers: []string{"tsdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -366,12 +366,12 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
+		Shippers: []string{"tsdb"},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.Error(t, err)
@@ -501,12 +501,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithHeaderAuthorizati
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -643,12 +643,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithBasicAuthorizatio
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -802,12 +802,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithRelabelConfigs(t 
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -956,12 +956,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithRetention(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
+		Shippers: []string{"tsdb"},
 		Retention: RetentionOptions{
 			Enabled:           true,
 			DeleteWorkerCount: 50,
@@ -1135,12 +1135,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertRelabelConfi
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1259,12 +1259,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1484,12 +1484,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1579,12 +1579,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1675,12 +1675,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec_EnableIPv6(t *testing.T) 
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1770,12 +1770,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithReplicationSpec(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1900,12 +1900,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSEKMS(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
+		Shippers: []string{"tsdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -2029,12 +2029,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSES3(t *testing.T) {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers: []string{"boltdb"},
+		Shippers: []string{"tsdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -2121,12 +2121,12 @@ func TestBuild_ConfigAndRuntimeConfig_WithManualPerStreamRateLimits(t *testing.T
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2213,12 +2213,12 @@ func defaultOptions() Options {
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2239,66 +2239,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 		expStructuredMetadata   string
 	}{
 		{
-			name: "default_config_v11_schema",
-			schemaConfig: []lokiv1.ObjectStorageSchema{
-				{
-					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
-					EffectiveDate: "2020-10-01",
-				},
-			},
-			shippers: []string{"boltdb"},
-			expSchemaConfig: `
-  configs:
-    - from: "2020-10-01"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v11
-      store: boltdb-shipper`,
-			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
-			expStructuredMetadata: `
-  allow_structured_metadata: false`,
-		},
-		{
-			name: "v12_schema",
-			schemaConfig: []lokiv1.ObjectStorageSchema{
-				{
-					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV12,
-					EffectiveDate: "2020-02-05",
-				},
-			},
-			shippers: []string{"boltdb"},
-			expSchemaConfig: `
-  configs:
-    - from: "2020-02-05"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v12
-      store: boltdb-shipper`,
-			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
-			expStructuredMetadata: `
-  allow_structured_metadata: false`,
-		},
-		{
 			name: "v13_schema",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
 				{
@@ -2318,67 +2258,6 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
       schema: v13
       store: tsdb`,
 			expStorageConfig: `
-  tsdb_shipper:
-    active_index_directory: /tmp/loki/tsdb-index
-    cache_location: /tmp/loki/tsdb-cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
-			expStructuredMetadata: `
-  allow_structured_metadata: true`,
-		},
-		{
-			name: "multiple_schema",
-			schemaConfig: []lokiv1.ObjectStorageSchema{
-				{
-					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
-					EffectiveDate: "2020-01-01",
-				},
-				{
-					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV12,
-					EffectiveDate: "2021-01-01",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-01-01",
-				},
-			},
-			shippers:                []string{"boltdb", "tsdb"},
-			allowStructuredMetadata: true,
-			expSchemaConfig: `
-  configs:
-    - from: "2020-01-01"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v11
-      store: boltdb-shipper
-    - from: "2021-01-01"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v12
-      store: boltdb-shipper
-    - from: "2024-01-01"
-      index:
-        period: 24h
-        prefix: index_
-      object_store: s3
-      schema: v13
-      store: tsdb`,
-			expStorageConfig: `
-  boltdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    cache_ttl: 24h
-    resync_interval: 5m
-    index_gateway_client:
-      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
@@ -2419,7 +2298,7 @@ func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
 				//nolint:staticcheck
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-01",
 			},
 		},
@@ -2574,12 +2453,12 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerClien
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
 					//nolint:staticcheck
-					Version:       lokiv1.ObjectStorageSchemaV11,
+					Version:       lokiv1.ObjectStorageSchemaV13,
 					EffectiveDate: "2020-10-01",
 				},
 			},
 		},
-		Shippers:              []string{"boltdb"},
+		Shippers:              []string{"tsdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
