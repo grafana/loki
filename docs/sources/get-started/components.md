@@ -372,7 +372,7 @@ When you enable Kafka-based ingestion:
 
 Because Kafka durably stores records until an ingester consumes them, ingesters can restart or roll out without losing or blocking writes: on restart, an ingester resumes consuming from the last offset it committed to Kafka.
 
-Enabling Kafka-based ingestion changes only the write path. The read path, including how queriers fetch in-memory data from ingesters, is unchanged.
+Enabling Kafka-based ingestion primarily changes the write path. The read path still works the same way, but the querier must be configured to look up ingesters using the partition ring instead of the classic hash ring. For details, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#read-path).
 
 For configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
 

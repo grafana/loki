@@ -156,7 +156,7 @@ Loki can optionally use Apache Kafka, or a Kafka-protocol-compatible system, as 
 
 Each ingester consumes from exactly one Kafka partition, determined by its position in the partition ring. This decouples ingestion durability from ingester availability, because Kafka buffers writes while an ingester is restarting or unavailable.
 
-Enabling Kafka-based ingestion does not change the read path. For full details, including configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
+Enabling Kafka-based ingestion primarily changes the write path. The read path still works the same way, but the querier must be configured to look up ingesters using the partition ring instead of the classic hash ring. For full details, including configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
 
 ## Read path
 
