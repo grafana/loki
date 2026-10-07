@@ -1,7 +1,9 @@
 package compactionv2
 
 import (
+	"fmt"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,5 +159,115 @@ func TestSizeLeveledStrategyPlan(t *testing.T) {
 			require.Equal(t, "tenant", task.Tenant)
 			require.Equal(t, []string{"service"}, task.SortSchema)
 		}
+	})
+}
+
+// compactUntilConverged replays compaction cycles on runs. Each task becomes
+// one run with the combined size of its input runs. It stops when
+// NeedsCompaction is false or after maxCycles, and reports whether it
+// converged.
+func compactUntilConverged(t *testing.T, s *SizeLeveledStrategy, runs []Run, k, maxCycles int) (cycles int, final []Run, converged bool) {
+	t.Helper()
+	sizeByPath := make(map[string]uint64, len(runs))
+	for _, run := range runs {
+		sizeByPath[run.Sections()[0].ObjectPath] = run.Size()
+	}
+
+	for cycles = 0; cycles < maxCycles; cycles++ {
+		if !s.NeedsCompaction(runs, k) {
+			return cycles, runs, true
+		}
+		var next []Run
+		for i, task := range s.Plan(runs, "tenant", k, nil) {
+			var size uint64
+			for _, run := range task.Runs {
+				size += sizeByPath[run.Sections[0].ObjectPath]
+			}
+			merged := namedRun{fmt.Sprintf("cycle-%d-task-%d", cycles, i), size}
+			sizeByPath[merged.path] = size
+			next = append(next, merged)
+		}
+		require.Less(t, len(next), len(runs), "cycle %d must reduce the number of runs", cycles)
+		runs = next
+	}
+	return cycles, runs, !s.NeedsCompaction(runs, k)
+}
+
+func totalSize(runs []Run) uint64 {
+	var total uint64
+	for _, run := range runs {
+		total += run.Size()
+	}
+	return total
+}
+
+func repeatRuns(prefix string, n int, size uint64) []Run {
+	runs := make([]Run, n)
+	for i := range runs {
+		runs[i] = namedRun{fmt.Sprintf("%s-%d", prefix, i), size}
+	}
+	return runs
+}
+
+func TestSizeLeveledStrategyConvergence(t *testing.T) {
+	s, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio)
+	require.NoError(t, err)
+	const maxCycles = 100
+
+	tests := []struct {
+		name string
+		runs []Run
+		k    int
+	}{
+		{
+			name: "converges when many fresh runs fill level 0",
+			runs: repeatRuns("fresh", 50, 6*gib),
+			k:    8,
+		},
+		{
+			name: "converges when lone runs in other levels are rewritten alongside a full level",
+			runs: slices.Concat(
+				repeatRuns("fresh", 20, 6*gib),
+				repeatRuns("l1", 9, 20*gib),
+				[]Run{namedRun{"l1-lone", 48 * gib}, namedRun{"l2-lone", 384 * gib}},
+			),
+			k: 8,
+		},
+		{
+			name: "converges with k of 2 and runs of mixed sizes",
+			runs: slices.Concat(
+				repeatRuns("tiny", 7, 100),
+				repeatRuns("fresh", 5, 6*gib),
+				repeatRuns("big", 3, 200*gib),
+			),
+			k: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cycles, final, converged := compactUntilConverged(t, s, test.runs, test.k, maxCycles)
+			require.True(t, converged, "compaction must stop within %d cycles", maxCycles)
+			require.Positive(t, cycles)
+			require.Equal(t, totalSize(test.runs), totalSize(final), "compaction must not drop data")
+			for level, runs := range s.GroupByLevels(final) {
+				require.Less(t, len(runs), test.k, "level %d must hold fewer than k runs", level)
+			}
+		})
+	}
+
+	t.Run("does not compact when each level holds one run", func(t *testing.T) {
+		runs := []Run{namedRun{"l0", 6 * gib}, namedRun{"l1", 48 * gib}, namedRun{"l2", 384 * gib}}
+		cycles, final, converged := compactUntilConverged(t, s, runs, 2, maxCycles)
+		require.True(t, converged)
+		require.Zero(t, cycles)
+		require.Equal(t, runs, final)
+	})
+
+	t.Run("never stops when k is 1 because a lone run always needs compaction", func(t *testing.T) {
+		runs := []Run{namedRun{"lone", 6 * gib}}
+		require.True(t, s.NeedsCompaction(runs, 1))
+		tasks := s.Plan(runs, "tenant", 1, nil)
+		require.Len(t, tasks, 1)
+		require.Len(t, tasks[0].Runs, 1, "the rewrite leaves the window with the same single run")
 	})
 }
