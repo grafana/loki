@@ -78,7 +78,7 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 	if len(req.Streams) == 0 {
 		return &resp, nil
 	}
-	doRPCs := newRPCsFunc(r, log.With(r.logger, "rpc", "ExceedsLimits"), &resp.Results,
+	doFanout := newFanout(r, log.With(r.logger, "rpc", "ExceedsLimits"), &resp.Results,
 		func(tenant string, streams []*proto.StreamMetadata) *proto.ExceedsLimitsRequest {
 			return &proto.ExceedsLimitsRequest{Tenant: tenant, Streams: streams}
 		},
@@ -89,8 +89,10 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 			}
 			return resp.Results, nil
 		},
+		func(res *proto.ExceedsLimitsResult) uint64 { return res.StreamHash },
+		func(*proto.ExceedsLimitsResult) bool { return true },
 	)
-	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doRPCs)
+	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doFanout)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 	if len(req.Streams) == 0 {
 		return &resp, nil
 	}
-	doRPCs := newRPCsFunc(
+	doFanout := newFanout(
 		r, log.With(r.logger, "rpc", "CheckLimitsAndShard"), &resp.Results,
 		func(tenant string, streams []*proto.StreamMetadata) *proto.CheckLimitsAndShardRequest {
 			return &proto.CheckLimitsAndShardRequest{Tenant: tenant, Streams: streams}
@@ -127,36 +129,47 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 			}
 			return resp.Results, nil
 		},
+		func(res *proto.StreamShardResult) uint64 { return res.StreamHash },
+		// ReasonNotOwned means the instance that answered no longer (or does
+		// not yet) own the stream's partition, typically because of a
+		// concurrent Kafka consumer-group rebalance (e.g. during a rolling
+		// restart). That is not a decision about the stream, so it must not
+		// be treated as an answer: letting it through here would stop the
+		// stream from being retried against the next zone, and count it as
+		// failed even when a healthy zone was never tried.
+		func(res *proto.StreamShardResult) bool {
+			return res.GetStats().GetShardDecisionContext() != uint32(limits.ReasonNotOwned)
+		},
 	)
-	if _, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doRPCs); err != nil {
+	if _, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doFanout); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-// newRPCsFunc returns a doRPCsFunc that dispatches one RPC per instance
+// newFanout returns a [rpcFanoutFunc] that dispatches one RPC per instance
 // consuming a partition for the given streams, appending the results of all
 // instances in the zone to responses.
 //
-// A stream counts as answered once the instance consuming its partition
-// returns without an error, whether or not the response holds a result for
-// that stream. Such a stream is not retried against the remaining zones, so
-// callers must handle results that cover just a subset of the streams they
-// asked for.
-func newRPCsFunc[Req, Resp any](
+// Arguments:
+//
+//	r resolves the instances consuming the partitions for the requested zone and provides their gRPC clients.
+//	logger receives an error log entry for each instance whose client lookup or RPC call fails.
+//	responses accumulates the results that resultIsAnswer accepts as real answers, across every instance queried in the zone.
+//	newReq builds the RPC request for a tenant and the subset of streams routed to one instance.
+//	call issues the RPC against a single instance's client and returns its results.
+//	resultStreamHash extracts the stream hash that a single result belongs to.
+//	resultIsAnswer reports whether a result is a genuine decision rather than a non-decision, such as ReasonNotOwned, that must not block a retry against the next zone.
+func newFanout[Req, Resp any](
 	r *ringLimitsClient,
 	logger log.Logger,
 	responses *[]Resp,
 	newReq func(tenant string, streams []*proto.StreamMetadata) *Req,
 	call func(ctx context.Context, client proto.IngestLimitsClient, req *Req) ([]Resp, error),
-) doRPCsFunc {
-	return func(
-		ctx context.Context,
-		tenant string,
-		streams []*proto.StreamMetadata,
-		zone string,
-		consumers map[int32]string,
-	) ([]uint64, error) {
+	resultStreamHash func(res Resp) uint64,
+	resultIsAnswer func(res Resp) bool,
+) rpcFanoutFunc {
+	return func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, zone string, consumers map[int32]string) ([]uint64, error) {
 		errg, ctx := errgroup.WithContext(ctx)
 		instancesForStreams := r.instancesForStreams(streams, zone, consumers)
 		responseCh := make(chan []Resp, len(instancesForStreams))
@@ -183,22 +196,35 @@ func newRPCsFunc[Req, Resp any](
 		_ = errg.Wait()
 		close(responseCh)
 		close(answeredCh)
+		// A result that is not a real answer must not short-circuit the
+		// per-zone retry loop: drop it from responses (so it does not end up
+		// duplicated alongside a later, genuine answer) and from the answered
+		// set (so exhaustAllZones retries the stream against the next zone).
+		notAnswered := make(map[uint64]struct{})
 		for r := range responseCh {
-			*responses = append(*responses, r...)
+			for _, res := range r {
+				if resultIsAnswer(res) {
+					*responses = append(*responses, res)
+				} else {
+					notAnswered[resultStreamHash(res)] = struct{}{}
+				}
+			}
 		}
 		answered := make([]uint64, 0, len(streams))
 		for streamHash := range answeredCh {
-			answered = append(answered, streamHash)
+			if _, ok := notAnswered[streamHash]; !ok {
+				answered = append(answered, streamHash)
+			}
 		}
 		return answered, nil
 	}
 }
 
-type doRPCsFunc func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, zone string, consumers map[int32]string) ([]uint64, error)
+type rpcFanoutFunc func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, zone string, consumers map[int32]string) ([]uint64, error)
 
 // exhaustAllZones queries all zones, one at a time, until either all streams
 // have been answered or all zones have been exhausted.
-func (r *ringLimitsClient) exhaustAllZones(ctx context.Context, tenant string, streams []*proto.StreamMetadata, doRPCs doRPCsFunc) ([]*proto.StreamMetadata, error) {
+func (r *ringLimitsClient) exhaustAllZones(ctx context.Context, tenant string, streams []*proto.StreamMetadata, doFanout rpcFanoutFunc) ([]*proto.StreamMetadata, error) {
 	zonesIter, err := r.allZones(ctx)
 	if err != nil {
 		return nil, err
@@ -220,7 +246,7 @@ func (r *ringLimitsClient) exhaustAllZones(ctx context.Context, tenant string, s
 		if len(unanswered) == 0 {
 			break
 		}
-		answered, err := doRPCs(ctx, tenant, unanswered, zone, consumers)
+		answered, err := doFanout(ctx, tenant, unanswered, zone, consumers)
 		if err != nil {
 			continue
 		}
