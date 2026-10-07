@@ -41,4 +41,3 @@ func TestBuildSchemaConfig_AddSchema_NoStatuses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 }
-
