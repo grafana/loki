@@ -51,6 +51,8 @@ tests:
 
       - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Ready", status="false"}'
         values: '1+0x25'
+      - series: 'lokistack_status_condition{stack_name="boltdb-stack", stack_namespace="deprecated-ns", condition="Degraded", reason="InvalidObjectStorageSchema", status="true"}'
+        values: '1+0x25'
 
       - series: 'loki_ingester_chunks_flush_failures_total{namespace="my-ns", pod="ingester-0"}'
         values: '0+25x20'
@@ -188,3 +190,17 @@ tests:
                 25%. This requires immediate attention as data is
                 not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
                 still reachable. Current failure rate: 25% Threshold: 20%
+      - eval_time: 6m
+        alertname: LokistackDeprecatedBoltDBSchema
+        exp_alerts:
+          - exp_labels:
+              stack_namespace: deprecated-ns
+              stack_name: boltdb-stack
+              severity: warning
+            exp_annotations:
+              summary: "LokiStack is using deprecated BoltDB storage schema that must be migrated to v13."
+              description: |-
+                The LokiStack "boltdb-stack" in namespace "deprecated-ns" is using a deprecated BoltDB schema (v11 or v12).
+                BoltDB storage schemas are deprecated and will be removed in a future release. Please migrate to schema v13 (TSDB).
+                Migration steps: https://grafana.com/docs/loki/latest/operations/storage/schema/
+              runbook_url: "[[ .RunbookURL ]]#Lokistack-Deprecated-BoltDB-Schema"

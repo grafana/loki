@@ -117,6 +117,22 @@
               |||, 'cluster', $._config.per_cluster_label),
             },
           },
+          {
+            alert: 'LokiUsingDeprecatedBoltDBStorage',
+            expr: |||
+              count(loki_boltdb_shipper_compactor_running) by (%(group_by_cluster)s, namespace) > 0
+            ||| % $._config,
+            'for': '5m',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              summary: 'Loki is using deprecated BoltDB storage.',
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.namespace }} is using the deprecated BoltDB storage backend. BoltDB has been deprecated and will be removed in a future release. Please migrate to TSDB (schema v13). See https://grafana.com/docs/loki/latest/operations/storage/schema/ for migration instructions.
+              |||, 'cluster', $._config.per_cluster_label),
+            },
+          },
         ],
       },
     ],
