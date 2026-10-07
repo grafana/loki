@@ -41,6 +41,9 @@ type coordinator struct {
 	sleep   func(ctx context.Context, d time.Duration)
 	metrics *coordinatorMetrics
 	limits  Limits
+	// logMergePlanningStrategy decides when a log index needs compaction and
+	// groups its runs into merge tasks by size level.
+	logMergePlanningStrategy *v2.SizeLeveledStrategy
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -53,7 +56,11 @@ func newCoordinator(
 	metastoreWriter *metastore.TableOfContentsWriter,
 	reg prometheus.Registerer,
 	limits Limits,
-) *coordinator {
+) (*coordinator, error) {
+	logMergePlanningStrategy, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio, cfg.LogMaxRunsPerTask)
+	if err != nil {
+		return nil, fmt.Errorf("log merge planning strategy: %w", err)
+	}
 	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
 		return runPlan(ctx, logger, runner, opts, plan)
 	}
@@ -68,11 +75,12 @@ func newCoordinator(
 			timeout: cfg.ToCConsolidateTimeout,
 			dryRun:  cfg.DryRun,
 		},
-		clock:   time.Now,
-		sleep:   sleepUntil,
-		metrics: newCoordinatorMetrics(reg),
-		limits:  limits,
-	}
+		clock:                    time.Now,
+		sleep:                    sleepUntil,
+		metrics:                  newCoordinatorMetrics(reg),
+		limits:                   limits,
+		logMergePlanningStrategy: logMergePlanningStrategy,
+	}, nil
 }
 
 // sleepUntil blocks for d or returns early when ctx is cancelled. A
@@ -223,13 +231,13 @@ func (c *coordinator) compactTenantLogs(
 
 	// Begin k-way merge planning
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
-	if v2.IsConvergedWithInclusiveOverlap(sections, compareLogSortPrefix) ||
-		v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
+		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
 
-	tasks := planLogMergeTasks(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+	tasks := c.logMergePlanningStrategy.Plan(runs, tenant, sortSchema)
 	if len(tasks) == 0 {
 		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
 	}
@@ -263,24 +271,6 @@ func (c *coordinator) compactTenantLogs(
 		level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
-}
-
-// sizedLevelStrategy uses the default base and ratio, which are valid by
-// construction, so the constructor error cannot occur.
-var sizedLevelStrategy, _ = v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio)
-
-// planLogMergeTasks plans tasks per size level, so each task merges runs of a
-// similar size.
-//
-// Every run lands in a task, including a run that is alone in its level. The
-// caller replaces the whole source index with the task outputs, so a run left
-// out of all tasks would drop out of the index.
-func planLogMergeTasks(runs []v2.Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
-	var tasks []*compactionv2pb.TaskSpec
-	for _, lvl := range sizedLevelStrategy.GroupByLevels(runs) {
-		tasks = append(tasks, v2.Plan(lvl, tenant, k, sortSchema)...)
-	}
-	return tasks
 }
 
 func (c *coordinator) sortTenantLogObjects(

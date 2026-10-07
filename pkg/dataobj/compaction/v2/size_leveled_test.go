@@ -11,30 +11,40 @@ import (
 
 const gib uint64 = 1 << 30
 
-type sizedRun uint64
+type namedRun struct {
+	path string
+	size uint64
+}
 
-func (r sizedRun) Sections() []*compactionv2pb.SectionRef { return nil }
-func (r sizedRun) Size() uint64                           { return uint64(r) }
+func (r namedRun) Sections() []*compactionv2pb.SectionRef {
+	return []*compactionv2pb.SectionRef{{ObjectPath: r.path}}
+}
+func (r namedRun) Size() uint64 { return r.size }
 
 func TestNewSizeLeveledStrategy(t *testing.T) {
 	t.Run("returns an error when base is zero", func(t *testing.T) {
-		_, err := NewSizeLeveledStrategy(0, 8)
+		_, err := NewSizeLeveledStrategy(0, 8, 8)
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when ratio is below 2", func(t *testing.T) {
-		_, err := NewSizeLeveledStrategy(16*gib, 1)
+		_, err := NewSizeLeveledStrategy(16*gib, 1, 8)
 		require.Error(t, err)
 	})
 
-	t.Run("accepts the default base and ratio", func(t *testing.T) {
-		_, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio)
+	t.Run("returns an error when k is 1 because a single run would always need compaction", func(t *testing.T) {
+		_, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio, 1)
+		require.Error(t, err)
+	})
+
+	t.Run("accepts the default base and ratio with k of 2", func(t *testing.T) {
+		_, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio, 2)
 		require.NoError(t, err)
 	})
 }
 
 func TestSizeLeveledStrategyLevel(t *testing.T) {
-	s, err := NewSizeLeveledStrategy(16*gib, 8)
+	s, err := NewSizeLeveledStrategy(16*gib, 8, 8)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -52,38 +62,116 @@ func TestSizeLeveledStrategyLevel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.want, s.Level(test.size))
+			require.Equal(t, test.want, s.level(test.size))
 		})
 	}
 }
 
 func TestSizeLeveledStrategyGroupByLevels(t *testing.T) {
-	s, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio) // 16GB, 8x ratio
+	s, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio, 8)
 	require.NoError(t, err)
 
 	t.Run("returns no levels when there are no runs", func(t *testing.T) {
-		require.Empty(t, s.GroupByLevels(nil))
+		require.Empty(t, s.groupByLevels(nil))
 	})
 
 	t.Run("returns levels up to the highest level that holds a run", func(t *testing.T) {
-		levels := s.GroupByLevels([]Run{sizedRun(200 * gib)})
+		levels := s.groupByLevels([]Run{namedRun{"big", 200 * gib}})
 		require.Len(t, levels, 3)
 		require.Nil(t, levels[0])
 		require.Nil(t, levels[1])
-		require.Equal(t, []Run{sizedRun(200 * gib)}, levels[2])
+		require.Equal(t, []Run{namedRun{"big", 200 * gib}}, levels[2])
 	})
 
-	t.Run("places the output of merging by the DefaultSizeLevelRatio runs one level up", func(t *testing.T) {
+	t.Run("places a merge of ratio fresh runs one level above a fresh run", func(t *testing.T) {
 		const fresh = 6 * gib
-		levels := s.GroupByLevels([]Run{sizedRun(fresh), sizedRun(8 * fresh), sizedRun(64 * fresh)})
-		require.Equal(t, []Run{sizedRun(fresh)}, levels[0])
-		require.Equal(t, []Run{sizedRun(8 * fresh)}, levels[1])
-		require.Equal(t, []Run{sizedRun(64 * fresh)}, levels[2])
+		levels := s.groupByLevels([]Run{namedRun{"fresh", fresh}, namedRun{"fresh-x8", 8 * fresh}, namedRun{"fresh-x64", 64 * fresh}})
+		require.Equal(t, []Run{namedRun{"fresh", fresh}}, levels[0])
+		require.Equal(t, []Run{namedRun{"fresh-x8", 8 * fresh}}, levels[1])
+		require.Equal(t, []Run{namedRun{"fresh-x64", 64 * fresh}}, levels[2])
 	})
 
 	t.Run("keeps input order within a level", func(t *testing.T) {
-		levels := s.GroupByLevels([]Run{sizedRun(3 * gib), sizedRun(200 * gib), sizedRun(1 * gib)})
-		require.Equal(t, []Run{sizedRun(3 * gib), sizedRun(1 * gib)}, levels[0])
-		require.Equal(t, []Run{sizedRun(200 * gib)}, levels[2])
+		levels := s.groupByLevels([]Run{namedRun{"a", 3 * gib}, namedRun{"big", 200 * gib}, namedRun{"b", 1 * gib}})
+		require.Equal(t, []Run{namedRun{"a", 3 * gib}, namedRun{"b", 1 * gib}}, levels[0])
+		require.Equal(t, []Run{namedRun{"big", 200 * gib}}, levels[2])
+	})
+}
+
+func newStrategy(t *testing.T, k int) *SizeLeveledStrategy {
+	t.Helper()
+	s, err := NewSizeLeveledStrategy(DefaultSizeLevelBase, DefaultSizeLevelRatio, k)
+	require.NoError(t, err)
+	return s
+}
+
+func taskPaths(tasks []*compactionv2pb.TaskSpec) [][]string {
+	out := make([][]string, len(tasks))
+	for i, task := range tasks {
+		for _, run := range task.Runs {
+			out[i] = append(out[i], run.Sections[0].ObjectPath)
+		}
+	}
+	return out
+}
+
+func TestSizeLeveledStrategyNeedsCompaction(t *testing.T) {
+	t.Run("returns false when there are no runs", func(t *testing.T) {
+		require.False(t, newStrategy(t, 2).NeedsCompaction(nil))
+	})
+
+	t.Run("returns false when each level holds one run", func(t *testing.T) {
+		runs := []Run{namedRun{"l0", 6 * gib}, namedRun{"l1", 48 * gib}, namedRun{"l2", 384 * gib}}
+		require.False(t, newStrategy(t, 2).NeedsCompaction(runs))
+	})
+
+	t.Run("returns false when k is larger than the number of runs", func(t *testing.T) {
+		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}}
+		require.False(t, newStrategy(t, 8).NeedsCompaction(runs))
+	})
+
+	t.Run("returns false when the total reaches k but no level does", func(t *testing.T) {
+		runs := []Run{
+			namedRun{"l0-a", 1 * gib}, namedRun{"l0-b", 1 * gib},
+			namedRun{"l1-a", 20 * gib}, namedRun{"l1-b", 20 * gib},
+		}
+		require.False(t, newStrategy(t, 3).NeedsCompaction(runs))
+	})
+
+	t.Run("returns true when one level holds exactly k runs", func(t *testing.T) {
+		runs := []Run{
+			namedRun{"l0", 1 * gib},
+			namedRun{"l1-a", 20 * gib}, namedRun{"l1-b", 20 * gib}, namedRun{"l1-c", 20 * gib},
+		}
+		require.True(t, newStrategy(t, 3).NeedsCompaction(runs))
+	})
+}
+
+func TestSizeLeveledStrategyPlan(t *testing.T) {
+	t.Run("returns no tasks when there are no runs", func(t *testing.T) {
+		require.Empty(t, newStrategy(t, 2).Plan(nil, "tenant", nil))
+	})
+
+	t.Run("splits a level into tasks of at most k runs", func(t *testing.T) {
+		runs := []Run{namedRun{"a", 1 * gib}, namedRun{"b", 1 * gib}, namedRun{"c", 1 * gib}}
+		require.Equal(t, [][]string{{"a", "b"}, {"c"}}, taskPaths(newStrategy(t, 2).Plan(runs, "tenant", nil)))
+	})
+
+	t.Run("does not mix runs from different levels in one task", func(t *testing.T) {
+		runs := []Run{namedRun{"l0-a", 1 * gib}, namedRun{"l2", 200 * gib}, namedRun{"l0-b", 2 * gib}}
+		require.Equal(t, [][]string{{"l0-a", "l0-b"}, {"l2"}}, taskPaths(newStrategy(t, 8).Plan(runs, "tenant", nil)))
+	})
+
+	t.Run("puts a run of exactly base size in level 1 and not with level 0 runs", func(t *testing.T) {
+		runs := []Run{namedRun{"below", DefaultSizeLevelBase - 1}, namedRun{"at", DefaultSizeLevelBase}, namedRun{"small", 1 * gib}}
+		require.Equal(t, [][]string{{"below", "small"}, {"at"}}, taskPaths(newStrategy(t, 8).Plan(runs, "tenant", nil)))
+	})
+
+	t.Run("sets the tenant and sort schema on every task", func(t *testing.T) {
+		runs := []Run{namedRun{"l0", 1 * gib}, namedRun{"l2", 200 * gib}}
+		for _, task := range newStrategy(t, 8).Plan(runs, "tenant", []string{"service"}) {
+			require.Equal(t, "tenant", task.Tenant)
+			require.Equal(t, []string{"service"}, task.SortSchema)
+		}
 	})
 }

@@ -181,7 +181,7 @@ func TestDoSortObject(t *testing.T) {
 			SourceObjectPath: sourcePath,
 			SortSchema:       targetSchema,
 		})
-		require.ErrorContains(t, err, "holds 2 tenants")
+		require.ErrorIs(t, err, dataobj.ErrNotSingleTenant)
 		require.Empty(t, indexBucket.Objects(), "a rejected source must produce no index")
 		require.Len(t, dataBucket.Objects(), 1, "a rejected source must produce no sorted object")
 	})

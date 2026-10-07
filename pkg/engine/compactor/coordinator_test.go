@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -171,16 +172,17 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	if limits == nil {
 		limits = newFakeLimits() // enables nothing by default
 	}
+	cfg := Config{
+		Enabled:              true,
+		PollingInterval:      5 * time.Minute,
+		MaxRunsPerTask:       2,
+		LogMaxRunsPerTask:    2,
+		LogMinCompactionSize: 1,
+		PlanVersion:          1,
+		Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
+	}
 	return &coordinator{
-		cfg: Config{
-			Enabled:              true,
-			PollingInterval:      5 * time.Minute,
-			MaxRunsPerTask:       2,
-			LogMaxRunsPerTask:    2,
-			LogMinCompactionSize: 1,
-			PlanVersion:          1,
-			Scheduler:            SchedulerConfig{Endpoint: defaultEndpoint},
-		},
+		cfg:             cfg,
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,
 		indexDispatcher: &planDispatcher{runPlan: runner.run, limit: 4},
@@ -190,7 +192,16 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		sleep:           sleepUntil,
 		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 		limits:          limits,
+
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, cfg.LogMaxRunsPerTask),
 	}
+}
+
+func newTestLogMergePlanningStrategy(t *testing.T, k int) *v2.SizeLeveledStrategy {
+	t.Helper()
+	s, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio, k)
+	require.NoError(t, err)
+	return s
 }
 
 // fixedClock returns a clock function pinned to t.
@@ -754,6 +765,57 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 		dispatches := runner.snapshot()
 		require.Len(t, dispatches, 2)
 		require.Equal(t, 3, countMergeObjects(t, dispatches))
+	})
+}
+
+func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	ctx := context.Background()
+	stat := func(path string, size int64) stats.Stat {
+		return stats.Stat{ObjectPath: path, SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: size}
+	}
+	compact := func(t *testing.T, rows []stats.Stat) (compactionStats, *fakeRunner, *fakeReplacer) {
+		t.Helper()
+		path := "indexes/aa/levels"
+		bucket := objstore.NewInMemBucket()
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", path, rows)
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		got, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{
+			Path: path, Start: window.Add(time.Hour), End: window.Add(2 * time.Hour),
+		})
+		require.NoError(t, err)
+		return got, runner, replacer
+	}
+
+	t.Run("skips overlapping runs when no size level holds k runs", func(t *testing.T) {
+		got, runner, replacer := compact(t, []stats.Stat{stat("logs/small", 100), stat("logs/large", 20<<30)})
+		require.Equal(t, compactionStats{}, got)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("rewrites every run in per-level tasks when one size level holds k runs", func(t *testing.T) {
+		got, runner, replacer := compact(t, []stats.Stat{
+			stat("logs/small-a", 100), stat("logs/small-b", 100), stat("logs/large", 20<<30),
+		})
+		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, got)
+
+		var taskObjects [][]string
+		for _, call := range runner.snapshot() {
+			var objects []string
+			for _, run := range mergeNodeRuns(t, call.plan) {
+				for _, section := range run.Sections {
+					objects = append(objects, section.ObjectPath)
+				}
+			}
+			slices.Sort(objects)
+			taskObjects = append(taskObjects, objects)
+		}
+		require.ElementsMatch(t, [][]string{{"logs/small-a", "logs/small-b"}, {"logs/large"}}, taskObjects)
+		require.Len(t, replacer.snapshot(), 1)
 	})
 }
 

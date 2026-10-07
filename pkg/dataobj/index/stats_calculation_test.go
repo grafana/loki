@@ -26,7 +26,7 @@ var fakeSchema = []string{"label:service_name"}
 
 func newTestIndexBuilder(t *testing.T) *indexobj.Builder {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder("tenant-1", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 	return builder
 }
@@ -56,7 +56,6 @@ func makeTestShardBuckets(testLabels map[int64]labels.Labels) map[int64]uint32 {
 func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 	testLabels := makeTestStreamLabels()
 	return &logsCalculationContext{
-		tenantID:           "tenant-1",
 		objectPath:         "test/path/obj1",
 		sectionIdx:         0,
 		streamLabels:       testLabels,
@@ -126,7 +125,6 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	testLabels := labels.FromStrings("service_name", "svcA", "cluster", "c1")
 	ctx := &logsCalculationContext{
-		tenantID:   "tenant-1",
 		objectPath: "test/path/obj1",
 		sectionIdx: 0,
 		streamLabels: map[int64]labels.Labels{
@@ -171,7 +169,6 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	}
 	require.NotEmpty(t, second)
 	ctx := &logsCalculationContext{
-		tenantID:   "tenant-1",
 		objectPath: "test/path/obj1",
 		sectionIdx: 0,
 		streamLabels: map[int64]labels.Labels{

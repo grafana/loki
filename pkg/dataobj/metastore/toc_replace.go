@@ -180,17 +180,17 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			}
 
 			// Pass 2: rebuild ToC, dropping oldPaths and appending newEntries.
-			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+			builder, berr := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 			if berr != nil {
 				return nil, fmt.Errorf("creating ToC builder: %w", berr)
 			}
 
-			if err := replayFiltered(ctx, obj, builder, tenant, oldSet); err != nil {
+			if err := replayFiltered(ctx, obj, builder, oldSet); err != nil {
 				return nil, err
 			}
 
 			for _, e := range newEntries {
-				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
+				if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
 					Path:    e.Path,
 					StartTs: e.StartTime,
 					EndTs:   e.EndTime,
@@ -223,7 +223,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 		if errors.Is(err, errReplaceNoOp) {
 			return swapped, nil
 		}
-		if errors.Is(err, errTenantMismatch) {
+		if errors.Is(err, errUnrecoverable) {
 			return false, err
 		}
 		lastErr = err
@@ -268,9 +268,9 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, oldSet map[string]
 	return false, nil
 }
 
-// replayFiltered replays every row from every section of obj into builder
-// for tenant, EXCEPT rows whose path is in oldSet.
-func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, tenant string, oldSet map[string]struct{}) error {
+// replayFiltered replays every row from every section of obj into builder,
+// EXCEPT rows whose path is in oldSet.
+func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, oldSet map[string]struct{}) error {
 	var reader indexpointers.RowReader
 	defer reader.Close()
 	buf := make([]indexpointers.IndexPointer, 256)
@@ -289,7 +289,7 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 				if _, drop := oldSet[buf[i].Path]; drop {
 					continue
 				}
-				if aerr := builder.AppendIndexPointer(tenant, buf[i]); aerr != nil {
+				if aerr := builder.AppendIndexPointer(buf[i]); aerr != nil {
 					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}

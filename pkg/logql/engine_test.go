@@ -352,19 +352,41 @@ func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (it
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	t.Run("records query exec time and decompressed bytes", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
-	queueTime := 2 * time.Nanosecond
+		queueTime := 2 * time.Nanosecond
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		q := eng.Query(params)
+
+		ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
+		require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	})
+
+	params, err := NewLiteralParams(`sum(count_over_time({foo="bar"}[1m]))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
-	q := eng.Query(params)
 
-	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
-	require.NoError(t, err)
-	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	t.Run("records a timestamp-first query when the tenant does not enable stream-first", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.TimestampFirstQueries)
+		require.Zero(t, r.Statistics.Summary.StreamFirstQueries)
+	})
+
+	t.Run("records a stream-first query when the tenant enables it", func(t *testing.T) {
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.StreamFirstQueries)
+		require.Zero(t, r.Statistics.Summary.TimestampFirstQueries)
+	})
 }
 
 type metaQuerier struct{}
@@ -692,7 +714,7 @@ func TestHashingStability(t *testing.T) {
 		}
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 		return buf.String()
 	}
 
