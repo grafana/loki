@@ -111,77 +111,48 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	if c.indexobjBuilder.Tenant() != tenant {
 		return fmt.Errorf("tenant mismatch, want tenant %s, got %s", c.indexobjBuilder.Tenant(), tenant)
 	}
-
-	g, streamsCtx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.GOMAXPROCS(0))
-	streamIDLookupByTenant := sync.Map{}
-	streamLabelsByTenant := sync.Map{}
-	shardBucketsByTenant := sync.Map{}
-
-	// Streams Section: process these first to ensure all streams have been added to the builder and are given new IDs.
-	for i, section := range reader.Sections().Filter(streams.CheckSection) {
-		g.Go(func() error {
-			streamIDLookup := make(map[int64]int64)
-			streamLabels, shardBuckets, err := c.processStreamsSection(streamsCtx, section, streamIDLookup)
-			if err != nil {
-				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
-			}
-			// This is safe as each data object has just one streams section per tenant, which means different sections cannot overwrite the results of each other.
-			_, exists := streamIDLookupByTenant.LoadOrStore(section.Tenant, streamIDLookup)
-			if exists {
-				panic("multiple streams sections for the same tenant within one data object")
-			}
-
-			_, labelsExist := streamLabelsByTenant.LoadOrStore(section.Tenant, streamLabels)
-			if labelsExist {
-				panic("multiple streams sections for the same tenant within one data object")
-			}
-			_, shardBucketsExist := shardBucketsByTenant.LoadOrStore(section.Tenant, shardBuckets)
-			if shardBucketsExist {
-				panic("multiple streams sections for the same tenant within one data object")
-			}
-			return nil
-		})
+	streamsSection, err := singleStreamsSection(reader)
+	if err != nil {
+		return fmt.Errorf("path=%s: %w", objectPath, err)
 	}
 
-	// Wait for the streams sections to be done.
-	if err := g.Wait(); err != nil {
-		return err
+	// Process the streams section first, so that every stream has its new ID
+	// in the builder before the logs sections refer to it.
+	streamIDLookup := make(map[int64]int64)
+	streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection, streamIDLookup)
+	if err != nil {
+		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
 
 	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
-	// Logs Section: these can be processed in parallel once we have the stream IDs for the tenant.
-	// TODO(benclive): Start processing logs sections as soon as the stream sections are done, tenant by tenant. That way we don't need to wait for the biggest stream sections before processing the logs.
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
-			streamIDLookup, ok := streamIDLookupByTenant.Load(section.Tenant)
-			if !ok {
-				return fmt.Errorf("stream ID lookup not found for tenant %s", section.Tenant)
-			}
-			streamLabelsVal, ok := streamLabelsByTenant.Load(section.Tenant)
-			if !ok {
-				return fmt.Errorf("stream labels not found for tenant %s", section.Tenant)
-			}
-			shardBuckets, ok := shardBucketsByTenant.Load(section.Tenant)
-			if !ok {
-				return fmt.Errorf("shard buckets not found for tenant %s", section.Tenant)
-			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64), streamLabelsVal.(map[int64]labels.Labels), shardBuckets.(map[int64]uint32)); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup, streamLabels, shardBuckets); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
 		})
 	}
+	return g.Wait()
+}
 
-	// Wait for the logs sections to be done.
-	if err := g.Wait(); err != nil {
-		return err
+func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
+	var found *dataobj.Section
+	for _, section := range reader.Sections().Filter(streams.CheckSection) {
+		if found != nil {
+			return nil, fmt.Errorf("%w: data object must hold one streams section", ErrUnprocessableObject)
+		}
+		found = section
 	}
-	return nil
+	if found == nil {
+		return nil, fmt.Errorf("%w: data object must hold one streams section", ErrUnprocessableObject)
+	}
+
+	return found, nil
 }
 
 func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) (map[int64]labels.Labels, map[int64]uint32, error) {
@@ -208,31 +179,23 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
-		err = func() error {
-			c.builderMtx.Lock()
-			defer c.builderMtx.Unlock()
-			for _, stream := range streamBuf[:n] {
-				newStreamID, err := c.indexobjBuilder.AppendStream(stream)
-				if err != nil {
-					return fmt.Errorf("failed to append to stream: %w", err)
-				}
-				streamIDLookup[stream.ID] = newStreamID
-				if _, ok := streamLabels[stream.ID]; !ok {
-					streamLabels[stream.ID] = stream.Labels
-					shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
-				}
+		for _, stream := range streamBuf[:n] {
+			newStreamID, err := c.indexobjBuilder.AppendStream(stream)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to append to stream: %w", err)
 			}
-			return nil
-		}()
-		if err != nil {
-			return nil, nil, err
+			streamIDLookup[stream.ID] = newStreamID
+			if _, ok := streamLabels[stream.ID]; !ok {
+				streamLabels[stream.ID] = stream.Labels
+				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
+			}
 		}
 	}
 	return streamLabels, shardBuckets, nil
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
-// The provided section index only counts logs sections across all tenants, matching the indexes yielded by Filter, not positions in reader.Sections().
+// The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
 	logsBuf := make([]logs.Record, 8192)
 

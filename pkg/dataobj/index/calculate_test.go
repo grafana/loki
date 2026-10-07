@@ -244,6 +244,58 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.ErrorContains(t, err, "tenant mismatch")
 		requireEmptyCalculator(t, calculator, indexBuilder)
 	})
+
+	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds two streams sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		lr := testLogsFixture(t)
+		obj, closer := fixtures.DataObject(t,
+			fixtures.StreamsSection(t, tenant, lr.Streams()),
+			fixtures.StreamsSection(t, tenant, lr.Streams()),
+			fixtures.LogsSection(t, tenant, lr.Logs()),
+		)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "must hold one streams section")
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds logs sections without a streams section", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		obj, closer := fixtures.DataObject(t, fixtures.LogsSection(t, tenant, testLogsFixture(t).Logs()))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "must hold one streams section")
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
+	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds neither streams nor logs sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, 1<<20)
+		postingsBuilder.SetTenant(tenant)
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: "src-obj", ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: time.Unix(10, 0).UTC(),
+		})
+		obj, closer := fixtures.DataObject(t, postingsBuilder)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "must hold one streams section")
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
 }
 
 // requireEmptyCalculator checks that calculator and its builder hold no data.
