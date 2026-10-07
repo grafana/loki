@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,6 +95,14 @@ type globalThrottler struct {
 // error instead. The returned service still needs to be added to the
 // distributor's services.Manager by the caller.
 func newGlobalThrottler(cfg GlobalThrottlerConfig, logger log.Logger, registerer prometheus.Registerer) (*globalThrottler, error) {
+	// An unset addresses flag would otherwise become the single static target
+	// "" after DNS resolution: startup would succeed, every call would fail to
+	// dial, and fail_open would admit every push -- exact rate limiting
+	// silently disabled.
+	if strings.TrimSpace(cfg.Addresses) == "" {
+		return nil, errors.New("global throttler: -distributor.global-throttler.addresses is required when -distributor.ingestion-rate-limit-strategy is exact or shadow")
+	}
+
 	t := &globalThrottler{
 		cfg:    cfg,
 		dns:    discovery.NewDNS(logger, cfg.DiscoveryInterval, cfg.Addresses, registerer),
@@ -132,11 +141,17 @@ func (t *globalThrottler) refresh(_ context.Context) error {
 // circuit breaker to closed each time, retrying a known-dead shard right
 // when the breaker exists to stop that.
 func (t *globalThrottler) applyAddresses(addrs []string) error {
-	if len(addrs) == 0 {
+	// Drop blank entries (an empty target, or stray whitespace around a comma
+	// in a static list): a "" address can never be dialed.
+	sorted := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		if a = strings.TrimSpace(a); a != "" {
+			sorted = append(sorted, a)
+		}
+	}
+	if len(sorted) == 0 {
 		return fmt.Errorf("global throttler: no addresses resolved for %q", t.cfg.Addresses)
 	}
-
-	sorted := append([]string(nil), addrs...)
 	sort.Strings(sorted)
 
 	if slices.Equal(sorted, t.lastAddrs) {

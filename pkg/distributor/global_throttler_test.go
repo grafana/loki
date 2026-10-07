@@ -35,6 +35,22 @@ func TestGlobalThrottler_ApplyAddresses(t *testing.T) {
 		require.Nil(t, gt.lastAddrs)
 	})
 
+	t.Run("blank addresses are an error, not a client dialing nothing", func(t *testing.T) {
+		gt := newTestGlobalThrottler()
+
+		require.Error(t, gt.applyAddresses([]string{""}))
+		require.Error(t, gt.applyAddresses([]string{" ", ""}))
+		require.Nil(t, gt.client.Load())
+		require.Nil(t, gt.lastAddrs)
+	})
+
+	t.Run("blank entries are dropped from an otherwise valid set", func(t *testing.T) {
+		gt := newTestGlobalThrottler()
+
+		require.NoError(t, gt.applyAddresses([]string{"b:2", "", " a:1 "}))
+		require.Equal(t, []string{"a:1", "b:2"}, gt.lastAddrs)
+	})
+
 	t.Run("first call builds a client", func(t *testing.T) {
 		gt := newTestGlobalThrottler()
 
@@ -101,4 +117,12 @@ func TestThrottlerClientRef(t *testing.T) {
 		_, err := gt.Throttle(context.Background(), "tenant", nil)
 		require.ErrorIs(t, err, errThrottlerClientRetired)
 	})
+}
+
+func TestNewGlobalThrottler_RequiresAddresses(t *testing.T) {
+	for _, addrs := range []string{"", "   "} {
+		gt, err := newGlobalThrottler(GlobalThrottlerConfig{Addresses: addrs, DiscoveryInterval: time.Hour}, log.NewNopLogger(), nil)
+		require.Error(t, err, "addresses %q", addrs)
+		require.Nil(t, gt)
+	}
 }
