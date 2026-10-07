@@ -37,7 +37,7 @@ func main() {
 		objectClient,
 		overrides,
 		nil,
-		func(p string) (shipperindex.Index, error) {
+		func(p string, _ shipperindex.OpenOptions) (shipperindex.Index, error) {
 			return tsdb.OpenShippableTSDB(p, readerOpts)
 		},
 		tableRange,
