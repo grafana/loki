@@ -171,8 +171,7 @@ func effectiveEpsilon(exp expectations, stackName string) float64 {
 
 // assertResult applies exp to a result any execution stack produces. On a fail expectation it
 // checks the error; otherwise it compares the data and, for a sharding stack running a shardable
-// query, asserts the response reported at least two shards. It also checks the response's recorded
-// sample order — see the comment above the check for what it can and cannot verify.
+// query, asserts the response reported at least two shards.
 func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, streamFirstEnabled, isValueComparisonSkipped bool, epsilon float64) {
 	t.Helper()
 
