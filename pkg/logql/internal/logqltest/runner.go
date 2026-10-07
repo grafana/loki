@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -151,7 +152,7 @@ func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, ex
 					t.Skipf("%s: stack does not support this query", stack.name())
 				}
 				res, err := stack.eval(cmd)
-				assertResult(t, name, cmd, exp, res, err, stack.isQueryShardingSupported(),
+				assertResult(t, name, cmd, exp, res, err, stack.isQueryShardingSupported(), stack.isStreamFirstEnabled(),
 					exp.isValueComparisonSkipped[stack.name()], effectiveEpsilon(exp, stack.name()))
 			})
 		}
@@ -171,7 +172,7 @@ func effectiveEpsilon(exp expectations, stackName string) float64 {
 // assertResult applies exp to a result any execution stack produces. On a fail expectation it
 // checks the error; otherwise it compares the data and, for a sharding stack running a shardable
 // query, asserts the response reported at least two shards.
-func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, isValueComparisonSkipped bool, epsilon float64) {
+func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, streamFirstEnabled, isValueComparisonSkipped bool, epsilon float64) {
 	t.Helper()
 
 	if exp.fail {
@@ -192,6 +193,21 @@ func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res 
 		require.GreaterOrEqualf(t, res.Statistics.Summary.Shards, int64(2),
 			"%s: query %q expected to shard (>=2 shards), got %d; list its op in isQueryShardingSupported if it legitimately does not shard",
 			name, cmd.query, res.Statistics.Summary.Shards)
+	}
+
+	// An eligible query must report stream-first. The opposite (zero) does not always hold when
+	// the stack shards: the shard mapper can still promote part of an ineligible query into its own
+	// stream-first sub-query (see shardmapper.go). Skip the check in that case.
+	_, streamFirstEligible := logql.StreamFirstRangeAggregation(cmd.query)
+	switch {
+	case streamFirstEnabled && streamFirstEligible:
+		require.Positivef(t, res.Statistics.Summary.StreamFirstQueries,
+			"%s: query %q expected to run stream-first, got %d stream-first queries",
+			name, cmd.query, res.Statistics.Summary.StreamFirstQueries)
+	case !streamFirstEnabled || !queryShardingEnabled:
+		require.Zerof(t, res.Statistics.Summary.StreamFirstQueries,
+			"%s: query %q expected to run timestamp-first, got %d stream-first queries",
+			name, cmd.query, res.Statistics.Summary.StreamFirstQueries)
 	}
 }
 

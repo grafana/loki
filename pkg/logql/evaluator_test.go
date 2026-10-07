@@ -746,55 +746,56 @@ func (it *countingSampleIterator) Next() bool {
 	return true
 }
 
-func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
+func TestSampleOrderFor(t *testing.T) {
 	limits := tenantStreamFirstLimits{enabled: map[string]bool{"a": true, "b": true}}
 
-	evaluatorWith := func(l Limits) *DefaultEvaluator {
-		return NewDefaultEvaluator(&hintCapturingQuerier{}, 0, 0, l)
-	}
-
-	rangeAggregation := func(query string) *syntax.RangeAggregationExpr {
-		return syntax.MustParseExpr(query).(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr)
+	fullExpr := func(query string) syntax.SampleExpr {
+		return syntax.MustParseExpr(query).(syntax.SampleExpr)
 	}
 
 	tenantContext := func(tenantID string) context.Context {
 		return user.InjectOrgID(context.Background(), tenantID)
 	}
 
-	count := rangeAggregation(`sum by (app) (count_over_time({app="foo"}[1m]))`)
+	count := fullExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
 	t.Run("returns stream-first for a root sum of count_over_time when the tenant enables it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), count, true)
+		got := sampleOrderFor(tenantContext("a"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
 	})
 
 	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("other"), count, true)
+		got := sampleOrderFor(tenantContext("other"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns stream-first for a multi-tenant query when every tenant enables it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a|b"), count, true)
+		got := sampleOrderFor(tenantContext("a|b"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
 	})
 
 	t.Run("returns timestamp-first for a multi-tenant query when one tenant does not enable it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a|other"), count, true)
+		got := sampleOrderFor(tenantContext("a|other"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first for an expression that is not the root", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), count, false)
+		got := sampleOrderFor(tenantContext("a"), count, limits, false)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first for a range aggregation other than count_over_time", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), rangeAggregation(`sum(rate({app="foo"}[1m]))`), true)
+		got := sampleOrderFor(tenantContext("a"), fullExpr(`sum(rate({app="foo"}[1m]))`), limits, true)
+		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
+	})
+
+	t.Run("returns timestamp-first for a bare range aggregation without a sum", func(t *testing.T) {
+		got := sampleOrderFor(tenantContext("a"), fullExpr(`count_over_time({app="foo"}[1m])`), limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first when the context has no tenant", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(context.Background(), count, true)
+		got := sampleOrderFor(context.Background(), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 }

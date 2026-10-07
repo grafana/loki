@@ -342,7 +342,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			sampleOrder := ev.sampleOrderFor(ctx, rangExpr, isRootExpr)
+			sampleOrder := sampleOrderFor(ctx, e, ev.limits, isRootExpr)
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
@@ -431,8 +431,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	}
 }
 
-// sampleOrderFor returns the sample order to use for the range aggregation rangExpr.
-func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax.RangeAggregationExpr, isRootExpr bool) logproto.SampleOrder {
+// sampleOrderFor returns the sample order to use for expr.
+func sampleOrderFor(ctx context.Context, expr syntax.SampleExpr, limits Limits, isRootExpr bool) logproto.SampleOrder {
 	const timestampFirst = logproto.SAMPLE_ORDER_BY_TIMESTAMP
 
 	// The stream-first iterator enforces the series limit on its output series. Only at the root
@@ -440,7 +440,8 @@ func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax
 	if !isRootExpr {
 		return timestampFirst
 	}
-	if _, ok := newStepAccumulatorFuncFor(rangExpr); !ok {
+
+	if _, ok := StreamFirstRangeAggregation(expr.String()); !ok {
 		return timestampFirst
 	}
 
@@ -449,7 +450,7 @@ func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax
 		return timestampFirst
 	}
 	for _, id := range tenantIDs {
-		if !ev.limits.StreamFirstExecutionEnabled(id) {
+		if !limits.StreamFirstExecutionEnabled(id) {
 			return timestampFirst
 		}
 	}
