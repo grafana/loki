@@ -67,3 +67,29 @@ func TestConfig_LogMinCompactionSizeValidation(t *testing.T) {
 		require.ErrorIs(t, cfg.Validate(), errInvalidLogMinCompactionSize)
 	})
 }
+
+func TestConfig_LogMaxRunsPerTaskValidation(t *testing.T) {
+	base := func(maxRuns int) Config {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.ContinueOnError))
+		cfg.Enabled = true
+		cfg.Scheduler.Endpoint = defaultEndpoint
+		cfg.LogMaxRunsPerTask = maxRuns
+		return cfg
+	}
+
+	t.Run("rejects zero", func(t *testing.T) {
+		cfg := base(0)
+		require.ErrorIs(t, cfg.Validate(), errInvalidLogMaxRunsPerTask)
+	})
+
+	t.Run("rejects one because a lone run would trigger compaction forever", func(t *testing.T) {
+		cfg := base(1)
+		require.ErrorIs(t, cfg.Validate(), errInvalidLogMaxRunsPerTask)
+	})
+
+	t.Run("accepts two", func(t *testing.T) {
+		cfg := base(2)
+		require.NoError(t, cfg.Validate())
+	})
+}
