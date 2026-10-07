@@ -1446,7 +1446,8 @@ dataobj:
     [max_runs_per_task: <int> | default = 8]
 
     # Experimental: Maximum runs per LogMerge task (K for log compaction).
-    # Separate from max-runs-per-task to scale independently. Must be at least 2.
+    # Separate from max-runs-per-task to scale independently. Must be at least
+    # 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 
