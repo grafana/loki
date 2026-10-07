@@ -153,7 +153,7 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 			// zero, which the throttler treats as a nonsensical limit and
 			// fails closed on unconditionally, regardless of Capacity.
 			// Units/Period has no such ceiling.
-			Limit: throttler.Limit{Capacity: int64(burstBytes), Rate: throttler.Rate{Units: int64(rateBytes), Period: time.Second}},
+			Limit: throttler.Limit{Capacity: throttlerCapacity(rateBytes, burstBytes), Rate: throttler.Rate{Units: int64(rateBytes), Period: time.Second}},
 			Cost:  int64(b.bytes),
 		})
 	}
@@ -177,6 +177,22 @@ func (e *throttlerEnforcer) enforce(ctx context.Context, _ time.Time, tenantID s
 		}
 	}
 	return exceeded, err
+}
+
+// throttlerCapacity is the bucket size to send for a bucket with the given
+// rate and burst. A rate of zero (or below) means "no ingestion", but the
+// throttler can't express a zero refill rate: it treats Units <= 0 as
+// "unspecified" and rewrites it to 1, which would silently refill the bucket
+// at 1 byte/sec. A zero-capacity bucket can never admit any cost, whatever
+// its rate, so send that instead. This deliberately also denies the one-shot
+// burst the local/global limiter lets through at rate 0 -- that allowance is
+// per distributor process and resets on restart, so it isn't a quota anyone
+// can rely on.
+func throttlerCapacity(rateBytes float64, burstBytes int) int64 {
+	if rateBytes <= 0 {
+		return 0
+	}
+	return int64(burstBytes)
 }
 
 // escapeThrottlerKey makes key safe to send to the external throttler, whose

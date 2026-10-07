@@ -370,3 +370,39 @@ func TestEscapeThrottlerKey(t *testing.T) {
 		}
 	})
 }
+
+func TestThrottlerEnforcer_ZeroRateSendsZeroCapacity(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		IngestionRateMB:      1.0,
+		IngestionBurstSizeMB: 2.0,
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			"frozen": {IngestionRateMB: ptr(0.0), IngestionBurstSizeMB: ptr(10.0)},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	caller := &fakeThrottleCaller{byKey: map[string]throttler.ResponseEntry{}}
+	e := newThrottlerEnforcer(limits, caller)
+
+	_, err = e.enforce(context.Background(), time.Now(), "t1", map[string]*rateLimitBucket{
+		"":       {policy: "", bytes: 100, lines: 1},
+		"frozen": {policy: "frozen", hasOverride: true, bytes: 200, lines: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, caller.gotEntries, 2)
+
+	frozenKey := encodeRateLimitKey("t1", "frozen")
+	for _, entry := range caller.gotEntries {
+		if entry.Key == frozenKey {
+			require.EqualValues(t, 0, entry.Limit.Capacity, "a zero-rate bucket must never admit anything, burst notwithstanding")
+		} else {
+			require.EqualValues(t, int(2.0*float64(bytesInMB)), entry.Limit.Capacity, "other buckets keep their burst")
+		}
+	}
+}
+
+func TestThrottlerCapacity(t *testing.T) {
+	require.EqualValues(t, 0, throttlerCapacity(0, 1000))
+	require.EqualValues(t, 0, throttlerCapacity(-1, 1000))
+	require.EqualValues(t, 1000, throttlerCapacity(1, 1000))
+}
