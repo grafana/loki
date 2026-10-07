@@ -1384,6 +1384,11 @@ dataobj:
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
+    # The Kafka partition to consume. A negative value derives it from the
+    # instance hostname instead.
+    # CLI flag: -dataobj.builder.partition-id
+    [partition_id: <int> | default = -1]
+
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
     # data objects.
