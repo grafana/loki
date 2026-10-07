@@ -74,10 +74,15 @@ func NewPush(
 	tlsCfg *tls.Config,
 	caFile, certFile, keyFile string,
 	username, password string,
+	bearerTokenFile string,
 	backoffCfg *backoff.Config,
 	logBatchSize int,
 	logger log.Logger,
 ) (EntryWriter, error) {
+	if username != "" && bearerTokenFile != "" {
+		return nil, fmt.Errorf("at most one of basic authentication and bearer token authentication may be configured")
+	}
+
 	client, err := config.NewClientFromConfig(cfg, "canary-push", config.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
@@ -109,6 +114,14 @@ func NewPush(
 
 	if useTLS {
 		scheme = "https"
+	}
+
+	if bearerTokenFile != "" {
+		client.Transport = config.NewAuthorizationCredentialsRoundTripper(
+			"Bearer",
+			config.NewFileSecret(bearerTokenFile),
+			client.Transport,
+		)
 	}
 
 	pushPath, err := url.JoinPath(pathPrefix, pushEndpoint)

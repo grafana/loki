@@ -54,6 +54,7 @@ func main() {
 	insecureSkipVerify := flag.Bool("insecure", false, "Allow insecure TLS connections")
 	user := flag.String("user", "", "Loki username.")
 	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
+	bearerTokenFile := flag.String("bearer-token-file", "", "File containing a bearer token to add to Loki requests. Mutually exclusive with -user")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
 	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
 	writeMinBackoff := flag.Duration("write-min-backoff", defaultMinBackoff, "Initial backoff time before first retry ")
@@ -115,6 +116,11 @@ func main() {
 
 	if *addr == "" {
 		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS\n")
+		os.Exit(1)
+	}
+
+	if *user != "" && *bearerTokenFile != "" {
+		_, _ = fmt.Fprintln(os.Stderr, "At most one of -user and -bearer-token-file may be set")
 		os.Exit(1)
 	}
 
@@ -201,6 +207,7 @@ func main() {
 				tlsConfig,
 				*caFile, *certFile, *keyFile,
 				*user, *pass,
+				*bearerTokenFile,
 				&backoffCfg,
 				*logBatchSize,
 				log.NewLogfmtLogger(os.Stderr),
@@ -217,7 +224,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *bearerTokenFile, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
