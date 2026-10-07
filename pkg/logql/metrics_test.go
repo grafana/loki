@@ -3,12 +3,15 @@ package logql
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 func TestQueryType(t *testing.T) {
@@ -80,7 +84,7 @@ func TestLogSlowQuery(t *testing.T) {
 			TotalBytesProcessed:     100000,
 			TotalEntriesReturned:    10,
 		},
-	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
 			`level=info org_id=foo traceID=%s sampled=true latency=slow user_agent= query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
@@ -88,6 +92,111 @@ func TestLogSlowQuery(t *testing.T) {
 		)),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
+}
+
+func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
+	params := LiteralParams{
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
+	}
+	params.end = time.Now()
+	params.start = params.end.Add(-time.Hour)
+
+	record := func(t *testing.T, queryErr error) string {
+		t.Helper()
+
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "500", stats.Result{}, nil, queryErr)
+		return buf.String()
+	}
+
+	cases := []struct {
+		name         string
+		err          error
+		wantErr      string
+		wantCategory string
+		wantReason   string
+	}{
+		{
+			name:         "adds the error and the internal category when a plain error fails the query",
+			err:          errors.New("data object listed a section twice"),
+			wantErr:      `err="data object listed a section twice"`,
+			wantCategory: server.FailureInternal,
+			wantReason:   "downstream_error",
+		},
+		{
+			name:         "adds the internal category when a downstream HTTP 500 fails the query",
+			err:          httpgrpc.Errorf(http.StatusInternalServerError, "store unavailable"),
+			wantErr:      `err="rpc error: code = Code(500) desc = store unavailable"`,
+			wantCategory: server.FailureInternal,
+			wantReason:   "downstream_error",
+		},
+		{
+			name:         "adds the syntax category when the query does not parse",
+			err:          logqlmodel.ErrParse,
+			wantErr:      "err=",
+			wantCategory: server.FailureSyntax,
+			wantReason:   "parse",
+		},
+		{
+			name:         "adds the limit category when the query hits a limit",
+			err:          logqlmodel.ErrLimit,
+			wantErr:      "err=",
+			wantCategory: server.FailureLimit,
+			wantReason:   "series_limit",
+		},
+		{
+			name:         "adds the canceled category when the client cancels the query",
+			err:          context.Canceled,
+			wantErr:      "err=",
+			wantCategory: server.FailureCanceled,
+			wantReason:   "client_canceled",
+		},
+		{
+			name:         "adds the timeout category when the query times out",
+			err:          context.DeadlineExceeded,
+			wantErr:      "err=",
+			wantCategory: server.FailureTimeout,
+			wantReason:   "query_timeout",
+		},
+		{
+			name:         "adds the blocked category when a policy blocks the query",
+			err:          logqlmodel.ErrBlocked,
+			wantErr:      "err=",
+			wantCategory: server.FailureBlocked,
+			wantReason:   "blocked_by_policy",
+		},
+		{
+			name:         "adds the user error category when the user caused the error",
+			err:          server.UserError("bad input"),
+			wantErr:      `err="bad input"`,
+			wantCategory: server.FailureUserError,
+			wantReason:   "bad_request",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := record(t, tc.err)
+
+			require.Contains(t, out, "level=info")
+			require.Contains(t, out, tc.wantErr)
+			require.Contains(t, out, "err_category="+tc.wantCategory)
+			require.Contains(t, out, "err_reason="+tc.wantReason)
+		})
+	}
+
+	t.Run("adds no error fields when the query succeeds", func(t *testing.T) {
+		out := record(t, nil)
+
+		require.Contains(t, out, "level=info")
+		require.NotContains(t, out, " err=")
+		require.NotContains(t, out, "err_category=")
+		require.NotContains(t, out, "err_reason=")
+	})
 }
 
 func TestRecordBytesProcessedTotal(t *testing.T) {
@@ -113,11 +222,11 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 	bytesProcessedTotal.DeleteLabelValues(tenantID)
 	counter := bytesProcessedTotal.WithLabelValues(tenantID)
 
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
 	require.Equal(t, float64(100000), testutil.ToFloat64(counter))
 
 	// A second query for the same tenant accumulates.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
 	require.Equal(t, float64(200000), testutil.ToFloat64(counter))
 
 	// Federated multi-tenant queries divide the byte total evenly across tenants.
@@ -125,13 +234,13 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 	bytesProcessedTotal.DeleteLabelValues(fedA)
 	bytesProcessedTotal.DeleteLabelValues(fedB)
 	fedCtx := user.InjectOrgID(context.Background(), fmt.Sprintf("%s|%s", fedA, fedB))
-	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil)
+	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil, nil)
 	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedA)))
 	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedB)))
 
 	// When no tenant can be resolved from the context the metric is skipped rather
 	// than recorded under an empty tenant label (and must not panic).
-	RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil)
+	RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil, nil)
 	require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("")))
 }
 
@@ -155,19 +264,19 @@ func TestRecordChunkFetchFailuresTotal(t *testing.T) {
 	affectedCounter := queriesWithChunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
 
 	// No failures: neither counter moves.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", stats.Result{}, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", stats.Result{}, nil, nil)
 	require.Equal(t, float64(0), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(0), testutil.ToFloat64(affectedCounter))
 
 	// A query with 3 failed chunks: the failure counter accumulates the count,
 	// the affected-queries counter increments by exactly 1.
 	withFailures := stats.Result{Querier: stats.Querier{Store: stats.Store{ChunkFetchFailures: 3}}}
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil, nil)
 	require.Equal(t, float64(3), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(1), testutil.ToFloat64(affectedCounter))
 
 	// A second affected query: failures accumulate, affected count increments again.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil, nil)
 	require.Equal(t, float64(6), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(2), testutil.ToFloat64(affectedCounter))
 }
