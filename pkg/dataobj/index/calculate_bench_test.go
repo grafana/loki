@@ -82,12 +82,18 @@ var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 // produce multiple logs sections (via a small TargetSectionSize) so
 // Calculate's errgroup runs enough parallel workers to contend on builderMtx.
 func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
+	return buildSyntheticDataobj(tb, 2<<20, streamCount, entriesPerStream)
+}
+
+// buildSyntheticDataobj builds the object of [buildBenchDataobj] with logs
+// sections of logsSectionSize bytes. A smaller size gives more logs sections.
+func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          128 * 1024,
 		TargetObjectSize:        1 << 30, // 1 GiB ceiling
-		TargetSectionSize:       flagext.Bytes(2 << 20),
+		TargetSectionSize:       logsSectionSize,
 		BufferSize:              4 << 20,
 		SectionStripeMergeLimit: 2,
 	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
