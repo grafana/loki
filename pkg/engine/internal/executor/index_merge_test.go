@@ -591,12 +591,12 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		SectionStripeMergeLimit: 2,
 	}
 
-	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err, "failed to create indexobj.Builder")
 
 	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
-	_, err = builder.AppendStream(tenant, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "service", Value: "api"}),
 		MinTimestamp:     ts,
@@ -607,17 +607,17 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to append stream")
 
 	// Observe a log line to get a pointers section.
-	err = builder.ObserveLogLine(tenant, "log-A", 0, 1, 1, ts, 100)
+	err = builder.ObserveLogLine("log-A", 0, 1, 1, ts, 100)
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, 16, "label:service",
+	err = builder.AppendStat("log-A", 0, 16, "label:service",
 		map[string]string{"service": "api"},
 		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
 
 	// Observe a label posting to get a postings section.
-	builder.ObserveLabelPosting(tenant, postings.LabelObservation{
+	builder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
 		ColumnName:       "service",

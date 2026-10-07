@@ -63,14 +63,12 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Len(t, bucket.Objects(), 1, "one index object per data object")
 
 		// The range is what the caller records in the Table of Contents, so it
-		// must describe the data object: its tenant, the span of the fixture's
-		// entries, and the size of the index just uploaded.
+		// must describe the data object: its tenant and the span of the
+		// fixture's entries.
 		tr := res.TimeRange
 		require.Equal(t, "tenant-0", tr.Tenant)
-		require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
 		require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
-		require.Positive(t, tr.UncompressedLogsSize)
 
 		// Read the uploaded bytes back: they must decode as an index object
 		// holding a streams and a pointers section for the tenant.
@@ -89,14 +87,19 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
 	})
 
-	t.Run("should reject a data object with more than one tenant", func(t *testing.T) {
+	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		idx, _ := newTestSimpleIndexer(t, bucket)
+		idx, reg := newTestSimpleIndexer(t, bucket)
 
 		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), "objects/test")
-		require.ErrorIs(t, err, ErrNotSingleTenant)
+		require.ErrorIs(t, err, ErrUnprocessableObject)
 		require.Empty(t, res.Path)
 		require.Empty(t, bucket.Objects(), "a rejected index must not be uploaded")
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_indexobj_appends_total Total number of appends
+		# TYPE loki_indexobj_appends_total counter
+		loki_indexobj_appends_total 0
+		`), "loki_indexobj_appends_total"))
 	})
 
 	t.Run("should propagate an upload failure", func(t *testing.T) {

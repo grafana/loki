@@ -38,7 +38,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 
 		uncompressedSize := log.UncompressedSize()
 		streamLbls.Range(func(lbl labels.Label) {
-			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
+			calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
 				ShardBuckets:     int64(streams.ShardFactor),
 				SectionIndex:     calcCtx.sectionIdx,
