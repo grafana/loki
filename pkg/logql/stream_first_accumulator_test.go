@@ -91,3 +91,42 @@ func TestCountAccumulator(t *testing.T) {
 		require.Equal(t, []float64{-1, -1, -1}, stepValues(t, a, 3))
 	})
 }
+
+func TestStreamFirstRangeAggregation(t *testing.T) {
+	t.Run("accepts a bare sum of count_over_time", func(t *testing.T) {
+		rng, ok := StreamFirstRangeAggregation(`sum(count_over_time({app="foo"}[5m]))`)
+		require.True(t, ok)
+		require.NotNil(t, rng)
+	})
+
+	t.Run("accepts a sum by of count_over_time", func(t *testing.T) {
+		rng, ok := StreamFirstRangeAggregation(`sum by (app) (count_over_time({app="foo"}[5m]))`)
+		require.True(t, ok)
+		require.NotNil(t, rng)
+	})
+
+	t.Run("rejects a bare count_over_time with no outer sum", func(t *testing.T) {
+		_, ok := StreamFirstRangeAggregation(`count_over_time({app="foo"}[5m])`)
+		require.False(t, ok)
+	})
+
+	t.Run("rejects a sum of an aggregation other than count_over_time", func(t *testing.T) {
+		_, ok := StreamFirstRangeAggregation(`sum(rate({app="foo"}[5m]))`)
+		require.False(t, ok)
+	})
+
+	t.Run("rejects an outer aggregation other than sum", func(t *testing.T) {
+		_, ok := StreamFirstRangeAggregation(`max(count_over_time({app="foo"}[5m]))`)
+		require.False(t, ok)
+	})
+
+	t.Run("rejects a log selector", func(t *testing.T) {
+		_, ok := StreamFirstRangeAggregation(`{app="foo"}`)
+		require.False(t, ok)
+	})
+
+	t.Run("rejects a query that fails to parse", func(t *testing.T) {
+		_, ok := StreamFirstRangeAggregation(`sum(`)
+		require.False(t, ok)
+	})
+}

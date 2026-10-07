@@ -176,7 +176,7 @@ const (
 	defaultMaxBackoff            = 15 * time.Minute
 	defaultWindowLookback        = 1
 	defaultMaxRunsPerTask        = 8
-	defaultLogMaxRunsPerTask     = 3
+	defaultLogMaxRunsPerTask     = 8
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
 )

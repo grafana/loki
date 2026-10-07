@@ -44,6 +44,15 @@ Both `/loki/api/v1/push` and the deprecated legacy `/api/prom/push` endpoint now
 This check only applies to JSON-encoded push requests (`Content-Type: application/json`). Protobuf-encoded push requests, the default for most clients, are not affected.
 
 Previously, Loki silently ignored unknown fields, which could cause unnoticed data loss, for example a client could send a malformed payload and have it accepted with an HTTP 204 response while none of its log lines were actually ingested. Make sure any client sending JSON payloads only includes fields that match the schema documented for the endpoint it uses. See [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) for the supported JSON payload format.
+### Optional deferred OTLP attribute expansion
+
+By default, Loki copies OTLP resource and scope attributes configured as structured metadata into each log entry during parsing.
+
+To defer expansion, set `distributor.otlp_config.defer_attribute_expansion` to `true` (`-distributor.otlp.defer-attribute-expansion`). This keeps those attributes shared during distributor processing and Kafka writes until downstream components need them expanded, reducing repeated copying. The option defaults to `false`.
+
+Enabling this option also changes the Kafka record format. Before enabling it, ensure all deployed services consuming log records from Kafka (`partition-ingester`, `dataobj-builder`, and `logline-index-builder`) are running Loki 4.0 or later.
+
+Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
 
 ### Optional index gateway client request limits
 

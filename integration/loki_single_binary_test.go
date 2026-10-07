@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,11 +13,12 @@ import (
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func TestSingleBinaryIngestQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

@@ -79,15 +79,18 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 		TargetObjectSize: 4 * 1024 * 1024, BufferSize: 16 * 1024,
 		MaxPageRows: 10000, SectionStripeMergeLimit: 2, EstimatedCompressionRatio: 8,
 	}
-	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
+	obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
+	require.NoError(t, err)
+	tenant, err := obj.Tenant()
+	require.NoError(t, err)
+
+	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
 	calculator := dataobjindex.NewCalculator(builder, dataobjindex.NewCalculatorMetrics(nil))
-	obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
-	require.NoError(t, err)
 	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), obj, sourcePath))
 
-	indexObj, closer, ranges, err := calculator.Flush()
+	indexObj, closer, timeRange, err := calculator.Flush()
 	require.NoError(t, err)
 	defer closeFixture(t, closer)
 
@@ -96,14 +99,11 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 	defer closeFixture(t, reader)
 
 	require.NoError(t, bucket.Upload(ctx, indexPath, reader))
-	require.NotEmpty(t, ranges)
-	for _, r := range ranges {
-		require.NoError(t, tocWriter.WriteEntry(ctx, r.Tenant, metastore.TableOfContentsEntry{
-			Path:      indexPath,
-			StartTime: r.MinTime,
-			EndTime:   r.MaxTime,
-		}))
-	}
+	require.NoError(t, tocWriter.WriteEntry(ctx, timeRange.Tenant, metastore.TableOfContentsEntry{
+		Path:      indexPath,
+		StartTime: timeRange.MinTime,
+		EndTime:   timeRange.MaxTime,
+	}))
 }
 
 func closeFixture(t *testing.T, closer io.Closer) {

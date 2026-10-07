@@ -22,10 +22,31 @@ import (
 	"strings"
 )
 
+// audClaim holds the JWT "aud" claim, which RFC 7519 §4.1.3 allows as either
+// a single string or an array of strings.
+type audClaim []string
+
+func (a *audClaim) UnmarshalJSON(data []byte) error {
+	// Try array first.
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		*a = list
+		return nil
+	}
+	// Fall back to plain string.
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*a = []string{s}
+	return nil
+}
+
 // coreJWTClaims are the fields within a JWT's "claims" segment that we're interested in.
 type coreJWTClaims struct {
-	ExpiresAt int64 `json:"exp,omitempty"`
-	IssuedAt  int64 `json:"iat,omitempty"`
+	ExpiresAt int64    `json:"exp,omitempty"`
+	IssuedAt  int64    `json:"iat,omitempty"`
+	Audience  audClaim `json:"aud,omitempty"`
 }
 
 // parseJWT parses the specified JWT token string and returns an instance of the coreJWTClaims struct.

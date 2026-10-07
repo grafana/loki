@@ -133,7 +133,7 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Ti
 	if dataObjStart.IsZero() {
 		return nil
 	}
-	rangeAgg, ok := streamFirstRangeAggregation(query)
+	rangeAgg, ok := logql.StreamFirstRangeAggregation(query)
 	if !ok {
 		return nil
 	}
@@ -160,23 +160,4 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Ti
 		return fmt.Errorf("query %q returned samples after the data-object start time, but read no data-object rows", query)
 	}
 	return nil
-}
-
-// streamFirstRangeAggregation returns the range aggregation of query when the engine runs query in
-// stream-first order. It restates the rule of the engine: only a sum of count_over_time at the root
-// of the query.
-func streamFirstRangeAggregation(query string) (*syntax.RangeAggregationExpr, bool) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return nil, false
-	}
-	vec, ok := expr.(*syntax.VectorAggregationExpr)
-	if !ok || vec.Operation != syntax.OpTypeSum {
-		return nil, false
-	}
-	rangeAgg, ok := vec.Left.(*syntax.RangeAggregationExpr)
-	if !ok || rangeAgg.Operation != syntax.OpRangeTypeCount {
-		return nil, false
-	}
-	return rangeAgg, true
 }

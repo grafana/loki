@@ -528,7 +528,7 @@ func main() {
         },
     })
     defer reader.Close()
-    
+
     if err := reader.Open(ctx); err != nil {
         panic(err)
     }

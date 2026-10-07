@@ -21,13 +21,8 @@ import (
 
 var (
 	// ErrUnprocessableObject marks an error that the shape of a data object
-	// causes. Every such error wraps it, for example [ErrNotSingleTenant].
-	// Retrying can't fix it.
+	// causes. Retrying can't fix it.
 	ErrUnprocessableObject = errors.New("unprocessable data object")
-
-	// ErrNotSingleTenant is returned when a data object doesn't hold exactly
-	// one tenant. It wraps [ErrUnprocessableObject].
-	ErrNotSingleTenant = fmt.Errorf("%w: data object must hold exactly one tenant", ErrUnprocessableObject)
 )
 
 // A Result describes the index object built and uploaded for a single-tenant data object.
@@ -74,7 +69,7 @@ func NewSimpleIndexer(
 }
 
 // Index builds and uploads the index for obj, which is stored at objPath.
-// obj must hold exactly one tenant, otherwise Index returns [ErrNotSingleTenant].
+// obj must hold exactly one tenant.
 func (s *SimpleIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath string) (res Result, err error) {
 	objLogger := log.With(s.logger, "object_path", objPath)
 
@@ -93,7 +88,12 @@ func (s *SimpleIndexer) release(closer io.Closer, logger log.Logger, what string
 }
 
 func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath string, objLogger log.Logger) (Result, error) {
-	builder, err := indexobj.NewBuilder(s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
+	tenant, err := obj.Tenant()
+	if err != nil {
+		return Result{}, fmt.Errorf("%w: %w", ErrUnprocessableObject, err)
+	}
+
+	builder, err := indexobj.NewBuilder(tenant, s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}
@@ -106,16 +106,11 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("calculate object: %w", err)
 	}
 
-	idxObj, closer, tenantTimeRanges, err := calc.Flush()
+	idxObj, closer, timeRange, err := calc.Flush()
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer s.release(closer, objLogger, "index object")
-
-	if len(tenantTimeRanges) != 1 {
-		return Result{}, fmt.Errorf("%w: found %d tenants", ErrNotSingleTenant, len(tenantTimeRanges))
-	}
-	timeRange := tenantTimeRanges[0]
 
 	idxObjKey, err := ObjectKey(ctx, idxObj)
 	if err != nil {
@@ -132,10 +127,8 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("failed to upload index object: %w", err)
 	}
 
-	timeRange.FileSize = uint64(idxObj.Size())
-
 	level.Debug(objLogger).Log("msg", "uploaded index object",
-		"idxPath", idxObjKey, "idxSize", timeRange.FileSize, "tenant", timeRange.Tenant)
+		"idxPath", idxObjKey, "idxSize", uint64(idxObj.Size()), "tenant", timeRange.Tenant)
 
 	return Result{Path: idxObjKey, TimeRange: timeRange}, nil
 }

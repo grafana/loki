@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -17,13 +18,14 @@ import (
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
 
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 )
 
 func TestMicroServicesIngestQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -529,7 +531,7 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 
 func TestSchedulerRing(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -649,7 +651,7 @@ func TestSchedulerRing(t *testing.T) {
 
 func TestOTLPLogsIngestQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -776,7 +778,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 
 func TestProbabilisticQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -885,7 +887,7 @@ func TestProbabilisticQuery(t *testing.T) {
 
 func TestApproxCountDistinctQuery(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -991,7 +993,7 @@ func TestApproxCountDistinctQuery(t *testing.T) {
 
 func TestCategorizedLabels(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 
 	defer func() {

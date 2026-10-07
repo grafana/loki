@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -63,7 +64,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		// Create multiple index files
 		for fileIdx := 0; fileIdx < bm.indexFilesNum; fileIdx++ {
 			// Create index builder for this file
-			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 				TargetPageSize:          1024 * 1024,
 				TargetObjectSize:        10 * 1024 * 1024,
 				TargetSectionSize:       128,
@@ -88,7 +89,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx, err := builder.AppendStream(tenantID, streams.Stream{
+				newIdx, err := builder.AppendStream(streams.Stream{
 					ID:               globalStreamID,
 					Labels:           lbls,
 					MinTimestamp:     ts.Entries[0].Timestamp,
@@ -97,14 +98,14 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				})
 				require.NoError(b, err)
 
-				err = builder.ObserveLogLine(tenantID, "test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+				err = builder.ObserveLogLine("test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 				require.NoError(b, err)
 
 				globalStreamID++
 			}
 
 			// Build and store the index object
-			timeRanges := builder.TimeRanges()
+			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			obj, closer, err := builder.Flush()
 			require.NoError(b, err)
 			b.Cleanup(func() { _ = closer.Close() })
@@ -180,7 +181,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 
-			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 				TargetPageSize:          1024 * 1024,
 				TargetObjectSize:        10 * 1024 * 1024,
 				TargetSectionSize:       128,
@@ -191,7 +192,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
 
-			_, err = builder.AppendStream(tenantID, streams.Stream{
+			_, err = builder.AppendStream(streams.Stream{
 				ID:               1,
 				Labels:           lbls,
 				MinTimestamp:     now.Add(-3 * time.Hour),
@@ -200,9 +201,9 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			})
 			require.NoError(b, err)
 
-			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 			require.NoError(b, err)
-			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 			require.NoError(b, err)
 
 			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
@@ -211,10 +212,10 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
 			require.NoError(b, err)
 
-			err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+			err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 			require.NoError(b, err)
 
-			timeRanges := builder.TimeRanges()
+			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			require.Len(b, timeRanges, 1)
 
 			obj, closer, err := builder.Flush()
