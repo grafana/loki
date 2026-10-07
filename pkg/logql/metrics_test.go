@@ -184,8 +184,8 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 
 			require.Contains(t, out, "level=info")
 			require.Contains(t, out, tc.wantErr)
-			require.Contains(t, out, "err_category="+tc.wantCategory)
-			require.Contains(t, out, "err_reason="+tc.wantReason)
+			require.Contains(t, out, "failure_category="+tc.wantCategory)
+			require.Contains(t, out, "failure_reason="+tc.wantReason)
 		})
 	}
 
@@ -194,8 +194,8 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 
 		require.Contains(t, out, "level=info")
 		require.NotContains(t, out, " err=")
-		require.NotContains(t, out, "err_category=")
-		require.NotContains(t, out, "err_reason=")
+		require.NotContains(t, out, "failure_category=")
+		require.NotContains(t, out, "failure_reason=")
 	})
 }
 

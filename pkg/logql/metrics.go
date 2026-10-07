@@ -319,7 +319,7 @@ func RecordRangeAndInstantQueryMetrics(
 
 	if err != nil {
 		category, reason := server.ClassifyFailure(err)
-		logValues = append(logValues, "err", err, "err_category", category, "err_reason", reason)
+		logValues = append(logValues, "err", err, "failure_category", category, "failure_reason", reason)
 	}
 
 	level.Info(logger).Log(
