@@ -51,6 +51,9 @@ linters:
             - "!**/pkg/logproto/extensions.go"
             - "!**/pkg/logqlmodel/stats/context.go"
             - "!**/pkg/querier/stats/stats.go"
+            - "!**/pkg/queue/dequeue_qos_test.go"
+            - "!**/pkg/queue/queue.go"
+            - "!**/pkg/queue/queue_test.go"
           deny:
             - pkg: sync/atomic$
               desc: Use go.uber.org/atomic instead of sync/atomic
