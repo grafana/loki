@@ -106,7 +106,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
-	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, doubled when the shadow index gateway client is enabled, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
 	f.IntVar(&i.MaxRetries, prefix+".max-retries", -1, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. -1 preserves the existing behavior: up to 2 retries for GetShards and all candidate instances for other requests. 0 disables retries.")
 }
 
@@ -143,10 +143,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-//
-// name must be unique among clients sharing a registerer and its labels so that
-// each client's gate metrics remain distinct.
-func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
@@ -193,10 +190,7 @@ func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, li
 	// Sort descending, since we have negative duration values
 	slices.SortFunc(buckets, func(a, b time.Duration) int { return cmp.Compare(b, a) })
 
-	gateReg := prometheus.WrapRegistererWithPrefix(
-		"loki_index_gateway_client_",
-		prometheus.WrapRegistererWith(prometheus.Labels{"client": name}, r),
-	)
+	gateReg := prometheus.WrapRegistererWithPrefix("loki_index_gateway_client_", r)
 
 	sgClient := &GatewayClient{
 		logger:                            logger,

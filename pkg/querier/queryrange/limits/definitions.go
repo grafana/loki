@@ -20,7 +20,7 @@ type Limits interface {
 	RecentMetadataQuerySplitDuration(string) time.Duration
 	RecentMetadataQueryWindow(string) time.Duration
 	IngesterQuerySplitDuration(string) time.Duration
-	MaxQuerySeries(context.Context, string) int
+	MaxQuerySeries(userID string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
 	MinShardingLookback(string) time.Duration
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the

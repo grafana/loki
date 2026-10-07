@@ -1938,6 +1938,25 @@ common:
 	})
 }
 
+func Test_applyQuerierDataObjConfig(t *testing.T) {
+	t.Run("copies the data-object settings into the querier config", func(t *testing.T) {
+		yamlContent := `dataobj:
+  enabled: true
+  storage_lag: 5h`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.Querier.DataObjEnabled)
+		require.Equal(t, 5*time.Hour, config.Querier.DataObjStorageLag)
+	})
+
+	t.Run("copies the default storage lag when data objects are disabled", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, nil)
+		require.NoError(t, err)
+		require.False(t, config.Querier.DataObjEnabled)
+		require.Equal(t, 3*time.Hour, config.Querier.DataObjStorageLag)
+	})
+}
+
 func Test_IndexGatewayRingReplicationFactor(t *testing.T) {
 	t.Run("default replication factor is 3", func(t *testing.T) {
 		const emptyConfigString = `---

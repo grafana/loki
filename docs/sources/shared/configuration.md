@@ -1291,115 +1291,115 @@ kafka_config:
   [tracing_enabled: <boolean> | default = false]
 
 dataobj:
-  consumer:
-    builderconfig:
+  builder:
+    logsobj_builder:
       # The target maximum amount of uncompressed data to hold in data pages
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
-      # CLI flag: -dataobj-consumer.target-page-size
+      # CLI flag: -dataobj.builder.logsobj-builder.target-page-size
       [target_page_size: <int> | default = 1MiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
-      # CLI flag: -dataobj-consumer.max-page-rows
+      # CLI flag: -dataobj.builder.logsobj-builder.max-page-rows
       [max_page_rows: <int> | default = 10000]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
-      # CLI flag: -dataobj-consumer.target-builder-memory-limit
+      # CLI flag: -dataobj.builder.logsobj-builder.target-builder-memory-limit
       [target_object_size: <int> | default = 512MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
-      # CLI flag: -dataobj-consumer.target-section-size
+      # CLI flag: -dataobj.builder.logsobj-builder.target-section-size
       [target_section_size: <int> | default = 512MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
-      # CLI flag: -dataobj-consumer.buffer-size
+      # CLI flag: -dataobj.builder.logsobj-builder.buffer-size
       [buffer_size: <int> | default = 128MiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
-      # CLI flag: -dataobj-consumer.section-stripe-merge-limit
+      # CLI flag: -dataobj.builder.logsobj-builder.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
-      # CLI flag: -dataobj-consumer.estimated-compression-ratio
+      # ordered append. Set to either 0 or 1 to disable.
+      # CLI flag: -dataobj.builder.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
-    uploader:
-      # The size of the SHA prefix to use for generating object storage keys for
-      # data objects.
-      # CLI flag: -dataobj-consumer.sha-prefix-size
-      [shaprefixsize: <int> | default = 2]
+    indexobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-page-size
+      [target_page_size: <int> | default = 128KiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.builder.indexobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 10000]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 512MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.builder.indexobj-builder.target-section-size
+      [target_section_size: <int> | default = 512MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.builder.indexobj-builder.buffer-size
+      [buffer_size: <int> | default = 128MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.builder.indexobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to either 0 or 1 to disable.
+      # CLI flag: -dataobj.builder.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 1]
 
     # The maximum amount of time to wait in seconds before flushing an object
     # that is no longer receiving new writes.
-    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    # CLI flag: -dataobj.builder.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
     # The maximum amount of time to accumulate data in a builder before flushing
     # it. Defaults to 1 hour.
-    # CLI flag: -dataobj-consumer.max-builder-age
+    # CLI flag: -dataobj.builder.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
     # The name of the Kafka topic.
-    # CLI flag: -dataobj-consumer.topic
+    # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
-  index:
-    # The target maximum amount of uncompressed data to hold in data pages (for
-    # columnar sections). Uncompressed size is used for consistent I/O and
-    # planning.
-    # CLI flag: -dataobj-index-builder.target-page-size
-    [target_page_size: <int> | default = 128KiB]
+    # The Kafka partition to consume. A negative value derives it from the
+    # instance hostname instead.
+    # CLI flag: -dataobj.builder.partition-id
+    [partition_id: <int> | default = -1]
 
-    # The maximum row count for pages to use for the data object builder. A
-    # value of 0 means no limit.
-    # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 10000]
-
-    # The target maximum size of the encoded object and all of its encoded
-    # sections (after compression), to limit memory usage of a builder.
-    # CLI flag: -dataobj-index-builder.target-builder-memory-limit
-    [target_object_size: <int> | default = 512MiB]
-
-    # The target maximum amount of uncompressed data to hold in sections, for
-    # sections that support being limited by size. Uncompressed size is used for
-    # consistent I/O and planning.
-    # CLI flag: -dataobj-index-builder.target-section-size
-    [target_section_size: <int> | default = 512MiB]
-
-    # The size of logs to buffer in memory before adding into columnar builders,
-    # used to reduce CPU load of sorting.
-    # CLI flag: -dataobj-index-builder.buffer-size
-    [buffer_size: <int> | default = 128MiB]
-
-    # The maximum number of dataobj section stripes to merge into a section at
-    # once. Must be greater than 1.
-    # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
-    [section_stripe_merge_limit: <int> | default = 2]
-
-    # Expected compression ratio for log data, used to estimate compressed
-    # output size from uncompressed buffered records. Only takes effect with
-    # ordered append. Set to 0 or 1 to disable.
-    # CLI flag: -dataobj-index-builder.estimated-compression-ratio
-    [estimated_compression_ratio: <int> | default = 1]
+  uploader:
+    # The size of the SHA prefix to use for generating object storage keys for
+    # data objects.
+    # CLI flag: -dataobj.uploader.sha-prefix-size
+    [sha_prefix_size: <int> | default = 2]
 
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # for testing only.
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
-
-    # Experimental: When enabled, reads from new-format postings sections in
-    # index objects instead of the streams sections. Defaults to false.
-    # CLI flag: -dataobj-metastore.read-postings-sections
-    [read_postings_sections: <boolean> | default = false]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
@@ -1434,11 +1434,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
-    # Experimental: Number of older metastore windows to compact in addition to
-    # the current window. 0 compacts only the current window; 1 also compacts
-    # the previous window.
+    # Experimental: Number of prior metastore windows to compact in addition to
+    # the current window. Must be at least 1, which compacts the current and
+    # immediately prior window.
     # CLI flag: -dataobj.compaction.window-lookback
-    [window_lookback: <int> | default = 0]
+    [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
@@ -1543,7 +1543,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
@@ -1582,7 +1582,7 @@ dataobj:
 
       # Expected compression ratio for log data, used to estimate compressed
       # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
+      # ordered append. Set to either 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
@@ -1593,6 +1593,10 @@ dataobj:
   # Enable data objects.
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
+
+  # Delay after which data objects hold all the data.
+  # CLI flag: -dataobj.storage-lag
+  [storage_lag: <duration> | default = 3h]
 
 ingest_limits:
   # Enable the ingest limits service.
@@ -1618,6 +1622,13 @@ ingest_limits:
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
+
+  # Enable durability for stream sharding. Rate buckets are written to the
+  # stream metadata topic and restored from it, which removes the warm-up period
+  # after a restart or a partition rebalance during which streams are not
+  # sharded. It adds one record per stream per bucket size.
+  # CLI flag: -ingest-limits.stream-sharding-durability-enabled
+  [stream_sharding_durability_enabled: <boolean> | default = false]
 
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
@@ -3331,6 +3342,11 @@ otlp_attribute_logging:
   [max_attributes: <int> | default = 20]
 
 otlp_config:
+  # Controls when OTLP resource and scope attributes are expanded: during
+  # parsing when false, or when needed by downstream components when true.
+  # CLI flag: -distributor.otlp.defer-attribute-expansion
+  [defer_attribute_expansion: <boolean> | default = false]
+
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
@@ -4533,6 +4549,16 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
+# When enabled, the querier evaluates eligible metric queries in stream-first
+# order, which reads samples one stream at a time instead of in timestamp order.
+# CLI flag: -querier.stream-first-execution-enabled
+[stream_first_execution_enabled: <boolean> | default = false]
+
+# Time, inclusive, from which the querier reads stream-first metric queries from
+# data objects. 0 disables it.
+# CLI flag: -querier.dataobj-query-start-time
+[dataobj_query_start_time: <time> | default = 0]
+
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.
@@ -4702,9 +4728,13 @@ shard_streams:
   [desired_rate: <int> | default = 1536KB]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
-  # for this tenant. One of 'disabled' (default, unchanged behavior) or 'shadow'
-  # (ask the limits service and compare its answer against the local rate
-  # store's; the local rate store still decides how streams are sharded).
+  # for this tenant, and whether its answer is used. One of 'disabled' (default,
+  # unchanged behavior), 'shadow' (ask the limits service and compare its answer
+  # against the local rate store's; the local rate store still decides how
+  # streams are sharded) or 'live' (shard streams with the count the limits
+  # service returns, falling back to the local rate store for streams it does
+  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
+  # to be enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
@@ -6756,10 +6786,9 @@ tsdb_shipper:
     # rejected immediately with an HTTP 503 status instead of waiting, which
     # bounds the resources this process commits to an index gateway that is
     # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, doubled when the shadow index gateway
-    # client is enabled, so the process-wide number of in-flight requests can
-    # reach this value multiplied by the number of clients. 0 disables the
-    # limit.
+    # is built per schema period config, so the process-wide number of in-flight
+    # requests can reach this value multiplied by the number of clients. 0
+    # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
 

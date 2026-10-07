@@ -2,29 +2,32 @@ package config
 
 import (
 	"flag"
+	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
-	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/compactor"
 )
 
 type Config struct {
-	Consumer  consumer.Config  `yaml:"consumer"`
-	Index     index.Config     `yaml:"index"`
+	Builder builder.Config `yaml:"builder"`
+	// Uploader is shared by every target that uploads data objects.
+	Uploader  uploader.Config  `yaml:"uploader"`
 	Metastore metastore.Config `yaml:"metastore"`
 	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
 	Compaction compactor.Config `yaml:"compaction"`
 	// StorageBucketPrefix is the prefix to use for the storage bucket.
-	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
-	Enabled             bool   `yaml:"enabled"`
+	StorageBucketPrefix string        `yaml:"storage_bucket_prefix"`
+	Enabled             bool          `yaml:"enabled"`
+	StorageLag          time.Duration `yaml:"storage_lag" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Consumer.RegisterFlags(f)
-	cfg.Index.RegisterFlags(f)
+	cfg.Builder.RegisterFlags(f)
+	cfg.Uploader.RegisterFlagsWithPrefix("dataobj.uploader.", f)
 	cfg.Metastore.RegisterFlags(f)
 	cfg.Compaction.RegisterFlags(f)
 	f.StringVar(
@@ -39,6 +42,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable data objects.",
 	)
+	f.DurationVar(
+		&cfg.StorageLag,
+		"dataobj.storage-lag",
+		3*time.Hour,
+		"Delay after which data objects hold all the data.",
+	)
 }
 
 func (cfg *Config) Validate() error {
@@ -46,10 +55,10 @@ func (cfg *Config) Validate() error {
 		// Do not validate configuration if disabled.
 		return nil
 	}
-	if err := cfg.Consumer.Validate(); err != nil {
+	if err := cfg.Builder.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.Index.Validate(); err != nil {
+	if err := cfg.Uploader.Validate(); err != nil {
 		return err
 	}
 	if err := cfg.Compaction.Validate(); err != nil {

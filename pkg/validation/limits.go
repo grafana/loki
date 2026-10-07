@@ -128,27 +128,29 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery          int              `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
-	MaxQuerySeries             int              `yaml:"max_query_series" json:"max_query_series"`
-	MaxQueryLookback           model.Duration   `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength             model.Duration   `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryRange              model.Duration   `yaml:"max_query_range" json:"max_query_range"`
-	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
-	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
-	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
-	TSDBPrecomputeChunks       bool             `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
-	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
-	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
-	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
-	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
-	MaxMetadataCacheFreshness  model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
-	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
-	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
-	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
-	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
+	MaxChunksPerQuery           int                `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
+	MaxQuerySeries              int                `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryLookback            model.Duration     `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength              model.Duration     `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange               model.Duration     `yaml:"max_query_range" json:"max_query_range"`
+	MaxQueryParallelism         int                `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism     int                `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
+	TSDBMaxBytesPerShard        flagext.ByteSize   `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	TSDBShardingStrategy        string             `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
+	TSDBPrecomputeChunks        bool               `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
+	CardinalityLimit            int                `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery  int                `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests   int                `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery     int                `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
+	MaxCacheFreshness           model.Duration     `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxMetadataCacheFreshness   model.Duration     `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
+	MaxStatsCacheFreshness      model.Duration     `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
+	MaxQueriersPerTenant        uint               `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueryCapacity            float64            `yaml:"max_query_capacity" json:"max_query_capacity"`
+	QueryReadyIndexNumDays      int                `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout                model.Duration     `yaml:"query_timeout" json:"query_timeout"`
+	StreamFirstExecutionEnabled bool               `yaml:"stream_first_execution_enabled" json:"stream_first_execution_enabled" category:"experimental"`
+	DataObjQueryStartTime       dskit_flagext.Time `yaml:"dataobj_query_start_time" json:"dataobj_query_start_time" category:"experimental"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration                   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -420,6 +422,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. When a specific per-tenant timeout is used, the global timeout is ignored.")
+	f.BoolVar(&l.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, the querier evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order.")
+	f.Var(&l.DataObjQueryStartTime, "querier.dataobj-query-start-time", "Time, inclusive, from which the querier reads stream-first metric queries from data objects. 0 disables it.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how far back in time series data and metadata can be queried, up until lookback duration ago. This limit is enforced in the query frontend, the querier and the ruler. If the requested time range is outside the allowed range, the request will not fail, but will be modified to only query data within the allowed time range. The default value of 0 does not set a limit.")
@@ -848,7 +852,7 @@ func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Durati
 }
 
 // MaxQuerySeries returns the limit of the series of metric queries.
-func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
+func (o *Overrides) MaxQuerySeries(userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
 }
 
@@ -1348,6 +1352,18 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+}
+
+// DataObjQueryStartTime returns the time from which the querier reads the tenant's stream-first
+// metric queries from data objects. The zero time disables it.
+func (o *Overrides) DataObjQueryStartTime(userID string) time.Time {
+	return time.Time(o.getOverridesForUser(userID).DataObjQueryStartTime)
+}
+
+// StreamFirstExecutionEnabled reports whether eligible metric queries of the tenant run in
+// stream-first sample order.
+func (o *Overrides) StreamFirstExecutionEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).StreamFirstExecutionEnabled
 }
 
 func (o *Overrides) DebugEngineTasks(userID string) bool {

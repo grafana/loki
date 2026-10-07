@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -90,7 +89,7 @@ func (c *Calculator) Reset() {
 	clear(c.uncompressedByTenant)
 }
 
-func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
+func (c *Calculator) TimeRanges() []dataobj.TimeRange {
 	ranges := c.indexobjBuilder.TimeRanges()
 	for i := range ranges {
 		ranges[i].UncompressedLogsSize = c.uncompressedByTenant[ranges[i].Tenant]
@@ -104,7 +103,7 @@ func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
 // the builder, so we clear the accumulator in the same step to keep the two in
 // sync. Otherwise a failed upload or ToC write followed by a Kafka retry would
 // add the reprocessed bytes on top of the stale count.
-func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []dataobj.TimeRange, error) {
 	ranges := c.TimeRanges()
 
 	obj, closer, err := c.indexobjBuilder.Flush()

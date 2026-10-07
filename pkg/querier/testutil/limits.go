@@ -23,6 +23,7 @@ type MockLimits struct {
 	PatternPersistenceEnabledVal  bool
 	PatternRateThresholdVal       float64
 	PersistenceGranularityVal     time.Duration
+	DataObjQueryStartTimeVal      time.Time
 }
 
 func (m *MockLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
@@ -41,7 +42,7 @@ func (m *MockLimits) MaxQueryRange(_ context.Context, _ string) time.Duration {
 	return m.MaxQueryRangeVal
 }
 
-func (m *MockLimits) MaxQuerySeries(_ context.Context, _ string) int {
+func (m *MockLimits) MaxQuerySeries(_ string) int {
 	return m.MaxQuerySeriesVal
 }
 
@@ -91,6 +92,14 @@ func (m *MockLimits) PatternRateThreshold(_ string) float64 {
 // PersistenceGranularity implements pattern.Limits interface
 func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
 	return m.PersistenceGranularityVal
+}
+
+func (m *MockLimits) DataObjQueryStartTime(_ string) time.Time {
+	return m.DataObjQueryStartTimeVal
+}
+
+func (m *MockLimits) StreamFirstExecutionEnabled(_ string) bool {
+	return false
 }
 
 func (m *MockLimits) DebugEngineStreams(_ string) bool {

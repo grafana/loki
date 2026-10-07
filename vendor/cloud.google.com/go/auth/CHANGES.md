@@ -1,5 +1,17 @@
 # Changes
 
+## [0.24.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.3...auth/v0.24.0) (2026-09-23)
+
+
+### Features
+
+* **all:** Update supported go versions ([#20520](https://github.com/googleapis/google-cloud-go/issues/20520)) ([90413d3](https://github.com/googleapis/google-cloud-go/commit/90413d3e9d381ef4b92e3c496d98b023c5b2d8cc))
+
+
+### Bug Fixes
+
+* **auth:** Honor DisableAsyncRefresh and EarlyTokenRefresh consistently ([#20564](https://github.com/googleapis/google-cloud-go/issues/20564)) ([39f0ea5](https://github.com/googleapis/google-cloud-go/commit/39f0ea51dcbcae2bef1e8c900bdf2e675a19199c)), refs [#20563](https://github.com/googleapis/google-cloud-go/issues/20563)
+
 ## [0.23.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.23.2...auth/v0.23.3) (2026-09-17)
 
 

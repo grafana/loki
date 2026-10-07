@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -70,6 +70,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
@@ -125,8 +126,8 @@ type Config struct {
 	// TODO(segflow): restore `yaml:"logline,omitempty"` once the logline
 	// configuration is settled. Until then the section is flags-only and left
 	// out of the config reference. Every field is reachable through
-	// -logline-index.*, -logline-store.*, -logline-builder.* and
-	// -logline-query.*.
+	// -logline-index.*, -logline-store.*, -logline-builder.*,
+	// -logline-query.* and -logline-correctness.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
@@ -375,6 +376,12 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
 	}
+	if c.isTarget(LoglineCorrectness) {
+		c.Logline.Correctness.QueryIngestersWithin = c.Querier.QueryIngestersWithin
+		if err := c.Logline.ValidateCorrectness(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
 	// A no-op unless logline query narrowing is enabled.
 	if err := c.Logline.ValidateQueryConfig(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
@@ -468,7 +475,7 @@ type Loki struct {
 	indexGatewayRingManager   *lokiring.RingManager
 	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	dataObjConsumer           *consumer.Service
+	dataObjBuilder            *dataobjbuilder.Service
 	loglinePartitionRing      *loglinebuilder.PartitionRingWatcher
 	dataObjCompactionPlanner  *enginecompactor.Planner
 	dataObjCompactionWorker   *enginecompactor.Worker
@@ -488,6 +495,9 @@ type Loki struct {
 	UsageTracker push.UsageTracker
 
 	metastoreMetrics *metastore.ObjectMetastoreMetrics
+
+	// lbacChunkFilterer is nil when label access is disabled.
+	lbacChunkFilterer chunk.RequestChunkFilterer
 }
 
 // New makes a new Loki.
@@ -823,13 +833,14 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 
 	// Thor related modules: keep targets invisible
-	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(DataObjBuilder, t.initDataObjBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker, modules.UserInvisibleTargetableModule)
 
 	// Logline: keep the target invisible while it is experimental.
 	mm.RegisterModule(LoglineIndexBuilder, t.initLoglineIndexBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineCorrectness, t.initLoglineCorrectness, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
@@ -879,7 +890,7 @@ func (t *Loki) setupModuleManager() error {
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
 		DataObjExplorer:          {Server, UIRing},
-		DataObjConsumer:          {ScratchStore, Server, UIRing, Overrides},
+		DataObjBuilder:           {ScratchStore, Server, UIRing, Overrides},
 		DataObjCompactionPlanner: {Server, UIRing, Overrides},
 		DataObjCompactionWorker:  {ScratchStore, Server, UIRing},
 		ScratchStore:             {},
@@ -887,6 +898,7 @@ func (t *Loki) setupModuleManager() error {
 		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},
 		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
 		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
+		LoglineCorrectness:              {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

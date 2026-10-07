@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -170,7 +170,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC(), FileSize: uint64(1000 + i), UncompressedLogsSize: uint64(100000 + i)})
+		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC()})
 		if builder.IsFull() {
 			break
 		}
@@ -187,8 +187,6 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		require.NoError(t, result.Err())
 		pointer := result.MustValue()
 		require.Equal(t, testTenant, pointer.Tenant)
-		require.Equal(t, uint64(1000+pointerCount), pointer.FileSize)
-		require.Equal(t, uint64(100000+pointerCount), pointer.UncompressedLogsSize)
 		pointerCount++
 	}
 	require.Greater(t, pointerCount, 0)
@@ -265,7 +263,7 @@ func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
 	ranges := b.TimeRanges()
 	require.Len(t, ranges, 2)
 
-	byTenant := map[string]multitenancy.TimeRange{}
+	byTenant := map[string]dataobj.TimeRange{}
 	for _, r := range ranges {
 		byTenant[r.Tenant] = r
 	}
@@ -390,19 +388,26 @@ func (s *failingReadStore) Remove(h scratch.Handle) error {
 	return s.inner.Remove(h)
 }
 
-func appendStreamPerTenant(t *testing.T, b *Builder, tenants int) {
+// newBuilderWithSections returns a builder that holds n index pointers
+// sections. Its target section size is 1 byte, so the builder writes a section
+// for every index pointer appended.
+func newBuilderWithSections(t *testing.T, store scratch.Store, n int) *Builder {
 	t.Helper()
-	for i := range tenants {
-		_, err := b.AppendStream(fmt.Sprintf("tenant-%04d", i), streams.Stream{
-			ID:               int64(i + 1),
-			Labels:           labels.New(labels.Label{Name: "app", Value: fmt.Sprintf("v%d", i)}),
-			Rows:             1,
-			MinTimestamp:     time.Unix(10, 0).UTC(),
-			MaxTimestamp:     time.Unix(20, 0).UTC(),
-			UncompressedSize: 100,
+
+	cfg := testBuilderConfig
+	cfg.TargetSectionSize = 1
+	builder, err := NewBuilder(cfg, store, NewBuilderMetrics(nil))
+	require.NoError(t, err)
+
+	for i := range n {
+		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{
+			Path:    fmt.Sprintf("test/path-%04d", i),
+			StartTs: time.Unix(10, 0).UTC(),
+			EndTs:   time.Unix(20, 0).UTC(),
 		})
 		require.NoError(t, err)
 	}
+	return builder
 }
 
 // A closer returned alongside an error is never closed by callers, since they
@@ -420,9 +425,7 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 
 	t.Run("when the object cannot be built", func(t *testing.T) {
 		store := newFailingReadStore(false)
-		builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(nil))
-		require.NoError(t, err)
-		appendStreamPerTenant(t, builder, 1)
+		builder := newBuilderWithSections(t, store, 1)
 
 		obj, closer, err := builder.Flush()
 		require.ErrorContains(t, err, "flushing object")
@@ -437,9 +440,7 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 		// object opens successfully and the failure lands while observing it,
 		// which is where Flush owns the object and has to release it itself.
 		store := newFailingReadStore(true)
-		builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(nil))
-		require.NoError(t, err)
-		appendStreamPerTenant(t, builder, 64)
+		builder := newBuilderWithSections(t, store, 64)
 
 		obj, closer, err := builder.Flush()
 		require.ErrorContains(t, err, "observing object")
@@ -453,37 +454,36 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 // leaves nothing behind for the next one to pick up.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	tests := []struct {
-		name    string
-		store   scratch.Store
-		tenants int
-		wantErr string
+		name  string
+		store scratch.Store
+		// sections is the number of sections to append. With 64 sections the
+		// metadata outgrows the decoder's prefetch window, so the object opens
+		// and a failing read of the last section lands while observing it.
+		sections int
+		wantErr  string
 	}{
 		{
-			name:    "when the object is built",
-			store:   scratch.NewMemory(),
-			tenants: 1,
+			name:     "when the object is built",
+			store:    scratch.NewMemory(),
+			sections: 1,
 		},
 		{
-			name:    "when the object cannot be built",
-			store:   newFailingReadStore(false),
-			tenants: 1,
-			wantErr: "flushing object",
+			name:     "when the object cannot be built",
+			store:    newFailingReadStore(false),
+			sections: 1,
+			wantErr:  "flushing object",
 		},
 		{
-			// See TestBuilder_FlushReturnsNoCloserOnError for why this many
-			// tenants are needed to fail while observing.
-			name:    "when the built object cannot be observed",
-			store:   newFailingReadStore(true),
-			tenants: 64,
-			wantErr: "observing object",
+			name:     "when the built object cannot be observed",
+			store:    newFailingReadStore(true),
+			sections: 64,
+			wantErr:  "observing object",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder, err := NewBuilder(testBuilderConfig, tt.store, NewBuilderMetrics(nil))
-			require.NoError(t, err)
-			appendStreamPerTenant(t, builder, tt.tenants)
+			builder := newBuilderWithSections(t, tt.store, tt.sections)
 
 			_, closer, err := builder.Flush()
 			if tt.wantErr != "" {

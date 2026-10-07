@@ -60,6 +60,58 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
   {app="foo"} 18
   {app="bar"} 6
 
+# sum() grouping on a `<name>_extracted` label that holds shadowed structured metadata.
+clear
+load
+  {app="a", level="info"} "x" @ 10s [repeat every 10s for 6] [metadata level="error"]
+  {app="a", level="info"} "x" @ 15s [repeat every 20s for 3] [metadata level="warn"]
+  {app="a"}               "x" @ 30s [repeat every 30s for 2] [metadata level="error"]
+  {app="noise", level="info"} "x" @ 20s [repeat every 20s for 3] [metadata level="error"]
+
+eval instant at 60s sum by (level_extracted) (count_over_time({app="a"} [1m]))
+  {level_extracted="error"} 6
+  {level_extracted="warn"} 3
+  {} 2
+eval range from 20s to 60s step 20s sum by (level_extracted) (count_over_time({app="a"} [1m]))
+  {level_extracted="error"} 2 4 6
+  {level_extracted="warn"} 1 2 3
+  {} _ 1 2
+eval instant at 60s sum by (level_extracted) (count_over_time({app="a"} | level_extracted="error" [1m]))
+  {level_extracted="error"} 6
+eval instant at 60s sum by (level) (count_over_time({app="a"} [1m]))
+  {level="info"} 9
+  {level="error"} 2
+eval instant at 60s sum without (level_extracted) (count_over_time({app="a"} [1m]))
+  {app="a", level="info"} 9
+  {app="a", level="error"} 2
+eval range from 20s to 60s step 20s sum without (level_extracted) (count_over_time({app="a"} [1m]))
+  {app="a", level="info"} 3 6 9
+  {app="a", level="error"} _ 1 2
+
+# sum() by() on a `<name>_extracted` label that a parser writes.
+clear
+load
+  # sp = stream+parsed, sm = stream+metadata, tri = all three.
+  {app="a", sp="s", sm="s", tri="s"} "sp=p1 tri=p1" @ 20s [repeat every 20s for 3] [metadata sm="m" tri="m"]
+  {app="a", sp="s", sm="s", tri="s"} "sp=p2 tri=p2" @ 30s [repeat every 20s for 2] [metadata sm="m" tri="m"]
+  {app="noise", sp="s"}              "sp=p1"        @ 20s [repeat every 20s for 3]
+
+eval instant at 60s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp_extracted="p1"} 3
+  {sp_extracted="p2"} 2
+eval range from 40s to 60s step 20s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp_extracted="p1"} 2 3
+  {sp_extracted="p2"} 1 2
+eval instant at 60s sum by (tri_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {tri_extracted="p1"} 3
+  {tri_extracted="p2"} 2
+# The line has no `sm` key, so the spilled metadata value stays.
+eval instant at 60s sum by (sm_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sm_extracted="m"} 5
+eval instant at 60s sum by (sp, sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
+  {sp="s", sp_extracted="p1"} 3
+  {sp="s", sp_extracted="p2"} 2
+
 # sum() over series that differ only by a non-grouped structured metadata pair.
 clear
 load
@@ -90,8 +142,8 @@ eval instant at 60s sum without (extra) (max_over_time({app="foo"} | logfmt | un
   {app="foo", zone="eu"} 6
   {app="foo", zone="us"} 28
 
-# A __error__ set directly as structured metadata is an extraction error too. It still fails the
-# query, and a __error__ filter still drops it.
+# A __error__ set directly as structured metadata is an extraction error too, and a __error__
+# filter decides what to do with it exactly like a parser-raised error.
 clear
 load
   {app="a"} "1" @ 10s [repeat every 10s for 6]
@@ -101,6 +153,8 @@ eval instant at 60s sum(count_over_time({app="a"}[1m]))
   expect fail
 eval instant at 60s sum(count_over_time({app="a"} | __error__="" [1m]))
   {} 6
+eval instant at 60s sum(count_over_time({app="a"} | __error__!="" [1m]))
+  {} 5
 # A line filter still fails the query on the errored line it keeps, and still counts correctly once
 # it drops that line instead.
 eval instant at 60s sum(count_over_time({app="a"} |= "2" [1m]))

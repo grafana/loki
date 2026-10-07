@@ -1,12 +1,9 @@
 package hintprovider
 
 import (
-	"strings"
-	"unicode"
-
-	regexpsyntax "github.com/grafana/regexp/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logline/regexliteral"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -21,11 +18,14 @@ import (
 //     pre-parser label filters (syntax.ExtractLabelFiltersBeforeParser), and
 //     post-parser extracted-field filters after a high-confidence extractor
 //     (see collectPostParserLabelFilterLiterals)
-//   - accepted ops: equality, or regex whose AST is all literals
-//     (e.g. "foo", "(?i)foo", "foo(?i)bar")
+//   - accepted ops: equality, or regex. A regex contributes the literals every
+//     match must contain (regexliteral.Required), e.g. ".*foo.*bar" gives
+//     "foo" and "bar"
 //   - OR branches are not mandatory and are ignored
 //   - unsupported filters are ignored when a mandatory positive literal remains
 //   - extracted literals must be at least ngramLength bytes
+//   - literals are returned with ASCII letters uppercased (upperASCII), so
+//     filters that differ only in case share one needle
 //   - needles are matcher values only (never field names); value prefixes are
 //     not stripped
 //   - skip post-parser values with `"`, `\`, or control bytes. The same
@@ -50,6 +50,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
 		if len(match) < ngramLength {
 			return
 		}
+		match = upperASCII(match)
 		if _, exists := seen[match]; exists {
 			return
 		}
@@ -58,8 +59,7 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
 	}
 
 	for _, filter := range lineFilters {
-		match, ok := extractMandatoryPositiveFilterLiteral(filter)
-		if ok {
+		for _, match := range extractMandatoryPositiveFilterLiterals(filter) {
 			appendUnique(match)
 		}
 	}
@@ -83,29 +83,29 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
 	return literals
 }
 
-func extractMandatoryPositiveFilterLiteral(filter *syntax.LineFilterExpr) (string, bool) {
+func extractMandatoryPositiveFilterLiterals(filter *syntax.LineFilterExpr) []string {
 	if filter == nil {
-		return "", false
+		return nil
 	}
 
 	// In positive line-filter OR chains, no individual branch is guaranteed.
 	// Example: |= "foo" or "bar"
 	if filter.Or != nil || filter.IsOrChild {
-		return "", false
+		return nil
 	}
 
 	// Keep IP and other function filters unsupported.
 	if filter.Op != "" {
-		return "", false
+		return nil
 	}
 
 	switch filter.Ty {
 	case logql_log.LineMatchEqual:
-		return filter.Match, true
+		return []string{filter.Match}
 	case logql_log.LineMatchRegexp:
-		return extractRegexpLiteral(filter.Match)
+		return regexliteral.Required(filter.Match)
 	default:
-		return "", false
+		return nil
 	}
 }
 
@@ -141,19 +141,13 @@ func collectLabelFilterLiterals(filter logql_log.LabelFilterer) []string {
 
 	case *logql_log.LineFilterLabelFilter:
 		// Usual leaf after ParseExpr for | foo="bar" / | foo=~"...".
-		if lit, ok := extractMatcherLiteral(f.Matcher); ok {
-			return []string{lit}
-		}
-		return nil
+		return extractMatcherLiterals(f.Matcher)
 
 	case *logql_log.StringLabelFilter:
 		// Same LogQL as above; NewStringLabelFilter usually returns
 		// LineFilterLabelFilter instead of StringLabelFilter.
 		// Handle the rare fallback form.
-		if lit, ok := extractMatcherLiteral(f.Matcher); ok {
-			return []string{lit}
-		}
-		return nil
+		return extractMatcherLiterals(f.Matcher)
 
 	default:
 		// Numeric, duration, bytes, IP, noop, and other filterers are ineligible.
@@ -283,66 +277,41 @@ func IsVerbatimLineLiteral(s string) bool {
 	return true
 }
 
-func extractMatcherLiteral(m *labels.Matcher) (string, bool) {
+func extractMatcherLiterals(m *labels.Matcher) []string {
 	if m == nil {
-		return "", false
+		return nil
 	}
 	switch m.Type {
 	case labels.MatchEqual:
-		return m.Value, true
+		return []string{m.Value}
 	case labels.MatchRegexp:
-		return extractRegexpLiteral(m.Value)
+		// Label regexes are anchored, but the value is looked up as a
+		// substring of the indexed text, so required literals still apply.
+		return regexliteral.Required(m.Value)
 	default:
-		return "", false
+		return nil
 	}
 }
 
-// extractRegexpLiteral returns the literal string if every leaf of the regex
-// AST is an OpLiteral. This accepts patterns like "foo", "(?i)foo", and
-// "foo(?i)bar" while rejecting anything with wildcards, quantifiers,
-// alternations, anchors, or character classes. FoldCase leaves have their
-// runes lowercased since the parser stores them uppercase.
-func extractRegexpLiteral(match string) (string, bool) {
-	// Matches Loki's parseRegexpFilter: grafana/regexp/syntax with Perl flags.
-	parsed, err := regexpsyntax.Parse(match, regexpsyntax.Perl)
-	if err != nil {
-		return "", false
-	}
-
-	parsed = parsed.Simplify()
-
-	var buf strings.Builder
-	if !collectLiteralRunes(parsed, &buf) || buf.Len() == 0 {
-		return "", false
-	}
-	return buf.String(), true
-}
-
-// collectLiteralRunes walks the regex AST and appends runes from literal
-// leaves. Returns false if any non-literal leaf is encountered.
-func collectLiteralRunes(re *regexpsyntax.Regexp, buf *strings.Builder) bool {
-	switch re.Op {
-	case regexpsyntax.OpLiteral:
-		if re.Flags&regexpsyntax.FoldCase != 0 {
-			for _, r := range re.Rune {
-				buf.WriteRune(unicode.ToLower(r))
+// upperASCII uppercases a-z and leaves every other byte as it is. This is the
+// case change every index version's extractor applies, so the lookup does not
+// change, and filters that differ only in case dedupe to one needle.
+//
+// strings.ToUpper must not be used. It turns U+0131 and U+017F into ASCII I
+// and S, while the extractors treat those runes as separators, so the needle
+// would look up terms the matching line never produced. It also rewrites
+// invalid UTF-8 bytes as U+FFFD, which changes the needle length.
+func upperASCII(s string) string {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 'a' && c <= 'z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'a' && b[j] <= 'z' {
+					b[j] -= 'a' - 'A'
+				}
 			}
-		} else {
-			for _, r := range re.Rune {
-				buf.WriteRune(r)
-			}
+			return string(b)
 		}
-		return true
-	case regexpsyntax.OpConcat, regexpsyntax.OpCapture:
-		for _, sub := range re.Sub {
-			if !collectLiteralRunes(sub, buf) {
-				return false
-			}
-		}
-		return true
-	case regexpsyntax.OpEmptyMatch:
-		return true
-	default:
-		return false
 	}
+	return s
 }

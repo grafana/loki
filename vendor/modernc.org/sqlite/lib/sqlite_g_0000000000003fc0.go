@@ -30,15 +30,11 @@ const AT_STATX_SYNC_TYPE = 24576
 
 const AT_SYMLINK_NOFOLLOW = 256
 
-const CLOCKS_PER_SEC = 1000000
-
 const CLOCK_BOOTTIME = 7
 
 const CLOCK_BOOTTIME_ALARM = 9
 
 const CLOCK_MONOTONIC_COARSE = 6
-
-const CLOCK_MONOTONIC_RAW = 4
 
 const CLOCK_REALTIME_ALARM = 8
 
@@ -404,6 +400,8 @@ const F_WRLCK = 1
 
 const HAVE_MREMAP = 1
 
+const HUGE_VALF = "INFINITY"
+
 const L_ctermid = 20
 
 const L_cuserid = 20
@@ -608,7 +606,7 @@ const PROT_GROWSUP = 33554432
 
 const PTHREAD_BARRIER_SERIAL_THREAD = -1
 
-const PTHREAD_CANCELED = -1
+const PTHREAD_CANCELED = 18446744073709551615
 
 const PTHREAD_CANCEL_ASYNCHRONOUS = 1
 
@@ -640,6 +638,8 @@ const PTHREAD_MUTEX_ROBUST = 1
 
 const PTHREAD_MUTEX_STALLED = 0
 
+const PTHREAD_NULL = 0
+
 const PTHREAD_ONCE_INIT = 0
 
 const PTHREAD_PRIO_INHERIT = 1
@@ -657,6 +657,8 @@ const PTHREAD_SCOPE_PROCESS = 1
 const PTHREAD_SCOPE_SYSTEM = 0
 
 const P_tmpdir = "/tmp"
+
+const RTLD_DEFAULT = 0
 
 const RTLD_NOLOAD = 4
 
@@ -1048,7 +1050,7 @@ func Xsqlite3_blob_reopen(tls *libc.TLS, pBlob uintptr, iRow Tsqlite3_int64) (r 
 	_, _, _, _ = db, p, rc, v1
 	p = pBlob
 	if p == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(106649))
+		return _sqlite3MisuseError(tls, int32(106918))
 	}
 	db = (*TIncrblob)(unsafe.Pointer(p)).Fdb
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
@@ -1341,7 +1343,7 @@ func Xsqlite3_set_errmsg(tls *libc.TLS, db uintptr, errcode int32, zMsg uintptr)
 	_ = rc
 	rc = SQLITE_OK
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(190279))
+		return _sqlite3MisuseError(tls, int32(190548))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if zMsg != 0 {
@@ -1989,15 +1991,15 @@ const __WINT_MAX__ = 4294967295
 
 const __gnu_linux__ = 1
 
-const __inline = 0
+const __inline = "inline"
 
 const __linux = 1
 
 const __linux__ = 1
 
-const __tm_gmtoff = 0
+const __tm_gmtoff = "tm_gmtoff"
 
-const __tm_zone = 0
+const __tm_zone = "tm_zone"
 
 var _aAgg = [1]struct {
 	FxStep  uintptr
@@ -6445,7 +6447,7 @@ func _sqlite3Close(tls *libc.TLS, db uintptr, forceZombie int32) (r int32) {
 		return SQLITE_OK
 	}
 	if !(_sqlite3SafetyCheckSickOrOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(188794))
+		return _sqlite3MisuseError(tls, int32(189063))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if libc.Int32FromUint8((*Tsqlite3)(unsafe.Pointer(db)).FmTrace)&int32(SQLITE_TRACE_CLOSE) != 0 {
@@ -7723,7 +7725,7 @@ func _unixDelete(tls *libc.TLS, NotUsed uintptr, zPath uintptr, dirSync int32) (
 		if **(**int32)(__ccgo_up(libc.X__errno_location(tls))) == int32(ENOENT) {
 			rc = libc.Int32FromInt32(SQLITE_IOERR) | libc.Int32FromInt32(23)<<libc.Int32FromInt32(8)
 		} else {
-			rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(10)<<libc.Int32FromInt32(8), __ccgo_ts+3652, zPath, int32(47191))
+			rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(10)<<libc.Int32FromInt32(8), __ccgo_ts+3652, zPath, int32(47195))
 		}
 		return rc
 	}
@@ -7731,9 +7733,9 @@ func _unixDelete(tls *libc.TLS, NotUsed uintptr, zPath uintptr, dirSync int32) (
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(17)].FpCurrent})))(tls, zPath, bp)
 		if rc == SQLITE_OK {
 			if _full_fsync(tls, **(**int32)(__ccgo_up(bp)), 0, 0) != 0 {
-				rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(5)<<libc.Int32FromInt32(8), __ccgo_ts+4093, zPath, int32(47201))
+				rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(5)<<libc.Int32FromInt32(8), __ccgo_ts+4093, zPath, int32(47205))
 			}
-			_robust_close(tls, uintptr(0), **(**int32)(__ccgo_up(bp)), int32(47203))
+			_robust_close(tls, uintptr(0), **(**int32)(__ccgo_up(bp)), int32(47207))
 		} else {
 			rc = SQLITE_OK
 		}
@@ -8086,7 +8088,7 @@ func _unixTruncate(tls *libc.TLS, id uintptr, nByte Ti64) (r int32) {
 	rc = _robust_ftruncate(tls, (*TunixFile)(unsafe.Pointer(pFile)).Fh, nByte)
 	if rc != 0 {
 		_storeLastErrno(tls, pFile, **(**int32)(__ccgo_up(libc.X__errno_location(tls))))
-		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3578, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44321))
+		return _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(6)<<libc.Int32FromInt32(8), __ccgo_ts+3578, (*TunixFile)(unsafe.Pointer(pFile)).FzPath, int32(44325))
 	} else {
 		/* If the file was just truncated to a size smaller than the currently
 		 ** mapped region, reduce the effective mapping size as well. SQLite will
@@ -8259,47 +8261,47 @@ func _yyStackOverflow(tls *libc.TLS, yypParser uintptr) {
 ** Print tracing information for a SHIFT action
  */
 
-const alloca = 0
+const alloca = "__builtin_alloca"
 
-const blkcnt64_t = 0
+const blkcnt64_t = "blkcnt_t"
 
 type cpu_set_t = Tcpu_set_t
 
-const creat64 = 0
+const creat64 = "creat"
 
 type f_owner_ex = Tf_owner_ex
 
-const fallocate64 = 0
+const fallocate64 = "fallocate"
 
-const fgetpos64 = 0
+const fgetpos64 = "fgetpos"
 
 type file_handle = Tfile_handle
 
-const flock64 = 0
+const flock64 = "flock"
 
-const fopen64 = 0
+const fopen64 = "fopen"
 
-const fpos64_t = 0
+const fpos64_t = "fpos_t"
 
-const freopen64 = 0
+const freopen64 = "freopen"
 
-const fsblkcnt64_t = 0
+const fsblkcnt64_t = "fsblkcnt_t"
 
-const fseeko64 = 0
+const fseeko64 = "fseeko"
 
-const fsetpos64 = 0
+const fsetpos64 = "fsetpos"
 
-const fsfilcnt64_t = 0
+const fsfilcnt64_t = "fsfilcnt_t"
 
-const fstat64 = 0
+const fstat64 = "fstat"
 
-const fstatat64 = 0
+const fstatat64 = "fstatat"
 
-const ftello64 = 0
+const ftello64 = "ftello"
 
-const ftruncate64 = 0
+const ftruncate64 = "ftruncate"
 
-const ino64_t = 0
+const ino64_t = "ino_t"
 
 type itimerspec = Titimerspec
 
@@ -8311,35 +8313,35 @@ type itimerspec = Titimerspec
 
 const linux = 1
 
-const lockf64 = 0
+const lockf64 = "lockf"
 
-const loff_t = 0
+const loff_t = "off_t"
 
-const lseek64 = 0
+const lseek64 = "lseek"
 
-const lstat64 = 0
+const lstat64 = "lstat"
 
-const mkostemp64 = 0
+const mkostemp64 = "mkostemp"
 
-const mkostemps64 = 0
+const mkostemps64 = "mkostemps"
 
-const mkstemp64 = 0
+const mkstemp64 = "mkstemp"
 
-const mkstemps64 = 0
+const mkstemps64 = "mkstemps"
 
-const mmap64 = 0
+const mmap64 = "mmap"
 
-const off64_t = 0
+const off64_t = "off_t"
 
-const open64 = 0
+const open64 = "open"
 
-const openat64 = 0
+const openat64 = "openat"
 
-const posix_fadvise64 = 0
+const posix_fadvise64 = "posix_fadvise"
 
-const posix_fallocate64 = 0
+const posix_fallocate64 = "posix_fallocate"
 
-const pread64 = 0
+const pread64 = "pread"
 
 type ptrdiff_t = Tptrdiff_t
 
@@ -8434,7 +8436,7 @@ type ptrdiff_t = Tptrdiff_t
 ** not, there are still machines out there that use EBCDIC.)
  */
 
-const pwrite64 = 0
+const pwrite64 = "pwrite"
 
 type sched_param = Tsched_param
 
@@ -8814,7 +8816,7 @@ type sqlite3_io_methods = Tsqlite3_io_methods
 
 type sqlite3_mutex = Tsqlite3_mutex
 
-const stat64 = 0
+const stat64 = "stat"
 
 type statx = Tstatx
 
@@ -8900,9 +8902,9 @@ type timezone = Ttimezone
 ** a normal expected return code of SQLITE_BUSY or SQLITE_OK
  */
 
-const tmpfile64 = 0
+const tmpfile64 = "tmpfile"
 
-const truncate64 = 0
+const truncate64 = "truncate"
 
 type uint_fast32_t = Tuint_fast32_t
 
@@ -8937,6 +8939,10 @@ type uint_fast32_t = Tuint_fast32_t
 /*
 ** Enable SQLITE_USE_SEH by default on MSVC builds.  Only omit
 ** SEH support if the -DSQLITE_OMIT_SEH option is given.
+**
+** modernc.org/sqlite: also enabled under ccgo, where the __try/__except
+** blocks of wal.c are emulated through modernc_seh_try() (see the
+** SQLITE_USE_SEH section of wal.c and https://gitlab.com/cznic/sqlite/-/issues/221).
  */
 
 /*

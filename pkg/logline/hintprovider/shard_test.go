@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
@@ -352,6 +353,46 @@ func TestAggregateShardRanges(t *testing.T) {
 	})
 }
 
+func TestAggregateShardRanges_MixedVersionsAreUnioned(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Hour)
+	t2 := t1.Add(time.Hour)
+
+	// v3 routes this needle to shards 0, 5, 6, and 8; v4 routes its packed
+	// numeric term only to shard 5. The versions cover consecutive periods, so
+	// their independently intersected shard results must be unioned.
+	periods := []struct {
+		version    string
+		start, end time.Time
+	}{
+		{version: "v3", start: t0, end: t1},
+		{version: "v4", start: t1, end: t2},
+	}
+
+	byKey := make(map[shardKey][]HintTimeRange)
+	for _, period := range periods {
+		terms, err := ExtractQueryNgrams("123456789", 6, period.version)
+		require.NoError(t, err)
+		require.NotEmpty(t, terms)
+
+		for shardValue := 0; shardValue < 10; shardValue++ {
+			meta := store.Meta{
+				Version:        period.version,
+				ShardCount:     10,
+				ShardAlgorithm: shard.AlgorithmMurmur3Mix,
+				ShardValue:     shardValue,
+			}
+			if len(filterNgramsForShard(terms, meta)) == 0 {
+				continue
+			}
+			key := shardKeyOf(meta)
+			byKey[key] = append(byKey[key], HintTimeRange{Start: period.start, End: period.end})
+		}
+	}
+
+	require.Equal(t, []HintTimeRange{{Start: t0, End: t2}}, aggregateShardRanges(byKey))
+}
+
 func TestMergeSources_Truncation(t *testing.T) {
 	// Build a source string that exceeds the cap.
 	segment := "index=2026-03-30/abc123def456,doc=42,min=2026-03-30T00:00:00Z,max=2026-03-30T12:00:00Z"
@@ -408,7 +449,7 @@ func TestMergeSources_NormalizeRanges_BoundedGrowth(t *testing.T) {
 			Source: "index=2026-03-30/idx" + string(rune('A'+i%26)) + ",doc=0,min=x,max=y",
 		}
 	}
-	out := normalizeRanges(ranges)
+	out := NormalizeRanges(ranges)
 	require.Len(t, out, 1)
 	require.LessOrEqual(t, len(out[0].Source), maxMergedSourceLen)
 }

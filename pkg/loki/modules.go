@@ -45,7 +45,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	dataobjbuilder "github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
@@ -56,6 +56,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -148,13 +149,14 @@ const (
 	CacheGenerationLoader           = "cache-generation-loader"
 	PartitionRing                   = "partition-ring"
 	DataObjExplorer                 = "dataobj-explorer"
-	DataObjConsumer                 = "dataobj-consumer"
+	DataObjBuilder                  = "dataobj-builder"
 	DataObjCompactionPlanner        = "dataobj-compaction-planner"
 	DataObjCompactionWorker         = "dataobj-compaction-worker"
 	ScratchStore                    = "scratch-store"
 	LoglineIndexBuilder             = "logline-index-builder"
 	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
 	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
+	LoglineCorrectness              = "logline-correctness"
 	UIRing                          = "ui-ring"
 	UI                              = "ui"
 	All                             = "all"
@@ -542,7 +544,61 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	var loglineStore *loglinestore.Store
+	if t.Cfg.Logline.Query.Enabled {
+		// Query-frontend tripperware also constructs a store. Distinct
+		// component labels let both register metrics in a single binary.
+		loglineStore, err = loglinestore.New(
+			context.Background(),
+			t.Cfg.SchemaConfig,
+			t.Cfg.StorageConfig.ObjectStore,
+			t.Cfg.Logline.Store,
+			logger,
+			prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var (
+		dataObjBucket    objstore.Bucket
+		dataObjMetastore metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable || t.Cfg.DataObj.Enabled {
+		dataObjBucket, err = t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		dataObjMetastore = metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
+	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
+	// data-object store.
+	var dataObjStore querier.Store
+	if t.Cfg.DataObj.Enabled {
+		var storeOpts []querier.DataObjStoreOption
+		if t.lbacChunkFilterer != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
+		}
+		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.Querier, err = querier.New(
+		t.Cfg.Querier,
+		t.Store,
+		dataObjStore,
+		t.ingesterQuerier,
+		t.Overrides,
+		deleteStore,
+		logger,
+		loglineStore,
+		t.Cfg.Logline.Index.NgramLength,
+		t.Cfg.Logline.Query.MaxHintParallel,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -579,19 +635,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.NewPrepopulateMiddleware(),
 	}
 
-	var (
-		store objstore.Bucket
-		ms    metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable {
-		store, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-	}
-
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, dataObjMetastore, t.Querier, t.Overrides, dataObjBucket, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -734,7 +778,52 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if svc != nil {
 		svc.AddListener(deleteRequestsStoreListener(deleteStore))
 	}
-	return svc, nil
+	return withLoglineStorePolling(loglineStore, svc)
+}
+
+// withLoglineStorePolling starts catalog polling on the querier store so the
+// metadata cache's PollNotify loop can evict IDs that leave the snapshot. The
+// poller is loglinestore.NewPollingService, same helper the query-frontend uses. The
+// wrap below is querier-only: this module already returns the worker.
+func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Service) (services.Service, error) {
+	if loglineStore == nil {
+		return svc, nil
+	}
+
+	storeSvc := loglinestore.NewPollingService(loglineStore, "querier-logline-store", nil)
+
+	if svc == nil {
+		return storeSvc, nil
+	}
+
+	w := services.NewFailureWatcher()
+	w.WatchService(storeSvc)
+	w.WatchService(svc)
+
+	return services.NewBasicService(
+		func(ctx context.Context) error {
+			if err := services.StartAndAwaitRunning(ctx, storeSvc); err != nil {
+				return err
+			}
+			return services.StartAndAwaitRunning(ctx, svc)
+		},
+		func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-w.Chan():
+				return err
+			}
+		},
+		func(_ error) error {
+			defer w.Close()
+			err := services.StopAndAwaitTerminated(context.Background(), svc)
+			if stopErr := services.StopAndAwaitTerminated(context.Background(), storeSvc); err == nil {
+				err = stopErr
+			}
+			return err
+		},
+	), nil
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
@@ -956,11 +1045,9 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
 	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
-		t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
@@ -2213,20 +2300,20 @@ func (t *Loki) initUI() (services.Service, error) {
 	return svc, nil
 }
 
-func (t *Loki) initDataObjConsumer() (services.Service, error) {
+func (t *Loki) initDataObjBuilder() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.getDataObjBucket("dataobj-consumer")
+	store, err := t.getDataObjBucket("dataobj-builder")
 	if err != nil {
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer")
-	dataObjConsumer, err := consumer.New(
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj builder")
+	dataObjBuilder, err := dataobjbuilder.New(
 		t.Cfg.KafkaConfig,
-		t.Cfg.DataObj.Consumer,
-		t.Cfg.DataObj.Index,
+		t.Cfg.DataObj.Builder,
+		t.Cfg.DataObj.Uploader,
 		t.Cfg.DataObj.Metastore,
 		store,
 		t.scratchStore,
@@ -2237,17 +2324,17 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.dataObjConsumer = dataObjConsumer
+	t.dataObjBuilder = dataObjBuilder
 
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
 	t.Server.HTTP.
 		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
-		Path("/dataobj-consumer/prepare-downscale").
-		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDownscaleHandler)))
+		Path("/dataobj-builder/prepare-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjBuilder.PrepareDownscaleHandler)))
 
-	return t.dataObjConsumer, nil
+	return t.dataObjBuilder, nil
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
@@ -2265,7 +2352,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wrap with the same IndexStoragePrefix the dataobj-consumer uses so
+	// Wrap with the same IndexStoragePrefix the dataobj-builder uses so
 	// compactor outputs and ToC reads land alongside the existing multi-tenant
 	// indexes namespace.
 	indexBucket := store
@@ -2353,7 +2440,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		UploaderCfg:  t.Cfg.DataObj.Consumer.UploaderConfig,
+		UploaderCfg:  t.Cfg.DataObj.Uploader,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})
@@ -2457,7 +2544,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, nil, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
@@ -2638,7 +2725,7 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 		t.Cfg.StorageConfig.ObjectStore,
 		t.Cfg.Logline.Store,
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-builder"}, prometheus.DefaultRegisterer),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline index store: %w", err)
@@ -2657,5 +2744,44 @@ func (t *Loki) initLoglineIndexBuilder() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	return svc, nil
+}
+
+func (t *Loki) initLoglineCorrectness() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineCorrectness)
+
+	// Borrowed fields with no correctness flags. QueryIngestersWithin is the
+	// same querier window the query frontend uses so IndexesForRange and
+	// IndexesExcludedByIngesterWindow match production narrowing. NgramLength
+	// is owned by logline.index; the index does not record it, so a reader
+	// must use the value the builder did.
+	storeCfg := t.Cfg.Logline.Store
+	storeCfg.QueryIngestersWithin = t.Cfg.Logline.Correctness.QueryIngestersWithin
+	cfg := t.Cfg.Logline.Correctness
+	cfg.NgramLength = t.Cfg.Logline.Index.NgramLength
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		storeCfg,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	svc, err := loglinecorrectness.New(
+		indexStore,
+		cfg,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
 }

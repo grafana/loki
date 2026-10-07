@@ -27,6 +27,16 @@ eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "V={{
 # line_format; bytes_over_time reads the line and runs the stage.
 eval instant at 60s bytes_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])
   expect fail msg: not defined
+# A template that fails at run time sets __error__, so the query fails unless a filter keeps the
+# errored lines. line_format() returns the line unchanged on that failure, so each line still
+# measures 1 byte.
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" [1m])
+  expect fail msg: TemplateFormatErr
+eval instant at 60s sum by (level) (bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__!="" [1m]))
+  {level="error"} 3
+  {level="warn"} 2
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{.level | now}}" | __error__="" [1m])
+  expect empty
 
 # line_format reads a structured-metadata field the same way it reads a stream label.
 clear
@@ -88,11 +98,27 @@ eval select from 0 to 60s forward {app="a"} | label_format __error_details__="mi
   {app="a", pod="p2"} `{"ok":1}` @ 20s [metadata n="5"] [parsed __error_details__="mine"]
 # A parsing error replaces __error_details__, so both __error__ and __error_details__ are related to the same error.
 eval instant at 60s first_over_time({app="a"} | label_format __error_details__="mine" | json | __error__!="" | unwrap n [1m]) by (__error_details__)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error"} 7
 # A label_format after the parser cannot overwrite the details either, so the stage order does not
 # change the result.
 eval instant at 60s first_over_time({app="a"} | json | label_format __error_details__="mine" | __error__!="" | unwrap n [1m]) by (__error_details__)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error"} 7
+
+# label_format with a `<name>_extracted` label.
+clear
+load
+  {app="a", env="prod"}     "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+  {app="noise", env="prod"} "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+
+eval instant at 60s count_over_time({app="a"} | label_format out="{{.env_extracted}}" [1m])
+  {app="a", env="prod", env_extracted="canary", out="canary"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | label_format out="{{.env_extracted}}" [1m])   # overlapping
+  {app="a", env="prod", env_extracted="canary", out="canary"} 2 3
+# A rename onto the base name replaces the stream label and removes the source.
+eval instant at 60s count_over_time({app="a"} | label_format env=env_extracted [1m])
+  {app="a", env="canary"} 3
+eval instant at 60s count_over_time({app="a"} | label_format env_extracted=env [1m])
+  {app="a", env_extracted="prod"} 3
 
 # decolorize removes ANSI color codes from the line.
 #
@@ -186,14 +212,26 @@ eval range from 60s to 180s step 120s first_over_time({app="a"} | json | drop __
 # A cleared __error_details__ leaves __error__, so the query still fails.
 eval instant at 60s first_over_time({app="a"} | json | drop __error_details__ | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
-# drop deletes __preserve_error__ like an ordinary label, so the query still fails.
+# __preserve_error__ is never synthesized, so dropping it is an ordinary, no-op drop.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__ | unwrap v [1m]) by (code)
-  expect fail msg: JSONParserErr
-eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __preserve_error__="true" | unwrap v [1m]) by (code)
-  expect fail msg: JSONParserErr
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7
 # The filter runs before drop, so the malformed line is the only one left to report.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | drop __error__ | unwrap v [1m]) by (code)
   {code="500"} 7
+
+# drop with a `<name>_extracted` label.
+clear
+load
+  {app="a", env="prod"}     "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+  {app="noise", env="prod"} "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+
+eval instant at 60s count_over_time({app="a"} | drop env_extracted [1m])
+  {app="a", env="prod"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | drop env_extracted [1m])   # overlapping
+  {app="a", env="prod"} 2 3
+# Dropping the base name does not move the spilled value back to it.
+eval instant at 60s count_over_time({app="a"} | drop env [1m])
+  {app="a", env_extracted="canary"} 3
 
 # keep removes every label not listed, whether it came from a stream label or structured
 # metadata.
@@ -249,13 +287,27 @@ eval select from 0 to 60s forward {app="a"} | json | keep __error__="JSONParserE
 # keep never drops the error labels, so a query with an __error__ filter keeps erroring samples in the result,
 # and a query without an __error__ filter fails.
 eval instant at 60s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7
 eval range from 40s to 80s step 20s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code)   # overlapping
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7 7 7
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7 7 7
 eval range from 60s to 180s step 120s first_over_time({app="a"} | json | __error__!="" | keep code, v | unwrap v [1m]) by (code) # non-overlapping
-  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", code="500"} 7 _
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", code="500"} 7 _
 eval instant at 60s first_over_time({app="a"} | json | keep code, v | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
 # Naming __error__ in the keep list does not ask to keep the error.
 eval instant at 60s first_over_time({app="a"} | json | keep __error__, v | unwrap v [1m]) by (code)
   expect fail msg: JSONParserErr
+
+# keep with a `<name>_extracted` label.
+clear
+load
+  {app="a", env="prod"}     "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+  {app="noise", env="prod"} "msg" @ 20s [repeat every 20s for 3] [metadata env="canary"]
+
+eval instant at 60s count_over_time({app="a"} | keep app, env_extracted [1m])
+  {app="a", env_extracted="canary"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | keep app, env_extracted [1m])   # overlapping
+  {app="a", env_extracted="canary"} 2 3
+# Keeping the base name drops the spilled value.
+eval instant at 60s count_over_time({app="a"} | keep app, env [1m])
+  {app="a", env="prod"} 3

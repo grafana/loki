@@ -93,24 +93,31 @@ func shardFromMatchers(matchers []*labels.Matcher) (cleaned []*labels.Matcher, r
 	return matchers, logql.Shard{}, false, nil
 }
 
+func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
+	matchers, shard, err := cleanMatchersWithoutFallback(matchers...)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(matchers) == 0 {
+		// hack to query all data
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	}
+	return matchers, shard, nil
+}
+
 // TODO(owen-d): This is a hack for compatibility with how the current query-mapping works.
 // Historically, Loki will read the index shard factor and the query planner will inject shard
 // labels accordingly.
 // In the future, we should use dynamic sharding in TSDB to determine the shard factors
 // and we may no longer wish to send a shard label inside the queries,
 // but rather expose it as part of the stores.Index interface
-func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
+func cleanMatchersWithoutFallback(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
 	// first use withoutNameLabel to make a copy with the name label removed
 	matchers = withoutNameLabel(matchers)
 
 	matchers, shard, found, err := shardFromMatchers(matchers)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	if len(matchers) == 0 {
-		// hack to query all data
-		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
 	if found {
@@ -174,7 +181,8 @@ func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, throug
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	matchers, _, err := cleanMatchers(matchers...)
+	// Keep empty matchers empty so LabelValues can use the index reader fast path.
+	matchers, _, err := cleanMatchersWithoutFallback(matchers...)
 	if err != nil {
 		return nil, err
 	}

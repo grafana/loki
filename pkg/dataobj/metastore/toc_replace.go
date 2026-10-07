@@ -15,18 +15,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// TableOfContentsEntry describes an index-pointer row to add to a ToC for a
-// given tenant. Used by ReplaceIndexPointers as the "to add" set.
+// TableOfContentsEntry describes an index-pointer row to add to a tenant's ToC.
+// Used by WriteEntry and as the "to add" set of ReplaceIndexPointers.
 type TableOfContentsEntry struct {
 	// Path is the object-storage path of the index object.
 	Path string
 	// StartTime / EndTime bound the time range covered by the index.
 	StartTime time.Time
 	EndTime   time.Time
-	// FileSize is the encoded on-disk size of the index object, in bytes.
-	FileSize uint64
-	// UncompressedLogsSize is the uncompressed log volume the index references, in bytes.
-	UncompressedLogsSize uint64
+}
+
+// validate returns an error if e has no valid time range for a ToC.
+func (e TableOfContentsEntry) validate() error {
+	// The ToC writer fails to read back a row with a timestamp of 0, so a row
+	// that starts at the Unix epoch would block every later write to its ToC.
+	if !e.StartTime.After(time.Unix(0, 0)) {
+		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
+	}
+	// An entry that ends before it starts overlaps no ToC window, so the
+	// writer would write nothing for it.
+	if e.EndTime.Before(e.StartTime) {
+		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
+	}
+	return nil
 }
 
 // replaceBackoffConfig bounds ReplaceIndexPointers retries on conditional-write
@@ -43,21 +54,21 @@ var replaceBackoffConfig = backoff.Config{
 var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 
 // ReplaceIndexPointers atomically swaps a set of index pointers in the
-// ToC for the given window. For the target tenant, every row in oldPaths
-// is removed and every entry in newEntries is added; all other tenants'
-// entries are preserved unchanged.
+// tenant's ToC for the given window. Every row in oldPaths is removed and
+// every entry in newEntries is added.
 //
 // Returns (true, nil) if the swap was applied.
 // Returns (false, nil) if there's nothing to do, examples are:
 // - both oldPaths and newEntries are empty
 // - oldPaths do not exist in TOC (race-loss)
 // - TOC doesn't exist
-// Returns (false, error) if an error happened (including retry exhaustion).
+// Returns (false, error) if an error happened (including retry exhaustion),
+// or if an entry in newEntries has no valid time range.
 //
 // Race-loss is detected on an ANY-match basis: if ANY oldPath is still
-// present in the target tenant's current section, the swap proceeds and
-// drops the matched subset (leaving non-matched oldPaths' replacements, if
-// they were already swapped in by a concurrent coordinator, untouched).
+// present in the tenant's ToC, the swap proceeds and drops the matched subset
+// (leaving non-matched oldPaths' replacements, if they were already swapped
+// in by a concurrent coordinator, untouched).
 // Only when ZERO oldPaths match is the call treated as a no-op. Callers
 // orchestrating per-cycle plans against a single ToC snapshot will see
 // all-or-nothing matches in practice; partial overlaps can only occur in
@@ -67,10 +78,13 @@ var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 // The primitive is idempotent: re-invoking it with already-applied
 // oldPaths/newEntries is a no-op.
 //
+// A ToC holds one tenant. If it holds a section of another tenant,
+// ReplaceIndexPointers returns an error without retrying.
+//
 // Callers must serialize overlapping ReplaceIndexPointers calls for the
-// same window within a process; the method allocates per-call state but
-// does not coordinate across goroutines. Concurrent processes racing on
-// the same window are safe because each call goes through a fresh
+// same tenant and window within a process; the method allocates per-call
+// state but does not coordinate across goroutines. Concurrent processes
+// racing on the same ToC are safe because each call goes through a fresh
 // GetAndReplace with conditional-PUT semantics.
 func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	ctx context.Context,
@@ -89,6 +103,11 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	case !oldEmpty && newEmpty:
 		return false, errors.New("replace-index-pointers: no old entries")
 	default:
+		for _, e := range newEntries {
+			if err := e.validate(); err != nil {
+				return false, err
+			}
+		}
 		return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 	}
 }
@@ -104,7 +123,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 	newEntries []TableOfContentsEntry,
 	backoffCfg backoff.Config,
 ) (bool, error) {
-	tocPath := TableOfContentsPath(window.Truncate(MetastoreWindowSize).UTC())
+	tocPath := TableOfContentsPath(tenant, window.Truncate(MetastoreWindowSize).UTC())
 
 	oldSet := make(map[string]struct{}, len(oldPaths))
 	for _, p := range oldPaths {
@@ -144,8 +163,12 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 				return nil, fmt.Errorf("parsing existing ToC: %w", oerr)
 			}
 
-			// Pass 1: detect whether any oldPaths are still present in the target tenant.
-			anyMatched, scanErr := scanForMatches(ctx, obj, tenant, oldSet)
+			if err := checkTenant(obj, tenant); err != nil {
+				return nil, err
+			}
+
+			// Pass 1: detect whether any oldPaths are still present.
+			anyMatched, scanErr := scanForMatches(ctx, obj, oldSet)
 			if scanErr != nil {
 				return nil, scanErr
 			}
@@ -156,7 +179,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 				return nil, errReplaceNoOp
 			}
 
-			// Pass 2: rebuild ToC, dropping target tenant's oldPaths and appending newEntries.
+			// Pass 2: rebuild ToC, dropping oldPaths and appending newEntries.
 			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
 			if berr != nil {
 				return nil, fmt.Errorf("creating ToC builder: %w", berr)
@@ -168,11 +191,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			for _, e := range newEntries {
 				if err := builder.AppendIndexPointer(tenant, indexpointers.IndexPointer{
-					Path:                 e.Path,
-					StartTs:              e.StartTime,
-					EndTs:                e.EndTime,
-					FileSize:             e.FileSize,
-					UncompressedLogsSize: e.UncompressedLogsSize,
+					Path:    e.Path,
+					StartTs: e.StartTime,
+					EndTs:   e.EndTime,
 				}); err != nil {
 					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}
@@ -202,6 +223,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 		if errors.Is(err, errReplaceNoOp) {
 			return swapped, nil
 		}
+		if errors.Is(err, errTenantMismatch) {
+			return false, err
+		}
 		lastErr = err
 		b.Wait()
 	}
@@ -211,16 +235,13 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 	return false, lastErr
 }
 
-// scanForMatches reports whether any row in any section of obj is owned by
-// the target tenant AND has a path present in oldSet.
-func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, oldSet map[string]struct{}) (bool, error) {
+// scanForMatches reports whether a row in an index pointers section of obj
+// has a path in oldSet. It stops at the first match.
+func scanForMatches(ctx context.Context, obj *dataobj.Object, oldSet map[string]struct{}) (bool, error) {
 	var reader indexpointers.RowReader
 	defer reader.Close()
 	buf := make([]indexpointers.IndexPointer, 256)
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return false, fmt.Errorf("opening section: %w", err)
@@ -247,8 +268,8 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, old
 	return false, nil
 }
 
-// replayFiltered replays every row from every section of obj into builder,
-// EXCEPT rows belonging to the target tenant whose path is in oldSet.
+// replayFiltered replays every row from every section of obj into builder
+// for tenant, EXCEPT rows whose path is in oldSet.
 func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.Builder, tenant string, oldSet map[string]struct{}) error {
 	var reader indexpointers.RowReader
 	defer reader.Close()
@@ -258,7 +279,6 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
 		}
-		sectionTenant := section.Tenant
 		reader.Reset(sec)
 		if err := reader.Open(ctx); err != nil {
 			return fmt.Errorf("opening row reader: %w", err)
@@ -266,12 +286,10 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 		for {
 			n, err := reader.Read(ctx, buf)
 			for i := range n {
-				if sectionTenant == tenant {
-					if _, drop := oldSet[buf[i].Path]; drop {
-						continue
-					}
+				if _, drop := oldSet[buf[i].Path]; drop {
+					continue
 				}
-				if aerr := builder.AppendIndexPointer(sectionTenant, buf[i]); aerr != nil {
+				if aerr := builder.AppendIndexPointer(tenant, buf[i]); aerr != nil {
 					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}

@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -112,7 +112,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
 
-			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 		}
 
@@ -230,7 +230,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			require.NoError(b, err)
 
 			metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 			require.NoError(b, err)
 
 			mstore := newTestObjectMetastore(bucket)

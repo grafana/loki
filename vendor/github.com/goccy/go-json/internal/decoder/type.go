@@ -11,7 +11,6 @@ import (
 type Decoder interface {
 	Decode(*RuntimeContext, int64, int64, unsafe.Pointer) (int64, error)
 	DecodePath(*RuntimeContext, int64, int64) ([][]byte, int64, error)
-	DecodeStream(*Stream, int64, unsafe.Pointer) error
 }
 
 const (

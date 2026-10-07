@@ -262,6 +262,29 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
+func (q *QuerierAPI) LoglineIndexHandler(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeLoglineIndex))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
+	resp, err := q.querier.LoglineIndex(ctx, req)
+	resLength := 0
+	if resp != nil {
+		resLength = len(resp.TimeRanges)
+	}
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
+
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
+	logql.RecordLoglineIndexQueryMetrics(ctx, utillog.Logger, req.GetStart(), req.GetEnd(), req.Expr, strconv.Itoa(status), statResult)
+	return resp, err
+}
+
 func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeShards))
 	defer timer.ObserveDuration()
@@ -287,7 +310,6 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	logql.RecordShardsQueryMetrics(
 		ctx, utillog.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
-
 	return resp, err
 }
 

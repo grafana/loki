@@ -173,6 +173,7 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 	var (
 		minTLSVersion openshiftconfigv1.TLSProtocolVersion
 		ciphers       []string
+		groups        []openshiftconfigv1.TLSGroup
 	)
 
 	switch tlsSecurityProfile.Type {
@@ -182,10 +183,12 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 		}
 		minTLSVersion = tlsSecurityProfile.Custom.MinTLSVersion
 		ciphers = tlsSecurityProfile.Custom.Ciphers
+		groups = tlsSecurityProfile.Custom.Groups
 	case openshiftconfigv1.TLSProfileOldType, openshiftconfigv1.TLSProfileIntermediateType, openshiftconfigv1.TLSProfileModernType:
 		spec := openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
 		minTLSVersion = spec.MinTLSVersion
 		ciphers = spec.Ciphers
+		groups = spec.Groups
 	default:
 		return kverrors.New("unable to determine tls profile settings %s", tlsSecurityProfile.Type)
 	}
@@ -194,7 +197,25 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 	opts.TLSProfile = TLSProfileSpec{
 		MinTLSVersion: string(minTLSVersion),
 		Ciphers:       crypto.OpenSSLToIANACipherSuites(ciphers),
+		// Groups use IANA "TLS Supported Groups" names, which the operands
+		// (observatorium-api, opa-openshift, passthrough gateway) accept directly.
+		Groups: tlsGroupsToStrings(groups),
 	}
 
 	return nil
+}
+
+// tlsGroupsToStrings converts the OpenShift TLS group identifiers to plain
+// strings for use in operand command-line flags.
+func tlsGroupsToStrings(groups []openshiftconfigv1.TLSGroup) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(groups))
+	for _, g := range groups {
+		result = append(result, string(g))
+	}
+
+	return result
 }
