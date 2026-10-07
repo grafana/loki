@@ -35,7 +35,7 @@ func TestBloomBuilding(t *testing.T) {
 	)
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		require.NoError(t, clu.Cleanup())
@@ -198,7 +198,7 @@ func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore 
 				},
 				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v13",
+				Schema:     fmt.Sprintf("v%d", config.LatestSchemaVersion),
 			},
 		},
 	}

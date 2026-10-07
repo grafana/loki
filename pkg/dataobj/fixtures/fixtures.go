@@ -32,6 +32,7 @@ var defaultLogSectionConfig = logSectionConfig{
 		SchemaLabels:              []string{"label:service_name"},
 		StreamOrder:               logs.StreamOrderStableHashV1,
 		ShardCount:                streams.ShardFactor,
+		DropDuplicates:            false, // never modify the requested input
 	},
 }
 

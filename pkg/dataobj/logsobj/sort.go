@@ -121,6 +121,7 @@ func (b *Builder) replaySections(ctx context.Context,
 		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 		AppendStrategy:   logs.AppendOrdered,
 		SortOrder:        logs.SortStreamASC,
+		DropDuplicates:   b.cfg.DropDuplicates,
 	})
 	intermediateSectionBuilder.SetTenant(tenant)
 

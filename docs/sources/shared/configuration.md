@@ -1384,6 +1384,11 @@ dataobj:
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
+    # The Kafka partition to consume. A negative value derives it from the
+    # instance hostname instead.
+    # CLI flag: -dataobj.builder.partition-id
+    [partition_id: <int> | default = -1]
+
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
     # data objects.
@@ -1443,7 +1448,7 @@ dataobj:
     # Experimental: Maximum runs per LogMerge task (K for log compaction).
     # Separate from max-runs-per-task to scale independently
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
-    [logs_max_runs_per_task: <int> | default = 3]
+    [logs_max_runs_per_task: <int> | default = 8]
 
     # Experimental: Minimum total compactable data (sum of all runs'
     # uncompressed size) that justifies log compaction. Converged windows below
