@@ -213,10 +213,6 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	return cluster
 }
 
-// LatestSchemaVersion is the newest schema version, so integration tests exercise it instead of
-// drifting behind it.
-const LatestSchemaVersion = "v14"
-
 // SetSchemaVer sets a schema version for all the schemas
 func (c *Cluster) SetSchemaVer(schemaVer string) {
 	c.schemaVer = schemaVer
