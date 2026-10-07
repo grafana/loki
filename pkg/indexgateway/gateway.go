@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -147,6 +148,28 @@ func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request)
 	}
 }
 
+// trackIndexRequest starts timing an index request for operation op. Call it
+// once the query gate has admitted the request, and call the returned func
+// with the request's error when it ends. The duration is observed for
+// successful requests only, labelled with the slowest index tier the request
+// touched; file accesses are counted either way.
+func (g *Gateway) trackIndexRequest(ctx context.Context, op string) (context.Context, func(error)) {
+	ctx, stats := shipperindex.NewContextWithAccessStats(ctx)
+	start := time.Now()
+	return ctx, func(err error) {
+		memory, disk := stats.FileAccesses()
+		if memory > 0 {
+			g.metrics.indexFileAccesses.WithLabelValues(shipperindex.AccessTierMemory).Add(float64(memory))
+		}
+		if disk > 0 {
+			g.metrics.indexFileAccesses.WithLabelValues(shipperindex.AccessTierDisk).Add(float64(disk))
+		}
+		if err == nil {
+			g.metrics.indexRequestDuration.WithLabelValues(op, stats.RequestTier()).Observe(time.Since(start).Seconds())
+		}
+	}
+}
+
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	logger := util_log.WithContext(ctx, g.log)
 	ctx, sp := tracer.Start(ctx, "indexgateway.GetChunkRef")
@@ -165,6 +188,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, mapGateError(err)
 	}
 	defer g.queryGate.Done()
+
+	ctx, done := g.trackIndexRequest(ctx, opChunkRefs)
+	defer func() { done(err) }()
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunkRefsLookupStart := time.Now()
@@ -248,7 +274,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	return result, nil
 }
 
-func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
+func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest) (_ *logproto.GetSeriesResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -263,6 +289,9 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 		return nil, mapGateError(err)
 	}
 	defer g.queryGate.Done()
+
+	ctx, done := g.trackIndexRequest(ctx, opSeries)
+	defer func() { done(err) }()
 
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
@@ -280,7 +309,7 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	return resp, nil
 }
 
-func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
+func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.LabelNamesForMetricNameRequest) (_ *logproto.LabelResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -299,6 +328,9 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 		return nil, mapGateError(err)
 	}
 	defer g.queryGate.Done()
+
+	ctx, done := g.trackIndexRequest(ctx, opLabelNames)
+	defer func() { done(err) }()
 
 	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
@@ -309,7 +341,7 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 	}, nil
 }
 
-func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
+func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.LabelValuesForMetricNameRequest) (_ *logproto.LabelResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -329,6 +361,9 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	}
 	defer g.queryGate.Done()
 
+	ctx, done := g.trackIndexRequest(ctx, opLabelValues)
+	defer func() { done(err) }()
+
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
@@ -338,7 +373,7 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	}, nil
 }
 
-func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (_ *logproto.IndexStatsResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -353,10 +388,13 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	}
 	defer g.queryGate.Done()
 
+	ctx, done := g.trackIndexRequest(ctx, opStats)
+	defer func() { done(err) }()
+
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
-func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (_ *logproto.VolumeResponse, err error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -372,10 +410,13 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	}
 	defer g.queryGate.Done()
 
+	ctx, done := g.trackIndexRequest(ctx, opVolume)
+	defer func() { done(err) }()
+
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
 
-func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
+func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) (err error) {
 	ctx := server.Context()
 	ctx, sp := tracer.Start(ctx, "indexgateway.GetShards")
 	defer sp.End()
@@ -394,6 +435,9 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return mapGateError(err)
 	}
 	defer g.queryGate.Done()
+
+	ctx, done := g.trackIndexRequest(ctx, opShards)
+	defer func() { done(err) }()
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {

@@ -180,6 +180,7 @@ func (t *indexSet) Close() {
 }
 
 func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
+	t.recordOnDemandIfNotReady(ctx)
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
@@ -202,7 +203,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 }
 
 func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error {
-
+	t.recordOnDemandIfNotReady(ctx)
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
@@ -241,6 +242,15 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		})
 	}
 	return g.Wait()
+}
+
+// recordOnDemandIfNotReady records an on-demand access for the request in ctx
+// if the index set is still being initialised, so the request is about to wait
+// for its files to be downloaded.
+func (t *indexSet) recordOnDemandIfNotReady(ctx context.Context) {
+	if !t.indexMtx.isReady() {
+		index.RecordOnDemand(ctx)
+	}
 }
 
 // DropAllDBs closes reference to all the open index and removes the local files.

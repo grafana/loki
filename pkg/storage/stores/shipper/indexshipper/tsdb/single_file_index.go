@@ -157,6 +157,20 @@ func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 	return f.getRawFileReader()
 }
 
+// Tier reports where the file's index bytes are served from.
+func (f *TSDBFile) Tier() index.Tier {
+	return indexTier(f.Index)
+}
+
+// indexTier reports where idx is served from: its Tier if it has one, else
+// index.TierDisk.
+func indexTier(idx any) index.Tier {
+	if t, ok := idx.(interface{ Tier() index.Tier }); ok {
+		return t.Tier()
+	}
+	return index.TierDisk
+}
+
 // nolint
 // TSDBIndex is backed by an IndexReader
 // and translates the IndexReader to an Index implementation
@@ -191,6 +205,12 @@ func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	return &TSDBIndex{
 		reader: reader,
 	}
+}
+
+// Tier reports where the index bytes are served from. Readers that don't
+// report a tier are treated as index.TierDisk.
+func (i *TSDBIndex) Tier() index.Tier {
+	return indexTier(i.reader)
 }
 
 func (i *TSDBIndex) Close() error {
