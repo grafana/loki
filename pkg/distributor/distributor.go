@@ -852,9 +852,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 					d.writeFailuresManager.Log(tenantID, err)
 					// Set the validation error to the stream limit error so it is returned to the client.
 					validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-					// Do not return early here even if nothing was accepted: the
-					// live-mode rejection below still needs to run so its discards
-					// are tracked too.
+					return nil, validationErr
 				}
 				streams = accepted
 			}
