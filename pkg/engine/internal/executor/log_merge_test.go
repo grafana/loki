@@ -610,6 +610,116 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
 }
 
+type recordingLogMergeObserver struct {
+	stats      []LogMergeObservedStats
+	inputBytes []int64
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMerge(_ string, stats LogMergeObservedStats, _ time.Duration) {
+	o.stats = append(o.stats, stats)
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytes(bytes int64) {
+	o.inputBytes = append(o.inputBytes, bytes)
+}
+
+func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	entry := func(line, traceID string) push.Entry {
+		return push.Entry{Timestamp: ts, Line: line, StructuredMetadata: push.LabelsAdapter{{Name: "trace_id", Value: traceID}}}
+	}
+
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: []push.Entry{entry("line", "1")}}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: []push.Entry{entry("line", "1"), entry("line", "22")}}},
+	})
+
+	observer := &recordingLogMergeObserver{}
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	c.logMergeObserver = observer
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs:       sourceLogRuns(t, dataBucket, tenant, "objA", "objB"),
+	}
+
+	_, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+
+	wantBytes := int64(len("line1") + len("line1") + len("line22"))
+	require.Equal(t, []int64{wantBytes}, observer.inputBytes, "records below one batch must be reported in one report")
+	require.Len(t, observer.stats, 1)
+	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
+	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)
+	require.Equal(t, 1, observer.stats[0].DuplicateRecords)
+}
+
+func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	entries := []push.Entry{{Timestamp: ts, Line: "same line"}}
+
+	// mergeDuplicates merges objA and objB and returns the duplicate count plus
+	// each object's local stream ID for every label set.
+	mergeDuplicates := func(t *testing.T, objA, objB []testStream) (int, map[string]map[string]int64) {
+		ctx := context.Background()
+		dataBucket := objstore.NewInMemBucket()
+		buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{tenant: objA})
+		buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{tenant: objB})
+
+		observer := &recordingLogMergeObserver{}
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = dataBucket
+		c.logMergeObserver = observer
+		node := &physical.LogMerge{Tenant: tenant, SortSchema: sortSchema, Runs: sourceLogRuns(t, dataBucket, tenant, "objA", "objB")}
+
+		sources, err := c.collectLogSources(ctx, node)
+		require.NoError(t, err)
+		localIDs := make(map[string]map[string]int64)
+		for _, src := range sources {
+			localIDs[src.path] = make(map[string]int64)
+			for id, stream := range src.streams {
+				localIDs[src.path][stream.Labels.String()] = id
+			}
+		}
+
+		_, err = c.doLogObjectMerge(ctx, node)
+		require.NoError(t, err)
+		require.Len(t, observer.stats, 1)
+		return observer.stats[0].DuplicateRecords, localIDs
+	}
+
+	t.Run("counts a duplicate when the stream has a different local ID in each object", func(t *testing.T) {
+		duplicates, localIDs := mergeDuplicates(t,
+			[]testStream{{labels: `{app="a"}`, entries: entries}, {labels: `{app="b"}`, entries: entries}},
+			[]testStream{{labels: `{app="a"}`, entries: entries}},
+		)
+
+		require.NotEqual(t, localIDs["objA"][`{app="a"}`], localIDs["objB"][`{app="a"}`])
+		require.Equal(t, 1, duplicates)
+	})
+
+	t.Run("does not count records from different streams that share a local ID", func(t *testing.T) {
+		duplicates, localIDs := mergeDuplicates(t,
+			[]testStream{{labels: `{app="a"}`, entries: entries}},
+			[]testStream{{labels: `{app="b"}`, entries: entries}},
+		)
+
+		require.Equal(t, localIDs["objA"][`{app="a"}`], localIDs["objB"][`{app="b"}`])
+		require.Equal(t, 0, duplicates)
+	})
+}
+
 func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 	want := logs.SortLayout{
 		SchemaLabels: []string{"label:app"},
@@ -718,14 +828,12 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok, "index object must be written at %s", indexPath)
 
-	// Index contains sections for the tenant
+	// Index contains sections for the tenant only
 	indexObj, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
 	require.NoError(t, err)
+	require.Equal(t, []string{tenant}, indexObj.Tenants())
 	kinds := make(map[string]bool)
 	for _, sec := range indexObj.Sections() {
-		if sec.Tenant != tenant {
-			continue
-		}
 		if stats.CheckSection(sec) {
 			kinds["stats"] = true
 		}

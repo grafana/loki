@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +14,7 @@ import (
 const (
 	labelTenant  = "tenant"
 	labelOutcome = "outcome"
+	labelThread  = "thread"
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
@@ -268,12 +270,15 @@ type workerMetrics struct {
 	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
 	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
+	logMergeTaskInputBytes        *prometheus.HistogramVec // tenant
+	logMergeTaskInputBytesTotal   *prometheus.CounterVec   // thread
+	logMergeDuplicateRecordsTotal *prometheus.CounterVec   // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
-	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
-	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
+	byteBuckets := prometheus.ExponentialBuckets(512*1024, 2, 21) // 512KB - 0.5TB
+	durationBuckets := prometheus.ExponentialBuckets(1, 2, 16)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_compressed",
@@ -287,17 +292,38 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 		}, []string{labelTenant}),
 		logMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_log_merge_tasks_total",
-			Help: "LogMerge tasks by outcome. success = compacted log objects uploaded, short_circuit = output index already present, empty = no source data or records.",
+			Help: "LogMerge tasks by outcome. success = compacted log objects uploaded, empty = no source data or records.",
 		}, []string{labelTenant, labelOutcome}),
 		logMergeDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_duration_seconds",
 			Help:    "Wall-clock duration of a LogMerge task on the worker.",
 			Buckets: durationBuckets,
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}, []string{labelTenant}),
 		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
 			Buckets: byteBuckets,
+		}, []string{labelTenant}),
+		logMergeTaskInputBytes: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_task_input_bytes",
+			Help:    "Log line and structured metadata value bytes merged by a LogMerge task. One observation per task, for the same tasks as loki_dataobj_compaction_log_merge_duration_seconds.",
+			Buckets: byteBuckets,
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{labelTenant}),
+		logMergeTaskInputBytesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_task_input_bytes_total",
+			Help: "Log line and structured metadata value bytes merged by LogMerge tasks, counted while tasks run. It tracks the same bytes as loki_dataobj_compaction_log_merge_task_input_bytes. Includes tasks that later fail. A thread runs one task at a time, so rate() per thread gives the throughput of its running task.",
+		}, []string{labelThread}),
+		logMergeDuplicateRecordsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_duplicate_records_total",
+			Help: "Records in successful LogMerge tasks that repeat an earlier record's stream, timestamp, line, and structured metadata. Duplicates are kept in the output.",
 		}, []string{labelTenant}),
 	}
 }
@@ -316,6 +342,28 @@ func (m *workerMetrics) ObserveIndexMergeOutput(tenant string, compressed, uncom
 	}
 }
 
+// logMergeObserver returns the executor.LogMergeObserver for one worker
+// thread. It satisfies executor.NewLogMergeObserverFunc.
+func (m *workerMetrics) logMergeObserver(thread int) executor.LogMergeObserver {
+	return &threadLogMergeMetrics{
+		workerMetrics: m,
+		inputBytes:    m.logMergeTaskInputBytesTotal.WithLabelValues(strconv.Itoa(thread)),
+	}
+}
+
+// threadLogMergeMetrics is the executor.LogMergeObserver for one worker
+// thread. It holds the thread's input bytes counter, so the per-record path
+// does no label lookup.
+type threadLogMergeMetrics struct {
+	*workerMetrics
+	inputBytes prometheus.Counter
+}
+
+// ObserveLogMergeInputBytes satisfies executor.LogMergeObserver.
+func (m *threadLogMergeMetrics) ObserveLogMergeInputBytes(bytes int64) {
+	m.inputBytes.Add(float64(bytes))
+}
+
 // ObserveLogMerge satisfies executor.LogMergeObserver. Called by the LogMerge
 // executor on the worker after each task attempt.
 func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeObservedStats, duration time.Duration) {
@@ -328,10 +376,12 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	}
 	m.logMergeTasksTotal.WithLabelValues(tenant, outcome).Inc()
 	m.logMergeDurationSeconds.WithLabelValues(tenant).Observe(duration.Seconds())
+	m.logMergeTaskInputBytes.WithLabelValues(tenant).Observe(float64(stats.InputBytes))
 	if stats.Outcome != "success" {
 		return
 	}
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
 	}
+	m.logMergeDuplicateRecordsTotal.WithLabelValues(tenant).Add(float64(stats.DuplicateRecords))
 }

@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier"
-	"github.com/grafana/loki/v3/pkg/querier/dataobjread"
 	"github.com/grafana/loki/v3/pkg/storage"
 	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -56,25 +55,24 @@ var (
 )
 
 // storeParallelism bounds concurrent object-store reads for both backends (see
-// dataObjRangeConfig and MaxParallelGetChunk in store_chunk_test.go), so neither backend's
+// dataObjMaxConcurrency and MaxParallelGetChunk in store_chunk_test.go), so neither backend's
 // latency sensitivity is an artifact of a mismatched concurrency setting.
 const storeParallelism = 100
 
-// dataObjRangeConfig defaults rangeio.Config and pins MaxParallelism so the data-object store's
-// aggregate concurrency matches storeParallelism.
+// dataObjMaxConcurrency is how many logs sections the data-object store scans at once. A fixture
+// section is smaller than twice the rangeio minimum range size, so rangeio does not split its
+// reads. Each section keeps at most MaxParallelism requests in flight.
+const dataObjMaxConcurrency = storeParallelism
+
+// dataObjRangeConfig defaults rangeio.Config and sets MaxParallelism so that
+// dataObjMaxConcurrency sections, each reading MaxParallelism ranges at a time, stay within
+// storeParallelism requests.
 var dataObjRangeConfig = newDataObjRangeConfig()
 
 func newDataObjRangeConfig() rangeio.Config {
 	var cfg rangeio.Config
 	flagext.DefaultValues(&cfg)
-
-	// Unlike the chunk store, where prefetch-batch count times batch width is engineered to add up
-	// to ~MaxParallelGetChunk, the data-object reader scans up to dataobjread.DefaultMaxConcurrency
-	// logs sections concurrently, each running its own independently-capped MaxParallelism read. So
-	// the aggregate is DefaultMaxConcurrency*MaxParallelism in the worst case (a query spanning that
-	// many sections); dividing storeParallelism by it keeps that worst case matched to the chunk
-	// store's budget. There is no DataObjStoreOption to change DefaultMaxConcurrency itself.
-	cfg.MaxParallelism = max(1, storeParallelism/dataobjread.DefaultMaxConcurrency)
+	cfg.MaxParallelism = max(1, storeParallelism/dataObjMaxConcurrency)
 	return cfg
 }
 
@@ -210,7 +208,7 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 
 		reg := prometheus.NewRegistry()
 		dataObjMetastore := newDataObjMetastore(bucket, log.NewNopLogger(), metastore.NewObjectMetastoreMetrics(reg))
-		return querier.NewDataObjStore(unreachableStore{}, bucket, dataObjMetastore, reg, querier.WithDataObjRangeConfig(dataObjRangeConfig))
+		return querier.NewDataObjStore(unreachableStore{}, bucket, dataObjMetastore, reg, querier.WithDataObjRangeConfig(dataObjRangeConfig), querier.WithDataObjMaxConcurrency(dataObjMaxConcurrency))
 	})
 
 	scenarios := newScenarios(getChunkStore, getDataObjStore)
@@ -258,8 +256,11 @@ func BenchmarkLogQLMetricQueries(b *testing.B) {
 								runQuery(b, engine, params)
 							}
 
+							require.Zero(b, instrumentation.inflight.Load(), "every read must be closed once the query returns")
+
 							b.ReportMetric(float64(instrumentation.requests.Load())/float64(b.N), "store_reqs/op")
 							b.ReportMetric(float64(instrumentation.bytes.Load())/float64(b.N), "store_bytes/op")
+							b.ReportMetric(float64(instrumentation.maxInflight.Load()), "store_max_parallel")
 						})
 					}
 				})
@@ -289,23 +290,50 @@ type instrumentation struct {
 	artificialLatencyNs atomic.Int64
 	requests            atomic.Int64
 	bytes               atomic.Int64
+
+	// inflight counts reads from the start of the call until the caller closes the body or the
+	// call fails. maxInflight is the peak of inflight since the last Reset.
+	inflight    atomic.Int64
+	maxInflight atomic.Int64
 }
 
-func (c *instrumentation) sleep() {
+// indexKeyPrefix is the key prefix of index reads: the TSDB index of the chunk store and the
+// metastore of the data-object store. Both backends skip these reads for counting, tracking and
+// latency, so the benchmark compares log-data reads only.
+const indexKeyPrefix = "index"
+
+func tracked(key string) bool { return !strings.HasPrefix(key, indexKeyPrefix) }
+
+// begin counts a read, tracks it as in flight and waits out the injected latency. The returned
+// function ends the read. It is safe to call more than once.
+func (c *instrumentation) begin() (end func()) {
+	c.requests.Add(1)
+	n := c.inflight.Add(1)
+	for {
+		peak := c.maxInflight.Load()
+		if n <= peak || c.maxInflight.CompareAndSwap(peak, n) {
+			break
+		}
+	}
 	if d := c.artificialLatencyNs.Load(); d > 0 {
 		time.Sleep(time.Duration(d))
 	}
+	var once sync.Once
+	return func() { once.Do(func() { c.inflight.Add(-1) }) }
 }
 
-// Reset zeroes requests/bytes, not the injected latency.
+// Reset zeroes the counters, the in-flight count and the peak, not the injected latency.
 func (c *instrumentation) Reset() {
 	c.requests.Store(0)
 	c.bytes.Store(0)
+	c.inflight.Store(0)
+	c.maxInflight.Store(0)
 }
 
 type instrumentedReadCloser struct {
 	inner io.ReadCloser
 	c     *instrumentation
+	end   func()
 }
 
 func (r instrumentedReadCloser) Read(p []byte) (int, error) {
@@ -314,9 +342,12 @@ func (r instrumentedReadCloser) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r instrumentedReadCloser) Close() error { return r.inner.Close() }
+func (r instrumentedReadCloser) Close() error {
+	r.end()
+	return r.inner.Close()
+}
 
-// instrumentedObjectClient counts and delays object reads, excluding index reads.
+// instrumentedObjectClient counts, tracks and delays object reads, excluding index reads.
 type instrumentedObjectClient struct {
 	objectclient.ObjectClient
 	c *instrumentation
@@ -326,32 +357,30 @@ func newInstrumentedObjectClient(inner objectclient.ObjectClient, c *instrumenta
 	return &instrumentedObjectClient{ObjectClient: inner, c: c}
 }
 
-func (o *instrumentedObjectClient) tracked(key string) bool { return !strings.HasPrefix(key, "index") }
-
 func (o *instrumentedObjectClient) GetObject(ctx context.Context, key string) (io.ReadCloser, int64, error) {
-	if !o.tracked(key) {
+	if !tracked(key) {
 		return o.ObjectClient.GetObject(ctx, key)
 	}
-	o.c.requests.Add(1)
-	o.c.sleep()
+	end := o.c.begin()
 	rc, sz, err := o.ObjectClient.GetObject(ctx, key)
 	if err != nil {
+		end()
 		return rc, sz, err
 	}
-	return instrumentedReadCloser{rc, o.c}, sz, nil
+	return instrumentedReadCloser{rc, o.c, end}, sz, nil
 }
 
 func (o *instrumentedObjectClient) GetObjectRange(ctx context.Context, key string, off, length int64) (io.ReadCloser, error) {
-	if !o.tracked(key) {
+	if !tracked(key) {
 		return o.ObjectClient.GetObjectRange(ctx, key, off, length)
 	}
-	o.c.requests.Add(1)
-	o.c.sleep()
+	end := o.c.begin()
 	rc, err := o.ObjectClient.GetObjectRange(ctx, key, off, length)
 	if err != nil {
+		end()
 		return rc, err
 	}
-	return instrumentedReadCloser{rc, o.c}, nil
+	return instrumentedReadCloser{rc, o.c, end}, nil
 }
 
 // instrumentedBucket is the data-object counterpart of instrumentedObjectClient.
@@ -365,21 +394,27 @@ func newInstrumentedBucket(inner objstore.Bucket, c *instrumentation) *instrumen
 }
 
 func (b *instrumentedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	b.c.requests.Add(1)
-	b.c.sleep()
+	if !tracked(name) {
+		return b.Bucket.Get(ctx, name)
+	}
+	end := b.c.begin()
 	rc, err := b.Bucket.Get(ctx, name)
 	if err != nil {
+		end()
 		return rc, err
 	}
-	return instrumentedReadCloser{rc, b.c}, nil
+	return instrumentedReadCloser{rc, b.c, end}, nil
 }
 
 func (b *instrumentedBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	b.c.requests.Add(1)
-	b.c.sleep()
+	if !tracked(name) {
+		return b.Bucket.GetRange(ctx, name, off, length)
+	}
+	end := b.c.begin()
 	rc, err := b.Bucket.GetRange(ctx, name, off, length)
 	if err != nil {
+		end()
 		return rc, err
 	}
-	return instrumentedReadCloser{rc, b.c}, nil
+	return instrumentedReadCloser{rc, b.c, end}, nil
 }

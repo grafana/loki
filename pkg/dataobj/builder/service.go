@@ -112,6 +112,9 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
+
+	// The dataobj-builder always drops duplicates for new objects
+	cfg.LogsobjBuilder.DropDuplicates = true
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)

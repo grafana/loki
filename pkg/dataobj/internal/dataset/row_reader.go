@@ -281,17 +281,17 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		compiled := r.compiledPredicates[i]
 
 		passCount = 0
-		for i := range count {
-			size := s[i].SizeOfColumns(idxs)
+		for j := range count {
+			size := s[j].SizeOfColumns(idxs)
 			primaryColumnBytes += size
 
-			if !compiled.eval(s[i]) {
+			if !compiled.eval(s[j]) {
 				continue
 			}
-			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
+			// We move s[j] to s[passCount] by *swapping* the rows. Copying would
 			// result in the Row.Values slice existing in two places in the buffer,
 			// which causes memory corruption when filling in rows.
-			s[passCount], s[i] = s[i], s[passCount]
+			s[passCount], s[j] = s[j], s[passCount]
 			passCount++
 		}
 

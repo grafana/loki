@@ -243,9 +243,23 @@ func (o *Object) Size() int64 {
 // returned sections must not be mutated.
 func (o *Object) Sections() Sections { return o.sections }
 
-// Tenant returns the list of tenant that have sections in the Object. The slice of
+// Tenants returns the list of tenant that have sections in the Object. The slice of
 // returned tenants must not be mutated.
+//
+// Data objects are expected to hold a single tenant. Prefer [Object.Tenant],
+// which returns an error otherwise.
 func (o *Object) Tenants() []string { return o.tenants }
+
+var ErrNotSingleTenant = fmt.Errorf("data object must hold exactly one tenant")
+
+// Tenant returns the tenant of the object.
+func (o *Object) Tenant() (string, error) {
+	tenants := o.tenants
+	if len(tenants) != 1 || tenants[0] == "" {
+		return "", fmt.Errorf("%w: tenants %q", ErrNotSingleTenant, tenants)
+	}
+	return tenants[0], nil
+}
 
 // Reader returns a reader for the entire raw data object.
 func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {

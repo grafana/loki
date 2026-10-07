@@ -48,11 +48,13 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: opening source %q: %w", node.SourceObjectPath, err)
 	}
-	tenants := source.Tenants()
-	if len(tenants) != 1 {
-		return nil, fmt.Errorf("SortObject: source %q holds %d tenants, want 1", node.SourceObjectPath, len(tenants))
+	tenant, err := source.Tenant()
+	if err != nil {
+		return nil, fmt.Errorf("SortObject: path %s tenant: %w", node.SourceObjectPath, err)
 	}
 
+	// Sorting an object should not modify the object by dropping duplicates
+	c.logsobjCfg.DropDuplicates = false
 	builder, err := logsobj.NewBuilder(
 		c.logsobjCfg,
 		c.scratchStore,
@@ -70,7 +72,7 @@ func (c *Context) doSortObject(ctx context.Context, node *physical.SortObject) (
 	}
 	defer sortedCloser.Close()
 
-	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(tenant, c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("SortObject: creating index builder: %w", err)
 	}
