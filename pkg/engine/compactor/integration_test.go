@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -312,21 +313,54 @@ func TestE2ECompactionConvergence(t *testing.T) {
 		return []logs.SortLayout{layout, layout, layout, layout, layout}
 	}
 
-	t.Run("equal sort layouts", func(t *testing.T) {
-		runConvergenceTest(t, fiveSourceLayouts())
+	t.Run("equal sort layouts converge to one sorted run", func(t *testing.T) {
+		runConvergenceTest(t, convergenceCase{layouts: fiveSourceLayouts()})
 	})
 
-	t.Run("mismatched sort schemas", func(t *testing.T) {
-		// mismatched schemas will converge after sorting
+	t.Run("mismatched sort schemas converge to one sorted run after sorting", func(t *testing.T) {
 		layouts := fiveSourceLayouts()
 		layouts[2].SchemaLabels = []string{"label:cluster"}
-		runConvergenceTest(t, layouts)
+		runConvergenceTest(t, convergenceCase{layouts: layouts})
+	})
+
+	t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
+		// A fresh source run holds about 80KB. A 100KB base with a ratio of 2
+		// puts fresh runs in level 0, a merge of two in level 1, and a merge
+		// of two level 1 runs in level 2.
+		runConvergenceTest(t, convergenceCase{
+			layouts:     fiveSourceLayouts(),
+			levelBase:   100_000,
+			levelRatio:  2,
+			wantRunsEnd: 2,
+			// Five level 0 runs give two merges and a one-run task. The two
+			// level 1 outputs then merge into level 2, and the lone level 0
+			// run is rewritten alone again.
+			wantTasks: map[string]int{"log-merge": 5},
+		})
 	})
 }
 
-// runConvergenceTest creates one overlapping object for every provided logs.SortLayout and expects them to
-// converge into a single sorted run after any necessary re-sorting.
-func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
+// convergenceCase configures runConvergenceTest.
+type convergenceCase struct {
+	layouts []logs.SortLayout
+
+	// levelBase and levelRatio replace the default size levels when
+	// levelBase is non-zero. With the defaults, every fixture run is in level
+	// 0, so compaction ends with one sorted run.
+	levelBase, levelRatio uint64
+
+	// wantRunsEnd is the number of runs left when compaction stops, for a
+	// case with custom size levels.
+	wantRunsEnd int
+
+	// wantTasks, when set, is the number of log tasks run for each actor.
+	wantTasks map[string]int
+}
+
+// runConvergenceTest creates one overlapping object for every layout and
+// compacts until a cycle does no work. Every source record must stay
+// reachable.
+func runConvergenceTest(t *testing.T, test convergenceCase) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -345,7 +379,7 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 	}
 	input := scenarioInput{window: window, sortSchema: schema, logsobjConfig: &outputConfig}
 	payload := strings.Repeat("A", 1024)
-	for file, layout := range layouts {
+	for file, layout := range test.layouts {
 		entries := fixtures.NewLogsFixtureBuilder(t,
 			fixtures.WithSchemaLabels(layout.SchemaLabels...),
 		)
@@ -360,8 +394,14 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 	}
 
 	scenario := newCompactionScenario(ctx, t, input)
+	if test.levelBase != 0 {
+		strategy, err := v2.NewSizeLeveledStrategy(test.levelBase, test.levelRatio, scenario.coordinator.cfg.LogMaxRunsPerTask)
+		require.NoError(t, err)
+		scenario.coordinator.logMergePlanningStrategy = strategy
+	}
+	actors := recordLogActors(scenario.coordinator)
 	indexes := scenario.stored.Indexes(ctx, t, tenant)
-	require.Len(t, indexes, 5)
+	require.Len(t, indexes, len(test.layouts))
 	var sourceLines []string
 	for fileIdx, source := range input.logs {
 		indexPath := compactortest.IndexPath(fileIdx)
@@ -374,8 +414,8 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 		require.NoError(t, err)
 		require.NotEmpty(t, refs)
 		require.Equal(t, source.Path, refs[0].Ref.ObjectPath)
-		require.Equal(t, layouts[fileIdx].SchemaLabels, indexedSchema)
-		require.Equal(t, int64(layouts[fileIdx].ShardCount), shardCount)
+		require.Equal(t, test.layouts[fileIdx].SchemaLabels, indexedSchema)
+		require.Equal(t, int64(test.layouts[fileIdx].ShardCount), shardCount)
 
 		// Check the actual logs section is the correct shape too
 		obj, err := dataobj.FromBucket(ctx, scenario.stored.Bucket, source.Path, 0)
@@ -386,19 +426,45 @@ func runConvergenceTest(t *testing.T, layouts []logs.SortLayout) {
 		for _, section := range tenantSections.Logs {
 			opened, err := logs.Open(ctx, section)
 			require.NoError(t, err)
-			require.Equal(t, layouts[fileIdx], opened.SortLayout(), "source %q must preserve its complete sort layout", source.Path)
+			require.Equal(t, test.layouts[fileIdx], opened.SortLayout(), "source %q must preserve its complete sort layout", source.Path)
 		}
 		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
 			sourceLines = append(sourceLines, string(record.Line))
 		}
 	}
-	require.Len(t, sourceLines, 5*streamCount*3, "seeded source objects must contain all records")
+	require.Len(t, sourceLines, len(test.layouts)*streamCount*3, "seeded source objects must contain all records")
 
 	scenario.compactUntilIdle(tenant)
+	if test.wantTasks != nil {
+		tasks := make(map[string]int)
+		for _, actor := range actors() {
+			tasks[actor]++
+		}
+		require.Equal(t, test.wantTasks, tasks)
+	}
 
 	finalContents := scenario.stored.ReadReachableContents(ctx, t, tenant)
 	requireLogContents(t, finalContents, schema, sourceLines)
-	requireSingleSortedRun(t, scenario, scenario.stored.Indexes(ctx, t, tenant), tenant, schema, len(sourceLines))
+	finalIndexes := scenario.stored.Indexes(ctx, t, tenant)
+	if test.levelBase == 0 {
+		requireSingleSortedRun(t, scenario, finalIndexes, tenant, schema, len(sourceLines))
+		return
+	}
+	requireConvergedLevels(t, scenario, finalIndexes, tenant, test.wantRunsEnd)
+}
+
+// requireConvergedLevels checks that the window holds wantRuns runs and that
+// no size level of the coordinator's strategy holds k runs.
+func requireConvergedLevels(t *testing.T, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, wantRuns int) {
+	t.Helper()
+	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
+
+	sections, _, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	require.NoError(t, err)
+	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	require.Len(t, runs, wantRuns)
+	require.False(t, scenario.coordinator.logMergePlanningStrategy.NeedsCompaction(runs),
+		"every size level must hold fewer than k runs")
 }
 
 func newScenarioLogSource(t *testing.T, path, tenant string, entries *fixtures.LogFixtureBuilder, layout logs.SortLayout) compactortest.Source {
@@ -551,6 +617,27 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		metrics: newCoordinatorMetrics(prometheus.NewRegistry()),
 
 		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
+	}
+}
+
+// recordLogActors wraps c's log dispatcher and returns a function that
+// reports the actors of every log task run so far.
+func recordLogActors(c *coordinator) func() []string {
+	var (
+		mu     sync.Mutex
+		actors []string
+	)
+	inner := c.logDispatcher.runPlan
+	c.logDispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+		mu.Lock()
+		actors = append(actors, opts.Actor[len(opts.Actor)-1])
+		mu.Unlock()
+		return inner(ctx, opts, plan)
+	}
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(actors)
 	}
 }
 

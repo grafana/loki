@@ -1445,15 +1445,16 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction).
-    # Separate from max-runs-per-task to scale independently. Must be at least
-    # 2.
+    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
+    # compaction starts only when a size level holds K runs, so a larger K
+    # leaves more overlapping runs per window. Separate from max-runs-per-task
+    # to scale independently. Must be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 8]
 
     # Experimental: Minimum total compactable data (sum of all runs'
-    # uncompressed size) that justifies log compaction. Converged windows below
-    # this floor are skipped.
+    # uncompressed size) that justifies log compaction. Windows below this floor
+    # are skipped.
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 

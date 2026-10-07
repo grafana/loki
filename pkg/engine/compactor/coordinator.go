@@ -231,8 +231,7 @@ func (c *coordinator) compactTenantLogs(
 
 	// Begin k-way merge planning
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
-	if v2.IsConvergedWithInclusiveOverlap(sections, compareLogSortPrefix) ||
-		v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
+	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
 		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
