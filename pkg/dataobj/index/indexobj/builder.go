@@ -108,9 +108,6 @@ func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
 	shardBucket uint32, sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
-
 	statsBuilder := b.getStatsBuilder()
 
 	statsBuilder.Append(stats.Stat{
@@ -147,10 +144,6 @@ func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction).
 func (b *Builder) ObserveLabelPosting(obs postings.LabelObservation) {
-	// Postings are observed per (record × stream label), so this method runs in
-	// a hot loop that fires hundreds of thousands of times per logs section.
-	// A per-call prometheus.NewTimer is too expensive at this granularity, so
-	// only the cheap atomic counter is updated.
 	b.metrics.appendsTotal.Inc()
 
 	b.getPostingsBuilder().ObserveLabelPosting(obs)
@@ -177,8 +170,6 @@ func (b *Builder) PrepareBloomColumn(
 // PrepareBloomColumn. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 func (b *Builder) ObserveBloomPosting(obs postings.BloomObservation) error {
-	// See ObserveLabelPosting for why metrics.appendTime is not updated per
-	// observation.
 	b.metrics.appendsTotal.Inc()
 
 	if err := b.getPostingsBuilder().ObserveBloomPosting(obs); err != nil {
@@ -197,9 +188,6 @@ func (b *Builder) BloomBytes(objectPath string, sectionIdx int64, columnName str
 
 func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
-
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
 
 	indexPointersBuilder := b.getIndexPointersBuilder()
 	indexPointersBuilder.Append(pointer.Path, pointer.StartTs, pointer.EndTs)
@@ -226,9 +214,6 @@ func (b *Builder) getStreamsBuilder() *streams.Builder {
 func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 	b.metrics.appendsTotal.Inc()
 
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
-
 	streamsBuilder := b.getStreamsBuilder()
 
 	// Record the stream in the stream section.
@@ -251,8 +236,7 @@ func (b *Builder) getPointersBuilder() *pointers.Builder {
 
 // ObserveLogLine records a log line observation for a stream in the pointers section.
 func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
+	b.metrics.appendsTotal.Inc()
 
 	b.getPointersBuilder().ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
 
@@ -262,8 +246,7 @@ func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject in
 
 // AppendColumnIndex records a column index entry with bloom filter data in the pointers section.
 func (b *Builder) AppendColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
+	b.metrics.appendsTotal.Inc()
 
 	pointersBuilder := b.getPointersBuilder()
 

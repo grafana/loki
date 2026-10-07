@@ -69,7 +69,7 @@ func NewSimpleIndexer(
 }
 
 // Index builds and uploads the index for obj, which is stored at objPath.
-// obj must hold exactly one tenant, otherwise Index returns [ErrNotSingleTenant].
+// obj must hold exactly one tenant.
 func (s *SimpleIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath string) (res Result, err error) {
 	objLogger := log.With(s.logger, "object_path", objPath)
 
