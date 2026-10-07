@@ -55,11 +55,6 @@ func TestSampleQueryStreamOrderingEquivalence(t *testing.T) {
 		// chunks-retain-period keeps flushed chunks in memory, so a flush leaves a copy in both the
 		// store and the ingester for the querier to merge and deduplicate. wal-disk-full-threshold=0
 		// disables write throttling so the test doesn't depend on the host's free disk.
-		//
-		// stream-first-execution-enabled is passed explicitly either way: Limits.UnmarshalYAML seeds
-		// unset fields from the last-loaded config in the process, which in this suite's shared test
-		// binary can be a different test's component. Leaving it unset here would silently inherit
-		// that stale value instead of this cluster's own setting.
 		flags := []string{
 			"-target=all",
 			"-ingester.chunks-retain-period=1h",
