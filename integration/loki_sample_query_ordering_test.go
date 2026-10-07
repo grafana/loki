@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -55,11 +54,9 @@ func TestSampleQueryStreamOrderingEquivalence(t *testing.T) {
 		// chunks-retain-period keeps flushed chunks in memory, so a flush leaves a copy in both the
 		// store and the ingester for the querier to merge and deduplicate. wal-disk-full-threshold=0
 		// disables write throttling so the test doesn't depend on the host's free disk.
-		flags := []string{
-			"-target=all",
-			"-ingester.chunks-retain-period=1h",
-			"-ingester.wal-disk-full-threshold=0",
-			fmt.Sprintf("-querier.stream-first-execution-enabled=%t", streamOrdered),
+		flags := []string{"-target=all", "-ingester.chunks-retain-period=1h", "-ingester.wal-disk-full-threshold=0"}
+		if streamOrdered {
+			flags = append(flags, "-querier.stream-first-execution-enabled=true")
 		}
 		tAll := clu.AddComponent("all", flags...)
 		require.NoError(t, clu.Run())
