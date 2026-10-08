@@ -738,8 +738,8 @@ github.com/segmentio/fasthash v1.0.3 h1:EI9+KE1EwvMLBWwjpRDc+fEM+prwxDYbslddQGtr
 github.com/segmentio/fasthash v1.0.3/go.mod h1:waKX8l2N8yckOgmSsXJi7x1ZfdKZ4x7KRMzBtS3oedY=
 github.com/sercand/kuberesolver/v6 v6.0.1 h1:XZUTA0gy/lgDYp/UhEwv7Js24F1j8NJ833QrWv0Xux4=
 github.com/sercand/kuberesolver/v6 v6.0.1/go.mod h1:C0tsTuRMONSY+Xf7pv7RMW1/JlewY1+wS8SZE+1lf1s=
-github.com/sethvargo/go-retry v0.4.0 h1:9qy1OoIAxBL+gBYnkTnTnWle5wlfsXQlwRzIbbpdqPw=
-github.com/sethvargo/go-retry v0.4.0/go.mod h1:tvsjdKG6xfiCx4LSiUZ06kcv38xvdVQwv8R6/VnnVWg=
+github.com/sethvargo/go-retry v0.5.0 h1:JYfFKmVJ8ER06GReN1efzc5cm52BrVsFVzmcHiKJwfY=
+github.com/sethvargo/go-retry v0.5.0/go.mod h1:tvsjdKG6xfiCx4LSiUZ06kcv38xvdVQwv8R6/VnnVWg=
 github.com/shirou/gopsutil/v4 v4.26.9 h1:CaBo/hBFqvlJoLvAQEKdHdf5GD97/MN2ACfyv63+2Ig=
 github.com/shirou/gopsutil/v4 v4.26.9/go.mod h1:nKH+8wX2zxr/mDbsR+AAy6Qd2z4ZOQ7wfQaEp+yrYmg=
 github.com/shopspring/decimal v1.5.0 h1:HxSWk31RmJv0EyY4oLiGQB9u7WPludUwPBdvQZnYFPc=
