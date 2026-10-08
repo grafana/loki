@@ -131,12 +131,11 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 		},
 		func(res *proto.StreamShardResult) uint64 { return res.StreamHash },
 		// ReasonNotOwned means the instance that answered no longer (or does
-		// not yet) own the stream's partition, typically because of a
-		// concurrent Kafka consumer-group rebalance (e.g. during a rolling
-		// restart). That is not a decision about the stream, so it must not
-		// be treated as an answer: letting it through here would stop the
-		// stream from being retried against the next zone, and count it as
-		// failed even when a healthy zone was never tried.
+		// not yet) consume the stream's partition, typically because of a
+		// concurrent Kafka consumer-group rebalance during a rolling restart.
+		// It carries no decision about the stream, so the stream has to be
+		// retried against the next zone rather than counted as failed while a
+		// healthy zone was never tried.
 		func(res *proto.StreamShardResult) bool {
 			return res.GetStats().GetShardDecisionContext() != uint32(limits.ReasonNotOwned)
 		},
@@ -151,15 +150,10 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 // consuming a partition for the given streams, appending the results of all
 // instances in the zone to responses.
 //
-// Arguments:
-//
-//	r resolves the instances consuming the partitions for the requested zone and provides their gRPC clients.
-//	logger receives an error log entry for each instance whose client lookup or RPC call fails.
-//	responses accumulates the results that resultIsAnswer accepts as real answers, across every instance queried in the zone.
-//	newReq builds the RPC request for a tenant and the subset of streams routed to one instance.
-//	call issues the RPC against a single instance's client and returns its results.
-//	resultStreamHash extracts the stream hash that a single result belongs to.
-//	resultIsAnswer reports whether a result is a genuine decision rather than a non-decision, such as ReasonNotOwned, that must not block a retry against the next zone.
+// resultIsAnswer decides which results count as an answer to their stream.
+// Results it rejects are left out of responses, and the streams they belong
+// to, identified with resultStreamHash, are reported as unanswered so that
+// [ringLimitsClient.exhaustAllZones] retries them against the next zone.
 func newFanout[Req, Resp any](
 	r *ringLimitsClient,
 	logger log.Logger,
@@ -196,10 +190,8 @@ func newFanout[Req, Resp any](
 		_ = errg.Wait()
 		close(responseCh)
 		close(answeredCh)
-		// A result that is not a real answer must not short-circuit the
-		// per-zone retry loop: drop it from responses (so it does not end up
-		// duplicated alongside a later, genuine answer) and from the answered
-		// set (so exhaustAllZones retries the stream against the next zone).
+		// Non-answers are kept out of responses, so that an answer from a
+		// later zone is not duplicated, and out of the answered set.
 		notAnswered := make(map[uint64]struct{})
 		for r := range responseCh {
 			for _, res := range r {
