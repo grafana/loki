@@ -265,10 +265,8 @@ func (c *coordinator) compactTenantLogs(
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
 	}
-	// Artifacts come back in plan order, so each entry takes the path of the
-	// plan at its index.
-	for i := range newToCEntries {
-		newToCEntries[i].Path = artifacts[i].Path
+	if err := assignArtifactPaths(newToCEntries, artifacts); err != nil {
+		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
 	}
 
 	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, newToCEntries)
@@ -330,20 +328,20 @@ func (c *coordinator) sortTenantLogObjects(
 	}
 
 	plans := make([]*physical.Plan, len(objects))
+	resultEntries := make([]metastore.TableOfContentsEntry, len(objects))
 	for i, obj := range objects {
 		plans[i] = buildSortObjectPlan(obj.path, targetSortSchema)
+		resultEntries[i] = metastore.TableOfContentsEntry{
+			StartTime: time.Unix(0, obj.minTimestamp).UTC(),
+			EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
+		}
 	}
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute sort-object tasks: %w", err)
 	}
-	resultEntries := make([]metastore.TableOfContentsEntry, len(objects))
-	for i, obj := range objects {
-		resultEntries[i] = metastore.TableOfContentsEntry{
-			Path:      artifacts[i].Path,
-			StartTime: time.Unix(0, obj.minTimestamp).UTC(),
-			EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
-		}
+	if err := assignArtifactPaths(resultEntries, artifacts); err != nil {
+		return compactionStats{}, fmt.Errorf("build sort-object ToC entries: %w", err)
 	}
 
 	return c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries)
@@ -423,30 +421,29 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	plans := make([]*physical.Plan, len(tasks))
-	for i, task := range tasks {
-		plans[i] = buildIndexMergePlan(tenant, window, task)
-	}
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
-	if err != nil {
-		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
-	}
-
 	entriesByPath := make(map[string]indexEntry, len(entries))
 	for _, entry := range entries {
 		entriesByPath[entry.Path] = entry
 	}
+	plans := make([]*physical.Plan, len(tasks))
 	newEntries := make([]metastore.TableOfContentsEntry, len(tasks))
 	for i, task := range tasks {
 		start, end, err := indexTaskBounds(task, entriesByPath)
 		if err != nil {
 			return compactionStats{}, fmt.Errorf("build index ToC entries: task %d: %w", i, err)
 		}
+		plans[i] = buildIndexMergePlan(tenant, window, task)
 		newEntries[i] = metastore.TableOfContentsEntry{
-			Path:      artifacts[i].Path,
 			StartTime: start.UTC(),
 			EndTime:   end.UTC(),
 		}
+	}
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
+	}
+	if err := assignArtifactPaths(newEntries, artifacts); err != nil {
+		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 
 	oldPaths := taskObjectPaths(tasks)
@@ -507,6 +504,21 @@ func runsToCEntry(runs []*compactionv2pb.RunRef) metastore.TableOfContentsEntry 
 		StartTime: time.Unix(0, minTS).UTC(),
 		EndTime:   time.Unix(0, maxTS).UTC(),
 	}
+}
+
+// assignArtifactPaths sets the path of each entry to the path of the artifact
+// at the same index. entries and artifacts must both be in plan order.
+//
+// A length mismatch returns an error and leaves entries unchanged. It stops a
+// ToC swap that would drop a result or reference the wrong object.
+func assignArtifactPaths(entries []metastore.TableOfContentsEntry, artifacts []v2.ResultArtifact) error {
+	if len(entries) != len(artifacts) {
+		return fmt.Errorf("got %d artifacts for %d ToC entries", len(artifacts), len(entries))
+	}
+	for i := range entries {
+		entries[i].Path = artifacts[i].Path
+	}
+	return nil
 }
 
 func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {

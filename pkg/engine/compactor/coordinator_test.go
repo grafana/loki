@@ -2064,3 +2064,23 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 		require.Equal(t, "index-merge", p, "no log-merge dispatch after runTenantLoop observed log compaction disabled")
 	}
 }
+
+func TestAssignArtifactPaths(t *testing.T) {
+	t.Run("sets each entry path from the artifact at the same index", func(t *testing.T) {
+		entries := make([]metastore.TableOfContentsEntry, 2)
+		artifacts := []v2.ResultArtifact{{Path: "a"}, {Path: "b"}}
+
+		require.NoError(t, assignArtifactPaths(entries, artifacts))
+		require.Equal(t, "a", entries[0].Path)
+		require.Equal(t, "b", entries[1].Path)
+	})
+
+	t.Run("returns an error and leaves entries unchanged when counts differ", func(t *testing.T) {
+		entries := make([]metastore.TableOfContentsEntry, 2)
+		artifacts := []v2.ResultArtifact{{Path: "a"}}
+
+		require.Error(t, assignArtifactPaths(entries, artifacts))
+		require.Empty(t, entries[0].Path)
+		require.Empty(t, entries[1].Path)
+	})
+}
