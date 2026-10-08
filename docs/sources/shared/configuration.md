@@ -1402,8 +1402,9 @@ dataobj:
     [index_storage_prefix: <string> | default = "index/v0"]
 
   # Caches the metadata of the data objects the querier reads. The cache is on
-  # when a backend is configured. Entries are keyed by object path, so do not
-  # share a backend between buckets or clusters.
+  # when a backend is configured. Entries are keyed by object path, so the cache
+  # cannot differentiate entries between different buckets and clusters.
+  # Multiple installations must not share the same cache backend.
   # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
   [metadata_cache: <cache_config>]
 
