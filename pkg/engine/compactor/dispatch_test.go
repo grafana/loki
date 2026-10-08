@@ -5,16 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 func TestPlanDispatcherRun(t *testing.T) {
-	plans := []*physical.Plan{{}, {}, {}}
+	plans := []*physical.Plan{
+		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
+		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
+		buildIndexMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
+	}
 	pathOf := func(plan *physical.Plan) string {
 		for i, p := range plans {
 			if p == plan {
@@ -29,7 +36,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 			return &v2.ResultArtifact{Path: pathOf(plan)}, nil
 		}}
 
-		artifacts, err := d.Run(context.Background(), "acme", "index-merge", plans)
+		artifacts, err := d.Run(context.Background(), "acme", plans)
 		require.NoError(t, err)
 		require.Equal(t, []v2.ResultArtifact{
 			{Path: "indexes/out-0"},
@@ -38,15 +45,36 @@ func TestPlanDispatcherRun(t *testing.T) {
 		}, artifacts)
 	})
 
-	t.Run("runs plans as the tenant with the compaction actor", func(t *testing.T) {
+	t.Run("runs each plan as the tenant with the actor of its root node", func(t *testing.T) {
+		runner := &fakeRunner{}
+		d := &planDispatcher{runPlan: runner.run}
+		mixed := []*physical.Plan{
+			buildLogMergePlan("acme", time.Time{}, &compactionv2pb.TaskSpec{}),
+			buildIndexFilterPlan("acme", "indexes/source", []string{"logs/a"}),
+		}
+
+		_, err := d.Run(context.Background(), "acme", mixed)
+		require.NoError(t, err)
+		actors := map[*physical.Plan][]string{}
+		for _, call := range runner.snapshot() {
+			require.Equal(t, "acme", call.opts.Tenant)
+			actors[call.plan] = call.opts.Actor
+		}
+		require.Equal(t, map[*physical.Plan][]string{
+			mixed[0]: {"compaction", "log-merge"},
+			mixed[1]: {"compaction", "index-filter"},
+		}, actors)
+	})
+
+	t.Run("fails a plan whose root node is not a compaction node", func(t *testing.T) {
+		var g dag.Graph[physical.Node]
+		g.Add(&physical.Limit{})
 		runner := &fakeRunner{}
 		d := &planDispatcher{runPlan: runner.run}
 
-		_, err := d.Run(context.Background(), "acme", "log-merge", plans[:1])
-		require.NoError(t, err)
-		calls := runner.snapshot()
-		require.Len(t, calls, 1)
-		require.Equal(t, workflow.Options{Tenant: "acme", Actor: []string{"compaction", "log-merge"}}, calls[0].opts)
+		_, err := d.Run(context.Background(), "acme", []*physical.Plan{physical.FromGraph(g)})
+		require.ErrorContains(t, err, "unsupported compaction plan root")
+		require.Empty(t, runner.snapshot(), "an unsupported plan must not run")
 	})
 
 	for _, tc := range []struct {
@@ -67,7 +95,7 @@ func TestPlanDispatcherRun(t *testing.T) {
 				return &v2.ResultArtifact{Path: pathOf(plan)}, nil
 			}}
 
-			artifacts, err := d.Run(context.Background(), "acme", "index-merge", plans)
+			artifacts, err := d.Run(context.Background(), "acme", plans)
 			require.ErrorContains(t, err, tc.wantErr)
 			if tc.err != nil {
 				require.ErrorIs(t, err, tc.err)

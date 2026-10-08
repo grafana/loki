@@ -249,7 +249,7 @@ func (c *coordinator) compactTenantLogs(
 	for i, task := range tasks {
 		plans[i] = buildLogMergePlan(tenant, window, task)
 	}
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, "log-merge", plans)
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
@@ -309,7 +309,7 @@ func (c *coordinator) sortTenantLogObjects(
 	for i, obj := range objects {
 		plans[i] = buildSortObjectPlan(obj.path, targetSortSchema)
 	}
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, "sort-object", plans)
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute sort-object tasks: %w", err)
 	}
@@ -403,7 +403,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 	for i, task := range tasks {
 		plans[i] = buildIndexMergePlan(tenant, window, task)
 	}
-	artifacts, err := c.indexDispatcher.Run(ctx, tenant, "index-merge", plans)
+	artifacts, err := c.indexDispatcher.Run(ctx, tenant, plans)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}

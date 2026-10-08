@@ -57,6 +57,20 @@ func buildLogMergePlan(
 	return physical.FromGraph(g)
 }
 
+// buildIndexFilterPlan returns a single-root physical.Plan holding one
+// IndexFilter node that keeps the rows of objectPaths from sourceIndexPath.
+func buildIndexFilterPlan(tenant, sourceIndexPath string, objectPaths []string) *physical.Plan {
+	node := &physical.IndexFilter{
+		NodeID:          ulid.Make(),
+		Tenant:          tenant,
+		SourceIndexPath: sourceIndexPath,
+		ObjectPaths:     objectPaths,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
 func buildSortObjectPlan(sourceObjectPath string, sortSchema []string) *physical.Plan {
 	node := &physical.SortObject{
 		NodeID:           ulid.Make(),
