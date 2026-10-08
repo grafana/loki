@@ -35,6 +35,8 @@ type metrics struct {
 	limitsServiceShardDuration                  prometheus.Histogram
 	limitsServiceExceedsLimitsDuration          prometheus.Histogram
 
+	rateStoreMaxShardsLimited *prometheus.CounterVec
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -155,6 +157,12 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			Buckets:                         prometheus.DefBuckets,
 		}),
+
+		rateStoreMaxShardsLimited: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_rate_store_max_shards_limited_total",
+			Help:      "The total number of times the shard count from the rate store was capped by the maximum set for a tenant.",
+		}, []string{"tenant"}),
 
 		kafkaAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

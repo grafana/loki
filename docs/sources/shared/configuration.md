@@ -4723,6 +4723,11 @@ shard_streams:
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
 
+  # Maximum number of shards that my be produced by rateStore. The default of 0
+  # means unlimited.
+  # CLI flag: -shard-streams.max-shard-count
+  [max_shard_count: <int> | default = 0]
+
   # Experimental. Whether the ingest-limits service is asked for a shard count
   # for this tenant, and whether its answer is used. One of 'disabled' (default,
   # unchanged behavior), 'shadow' (ask the limits service and compare its answer
