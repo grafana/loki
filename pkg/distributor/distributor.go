@@ -1810,21 +1810,25 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream logproto.InternalS
 		pushRate = 1
 	}
 
-	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
-	if shards == 0 {
-		// 1 shard is enough for the given stream.
-		return 1
+	n, capped := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val(), streamShardcfg.MaxShardCount)
+	if capped {
+		d.m.rateStoreMaxShardsLimited.WithLabelValues(tenantID).Inc()
 	}
-
-	return shards
+	return n
 }
 
-func calculateShards(rate int64, pushSize, desiredRate int) int {
+func calculateShards(rate int64, pushSize, desiredRate, maxShardCount int) (n int, capped bool) {
 	shards := float64(rate+int64(pushSize)) / float64(desiredRate)
 	if shards <= 1 {
-		return 1
+		return 1, false
 	}
-	return int(math.Ceil(shards))
+	n = int(math.Ceil(shards))
+	if maxShardCount > 0 && n > maxShardCount {
+		n = maxShardCount
+		capped = true
+	}
+	n = max(n, 1) // minumum number of shards is 1
+	return
 }
 
 func nestedStreamSize(s logproto.InternalStreamAdapter) int {

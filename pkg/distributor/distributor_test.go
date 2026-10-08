@@ -2228,11 +2228,13 @@ func TestShardCalculation(t *testing.T) {
 	desiredRate := 3 * megabyte
 
 	for _, tc := range []struct {
-		name       string
-		streamSize int
-		rate       int64
+		name          string
+		streamSize    int
+		rate          int64
+		maxShardCount int
 
 		wantShards int
+		wantCapped bool
 	}{
 		{
 			name:       "not enough data to be sharded, stream size (1mb) + ingested rate (0mb) < 3mb",
@@ -2258,10 +2260,34 @@ func TestShardCalculation(t *testing.T) {
 			rate:       int64(300 * megabyte),
 			wantShards: 101,
 		},
+		{
+			name:          "maxShardCount limits the maximum number of shards",
+			streamSize:    1 * megabyte,
+			rate:          int64(10 * megabyte),
+			maxShardCount: 2,
+			wantShards:    2,
+			wantCapped:    true,
+		},
+		{
+			name:          "maxShardCount higher than the natural shard count is a no-op",
+			streamSize:    1 * megabyte,
+			rate:          int64(300 * megabyte),
+			maxShardCount: 1000,
+			wantShards:    101,
+		},
+		{
+			name:          "maxShardCount of 1 pins the stream to a single shard",
+			streamSize:    1 * megabyte,
+			rate:          int64(300 * megabyte),
+			maxShardCount: 1,
+			wantShards:    1,
+			wantCapped:    true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := calculateShards(tc.rate, tc.streamSize, desiredRate)
-			require.Equal(t, tc.wantShards, got)
+			count, capped := calculateShards(tc.rate, tc.streamSize, desiredRate, tc.maxShardCount)
+			require.Equal(t, tc.wantShards, count)
+			require.Equal(t, tc.wantCapped, capped)
 		})
 	}
 }
