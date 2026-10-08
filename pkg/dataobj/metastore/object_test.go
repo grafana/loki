@@ -596,7 +596,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 	addIndexObject := func(t *testing.T, bucket objstore.Bucket, lines []indexedLine) string {
 		t.Helper()
 
-		builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
 			TargetPageSize:          1024 * 1024,
 			TargetObjectSize:        10 * 1024 * 1024,
 			TargetSectionSize:       128,
@@ -609,17 +609,17 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 			lbls, err := syntax.ParseLabels(line.labels)
 			require.NoError(t, err)
 
-			idx, err := builder.AppendStream(tenantID, streams.Stream{
+			idx, err := builder.AppendStream(streams.Stream{
 				ID:           line.streamID,
 				Labels:       lbls,
 				MinTimestamp: line.timestamp,
 				MaxTimestamp: line.timestamp,
 			})
 			require.NoError(t, err)
-			require.NoError(t, builder.ObserveLogLine(tenantID, line.objectPath, line.section, idx, line.streamID, line.timestamp, 1))
+			require.NoError(t, builder.ObserveLogLine(line.objectPath, line.section, idx, line.streamID, line.timestamp, 1))
 		}
 
-		timeRanges := builder.TimeRanges()
+		timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = closer.Close() })
