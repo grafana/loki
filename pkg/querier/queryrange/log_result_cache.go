@@ -99,8 +99,7 @@ func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
 //
 // When a cacheGenNumberLoader is given and retention is enabled, cache keys are prefixed with the tenant's
-// results cache generation number so that cached empty results are invalidated whenever the generation changes
-// (e.g. when a delete request is cancelled and previously hidden log lines become visible again).
+// results cache generation number so that cached empty results can be invalidated.
 func NewLogResultCache(
 	logger log.Logger,
 	limits LogCacheLimits,
