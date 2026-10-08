@@ -1,6 +1,7 @@
 package decimal
 
 import (
+	"math/big"
 	"strings"
 )
 
@@ -61,3 +62,53 @@ func (c constApproximation) withPrecision(precision int32) Decimal {
 
 	return c.approximations[i]
 }
+
+var zeroInt = big.NewInt(0)
+var oneInt = big.NewInt(1)
+var twoInt = big.NewInt(2)
+var fourInt = big.NewInt(4)
+var fiveInt = big.NewInt(5)
+var tenInt = big.NewInt(10)
+var twentyInt = big.NewInt(20)
+
+// pow10Table holds 10^0 ... 10^127, its values must not be modified.
+var pow10Table = func() []*big.Int {
+	t := make([]*big.Int, 128)
+	t[0] = big.NewInt(1)
+	for i := 1; i < len(t); i++ {
+		t[i] = new(big.Int).Mul(t[i-1], tenInt)
+	}
+	return t
+}()
+
+// pow10Uint64 holds 10^0 ... 10^19.
+var pow10Uint64 = func() (t [20]uint64) {
+	t[0] = 1
+	for i := 1; i < len(t); i++ {
+		t[i] = t[i-1] * 10
+	}
+	return t
+}()
+
+// float64Pow10 holds 10^0 ... 10^22, the powers of ten that float64 represents exactly.
+var float64Pow10 = [...]float64{1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10,
+	1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22}
+
+// pow5Int64 holds 5^0 ... 5^22.
+var pow5Int64 = func() (t [23]int64) {
+	t[0] = 1
+	for i := 1; i < len(t); i++ {
+		t[i] = t[i-1] * 5
+	}
+	return t
+}()
+
+// pow10 returns 10^n for n >= 0, the result must not be modified.
+func pow10(n int64) *big.Int {
+	if n < int64(len(pow10Table)) {
+		return pow10Table[n]
+	}
+	return new(big.Int).Exp(tenInt, big.NewInt(n), nil)
+}
+
+const zeros = "0000000000000000000000000000000000000000000000000000000000000000"
