@@ -35,7 +35,7 @@ func (lh *LoggingHook) PreHook(ctx context.Context, notificationCtx push.Notific
 			}
 
 		}
-		internal.Logger.Printf(ctx, logs.ProcessingNotification(connID, seqID, notificationType, notification))
+		internal.Logger.Printf(ctx, "%s", logs.ProcessingNotification(connID, seqID, notificationType, notification))
 	}
 	return notification, true // Continue processing with unmodified notification
 }
@@ -47,9 +47,9 @@ func (lh *LoggingHook) PostHook(ctx context.Context, notificationCtx push.Notifi
 		connID = conn.GetID()
 	}
 	if result != nil && lh.LogLevel >= 1 { // Warning level
-		internal.Logger.Printf(ctx, logs.ProcessingNotificationFailed(connID, notificationType, result, notification))
+		internal.Logger.Printf(ctx, "%s", logs.ProcessingNotificationFailed(connID, notificationType, result, notification))
 	} else if lh.LogLevel >= 3 { // Debug level
-		internal.Logger.Printf(ctx, logs.ProcessingNotificationSucceeded(connID, notificationType))
+		internal.Logger.Printf(ctx, "%s", logs.ProcessingNotificationSucceeded(connID, notificationType))
 	}
 }
 

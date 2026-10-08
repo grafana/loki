@@ -103,7 +103,7 @@ func (cb *CircuitBreaker) Execute(fn func() error) error {
 				cb.requests.Store(0)
 				cb.successes.Store(0)
 				if internal.LogLevel.InfoOrAbove() {
-					internal.Logger.Printf(context.Background(), logs.CircuitBreakerTransitioningToHalfOpen(cb.endpoint))
+					internal.Logger.Printf(context.Background(), "%s", logs.CircuitBreakerTransitioningToHalfOpen(cb.endpoint))
 				}
 				// Fall through to half-open logic
 			} else {
@@ -145,7 +145,7 @@ func (cb *CircuitBreaker) recordFailure() {
 		if failures >= int64(cb.failureThreshold) {
 			if cb.state.CompareAndSwap(int32(CircuitBreakerClosed), int32(CircuitBreakerOpen)) {
 				if internal.LogLevel.WarnOrAbove() {
-					internal.Logger.Printf(context.Background(), logs.CircuitBreakerOpened(cb.endpoint, failures))
+					internal.Logger.Printf(context.Background(), "%s", logs.CircuitBreakerOpened(cb.endpoint, failures))
 				}
 			}
 		}
@@ -153,7 +153,7 @@ func (cb *CircuitBreaker) recordFailure() {
 		// Any failure in half-open state immediately opens the circuit
 		if cb.state.CompareAndSwap(int32(CircuitBreakerHalfOpen), int32(CircuitBreakerOpen)) {
 			if internal.LogLevel.WarnOrAbove() {
-				internal.Logger.Printf(context.Background(), logs.CircuitBreakerReopened(cb.endpoint))
+				internal.Logger.Printf(context.Background(), "%s", logs.CircuitBreakerReopened(cb.endpoint))
 			}
 		}
 	}
@@ -177,7 +177,7 @@ func (cb *CircuitBreaker) recordSuccess() {
 			if cb.state.CompareAndSwap(int32(CircuitBreakerHalfOpen), int32(CircuitBreakerClosed)) {
 				cb.failures.Store(0)
 				if internal.LogLevel.InfoOrAbove() {
-					internal.Logger.Printf(context.Background(), logs.CircuitBreakerClosed(cb.endpoint, successes))
+					internal.Logger.Printf(context.Background(), "%s", logs.CircuitBreakerClosed(cb.endpoint, successes))
 				}
 			}
 		}
@@ -326,7 +326,7 @@ func (cbm *CircuitBreakerManager) cleanup() {
 
 	// Log cleanup results
 	if len(toDelete) > 0 && internal.LogLevel.InfoOrAbove() {
-		internal.Logger.Printf(context.Background(), logs.CircuitBreakerCleanup(len(toDelete), count))
+		internal.Logger.Printf(context.Background(), "%s", logs.CircuitBreakerCleanup(len(toDelete), count))
 	}
 
 	cbm.lastCleanup.Store(now.Unix())

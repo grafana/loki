@@ -73,7 +73,7 @@ require (
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.72.0
 	github.com/prometheus/prometheus v0.314.0-rc.0.0.20260923171314-5f325dd18c88
-	github.com/redis/go-redis/v9 v9.22.0
+	github.com/redis/go-redis/v9 v9.23.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/afero v1.15.0

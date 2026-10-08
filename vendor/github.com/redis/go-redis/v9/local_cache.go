@@ -31,15 +31,57 @@ type cacheEntry struct {
 	waitCh     chan struct{}
 	waitClosed bool
 
-	// lastAccessNs is a recency token for LRU eviction: a global atomic counter
-	// bumped on every access, stored atomically so the read path can mark a
-	// touch under the shard's RLock without upgrading to a write lock.
+	// lastAccessNs orders entries for eviction: a global atomic counter bumped
+	// when the entry is created, reserved or fulfilled — all of which happen
+	// under the shard write lock, on the MISS path. It is stored atomically
+	// because the read path reads it under the shard's RLock.
+	//
+	// It is NOT bumped on a read any more; a read sets readSinceSweep instead.
 	lastAccessNs atomic.Int64
+
+	// readSinceSweep records that a READ has touched this entry since the last
+	// eviction sweep. It is the second-chance bit for eviction: a victim is
+	// chosen from the entries with the bit CLEAR, and the sweep clears the bits
+	// when every candidate has been read.
+	//
+	// It exists because writing lastAccessNs on every hit was the dominant cost
+	// of a cache hit under concurrency. ~40k resident entries at a few hundred
+	// bytes each is a working set far larger than L2; the read already touches
+	// the entry's cache line, but a STORE dirties it, and a dirty line costs a
+	// writeback when it is evicted from the CPU cache. Measured on a 14-core
+	// host at 256 concurrent readers, get=90/set=10, 99.94% hit rate:
+	// 263,801 -> 328,842 reads/s (+24.7%) and 27.0 -> 18.9 CPU us/op, with the
+	// hit rate unchanged. Removing the recency update altogether measured
+	// +40.5%, so this recovers about three fifths of the available headroom
+	// while keeping eviction honest.
+	//
+	// A load that finds the bit already set leaves the line SHARED, so every
+	// core can hold it at once; only the first read after a sweep writes.
+	readSinceSweep atomic.Bool
+
+	// refreshKeep marks an IN_PROGRESS refresh reservation: fulfill publishes
+	// it with refreshAccessNs and refreshRead instead of a fresh recency. See
+	// stageRefreshAccess. Written and read under the shard write lock.
+	refreshKeep     bool
+	refreshRead     bool
+	refreshAccessNs int64
 
 	// validAt retains time.Now's monotonic component for the MaxStaleness
 	// backstop, so wall-clock corrections cannot extend an entry's lifetime.
 	// Written under Lock (Set/Fulfill), read under RLock (get).
 	validAt time.Time
+
+	// fetchSeq is the global cscFetchSeq value at the moment this entry's fetch was
+	// ISSUED (Reserve), carried unchanged through fulfill. It lets a batched
+	// invalidation tell "this value predates me" from "this value was refetched
+	// after me": an invalidation snapshots cscFetchSeq at OBSERVE time, and a delete
+	// is skipped when entry.fetchSeq > that snapshot (the fetch was issued after the
+	// invalidate, so it reached a server that had already applied the write). Fetch-
+	// ISSUE order is used, not fulfill-COMPLETION order, because the invalidation and
+	// the reply travel on different connections with no ordering — a stale reply can
+	// fulfill after the invalidate is observed (see deleteByRedisKey). Set/read under
+	// the shard Lock.
+	fetchSeq uint64
 
 	// ownerConnID is the conn that fetched this entry (set by FulfillOwned; 0 =
 	// none). Default CLIENT TRACKING sends a key's invalidation only to that
@@ -54,6 +96,17 @@ var lruSequence atomic.Int64
 // nextLRUToken returns the next strictly-greater LRU token.
 func nextLRUToken() int64 {
 	return lruSequence.Add(1)
+}
+
+// cscFetchSeq is the global monotonic counter feeding cacheEntry.fetchSeq. It
+// totally orders fetch-ISSUE (Reserve) events against invalidation OBSERVE
+// events so a batched delete can skip an entry refetched after the invalidation
+// (see cacheEntry.fetchSeq).
+var cscFetchSeq atomic.Uint64
+
+// nextFetchSeq returns the next strictly-greater fetch-issue sequence.
+func nextFetchSeq() uint64 {
+	return cscFetchSeq.Add(1)
 }
 
 // CacheSizer calculates estimated memory usage in bytes for a cache entry.
@@ -211,6 +264,17 @@ func NewLocalCache(cfg CacheConfig) *LocalCache {
 	return c
 }
 
+// effectiveMaxStaleness reports the cache's staleness bound (0 = none). Every
+// shard carries the same value, so shard 0 is authoritative. Used by
+// Options.init to run the batch-window-vs-staleness sanity warning for an
+// INJECTED *LocalCache too, where no ClientSideCacheConfig exists to read.
+func (c *LocalCache) effectiveMaxStaleness() time.Duration {
+	if len(c.shards) == 0 {
+		return 0
+	}
+	return c.shards[0].maxStaleness
+}
+
 // LocalCache is the built-in sharded approximate-LRU cache.
 //
 // Experimental: this API may change in a minor release.
@@ -223,6 +287,16 @@ type LocalCache struct {
 	nextToken atomic.Uint64
 	hits      atomic.Uint64
 	misses    atomic.Uint64
+
+	// Invalidation accounting for refresh-on-invalidate (see CSCRefreshStats).
+	// invalidations counts keys named in INCOMING pushes, tallied once at the
+	// handler choke point before dedup/batching. deletions/deletionsNoop count
+	// APPLIED deletes (post-dedup) and the subset that matched no live entry. The
+	// gap between invalidations and deletions is the direct measure of dedup +
+	// duplicate invalidations (and, under a flood, the spill-cap full-Flush).
+	invalidations atomic.Uint64
+	deletions     atomic.Uint64
+	deletionsNoop atomic.Uint64
 }
 
 var _ Cache = (*LocalCache)(nil)
@@ -244,6 +318,97 @@ type cacheShard struct {
 	maxStaleness   time.Duration
 	sizer          CacheSizer
 	staleTimeout   time.Duration
+}
+
+// collectHotAndDeleteBatch applies a whole invalidation batch under ONE
+// acquisition of this shard's lock.
+//
+// The per-key work is identical to collectHotAndDelete; only the locking
+// granularity changes. The caller loops shards on the outside and keys on the
+// inside, so a batch of N costs 16 lock acquisitions instead of 16*N -- which
+// is what let the single batcher worker fall permanently behind a 20k/sec
+// invalidation stream and leave the cache serving stale entries.
+//
+// keys and the parallel guards are indexed together: sinceTokens[i] and
+// fetchSnaps[i] belong to keys[i].
+//
+// matched[i] is set when this shard removed something for keys[i]. The caller
+// ORs it across shards, because one redis key can appear in several shards: a
+// multi-key entry is filed under its CACHE key's shard, so each of its redis
+// keys is indexed wherever that entry lives. Per-key match tracking is what
+// keeps the no-op deletion count equal to the single-key path's.
+func (s *cacheShard) collectHotAndDeleteBatch(keys []string, sinceTokens []int64, fetchSnaps []uint64, dst []cscRefreshTarget, matched []bool) ([]cscRefreshTarget, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	removed := 0
+	for i, redisKey := range keys {
+		cacheKeys, ok := s.byRedisKey[redisKey]
+		if !ok {
+			continue
+		}
+		sinceToken, fetchSnap := sinceTokens[i], fetchSnaps[i]
+		toRemove := make([]string, 0, len(cacheKeys))
+		for cacheKey := range cacheKeys {
+			toRemove = append(toRemove, cacheKey)
+		}
+		for _, cacheKey := range toRemove {
+			entry, exists := s.entries[cacheKey]
+			if exists && entry.fetchSeq > fetchSnap {
+				continue
+			}
+			if exists && entry.state == cacheEntryValid && entry.lastAccessNs.Load() > sinceToken {
+				ks := make([]string, len(entry.redisKeys))
+				copy(ks, entry.redisKeys)
+				dst = append(dst, cscRefreshTarget{
+					cacheKey:  cacheKey,
+					redisKeys: ks,
+					accessNs:  entry.lastAccessNs.Load(),
+					// The second-chance bit, as collectHotAndDelete keeps it:
+					// the refresh republishes the entry with it.
+					read:     entry.readSinceSweep.Load(),
+					valBytes: len(entry.value),
+				})
+			}
+			if s.removeEntryLocked(cacheKey) {
+				matched[i] = true
+				removed++
+			}
+		}
+	}
+	return dst, removed
+}
+
+// deleteManyByRedisKeyCollectingHot is the cache-level batch entry point: one
+// pass over the shards, every key of the batch handled under each shard's
+// single lock.
+func (c *LocalCache) deleteManyByRedisKeyCollectingHot(keys []string, sinceTokens []int64, fetchSnaps []uint64, dst []cscRefreshTarget) ([]cscRefreshTarget, int) {
+	if len(keys) == 0 {
+		return dst, 0
+	}
+	removed := 0
+	matched := make([]bool, len(keys))
+	for i := range c.shards {
+		var n int
+		dst, n = c.shards[i].collectHotAndDeleteBatch(keys, sinceTokens, fetchSnaps, dst, matched)
+		removed += n
+	}
+	// Applied-delete accounting, per KEY, exactly as the single-key path does
+	// it: every key is one deletion, and a key that removed nothing is one
+	// no-op. Deriving the no-op count from the batch total instead would
+	// undercount -- a batch where one key matched and nine did not would
+	// record zero no-ops rather than nine.
+	c.deletions.Add(uint64(len(keys)))
+	noop := 0
+	for _, ok := range matched {
+		if !ok {
+			noop++
+		}
+	}
+	if noop > 0 {
+		c.deletionsNoop.Add(uint64(noop))
+	}
+	return dst, removed
 }
 
 // shardFor returns the shard responsible for cacheKey.
@@ -284,10 +449,34 @@ func defaultCacheSizer(cacheKey string, redisKeys []string, value []byte) int64 
 // Get returns a copy of a cached value, waiting for an in-progress fetch when
 // necessary.
 func (c *LocalCache) Get(ctx context.Context, cacheKey string) ([]byte, bool) {
+	value, ok := c.get(ctx, cacheKey, true)
+	return value, ok
+}
+
+// getShared is Get without the defensive copy. The returned slice ALIASES the
+// cache entry, so the caller must neither mutate nor retain it; it is valid
+// only until the caller returns.
+//
+// Safe because a published value is immutable: cacheShard.get never writes
+// through the slice, and a refetch REPLACES entry.value wholesale under the
+// shard write lock rather than editing it in place, so an old slice a reader
+// already holds keeps its contents.
+//
+// Not on the Cache interface, and deliberately so: Get's []byte return means a
+// third-party implementation's caller may legitimately retain what it gets
+// back, so the copy has to stay there. Only the built-in cache paired with the
+// built-in read path (processCached, which parses the bytes and drops them)
+// can skip it -- the same "only the built-in *LocalCache" gate miss coalescing
+// uses.
+func (c *LocalCache) getShared(ctx context.Context, cacheKey string) ([]byte, bool) {
+	return c.get(ctx, cacheKey, false)
+}
+
+func (c *LocalCache) get(ctx context.Context, cacheKey string, clone bool) ([]byte, bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	value, ok := c.shardFor(cacheKey).get(ctx, cacheKey)
+	value, ok := c.shardFor(cacheKey).get(ctx, cacheKey, clone)
 	if ok {
 		c.hits.Add(1)
 	} else {
@@ -299,7 +488,9 @@ func (c *LocalCache) Get(ctx context.Context, cacheKey string) ([]byte, bool) {
 // get is the read-side hot path. Holds only the shard's read lock; updates
 // the LRU recency timestamp via atomic store on the entry — no write-lock
 // upgrade is needed.
-func (s *cacheShard) get(ctx context.Context, cacheKey string) ([]byte, bool) {
+// get is the read-side hot path. clone=false returns a slice ALIASING the
+// entry (see LocalCache.getShared for why that is safe and who may use it).
+func (s *cacheShard) get(ctx context.Context, cacheKey string, clone bool) ([]byte, bool) {
 	for {
 		s.mu.RLock()
 		entry, ok := s.entries[cacheKey]
@@ -356,11 +547,28 @@ func (s *cacheShard) get(ctx context.Context, cacheKey string) ([]byte, bool) {
 			return nil, false
 		}
 
-		value := cloneBytes(entry.value)
-		// Record access timestamp without upgrading the lock. Last writer
-		// wins; cross-goroutine ordering of timestamps is fine for
-		// approximate-LRU semantics.
-		entry.lastAccessNs.Store(nextLRUToken())
+		value := entry.value
+		if clone {
+			value = cloneBytes(value)
+		}
+		// Mark the second-chance bit instead of stamping a recency token. The
+		// load short-circuits every read after the first since the last sweep,
+		// which is the overwhelming majority, and leaves the entry's cache line
+		// SHARED rather than taking it exclusively per hit. See
+		// cacheEntry.readSinceSweep for the measurements.
+		//
+		// The store is skipped entirely on a shard that is nowhere near its
+		// cap, because the bit is only ever read by eviction. That guard is
+		// not a micro-optimisation: the surviving store was still 9.7% of all
+		// CPU (15.24s of 157.84s, against 50ms for this Load). It stays hot
+		// under churn because invalidated entries are refetched constantly and
+		// every fresh entry's first read finds a clear bit, and each such
+		// store invalidates, across every core, a line the readers hold
+		// SHARED. len(s.entries) is safe to read here: writers hold the write
+		// lock, and this path holds the read lock.
+		if !entry.readSinceSweep.Load() && s.nearCapacityLocked() {
+			entry.readSinceSweep.Store(true)
+		}
 		s.mu.RUnlock()
 		return value, true
 	}
@@ -395,8 +603,11 @@ func (c *LocalCache) Reserve(cacheKey string, redisKeys []string) (token uint64,
 		switch entry.state {
 		case cacheEntryValid:
 			// Existing-VALID hit: record access; caller will re-Get to
-			// retrieve.
+			// retrieve. This IS an access, so it also earns the second chance
+			// the read path grants -- it is under the write lock and off the
+			// hot path, so stamping the token here costs nothing.
 			entry.lastAccessNs.Store(nextLRUToken())
+			entry.readSinceSweep.Store(true)
 			return 0, false
 		case cacheEntryInProgress:
 			if time.Since(entry.reservedAt) < s.staleTimeout {
@@ -420,6 +631,10 @@ func (c *LocalCache) Reserve(cacheKey string, redisKeys []string) (token uint64,
 		reservedAt: reservedAt,
 		waitCh:     waitCh,
 		sizeBytes:  sizeBytes,
+		// Stamp fetch-ISSUE order now so a later invalidation can tell a value
+		// refetched after it (keep) from one that predates it (evict). Carried
+		// through fulfill unchanged. See cacheEntry.fetchSeq.
+		fetchSeq: nextFetchSeq(),
 	}
 	entry.lastAccessNs.Store(nextLRUToken())
 
@@ -472,16 +687,55 @@ func (c *LocalCache) fulfill(cacheKey string, token, ownerConnID uint64, value [
 	entry.state = cacheEntryValid
 	entry.validAt = time.Now()
 	entry.token = 0
-	entry.lastAccessNs.Store(nextLRUToken())
+	if entry.refreshKeep {
+		// A refresh republish keeps the old entry's standing, set here in the
+		// same lock as the publish so the eviction pass below, and any insert
+		// after it, already see it.
+		entry.lastAccessNs.Store(entry.refreshAccessNs)
+		entry.readSinceSweep.Store(entry.refreshRead)
+		entry.refreshKeep = false
+	} else {
+		entry.lastAccessNs.Store(nextLRUToken())
+	}
 	if ownerConnID != 0 {
 		entry.ownerConnID = ownerConnID
 		s.indexConnLocked(ownerConnID, cacheKey)
 	}
 	s.closeWaitersLocked(entry)
 
-	s.evictIfNeededLocked()
+	// The entry just fulfilled is not a candidate in its own eviction pass. It
+	// is born with its second-chance bit clear, so in a warm shard (every
+	// resident entry read) it would be the only clear-bit candidate and be
+	// evicted right here: a memory-capped shard, where the value only goes
+	// over the cap now, could then admit nothing, and since a clear candidate
+	// always existed the sweep that resets the others never ran. Excluding it
+	// lets that sweep run and take the oldest entry instead.
+	s.evictIfNeededLocked(entry)
 	current, stillExists := s.entries[cacheKey]
 	return stillExists && current == entry && entry.state == cacheEntryValid
+}
+
+// stageRefreshAccess sets the recency a refresh republish keeps on the
+// IN_PROGRESS reservation token: lastAccessNs becomes accessNs and the
+// second-chance bit becomes read, both taken from the invalidated entry.
+// fulfill applies them in the same lock as the publish.
+//
+// The refresh does not count as a reader access: a fresh token would keep the
+// key above the refresh horizon, so every later invalidation would refresh it
+// again after all readers stop -- a self-sustaining refetch loop. Keeping the
+// bit stops a hot key from being the first eviction victim only because the
+// refresh republished it. Setting both before the publish, not after it,
+// closes the gap in which an insert could evict the republished entry while
+// its bit was still clear. No-op when the reservation is gone.
+func (c *LocalCache) stageRefreshAccess(cacheKey string, token uint64, accessNs int64, read bool) {
+	s := c.shardFor(cacheKey)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entry, ok := s.entries[cacheKey]; ok && entry.state == cacheEntryInProgress && entry.token == token {
+		entry.refreshKeep = true
+		entry.refreshAccessNs = accessNs
+		entry.refreshRead = read
+	}
 }
 
 // EvictByConn removes every entry fetched by connID and returns the count.
@@ -544,11 +798,18 @@ func (c *LocalCache) Cancel(cacheKey string, token uint64) bool {
 	return true
 }
 
-// DeleteByRedisKey removes entries associated with redisKey.
+// DeleteByRedisKey removes entries associated with redisKey. It is the applied-
+// delete path used when refresh-on-invalidate is off (the collecting variant is
+// used when it is on); counting deletions here keeps DeletionStats accurate on
+// both paths. The two are disjoint — neither calls the other — so no double count.
 func (c *LocalCache) DeleteByRedisKey(redisKey string) int {
 	removed := 0
 	for i := range c.shards {
 		removed += c.shards[i].deleteByRedisKey(redisKey)
+	}
+	c.deletions.Add(1)
+	if removed == 0 {
+		c.deletionsNoop.Add(1)
 	}
 	return removed
 }
@@ -698,6 +959,32 @@ func (s *cacheShard) closeWaitersLocked(entry *cacheEntry) {
 	}
 }
 
+// nearCapacityLocked reports whether this shard is close enough to its cap
+// that an eviction could plausibly happen soon.
+//
+// The second-chance bit only ever matters as an eviction input. A shard well
+// below its cap will not evict, so marking reads there is pure cost; the
+// measurement is in cacheShard.get, at the call site. The threshold is
+// deliberately loose (three quarters) so the bit is already being maintained
+// by the time eviction actually starts choosing victims.
+//
+// The trade: a read made while the shard is below the threshold leaves no
+// trace. When a gradually warming shard later reaches its cap, an entry read
+// only during that warm-up looks as cold as one never read, so the first
+// evictions go by insertion order among them and a key hot early on can take
+// one avoidable miss. Recovering those reads would need the per-read store
+// this gate exists to skip (9.7% of CPU under churn, measured at the call
+// site); reads from the threshold on are tracked as usual.
+func (s *cacheShard) nearCapacityLocked() bool {
+	if s.maxEntries > 0 && len(s.entries)*4 >= s.maxEntries*3 {
+		return true
+	}
+	if s.maxMemoryBytes > 0 && s.usedBytes*4 >= s.maxMemoryBytes*3 {
+		return true
+	}
+	return false
+}
+
 func (s *cacheShard) overCapacityLocked() bool {
 	if s.maxEntries > 0 && len(s.entries) > s.maxEntries {
 		return true
@@ -712,11 +999,14 @@ func (s *cacheShard) overCapacityLocked() bool {
 // well-sized caches) until under capacity. Used by Set/Fulfill: it prefers a
 // Valid victim but falls back to the oldest IN_PROGRESS placeholder to keep the
 // hard cap (that placeholder's Fulfill then fails and its waiters refetch).
-func (s *cacheShard) evictIfNeededLocked() {
+//
+// keep, when non-nil, is never chosen: it is the entry the caller just
+// published and must not evict in the same pass.
+func (s *cacheShard) evictIfNeededLocked(keep *cacheEntry) {
 	for s.overCapacityLocked() {
-		victim := s.oldestLocked(cacheEntryValid)
+		victim := s.oldestLocked(cacheEntryValid, keep)
 		if victim == nil {
-			victim = s.oldestLocked(cacheEntryInProgress)
+			victim = s.oldestLocked(cacheEntryInProgress, keep)
 		}
 		if victim == nil {
 			return
@@ -730,7 +1020,7 @@ func (s *cacheShard) evictIfNeededLocked() {
 // peer's in-flight fetch.
 func (s *cacheShard) evictValidLocked() {
 	for s.overCapacityLocked() {
-		victim := s.oldestLocked(cacheEntryValid)
+		victim := s.oldestLocked(cacheEntryValid, nil)
 		if victim == nil {
 			return
 		}
@@ -738,21 +1028,58 @@ func (s *cacheShard) evictValidLocked() {
 	}
 }
 
-// oldestLocked returns the entry in the given state with the smallest
-// lastAccessNs (the least-recently-used), or nil when none exists.
-func (s *cacheShard) oldestLocked(state cacheEntryState) *cacheEntry {
-	var victim *cacheEntry
-	var oldestNs int64 = math.MaxInt64
+// oldestLocked returns the eviction victim in the given state, or nil when no
+// entry is in that state. keep, when non-nil, is skipped entirely: it is
+// neither a victim nor part of the sweep.
+//
+// Second chance. A read no longer stamps a recency token (that store was the
+// dominant cost of a cache hit; see cacheEntry.readSinceSweep), so recency is
+// carried by the readSinceSweep bit and ordering by lastAccessNs, which is the
+// token assigned when the entry was created, reserved or fulfilled.
+//
+// The victim is the oldest entry whose bit is CLEAR — never read since the last
+// sweep. When every candidate has been read, that is the sweep: clear all their
+// bits, give them a fresh chance, and fall back to the oldest by token. So a
+// read protects an entry from exactly one eviction pass, which is what
+// approximate LRU asks for.
+//
+// Ordering by lastAccessNs rather than by map order is what keeps the choice
+// DETERMINISTIC. Go randomises map iteration, so picking "any entry with a
+// clear bit" would evict a different key run to run, which callers (and the
+// LRU tests) reasonably do not expect.
+func (s *cacheShard) oldestLocked(state cacheEntryState, keep *cacheEntry) *cacheEntry {
+	var victim, fallback *cacheEntry
+	var oldestNs, oldestAny int64 = math.MaxInt64, math.MaxInt64
+	swept := false
 	for _, e := range s.entries {
-		if e.state != state {
+		if e.state != state || e == keep {
 			continue
 		}
-		if ns := e.lastAccessNs.Load(); ns < oldestNs {
-			oldestNs = ns
-			victim = e
+		ns := e.lastAccessNs.Load()
+		if ns < oldestAny {
+			oldestAny, fallback = ns, e
+		}
+		if e.readSinceSweep.Load() {
+			swept = true
+			continue
+		}
+		if ns < oldestNs {
+			oldestNs, victim = ns, e
 		}
 	}
-	return victim
+	if victim != nil {
+		return victim
+	}
+	if swept {
+		// Every candidate had been read: consume their second chances so the
+		// next pass can distinguish them again.
+		for _, e := range s.entries {
+			if e.state == state && e != keep {
+				e.readSinceSweep.Store(false)
+			}
+		}
+	}
+	return fallback
 }
 
 func cloneBytes(src []byte) []byte {
