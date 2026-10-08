@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Stream limit delegation is configurable per tenant
+
+Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
+
+The ingester-wide setting `ingester.delegate_stream_limits_enabled` (`-ingester.delegate-stream-limits-enabled`) still works and is deprecated. It provides the default of the per-tenant limit, so existing configurations keep their behaviour.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
