@@ -39,6 +39,8 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
 		nil,
+		false,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -81,6 +83,8 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -130,6 +134,8 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -181,6 +187,8 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -258,6 +266,8 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -346,6 +356,8 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -457,6 +469,8 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		metrics,
 	)
 	require.NoError(t, err)
@@ -599,6 +613,8 @@ func Test_LogResultCacheDifferentLimit(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -779,4 +795,51 @@ func nonEmptyResponse(lokiReq *LokiRequest, start, end time.Time, labels string)
 		})
 	}
 	return r
+}
+
+func Test_LogResultCacheGenNumber(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		retentionEnabled bool
+		// expectedCalls is the number of downstream calls after querying with gen "1", gen "1" and gen "2".
+		expectedCalls int
+	}{
+		{name: "retention enabled invalidates on gen change", retentionEnabled: true, expectedCalls: 2},
+		{name: "retention disabled ignores gen", retentionEnabled: false, expectedCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			genLoader := &mutableCacheGenNumberLoader{gen: "1"}
+			limits := fakeLimits{splitDuration: map[string]time.Duration{"foo": time.Minute}}
+			lrc, err := NewLogResultCache(
+				log.NewNopLogger(),
+				limits,
+				cache.NewMockCache(),
+				nil,
+				NewDefaultLogCacheKeyGenerator(limits, nil),
+				genLoader,
+				tc.retentionEnabled,
+				nil,
+			)
+			require.NoError(t, err)
+
+			req := &LokiRequest{
+				StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+				EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+				Limit:   entriesLimit,
+			}
+
+			m := &mock.Mock{}
+			m.On("Do", mock.Anything, req).Return(emptyResponse(req), nil)
+			h := lrc.Wrap(fakeResponse{Mock: m})
+
+			for _, gen := range []string{"1", "1", "2"} {
+				genLoader.setGen(gen)
+				resp, err := h.Do(ctx, req)
+				require.NoError(t, err)
+				require.Equal(t, emptyResponse(req), resp)
+			}
+			m.AssertNumberOfCalls(t, "Do", tc.expectedCalls)
+		})
+	}
 }

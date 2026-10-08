@@ -97,12 +97,18 @@ func NewDefaultLogCacheKeyGenerator(limits Limits, transformer UserIDTransformer
 // Log hits are difficult to handle because of the limit query parameter and the size of the response.
 // In the future it could be extended to cache non-empty query results.
 // see https://docs.google.com/document/d/1_mACOpxdWZ5K0cIedaja5gzMbv-m0lUVazqZd2O4mEU/edit
+//
+// When a cacheGenNumberLoader is given and retention is enabled, cache keys are prefixed with the tenant's
+// results cache generation number so that cached empty results are invalidated whenever the generation changes
+// (e.g. when a delete request is cancelled and previously hidden log lines become visible again).
 func NewLogResultCache(
 	logger log.Logger,
 	limits LogCacheLimits,
 	c cache.Cache,
 	shouldCache queryrangebase.ShouldCacheFn,
 	keyGen LogCacheKeyGenerator,
+	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
 	metrics *LogResultCacheMetrics,
 ) (queryrangebase.Middleware, error) {
 	if keyGen == nil {
@@ -110,6 +116,9 @@ func NewLogResultCache(
 	}
 	if metrics == nil {
 		metrics = NewLogResultCacheMetrics(nil)
+	}
+	if cacheGenNumberLoader != nil {
+		c = cache.NewCacheGenNumMiddleware(c)
 	}
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &logResultCache{
@@ -120,6 +129,9 @@ func NewLogResultCache(
 			shouldCache: shouldCache,
 			keyGen:      keyGen,
 			metrics:     metrics,
+
+			cacheGenNumberLoader: cacheGenNumberLoader,
+			retentionEnabled:     retentionEnabled,
 		}
 	}), nil
 }
@@ -130,6 +142,9 @@ type logResultCache struct {
 	cache       cache.Cache
 	shouldCache queryrangebase.ShouldCacheFn
 	keyGen      LogCacheKeyGenerator
+
+	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader
+	retentionEnabled     bool
 
 	metrics *LogResultCacheMetrics
 	logger  log.Logger
@@ -146,6 +161,10 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
 		return l.next.Do(ctx, req)
+	}
+
+	if l.cacheGenNumberLoader != nil && l.retentionEnabled {
+		ctx = cache.InjectCacheGenNumber(ctx, l.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }

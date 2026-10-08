@@ -178,6 +178,10 @@ func NewLogResultCache(
 		c,
 		shouldCacheRequest,
 		&LogCacheKeyGenerator{limits: limits},
+		// TODO: pass a non-nil cacheGenNumberLoader once delete requests
+		// are supported by the Thor engine, to invalidate cached results on delete.
+		nil,
+		false, // retentionEnabled (handled elsewhere)
 		metrics,
 	)
 }
