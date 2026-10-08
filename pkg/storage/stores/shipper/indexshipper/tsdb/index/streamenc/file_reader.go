@@ -130,7 +130,7 @@ func (f *FileReader) fill(need int) error {
 }
 
 func (f *FileReader) Skip(l int) error {
-	if l > f.Len() {
+	if l < 0 || l > f.Len() {
 		return ErrInvalidSize
 	}
 
