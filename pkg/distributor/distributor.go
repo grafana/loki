@@ -882,9 +882,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		err:  make(chan error, 1),
 	}
 
-	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
-	var descs [maxExpectedReplicationSet]ring.InstanceDesc
-
 	streamsToWrite := 0
 	if d.cfg.IngesterEnabled {
 		streamsToWrite += len(streams)
@@ -925,58 +922,8 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}
 
 	if d.cfg.IngesterEnabled {
-		streamTrackers := make([]streamTracker, len(streams))
-		streamsByIngester := map[string][]*streamTracker{}
-		ingesterDescs := map[string]ring.InstanceDesc{}
-
-		if err := func() error {
-			sp := trace.SpanFromContext(ctx)
-			sp.AddEvent("started to query ingesters ring")
-			defer sp.AddEvent("finished to query ingesters ring")
-
-			for i, stream := range streams {
-				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
-				if err != nil {
-					return err
-				}
-
-				streamTrackers[i] = streamTracker{
-					KeyedStream: stream,
-					minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
-					maxFailures: replicationSet.MaxErrors,
-				}
-				for _, ingester := range replicationSet.Instances {
-					streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
-					ingesterDescs[ingester.Addr] = ingester
-				}
-			}
-			return nil
-		}(); err != nil {
+		if err := d.sendStreamsToIngesters(ctx, streams, &tracker); err != nil {
 			return nil, err
-		}
-
-		for ingester, streams := range streamsByIngester {
-			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
-				// This is to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				sp := trace.SpanFromContext(ctx)
-				localCtx = trace.ContextWithSpan(localCtx, sp)
-
-				select {
-				case <-ctx.Done():
-					cancel()
-					return
-				case d.ingesterTasks <- pushIngesterTask{
-					ingester:      ingester,
-					streamTracker: samples,
-					pushTracker:   &tracker,
-					ctx:           localCtx,
-					cancel:        cancel,
-				}:
-					return
-				}
-			}(ingesterDescs[ingester], streams)
 		}
 	}
 
@@ -1594,6 +1541,60 @@ type pushIngesterTask struct {
 	ingester      ring.InstanceDesc
 	ctx           context.Context
 	cancel        context.CancelFunc
+}
+
+// sendStreamsToIngesters resolves the replication set of each stream, groups
+// the streams by ingester and queues one push task per ingester for the
+// pushIngesterWorker pool. Results are reported through tracker; the returned
+// error is only for ring lookup failures, in which case nothing is queued.
+func (d *Distributor) sendStreamsToIngesters(ctx context.Context, streams []KeyedStream, tracker *PushTracker) error {
+	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
+	var descs [maxExpectedReplicationSet]ring.InstanceDesc
+
+	streamTrackers := make([]streamTracker, len(streams))
+	streamsByIngester := map[string][]*streamTracker{}
+	ingesterDescs := map[string]ring.InstanceDesc{}
+
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("started to query ingesters ring")
+	for i, stream := range streams {
+		replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+		if err != nil {
+			sp.AddEvent("finished to query ingesters ring")
+			return err
+		}
+
+		streamTrackers[i] = streamTracker{
+			KeyedStream: stream,
+			minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
+			maxFailures: replicationSet.MaxErrors,
+		}
+		for _, ingester := range replicationSet.Instances {
+			streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
+			ingesterDescs[ingester.Addr] = ingester
+		}
+	}
+	sp.AddEvent("finished to query ingesters ring")
+
+	for addr, samples := range streamsByIngester {
+		// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
+		// This is to make sure all ingesters get samples even if we return early
+		localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
+		localCtx = trace.ContextWithSpan(localCtx, sp)
+
+		select {
+		case <-ctx.Done():
+			cancel()
+		case d.ingesterTasks <- pushIngesterTask{
+			ingester:      ingesterDescs[addr],
+			streamTracker: samples,
+			pushTracker:   tracker,
+			ctx:           localCtx,
+			cancel:        cancel,
+		}:
+		}
+	}
+	return nil
 }
 
 func (d *Distributor) pushIngesterWorker(ctx context.Context) {
