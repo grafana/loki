@@ -69,25 +69,26 @@ func tryFindFirstCharClass(node *RegexNode, ccIn **CharSet) int {
 	case NtNotone, NtNotoneloop, NtNotonelazy, NtNotoneloopatomic:
 		if cc == nil {
 			cc = &CharSet{}
-			*ccIn = cc
-		}
-		if cc.IsMergeable() {
 			cc.addChar(node.Ch)
 			cc.negate = true
-			/*if node.Ch > 0 {
-				// Add the range before the excluded char.
-				cc.addRange(0, (node.Ch - 1))
+			*ccIn = cc
+		} else if cc.IsMergeable() {
+			// Union the complement ranges with the accumulated characters
+			// before canonicalizing; negating the accumulator would exclude them.
+			if node.Ch > 0 {
+				cc.ranges = append(cc.ranges, SingleRange{0, node.Ch - 1})
 			}
 			if node.Ch < unicode.MaxRune {
-				// Add the range after the excluded char.
-				cc.addRange(node.Ch+1, unicode.MaxRune)
-			}*/
-			if node.T == NtNotone || node.M > 0 {
-				return 1
+				cc.ranges = append(cc.ranges, SingleRange{node.Ch + 1, unicode.MaxRune})
 			}
-			return -1
+			cc.canonicalize()
+		} else {
+			return 0
 		}
-		return 0
+		if node.T == NtNotone || node.M > 0 {
+			return 1
+		}
+		return -1
 
 	case NtSet, NtSetloop, NtSetlazy, NtSetloopatomic:
 		{
