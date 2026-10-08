@@ -311,16 +311,12 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 
 		wanted := []int64{1980, 1990, 1975}
-		values := make([]Value, len(wanted))
-		for i, v := range wanted {
-			values[i] = Int64Value(v)
-		}
 
 		r := NewRowReader(RowReaderOptions{
 			Dataset: dset,
 			Columns: columns,
 			Predicates: []Predicate{
-				InPredicate{Column: columns[3], Values: NewInt64ValueSet(values)},
+				InPredicate{Column: columns[3], Values: NewInt64ValueSetOf(wanted...)},
 			},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
@@ -716,24 +712,16 @@ func Test_BuildPredicateRanges(t *testing.T) {
 		{
 			name: "InPredicate with values inside and outside page ranges",
 			predicate: InPredicate{
-				Column: cols[1], // timestamp column
-				Values: NewInt64ValueSet([]Value{
-					Int64Value(50),
-					Int64Value(300),
-					Int64Value(150),
-					Int64Value(600),
-				}), // 2 values in range. ~200 matching rows
+				Column: cols[1],                               // timestamp column
+				Values: NewInt64ValueSetOf(50, 300, 150, 600), // 2 values in range. ~200 matching rows
 			},
 			want: rangeset.From(rangeset.Range{Start: 0, End: 750}), // Page 1 + 2
 		},
 		{
 			name: "InPredicate with values all outside page ranges",
 			predicate: InPredicate{
-				Column: cols[1], // timestamp column
-				Values: NewInt64ValueSet([]Value{
-					Int64Value(150), // Outside all pages
-					Int64Value(600), // Outside all pages
-				}),
+				Column: cols[1],                      // timestamp column
+				Values: NewInt64ValueSetOf(150, 600), // Both outside all pages
 			},
 			want: rangeset.Set{}, // No pages should be included
 		},
@@ -944,8 +932,9 @@ func BenchmarkReader(b *testing.B) {
 }
 
 func BenchmarkPredicateExecution(b *testing.B) {
-	// Generate dataset with two columns, one with high cardinality and one with low cardinality
-	// higher the cardinality, more selective the predicate
+	// Generate a dataset with two columns, one with high cardinality and one with low cardinality.
+	// The higher the cardinality, the more selective an equality predicate on the column is.
+	// Columns that repeat each value in a run follow, for the IN patterns.
 	generator := DatasetGenerator{
 		RowCount: 1_000_000,
 		// set large page size to not realise benefits from page pruning since the goal
@@ -967,6 +956,22 @@ func BenchmarkPredicateExecution(b *testing.B) {
 				CardinalityTarget: 100,
 			},
 		},
+	}
+
+	// A logs section keeps the rows of one stream together, so its stream ID column repeats each
+	// value in a run. Run lengths above 1 show where a lookup cache starts to pay off. A run
+	// length of 1 repeats nothing, so it is the worst case for the cache.
+	const streamCardinality = 200
+	runLengths := []int64{1, 8, 64, 1000}
+	for _, runLength := range runLengths {
+		generator.Columns = append(generator.Columns, generatorColumnConfig{
+			Tag:               fmt.Sprintf("stream_run_%d", runLength),
+			Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "int64"},
+			Encoding:          datasetmd.ENCODING_TYPE_DELTA,
+			Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+			CardinalityTarget: streamCardinality,
+			RunLength:         runLength,
+		})
 	}
 
 	ds, cols := generator.Build(b, rand.Int63())
@@ -1004,12 +1009,16 @@ func BenchmarkPredicateExecution(b *testing.B) {
 	}
 	reader.Close()
 
-	predicatePatterns := []struct {
-		name       string
-		predicates []Predicate
-	}{
+	type predicatePattern struct {
+		name             string
+		projectedColumns []Column
+		predicates       []Predicate
+	}
+
+	predicatePatterns := []predicatePattern{
 		{
-			name: "combined",
+			name:             "selectivity=combined",
+			projectedColumns: cols[:2],
 			predicates: []Predicate{
 				AndPredicate{
 					Left: EqualPredicate{
@@ -1024,7 +1033,8 @@ func BenchmarkPredicateExecution(b *testing.B) {
 			},
 		},
 		{
-			name: "high",
+			name:             "selectivity=high",
+			projectedColumns: cols[:2],
 			predicates: []Predicate{
 				EqualPredicate{
 					Column: cols[0],
@@ -1037,7 +1047,8 @@ func BenchmarkPredicateExecution(b *testing.B) {
 			},
 		},
 		{
-			name: "low",
+			name:             "selectivity=low",
+			projectedColumns: cols[:2],
 			predicates: []Predicate{
 				EqualPredicate{
 					Column: cols[1],
@@ -1051,15 +1062,39 @@ func BenchmarkPredicateExecution(b *testing.B) {
 		},
 	}
 
+	// The IN set holds the lower half of the values, so about half of the rows match and a
+	// lookup of an absent value is as common as one of a present value.
+	inMembers := make([]int64, 0, streamCardinality/2)
+	for i := range streamCardinality / 2 {
+		inMembers = append(inMembers, int64(i))
+	}
+	for i, runLength := range runLengths {
+		column := cols[2+i]
+		for _, set := range []struct {
+			name   string
+			values ValueSet
+		}{
+			{"plain", NewInt64ValueSetOf(inMembers...)},
+			{"memoized", NewMemoizedInt64ValueSetOf(inMembers...)},
+		} {
+			predicatePatterns = append(predicatePatterns, predicatePattern{
+				name:             fmt.Sprintf("in=%s/run=%d", set.name, runLength),
+				projectedColumns: []Column{column},
+				predicates:       []Predicate{InPredicate{Column: column, Values: set.values}},
+			})
+		}
+	}
+
 	for _, pp := range predicatePatterns {
-		b.Run("selectivity="+pp.name, func(b *testing.B) {
+		b.Run(pp.name, func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
+			var rowsRead int
 			for b.Loop() {
 				reader := NewRowReader(RowReaderOptions{
 					Dataset:    ds,
-					Columns:    cols,
+					Columns:    pp.projectedColumns,
 					Predicates: pp.predicates,
 				})
 				require.NoError(b, reader.Open(context.Background()))
@@ -1067,7 +1102,8 @@ func BenchmarkPredicateExecution(b *testing.B) {
 				batch := make([]Row, 10000)
 
 				for {
-					_, err := reader.Read(context.Background(), batch)
+					n, err := reader.Read(context.Background(), batch)
+					rowsRead += n
 					if err == io.EOF {
 						break
 					}
@@ -1077,6 +1113,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 				}
 				reader.Close()
 			}
+			b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
 		})
 	}
 }
@@ -1090,6 +1127,11 @@ type generatorColumnConfig struct {
 	AvgSize           int64   // Average size in bytes for variable-length types
 	CardinalityTarget int64   // Target number of unique values
 	SparsityRate      float64 // 0.0-1.0, where 1.0 means all values are null
+
+	// RunLength is how many consecutive generated values repeat each drawn value, as in a
+	// column sorted by stream ID. Zero or one draws a new value every time. It applies to
+	// number columns only.
+	RunLength int64
 }
 
 func columnValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
@@ -1133,14 +1175,16 @@ func numberValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
 	return func(yield func(Value) bool) {
 		for {
 			v := rng.Int63n(cfg.CardinalityTarget)
-			switch cfg.Type.Physical {
-			case datasetmd.PHYSICAL_TYPE_INT64:
-				if !yield(Int64Value(v)) {
-					return
-				}
-			case datasetmd.PHYSICAL_TYPE_UINT64:
-				if !yield(Uint64Value(uint64(v))) {
-					return
+			for range max(cfg.RunLength, 1) {
+				switch cfg.Type.Physical {
+				case datasetmd.PHYSICAL_TYPE_INT64:
+					if !yield(Int64Value(v)) {
+						return
+					}
+				case datasetmd.PHYSICAL_TYPE_UINT64:
+					if !yield(Uint64Value(uint64(v))) {
+						return
+					}
 				}
 			}
 		}
