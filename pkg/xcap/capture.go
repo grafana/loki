@@ -129,6 +129,38 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
+// RootRegions groups the regions of this capture by the root of their tree.
+//
+// Each key is a root region: a region without a parent, or whose parent is not
+// in the capture. Its value lists every region of that tree, the root included,
+// in the order of [Capture.Regions].
+//
+// RootRegions reads the regions the capture holds when it runs. Call it after
+// the work that records into the capture has stopped.
+func (c *Capture) RootRegions() map[*Region][]*Region {
+	regions := c.Regions()
+
+	byID := make(map[ID]*Region, len(regions))
+	for _, r := range regions {
+		byID[r.ID()] = r
+	}
+
+	trees := make(map[*Region][]*Region)
+	for _, r := range regions {
+		root := r
+		// The step limit stops a cycle in parent links, which a corrupt unmarshaled capture can hold.
+		for range len(regions) {
+			parent, ok := byID[root.ParentID()]
+			if !ok {
+				break
+			}
+			root = parent
+		}
+		trees[root] = append(trees[root], r)
+	}
+	return trees
+}
+
 // Merge incorporates all regions from src into c by accumulating observations
 // into matching regions. If a region whose name matches an existing region in
 // c is encountered, its observations are folded into that existing region using

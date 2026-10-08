@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -70,7 +71,7 @@ type LogReader struct {
 	// tasks are the section reads to run.
 	tasks *TaskIterator
 
-	// capture and statsCtx carry the dataset reader's byte accounting. capture is nil when the
+	// capture and statsCtx carry the statistics the query records. capture is nil when the
 	// caller installed none.
 	capture  *xcap.Capture
 	statsCtx *stats.Context
@@ -345,7 +346,8 @@ func (r *LogReader) Close() error {
 	return r.Err()
 }
 
-// recordStats folds the data-object byte and row counts into the query stats. It does nothing
+// recordStats folds the data-object byte and row counts and the section resolution time into the
+// query stats. It also folds the object-store requests and bytes into the metrics. It does nothing
 // when no capture was installed.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
@@ -356,7 +358,12 @@ func (r *LogReader) recordStats() {
 	r.statsCtx.AddPostPredicateDecompressedBytes(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowBytes))
 	r.statsCtx.AddPrePredicateDecompressedRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowsRead))
 	r.statsCtx.AddPostFilterRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead))
+	r.statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(xcap.ValueFromRegion[int64](r.capture, metastore.RegionSections, metastore.StatMetastoreSectionsDuration)))
+
+	// End first: it freezes the set of regions the metrics fold reads. Every goroutine that recorded
+	// into them has stopped, so the counts are final.
 	r.capture.End()
+	r.metrics.Record(r.capture)
 
 	// Clear the capture so a repeated Close does not count the same bytes twice.
 	r.capture = nil

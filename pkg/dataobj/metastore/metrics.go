@@ -100,6 +100,7 @@ const (
 )
 
 type ObjectMetastoreMetrics struct {
+	getIndexesTotalDuration             prometheus.Histogram
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
@@ -120,6 +121,14 @@ type ObjectMetastoreMetrics struct {
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
 	metrics := &ObjectMetastoreMetrics{
+		getIndexesTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_get_indexes_duration_seconds",
+			Help:                            "Time taken to list the index objects for a Metastore query window in seconds",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
@@ -250,6 +259,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	}
 
 	collectors := []prometheus.Collector{
+		p.getIndexesTotalDuration,
 		p.indexObjectsTotal,
 		p.streamFilterTotalDuration,
 		p.streamFilterSections,

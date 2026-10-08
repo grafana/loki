@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	dskit_metrics "github.com/grafana/dskit/metrics"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -184,84 +185,129 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	require.NoError(t, cliDistributor.PushLogLine("b1", tsB1, nil, streamLabels("b")))
 	require.NoError(t, cliDistributor.PushLogLine("b2", tsB2, nil, streamLabels("b")))
 
-	// Baseline: flush to chunks, sync the index, and query, retrying until the result matches. The
-	// querier is store-only, so there's no direct way to check Kafka-consumption completeness;
-	// retrying the flush proves it instead, since a flush before the ingester consumes every record
-	// would produce a partial result that could never match.
-	var baselineResp *client.Response
-	require.Eventually(t, func() bool {
-		if err := cliIngester.FlushTenant(""); err != nil {
-			t.Logf("flush: %v", err)
-			return false
-		}
-		// Best effort: ignore a sync already running; the next retry re-triggers it.
-		if _, err := cliIndexGateway.TriggerSyncIndexes(); err != nil {
-			t.Logf("sync trigger: %v", err)
-			return false
-		}
-		resp, err := runQuery()
-		if err != nil {
-			t.Logf("baseline query: %v", err)
-			return false
-		}
+	t.Run("a query served by the chunk store returns the complete expected result and reads chunks", func(t *testing.T) {
+		// Flush to chunks, sync the index, and query, retrying until the result matches. The
+		// querier is store-only, so there's no direct way to check Kafka-consumption completeness;
+		// retrying the flush proves it instead, since a flush before the ingester consumes every record
+		// would produce a partial result that could never match.
+		var resp *client.Response
+		require.Eventually(t, func() bool {
+			if err := cliIngester.FlushTenant(""); err != nil {
+				t.Logf("flush: %v", err)
+				return false
+			}
+			// Best effort: ignore a sync already running; the next retry re-triggers it.
+			if _, err := cliIndexGateway.TriggerSyncIndexes(); err != nil {
+				t.Logf("sync trigger: %v", err)
+				return false
+			}
+			r, err := runQuery()
+			if err != nil {
+				t.Logf("baseline query: %v", err)
+				return false
+			}
+			counts, err := countsOf(r)
+			if err != nil {
+				t.Logf("baseline counts: %v", err)
+				return false
+			}
+			resp = r
+			return reflect.DeepEqual(counts, expected)
+		}, 60*time.Second, 500*time.Millisecond, "the chunk store should eventually serve the complete expected result")
+
 		counts, err := countsOf(resp)
-		if err != nil {
-			t.Logf("baseline counts: %v", err)
-			return false
-		}
-		baselineResp = resp
-		return reflect.DeepEqual(counts, expected)
-	}, 60*time.Second, 500*time.Millisecond, "the chunk store should eventually serve the complete expected result")
+		require.NoError(t, err)
+		require.Equal(t, expected, counts)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
 
-	baseline, err := countsOf(baselineResp)
-	require.NoError(t, err)
-	require.Equal(t, expected, baseline, "chunk-store baseline should match the expected counts")
-	require.Positive(t, baselineResp.Data.Statistics.Querier.Store.Chunk.DecompressedLines,
-		"the baseline should actually have read from chunks")
+	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
+		tQuerier.AddFlags(
+			"-dataobj.enabled=true",
+			"-querier.dataobj-query-start-time="+now.Add(-48*time.Hour).UTC().Format(time.RFC3339),
+			"-dataobj.storage-lag=0s",
+			"-dataobj.metadata-cache.embedded-cache.enabled=true",
+		)
+		require.NoError(t, tQuerier.Restart())
 
-	// Restart the querier, now routing the whole time range to data objects.
-	tQuerier.AddFlags(
-		"-dataobj.enabled=true",
-		"-querier.dataobj-query-start-time="+now.Add(-48*time.Hour).UTC().Format(time.RFC3339),
-		"-dataobj.storage-lag=0s",
-		"-dataobj.metadata-cache.embedded-cache.enabled=true",
-	)
-	require.NoError(t, tQuerier.Restart())
+		// The dataobj-builder flushes and uploads on its own (idle-flush-timeout/max-builder-age are set
+		// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
+		// request, so poll the query itself rather than any builder-internal state.
+		var resp *client.Response
+		require.Eventually(t, func() bool {
+			r, err := runQuery()
+			if err != nil {
+				t.Logf("data-object query: %v", err)
+				return false
+			}
+			counts, err := countsOf(r)
+			if err != nil {
+				t.Logf("data-object counts: %v", err)
+				return false
+			}
+			resp = r
+			return reflect.DeepEqual(counts, expected)
+		}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
-	// The dataobj-builder flushes and uploads on its own (idle-flush-timeout/max-builder-age are set
-	// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
-	// request, so poll the query itself rather than any builder-internal state.
-	var fromDataobj *client.Response
-	require.Eventually(t, func() bool {
-		resp, err := runQuery()
-		if err != nil {
-			t.Logf("data-object query: %v", err)
-			return false
-		}
 		counts, err := countsOf(resp)
-		if err != nil {
-			t.Logf("data-object counts: %v", err)
-			return false
+		require.NoError(t, err)
+		require.Equal(t, expected, counts)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedBytes)
+		require.Positive(t, store.Dataobj.SectionsResolutionMaxTime)
+		require.Zero(t, store.Dataobj.PostFilterRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
+	t.Run("a further query served by data objects hits the metadata cache because it opens the same object again", func(t *testing.T) {
+		_, err := runQuery()
+		require.NoError(t, err)
+
+		metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
+		require.NoError(t, err)
+		require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics))
+	})
+
+	t.Run("a line-filter query served by data objects returns the matching stream and reports the second-stage statistics because it reads the line column", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, `sum by (job, app) (count_over_time({job="dataobjit"} |= "a" [1h]))`)
+		require.NoError(t, err)
+
+		counts, err := countsOf(resp)
+		require.NoError(t, err)
+		require.Equal(t, map[string]float64{labels.FromMap(streamLabels("a")).String(): 3}, counts)
+
+		dataobjStats := resp.Data.Statistics.Querier.Store.Dataobj
+		require.Positive(t, dataobjStats.PrePredicateDecompressedRows)
+		require.Positive(t, dataobjStats.PrePredicateDecompressedBytes)
+		require.Positive(t, dataobjStats.PostPredicateDecompressedBytes)
+		require.Positive(t, dataobjStats.PostFilterRows)
+		require.Positive(t, dataobjStats.SectionsResolutionMaxTime)
+	})
+
+	t.Run("after the queries the querier counts object-store requests and bytes for the metastore and the streams reader, and none under the other component label", func(t *testing.T) {
+		metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
+		require.NoError(t, err)
+
+		families, err := parseMetricFamilies(metrics)
+		require.NoError(t, err)
+		seriesValue := func(name string, labelNamesAndValues ...string) float64 {
+			series := dskit_metrics.FindMetricsInFamilyMatchingLabels(families[name], labelNamesAndValues...)
+			require.Len(t, series, 1, "series of %s with labels %v", name, labelNamesAndValues)
+			return series[0].GetCounter().GetValue()
 		}
-		fromDataobj = resp
-		return reflect.DeepEqual(counts, expected)
-	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
-	fromDataobjCounts, err := countsOf(fromDataobj)
-	require.NoError(t, err)
-	require.Equal(t, expected, fromDataobjCounts, "data-object result should match the expected counts")
-
-	require.Positive(t, fromDataobj.Data.Statistics.Querier.Store.Dataobj.PrePredicateDecompressedRows,
-		"the data-object store should actually have read rows")
-	require.Zero(t, fromDataobj.Data.Statistics.Querier.Store.Chunk.DecompressedLines,
-		"the query's whole window is inside the data-object band, so chunks must not be read for it")
-	require.Equal(t, baseline, fromDataobjCounts, "data-object result should match the chunk-store baseline exactly")
-
-	// Each query opens the object again, so a further query is served from the metadata cache.
-	_, err = runQuery()
-	require.NoError(t, err)
-	metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
-	require.NoError(t, err)
-	require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics),
-		"opening the object again should hit the metadata cache")
+		const requests = "loki_querier_dataobj_object_store_requests_total"
+		const bytes = "loki_querier_dataobj_fetched_compressed_bytes_total"
+		require.Positive(t, seriesValue(requests, "component", "metastore", "operation", "get"))
+		require.Positive(t, seriesValue(requests, "component", "metastore", "operation", "get_range"))
+		require.Positive(t, seriesValue(requests, "component", "streams-reader", "operation", "get_range"))
+		require.Positive(t, seriesValue(bytes, "component", "metastore"))
+		require.Positive(t, seriesValue(bytes, "component", "streams-reader"))
+		for _, operation := range []string{"attributes", "get", "get_range"} {
+			require.Zero(t, seriesValue(requests, "component", "other", "operation", operation))
+		}
+		require.Zero(t, seriesValue(bytes, "component", "other"))
+	})
 }
