@@ -33,6 +33,17 @@ var (
 	// again, so this is a true "transferred from storage" figure.
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
 
+	// StatObjectRequests* count object-store requests a task issued through the
+	// [rangeReader] interface, including failed ones, one variable per operation.
+	// This matches the objstore client's operations_total, which counts every
+	// attempt. In-memory reads (the readerAt-backed reader) are not counted. They
+	// are the request-rate companions to StatObjectBytesDownloaded. A stat is a
+	// single counter keyed by name and cannot carry a label, so the operation
+	// split needs one stat each.
+	StatObjectRequestsAttributes = xcap.NewStatisticInt64("dataobj.object.requests.attributes", xcap.AggregationTypeSum)
+	StatObjectRequestsGet        = xcap.NewStatisticInt64("dataobj.object.requests.get", xcap.AggregationTypeSum)
+	StatObjectRequestsGetRange   = xcap.NewStatisticInt64("dataobj.object.requests.get_range", xcap.AggregationTypeSum)
+
 	// Dataset column statistics.
 	StatDatasetPrimaryColumns       = xcap.NewStatisticInt64("primary.columns", xcap.AggregationTypeSum, xcap.Local())
 	StatDatasetSecondaryColumns     = xcap.NewStatisticInt64("secondary.columns", xcap.AggregationTypeSum, xcap.Local())

@@ -454,7 +454,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: tt.start, End: tt.end, Matchers: tt.matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 		})
@@ -572,7 +572,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{now.Add(-3 * time.Hour), now.Add(time.Hour), matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: now.Add(-3 * time.Hour), End: now.Add(time.Hour), Matchers: matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 		})
@@ -717,7 +717,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: tt.start, End: tt.end, Matchers: tt.matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 
