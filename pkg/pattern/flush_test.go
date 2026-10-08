@@ -301,10 +301,7 @@ func (m *mockPoolClient) PushInternal(
 	m.internalReq = in
 	// Also record the request in flat form, so tests can check what was sent
 	// with either method.
-	m.req = &logproto.PushRequest{Streams: make([]logproto.Stream, len(in.Streams)), Format: in.Format}
-	for i := range in.Streams {
-		m.req.Streams[i] = in.Streams[i].FlatView()
-	}
+	m.req = in.FlatView()
 	args := m.Called(ctx, in)
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }

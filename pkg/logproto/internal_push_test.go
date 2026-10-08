@@ -132,6 +132,30 @@ func TestFromPushRequest(t *testing.T) {
 	})
 }
 
+func TestInternalPushRequestFlatView(t *testing.T) {
+	t.Run("empty request preserves format", func(t *testing.T) {
+		flat := (&InternalPushRequest{Format: "otlp"}).FlatView()
+		require.Empty(t, flat.Streams)
+		require.Equal(t, "otlp", flat.Format)
+	})
+
+	t.Run("each stream is flattened with its shared attributes", func(t *testing.T) {
+		req := InternalPushRequest{Format: "otlp", Streams: []InternalStreamAdapter{
+			{Labels: `{app="shared"}`, Hash: 1, ResourceLogs: []ResourceLogs{resource(attrs("service.name", "checkout"),
+				scope(nil, entry(1, "first")))}},
+			*FromStream(Stream{Labels: `{app="flat"}`, Hash: 2, Entries: []push.Entry{entry(2, "second")}}),
+		}}
+
+		flat := req.FlatView()
+
+		require.Equal(t, "otlp", flat.Format)
+		require.Equal(t, []Stream{
+			{Labels: `{app="shared"}`, Hash: 1, Entries: []push.Entry{entry(1, "first", attrs("service.name", "checkout")...)}},
+			{Labels: `{app="flat"}`, Hash: 2, Entries: []push.Entry{entry(2, "second")}},
+		}, flat.Streams)
+	})
+}
+
 func BenchmarkFromPushRequest(b *testing.B) {
 	for _, count := range []int{1, 100, 1000} {
 		b.Run(fmt.Sprintf("streams=%d", count), func(b *testing.B) {

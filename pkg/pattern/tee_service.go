@@ -333,14 +333,7 @@ func (ts *TeeService) push(ctx context.Context, client logproto.PatternClient, r
 		return err
 	}
 
-	flat := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(req.Streams)),
-		Format:  req.Format,
-	}
-	for idx := range req.Streams {
-		flat.Streams[idx] = req.Streams[idx].FlatView()
-	}
-	_, err = client.Push(ctx, flat)
+	_, err = client.Push(ctx, req.FlatView())
 	return err
 }
 
