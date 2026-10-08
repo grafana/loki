@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"time"
@@ -419,6 +420,21 @@ func (p PolicyOverridableLimits) inheritMultiplier() float64 {
 	return p.InheritWithStreamMultiplier
 }
 
+// scaleInherited multiplies an inherited integer limit by the policy's inherit multiplier. A
+// non-zero limit never scales down to 0, since 0 has special meaning (unlimited for stream
+// limits, blocking for the ingestion burst) and a fractional multiplier must not flip a capped
+// limit into one of those. The result is clamped to math.MaxInt to avoid overflow.
+func (p PolicyOverridableLimits) scaleInherited(v int) int {
+	if v <= 0 {
+		return v
+	}
+	scaled := float64(v) * p.inheritMultiplier()
+	if scaled >= math.MaxInt {
+		return math.MaxInt
+	}
+	return max(int(scaled), 1)
+}
+
 // Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
 // callers add the policy context.
 func (p PolicyOverridableLimits) Validate() error {
@@ -472,7 +488,7 @@ func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bo
 		return *pl.MaxLocalStreamsPerUser, true
 	}
 	if pl.InheritLimits {
-		return int(float64(o.MaxLocalStreamsPerUser(userID)) * pl.inheritMultiplier()), true
+		return pl.scaleInherited(o.MaxLocalStreamsPerUser(userID)), true
 	}
 	return 0, false
 }
@@ -486,7 +502,7 @@ func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, b
 		return *pl.MaxGlobalStreamsPerUser, true
 	}
 	if pl.InheritLimits {
-		return int(float64(o.MaxGlobalStreamsPerUser(userID)) * pl.inheritMultiplier()), true
+		return pl.scaleInherited(o.MaxGlobalStreamsPerUser(userID)), true
 	}
 	return 0, false
 }
@@ -517,7 +533,7 @@ func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, b
 		return int(*pl.IngestionBurstSizeMB * bytesInMB), true
 	}
 	if pl.InheritLimits {
-		return int(float64(o.IngestionBurstSizeBytes(userID)) * pl.inheritMultiplier()), true
+		return pl.scaleInherited(o.IngestionBurstSizeBytes(userID)), true
 	}
 	return 0, false
 }

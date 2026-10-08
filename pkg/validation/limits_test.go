@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -887,6 +888,26 @@ func TestLimits_PolicyInheritWithStreamMultiplier(t *testing.T) {
 			psrl, ok := overrides.PolicyPerStreamRateLimit("tenant1", tc.policy)
 			require.True(t, ok)
 			require.Equal(t, RateLimit{Limit: rate.Limit(9 * 1024 * 1024), Burst: 11 * 1024 * 1024}, psrl)
+		})
+	}
+}
+
+func TestPolicyOverridableLimits_ScaleInherited(t *testing.T) {
+	for name, tc := range map[string]struct {
+		multiplier float64
+		in, want   int
+	}{
+		"unset multiplier":                {multiplier: 0, in: 100, want: 100},
+		"scales up":                       {multiplier: 3, in: 100, want: 300},
+		"fractional truncates":            {multiplier: 0.5, in: 3, want: 1},
+		"never scales a cap down to zero": {multiplier: 0.5, in: 1, want: 1},
+		"tiny multiplier keeps a cap":     {multiplier: 0.0001, in: 100, want: 1},
+		"unlimited stays unlimited":       {multiplier: 3, in: 0, want: 0},
+		"clamps on overflow":              {multiplier: 1e300, in: 100, want: math.MaxInt},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pl := PolicyOverridableLimits{InheritLimits: true, InheritWithStreamMultiplier: tc.multiplier}
+			require.Equal(t, tc.want, pl.scaleInherited(tc.in))
 		})
 	}
 }
