@@ -144,12 +144,12 @@ func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
 	var found *dataobj.Section
 	for _, section := range reader.Sections().Filter(streams.CheckSection) {
 		if found != nil {
-			return nil, fmt.Errorf("%w: data object must hold one streams section", ErrUnprocessableObject)
+			return nil, fmt.Errorf("%w: data object holds more than one streams section", ErrUnprocessableObject)
 		}
 		found = section
 	}
 	if found == nil {
-		return nil, fmt.Errorf("%w: data object must hold one streams section", ErrUnprocessableObject)
+		return nil, fmt.Errorf("%w: data object holds no streams section", ErrUnprocessableObject)
 	}
 
 	return found, nil
