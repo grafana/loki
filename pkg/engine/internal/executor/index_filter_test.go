@@ -9,13 +9,17 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
@@ -266,6 +270,59 @@ func TestDoIndexFilter(t *testing.T) {
 		}
 		require.ElementsMatch(t, wantPostings, readAllPostingsRowsFromBucket(ctx, t, bucket, artifact.Path))
 		require.ElementsMatch(t, wantStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path))
+	})
+
+	t.Run("skips pointers and streams sections of the source index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+
+		pointersBuilder := pointers.NewBuilder(nil, 0, 0)
+		pointersBuilder.SetTenant("acme")
+		pointersBuilder.ObserveStream("logs/a", 0, 1, 1, time.Unix(0, 1_000), 100)
+		require.NoError(t, objBuilder.Append(pointersBuilder))
+
+		streamsBuilder := streams.NewBuilder(nil, 8192, 0)
+		streamsBuilder.SetTenant("acme")
+		streamsBuilder.Record(labels.FromStrings("service_name", "logs/a"), time.Unix(0, 1_000), 100)
+		require.NoError(t, objBuilder.Append(streamsBuilder))
+
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.NoError(t, err)
+
+		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
+			require.False(t, pointers.CheckSection(sec), "output must not hold a pointers section")
+			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
+		}
+		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
+		require.Equal(t, []string{"logs/a"}, postingsPaths)
+		require.Equal(t, []string{"logs/a"}, statsPaths)
+	})
+
+	t.Run("returns an error when the source index holds an unsupported section type", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0)})
+
+		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
+		indexPointersBuilder.SetTenant("acme")
+		indexPointersBuilder.Append("indexes/other", time.Unix(0, 1_000), time.Unix(0, 2_000))
+		require.NoError(t, objBuilder.Append(indexPointersBuilder))
+
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "unknown section")
 	})
 
 	t.Run("does not copy rows of other tenants", func(t *testing.T) {

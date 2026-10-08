@@ -10,8 +10,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
@@ -58,6 +60,7 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
+	defer builder.Reset()
 
 	foundPostings := make(map[string]struct{}, len(keep))
 	foundStats := make(map[string]struct{}, len(keep))
@@ -72,6 +75,16 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		case stats.CheckSection(sec):
 			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
+		case pointers.CheckSection(sec):
+			// Pointers sections may exist for fresh indexes until this section is no longer built.
+			// The compactor does not support them.
+			continue
+		case streams.CheckSection(sec):
+			// Streams sections may exist for fresh indexes until this section is no longer built.
+			// The compactor does not support them.
+			continue
+		default:
+			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("filtering source index %q: %w", node.SourceIndexPath, err)
