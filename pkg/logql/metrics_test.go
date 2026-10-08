@@ -197,6 +197,17 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		require.NotContains(t, out, "failure_category=")
 		require.NotContains(t, out, "failure_reason=")
 	})
+
+	t.Run("logs the stream-first and timestamp-first query counts from the frontend", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := WithComponentContext(user.InjectOrgID(t.Context(), "foo"), componentFrontend)
+		result := stats.Result{Summary: stats.Summary{StreamFirstQueries: 3, TimestampFirstQueries: 5}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "stream_first_queries=3")
+		require.Contains(t, buf.String(), "timestamp_first_queries=5")
+	})
 }
 
 func TestRecordBytesProcessedTotal(t *testing.T) {
