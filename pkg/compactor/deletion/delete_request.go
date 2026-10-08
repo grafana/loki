@@ -54,7 +54,8 @@ func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMet
 
 func (d *deleteRequest) SetQuery(logQL string) error {
 	d.Query = logQL
-	logSelectorExpr, err := parseDeletionQuery(logQL)
+	// Allow legacy requests with empty-compatible matchers.
+	logSelectorExpr, err := parseDeletionQuery(logQL, false)
 	if err != nil {
 		return err
 	}
