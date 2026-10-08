@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -374,8 +375,10 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				}
 				switch sampleOrder {
 				case logproto.SAMPLE_ORDER_BY_STREAM:
+					stats.FromContext(ctx).IncStreamFirstSubqueries()
 					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+					stats.FromContext(ctx).IncTimestampFirstSubqueries()
 					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
