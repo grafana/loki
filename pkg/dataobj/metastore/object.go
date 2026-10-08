@@ -787,7 +787,7 @@ func (m *ObjectMetastore) dropDuplicateSections(ctx context.Context, sections []
 			"object", first.ObjectPath,
 			"section", first.SectionIdx,
 			"kept_index", first.indexPath,
-			"dropped_index", section.indexPath),
+			"dropped_index", section.indexPath,
 		)
 		m.metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse).Inc()
 	}
