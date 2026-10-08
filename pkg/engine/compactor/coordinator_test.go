@@ -9,9 +9,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
