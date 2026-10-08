@@ -301,7 +301,7 @@ func (a *AggMinAggregator) Add(result interface{}, err error) error {
 
 	floatVal, e := toFloat64(result)
 	if e != nil {
-		a.err.CompareAndSwap(nil, err)
+		a.err.CompareAndSwap(nil, e)
 		return nil
 	}
 
@@ -389,7 +389,7 @@ func (a *AggMaxAggregator) Add(result interface{}, err error) error {
 
 	floatVal, e := toFloat64(result)
 	if e != nil {
-		a.err.CompareAndSwap(nil, err)
+		a.err.CompareAndSwap(nil, e)
 		return nil
 	}
 

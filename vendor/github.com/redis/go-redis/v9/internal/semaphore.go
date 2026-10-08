@@ -61,6 +61,14 @@ func NewFastSemaphore(capacity int32) *FastSemaphore {
 	}
 }
 
+// Available returns the number of tokens currently free (an approximation under
+// concurrency). Zero means every turn is taken — by an in-use connection or an
+// in-flight dial — so the next Acquire would block. Used as a non-blocking
+// capacity probe; not a synchronization primitive.
+func (s *FastSemaphore) Available() int {
+	return len(s.tokens)
+}
+
 // TryAcquire attempts to acquire a token without blocking.
 // Returns true if successful, false if no tokens available.
 func (s *FastSemaphore) TryAcquire() bool {

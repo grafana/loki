@@ -263,12 +263,12 @@ func (hm *Manager) TrackMovingOperationWithConnID(ctx context.Context, newEndpoi
 	if _, loaded := hm.activeMovingOps.LoadOrStore(key, movingOp); loaded {
 		// Duplicate MOVING notification, ignore
 		if internal.LogLevel.DebugOrAbove() { // Debug level
-			internal.Logger.Printf(context.Background(), logs.DuplicateMovingOperation(connID, newEndpoint, seqID))
+			internal.Logger.Printf(context.Background(), "%s", logs.DuplicateMovingOperation(connID, newEndpoint, seqID))
 		}
 		return nil
 	}
 	if internal.LogLevel.DebugOrAbove() { // Debug level
-		internal.Logger.Printf(context.Background(), logs.TrackingMovingOperation(connID, newEndpoint, seqID))
+		internal.Logger.Printf(context.Background(), "%s", logs.TrackingMovingOperation(connID, newEndpoint, seqID))
 	}
 
 	// Increment active operation count atomically
@@ -288,13 +288,13 @@ func (hm *Manager) UntrackOperationWithConnID(seqID int64, connID uint64) {
 	// Remove from active operations atomically
 	if _, loaded := hm.activeMovingOps.LoadAndDelete(key); loaded {
 		if internal.LogLevel.DebugOrAbove() { // Debug level
-			internal.Logger.Printf(context.Background(), logs.UntrackingMovingOperation(connID, seqID))
+			internal.Logger.Printf(context.Background(), "%s", logs.UntrackingMovingOperation(connID, seqID))
 		}
 		// Decrement active operation count only if operation existed
 		hm.activeOperationCount.Add(-1)
 	} else {
 		if internal.LogLevel.DebugOrAbove() { // Debug level
-			internal.Logger.Printf(context.Background(), logs.OperationNotTracked(connID, seqID))
+			internal.Logger.Printf(context.Background(), "%s", logs.OperationNotTracked(connID, seqID))
 		}
 	}
 }
