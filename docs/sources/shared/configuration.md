@@ -1401,6 +1401,12 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
+  # Caches the metadata of the data objects the querier reads. The cache is on
+  # when a backend is configured. Entries are keyed by object path, so do not
+  # share a backend between buckets or clusters.
+  # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
+  [metadata_cache: <cache_config>]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2410,6 +2416,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.instant-metric-results-cache`
@@ -7480,6 +7487,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`

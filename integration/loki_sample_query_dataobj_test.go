@@ -224,6 +224,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		"-dataobj.enabled=true",
 		"-querier.dataobj-query-start-time="+now.Add(-48*time.Hour).UTC().Format(time.RFC3339),
 		"-dataobj.storage-lag=0s",
+		"-dataobj.metadata-cache.embedded-cache.enabled=true",
 	)
 	require.NoError(t, tQuerier.Restart())
 
@@ -255,4 +256,12 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	require.Zero(t, fromDataobj.Data.Statistics.Querier.Store.Chunk.DecompressedLines,
 		"the query's whole window is inside the data-object band, so chunks must not be read for it")
 	require.Equal(t, baseline, fromDataobjCounts, "data-object result should match the chunk-store baseline exactly")
+
+	// Each query opens the object again, so a further query is served from the metadata cache.
+	_, err = runQuery()
+	require.NoError(t, err)
+	metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
+	require.NoError(t, err)
+	require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics),
+		"opening the object again should hit the metadata cache")
 }
