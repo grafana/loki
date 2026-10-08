@@ -121,6 +121,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
+		applyIngesterDelegateStreamLimits(r, &defaults)
 		applyLoglineKafkaConfig(r)
 		applyLoglineIndexConfig(r)
 		applyQuerierDataObjConfig(r)
@@ -759,6 +760,17 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
+}
+
+// applyIngesterDelegateStreamLimits turns the deprecated ingester-wide setting into the default
+// of the per-tenant limit. DynamicUnmarshal re-applies the config file and the command line
+// after this step, so an explicitly configured per-tenant limit keeps precedence over the
+// deprecated setting, and per-tenant runtime overrides keep precedence over both.
+func applyIngesterDelegateStreamLimits(r, defaults *ConfigWrapper) {
+	if r.LimitsConfig.DelegateStreamLimits != defaults.LimitsConfig.DelegateStreamLimits {
+		return
+	}
+	r.LimitsConfig.DelegateStreamLimits = r.Ingester.DelegateStreamLimits
 }
 
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
