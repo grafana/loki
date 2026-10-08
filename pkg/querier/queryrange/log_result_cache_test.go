@@ -636,6 +636,64 @@ func Test_LogResultCacheDifferentLimit(t *testing.T) {
 	fake.AssertExpectations(t)
 }
 
+func Test_LogResultCacheKeyNamespace(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	namespacedCtx := WithLogCacheKeyNamespace(ctx, "logline")
+	lrc, err := NewLogResultCache(
+		log.NewNopLogger(),
+		fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		},
+		cache.NewMockCache(),
+		nil,
+		NewDefaultLogCacheKeyGenerator(fakeLimits{
+			splitDuration: map[string]time.Duration{"foo": time.Minute},
+		}, nil),
+		nil,
+	)
+	require.NoError(t, err)
+
+	req := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+	}
+	nonEmpty := &LokiResponse{
+		Status: loghttp.QueryStatusSuccess,
+		Limit:  entriesLimit,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result: []logproto.Stream{
+				{Labels: lblFooBar, Entries: []logproto.Entry{{Timestamp: time.Unix(0, time.Minute.Nanoseconds()+1), Line: "foo"}}},
+			},
+		},
+	}
+
+	// The namespaced request sees an empty result, the plain one does not.
+	fake := newFakeResponse([]mockResponse{
+		{RequestResponse: queryrangebase.RequestResponse{Request: req, Response: emptyResponse(req)}},
+		{RequestResponse: queryrangebase.RequestResponse{Request: req, Response: nonEmpty}},
+	})
+
+	h := lrc.Wrap(fake)
+
+	resp, err := h.Do(namespacedCtx, req)
+	require.NoError(t, err)
+	require.Equal(t, emptyResponse(req), resp)
+
+	// The namespaced empty entry must not be served to a plain request.
+	resp, err = h.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, nonEmpty, resp)
+
+	// The namespaced empty entry is still served within its own namespace.
+	resp, err = h.Do(namespacedCtx, req)
+	require.NoError(t, err)
+	require.Equal(t, emptyResponse(req), resp)
+
+	fake.AssertExpectations(t)
+}
+
 func TestExtractLokiResponse(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
