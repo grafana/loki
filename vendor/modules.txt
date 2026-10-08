@@ -1518,7 +1518,7 @@ github.com/shirou/gopsutil/v4/internal/common
 github.com/shirou/gopsutil/v4/mem
 github.com/shirou/gopsutil/v4/net
 github.com/shirou/gopsutil/v4/process
-# github.com/shopspring/decimal v1.4.0
+# github.com/shopspring/decimal v1.5.0
 ## explicit; go 1.10
 github.com/shopspring/decimal
 # github.com/sirupsen/logrus v1.10.2
