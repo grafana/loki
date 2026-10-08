@@ -28,8 +28,8 @@ type coordinator struct {
 	cfg    Config
 	logger log.Logger
 	bucket objstore.Bucket
-	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge and
-	// SortObject plans. They have separate concurrency limits.
+	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge,
+	// IndexFilter, and SortObject plans. They have separate concurrency limits.
 	indexDispatcher *planDispatcher
 	logDispatcher   *planDispatcher
 	publisher       *tocPublisher
@@ -206,8 +206,10 @@ func (c *coordinator) replaceLogIndex(
 }
 
 // compactTenantLogs processes one layout-homogeneous index. Objects matching
-// the target layout are compacted with LogMerge; incompatible objects are
-// individually rewritten with SortObject. Stats are zero-valued on any no-op.
+// the target layout are compacted with LogMerge, and runs with no merge
+// partner keep their data through an IndexFilter of the source index.
+// Incompatible objects are individually rewritten with SortObject. Stats are
+// zero-valued on any no-op.
 func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
@@ -237,33 +239,39 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, nil
 	}
 
-	tasks := c.logMergePlanningStrategy.Plan(runs, tenant, sortSchema)
+	tasks, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant, sortSchema)
 	if len(tasks) == 0 {
-		return compactionStats{}, fmt.Errorf("no log merge tasks to execute")
+		return compactionStats{}, fmt.Errorf("no log merge tasks to execute for source index %q: %d runs, %d unmerged", sourceIndex.Path, len(runs), len(unmerged))
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "tasks", len(tasks), "unmerged_runs", len(unmerged))
 	logMergeTaskDetails(entryLogger, tasks)
 
-	plans := make([]*physical.Plan, len(tasks))
+	plans := make([]*physical.Plan, len(tasks), len(tasks)+1)
+	newToCEntries := make([]metastore.TableOfContentsEntry, len(tasks), len(tasks)+1)
 	for i, task := range tasks {
 		plans[i] = buildLogMergePlan(tenant, window, task)
+		newToCEntries[i] = runsToCEntry(task.Runs)
 	}
-	artifacts, err := c.logDispatcher.Run(ctx, tenant, plans)
-	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
-	}
-	resultEntries := make([]metastore.TableOfContentsEntry, len(tasks))
-	for i, task := range tasks {
-		minTS, maxTS := taskBounds(task)
-		resultEntries[i] = metastore.TableOfContentsEntry{
-			Path:      artifacts[i].Path,
-			StartTime: time.Unix(0, minTS).UTC(),
-			EndTime:   time.Unix(0, maxTS).UTC(),
-		}
+	if len(unmerged) > 0 {
+		// Filtering the source index keeps the unmerged runs without rewriting
+		// their log data.
+		plan, runRefs := indexFilterForUnmerged(tenant, sourceIndex, unmerged)
+		plans = append(plans, plan)
+		newToCEntries = append(newToCEntries, runsToCEntry(runRefs))
 	}
 
-	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, resultEntries)
+	artifacts, err := c.logDispatcher.Run(ctx, tenant, plans)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
+	}
+	// Artifacts come back in plan order, so each entry takes the path of the
+	// plan at its index.
+	for i := range newToCEntries {
+		newToCEntries[i].Path = artifacts[i].Path
+	}
+
+	stats, err := c.replaceLogIndex(ctx, tenant, window, sourceIndex, newToCEntries)
 	if err != nil {
 		return compactionStats{}, err
 	}
@@ -271,6 +279,22 @@ func (c *coordinator) compactTenantLogs(
 		level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
+}
+
+// indexFilterForUnmerged returns an IndexFilter plan that keeps only the unmerged
+// runs from sourceIndex, and references to those runs.
+func indexFilterForUnmerged(tenant string, sourceIndex indexEntry, unmerged []v2.Run) (*physical.Plan, []*compactionv2pb.RunRef) {
+	runRefs := make([]*compactionv2pb.RunRef, len(unmerged))
+	var objectPaths []string
+	for i, run := range unmerged {
+		runRefs[i] = &compactionv2pb.RunRef{Sections: run.Sections()}
+		for _, section := range run.Sections() {
+			objectPaths = append(objectPaths, section.ObjectPath)
+		}
+	}
+	slices.Sort(objectPaths)
+	objectPaths = slices.Compact(objectPaths)
+	return buildIndexFilterPlan(tenant, sourceIndex.Path, objectPaths), runRefs
 }
 
 func (c *coordinator) sortTenantLogObjects(
@@ -464,25 +488,25 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	}
 }
 
-// taskBounds returns the min/max timestamp (unix nanos) across all sections
-// in a task's runs.
-func taskBounds(task *compactionv2pb.TaskSpec) (minTS, maxTS int64) {
+// runsToCEntry returns a ToC entry without a path. Its time range spans from
+// the earliest section start to the latest section end across runs.
+func runsToCEntry(runs []*compactionv2pb.RunRef) metastore.TableOfContentsEntry {
+	var minTS, maxTS int64
 	first := true
-	for _, run := range task.Runs {
+	for _, run := range runs {
 		for _, sec := range run.Sections {
 			if first {
 				minTS, maxTS, first = sec.MinTimestamp, sec.MaxTimestamp, false
 				continue
 			}
-			if sec.MinTimestamp < minTS {
-				minTS = sec.MinTimestamp
-			}
-			if sec.MaxTimestamp > maxTS {
-				maxTS = sec.MaxTimestamp
-			}
+			minTS = min(minTS, sec.MinTimestamp)
+			maxTS = max(maxTS, sec.MaxTimestamp)
 		}
 	}
-	return minTS, maxTS
+	return metastore.TableOfContentsEntry{
+		StartTime: time.Unix(0, minTS).UTC(),
+		EndTime:   time.Unix(0, maxTS).UTC(),
+	}
 }
 
 func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
