@@ -1330,38 +1330,6 @@ func TestConfigOptions_Shipper(t *testing.T) {
 		wantShipper []string
 	}{
 		{
-			name: "default_config_v11_schema",
-			inOpt: Options{
-				Stack: lokiv1.LokiStackSpec{
-					Storage: lokiv1.ObjectStorageSpec{
-						Schemas: []lokiv1.ObjectStorageSchema{
-							{
-								Version:       lokiv1.ObjectStorageSchemaV11,
-								EffectiveDate: "2020-10-01",
-							},
-						},
-					},
-				},
-			},
-			wantShipper: []string{"boltdb"},
-		},
-		{
-			name: "v12_schema",
-			inOpt: Options{
-				Stack: lokiv1.LokiStackSpec{
-					Storage: lokiv1.ObjectStorageSpec{
-						Schemas: []lokiv1.ObjectStorageSchema{
-							{
-								Version:       lokiv1.ObjectStorageSchemaV12,
-								EffectiveDate: "2020-02-05",
-							},
-						},
-					},
-				},
-			},
-			wantShipper: []string{"boltdb"},
-		},
-		{
 			name: "v13_schema",
 			inOpt: Options{
 				Stack: lokiv1.LokiStackSpec{
@@ -1376,30 +1344,6 @@ func TestConfigOptions_Shipper(t *testing.T) {
 				},
 			},
 			wantShipper: []string{"tsdb"},
-		},
-		{
-			name: "multiple_schema",
-			inOpt: Options{
-				Stack: lokiv1.LokiStackSpec{
-					Storage: lokiv1.ObjectStorageSpec{
-						Schemas: []lokiv1.ObjectStorageSchema{
-							{
-								Version:       lokiv1.ObjectStorageSchemaV11,
-								EffectiveDate: "2020-01-01",
-							},
-							{
-								Version:       lokiv1.ObjectStorageSchemaV12,
-								EffectiveDate: "2021-01-01",
-							},
-							{
-								Version:       lokiv1.ObjectStorageSchemaV13,
-								EffectiveDate: "2024-01-01",
-							},
-						},
-					},
-				},
-			},
-			wantShipper: []string{"boltdb", "tsdb"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
