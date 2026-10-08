@@ -1,6 +1,6 @@
 # Migrating out of the Deprecated BoltDB-Based Storage Schema
 
-Loki Operator 0.12 will ship a version of Loki that no longer supports BoltDB-based schemas. As a result any LokiStack instance that still uses a BoltDB-based schema (v11 or v12) must complete the migration described below before upgrading to Loki Operator 0.12. If a LokiStack still references a BoltDB-based schema after upgrading, Loki Operator 0.12 will produce an error during reconciliation.
+Loki Operator 0.13 will ship a version of Loki that no longer supports BoltDB-based schemas, Loki 4.0. As a result any LokiStack instance that still uses a BoltDB-based schema (v11 or v12) must complete the migration described below before upgrading to Loki Operator 0.13. If a LokiStack still references a BoltDB-based schema after upgrading, Loki Operator 0.13 will produce an error during reconciliation.
 
 Before starting, update your Loki Operator to the latest supported patch version for your current selected release.
 
@@ -28,11 +28,11 @@ Based on your current state, follow only the sub-step that applies to you.
 
 #### Step 2a: Single TSDB schema
 
-If your LokiStack only has a single v13 schema entry then you are fully migrated and you can proceed to upgrade to Loki Operator 0.12, no further steps required.
+If your LokiStack only has a single v13 schema entry then you are fully migrated and you can proceed to upgrade to Loki Operator 0.13, no further steps required.
 
 #### Step 2b: Already on TSDB but with older schemas
 
-If your LokiStack already has a v13 schema entry but still references older schemas, proceed to Step 3 to determine how long to wait before upgrading to Loki Operator 0.12.
+If your LokiStack already has a v13 schema entry but still references older schemas, proceed to Step 3 to determine how long to wait before upgrading to Loki Operator 0.13.
 
 #### Step 2c: Still haven't migrated to TSDB
 
@@ -59,7 +59,7 @@ After this change, proceed to Step 3.
 
 From the v13 `effectiveDate`, Loki writes new data using the v13 (TSDB) schema. Data ingested before that date stays on the previous schema.
 
-Loki Operator 0.12 cannot query schemas older than v13. Before you upgrade, every log still inside your retention window must have been written with v13.
+Loki Operator 0.13 cannot query schemas older than v13. Before you upgrade, every log still inside your retention window must have been written with v13.
 
 By default, LokiStack does not limit log retention, Logs accumulate indefinitely and never age out. This means you cannot safely assume a fixed wait time unless retention is actually enforced. Before computing how long to wait, make sure retention is properly configured.
 
@@ -82,7 +82,7 @@ If your current configuration already satisfies this (a lifecycle policy exists,
 
 Otherwise, configure it now:
 
-1. Set a bucket lifecycle policy on your object storage bucket with an expiry of your choice (pick 30 days if you have no existing requirement as that's the maximum retention supported). If you already have a lifecycle policy, keep its current expiry, let's call this value N.
+1. Set a bucket lifecycle policy on your object storage bucket with an expiry of your choice. If you already have a lifecycle policy, keep its current expiry, let's call this value N.
 2. Set LokiStack retention to N + 3 days:
 
 ```
@@ -105,6 +105,8 @@ Note: The above command checks all the retention fields and returns the maximum 
 If a tenant/stream override is shorter than the global value, that doesn't shorten your wait, global retention still governs the rest of your data. If a tenant/stream override is longer than the global retention, use that value instead.
 
 When the applicable number of days have passed since your v13 `effectiveDate`, you can proceed to Step 4.
+
+Warning: If you did not have retention configured before, even if your v13 `effectiveDate` plus the wait time has passed, be sure to wait a few additional hours (8 hours should be enough) for retention to be applied by either the bucket lifecycle policy or the Loki compactor.
 
 ### Step 4: Verify the v13 schema is active and queryable
 
@@ -130,7 +132,7 @@ Proceed to Step 5 only after both checks pass.
 
 Note: it's not possible to complete this step unless you've completed Step 3.
 
-Loki Operator 0.12 will not reconcile LokiStacks that reference v11 or v12, so those entries must be removed before you upgrade.
+Loki Operator 0.13 will not reconcile LokiStacks that reference v11 or v12, so those entries must be removed before you upgrade.
 
 The LokiStack spec must still contain the v13 schema with its original `effectiveDate`. Do not add a new v13 entry.
 
@@ -147,8 +149,8 @@ oc get lokistack <lokistack-name> -n <lokistack-namespace> -o json | jq '.spec.s
 oc get lokistack <lokistack-name> -n <lokistack-namespace> -o json | jq '.status.conditions[] | select(.type=="Ready") | .status'
 ```
 
-After this change, you can upgrade to Loki Operator 0.12.
+After this change, you can upgrade to Loki Operator 0.13.
 
-## What happens if you upgrade to 0.12 without migrating
+## What happens if you upgrade to 0.13 without migrating
 
-Upgrading to Loki Operator 0.12 while the LokiStack still references a BoltDB schema, will result in Loki Operator returning an error and thus no changes will be made on the resources managed by the operator. The LokiStack will report a `Degraded` condition indicating that BoltDB-based schemas are no longer supported. This allows users to downgrade their Loki Operator version to perform this migration before they upgrade.
+Upgrading to Loki Operator 0.13 while the LokiStack still references a BoltDB schema, will result in Loki Operator returning an error and thus no changes will be made on the resources managed by the operator. The LokiStack will report a `Degraded` condition indicating that BoltDB-based schemas are no longer supported. This allows users to downgrade their Loki Operator version to perform this migration before they upgrade.
