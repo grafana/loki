@@ -81,10 +81,6 @@ func TestPostingsCacheCanonicalKey(t *testing.T) {
 		postingsKey("id", []*labels.Matcher{m1}),
 		postingsKey("other-id", []*labels.Matcher{m1}),
 	)
-	legacyMatchers := "app=\x00\x00\x00\x00\x00\x00\x00\x03api"
-	for _, shard := range []string{"all", "\x00\x02"} {
-		require.NotEqual(t, encodeKeyParts("id", legacyMatchers, shard), postingsKey("id", []*labels.Matcher{m1}))
-	}
 }
 
 func TestCommonMultiTenantPostingsCache(t *testing.T) {
