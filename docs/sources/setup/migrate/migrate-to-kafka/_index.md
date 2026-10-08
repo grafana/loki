@@ -127,7 +127,7 @@ The partition ring routes each read to the single ingester that owns the partiti
 
 Before continuing, confirm that queries covering recent time ranges, for example the last few minutes, still return the data you expect.
 
-### 6. Cut over to Kafka-only writes (optional)
+### 6. Cut over to Kafka-only writes
 
 Once queries are reading from your Kafka-consuming ingesters, you can stop writing directly to your existing ingesters over gRPC. On your distributors, set `ingester_writes_enabled: false`. At least one of `kafka_writes_enabled` or `ingester_writes_enabled` must stay `true`; Loki fails to start otherwise.
 
@@ -154,13 +154,13 @@ Continue monitoring your Kafka-based ingestion using the metrics documented in [
 
 To revert to the direct gRPC write path:
 
-1. If you completed [step 6](#6-cut-over-to-kafka-only-writes-optional), set `distributor.ingester_writes_enabled` back to `true`.
+1. If you completed [step 6](#6-cut-over-to-kafka-only-writes), set `distributor.ingester_writes_enabled` back to `true`. And then wait `query_ingesters_within` (default 3 hours) before switching back to reading from grpc ingesters. This is the point where rollback becomes slow if you want to do it without making some recent data unreadable.
 1. If you completed [step 5](#5-switch-the-query-path-to-the-partition-ring), set `querier.query_partition_ingesters` back to `false`. If you also completed step 6, make this change and step 1 in the **same configuration change** and roll out distributors and queriers together. Reverting the querier setting before gRPC writes are re-enabled can create a window where recent queries find no new data.
 1. Set `distributor.kafka_writes_enabled` to `false`.
 1. Roll out the configuration change.
 1. Once you've confirmed your existing ingesters are serving all reads and writes correctly again, scale down your Kafka-consuming ingesters. Because they're isolated from the classic hash ring, you can leave them running at reduced capacity for a while in case you want to retry the migration, without affecting your existing ingesters.
 
-Because your existing ingesters never stopped processing gRPC writes during dual-write, rolling back doesn't cause data loss as long as you haven't completed [step 7](#7-decommission-the-original-ingesters). If you had already cut over to Kafka-only writes before deciding to roll back, any data already buffered in Kafka but not yet consumed is read with the normal Kafka consumer catch-up process described in [Offset management and restart behavior](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#offset-management-and-restart-behavior), so make sure your Kafka-consuming ingesters have caught up on Kafka lag before you disable Kafka consumption on them.
+Because your existing ingesters never stopped processing gRPC writes during dual-write, rolling back doesn't cause data loss as long as you haven't completed [step 6](#6-cut-over-to-kafka-only-writes). If you had already cut over to Kafka-only writes before deciding to roll back, any data already buffered in Kafka but not yet consumed is read with the normal Kafka consumer catch-up process described in [Offset management and restart behavior](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#offset-management-and-restart-behavior), so make sure your Kafka-consuming ingesters have caught up on Kafka lag before you disable Kafka consumption on them.
 
 {{< admonition type="warning" >}}
 Rollback is straightforward only while your original ingesters are still running. Once you've decommissioned them in step 7, rolling back requires redeploying them from scratch. Freshly redeployed ingesters start with no recent data in memory, so queries for recent time ranges return incomplete results until they rebuild state, either by replaying their write-ahead log (WAL) or by accumulating new data over another `querier.query_ingesters_within` window. Don't decommission your original ingesters until you're confident you won't need to roll back.
