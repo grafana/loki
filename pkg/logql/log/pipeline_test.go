@@ -58,6 +58,17 @@ func TestNoopPipeline(t *testing.T) {
 	require.Len(t, pipeline.cache, 0)
 }
 
+func TestNoopPipeline_ForStream_HashCollisionKeepsStreamsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+	p := NewNoopPipeline()
+
+	sa := p.ForStream(a)
+	sb := p.ForStream(b)
+
+	require.True(t, labels.Equal(a, sa.BaseLabels().Stream()))
+	require.True(t, labels.Equal(b, sb.BaseLabels().Stream()))
+}
+
 func TestPipeline(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	p := NewPipeline([]Stage{
@@ -101,6 +112,17 @@ func TestPipeline(t *testing.T) {
 	for _, v := range p.baseBuilder.add {
 		require.Len(t, v, 0)
 	}
+}
+
+func TestPipeline_ForStream_HashCollisionKeepsStreamsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+	p := NewPipeline([]Stage{NoopStage})
+
+	sa := p.ForStream(a)
+	sb := p.ForStream(b)
+
+	require.True(t, labels.Equal(a, sa.BaseLabels().Stream()))
+	require.True(t, labels.Equal(b, sb.BaseLabels().Stream()))
 }
 
 func TestPipelineWithStructuredMetadata(t *testing.T) {

@@ -340,6 +340,19 @@ func TestLabelExtractorWithStages(t *testing.T) {
 	}
 }
 
+func TestLabelSampleExtractor_ForStream_HashCollisionKeepsStreamsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+	ex := mustSampleExtractor(LabelExtractorWithStages(
+		"foo", ConvertFloat, nil, false, false, nil, NoopStage,
+	))
+
+	sa := ex.ForStream(a)
+	sb := ex.ForStream(b)
+
+	require.True(t, labels.Equal(a, sa.BaseLabels().Stream()))
+	require.True(t, labels.Equal(b, sb.BaseLabels().Stream()))
+}
+
 func TestDistinctValueSampleExtractor(t *testing.T) {
 	ex, err := NewDistinctValueSampleExtractor("mac", nil, []string{"version"}, false, false)
 	require.NoError(t, err)
@@ -364,6 +377,18 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("cc:dd"), math.Float64bits(sample.Value))
 	})
+}
+
+func TestDistinctValueSampleExtractor_ForStream_HashCollisionKeepsStreamsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+	ex, err := NewDistinctValueSampleExtractor("mac", nil, nil, false, false)
+	require.NoError(t, err)
+
+	sa := ex.ForStream(a)
+	sb := ex.ForStream(b)
+
+	require.True(t, labels.Equal(a, sa.BaseLabels().Stream()))
+	require.True(t, labels.Equal(b, sb.BaseLabels().Stream()))
 }
 
 func TestNewDistinctValueSampleExtractorDoesNotMutateGroups(t *testing.T) {

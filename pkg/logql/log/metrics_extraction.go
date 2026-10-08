@@ -299,7 +299,7 @@ type labelSampleExtractor struct {
 	conversionFn conversionFn
 
 	baseBuilder      *BaseLabelsBuilder
-	streamExtractors map[uint64]StreamSampleExtractor
+	streamExtractors map[uint64]cachedStreamSampleExtractor
 }
 
 // LabelExtractorWithStages creates a SampleExtractor that will extract metrics from a labels.
@@ -336,7 +336,7 @@ func LabelExtractorWithStages(
 		labelName:        labelName,
 		postFilter:       postFilter,
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
-		streamExtractors: make(map[uint64]StreamSampleExtractor),
+		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
 
@@ -349,17 +349,20 @@ func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.baseBuilder.referencedStructuredMetadata
 }
 
-func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
-	if res, ok := l.streamExtractors[hash]; ok {
-		return res
+func (l *labelSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
+
+	// Verify the cached extractor is for these exact labels: Hash can collide, and serving a
+	// colliding stream's extractor would report its samples under the wrong labels.
+	if c, ok := l.streamExtractors[hash]; ok && labels.Equal(c.baseLabels, lbls) {
+		return c.extractor
 	}
 
 	res := &streamLabelSampleExtractor{
 		labelSampleExtractor: l,
-		builder:              l.baseBuilder.ForLabels(labels, hash),
+		builder:              l.baseBuilder.ForLabels(lbls, hash),
 	}
-	l.streamExtractors[hash] = res
+	l.streamExtractors[hash] = cachedStreamSampleExtractor{extractor: res, baseLabels: lbls}
 	return res
 }
 
@@ -421,7 +424,7 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 		preStage:         preStage,
 		labelName:        labelName,
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels),
-		streamExtractors: make(map[uint64]StreamSampleExtractor),
+		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
 
@@ -429,7 +432,7 @@ type distinctValueSampleExtractor struct {
 	preStage         Stage
 	labelName        string
 	baseBuilder      *BaseLabelsBuilder
-	streamExtractors map[uint64]StreamSampleExtractor
+	streamExtractors map[uint64]cachedStreamSampleExtractor
 }
 
 type streamDistinctValueSampleExtractor struct {
@@ -437,16 +440,19 @@ type streamDistinctValueSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (d *distinctValueSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := d.baseBuilder.Hash(labels)
-	if res, ok := d.streamExtractors[hash]; ok {
-		return res
+func (d *distinctValueSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := d.baseBuilder.Hash(lbls)
+
+	// Verify the cached extractor is for these exact labels: Hash can collide, and serving a
+	// colliding stream's extractor would report its samples under the wrong labels.
+	if c, ok := d.streamExtractors[hash]; ok && labels.Equal(c.baseLabels, lbls) {
+		return c.extractor
 	}
 	res := &streamDistinctValueSampleExtractor{
 		distinctValueSampleExtractor: d,
-		builder:                      d.baseBuilder.ForLabels(labels, hash),
+		builder:                      d.baseBuilder.ForLabels(lbls, hash),
 	}
-	d.streamExtractors[hash] = res
+	d.streamExtractors[hash] = cachedStreamSampleExtractor{extractor: res, baseLabels: lbls}
 	return res
 }
 

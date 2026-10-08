@@ -106,7 +106,7 @@ type PipelineWrapper interface {
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
 func NewNoopPipeline() Pipeline {
 	return &noopPipeline{
-		cache:       map[uint64]*noopStreamPipeline{},
+		cache:       map[uint64]cachedNoopStreamPipeline{},
 		baseBuilder: NewBaseLabelsBuilder(),
 	}
 }
@@ -118,17 +118,26 @@ func NewNoopPipeline() Pipeline {
 // Callers that share a noopPipeline across goroutines must serialize
 // access externally — see pkg/ingester/tailer.go for an example.
 type noopPipeline struct {
-	cache       map[uint64]*noopStreamPipeline
+	cache       map[uint64]cachedNoopStreamPipeline
 	baseBuilder *BaseLabelsBuilder
 }
 
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := n.baseBuilder.Hash(labels)
-	if cached, ok := n.cache[h]; ok {
-		return cached
+// cachedNoopStreamPipeline is a per-stream noopStreamPipeline cached by labels hash.
+type cachedNoopStreamPipeline struct {
+	pipeline   *noopStreamPipeline
+	baseLabels labels.Labels
+}
+
+func (n *noopPipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	h := n.baseBuilder.Hash(lbls)
+
+	// Verify the cached pipeline is for these exact labels: Hash can collide, and serving a
+	// colliding stream's pipeline would report its lines under the wrong labels.
+	if c, ok := n.cache[h]; ok && labels.Equal(c.baseLabels, lbls) {
+		return c.pipeline
 	}
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
-	n.cache[h] = sp
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(lbls, h)}
+	n.cache[h] = cachedNoopStreamPipeline{pipeline: sp, baseLabels: lbls}
 	return sp
 }
 
@@ -220,7 +229,13 @@ type pipeline struct {
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
 
-	streamPipelines map[uint64]StreamPipeline
+	streamPipelines map[uint64]cachedStreamPipeline
+}
+
+// cachedStreamPipeline is a per-stream StreamPipeline cached by labels hash.
+type cachedStreamPipeline struct {
+	pipeline   StreamPipeline
+	baseLabels labels.Labels
 }
 
 func (p *pipeline) Stages() []Stage {
@@ -249,7 +264,7 @@ func NewPipeline(stages Stages) Pipeline {
 	return &pipeline{
 		stages:          stages,
 		baseBuilder:     builder,
-		streamPipelines: make(map[uint64]StreamPipeline),
+		streamPipelines: make(map[uint64]cachedStreamPipeline),
 	}
 }
 
@@ -262,13 +277,16 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 	return &streamPipeline{stages, labelsBuilder}
 }
 
-func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
-	hash := p.baseBuilder.Hash(labels)
-	if res, ok := p.streamPipelines[hash]; ok {
-		return res
+func (p *pipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	hash := p.baseBuilder.Hash(lbls)
+
+	// Verify the cached pipeline is for these exact labels: Hash can collide, and serving a
+	// colliding stream's pipeline would report its lines under the wrong labels.
+	if c, ok := p.streamPipelines[hash]; ok && labels.Equal(c.baseLabels, lbls) {
+		return c.pipeline
 	}
-	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
-	p.streamPipelines[hash] = res
+	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(lbls, hash))
+	p.streamPipelines[hash] = cachedStreamPipeline{pipeline: res, baseLabels: lbls}
 	return res
 }
 
