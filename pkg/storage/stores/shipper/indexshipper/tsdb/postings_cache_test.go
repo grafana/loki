@@ -176,67 +176,40 @@ func TestPostingsCodec(t *testing.T) {
 }
 
 type postingsReaderSpy struct {
-	calls   int
-	filters []index.FingerprintFilter
+	IndexReader
+	calls int
 }
 
-func (r *postingsReaderSpy) Bounds() (int64, int64) { return 0, math.MaxInt64 }
-func (r *postingsReaderSpy) Checksum() uint32       { return 0 }
-func (r *postingsReaderSpy) LabelValues(string, ...*labels.Matcher) ([]string, error) {
-	return nil, nil
-}
-func (r *postingsReaderSpy) Postings(_ string, filter index.FingerprintFilter, _ ...string) (index.Postings, error) {
+func (r *postingsReaderSpy) Postings(name string, filter index.FingerprintFilter, values ...string) (index.Postings, error) {
 	r.calls++
-	r.filters = append(r.filters, filter)
-	refs := []storage.SeriesRef{1, 3}
-	if filter != nil {
-		filtered := refs[:0]
-		for _, ref := range refs {
-			if filter.Match(model.Fingerprint(ref)) {
-				filtered = append(filtered, ref)
-			}
-		}
-		refs = filtered
-	}
-	return index.NewListPostings(refs), nil
-}
-func (r *postingsReaderSpy) ShardPostings(p index.Postings, filter index.FingerprintFilter) index.Postings {
-	if filter == nil {
-		return p
-	}
-	refs, err := index.ExpandPostings(p)
-	if err != nil {
-		return index.ErrPostings(err)
-	}
-	var filtered []storage.SeriesRef
-	for _, ref := range refs {
-		if filter.Match(model.Fingerprint(ref)) {
-			filtered = append(filtered, ref)
-		}
-	}
-	return index.NewListPostings(filtered)
-}
-func (r *postingsReaderSpy) LabelNames(...*labels.Matcher) ([]string, error) { return nil, nil }
-func (r *postingsReaderSpy) NewSeriesScan() index.SeriesScan                 { return nil }
-func (r *postingsReaderSpy) Close() error                                    { return nil }
-
-type testFingerprintFilter struct{ from, through model.Fingerprint }
-
-func (f testFingerprintFilter) Match(fp model.Fingerprint) bool {
-	return fp >= f.from && fp < f.through
+	return r.IndexReader.Postings(name, filter, values...)
 }
 
-func (f testFingerprintFilter) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
-	return f.from, f.through
+func newPostingsReaderSpy(t *testing.T) *postingsReaderSpy {
+	t.Helper()
+	var streams []stream
+	// Include several fingerprint samples (one per 1024 series) so shard ranges differ.
+	for n := 0; n < 4096; n++ {
+		streams = append(streams, stream{
+			labels: labels.FromStrings("app", "api", "id", fmt.Sprint(n)),
+			fp:     model.Fingerprint(uint64(n) * (math.MaxUint64 / 4096)),
+			chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10}},
+		})
+	}
+	path := setupMultiTenantIndex(t, index.FormatV3, map[string][]stream{"tenant": streams}, t.TempDir(), time.Unix(1, 0))
+	reader, err := (index.MmapOptions{}).OpenReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	return &postingsReaderSpy{IndexReader: reader}
 }
 
 func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
-	reader := &postingsReaderSpy{}
+	reader := newPostingsReaderSpy(t)
 	postingsCache := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
 	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
-	low := testFingerprintFilter{from: 0, through: 2}
-	high := testFingerprintFilter{from: 2, through: 4}
+	low := index.NewShard(0, 2)
+	high := index.NewShard(1, 2)
 	query := func(filter index.FingerprintFilter, from, through model.Time) []storage.SeriesRef {
 		var refs []storage.SeriesRef
 		err := idx.forPostings(context.Background(), filter, from, through, []*labels.Matcher{m}, func(p index.Postings) error {
@@ -248,18 +221,28 @@ func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 		return refs
 	}
 
-	require.Equal(t, []storage.SeriesRef{1}, query(low, 0, 10))
-	require.Equal(t, []storage.SeriesRef{1}, query(low, 100, 200))
-	require.Equal(t, 1, reader.calls)
-	require.Equal(t, []storage.SeriesRef{3}, query(high, 0, 10))
-	require.Equal(t, []storage.SeriesRef{3}, query(high, 100, 200))
-	require.Equal(t, 1, reader.calls)
-	require.Equal(t, []index.FingerprintFilter{nil}, reader.filters)
-	require.Equal(t, []storage.SeriesRef{1, 3}, query(nil, 0, 10))
+	expected := func(filter index.FingerprintFilter) []storage.SeriesRef {
+		p, err := PostingsForMatchers(reader.IndexReader, filter, m)
+		require.NoError(t, err)
+		refs, err := index.ExpandPostings(p)
+		require.NoError(t, err)
+		return refs
+	}
+	lowRefs, highRefs, allRefs := expected(low), expected(high), expected(nil)
+	require.NotEmpty(t, lowRefs)
+	require.NotEmpty(t, highRefs)
+	require.NotEqual(t, lowRefs, highRefs)
+
+	require.Equal(t, lowRefs, query(low, 0, 10))
+	require.Equal(t, lowRefs, query(low, 100, 200))
+	require.Equal(t, highRefs, query(high, 0, 10))
+	require.Equal(t, highRefs, query(high, 100, 200))
+	require.Equal(t, allRefs, query(nil, 0, 10))
+	require.Equal(t, 1, reader.calls, "all shards and time ranges must reuse one cached postings list")
 }
 
 func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
-	reader := &postingsReaderSpy{}
+	reader := newPostingsReaderSpy(t)
 	idx := &TSDBIndex{reader: reader}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	filter := index.NewShard(1, 2)
@@ -270,7 +253,6 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.Equal(t, 2, reader.calls)
-	require.Equal(t, []index.FingerprintFilter{filter, filter}, reader.filters)
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
