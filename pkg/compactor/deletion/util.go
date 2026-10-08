@@ -12,13 +12,14 @@ var (
 	errInvalidQuery = errors.New("invalid query expression")
 )
 
-// parseDeletionQuery checks if the given logQL is valid for deletions.
-func parseDeletionQuery(query string) (syntax.LogSelectorExpr, error) {
-	logSelectorExpr, err := syntax.ParseLogSelector(query, true)
+// parseDeletionQuery parses a deletion query and validates its pipeline.
+// Semantic validation is enabled for new requests but skipped during processing
+// to accept legacy requests with empty-compatible matchers.
+func parseDeletionQuery(query string, validate bool) (syntax.LogSelectorExpr, error) {
+	logSelectorExpr, err := syntax.ParseLogSelector(query, validate)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errInvalidQuery, err)
 	}
-
 	// Some stages are only checked when the pipeline gets built, for instance line
 	// filter regexes and ip() patterns. Build it here and throw it away so we reject
 	// the request now, instead of failing every time we try to process it later.
