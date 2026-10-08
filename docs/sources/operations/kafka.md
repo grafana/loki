@@ -52,7 +52,12 @@ flowchart LR
 
 The distributor writes each stream as one or more Kafka records to a topic. The topic has multiple partitions. Each ingester owns exactly one partition and consumes records only from that partition. Ingesters use the [partition ring](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components/#kafka-based-ingestion-experimental) to coordinate which ingester owns which partition.
 
-Each ingester process participates in both rings at the same time: the classic hash ring it already uses for gRPC writes, and the partition ring. Loki doesn't deploy a separate pool of "Kafka ingesters"; the same ingester replicas serve both roles. Because the two rings assign ownership of a tenant's streams differently (token-hash with replication, compared to shuffle-sharded partitions with a single owner), the querier has to be told explicitly which ring to use when it looks up ingesters. See [Read path](#read-path) and `querier.query_partition_ingesters` under [Configuration overview](#configuration-overview).
+Every ingester process always registers in the classic hash ring it uses for gRPC writes, whether or not Kafka-based ingestion is enabled. When you also enable `ingester.kafka_ingestion.enabled`, that same process additionally joins the partition ring. Loki supports two ways to deploy this:
+
+- **A single, shared ingester pool**: the same ingester replicas serve both the classic hash ring and the partition ring at once. This is the simplest setup, and works well if you're experimenting with Kafka-based ingestion or plan to cut over quickly.
+- **Two separate ingester pools**: a new, dedicated pool of Kafka-consuming ingesters runs alongside your existing ingesters, isolated from the classic hash ring by giving it a distinct `ingester.ring.kvstore.prefix`. This is the only path Grafana Labs has tested in production, and is the approach documented in [Migrate to Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-kafka/).
+
+Because the two rings assign ownership of a tenant's streams differently (token-hash with replication, compared to shuffle-sharded partitions with a single owner), the querier has to be told explicitly which ring to use when it looks up ingesters. See [Read path](#read-path) and `querier.query_partition_ingesters` under [Configuration overview](#configuration-overview).
 
 {{< admonition type="note" >}}
 You can use any system that implements the Kafka wire protocol, such as WarpStream, instead of running Apache Kafka yourself. Loki only needs the broker address and, optionally, SASL credentials. No code changes are required.
