@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -407,7 +408,7 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1)
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-	require.Len(t, swaps[0].newEntries, 2)
+	requireEntriesMatchCalls(t, calls, swaps[0].newEntries)
 }
 
 func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
@@ -436,7 +437,7 @@ func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 		{Path: "indexes/b", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, stats.dispatched, "two runs -> one task -> one IndexMerge plan")
+	require.Equal(t, compactionStats{removed: 2, added: 1, dispatched: 1}, stats)
 
 	dispatches := runner.snapshot()
 	require.Len(t, dispatches, 1)
@@ -446,6 +447,26 @@ func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 	require.Len(t, runs, 2)
 	require.Equal(t, []string{"indexes/a#0", "indexes/a#1"}, sectionRefNames(runs[0].Sections))
 	require.Equal(t, []string{"indexes/b#0", "indexes/b#1"}, sectionRefNames(runs[1].Sections))
+
+	swaps := replacer.snapshot()
+	require.Len(t, swaps, 1)
+	require.ElementsMatch(t, []string{"indexes/a", "indexes/b"}, swaps[0].oldPaths)
+	requireEntriesMatchCalls(t, dispatches, swaps[0].newEntries)
+}
+
+// requireEntriesMatchCalls requires one published entry for each dispatched
+// task output.
+func requireEntriesMatchCalls(t *testing.T, calls []runCall, entries []metastore.TableOfContentsEntry) {
+	t.Helper()
+	callPaths := make([]string, len(calls))
+	for i, call := range calls {
+		callPaths[i] = call.path
+	}
+	entryPaths := make([]string, len(entries))
+	for i, entry := range entries {
+		entryPaths[i] = entry.Path
+	}
+	require.ElementsMatch(t, callPaths, entryPaths)
 }
 
 func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
@@ -924,9 +945,27 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			return slices.Equal(opts.Actor, []string{"compaction", actor})
 		}
 	}
+	// failObject must not call require, because the runner calls it from
+	// dispatcher goroutines.
 	failObject := func(path string) func(workflow.Options, *physical.Plan) bool {
 		return func(_ workflow.Options, plan *physical.Plan) bool {
-			return slices.Contains(planObjectPaths(t, plan), path)
+			root, err := plan.Root()
+			if err != nil {
+				return false
+			}
+			switch n := root.(type) {
+			case *physical.SortObject:
+				return n.SourceObjectPath == path
+			case *physical.IndexMerge:
+				for _, run := range n.Runs {
+					for _, section := range run.Sections {
+						if section.ObjectPath == path {
+							return true
+						}
+					}
+				}
+			}
+			return false
 		}
 	}
 	logIndex := func(t *testing.T, schema string, labels map[string]string) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
@@ -942,98 +981,61 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 	}
 
-	type failure struct {
-		name string
-		fail func(workflow.Options, *physical.Plan) bool
+	indexMerge := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
+		bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b", "indexes/c")
+		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
+		require.NoError(t, err)
+		return bucket, func(c *coordinator) (compactionStats, error) {
+			return c.compactTenantIndexes(ctx, "acme", window, indexes)
+		}
 	}
+	equalRuns := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
+		return logIndex(t, "label:service_name", map[string]string{"service_name": "auth"})
+	}
+	wrongSortSchema := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
+		return logIndex(t, "label:cluster", map[string]string{"cluster": "dev"})
+	}
+
 	tests := []struct {
-		name         string
-		seed         func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error))
-		wantOldPaths []string
-		wantStats    compactionStats
-		failures     []failure
+		name       string
+		seed       func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error))
+		fail       func(workflow.Options, *physical.Plan) bool
+		wantActors []string
 	}{
-		{
-			name: "index merge of three indexes in one layout group",
-			seed: func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-				bucket := overlappingIndexesBucket(ctx, t, window, "acme", "indexes/a", "indexes/b", "indexes/c")
-				indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
-				require.NoError(t, err)
-				return bucket, func(c *coordinator) (compactionStats, error) {
-					return c.compactTenantIndexes(ctx, "acme", window, indexes)
-				}
-			},
-			wantOldPaths: []string{"indexes/a", "indexes/b", "indexes/c"},
-			wantStats:    compactionStats{removed: 3, added: 2, dispatched: 2},
-			failures:     []failure{{name: "publishes nothing when one task fails", fail: failObject("indexes/c")}},
-		},
-		{
-			name: "log compaction of three equal runs with one merge and one index filter",
-			seed: func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-				return logIndex(t, "label:service_name", map[string]string{"service_name": "auth"})
-			},
-			wantOldPaths: []string{"indexes/source"},
-			wantStats:    compactionStats{removed: 1, added: 2, dispatched: 2},
-			failures: []failure{
-				{name: "publishes nothing when the index filter fails", fail: failActor("index-filter")},
-				{name: "publishes nothing when a merge fails in the same batch as the index filter", fail: failActor("log-merge")},
-			},
-		},
-		{
-			name: "sort object of three objects with the wrong sort schema",
-			seed: func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-				return logIndex(t, "label:cluster", map[string]string{"cluster": "dev"})
-			},
-			wantOldPaths: []string{"indexes/source"},
-			wantStats:    compactionStats{removed: 1, added: 3, dispatched: 3},
-			failures:     []failure{{name: "publishes nothing when one task fails", fail: failObject("logs/2")}},
-		},
+		{name: "index merge publishes nothing when one task fails", seed: indexMerge, fail: failObject("indexes/c"),
+			wantActors: []string{"index-merge", "index-merge"}},
+		{name: "log compaction publishes nothing when the index filter fails", seed: equalRuns, fail: failActor("index-filter"),
+			wantActors: []string{"log-merge", "index-filter"}},
+		{name: "log compaction publishes nothing when a merge fails in the same batch as the index filter", seed: equalRuns, fail: failActor("log-merge"),
+			wantActors: []string{"log-merge", "index-filter"}},
+		{name: "sort object publishes nothing when one task fails", seed: wrongSortSchema, fail: failObject("logs/2"),
+			wantActors: []string{"sort-object", "sort-object", "sort-object"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			bucket, run := test.seed(t)
-
-			t.Run("publishes one entry for every task when all tasks succeed", func(t *testing.T) {
-				runner := &fakeRunner{}
-				defer runner.assertUniqueObjects(t)
-				replacer := &fakeReplacer{swapped: true}
-				c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-
-				got, err := run(c)
-				require.NoError(t, err)
-				require.Equal(t, test.wantStats, got)
-
-				swaps := replacer.snapshot()
-				require.Len(t, swaps, 1)
-				require.ElementsMatch(t, test.wantOldPaths, swaps[0].oldPaths)
-				var callPaths, entryPaths []string
-				for _, call := range runner.snapshot() {
-					callPaths = append(callPaths, call.path)
+			var failed atomic.Bool
+			runner := &fakeRunner{}
+			runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
+				if test.fail(opts, plan) {
+					failed.Store(true)
+					return nil, taskErr
 				}
-				for _, entry := range swaps[0].newEntries {
-					entryPaths = append(entryPaths, entry.Path)
-				}
-				require.ElementsMatch(t, callPaths, entryPaths)
-			})
-
-			for _, f := range test.failures {
-				t.Run(f.name, func(t *testing.T) {
-					runner := &fakeRunner{}
-					runner.respond = func(_ context.Context, opts workflow.Options, plan *physical.Plan) (*v2.ResultArtifact, error) {
-						if f.fail(opts, plan) {
-							return nil, taskErr
-						}
-						return &v2.ResultArtifact{Path: "indexes/out"}, nil
-					}
-					replacer := &fakeReplacer{swapped: true}
-					c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
-
-					got, err := run(c)
-					require.ErrorIs(t, err, taskErr)
-					require.Equal(t, compactionStats{}, got)
-					require.Empty(t, replacer.snapshot())
-				})
+				return &v2.ResultArtifact{Path: "indexes/out"}, nil
 			}
+			replacer := &fakeReplacer{swapped: true}
+			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme"))
+
+			got, err := run(c)
+			require.True(t, failed.Load(), "fail predicate matched no dispatched task")
+			var actors []string
+			for _, call := range runner.snapshot() {
+				actors = append(actors, call.opts.Actor[len(call.opts.Actor)-1])
+			}
+			require.ElementsMatch(t, test.wantActors, actors)
+			require.ErrorIs(t, err, taskErr)
+			require.Equal(t, compactionStats{}, got)
+			require.Empty(t, replacer.snapshot())
 		})
 	}
 }
