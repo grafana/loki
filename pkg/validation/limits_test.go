@@ -841,6 +841,99 @@ policy_override_limits:
 	require.Equal(t, float64(2*bytesInMB), rateBytes)
 }
 
+func TestLimits_PolicyInheritWithStreamMultiplier(t *testing.T) {
+	limits := &Limits{
+		IngestionRateMB:         5,
+		IngestionBurstSizeMB:    10,
+		MaxLocalStreamsPerUser:  100,
+		MaxGlobalStreamsPerUser: 1000,
+		PerStreamRateLimit:      flagext.ByteSize(9 * 1024 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(11 * 1024 * 1024),
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			"x3": {InheritLimits: true, InheritWithStreamMultiplier: 3},
+			// Explicit fields are not multiplied.
+			"x3-partial": {InheritLimits: true, InheritWithStreamMultiplier: 3, IngestionRateMB: ptr(2.0), MaxLocalStreamsPerUser: ptr(7)},
+			"fractional": {InheritLimits: true, InheritWithStreamMultiplier: 1.5},
+		},
+	}
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+
+	for _, tc := range []struct {
+		policy        string
+		rateBytes     float64
+		burstBytes    int
+		localStreams  int
+		globalStreams int
+	}{
+		{policy: "x3", rateBytes: 15 * bytesInMB, burstBytes: 30 * bytesInMB, localStreams: 300, globalStreams: 3000},
+		{policy: "x3-partial", rateBytes: 2 * bytesInMB, burstBytes: 30 * bytesInMB, localStreams: 7, globalStreams: 3000},
+		{policy: "fractional", rateBytes: 7.5 * bytesInMB, burstBytes: 15 * bytesInMB, localStreams: 150, globalStreams: 1500},
+	} {
+		t.Run(tc.policy, func(t *testing.T) {
+			rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", tc.policy)
+			require.True(t, ok)
+			require.Equal(t, tc.rateBytes, rateBytes)
+			v, ok := overrides.PolicyMaxLocalStreamsPerUser("tenant1", tc.policy)
+			require.True(t, ok)
+			require.Equal(t, tc.localStreams, v)
+			v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", tc.policy)
+			require.True(t, ok)
+			require.Equal(t, tc.globalStreams, v)
+			burstBytes, ok := overrides.PolicyIngestionBurstSizeBytes("tenant1", tc.policy)
+			require.True(t, ok)
+			require.Equal(t, tc.burstBytes, burstBytes)
+
+			// Limits outside the multiplier's scope are inherited unchanged.
+			psrl, ok := overrides.PolicyPerStreamRateLimit("tenant1", tc.policy)
+			require.True(t, ok)
+			require.Equal(t, RateLimit{Limit: rate.Limit(9 * 1024 * 1024), Burst: 11 * 1024 * 1024}, psrl)
+		})
+	}
+}
+
+func TestLimits_PolicyInheritWithStreamMultiplierYAML(t *testing.T) {
+	var limits Limits
+	yamlConfig := `
+ingestion_rate_mb: 5
+max_global_streams_per_user: 1000
+policy_override_limits:
+  finance:
+    inherit_limits: true
+    inherit_with_stream_multiplier: 3
+`
+	require.NoError(t, yaml.Unmarshal([]byte(yamlConfig), &limits))
+
+	overrides := &Overrides{defaultLimits: &limits, tenantLimits: nil}
+
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, float64(15*bytesInMB), rateBytes)
+	v, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 3000, v)
+}
+
+func TestPolicyOverridableLimits_ValidateInheritWithStreamMultiplier(t *testing.T) {
+	for name, tc := range map[string]struct {
+		limits  PolicyOverridableLimits
+		wantErr string
+	}{
+		"unset":                  {limits: PolicyOverridableLimits{}},
+		"with inherit_limits":    {limits: PolicyOverridableLimits{InheritLimits: true, InheritWithStreamMultiplier: 3}},
+		"negative":               {limits: PolicyOverridableLimits{InheritLimits: true, InheritWithStreamMultiplier: -1}, wantErr: "inherit_with_stream_multiplier must be >= 0"},
+		"without inherit_limits": {limits: PolicyOverridableLimits{InheritWithStreamMultiplier: 3}, wantErr: "inherit_with_stream_multiplier requires inherit_limits: true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := tc.limits.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestPolicyShardStreams(t *testing.T) {
 	timeOn := true
 	desired := flagext.ByteSize(512 * 1024)

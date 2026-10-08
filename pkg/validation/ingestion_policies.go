@@ -399,8 +399,24 @@ type PolicyOverridableLimits struct {
 	// while still reporting overridden=true, so the policy gets the same limits as the tenant but
 	// tracked in its own bucket. Explicitly set fields take precedence. It applies to
 	// max_streams_per_user, max_global_streams_per_user, ingestion_rate_mb,
-	// ingestion_burst_size_mb, per_stream_rate_limit and per_stream_rate_limit_burst.
+	// ingestion_burst_size_mb, per_stream_rate_limit and per_stream_rate_limit_burst. See
+	// InheritWithStreamMultiplier to scale some of the inherited values.
 	InheritLimits bool `yaml:"inherit_limits" json:"inherit_limits" doc:"hidden"`
+
+	// InheritWithStreamMultiplier scales the values inherited via inherit_limits for
+	// max_streams_per_user, max_global_streams_per_user, ingestion_rate_mb and
+	// ingestion_burst_size_mb, so a policy can get e.g. 3x the tenant's stream and rate limits in
+	// its own bucket. Explicitly set fields are
+	// not multiplied. 0 (the default) means no scaling. Requires inherit_limits: true.
+	InheritWithStreamMultiplier float64 `yaml:"inherit_with_stream_multiplier" json:"inherit_with_stream_multiplier" doc:"hidden"`
+}
+
+// inheritMultiplier returns the factor applied to inherited stream and ingestion rate/burst limits.
+func (p PolicyOverridableLimits) inheritMultiplier() float64 {
+	if p.InheritWithStreamMultiplier == 0 {
+		return 1
+	}
+	return p.InheritWithStreamMultiplier
 }
 
 // Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
@@ -414,6 +430,12 @@ func (p PolicyOverridableLimits) Validate() error {
 	}
 	if p.ShardStreams != nil && p.ShardStreams.DesiredRate != nil && p.ShardStreams.DesiredRate.Val() < 0 {
 		return errors.New("shard_streams.desired_rate must be >= 0")
+	}
+	if p.InheritWithStreamMultiplier < 0 {
+		return errors.New("inherit_with_stream_multiplier must be >= 0")
+	}
+	if p.InheritWithStreamMultiplier != 0 && !p.InheritLimits {
+		return errors.New("inherit_with_stream_multiplier requires inherit_limits: true")
 	}
 	return nil
 }
@@ -450,7 +472,7 @@ func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bo
 		return *pl.MaxLocalStreamsPerUser, true
 	}
 	if pl.InheritLimits {
-		return o.MaxLocalStreamsPerUser(userID), true
+		return int(float64(o.MaxLocalStreamsPerUser(userID)) * pl.inheritMultiplier()), true
 	}
 	return 0, false
 }
@@ -464,7 +486,7 @@ func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, b
 		return *pl.MaxGlobalStreamsPerUser, true
 	}
 	if pl.InheritLimits {
-		return o.MaxGlobalStreamsPerUser(userID), true
+		return int(float64(o.MaxGlobalStreamsPerUser(userID)) * pl.inheritMultiplier()), true
 	}
 	return 0, false
 }
@@ -478,7 +500,7 @@ func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bo
 		return *pl.IngestionRateMB * bytesInMB, true
 	}
 	if pl.InheritLimits {
-		return o.IngestionRateBytes(userID), true
+		return o.IngestionRateBytes(userID) * pl.inheritMultiplier(), true
 	}
 	return 0, false
 }
@@ -495,7 +517,7 @@ func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, b
 		return int(*pl.IngestionBurstSizeMB * bytesInMB), true
 	}
 	if pl.InheritLimits {
-		return o.IngestionBurstSizeBytes(userID), true
+		return int(float64(o.IngestionBurstSizeBytes(userID)) * pl.inheritMultiplier()), true
 	}
 	return 0, false
 }
