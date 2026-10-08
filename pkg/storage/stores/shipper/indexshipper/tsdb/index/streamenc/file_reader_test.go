@@ -132,6 +132,10 @@ func TestReaders_Skip(t *testing.T) {
 		require.Equal(t, []byte("abcde"), peek, "peek before skip")
 		require.Equal(t, 20, r.Len())
 
+		// a negative skip is rejected and leaves the reader where it was
+		require.ErrorIs(t, r.Skip(-1), ErrInvalidSize)
+		require.Equal(t, 0, r.Offset())
+
 		require.NoError(t, r.Skip(5))
 		readAfterSkip, err := r.Read(5)
 		require.NoError(t, err)
