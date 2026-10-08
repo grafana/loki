@@ -1747,6 +1747,8 @@ func TestLogFilterTripperwareCacheGenNumber(t *testing.T) {
 
 	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	queryCount, queryHandler := promqlResult(logqlmodel.Streams{})
+	// queriers report the cache gen number they saw in the response headers.
+	queryHandler = base.CacheGenNumberContextSetterMiddleware(genLoader).Wrap(queryHandler)
 	h := tpw.Wrap(getQueryAndStatsHandler(queryHandler, statsHandler))
 
 	// first query is a cache miss and stores the empty result.

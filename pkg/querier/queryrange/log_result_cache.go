@@ -224,6 +224,9 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 	if !isEmpty(lokiRes) {
 		return resp, nil
 	}
+	if !l.cacheGenNumberMatches(ctx, req, lokiRes) {
+		return resp, nil
+	}
 	data, err := proto.Marshal(req)
 	if err != nil {
 		level.Warn(l.logger).Log("msg", "error marshalling request", "err", err)
@@ -248,6 +251,9 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	}
 
 	updateCache := false
+	// genNumberMatches tracks whether every response used to extend the cached interval was computed
+	// with the cache generation number used for the cache key.
+	genNumberMatches := true
 	// if the query does not overlap cached interval, do not try to fill the gap since it requires extending the queries beyond what is requested in the query.
 	// Extending the queries beyond what is requested could result in empty responses due to response limit set in the queries.
 	if !overlap(lokiReq.StartTs, lokiReq.EndTs, cachedRequest.StartTs, cachedRequest.EndTs) {
@@ -261,6 +267,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		if isEmpty(result) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
 			cachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
 			updateCache = true
+			genNumberMatches = l.cacheGenNumberMatches(ctx, lokiReq, result)
 		}
 	} else {
 		// we could be missing data at the start and the end.
@@ -315,6 +322,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if isEmpty(startResp) {
 				cachedRequest = cachedRequest.WithStartEnd(startRequest.GetStartTs(), cachedRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
+				genNumberMatches = genNumberMatches && l.cacheGenNumberMatches(ctx, startRequest, startResp)
 			} else {
 				if startResp.Status != loghttp.QueryStatusSuccess {
 					return startResp, nil
@@ -329,6 +337,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			if isEmpty(endResp) {
 				cachedRequest = cachedRequest.WithStartEnd(cachedRequest.GetStartTs(), endRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
+				genNumberMatches = genNumberMatches && l.cacheGenNumberMatches(ctx, endRequest, endResp)
 			} else {
 				if endResp.Status != loghttp.QueryStatusSuccess {
 					return endResp, nil
@@ -339,7 +348,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	}
 
 	// we need to update the cache since we fetched more either at the end or the start and it was empty.
-	if updateCache {
+	if updateCache && genNumberMatches {
 		data, err := proto.Marshal(cachedRequest)
 		if err != nil {
 			level.Warn(l.logger).Log("msg", "error marshalling request", "err", err)
@@ -391,6 +400,39 @@ func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
 	}
 
 	return &extractedResp
+}
+
+// cacheGenNumberMatches reports whether the response was computed with the same results cache generation
+// number that was injected into the context and used to build the cache key. The queriers report the
+// generation number they saw in the Results-Cache-Gen-Number response header; a mismatch means the
+// generation changed between computing the cache key and executing the query, so the response must not be cached.
+// This mirrors the check done by the metric results cache in queryrangebase.
+func (l *logResultCache) cacheGenNumberMatches(ctx context.Context, req *LokiRequest, resp *LokiResponse) bool {
+	if l.cacheGenNumberLoader == nil || !l.retentionEnabled {
+		return true
+	}
+
+	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
+	var genNumbersFromResp []string
+	for _, h := range resp.Headers {
+		if h.Name == queryrangebase.ResultsCacheGenNumberHeaderName {
+			genNumbersFromResp = append(genNumbersFromResp, h.Values...)
+		}
+	}
+
+	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
+		level.Debug(l.logger).Log("msg", "results cache gen number found in context but none in response headers, not caching the response", "gen", genNumberFromCtx, "query", req.GetQuery())
+		return false
+	}
+
+	for _, gen := range genNumbersFromResp {
+		if gen != genNumberFromCtx {
+			level.Debug(l.logger).Log("msg", "inconsistency in results cache gen numbers, not caching the response", "gen_from_response", gen, "gen_from_store", genNumberFromCtx, "query", req.GetQuery())
+			return false
+		}
+	}
+
+	return true
 }
 
 func isEmpty(lokiRes *LokiResponse) bool {

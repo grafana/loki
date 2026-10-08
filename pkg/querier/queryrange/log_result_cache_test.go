@@ -798,19 +798,67 @@ func nonEmptyResponse(lokiReq *LokiRequest, start, end time.Time, labels string)
 }
 
 func Test_LogResultCacheGenNumber(t *testing.T) {
+	type step struct {
+		frontendGen  string // cache gen number used by the frontend for the cache key
+		querierGen   string // cache gen number reported by the querier in the response headers, empty means no header
+		end          time.Duration
+		expectedCall bool // whether the downstream is expected to be called
+	}
 	for _, tc := range []struct {
 		name             string
 		retentionEnabled bool
-		// expectedCalls is the number of downstream calls after querying with gen "1", gen "1" and gen "2".
-		expectedCalls int
+		steps            []step
 	}{
-		{name: "retention enabled invalidates on gen change", retentionEnabled: true, expectedCalls: 2},
-		{name: "retention disabled ignores gen", retentionEnabled: false, expectedCalls: 1},
+		{
+			name:             "gen change invalidates cached result",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: false},
+				{frontendGen: "2", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "2", querierGen: "2", end: 2 * time.Minute, expectedCall: false},
+			},
+		},
+		{
+			name:             "retention disabled ignores gen",
+			retentionEnabled: false,
+			steps: []step{
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "2", end: 2 * time.Minute, expectedCall: false},
+			},
+		},
+		{
+			name:             "response gen mismatch is not cached",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+			},
+		},
+		{
+			name:             "response without gen header is not cached",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+			},
+		},
+		{
+			name:             "extending a cached interval with a mismatching gen does not update the cache",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "2", end: 3 * time.Minute, expectedCall: true},
+				// the extension was not stored, so the missing range is fetched again.
+				{frontendGen: "1", querierGen: "1", end: 3 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "1", end: 3 * time.Minute, expectedCall: false},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "foo")
-			genLoader := &mutableCacheGenNumberLoader{gen: "1"}
-			limits := fakeLimits{splitDuration: map[string]time.Duration{"foo": time.Minute}}
+			genLoader := &mutableCacheGenNumberLoader{}
+			limits := fakeLimits{splitDuration: map[string]time.Duration{"foo": 10 * time.Minute}}
 			lrc, err := NewLogResultCache(
 				log.NewNopLogger(),
 				limits,
@@ -823,23 +871,34 @@ func Test_LogResultCacheGenNumber(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			req := &LokiRequest{
-				StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-				EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-				Limit:   entriesLimit,
-			}
+			var (
+				calls      int
+				querierGen string
+			)
+			h := lrc.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				calls++
+				resp := emptyResponse(r.(*LokiRequest))
+				if querierGen != "" {
+					resp.SetHeader(queryrangebase.ResultsCacheGenNumberHeaderName, querierGen)
+				}
+				return resp, nil
+			}))
 
-			m := &mock.Mock{}
-			m.On("Do", mock.Anything, req).Return(emptyResponse(req), nil)
-			h := lrc.Wrap(fakeResponse{Mock: m})
+			for i, s := range tc.steps {
+				genLoader.setGen(s.frontendGen)
+				querierGen = s.querierGen
 
-			for _, gen := range []string{"1", "1", "2"} {
-				genLoader.setGen(gen)
+				req := &LokiRequest{
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+					EndTs:   time.Unix(0, s.end.Nanoseconds()),
+					Limit:   entriesLimit,
+				}
+				before := calls
 				resp, err := h.Do(ctx, req)
 				require.NoError(t, err)
-				require.Equal(t, emptyResponse(req), resp)
+				require.True(t, isEmpty(resp.(*LokiResponse)))
+				require.Equal(t, s.expectedCall, calls > before, "step %d", i)
 			}
-			m.AssertNumberOfCalls(t, "Do", tc.expectedCalls)
 		})
 	}
 }
