@@ -820,7 +820,7 @@ func Test_LogResultCacheGenNumber(t *testing.T) {
 			},
 		},
 		{
-			name:             "retention disabled ignores gen",
+			name:             "retention/deletion disabled ignores gen",
 			retentionEnabled: false,
 			steps: []step{
 				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
