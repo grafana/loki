@@ -27,14 +27,14 @@ func TestCanaryOTLPRoundTrip(t *testing.T) {
 	for _, batchSize := range []int{1, 3} {
 		t.Run(fmt.Sprint(batchSize), func(t *testing.T) {
 			type result struct {
-				request  *logproto.PushRequest
+				request  *logproto.InternalPushRequest
 				encoding string
 				err      error
 			}
 			results := make(chan result, 1)
 			parserConfig := canaryOTLPTestConfig{}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				request, _, err := push.ParseOTLPRequest("canary", r, parserConfig, nil, 1024*1024, 1024*1024, nil, parserConfig, log.NewNopLogger())
+				request, _, err := push.NewOTLPRequestParser(false)("canary", r, parserConfig, nil, 1024*1024, 1024*1024, nil, parserConfig, log.NewNopLogger())
 				results <- result{request, r.Header.Get("Content-Encoding"), err}
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
@@ -58,7 +58,7 @@ func TestCanaryOTLPRoundTrip(t *testing.T) {
 				require.NoError(t, got.err)
 				require.Equal(t, "gzip", got.encoding)
 				require.Len(t, got.request.Streams, 1)
-				stream := got.request.Streams[0]
+				stream := got.request.Streams[0].FlatView()
 				require.Equal(t, `{canary_instance="replica-1", canary_protocol="otlp", service_name="loki-canary"}`, stream.Labels)
 				require.Len(t, stream.Entries, batchSize)
 				for i, entry := range stream.Entries {
