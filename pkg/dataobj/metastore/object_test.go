@@ -471,7 +471,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 				require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded))
 
 				var getIndexesDuration dto.Metric
-				require.NoError(t, mstore.metrics.getIndexesTotalDuration.Write(&getIndexesDuration))
+				require.NoError(t, mstore.metrics.getIndexesTotalDuration.WithLabelValues(resultSuccess).(prometheus.Histogram).Write(&getIndexesDuration))
 				require.Positive(t, getIndexesDuration.GetHistogram().GetSampleCount())
 			}
 		})

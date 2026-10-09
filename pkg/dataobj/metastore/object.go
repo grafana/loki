@@ -866,12 +866,9 @@ func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
-	timer := prometheus.NewTimer(m.metrics.getIndexesTotalDuration)
-	// This runs before span.End, which stops the region from recording.
+	start := time.Now()
 	defer func() {
-		if returnErr == nil {
-			timer.ObserveDuration()
-		}
+		m.metrics.getIndexesTotalDuration.WithLabelValues(getIndexesResult(returnErr)).Observe(time.Since(start).Seconds())
 	}()
 
 	tenantID, err := tenant.TenantID(ctx)
