@@ -69,7 +69,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 	}
 
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil))
 	c, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -146,7 +146,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 		},
 	}
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          cfg,
 		Bucket:          bucket,
@@ -161,7 +161,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 // TestNew_NilLimitsErrors verifies that New returns an error when Limits is nil.
 func TestNew_NilLimitsErrors(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
 		Bucket:          bucket,

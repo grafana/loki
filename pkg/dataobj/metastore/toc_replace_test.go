@@ -92,7 +92,7 @@ func readWindowToCs(ctx context.Context, t *testing.T, bucket objstore.Bucket, w
 
 // seedToC writes one ToC per tenant at the given window containing the
 // supplied (tenant,path,start,end) rows. Uses the same indexobj.Builder +
-// tocBuilderCfg path that the production writer uses.
+// DefaultTocBuilderConfig path that the production writer uses.
 func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocRow) {
 	t.Helper()
 	rowsByTenant := make(map[string][]tocRow)
@@ -101,7 +101,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	}
 
 	for tenant, rows := range rowsByTenant {
-		b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+		b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		for _, r := range rows {
 			require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
@@ -130,7 +130,7 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  bucket,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -201,7 +201,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 
 			writer := &TableOfContentsWriter{
 				bucket:  bucket,
-				metrics: newTableOfContentsMetrics(),
+				metrics: NewTocWriterMetrics(nil),
 				logger:  log.NewNopLogger(),
 			}
 
@@ -229,7 +229,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 // given index paths. The tenant does not have to match the path.
 func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexPaths ...string) {
 	t.Helper()
-	b, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 	for _, indexPath := range indexPaths {
 		require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: indexPath, StartTs: unixTime(10), EndTs: unixTime(20)}))
@@ -275,7 +275,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		bucket := &countingBucket{Bucket: inner}
 		writer := &TableOfContentsWriter{
 			bucket:  bucket,
-			metrics: newTableOfContentsMetrics(),
+			metrics: NewTocWriterMetrics(nil),
 			logger:  log.NewNopLogger(),
 		}
 
@@ -293,7 +293,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
 		writer := &TableOfContentsWriter{
 			bucket:  bucket,
-			metrics: newTableOfContentsMetrics(),
+			metrics: NewTocWriterMetrics(nil),
 			logger:  log.NewNopLogger(),
 		}
 
@@ -334,7 +334,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  bucket,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -360,7 +360,7 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  bucket,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -430,7 +430,7 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  flaky,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -461,7 +461,7 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  alwaysFail,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -503,7 +503,7 @@ func TestReplaceIndexPointers_EmptyOldAndNewPaths_BypassesStorage(t *testing.T) 
 
 	writer := &TableOfContentsWriter{
 		bucket:  bucket,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 
@@ -534,7 +534,7 @@ func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
 
 	writer := &TableOfContentsWriter{
 		bucket:  bucket,
-		metrics: newTableOfContentsMetrics(),
+		metrics: NewTocWriterMetrics(nil),
 		logger:  log.NewNopLogger(),
 	}
 

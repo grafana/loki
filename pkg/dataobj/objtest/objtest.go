@@ -149,8 +149,8 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
+	logsMetastoreToc := newTableOfContentsWriter(bucket, logger)
+	indexMetastoreToc := newTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &Builder{
 		t:      t,
@@ -356,4 +356,16 @@ func writeTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfCont
 		}
 	}
 	return nil
+}
+
+// newTableOfContentsWriter returns a ToC writer for bucket with the default
+// configs. It does not register the writer's metrics.
+func newTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *metastore.TableOfContentsWriter {
+	return metastore.NewTableOfContentsWriter(
+		bucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(nil),
+	)
 }

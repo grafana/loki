@@ -136,10 +136,13 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create indexer: %w", err)
 	}
 
-	tocWriter := metastore.NewTableOfContentsWriter(idxBucket, logger)
-	if err := tocWriter.RegisterMetrics(indexReg); err != nil {
-		return nil, fmt.Errorf("failed to register Table of Contents writer metrics: %w", err)
-	}
+	tocWriter := metastore.NewTableOfContentsWriter(
+		idxBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(indexReg),
+	)
 
 	flushCommitter := newFlushCommitter(
 		flusher,

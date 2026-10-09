@@ -379,7 +379,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -527,7 +527,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -644,7 +644,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 		path, err := up.Upload(context.Background(), obj)
 		require.NoError(t, err)
 
-		toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 		require.NoError(t, writeTimeRanges(context.Background(), toc, path, timeRanges))
 		return path
 	}
@@ -663,7 +663,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 		path, err := up.Upload(context.Background(), obj)
 		require.NoError(t, err)
 
-		toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 		require.NoError(t, toc.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
 			Path:      path,
 			StartTime: now.Add(-time.Minute),
@@ -920,7 +920,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 	err = writeTimeRanges(context.Background(), metastoreTocWriter, path, timeRanges)
 	require.NoError(t, err)
 
@@ -1201,8 +1201,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(bucket, logger)
-	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	meta := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, logger, NewTocWriterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))

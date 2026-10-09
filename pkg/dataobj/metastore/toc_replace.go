@@ -180,7 +180,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			}
 
 			// Pass 2: rebuild ToC, dropping oldPaths and appending newEntries.
-			builder, berr := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
+			builder, berr := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 			if berr != nil {
 				return nil, fmt.Errorf("creating ToC builder: %w", berr)
 			}
