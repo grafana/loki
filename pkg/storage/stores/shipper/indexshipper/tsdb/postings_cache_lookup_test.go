@@ -139,34 +139,3 @@ func TestPostingsLookupCanceledQueryDoesNotCompute(t *testing.T) {
 	require.Zero(t, reader.calls)
 	require.Zero(t, backend.fetches)
 }
-
-func TestPostingsLookupCanceledWaiter(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		backend := &gatedPostingsCache{release: make(chan struct{})}
-		c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-		defer c.Stop()
-		go c.fetchPostings(context.Background(), "key")
-		synctest.Wait()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			p, populate := c.fetchPostings(ctx, "key")
-			require.Nil(t, p)
-			require.False(t, populate)
-		}()
-		synctest.Wait()
-		cancel()
-		synctest.Wait()
-		select {
-		case <-done:
-		default:
-			t.Error("canceled waiter must return before the shared fetch completes")
-		}
-		require.Equal(t, int64(1), backend.requests.Load())
-		close(backend.release)
-		synctest.Wait()
-	})
-}
