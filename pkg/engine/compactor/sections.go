@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 const prefetchBytes = 2 * 1024 * 1024
@@ -35,16 +36,20 @@ type indexEntry struct {
 	End   time.Time
 }
 
+// logSortPrefix is the planner key for log sections. It orders by the shared
+// [streams.SortPrefix], so planner order matches stream ID order in objects.
+// labels keeps the separate schema values for [compactionv2pb.SectionRef].
 type logSortPrefix struct {
-	shard  uint32
+	prefix streams.SortPrefix
 	labels []string
 }
 
+func newLogSortPrefix(shard uint32, labels []string) logSortPrefix {
+	return logSortPrefix{prefix: streams.NewSortPrefix(shard, labels), labels: labels}
+}
+
 func compareLogSortPrefix(a, b logSortPrefix) int {
-	if n := cmp.Compare(a.shard, b.shard); n != 0 {
-		return n
-	}
-	return slices.Compare(a.labels, b.labels)
+	return a.prefix.Compare(b.prefix)
 }
 
 type indexSortKey struct {
@@ -395,7 +400,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				key := logSortPrefix{shard: stat.ShardBucket, labels: labels}
+				key := newLogSortPrefix(stat.ShardBucket, labels)
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]

@@ -3,13 +3,16 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -222,8 +225,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: logSortPrefix{labels: []string{"auth"}},
-			Max: logSortPrefix{labels: []string{"billing"}},
+			Min: newLogSortPrefix(0, []string{"auth"}),
+			Max: newLogSortPrefix(0, []string{"billing"}),
 		},
 	}, refs)
 }
@@ -280,8 +283,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: logSortPrefix{labels: []string{"auth", "eu"}},
-			Max: logSortPrefix{labels: []string{"auth", "eu"}},
+			Min: newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max: newLogSortPrefix(0, []string{"auth", "eu"}),
 		},
 	}, refs)
 }
@@ -456,4 +459,48 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
+}
+
+func TestCompareLogSortPrefix(t *testing.T) {
+	schema := []string{"label:service_name", "label:namespace"}
+	planKey := func(t *testing.T, ls labels.Labels) logSortPrefix {
+		t.Helper()
+		return newLogSortPrefix(
+			streams.ShardBucketFromHash(labels.StableHash(ls)),
+			[]string{ls.Get("service_name"), ls.Get("namespace")},
+		)
+	}
+	streamKey := func(t *testing.T, ls labels.Labels) streams.SortKey {
+		t.Helper()
+		schemaKey, err := logsobj.ComputeSchemaKey(ls, schema)
+		require.NoError(t, err)
+		return streams.NewSortKey(ls, schemaKey)
+	}
+
+	t.Run("planner order is nondecreasing over streams in stream ID order", func(t *testing.T) {
+		var all []labels.Labels
+		for _, svc := range []string{"", "a", "a\x00", "a\x00b", "ab", "b"} {
+			for _, ns := range []string{"", "\x00", "b", "eu", "us"} {
+				for i := range 4 {
+					all = append(all, labels.FromStrings(
+						"service_name", svc, "namespace", ns, "pod", fmt.Sprint(i),
+					))
+				}
+			}
+		}
+		slices.SortFunc(all, func(a, b labels.Labels) int {
+			return streams.CompareSortKey(streamKey(t, a), streamKey(t, b))
+		})
+
+		keys := make([]logSortPrefix, len(all))
+		for i, ls := range all {
+			keys[i] = planKey(t, ls)
+		}
+		require.True(t, slices.IsSortedFunc(keys, compareLogSortPrefix))
+	})
+
+	t.Run("planner key equals the stream sort key prefix", func(t *testing.T) {
+		ls := labels.FromStrings("service_name", "a\x00", "namespace", "b")
+		require.Equal(t, streamKey(t, ls).Prefix(), planKey(t, ls).prefix)
+	})
 }

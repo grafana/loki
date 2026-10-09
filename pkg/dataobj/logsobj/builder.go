@@ -793,16 +793,13 @@ func ComputeSchemaKey(ls labels.Labels, schemaLabels []string) (string, error) {
 	if len(schemaLabels) == 1 {
 		return resolveLabel(schemaLabels[0])
 	}
-	var b strings.Builder
+	values := make([]string, len(schemaLabels))
 	for i, fqn := range schemaLabels {
-		if i > 0 {
-			b.WriteByte(0)
-		}
 		s, err := resolveLabel(fqn)
 		if err != nil {
 			return "", err
 		}
-		b.WriteString(s)
+		values[i] = s
 	}
-	return b.String(), nil
+	return streams.EncodeSchemaKey(values), nil
 }
