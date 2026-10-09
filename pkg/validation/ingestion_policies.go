@@ -395,11 +395,10 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
-	// RejectPartialWrites, when true, makes the distributor reject the whole push with a 429 if any
-	// of its streams is rejected with a 429 (for example, by the stream limit), instead of writing
-	// the accepted streams and dropping only the rejected ones. It applies to any push containing at
-	// least one stream resolved to the policy, so clients that retry on 429 resend the full batch
-	// rather than a batch that was already partially written. It is not affected by inherit_limits.
+	// RejectPartialWrites is for rejecting the whole push with a 429 if
+	// any of its streams is rejected with a 429. It applies to any push
+	// containing at least one stream resolved to the policy. It is not
+	// affected by inherit_limits.
 	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
 
 	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value

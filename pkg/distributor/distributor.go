@@ -891,6 +891,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	// Reject the whole push with a 429 when a policy asks for it, instead of partially writing and sending a 429. 
 	if rejectPartialWrites && validationErr != nil {
+                // Partially accepted data still consumes the ratelimit/stream tokens.
 		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
 			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
 			return nil, validationErr
