@@ -207,6 +207,25 @@ func TestQueryStats_Merge(t *testing.T) {
 	require.Equal(t, int64(6), snap.TotalTermBatchesProcessed)
 }
 
+func TestQueryStats_EffectiveConcurrencyUsesSummedWorkOverWall(t *testing.T) {
+	day := func(work time.Duration) *QueryStats {
+		stats := NewQueryStats()
+		stats.totalWorkNanos.Store(work.Nanoseconds())
+		stats.SetWallTime(100 * time.Millisecond)
+		snap := stats.Snapshot()
+		return FromProtoStats(&snap)
+	}
+
+	combined := NewQueryStats()
+	combined.Merge(day(200 * time.Millisecond))
+	combined.Merge(day(300 * time.Millisecond))
+	combined.SetWallTime(150 * time.Millisecond)
+
+	snap := combined.Snapshot()
+	require.Equal(t, (500 * time.Millisecond).Nanoseconds(), snap.TotalWorkNanos)
+	require.Equal(t, float64(500*time.Millisecond)/float64(150*time.Millisecond), snap.EffectiveConcurrency)
+}
+
 func TestFromProtoStatsRoundTrip(t *testing.T) {
 	stats := NewQueryStats()
 	stats.headerReads.Add(1)
@@ -230,9 +249,15 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 
 	snap := stats.Snapshot()
 	require.Equal(t, 2.5, snap.EffectiveConcurrency)
+	require.Equal(t, (250 * time.Millisecond).Nanoseconds(), snap.TotalWorkNanos)
+
+	raw, err := snap.Marshal()
+	require.NoError(t, err)
+	var decoded logproto.HintQueryStats
+	require.NoError(t, decoded.Unmarshal(raw))
+	require.Equal(t, snap.TotalWorkNanos, decoded.TotalWorkNanos)
 
 	restored := FromProtoStats(&snap)
-	// QF overwrites wall after the hop; work is not on the proto.
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
 
@@ -245,7 +270,8 @@ func TestFromProtoStatsRoundTrip(t *testing.T) {
 	require.Equal(t, snap.TotalIOWait, got.TotalIOWait)
 	require.Equal(t, snap.TotalIOBytes, got.TotalIOBytes)
 	require.Equal(t, snap.PeakConcurrency, got.PeakConcurrency)
-	require.Equal(t, snap.EffectiveConcurrency, got.EffectiveConcurrency)
+	require.Equal(t, snap.TotalWorkNanos, got.TotalWorkNanos)
+	require.Equal(t, float64(snap.TotalWorkNanos)/float64(5*time.Second), got.EffectiveConcurrency)
 	require.Equal(t, snap.PrefetchCalls, got.PrefetchCalls)
 	require.Equal(t, snap.PrefetchTimeouts, got.PrefetchTimeouts)
 	require.Equal(t, snap.IndexQueriesTotal, got.IndexQueriesTotal)

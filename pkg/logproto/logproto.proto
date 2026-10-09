@@ -524,6 +524,7 @@ message HintQueryStats {
   string hint_cache_result = 19;
   int64 hint_cache_days_fetched = 20;
   int64 hint_cache_days_hit = 21;
+  int64 total_work_nanos = 22;
 }
 
 message LoglineIndexResponse {

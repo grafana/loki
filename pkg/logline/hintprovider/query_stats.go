@@ -297,6 +297,7 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 		HintCacheResult:           hintCacheResult,
 		HintCacheDaysFetched:      s.hintCacheDaysFetched.Load(),
 		HintCacheDaysHit:          s.hintCacheDaysHit.Load(),
+		TotalWorkNanos:            totalWorkNanos,
 	}
 }
 
@@ -328,6 +329,7 @@ func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	}
 	s.hintCacheDaysFetched.Store(p.HintCacheDaysFetched)
 	s.hintCacheDaysHit.Store(p.HintCacheDaysHit)
+	s.totalWorkNanos.Store(p.TotalWorkNanos)
 	return s
 }
 
