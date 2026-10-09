@@ -821,8 +821,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	flow := flowPostings
-	var reader ArrowRecordBatchReader = newPostingsIndexSectionsReader(
+	reader := newPostingsIndexSectionsReader(
 		m.logger,
 		idxObj,
 		req.SectionsRequest.Start,
@@ -832,11 +831,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.BatchSize,
 		req.SectionsRequest.ShardBucketRange,
 	)
-
-	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
-	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
-
-	return IndexSectionsReaderResponse{Reader: reader}, nil
+	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
