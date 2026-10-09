@@ -431,16 +431,16 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	}
 	skipped := Result{Index: Index{
 		LoglineSkippedRequests: 1,
-		LoglineTotalTime:       int64(time.Hour),
-		LoglineSkippedTime:     int64(time.Hour),
+		ShardPlannedChunks:     10,
 	}}
 	narrowed := Result{
 		Index: Index{
-			LoglineNarrowedRequests: 1,
-			LoglineTotalTime:        int64(time.Hour),
-			LoglineSkippedTime:      int64(40 * time.Minute),
+			LoglineNarrowedRequests:   1,
+			ShardPlannedChunks:        8,
+			ShardPlannedChunksScanned: 2,
 		},
-		Querier: Querier{Store: Store{LoglineChunkRefs: 8, LoglineFilteredChunks: 6}},
+		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
+		Ingester: Ingester{TotalChunksMatched: 3, Store: Store{TotalChunksScanned: 1}},
 	}
 
 	var res Result
@@ -457,19 +457,16 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	require.Equal(t, int64(30*time.Minute), res.Index.LoglineHintRangesDuration)
 	require.Equal(t, int64(1), res.Index.LoglineSkippedRequests)
 	require.Equal(t, int64(2), res.Index.LoglineNarrowedRequests)
-	require.Equal(t, int64(3*time.Hour), res.Index.LoglineTotalTime)
-	require.Equal(t, int64(140*time.Minute), res.Index.LoglineSkippedTime)
-	require.Equal(t, int64(16), res.LoglineChunkRefs())
-	require.Equal(t, int64(12), res.LoglineFilteredChunks())
+	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
+	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
+	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
 }
 
-func TestContext_LoglineChunkStats(t *testing.T) {
+func TestContext_ChunksScanned(t *testing.T) {
 	statsCtx, _ := NewContext(context.Background())
-	statsCtx.AddLoglineChunkRefs(10)
-	statsCtx.AddLoglineFilteredChunks(7)
-	res := statsCtx.Result(0, 0, 0)
-	require.Equal(t, int64(10), res.LoglineChunkRefs())
-	require.Equal(t, int64(7), res.LoglineFilteredChunks())
+	statsCtx.AddChunksScanned(10)
+	statsCtx.AddChunksScanned(7)
+	require.Equal(t, int64(17), statsCtx.Result(0, 0, 0).TotalChunksScanned())
 }
 
 func TestReset(t *testing.T) {

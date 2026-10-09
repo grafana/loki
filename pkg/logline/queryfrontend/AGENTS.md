@@ -55,11 +55,15 @@ filter middleware falls back to passthrough — it does not block or fail the qu
 ### Query stats
 
 Logline stats reach the frontend `metrics.go` line as `logline_*` fields through the
-response `Statistics` (`Index.Logline*`, `Store.Logline*`), not through counters on the
-prefetch result. The filter adds per-sub-request stats to the response it returns, so
-the split and shard merges sum them and discarded responses (retries, a canceled
-provisional query) drop them. The prefetch middleware adds the lookup-level stats to the
-final response.
+response `Statistics` (`Index.Logline*`), not through counters on the prefetch result.
+The filter adds the skipped and narrowed counts to the response it returns, so the split
+and shard merges sum them and discarded responses (retries, a canceled provisional query)
+drop them. The prefetch middleware adds the lookup-level stats to the final response.
+
+`logline_chunk_filter_ratio` compares `Index.ShardPlannedChunks`, the chunks shard
+planning estimated, with `Index.ShardPlannedChunksScanned`, the chunks scanned for the
+same requests (`Store.TotalChunksScanned` plus ingester matches). The shard middleware
+records both per split, so splits that bypass shard planning count toward neither.
 
 ## Files
 

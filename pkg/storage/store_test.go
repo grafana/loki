@@ -1566,7 +1566,7 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.False(t, it.Next())
 }
 
-func TestLokiStore_SelectLogs_CountsLoglineFilteredChunks(t *testing.T) {
+func TestLokiStore_SelectLogs_CountsChunksScanned(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:   config.DayTime{Time: 0},
 		Schema: "v11",
@@ -1595,10 +1595,9 @@ func TestLokiStore_SelectLogs_CountsLoglineFilteredChunks(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name             string
-		hintRanges       []logproto.HintTimeRange
-		expectedRefs     int64
-		expectedFiltered int64
+		name            string
+		hintRanges      []logproto.HintTimeRange
+		expectedScanned int64
 	}{
 		{
 			name: "hinted request",
@@ -1606,11 +1605,11 @@ func TestLokiStore_SelectLogs_CountsLoglineFilteredChunks(t *testing.T) {
 				{Start: at(0), End: at(3)},
 				{Start: at(8), End: at(11)},
 			},
-			expectedRefs:     3,
-			expectedFiltered: 1,
+			expectedScanned: 2,
 		},
 		{
-			name: "no hints",
+			name:            "no hints",
+			expectedScanned: 4,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1627,9 +1626,7 @@ func TestLokiStore_SelectLogs_CountsLoglineFilteredChunks(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, it.Close())
 
-			res := statsCtx.Result(0, 0, 0)
-			require.Equal(t, tc.expectedRefs, res.LoglineChunkRefs())
-			require.Equal(t, tc.expectedFiltered, res.LoglineFilteredChunks())
+			require.Equal(t, tc.expectedScanned, statsCtx.Result(0, 0, 0).TotalChunksScanned())
 		})
 	}
 }

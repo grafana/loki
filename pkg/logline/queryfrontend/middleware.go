@@ -166,32 +166,6 @@ func indexedHintDuration(ranges []hintprovider.HintTimeRange, start, end time.Ti
 	return hintCoverageDuration(indexed, start, end)
 }
 
-// loglineRequestStats is what one sub-request adds to the logline statistics.
-// It travels on the sub-request's response, so the split and shard merges add
-// it up and discarded responses (retries, canceled provisional queries) drop it.
-type loglineRequestStats struct {
-	skipped     bool
-	narrowed    bool
-	totalTime   time.Duration
-	skippedTime time.Duration
-}
-
-func (s loglineRequestStats) addTo(resp queryrangebase.Response) {
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	if !ok {
-		return
-	}
-	idx := &lokiResp.Statistics.Index
-	if s.skipped {
-		idx.LoglineSkippedRequests++
-	}
-	if s.narrowed {
-		idx.LoglineNarrowedRequests++
-	}
-	idx.LoglineTotalTime += s.totalTime.Nanoseconds()
-	idx.LoglineSkippedTime += s.skippedTime.Nanoseconds()
-}
-
 func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
 	if stats == nil {
 		return logValues
@@ -1043,7 +1017,6 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 
 	intervalStart := lokiReq.StartTs.UTC()
 	intervalEnd := lokiReq.EndTs.UTC()
-	originalDuration := intervalDuration(intervalStart, intervalEnd)
 
 	timer := time.NewTimer(h.hintTimeout)
 	defer timer.Stop()
@@ -1056,7 +1029,7 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		result.stats.ObservePrefetchCall(true)
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
-		return h.passthrough(ctx, req, originalDuration)
+		return h.next.Do(ctx, req)
 	}
 
 	if result.err != nil {
@@ -1066,76 +1039,48 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 			h.metrics.hintPassthrough.WithLabelValues("error").Inc()
 			level.Warn(logger).Log("msg", "hint provider error, passing through", "err", result.err)
 		}
-		return h.passthrough(ctx, req, originalDuration)
+		return h.next.Do(ctx, req)
 	}
 
 	if intervalEnd.After(result.ingesterCutoff) {
 		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
-		return h.passthrough(ctx, req, originalDuration)
+		return h.next.Do(ctx, req)
 	}
 
 	overlapping := rangesOverlapping(result.ranges, intervalStart, intervalEnd)
 	if len(overlapping) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq, originalDuration), nil
+		return skippedLokiResponse(lokiReq), nil
 	}
 
 	hints := clipHintRangesForInterval(overlapping, intervalStart, intervalEnd)
 	if len(hints) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq, originalDuration), nil
+		return skippedLokiResponse(lokiReq), nil
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
 	if passthroughCoversInterval(overlapping, hints, intervalStart, intervalEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
-		return h.passthrough(ctx, req, originalDuration)
+		return h.next.Do(ctx, req)
 	}
 
 	h.metrics.hintSubRequests.WithLabelValues("narrowed").Inc()
 	resp, err := h.next.Do(ctx, withHintRanges(lokiReq, hints))
-	if err != nil {
-		return resp, err
+	// The count travels on the sub-request's response, so the split and shard
+	// merges add it up and discarded responses (retries, canceled provisional
+	// queries) drop it.
+	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok && err == nil {
+		lokiResp.Statistics.Index.LoglineNarrowedRequests++
 	}
-	// Queriers look up chunks only between the first hint start and the last
-	// hint end, so the rest of the interval is skipped time.
-	loglineRequestStats{
-		narrowed:    true,
-		totalTime:   originalDuration,
-		skippedTime: originalDuration - hintSpan(hints),
-	}.addTo(resp)
-	return resp, nil
+	return resp, err
 }
 
-// passthrough forwards the sub-request unchanged. Its interval counts toward
-// the total time but none of it is skipped.
-func (h *loglineFilterHandler) passthrough(ctx context.Context, req queryrangebase.Request, originalDuration time.Duration) (queryrangebase.Response, error) {
-	resp, err := h.next.Do(ctx, req)
-	if err != nil {
-		return resp, err
-	}
-	loglineRequestStats{totalTime: originalDuration}.addTo(resp)
-	return resp, nil
-}
-
-func skippedLokiResponse(req *queryrange.LokiRequest, originalDuration time.Duration) *queryrange.LokiResponse {
+func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 	resp := emptyLokiResponse(req)
-	loglineRequestStats{
-		skipped:     true,
-		totalTime:   originalDuration,
-		skippedTime: originalDuration,
-	}.addTo(resp)
+	resp.Statistics.Index.LoglineSkippedRequests = 1
 	return resp
-}
-
-// hintSpan returns the time from the first hint start to the last hint end.
-// hints must be sorted and merged, as clipHintRangesForInterval returns them.
-func hintSpan(hints []logproto.HintTimeRange) time.Duration {
-	if len(hints) == 0 {
-		return 0
-	}
-	return intervalDuration(hints[0].Start, hints[len(hints)-1].End)
 }
 
 // withHintRanges clones the request and sets hint ranges. The caller's

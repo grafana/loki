@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -234,8 +235,23 @@ func TestAppendLoglineStats(t *testing.T) {
 		LoglineHintRangesDuration: (90 * time.Minute).Nanoseconds(),
 		LoglineSkippedRequests:    6,
 		LoglineNarrowedRequests:   2,
-		LoglineTotalTime:          (10 * time.Hour).Nanoseconds(),
-		LoglineSkippedTime:        (9 * time.Hour).Nanoseconds(),
+	}
+	withPlannedChunks := func(planned, scanned int64) stats.Result {
+		idx := loglineIndex
+		idx.ShardPlannedChunks = planned
+		idx.ShardPlannedChunksScanned = scanned
+		return stats.Result{Index: idx}
+	}
+	loglineFields := []interface{}{
+		"logline_hint_status", "ok",
+		"logline_hint_lookup_time", 150 * time.Millisecond,
+		"logline_hint_ranges", int64(3),
+		"logline_hint_ranges_duration", 90 * time.Minute,
+		"logline_skipped_requests", int64(6),
+		"logline_narrowed_requests", int64(2),
+	}
+	withRatio := func(ratio string) []interface{} {
+		return append(slices.Clone(loglineFields), "logline_chunk_filter_ratio", ratio)
 	}
 
 	for _, tc := range []struct {
@@ -245,44 +261,33 @@ func TestAppendLoglineStats(t *testing.T) {
 	}{
 		{
 			name:     "no hint lookup",
-			stats:    stats.Result{Index: stats.Index{TotalChunks: 10}},
+			stats:    stats.Result{Index: stats.Index{TotalChunks: 10, ShardPlannedChunks: 10}},
 			expected: []interface{}{},
 		},
 		{
-			name: "all fields",
-			stats: stats.Result{
-				Index: loglineIndex,
-				Querier: stats.Querier{Store: stats.Store{
-					LoglineChunkRefs:      30,
-					LoglineFilteredChunks: 20,
-				}},
-				Ingester: stats.Ingester{Store: stats.Store{
-					LoglineChunkRefs:      10,
-					LoglineFilteredChunks: 10,
-				}},
-			},
-			expected: []interface{}{
-				"logline_hint_status", "ok",
-				"logline_hint_lookup_time", 150 * time.Millisecond,
-				"logline_hint_ranges", int64(3),
-				"logline_hint_ranges_duration", 90 * time.Minute,
-				"logline_skipped_requests", int64(6),
-				"logline_narrowed_requests", int64(2),
-				"logline_skipped_time_ratio", "0.90",
-				"logline_chunk_filter_ratio", "0.75",
-			},
+			name:     "some chunks filtered",
+			stats:    withPlannedChunks(40, 10),
+			expected: withRatio("0.75"),
 		},
 		{
-			name:  "ratios omitted without denominators",
-			stats: stats.Result{Index: stats.Index{LoglineHintStatus: "incomplete"}},
-			expected: []interface{}{
-				"logline_hint_status", "incomplete",
-				"logline_hint_lookup_time", time.Duration(0),
-				"logline_hint_ranges", int64(0),
-				"logline_hint_ranges_duration", time.Duration(0),
-				"logline_skipped_requests", int64(0),
-				"logline_narrowed_requests", int64(0),
-			},
+			name:     "no chunks filtered",
+			stats:    withPlannedChunks(40, 40),
+			expected: withRatio("0.00"),
+		},
+		{
+			name:     "all chunks filtered",
+			stats:    withPlannedChunks(40, 0),
+			expected: withRatio("1.00"),
+		},
+		{
+			name:     "more chunks scanned than planned",
+			stats:    withPlannedChunks(40, 50),
+			expected: withRatio("0.00"),
+		},
+		{
+			name:     "ratio omitted without shard planning",
+			stats:    withPlannedChunks(0, 0),
+			expected: loglineFields,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

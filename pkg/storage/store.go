@@ -454,14 +454,10 @@ func (s *LokiStore) lazyChunks(
 		prefiltered += len(chks[i])
 		stats.AddChunksRef(int64(len(chks[i])))
 		chks[i] = filterChunksByTime(from, through, chks[i])
-		if hintRanges.Enabled() {
-			found := len(chks[i])
-			chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
-			stats.AddLoglineChunkRefs(int64(found))
-			stats.AddLoglineFilteredChunks(int64(found - len(chks[i])))
-		}
+		chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
 		filtered += len(chks[i])
 	}
+	stats.AddChunksScanned(int64(filtered))
 
 	if storeChunksOverride != nil {
 		s.chunkMetrics.refsBypassed.Add(float64(len(storeChunksOverride.Refs)))

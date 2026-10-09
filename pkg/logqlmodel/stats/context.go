@@ -305,8 +305,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
 	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
 	s.ChunkFetchFailures += m.ChunkFetchFailures
-	s.LoglineChunkRefs += m.LoglineChunkRefs
-	s.LoglineFilteredChunks += m.LoglineFilteredChunks
+	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -353,6 +352,8 @@ func (i *Index) Merge(m Index) {
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
+	i.ShardPlannedChunks += m.ShardPlannedChunks
+	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
 
 	// Lookup-level logline fields describe the one hint lookup for the whole
 	// query, so they are kept rather than summed.
@@ -370,8 +371,6 @@ func (i *Index) Merge(m Index) {
 	}
 	i.LoglineSkippedRequests += m.LoglineSkippedRequests
 	i.LoglineNarrowedRequests += m.LoglineNarrowedRequests
-	i.LoglineTotalTime += m.LoglineTotalTime
-	i.LoglineSkippedTime += m.LoglineSkippedTime
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -469,15 +468,10 @@ func (r Result) TotalChunkFetchFailures() int64 {
 	return r.Querier.Store.ChunkFetchFailures + r.Ingester.Store.ChunkFetchFailures
 }
 
-// LoglineChunkRefs returns the chunk refs found on requests with logline hint
-// ranges, before hint filtering.
-func (r Result) LoglineChunkRefs() int64 {
-	return r.Querier.Store.LoglineChunkRefs + r.Ingester.Store.LoglineChunkRefs
-}
-
-// LoglineFilteredChunks returns the chunk refs dropped by logline hint ranges.
-func (r Result) LoglineFilteredChunks() int64 {
-	return r.Querier.Store.LoglineFilteredChunks + r.Ingester.Store.LoglineFilteredChunks
+// TotalChunksScanned returns the chunks read from the store after time and
+// logline hint filtering, plus the chunks ingesters matched in memory.
+func (r Result) TotalChunksScanned() int64 {
+	return r.Querier.Store.TotalChunksScanned + r.Ingester.Store.TotalChunksScanned + r.Ingester.TotalChunksMatched
 }
 
 func (r Result) TotalDecompressedBytes() int64 {
@@ -584,16 +578,10 @@ func (c *Context) AddChunkFetchFailures(i int64) {
 	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
 }
 
-// AddLoglineChunkRefs counts chunk refs found on a request with logline hint
-// ranges, before the hint ranges filter them.
-func (c *Context) AddLoglineChunkRefs(i int64) {
-	atomic.AddInt64(&c.store.LoglineChunkRefs, i)
-}
-
-// AddLoglineFilteredChunks counts chunk refs dropped because they overlap no
-// logline hint range.
-func (c *Context) AddLoglineFilteredChunks(i int64) {
-	atomic.AddInt64(&c.store.LoglineFilteredChunks, i)
+// AddChunksScanned counts chunk refs left to read after time and logline hint
+// filtering.
+func (c *Context) AddChunksScanned(i int64) {
+	atomic.AddInt64(&c.store.TotalChunksScanned, i)
 }
 
 func (c *Context) AddIndexTotalChunkRefs(i int64) {

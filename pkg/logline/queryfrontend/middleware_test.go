@@ -1505,8 +1505,6 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	idx := resp.(*queryrange.LokiResponse).Statistics.Index
 	require.Zero(t, idx.LoglineSkippedRequests)
 	require.Zero(t, idx.LoglineNarrowedRequests)
-	require.Equal(t, (15 * time.Minute).Nanoseconds(), idx.LoglineTotalTime)
-	require.Zero(t, idx.LoglineSkippedTime)
 	require.Equal(t, int64(1), idx.LoglineHintRanges)
 	require.Zero(t, idx.LoglineHintRangesDuration, "the pre-min-date range has no index coverage")
 }
@@ -1571,8 +1569,8 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 
 	idx := resp.(*queryrange.LokiResponse).Statistics.Index
 	require.Equal(t, hintStatusIncomplete, idx.LoglineHintStatus, "the lookup was still running when the query returned")
-	require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineTotalTime)
-	require.Zero(t, idx.LoglineSkippedTime)
+	require.Zero(t, idx.LoglineSkippedRequests)
+	require.Zero(t, idx.LoglineNarrowedRequests)
 }
 
 func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
@@ -1617,10 +1615,6 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	require.NotNil(t, prefetchResult)
 	idx := resp.(*queryrange.LokiResponse).Statistics.Index
 	require.Equal(t, int64(1), idx.LoglineNarrowedRequests)
-	require.Equal(t, (59 * time.Minute).Nanoseconds(), idx.LoglineTotalTime)
-	// Queriers look up chunks from 12:05 to 12:52, so 12 of the 59 minutes are
-	// skipped. The gaps between hints show up in chunk filtering instead.
-	require.Equal(t, (12 * time.Minute).Nanoseconds(), idx.LoglineSkippedTime)
 	require.Equal(t, (5 * time.Minute).Nanoseconds(), idx.LoglineHintRangesDuration, "range duration is the sum of raw hint ranges")
 	require.Equal(t, 1.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("narrowed")))
 	require.Equal(t, 0.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("skipped")))
@@ -2000,11 +1994,7 @@ func TestPrefetchFilter_LoglineStatsAcrossSkipNarrowPassthrough(t *testing.T) {
 	require.Equal(t, int64(1), idx.LoglineHintRanges)
 	require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineHintRangesDuration)
 	require.Equal(t, int64(1), idx.LoglineSkippedRequests)
-	require.Equal(t, int64(1), idx.LoglineNarrowedRequests)
-	require.Equal(t, (5 * time.Hour).Nanoseconds(), idx.LoglineTotalTime)
-	// The skipped interval (1h), plus the narrowed interval outside its hint
-	// span (3h interval, 1h span). The ingester-window interval skips nothing.
-	require.Equal(t, (3 * time.Hour).Nanoseconds(), idx.LoglineSkippedTime)
+	require.Equal(t, int64(1), idx.LoglineNarrowedRequests, "the ingester-window passthrough is neither skipped nor narrowed")
 }
 
 func TestPrefetchFilter_AttachesLoglineStatsInsteadOfImpactLine(t *testing.T) {
@@ -2039,8 +2029,6 @@ func TestPrefetchFilter_AttachesLoglineStatsInsteadOfImpactLine(t *testing.T) {
 	require.Equal(t, (30 * time.Minute).Nanoseconds(), idx.LoglineHintRangesDuration)
 	require.Zero(t, idx.LoglineSkippedRequests)
 	require.Equal(t, int64(1), idx.LoglineNarrowedRequests)
-	require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineTotalTime)
-	require.Equal(t, (30 * time.Minute).Nanoseconds(), idx.LoglineSkippedTime)
 }
 
 func TestPrefetchFilter_LoglineHintStatus(t *testing.T) {
@@ -2074,7 +2062,6 @@ func TestPrefetchFilter_LoglineHintStatus(t *testing.T) {
 			require.NoError(t, err)
 			idx := resp.(*queryrange.LokiResponse).Statistics.Index
 			require.Equal(t, tc.want, idx.LoglineHintStatus)
-			require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineTotalTime, "every status still counts the request time")
 		})
 	}
 }

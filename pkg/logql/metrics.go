@@ -538,17 +538,12 @@ func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []int
 		"logline_skipped_requests", idx.LoglineSkippedRequests,
 		"logline_narrowed_requests", idx.LoglineNarrowedRequests,
 	)
-	// Missing when no sub-request reached the logline filter, for example
-	// when the results cache answered the whole query.
-	if idx.LoglineTotalTime > 0 {
-		ratio := float64(idx.LoglineSkippedTime) / float64(idx.LoglineTotalTime)
-		logValues = append(logValues, "logline_skipped_time_ratio", fmt.Sprintf("%.2f", ratio))
-	}
-	// Missing when no narrowed sub-request found chunk refs, for example when
-	// every sub-request was skipped.
-	if refs := stats.LoglineChunkRefs(); refs > 0 {
-		ratio := float64(stats.LoglineFilteredChunks()) / float64(refs)
-		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", ratio))
+	// Missing when no split went through shard planning, for example when the
+	// results cache answered the whole query. The planned chunks are an
+	// estimate, so more chunks than planned can be scanned.
+	if planned := idx.ShardPlannedChunks; planned > 0 {
+		ratio := 1 - float64(idx.ShardPlannedChunksScanned)/float64(planned)
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", min(max(ratio, 0), 1)))
 	}
 	return logValues
 }

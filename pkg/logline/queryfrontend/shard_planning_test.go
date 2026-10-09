@@ -192,8 +192,6 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	idx := resp.(*queryrange.LokiResponse).Statistics.Index
 	require.Equal(t, hintStatusOK, idx.LoglineHintStatus)
 	require.Equal(t, int64(1), idx.LoglineNarrowedRequests, "only the rerun's sub-request counts")
-	require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineTotalTime)
-	require.Equal(t, (55 * time.Minute).Nanoseconds(), idx.LoglineSkippedTime)
 }
 
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {
