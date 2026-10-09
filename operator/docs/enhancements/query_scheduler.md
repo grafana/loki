@@ -6,11 +6,11 @@ reviewers:
   - "@joaobravecoding @xperimental @cahartma"
 creation-date: 2026-09-29
 last-updated: 2026-09-29
-tracking-link:
-  - https://redhat.atlassian.net/browse/LOG-9664
+tracking-link: https://redhat.atlassian.net/browse/LOG-9664
 see-also: []
 replaces: []
 superseded-by: []
+proof-of-concept: https://github.com/grafana/loki/compare/main...btaani:query-scheduler-poc-code?expand=1
 ---
 
 # Query Scheduler: V2 Frontend Architecture
