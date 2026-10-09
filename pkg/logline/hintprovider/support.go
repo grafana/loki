@@ -1,6 +1,9 @@
 package hintprovider
 
 import (
+	"strings"
+
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logline/regexliteral"
@@ -28,6 +31,8 @@ import (
 //     filters that differ only in case share one needle
 //   - needles are matcher values only (never field names); value prefixes are
 //     not stripped
+//   - skip label filters on reserved `__*` names such as `__error__`
+//     (UsableLabelName). Loki sets those, so their values are not in the line.
 //   - skip post-parser values with `"`, `\`, or control bytes. The same
 //     filter can match a parsed field, a stream label, or SM, so we cannot
 //     assume the raw line used JSON/logfmt escapes.
@@ -277,8 +282,14 @@ func IsVerbatimLineLiteral(s string) bool {
 	return true
 }
 
+// UsableLabelName reports whether a label name is non-empty and not reserved.
+// Reserved `__*` names (e.g. `__error__`) are set by Loki, not read from the line.
+func UsableLabelName(name string) bool {
+	return name != "" && !strings.HasPrefix(name, model.ReservedLabelPrefix)
+}
+
 func extractMatcherLiterals(m *labels.Matcher) []string {
-	if m == nil {
+	if m == nil || !UsableLabelName(m.Name) {
 		return nil
 	}
 	switch m.Type {
