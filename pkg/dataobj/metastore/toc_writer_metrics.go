@@ -11,20 +11,6 @@ const (
 	opReplace    = "replace_index_pointers"
 )
 
-// status is the result label of the ToC writer metrics. The writer does not
-// write the ToC on statusAlreadyPresent and statusRaceLost.
-type status string
-
-const (
-	statusSuccess status = "success"
-	statusFailure status = "failure"
-	// statusAlreadyPresent means the ToC already held the change.
-	statusAlreadyPresent status = "already_present"
-	// statusRaceLost means the ToC held none of the paths that a replace
-	// removes, because another writer replaced them first.
-	statusRaceLost status = "race_lost"
-)
-
 // TocWriterMetrics instruments a [TableOfContentsWriter].
 type TocWriterMetrics struct {
 	changeAttemptSeconds *prometheus.HistogramVec
@@ -58,9 +44,9 @@ func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 	// Initialize each series to 0, otherwise neither the rate nor increase
 	// PromQL functions detect increases from 0 to 1.
 	for _, op := range []string{opWriteEntry, opReplace} {
-		for _, s := range []status{statusSuccess, statusFailure, statusAlreadyPresent, statusRaceLost} {
-			metrics.changeAttemptSeconds.WithLabelValues(op, string(s))
-			metrics.changeTotalSeconds.WithLabelValues(op, string(s))
+		for _, result := range []changeResult{changeFailed, changeWritten, changePresent, changeRaceLost} {
+			metrics.changeAttemptSeconds.WithLabelValues(op, string(result))
+			metrics.changeTotalSeconds.WithLabelValues(op, string(result))
 		}
 	}
 

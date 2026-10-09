@@ -239,35 +239,22 @@ type tocChange struct {
 	requireRemove bool
 }
 
-// changeResult is the result of applyChange.
-type changeResult int
+// changeResult is the result of applyChange. The ToC writer metrics use it as
+// the value of their result label.
+type changeResult string
 
 const (
 	// changeFailed means applyChange returned an error.
-	changeFailed changeResult = iota
+	changeFailed changeResult = "failed"
 	// changeWritten means applyChange wrote the change to the ToC.
-	changeWritten
+	changeWritten changeResult = "written"
 	// changePresent means the ToC already held the change, so applyChange
 	// wrote nothing.
-	changePresent
+	changePresent changeResult = "already_present"
 	// changeRaceLost means the change requires a removal and the ToC held
 	// none of the paths to remove, so applyChange wrote nothing.
-	changeRaceLost
+	changeRaceLost changeResult = "race_lost"
 )
-
-// status returns the metric label of r.
-func (r changeResult) status() status {
-	switch r {
-	case changeWritten:
-		return statusSuccess
-	case changePresent:
-		return statusAlreadyPresent
-	case changeRaceLost:
-		return statusRaceLost
-	default:
-		return statusFailure
-	}
-}
 
 // applyChange applies change to the tenant's ToC of window with a
 // conditional write. It retries a failed write with the backoff config of the
@@ -281,7 +268,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 	result := changeFailed
 	start := time.Now()
 	defer func() {
-		m.metrics.changeTotalSeconds.WithLabelValues(op, string(result.status())).Observe(time.Since(start).Seconds())
+		m.metrics.changeTotalSeconds.WithLabelValues(op, string(result)).Observe(time.Since(start).Seconds())
 	}()
 
 	tocPath := TableOfContentsPath(tenant, window)
@@ -316,7 +303,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 			result = changeFailed
 			level.Error(m.logger).Log("msg", "toc update failed", "op", op, "err", err, "tocPath", tocPath)
 		}
-		m.metrics.changeAttemptSeconds.WithLabelValues(op, string(result.status())).Observe(time.Since(attemptStart).Seconds())
+		m.metrics.changeAttemptSeconds.WithLabelValues(op, string(result)).Observe(time.Since(attemptStart).Seconds())
 
 		if result != changeFailed || errors.Is(err, errUnrecoverable) {
 			break
