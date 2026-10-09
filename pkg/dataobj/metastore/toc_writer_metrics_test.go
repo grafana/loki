@@ -15,7 +15,7 @@ func TestNewTocWriterMetrics(t *testing.T) {
 
 		for _, name := range []string{
 			"loki_metastore_toc_change_attempt_seconds",
-			"loki_metastore_toc_change_total_seconds",
+			"loki_metastore_toc_change_duration_seconds",
 		} {
 			count, err := testutil.GatherAndCount(reg, name)
 			require.NoError(t, err)

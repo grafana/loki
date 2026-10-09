@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -103,10 +102,6 @@ type TableOfContentsWriter struct {
 	logger         log.Logger
 	metrics        *TocWriterMetrics
 	builderMetrics *indexobj.BuilderMetrics
-
-	// buffers holds *bytes.Buffer values that hold an existing ToC during a
-	// change. A ToC can grow to tens of MiB, so the writer reuses them.
-	buffers sync.Pool
 }
 
 // NewTableOfContentsWriter creates a new Writer for adding entries to the
@@ -221,22 +216,20 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	}
 
 	result, err := m.applyChange(ctx, opReplace, tenant, window, tocChange{
-		remove:        remove,
-		add:           newEntries,
-		requireRemove: true,
+		remove: remove,
+		add:    newEntries,
 	})
 	return result == changeWritten, err
 }
 
 // tocChange is one change to a tenant's ToC. It removes the pointers whose
 // path is in remove, then adds the entries of add that the ToC does not hold.
+//
+// If remove is not empty, the change applies only if the ToC holds a path in
+// remove. A missing ToC holds no path, so such a change does not create it.
 type tocChange struct {
 	remove map[string]struct{}
 	add    []TableOfContentsEntry
-
-	// requireRemove makes the change apply only if the ToC holds a path in
-	// remove. A missing ToC holds no path, so the change does not create it.
-	requireRemove bool
 }
 
 // changeResult is the result of applyChange. The ToC writer metrics use it as
@@ -264,11 +257,11 @@ const (
 // An attempt can fail after its conditional write landed, for example when
 // the response is lost. The retry then finds the change in the ToC and
 // returns changePresent.
-func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant string, window time.Time, change tocChange) (changeResult, error) {
+func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenant string, window time.Time, change tocChange) (changeResult, error) {
 	result := changeFailed
 	start := time.Now()
 	defer func() {
-		m.metrics.changeTotalSeconds.WithLabelValues(op, string(result)).Observe(time.Since(start).Seconds())
+		m.metrics.changeDurationSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(start).Seconds())
 	}()
 
 	tocPath := TableOfContentsPath(tenant, window)
@@ -277,8 +270,10 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 		return changeFailed, err
 	}
 
+	var attempts int
 	b := backoff.New(ctx, m.backoffCfg)
 	for b.Ongoing() {
+		attempts++
 		attemptStart := time.Now()
 
 		err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
@@ -299,10 +294,12 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 			result = changeRaceLost
 			level.Info(m.logger).Log("msg", "toc update skipped: toc holds none of the paths to remove", "op", op, "tocPath", tocPath)
 		default:
+			// A failed attempt is often a conditional write that lost to
+			// another writer, which the next attempt resolves.
 			result = changeFailed
-			level.Error(m.logger).Log("msg", "toc update failed", "op", op, "err", err, "tocPath", tocPath)
+			level.Warn(m.logger).Log("msg", "toc update attempt failed", "op", op, "tocPath", tocPath, "attempt", attempts, "err", err)
 		}
-		m.metrics.changeAttemptSeconds.WithLabelValues(op, string(result)).Observe(time.Since(attemptStart).Seconds())
+		m.metrics.changeAttemptSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(attemptStart).Seconds())
 
 		if result != changeFailed || errors.Is(err, errUnrecoverable) {
 			break
@@ -311,10 +308,12 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 	}
 
 	// The loop ends with a failure on an unrecoverable error, after the last
-	// retry, or once ctx is done. ctx can be done before the first attempt,
+	// attempt, or once ctx is done. ctx can be done before the first attempt,
 	// when err is still nil.
 	if result == changeFailed {
-		return changeFailed, errors.Join(b.Err(), err)
+		err = errors.Join(b.Err(), err)
+		level.Error(m.logger).Log("msg", "toc update failed", "op", op, "tocPath", tocPath, "attempts", attempts, "err", err)
+		return changeFailed, err
 	}
 	return result, nil
 }
@@ -333,9 +332,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
 
-	buf := m.getBuffer()
-	defer m.buffers.Put(buf)
-
+	var buf bytes.Buffer
 	if existing != nil {
 		if _, err := buf.ReadFrom(existing); err != nil {
 			return nil, fmt.Errorf("reading existing ToC: %w", err)
@@ -374,7 +371,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	if change.requireRemove && removed == 0 {
+	if len(change.remove) > 0 && removed == 0 {
 		// The ToC is not written. If it holds every entry to add, an earlier
 		// swap already applied the change; otherwise the race is lost.
 		for _, entry := range change.add {
@@ -405,15 +402,6 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		return nil, errChangePresent
 	}
 	return flushToc(ctx, builder)
-}
-
-// getBuffer returns an empty buffer from the pool, or a new one.
-func (m *TableOfContentsWriter) getBuffer() *bytes.Buffer {
-	if buf, ok := m.buffers.Get().(*bytes.Buffer); ok {
-		buf.Reset()
-		return buf
-	}
-	return new(bytes.Buffer)
 }
 
 // forEachTocPointer calls fn for every pointer of every index pointers
