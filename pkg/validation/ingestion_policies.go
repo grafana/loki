@@ -395,6 +395,13 @@ type PolicyOverridableLimits struct {
 	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
 	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
 
+	// RejectPartialWrites, when true, makes the distributor reject the whole push with a 429 if any
+	// of its streams is rejected with a 429 (for example, by the stream limit), instead of writing
+	// the accepted streams and dropping only the rejected ones. It applies to any push containing at
+	// least one stream resolved to the policy, so clients that retry on 429 resend the full batch
+	// rather than a batch that was already partially written. It is not affected by inherit_limits.
+	RejectPartialWrites bool `yaml:"reject_partial_writes" json:"reject_partial_writes" doc:"hidden"`
+
 	// InheritLimits, when true, makes every unset limit field resolve to the tenant-level value
 	// while still reporting overridden=true, so the policy gets the same limits as the tenant but
 	// tracked in its own bucket. Explicitly set fields take precedence. It applies to
@@ -525,6 +532,13 @@ func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, 
 		rl.Burst = pl.PerStreamRateLimitBurst.Val()
 	}
 	return rl, true
+}
+
+// PolicyRejectPartialWrites returns whether pushes containing streams resolved to the policy must be
+// rejected as a whole instead of being partially written. See PolicyOverridableLimits.RejectPartialWrites.
+func (o *Overrides) PolicyRejectPartialWrites(userID, policy string) bool {
+	pl, ok := o.policyOverride(userID, policy)
+	return ok && pl.RejectPartialWrites
 }
 
 // PolicyShardStreams returns the effective shard_streams config for the policy (the tenant config
