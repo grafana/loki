@@ -4160,9 +4160,11 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
-# When enabled, the ingester skips stream count limit checks, delegating them
-# entirely to the ingest-limits service (Thor). Requires ingest-limits service
-# to be enabled.
+# Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead.
+# It provides the default for that limit, so the ingester skips stream count
+# limit checks for all tenants that do not set the per-tenant limit, delegating
+# them entirely to the ingest-limits service. Requires ingest-limits service to
+# be enabled.
 # CLI flag: -ingester.delegate-stream-limits-enabled
 [delegate_stream_limits_enabled: <boolean> | default = false]
 
@@ -4396,6 +4398,14 @@ discover_generic_fields:
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
 [use_owned_stream_count: <boolean> | default = false]
+
+# When enabled, the ingester skips stream count limit checks for the tenant,
+# delegating them entirely to the ingest-limits service. Requires ingest-limits
+# service to be enabled. When this limit is not set, the deprecated
+# ingester-wide setting -ingester.delegate-stream-limits-enabled provides its
+# default.
+# CLI flag: -limits.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -4712,6 +4722,11 @@ shard_streams:
   # 1536KB/s, it will be sharded into two streams.
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
+
+  # Maximum number of shards that my be produced by rateStore. The default of 0
+  # means unlimited.
+  # CLI flag: -shard-streams.max-shard-count
+  [max_shard_count: <int> | default = 0]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
   # for this tenant, and whether its answer is used. One of 'disabled' (default,

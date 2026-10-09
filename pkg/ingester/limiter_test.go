@@ -139,7 +139,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
-			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc, false)
+			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
 			actual := streamCountLimiter.AssertNewStreamAllowed("test", noPolicy)
 
 			assert.Equal(t, testData.expected, actual)
@@ -148,10 +148,17 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 }
 
 func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{
+	defaults := validation.Limits{
 		MaxLocalStreamsPerUser:  100,
 		MaxGlobalStreamsPerUser: 1000,
-	}, nil)
+		DelegateStreamLimits:    true,
+	}
+	enforcingTenantLimits := defaults
+	enforcingTenantLimits.DelegateStreamLimits = false
+	tenantLimits := fakeLimits{limits: map[string]*validation.Limits{
+		"enforcing-tenant": &enforcingTenantLimits,
+	}}
+	limits, err := validation.NewOverrides(defaults, tenantLimits)
 	require.NoError(t, err)
 
 	strategy := &fixedStrategy{localLimit: 100}
@@ -165,10 +172,11 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 		policyStreams:    newPolicyStreamCounts(),
 	}
 
-	scl := newStreamCountLimiter("test", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc, true)
-	err = scl.AssertNewStreamAllowed("test", noPolicy)
+	scl := newStreamCountLimiter("delegating-tenant", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
+	require.NoError(t, scl.AssertNewStreamAllowed("delegating-tenant", noPolicy), "stream count limit should be skipped when delegate_stream_limits_enabled is set")
 
-	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")
+	scl = newStreamCountLimiter("enforcing-tenant", defaultCountSupplier, newPolicyStreamCounts(), limiter, ownedStreamSvc)
+	require.Error(t, scl.AssertNewStreamAllowed("enforcing-tenant", noPolicy), "stream count limit should be enforced when the tenant overrides delegate_stream_limits_enabled to false")
 }
 
 func TestTenantBasedStrategy_PolicyRateLimit(t *testing.T) {
