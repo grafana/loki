@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -37,7 +36,6 @@ type Builder struct {
 	// Each section builder is nil until first use, and Reset sets it back to
 	// nil. NewBuilder does not create them, so a Builder is cheap to create.
 	streams       *streams.Builder
-	pointers      *pointers.Builder
 	indexPointers *indexpointers.Builder
 	stats         *stats.Builder
 	postings      *postings.Builder
@@ -139,7 +137,7 @@ func (b *Builder) AppendStat(objectPath string, sectionIdx int64,
 // aggregated internally. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 //
-// Unlike other section types (stats, pointers), postings are NOT flushed
+// Unlike other section types (stats, index pointers), postings are NOT flushed
 // mid-stream when they exceed TargetSectionSize. The aggregation model
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction).
@@ -163,6 +161,10 @@ func (b *Builder) PrepareBloomColumn(
 	shardBuckets int64,
 ) {
 	b.getPostingsBuilder().PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
+
+	// The prepared column gives a bloom posting even without observations, so
+	// the builder has data to flush.
+	b.state = builderStateDirty
 }
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
@@ -178,12 +180,6 @@ func (b *Builder) ObserveBloomPosting(obs postings.BloomObservation) error {
 
 	b.state = builderStateDirty
 	return nil
-}
-
-// BloomBytes returns the marshaled bloom filter bytes for a specific column.
-// Returns an error if the column has not been prepared via PrepareBloomColumn.
-func (b *Builder) BloomBytes(objectPath string, sectionIdx int64, columnName string) ([]byte, error) {
-	return b.getPostingsBuilder().BloomBytes(objectPath, sectionIdx, columnName)
 }
 
 func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
@@ -224,44 +220,6 @@ func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 	b.state = builderStateDirty
 
 	return streamID, nil
-}
-
-func (b *Builder) getPointersBuilder() *pointers.Builder {
-	if b.pointers == nil {
-		b.pointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-		b.pointers.SetTenant(b.tenant)
-	}
-	return b.pointers
-}
-
-// ObserveLogLine records a log line observation for a stream in the pointers section.
-func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
-	b.metrics.appendsTotal.Inc()
-
-	b.getPointersBuilder().ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
-
-	b.state = builderStateDirty
-	return nil
-}
-
-// AppendColumnIndex records a column index entry with bloom filter data in the pointers section.
-func (b *Builder) AppendColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
-	b.metrics.appendsTotal.Inc()
-
-	pointersBuilder := b.getPointersBuilder()
-
-	pointersBuilder.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
-	b.state = builderStateDirty
-
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if pointersBuilder.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(pointersBuilder); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // TimeRange returns the builder's tenant and the time range of the data in the
@@ -320,9 +278,6 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.streams != nil && b.streams.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.streams))
 	}
-	if b.pointers != nil && b.pointers.EstimatedSize() > 0 {
-		flushErrors = append(flushErrors, b.builder.Append(b.pointers))
-	}
 	if b.indexPointers != nil && b.indexPointers.EstimatedSize() > 0 {
 		flushErrors = append(flushErrors, b.builder.Append(b.indexPointers))
 	}
@@ -367,13 +322,6 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 				continue
 			}
 			errs = append(errs, b.metrics.indexPointers.Observe(ctx, indexPointerSection))
-		case pointers.CheckSection(sec):
-			pointerSection, err := pointers.Open(context.Background(), sec)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			errs = append(errs, b.metrics.pointers.Observe(ctx, pointerSection))
 		case streams.CheckSection(sec):
 			streamSection, err := streams.Open(context.Background(), sec)
 			if err != nil {
@@ -391,7 +339,6 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 func (b *Builder) Reset() {
 	b.builder.Reset()
 	b.streams = nil
-	b.pointers = nil
 	b.indexPointers = nil
 	b.stats = nil
 	b.postings = nil
