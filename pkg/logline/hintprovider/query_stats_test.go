@@ -219,6 +219,8 @@ func TestQueryStats_EffectiveConcurrencyUsesSummedWorkOverWall(t *testing.T) {
 	combined := NewQueryStats()
 	combined.Merge(day(200 * time.Millisecond))
 	combined.Merge(day(300 * time.Millisecond))
+	require.Equal(t, 0.0, combined.Snapshot().EffectiveConcurrency)
+
 	combined.SetWallTime(150 * time.Millisecond)
 
 	snap := combined.Snapshot()

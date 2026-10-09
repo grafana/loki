@@ -46,11 +46,10 @@ type QueryStats struct {
 	totalIOWaitNanos atomic.Int64
 	totalIOBytes     atomic.Int64
 
-	activeWorkers        atomic.Int32
-	peakConcurrency      atomic.Int32
-	totalWorkNanos       atomic.Int64
-	wallTimeNanos        atomic.Int64
-	effectiveConcurrency atomic.Float64
+	activeWorkers   atomic.Int32
+	peakConcurrency atomic.Int32
+	totalWorkNanos  atomic.Int64
+	wallTimeNanos   atomic.Int64
 
 	prefetchCalls    atomic.Int32
 	prefetchTimeouts atomic.Int32
@@ -201,28 +200,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 			break
 		}
 	}
-
-	otherWall := other.wallTimeNanos.Load()
-	for {
-		wall := s.wallTimeNanos.Load()
-		if otherWall <= wall {
-			break
-		}
-		if s.wallTimeNanos.CompareAndSwap(wall, otherWall) {
-			break
-		}
-	}
-
-	otherEffective := other.effectiveConcurrency.Load()
-	for {
-		effective := s.effectiveConcurrency.Load()
-		if otherEffective <= effective {
-			break
-		}
-		if s.effectiveConcurrency.CompareAndSwap(effective, otherEffective) {
-			break
-		}
-	}
 }
 
 func (s *QueryStats) observeRead(readType trackedReadType, bytesRead int, waited time.Duration) {
@@ -268,8 +245,8 @@ func (s *QueryStats) Snapshot() logproto.HintQueryStats {
 
 	totalWorkNanos := s.totalWorkNanos.Load()
 	wallTimeNanos := s.wallTimeNanos.Load()
-	effective := s.effectiveConcurrency.Load()
-	if totalWorkNanos > 0 && wallTimeNanos > 0 {
+	effective := 0.0
+	if wallTimeNanos > 0 {
 		effective = float64(totalWorkNanos) / float64(wallTimeNanos)
 	}
 
@@ -316,7 +293,6 @@ func FromProtoStats(p *logproto.HintQueryStats) *QueryStats {
 	s.totalIOWaitNanos.Store(p.TotalIOWait.Nanoseconds())
 	s.totalIOBytes.Store(p.TotalIOBytes)
 	s.peakConcurrency.Store(p.PeakConcurrency)
-	s.effectiveConcurrency.Store(p.EffectiveConcurrency)
 	s.prefetchCalls.Store(p.PrefetchCalls)
 	s.prefetchTimeouts.Store(p.PrefetchTimeouts)
 	s.indexQueriesTotal.Store(p.IndexQueriesTotal)
