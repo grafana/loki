@@ -44,9 +44,8 @@ type logsIndexCalculation interface {
 }
 
 type logsCalculationContext struct {
-	objectPath     string
-	sectionIdx     int64
-	streamIDLookup map[int64]int64
+	objectPath string
+	sectionIdx int64
 	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
 	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
 	// be a problem.
@@ -58,7 +57,6 @@ type logsCalculationContext struct {
 // These steps are applied to all logs and are unique to a section
 func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 	return []logsIndexCalculation{
-		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
 		&statsCalculation{schema: sortSchema},
 		&labelPostingsCalculation{},
@@ -66,7 +64,7 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 }
 
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
-// It reads data from the logs object in order to build bloom filters and per-section stream metadata.
+// It reads data from the logs object in order to build the postings and stats of each logs section.
 // Calculator is bound to a single tenant.
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
@@ -116,10 +114,9 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return fmt.Errorf("path=%s: %w", objectPath, err)
 	}
 
-	// Process the streams section first, so that every stream has its new ID
-	// in the builder before the logs sections refer to it.
-	streamIDLookup := make(map[int64]int64)
-	streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection, streamIDLookup)
+	// Process the streams section first, because the logs sections need the
+	// labels and shard bucket of each stream.
+	streamLabels, shardBuckets, err := c.processStreamsSection(ctx, streamsSection)
 	if err != nil {
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
@@ -131,7 +128,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			sectionLogger := log.With(logger, "section", i)
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup, streamLabels, shardBuckets); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamLabels, shardBuckets); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
@@ -155,7 +152,7 @@ func singleStreamsSection(reader *dataobj.Object) (*dataobj.Section, error) {
 	return found, nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) (map[int64]labels.Labels, map[int64]uint32, error) {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) (map[int64]labels.Labels, map[int64]uint32, error) {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open stream section: %w", err)
@@ -180,11 +177,9 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			break
 		}
 		for _, stream := range streamBuf[:n] {
-			newStreamID, err := c.indexobjBuilder.AppendStream(stream)
-			if err != nil {
+			if _, err := c.indexobjBuilder.AppendStream(stream); err != nil {
 				return nil, nil, fmt.Errorf("failed to append to stream: %w", err)
 			}
-			streamIDLookup[stream.ID] = newStreamID
 			if _, ok := streamLabels[stream.ID]; !ok {
 				streamLabels[stream.ID] = stream.Labels
 				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
@@ -196,7 +191,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
 	logsBuf := make([]logs.Record, 8192)
 
 	logsSection, err := logs.Open(ctx, section)
@@ -218,7 +213,6 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	calculationContext := &logsCalculationContext{
 		objectPath:         objectPath,
 		sectionIdx:         sectionIdx,
-		streamIDLookup:     streamIDLookup,
 		streamLabels:       streamLabels,
 		streamShardBuckets: shardBuckets,
 		builder:            c.indexobjBuilder,

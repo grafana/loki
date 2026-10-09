@@ -76,8 +76,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
 		case pointers.CheckSection(sec):
-			// Pointers sections may exist for fresh indexes until this section is no longer built.
-			// The compactor does not support them.
+			// Index objects built before the index builder stopped writing
+			// pointers sections still hold them. The compactor does not support them.
 			continue
 		case streams.CheckSection(sec):
 			// Streams sections may exist for fresh indexes until this section is no longer built.

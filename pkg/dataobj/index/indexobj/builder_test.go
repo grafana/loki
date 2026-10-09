@@ -59,20 +59,22 @@ func TestBuilder(t *testing.T) {
 		},
 	}
 
-	testPointers := []pointers.SectionPointer{
+	testPostings := []postings.LabelObservation{
 		{
-			Path:              "test/path",
-			Section:           1,
-			ColumnName:        "foo",
-			ColumnIndex:       1,
-			ValuesBloomFilter: []byte{1, 2, 3},
+			ObjectPath:   "test/path",
+			SectionIndex: 1,
+			ColumnName:   "app",
+			LabelValue:   "foo",
+			StreamID:     1,
+			Timestamp:    time.Unix(10, 0).UTC(),
 		},
 		{
-			Path:              "test/path2",
-			Section:           2,
-			ColumnName:        "bar2",
-			ColumnIndex:       2,
-			ValuesBloomFilter: []byte{1, 2, 3, 4},
+			ObjectPath:   "test/path2",
+			SectionIndex: 2,
+			ColumnName:   "app",
+			LabelValue:   "bar",
+			StreamID:     2,
+			Timestamp:    time.Unix(15, 0).UTC(),
 		},
 	}
 
@@ -84,9 +86,8 @@ func TestBuilder(t *testing.T) {
 			_, err := builder.AppendStream(stream)
 			require.NoError(t, err)
 		}
-		for _, pointer := range testPointers {
-			err := builder.AppendColumnIndex(pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
-			require.NoError(t, err)
+		for _, obs := range testPostings {
+			builder.ObserveLabelPosting(obs)
 		}
 
 		obj, closer, err := builder.Flush()
@@ -94,7 +95,8 @@ func TestBuilder(t *testing.T) {
 		defer closer.Close()
 
 		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(postings.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
 		require.Equal(t, []string{testTenant}, obj.Tenants())
@@ -140,33 +142,6 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		pointerCount++
 	}
 	require.Greater(t, pointerCount, 0)
-}
-
-func TestBuilder_ObserveLogLine(t *testing.T) {
-	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
-
-	err = builder.ObserveLogLine("test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
-	require.NoError(t, err)
-
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-	require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
-}
-
-func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
-	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(b, err)
-
-	const streamCount = 1000
-
-	for b.Loop() {
-		for i := range int64(streamCount) {
-			err := builder.ObserveLogLine("test/path", 1, i, i, time.Unix(10, 0).UTC(), 100)
-			require.NoError(b, err)
-		}
-	}
 }
 
 func TestBuilder_TimeRange(t *testing.T) {
