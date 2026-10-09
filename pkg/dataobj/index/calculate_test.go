@@ -45,7 +45,8 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 
-	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per index object to maintain state.
+	// TargetSectionSize is 1 byte, so each AppendStat call cuts a new stats
+	// section.
 	TargetSectionSize: 1,
 }
 
@@ -336,13 +337,12 @@ func TestCalculator_Calculate(t *testing.T) {
 	})
 }
 
-// newMultiSectionSource returns a data object with several logs sections.
+// newMultiSectionSource returns a data object with at least two logs sections.
 func newMultiSectionSource(t *testing.T) *dataobj.Object {
 	t.Helper()
 
 	source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
 	t.Cleanup(cleanup)
-	require.GreaterOrEqual(t, source.Sections().Count(logs.CheckSection), 2)
 	return source
 }
 
@@ -352,9 +352,10 @@ func newMultiSectionSource(t *testing.T) *dataobj.Object {
 // the errgroup in Calculate runs one section at a time, so the order of builder
 // writes cannot change.
 //
-// A target section size of 1 byte makes the index builder cut a stats section
-// on each append. The flush order then decides which rows each stats section
-// holds.
+// calculateConcurrently sets the target section size to 1 byte itself, so the
+// test does not depend on that value in the shared test config. Each
+// AppendStat call then cuts a stats section, and the flush order decides which
+// rows each stats section holds.
 func calculateConcurrently(t *testing.T, source *dataobj.Object) *dataobj.Object {
 	t.Helper()
 
