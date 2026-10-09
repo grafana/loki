@@ -272,6 +272,10 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 	metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse)
 	metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue)
 
+	for _, result := range []string{resultSuccess, resultError, resultCanceled, resultDeadlineExceeded} {
+		metrics.getIndexesTotalDuration.WithLabelValues(result)
+	}
+
 	metrics.register(reg)
 
 	return metrics

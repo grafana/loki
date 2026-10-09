@@ -26,6 +26,12 @@ func TestTableOfContentsMetrics_WriteStatusesInitialized(t *testing.T) {
 	`), "loki_metastore_toc_writes_total"))
 }
 
+func TestObjectMetastoreMetrics_GetIndexesResultsInitialized(t *testing.T) {
+	metrics := NewObjectMetastoreMetrics(nil)
+
+	require.Equal(t, 4, testutil.CollectAndCount(metrics.getIndexesTotalDuration))
+}
+
 func TestGetIndexesResult(t *testing.T) {
 	t.Run("returns success when there is no error", func(t *testing.T) {
 		require.Equal(t, resultSuccess, getIndexesResult(nil))
