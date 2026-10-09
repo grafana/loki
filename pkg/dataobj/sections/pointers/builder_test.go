@@ -158,39 +158,78 @@ func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
 }
 
 func TestBuilder_Flush(t *testing.T) {
-	t.Run("writes the same bytes when pointers with the same stream ID and column index arrive in another order", func(t *testing.T) {
-		type observation func(b *Builder)
-		observations := []observation{
-			func(b *Builder) { b.ObserveStream("obj", 0, 1, 7, time.Unix(10, 0), 5) },
-			func(b *Builder) { b.ObserveStream("obj", 1, 1, 7, time.Unix(20, 0), 6) },
-			func(b *Builder) { b.ObserveStream("obj", 2, 1, 7, time.Unix(30, 0), 7) },
-			func(b *Builder) { b.RecordColumnIndex("obj", 0, "trace_id", 3, []byte{0x01}) },
-			func(b *Builder) { b.RecordColumnIndex("obj", 1, "trace_id", 3, []byte{0x02}) },
-			func(b *Builder) { b.RecordColumnIndex("obj", 2, "trace_id", 3, []byte{0x03}) },
-		}
+	// sortKey holds the SectionPointer fields that sortPointerObjects compares.
+	type sortKey struct {
+		kind        PointerKind
+		streamID    int64
+		columnIndex int64
+		path        string
+		section     int64
+		streamIDRef int64
+		columnName  string
+	}
 
-		build := func(order []observation) []byte {
-			builder := NewBuilder(nil, 1024, 0)
-			for _, observe := range order {
-				observe(builder)
+	// For each tie-break field, one pair of neighbours differs only in that
+	// field and the fields after it. So each tie-break must work for the
+	// output to be in this order.
+	sorted := []sortKey{
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 2},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 1, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "b", section: 0, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 2, path: "a", section: 0, streamIDRef: 3},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 0, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 0, columnName: "y"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 1, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "b", section: 0, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 2, path: "a", section: 0, columnName: "x"},
+	}
+
+	flush := func(t *testing.T, input []sortKey) []sortKey {
+		t.Helper()
+
+		builder := NewBuilder(nil, 1024, 0)
+		for _, k := range input {
+			if k.kind == PointerKindStreamIndex {
+				builder.ObserveStream(k.path, k.section, k.streamIDRef, k.streamID, time.Unix(10, 0), 5)
+			} else {
+				builder.RecordColumnIndex(k.path, k.section, k.columnName, k.columnIndex, []byte{0x01})
 			}
-			obj, closer, err := buildObject(builder)
-			require.NoError(t, err)
-			defer closer.Close()
-
-			reader, err := obj.Reader(context.Background())
-			require.NoError(t, err)
-			defer reader.Close()
-			data, err := io.ReadAll(reader)
-			require.NoError(t, err)
-			return data
 		}
+		obj, closer, err := buildObject(builder)
+		require.NoError(t, err)
+		defer closer.Close()
 
-		reversed := slices.Clone(observations)
+		var got []sortKey
+		for result := range Iter(context.Background(), obj) {
+			pointer, err := result.Value()
+			require.NoError(t, err)
+			got = append(got, sortKey{
+				kind:        pointer.PointerKind,
+				streamID:    pointer.StreamID,
+				columnIndex: pointer.ColumnIndex,
+				path:        pointer.Path,
+				section:     pointer.Section,
+				streamIDRef: pointer.StreamIDRef,
+				columnName:  pointer.ColumnName,
+			})
+		}
+		return got
+	}
+
+	t.Run("sorts pointers by kind, key and every tie-break field when they arrive in reverse order", func(t *testing.T) {
+		reversed := slices.Clone(sorted)
 		slices.Reverse(reversed)
 
-		want := build(observations)
-		got := build(reversed)
-		require.Equal(t, want, got)
+		require.Equal(t, sorted, flush(t, reversed))
+	})
+
+	t.Run("sorts pointers by kind, key and every tie-break field when kinds arrive interleaved", func(t *testing.T) {
+		var interleaved []sortKey
+		for i := range len(sorted) / 2 {
+			interleaved = append(interleaved, sorted[len(sorted)-1-i], sorted[i])
+		}
+
+		require.Equal(t, sorted, flush(t, interleaved))
 	})
 }

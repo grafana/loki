@@ -1,12 +1,12 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -227,40 +227,40 @@ func TestCalculator_Calculate(t *testing.T) {
 		requireValidPointers(t, obj)
 	})
 
-	t.Run("builds byte-identical index objects with one key from the same multi-section object", func(t *testing.T) {
-		prevProcs := runtime.GOMAXPROCS(max(runtime.GOMAXPROCS(0), 4))
-		t.Cleanup(func() { runtime.GOMAXPROCS(prevProcs) })
+	t.Run("builds the same index object key on each rebuild of a multi-section object", func(t *testing.T) {
+		source := newMultiSectionSource(t)
 
-		source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
-		t.Cleanup(cleanup)
-		require.Greater(t, source.Sections().Count(logs.CheckSection), runtime.GOMAXPROCS(0))
-
-		build := func() (string, []byte) {
-			indexBuilder, err := indexobj.NewBuilder(benchTenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
-			require.NoError(t, err)
-			calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
-			require.NoError(t, calculator.Calculate(context.Background(), logger, source, "test/path"))
-
-			obj, closer, _, err := calculator.Flush()
-			require.NoError(t, err)
-			defer closer.Close()
+		wantKey := ""
+		for i := range 11 {
+			obj := calculateConcurrently(t, source)
+			if i == 0 {
+				// Pointers and stats rows of several logs sections must share
+				// index sections. Otherwise the flush order cannot change the
+				// bytes, and the test cannot detect an unordered flush.
+				require.Greater(t, obj.Sections().Count(pointers.CheckSection), 1)
+				require.Greater(t, obj.Sections().Count(stats.CheckSection), 1)
+			}
 
 			key, err := ObjectKey(context.Background(), obj)
 			require.NoError(t, err)
-			reader, err := obj.Reader(context.Background())
-			require.NoError(t, err)
-			defer reader.Close()
-			data, err := io.ReadAll(reader)
-			require.NoError(t, err)
-			return key, data
+			if i == 0 {
+				wantKey = key
+				continue
+			}
+			require.Equal(t, wantKey, key, "object key differs on rebuild %d", i)
 		}
+	})
 
-		wantKey, wantData := build()
-		for i := range 10 {
-			gotKey, gotData := build()
-			require.Equal(t, wantKey, gotKey, "object key differs on rebuild %d", i)
-			require.True(t, bytes.Equal(wantData, gotData), "object bytes differ on rebuild %d", i)
+	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		rows := readAllStatsRows(t, obj)
+		require.NotEmpty(t, rows)
+		sectionIndexes := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			sectionIndexes = append(sectionIndexes, row["section_index.int64"].(int64))
 		}
+		require.True(t, slices.IsSorted(sectionIndexes), "section indexes are not sorted: %v", sectionIndexes)
 	})
 
 	t.Run("returns ErrNotSingleTenant and leaves the builder empty when the object holds several tenants", func(t *testing.T) {
@@ -334,6 +334,44 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.ErrorContains(t, err, "no streams section")
 		requireEmptyCalculator(t, calculator, indexBuilder)
 	})
+}
+
+// newMultiSectionSource returns a data object with several logs sections.
+func newMultiSectionSource(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
+	t.Cleanup(cleanup)
+	require.GreaterOrEqual(t, source.Sections().Count(logs.CheckSection), 2)
+	return source
+}
+
+// calculateConcurrently builds the index object of source with 4 workers.
+//
+// A fixed GOMAXPROCS makes the test behave the same on each machine. With 1,
+// the errgroup in Calculate runs one section at a time, so the order of builder
+// writes cannot change.
+//
+// A target section size of 1 byte makes the index builder cut a pointers or
+// stats section on each append. The flush order then decides which rows each
+// index section holds.
+func calculateConcurrently(t *testing.T, source *dataobj.Object) *dataobj.Object {
+	t.Helper()
+
+	prevProcs := runtime.GOMAXPROCS(4)
+	defer runtime.GOMAXPROCS(prevProcs)
+
+	cfg := testCalculatorConfig
+	cfg.TargetSectionSize = 1
+	indexBuilder, err := indexobj.NewBuilder(benchTenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), source, "test/path"))
+
+	obj, closer, _, err := calculator.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return obj
 }
 
 // requireEmptyCalculator checks that calculator and its builder hold no data.
