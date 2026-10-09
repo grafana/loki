@@ -89,7 +89,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		rejectedPartialWrites: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_rejected_partial_writes_total",
-			Help:      "The total number of push requests rejected as a whole with a 429 instead of being partially written, because they contained streams of a policy with reject_partial_writes enabled. The policy label is the first such policy seen in the push.",
+			Help:      "The total number of push requests rejected as a whole with a 429 instead of being partially written, because they contained streams of a policy with reject_partial_writes enabled.",
 		}, []string{"tenant", "policy"}),
 
 		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

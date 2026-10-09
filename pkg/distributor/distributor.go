@@ -889,10 +889,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return nil, validationErr
 	}
 
-	// Reject the whole push instead of partially writing it when a policy asks for it, so a
-	// client retrying on 429 resends a batch of which nothing was written yet. Only 429s are
-	// considered: other errors (e.g. 400s) are not retried by clients, so rejecting the whole push
-	// on them would drop the valid streams for good.
+	// Reject the whole push with a 429 when a policy asks for it, instead of partially writing and sending a 429. 
 	if rejectPartialWrites && validationErr != nil {
 		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
 			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
