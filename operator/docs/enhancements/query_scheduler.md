@@ -129,9 +129,9 @@ For each LokiStack the operator will additionally create:
 
 Loki supports two ways for frontends and queriers to find schedulers:
 
-1. **Static address** — set `frontend.scheduler_address` and `frontend_worker.scheduler_address`
+1. **Static address**: set `frontend.scheduler_address` and `frontend_worker.scheduler_address`
    to a fixed service FQDN.
-2. **Ring-based discovery** — set `query_scheduler.use_scheduler_ring: true`; schedulers
+2. **Ring-based discovery** (default): set `query_scheduler.use_scheduler_ring: true`; schedulers
    advertise themselves via the memberlist gossip ring and are discovered dynamically.
 
 The operator uses static address to stay consistent with existing patterns, every other inter-component address in the operator (compactor_grpc_address, tail_proxy_url, index_gateway_client.server_address) uses a static service FQDN that the operator constructs itself.
@@ -161,10 +161,6 @@ The query-scheduler is stateless and can be deployed as a `Deployment`.
 
 #### Replication Factor
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
-
-#### Replica Counts
-
-The query-scheduler replica count does **not** need to match the query-frontend or querier replica counts. Each is governed by a different constraint.
 
 
 ### Risks and Mitigations
