@@ -61,6 +61,10 @@ func (c cmdable) BLMPop(ctx context.Context, timeout time.Duration, direction st
 	}
 	args = append(args, strings.ToLower(direction), "count", count)
 	cmd := NewKeyValuesCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(3)
+	}
 	cmd.setReadTimeout(timeout)
 	_ = c(ctx, cmd)
 	return cmd
@@ -114,6 +118,10 @@ func (c cmdable) LMPop(ctx context.Context, direction string, count int64, keys 
 	}
 	args = append(args, strings.ToLower(direction), "count", count)
 	cmd := NewKeyValuesCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(2)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }

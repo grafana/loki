@@ -107,7 +107,6 @@ func (c cmdable) GeoSearchLocation(
 ) *GeoSearchLocationCmd {
 	args := make([]interface{}, 0, 16)
 	args = append(args, "geosearch", key)
-	args = geoSearchLocationArgs(q, args)
 	cmd := NewGeoSearchLocationCmd(ctx, q, args...)
 	_ = c(ctx, cmd)
 	return cmd

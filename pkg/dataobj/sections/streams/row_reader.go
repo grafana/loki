@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"slices"
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -349,11 +350,8 @@ func convertStreamsTimePredicate(p TimeRangeRowPredicate, minColumn, maxColumn d
 // when no IDs are requested, so the caller applies no filter, and a FalsePredicate when the
 // section carries no stream-ID column and therefore holds none of them.
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, actual []*Column) dataset.Predicate {
-	var values []dataset.Value
-	for id := range ids {
-		values = append(values, dataset.Int64Value(id))
-	}
-	if len(values) == 0 {
+	members := slices.Collect(ids)
+	if len(members) == 0 {
 		return nil
 	}
 
@@ -366,7 +364,7 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, actual []*
 
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		Values: dataset.NewInt64ValueSetOf(members...),
 	}
 }
 

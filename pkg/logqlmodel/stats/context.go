@@ -83,6 +83,7 @@ const (
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
 	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
+	DataObjMetadataCache      CacheType = "dataobj-metadata"      //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context

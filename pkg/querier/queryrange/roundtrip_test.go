@@ -1700,3 +1700,75 @@ func (f *fakeHandler) Do(ctx context.Context, req base.Request) (base.Response, 
 func toMs(t time.Time) int64 {
 	return t.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
+
+type mutableCacheGenNumberLoader struct {
+	mtx sync.Mutex
+	gen string
+}
+
+func (l *mutableCacheGenNumberLoader) GetResultsCacheGenNumber(_ []string) string {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	return l.gen
+}
+
+func (l *mutableCacheGenNumberLoader) setGen(gen string) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.gen = gen
+}
+
+func (l *mutableCacheGenNumberLoader) Stop() {}
+
+// TestLogFilterTripperwareCacheGenNumber ensures that empty log results cached by the log result cache
+// are invalidated when the results cache generation number changes (e.g. after a delete request is cancelled).
+func TestLogFilterTripperwareCacheGenNumber(t *testing.T) {
+	var l Limits = fakeLimits{
+		maxQueryParallelism: 1,
+		splitDuration:       map[string]time.Duration{"1": time.Hour},
+	}
+	genLoader := &mutableCacheGenNumberLoader{gen: "1"}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, genLoader, true, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"} |= "foo"`,
+		Limit:     1000,
+		StartTs:   testTime.Add(-time.Hour).Truncate(time.Hour),
+		EndTs:     testTime.Truncate(time.Hour),
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
+	}
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	queryCount, queryHandler := promqlResult(logqlmodel.Streams{})
+	// queriers report the cache gen number they saw in the response headers.
+	queryHandler = base.CacheGenNumberContextSetterMiddleware(genLoader).Wrap(queryHandler)
+	h := tpw.Wrap(getQueryAndStatsHandler(queryHandler, statsHandler))
+
+	// first query is a cache miss and stores the empty result.
+	_, err = h.Do(ctx, lreq)
+	require.NoError(t, err)
+	require.Equal(t, 1, *queryCount)
+
+	// same query with the same generation is served from the cache.
+	_, err = h.Do(ctx, lreq)
+	require.NoError(t, err)
+	require.Equal(t, 1, *queryCount)
+
+	// changing the generation must invalidate the cached empty result.
+	genLoader.setGen("2")
+	_, err = h.Do(ctx, lreq)
+	require.NoError(t, err)
+	require.Equal(t, 2, *queryCount, "cached empty result should be invalidated after cache generation change")
+
+	// and the result for the new generation is cached again.
+	_, err = h.Do(ctx, lreq)
+	require.NoError(t, err)
+	require.Equal(t, 2, *queryCount)
+}

@@ -1,10 +1,6 @@
 package redis
 
-import (
-	"context"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
-)
+import "context"
 
 // SetCmdable is an interface for Redis set commands.
 // Sets are unordered collections of unique strings.
@@ -172,6 +168,10 @@ func (c cmdable) SInterCard(ctx context.Context, limit int64, keys ...string) *I
 	args[2+numKeys] = "limit"
 	args[3+numKeys] = limit
 	cmd := NewIntCmd(ctx, args...)
+	// The key follows numkeys, not args[1]: route by it.
+	if len(keys) > 0 {
+		cmd.SetFirstKeyPos(2)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -412,9 +412,6 @@ func (c cmdable) SScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }

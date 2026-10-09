@@ -1630,3 +1630,39 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawPostings, "output must contain a postings section")
 	require.True(t, sawStats, "output must contain a stats section")
 }
+
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+type recordingIndexMergeObserver struct {
+	tenants                            []string
+	compressedSizes, uncompressedSizes []int64
+}
+
+func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.tenants = append(o.tenants, tenant)
+	o.compressedSizes = append(o.compressedSizes, compressedBytes)
+	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
+	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		attrs, err := bucket.Attributes(ctx, artifact.Path)
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-1"}, observer.tenants)
+		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+		require.Positive(t, observer.uncompressedSizes[0])
+	})
+}

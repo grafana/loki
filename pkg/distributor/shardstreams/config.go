@@ -39,6 +39,8 @@ type Config struct {
 	// Expected to be in bytes.
 	DesiredRate flagext.ByteSize `yaml:"desired_rate" json:"desired_rate" doc:"description=Threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded into two streams."`
 
+	MaxShardCount int `yaml:"max_shard_count" json:"max_shard_count"`
+
 	// LimitsServiceStreamShardingMode controls whether the ingest-limits
 	// service is asked for a shard count as well, and whether its answer is
 	// used.
@@ -54,6 +56,9 @@ type Config struct {
 
 // Validate returns an error if cfg is invalid.
 func (cfg *Config) Validate() error {
+	if cfg.MaxShardCount < 0 {
+		return fmt.Errorf("invalid max_shard_count: %d must not be negative", cfg.MaxShardCount)
+	}
 	if cfg.LimitsServiceStreamShardingRateWindow < 0 {
 		return fmt.Errorf("invalid limits_service_stream_sharding_rate_window %s: must not be negative", cfg.LimitsServiceStreamShardingRateWindow)
 	}
@@ -77,6 +82,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.LoggingEnabled, prefix+".logging-enabled", false, "Enable logging when sharding streams")
 	cfg.DesiredRate.Set("1536KB") //nolint:errcheck
 	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded.")
+	fs.IntVar(&cfg.MaxShardCount, prefix+".max-shard-count", 0, "Maximum number of shards that my be produced by rateStore. The default of 0 means unlimited.")
 	fs.StringVar(&cfg.LimitsServiceStreamShardingMode, prefix+".limits-service-stream-sharding-mode", LimitsServiceStreamShardingModeDisabled, "Experimental. One of 'disabled', 'shadow' or 'live'. Whether the ingest-limits service is asked for a shard count, for comparison against the local rate store ('shadow') or to shard streams with ('live').")
 	fs.DurationVar(&cfg.LimitsServiceStreamShardingRateWindow, prefix+".limits-service-stream-sharding-rate-window", 0, "Experimental. The window the ingest-limits service averages stream rates over when deciding shard counts. A shorter window reacts to shorter bursts. 0 uses the ingest-limits service's own rate_window. Clamped to the service's [bucket_size, rate_window].")
 }

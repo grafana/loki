@@ -178,6 +178,10 @@ func NewLogResultCache(
 		c,
 		shouldCacheRequest,
 		&LogCacheKeyGenerator{limits: limits},
+		// TODO: pass a non-nil cacheGenNumberLoader once delete requests
+		// are supported by the dataobj engine, to invalidate cached results on delete.
+		nil,
+		false, // retentionEnabled is unused
 		metrics,
 	)
 }

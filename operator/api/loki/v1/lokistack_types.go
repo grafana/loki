@@ -658,9 +658,13 @@ type ObjectStorageSchemaVersion string
 
 const (
 	// ObjectStorageSchemaV11 when using v11 for the storage schema
+	//
+	// Deprecated: ObjectStorageSchemaV11 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.
 	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
 
 	// ObjectStorageSchemaV12 when using v12 for the storage schema
+	//
+	// Deprecated: ObjectStorageSchemaV12 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 
 	// ObjectStorageSchemaV13 when using v13 for the storage schema

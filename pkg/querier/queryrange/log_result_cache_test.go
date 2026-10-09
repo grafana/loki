@@ -39,6 +39,8 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
 		nil,
+		false,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -81,6 +83,8 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -130,6 +134,8 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -181,6 +187,8 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -258,6 +266,8 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -346,6 +356,8 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -457,6 +469,8 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		metrics,
 	)
 	require.NoError(t, err)
@@ -599,6 +613,8 @@ func Test_LogResultCacheDifferentLimit(t *testing.T) {
 		NewDefaultLogCacheKeyGenerator(fakeLimits{
 			splitDuration: map[string]time.Duration{"foo": time.Minute},
 		}, nil),
+		nil,
+		false,
 		nil,
 	)
 	require.NoError(t, err)
@@ -779,4 +795,110 @@ func nonEmptyResponse(lokiReq *LokiRequest, start, end time.Time, labels string)
 		})
 	}
 	return r
+}
+
+func Test_LogResultCacheGenNumber(t *testing.T) {
+	type step struct {
+		frontendGen  string // cache gen number used by the frontend for the cache key
+		querierGen   string // cache gen number reported by the querier in the response headers, empty means no header
+		end          time.Duration
+		expectedCall bool // whether the downstream is expected to be called
+	}
+	for _, tc := range []struct {
+		name             string
+		retentionEnabled bool
+		steps            []step
+	}{
+		{
+			name:             "gen change invalidates cached result",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: false},
+				{frontendGen: "2", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "2", querierGen: "2", end: 2 * time.Minute, expectedCall: false},
+			},
+		},
+		{
+			name:             "retention/deletion disabled ignores gen",
+			retentionEnabled: false,
+			steps: []step{
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "2", end: 2 * time.Minute, expectedCall: false},
+			},
+		},
+		{
+			name:             "response gen mismatch is not cached",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "2", end: 2 * time.Minute, expectedCall: true},
+			},
+		},
+		{
+			name:             "response without gen header is not cached",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", end: 2 * time.Minute, expectedCall: true},
+			},
+		},
+		{
+			name:             "extending a cached interval with a mismatching gen does not update the cache",
+			retentionEnabled: true,
+			steps: []step{
+				{frontendGen: "1", querierGen: "1", end: 2 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "2", end: 3 * time.Minute, expectedCall: true},
+				// the extension was not stored, so the missing range is fetched again.
+				{frontendGen: "1", querierGen: "1", end: 3 * time.Minute, expectedCall: true},
+				{frontendGen: "1", querierGen: "1", end: 3 * time.Minute, expectedCall: false},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			genLoader := &mutableCacheGenNumberLoader{}
+			limits := fakeLimits{splitDuration: map[string]time.Duration{"foo": 10 * time.Minute}}
+			lrc, err := NewLogResultCache(
+				log.NewNopLogger(),
+				limits,
+				cache.NewMockCache(),
+				nil,
+				NewDefaultLogCacheKeyGenerator(limits, nil),
+				genLoader,
+				tc.retentionEnabled,
+				nil,
+			)
+			require.NoError(t, err)
+
+			var (
+				calls      int
+				querierGen string
+			)
+			h := lrc.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				calls++
+				resp := emptyResponse(r.(*LokiRequest))
+				if querierGen != "" {
+					resp.SetHeader(queryrangebase.ResultsCacheGenNumberHeaderName, querierGen)
+				}
+				return resp, nil
+			}))
+
+			for i, s := range tc.steps {
+				genLoader.setGen(s.frontendGen)
+				querierGen = s.querierGen
+
+				req := &LokiRequest{
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+					EndTs:   time.Unix(0, s.end.Nanoseconds()),
+					Limit:   entriesLimit,
+				}
+				before := calls
+				resp, err := h.Do(ctx, req)
+				require.NoError(t, err)
+				require.True(t, isEmpty(resp.(*LokiResponse)))
+				require.Equal(t, s.expectedCall, calls > before, "step %d", i)
+			}
+		})
+	}
 }

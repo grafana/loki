@@ -1401,6 +1401,13 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
+  # Caches the metadata of the data objects the querier reads. The cache is
+  # enabled when a backend is configured. Entries are keyed by object path, so
+  # the cache cannot differentiate entries between different buckets and
+  # clusters. Multiple installations must not share the same cache backend.
+  # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
+  [metadata_cache: <cache_config>]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2410,6 +2417,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.instant-metric-results-cache`
@@ -4738,6 +4746,11 @@ shard_streams:
   # 1536KB/s, it will be sharded into two streams.
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
+
+  # Maximum number of shards that my be produced by rateStore. The default of 0
+  # means unlimited.
+  # CLI flag: -shard-streams.max-shard-count
+  [max_shard_count: <int> | default = 0]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
   # for this tenant, and whether its answer is used. One of 'disabled' (default,
@@ -7490,6 +7503,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`
