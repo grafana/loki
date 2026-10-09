@@ -62,6 +62,9 @@ type coordinatorMetrics struct {
 
 	// indexInputRuns measures the number of Runs in a tenant's index compaction cycle.
 	indexInputRuns prometheus.Histogram
+
+	pendingLogBytes          *prometheus.GaugeVec // tenant
+	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -125,7 +128,34 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Help:    "Number of strict index runs offered to the task planner.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
 		}),
+		pendingLogBytes: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pending_log_bytes",
+			Help: "Uncompressed log bytes that the last LogMerge plan of the tenant will rewrite, across all compacted windows. Set when the LogMerge phase plans, and reduced as each index completes. Data that the planner treats as converged counts as zero.",
+		}, []string{labelTenant}),
+		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
+			Help: "Unix time when the planner for the tenant last planned all compacted windows. Shows how old loki_dataobj_compaction_pending_log_bytes is.",
+		}, []string{labelTenant}),
 	}
+}
+
+// observeLogPlan records the result of planning a LogMerge phase.
+// pendingBytes is the total over all plans of the phase.
+func (m *coordinatorMetrics) observeLogPlan(tenant string, pendingBytes uint64, now time.Time) {
+	if m == nil {
+		return
+	}
+	m.pendingLogBytes.WithLabelValues(tenant).Set(float64(pendingBytes))
+	m.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(now.UnixNano()) / 1e9)
+}
+
+// completeLogPlan removes the bytes of one finished index plan from the
+// pending log bytes of the tenant.
+func (m *coordinatorMetrics) completeLogPlan(tenant string, pendingBytes uint64) {
+	if m == nil {
+		return
+	}
+	m.pendingLogBytes.WithLabelValues(tenant).Sub(float64(pendingBytes))
 }
 
 func (m *coordinatorMetrics) observeIndexInputRuns(runs int) {
@@ -256,6 +286,8 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.pendingLogBytes.DeleteLabelValues(tenant)
+	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)

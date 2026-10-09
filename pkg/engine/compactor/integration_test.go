@@ -76,7 +76,7 @@ func (s *compactionScenario) compactUntilIdle(tenant string) {
 	for cycle := range 10 {
 		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
-		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant, s.stored.Window)
+		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)
 		if indexOutcome == phaseOutcomeNoWork && logOutcome == phaseOutcomeNoWork {
 			return
@@ -261,7 +261,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
-			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
+			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant))
 
 			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
