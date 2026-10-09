@@ -346,8 +346,8 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 // writeTableOfContentsEntries records the object at path in the ToC of every tenant in
 // timeRanges, for every window each time range overlaps.
 //
-// WriteEntry accepts an entry of one window only, so this writes one entry for
-// each window, with the time range cut to that window.
+// WriteEntry accepts an entry of one window only, so writeTableOfContentsEntries
+// writes one entry for each window, with the time range cut to that window.
 func writeTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
 		for window := tr.MinTime.UTC().Truncate(metastore.MetastoreWindowSize); !window.After(tr.MaxTime); window = window.Add(metastore.MetastoreWindowSize) {

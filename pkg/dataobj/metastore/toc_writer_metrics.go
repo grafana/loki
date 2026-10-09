@@ -20,7 +20,8 @@ type TocWriterMetrics struct {
 }
 
 // NewTocWriterMetrics creates the metrics of a [TableOfContentsWriter] and
-// registers them with reg. If reg is nil, it does not register them.
+// registers them with reg. If reg is nil, it does not register them. It panics
+// if reg rejects a metric, for example one that reg holds with other labels.
 func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 	factory := promauto.With(reg)
 	metrics := &TocWriterMetrics{

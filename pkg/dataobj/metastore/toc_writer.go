@@ -19,8 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// DefaultTocBuilderConfig is the builder config for ToC objects. It is smaller
-// than the config for logs objects, because a ToC holds only index pointers.
+// DefaultTocBuilderConfig is the builder config for ToC objects. Its sizes are
+// smaller than those for logs objects, because a ToC holds only index pointers.
 var DefaultTocBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
@@ -30,8 +30,8 @@ var DefaultTocBuilderConfig = logsobj.BuilderBaseConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-// DefaultTocWriterBackoffConfig is the retry policy of a ToC change. It gives
-// up after 10 retries.
+// DefaultTocWriterBackoffConfig is the retry policy of a ToC change. It makes
+// at most 10 attempts.
 var DefaultTocWriterBackoffConfig = backoff.Config{
 	MinBackoff: 50 * time.Millisecond,
 	MaxBackoff: 10 * time.Second,
@@ -42,13 +42,14 @@ var DefaultTocWriterBackoffConfig = backoff.Config{
 // ToC that holds a section of another tenant.
 var errUnrecoverable = errors.New("unrecoverable ToC error")
 
-// The GetAndReplace callback returns these errors to cancel the write of a
-// ToC that needs no change. applyChange does not return them.
+// rebuildToc returns these errors to cancel the conditional write of a ToC
+// that needs no write. applyChange turns them into a changeResult and returns
+// no error.
 var (
 	// errChangePresent means the ToC already holds the change.
 	errChangePresent = errors.New("ToC already holds the change")
-	// errRaceLost means the change requires a removal, and the ToC holds none
-	// of the paths to remove.
+	// errRaceLost means the change requires a removal, the ToC holds none of
+	// the paths to remove, and the ToC lacks an entry to add.
 	errRaceLost = errors.New("ToC holds none of the paths to remove")
 )
 
@@ -67,11 +68,11 @@ func checkTenant(tocObject *dataobj.Object, tenant string) error {
 }
 
 // TableOfContentsEntry describes an index-pointer row to add to a tenant's ToC.
-// Used by WriteEntry and as the "to add" set of ReplaceIndexPointers.
 type TableOfContentsEntry struct {
 	// Path is the object-storage path of the index object.
 	Path string
-	// StartTime / EndTime bound the time range covered by the index.
+	// StartTime and EndTime bound the time range covered by the index. Both
+	// bounds are inclusive. StartTime must be after the Unix epoch.
 	StartTime time.Time
 	EndTime   time.Time
 }
@@ -83,8 +84,9 @@ func (e TableOfContentsEntry) validate() error {
 	if !e.StartTime.After(time.Unix(0, 0)) {
 		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
 	}
-	// An entry that ends before it starts overlaps no ToC window, so the
-	// writer would write nothing for it.
+	// The window checks of WriteEntry and ReplaceIndexPointers accept an
+	// entry that ends before it starts if both ends fall in one window, so
+	// without this check the ToC would hold the inverted range.
 	if e.EndTime.Before(e.StartTime) {
 		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
 	}
@@ -104,9 +106,9 @@ type TableOfContentsWriter struct {
 	builderMetrics *indexobj.BuilderMetrics
 }
 
-// NewTableOfContentsWriter creates a new Writer for adding entries to the
-// metastore's Table of Contents files. It retries a failed write with
-// backoffCfg, and builds ToC objects with builderCfg.
+// NewTableOfContentsWriter returns a ToC writer for bucket. It retries a failed
+// change with backoffCfg and builds ToC objects with builderCfg. metrics must
+// not be nil.
 func NewTableOfContentsWriter(
 	bucket objstore.Bucket,
 	backoffCfg backoff.Config,
@@ -120,8 +122,8 @@ func NewTableOfContentsWriter(
 		builderCfg: builderCfg,
 		logger:     logger,
 		metrics:    metrics,
-		// The ToC builders share these metrics, and nothing registers them:
-		// the index builder registers collectors with the same names.
+		// The writer does not register the ToC builder metrics, because the
+		// index builder registers collectors with the same names.
 		builderMetrics: indexobj.NewBuilderMetrics(nil),
 	}
 }
@@ -132,9 +134,10 @@ func NewTableOfContentsWriter(
 // entry.Path. It compares the path only: the path of an index object is a
 // hash of its content, so the same path means the same pointer.
 //
-// WriteEntry retries a failed write with the backoff config of the writer.
-// It returns an error without retrying if entry fails validation, entry spans
-// more than one window, or the ToC holds a section of another tenant.
+// WriteEntry retries a failed write with the backoff config of the writer, and
+// returns an error after the last attempt or once ctx is done. It returns an
+// error without retrying if entry fails validation, entry spans more than one
+// window, or the ToC holds a section of another tenant.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
 	if err := entry.validate(); err != nil {
 		return err
@@ -151,37 +154,29 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 	return err
 }
 
-// ReplaceIndexPointers atomically swaps a set of index pointers in the
-// tenant's ToC for the given window. Every row in oldPaths is removed and
-// every entry in newEntries that the ToC does not hold yet is added.
+// ReplaceIndexPointers swaps index pointers in the tenant's ToC of window in
+// one conditional write. It removes every pointer whose path is in oldPaths
+// and adds each entry of newEntries that the ToC does not hold.
 //
-// Returns (true, nil) if the swap was applied.
-// Returns (false, nil) if there's nothing to do, examples are:
-// - both oldPaths and newEntries are empty
-// - oldPaths do not exist in TOC (race-loss)
-// - TOC doesn't exist
-// Returns (false, error) if an error happened (including retry exhaustion),
-// or if an entry in newEntries has no valid time range or does not overlap
-// the window.
+// The swap applies if the ToC holds at least one path in oldPaths. It then
+// removes the paths it finds and ignores the others. If the ToC holds no path
+// in oldPaths, the call writes nothing.
 //
-// Race-loss is detected on an ANY-match basis: if ANY oldPath is still
-// present in the tenant's ToC, the swap proceeds and drops the matched subset.
-// Only when ZERO oldPaths match is the call treated as a no-op. The ToC keeps
-// one pointer for each path, so a new entry that a concurrent coordinator
-// already added is not added again.
+// ReplaceIndexPointers returns true if it wrote the swap. It returns false
+// and no error if it wrote nothing:
+//   - oldPaths and newEntries are both empty.
+//   - The ToC does not exist.
+//   - The ToC holds no path in oldPaths. This includes a ToC that already
+//     holds the swap, for example because an earlier attempt of this call
+//     wrote it and lost the response.
 //
-// The primitive is idempotent: re-invoking it with already-applied
-// oldPaths/newEntries is a no-op. If an attempt fails after its write landed,
-// for example because the response is lost, the retry finds the swap applied
-// and returns (false, nil).
+// It returns an error if exactly one of oldPaths and newEntries is empty, if
+// an entry in newEntries has no valid time range or does not overlap the
+// window, after the last attempt, or once ctx is done. If the ToC holds a
+// section of another tenant, it returns an error without retrying.
 //
-// A ToC holds one tenant. If it holds a section of another tenant,
-// ReplaceIndexPointers returns an error without retrying.
-//
-// Callers must serialize overlapping ReplaceIndexPointers calls for the
-// same tenant and window within a process. Concurrent processes racing on the
-// same ToC are safe because each call goes through a fresh GetAndReplace with
-// conditional-PUT semantics.
+// Concurrent calls for the same ToC are safe on a bucket whose GetAndReplace
+// is a conditional write: a call that loses the race retries on the new ToC.
 func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	ctx context.Context,
 	window time.Time,
@@ -232,20 +227,22 @@ type tocChange struct {
 	add    []TableOfContentsEntry
 }
 
-// changeResult is the result of applyChange. The ToC writer metrics use it as
-// the value of their result label.
+// changeResult is the result of one attempt of applyChange, and of the whole
+// call. Its values are the result label values of the ToC writer metrics, so
+// renaming one changes the metric series.
 type changeResult string
 
 const (
-	// changeFailed means applyChange returned an error.
+	// changeFailed means the attempt or the call failed.
 	changeFailed changeResult = "failed"
-	// changeWritten means applyChange wrote the change to the ToC.
+	// changeWritten means the attempt wrote the change to the ToC.
 	changeWritten changeResult = "written"
-	// changePresent means the ToC already held the change, so applyChange
-	// wrote nothing.
+	// changePresent means the attempt found the change already in the ToC and
+	// wrote nothing. An earlier attempt of the same call may have written it.
 	changePresent changeResult = "already_present"
-	// changeRaceLost means the change requires a removal and the ToC held
-	// none of the paths to remove, so applyChange wrote nothing.
+	// changeRaceLost means the change requires a removal, the ToC held none of
+	// the paths to remove, and the ToC lacked an entry to add. The attempt
+	// wrote nothing.
 	changeRaceLost changeResult = "race_lost"
 )
 
@@ -323,12 +320,14 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 // caller owns the returned reader and must close it.
 //
 // rebuildToc keeps one pointer for each path, so the ToC it returns holds no
-// repeated paths, even if the existing ToC does.
+// repeated paths, even if the existing ToC does. It does not rewrite a ToC
+// only to drop repeated paths, so they stay until the next change that writes.
 //
-// It returns errChangePresent if the existing ToC already holds the change,
-// and errRaceLost if the change requires a removal that the existing ToC does
-// not allow. It returns an error that wraps errUnrecoverable if the existing
-// ToC holds a section of another tenant.
+// It returns errChangePresent if the existing ToC already holds the change. It
+// returns errRaceLost if the change requires a removal, the existing ToC holds
+// none of the paths to remove, and the existing ToC lacks an entry to add. It
+// returns an error that wraps errUnrecoverable if the existing ToC holds a
+// section of another tenant.
 func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
 
@@ -372,8 +371,9 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	}
 
 	if len(change.remove) > 0 && removed == 0 {
-		// The ToC is not written. If it holds every entry to add, an earlier
-		// swap already applied the change; otherwise the race is lost.
+		// Write nothing, because no path to remove is left. If the ToC holds
+		// every entry to add, an earlier swap applied the change. Otherwise
+		// another writer won the race.
 		for _, entry := range change.add {
 			if _, ok := kept[entry.Path]; !ok {
 				return nil, errRaceLost
@@ -461,8 +461,8 @@ func flushToc(ctx context.Context, builder *indexobj.Builder) (io.ReadCloser, er
 	}, nil
 }
 
-// wrappedReadCloser wraps an io.ReadCloser and calls OnClose when Close is
-// called. wrappedReadCloser will not close rc on Close is OnClose is defined.
+// wrappedReadCloser calls OnClose on Close if OnClose is set, and closes rc
+// otherwise.
 type wrappedReadCloser struct {
 	rc      io.ReadCloser
 	OnClose func() error

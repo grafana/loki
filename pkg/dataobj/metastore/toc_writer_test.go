@@ -373,8 +373,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 //
 // WriteEntry accepts an entry of one window only, so writeTimeRanges writes
 // one entry for each window that a time range overlaps, with the time range
-// cut to that window. The builder does the same, because it splits objects by
-// window.
+// cut to that window. The dataobj-builder does the same: it splits objects by
+// window before it indexes them.
 func writeTimeRanges(ctx context.Context, w *TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
 		for window := tr.MinTime.UTC().Truncate(MetastoreWindowSize); !window.After(tr.MaxTime); window = window.Add(MetastoreWindowSize) {
