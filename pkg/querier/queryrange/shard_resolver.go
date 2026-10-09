@@ -13,9 +13,9 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -35,7 +35,7 @@ func newDynamicShardResolver(
 	r queryrangebase.Request,
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
-) (logql.ShardResolver, bool) {
+) (*dynamicShardResolver, bool) {
 	return &dynamicShardResolver{
 		ctx:              ctx,
 		logger:           logger,
@@ -65,6 +65,10 @@ type dynamicShardResolver struct {
 	maxParallelism  int
 	maxShards       int
 	defaultLookback time.Duration
+
+	// plannedChunks sums the chunks in the index stats and shards the
+	// resolver looked up, as an estimate of the chunks the request scans.
+	plannedChunks atomic.Int64
 }
 
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
@@ -157,6 +161,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	}
 
 	combined := stats.MergeStats(results...)
+	r.plannedChunks.Add(int64(combined.Chunks))
 
 	level.Debug(log).Log(
 		append(
@@ -277,6 +282,11 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 
 	// accumulate stats
 	logqlstats.JoinResults(r.ctx, casted.Response.Statistics)
+	for _, shard := range casted.Response.Shards {
+		if shard.Stats != nil {
+			r.plannedChunks.Add(int64(shard.Stats.Chunks))
+		}
+	}
 
 	var refs int
 	for _, x := range casted.Response.ChunkGroups {

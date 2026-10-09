@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
@@ -392,6 +393,123 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 	_, err := mware.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
+}
+
+func Test_astMapper_ShardPlannedChunks(t *testing.T) {
+	for _, tc := range []struct {
+		desc            string
+		strategy        logql.ShardVersion
+		query           string
+		indexChunks     uint64
+		expectedPlanned int64
+		expectedScanned int64
+	}{
+		{
+			desc:            "power of two sharded query",
+			strategy:        logql.PowerOfTwoVersion,
+			query:           `{foo="bar"}`,
+			indexChunks:     40,
+			expectedPlanned: 40,
+			expectedScanned: 10, // 5 for each of the 2 shards
+		},
+		{
+			desc:            "power of two unshardable query",
+			strategy:        logql.PowerOfTwoVersion,
+			query:           `quantile_over_time(0.99, {foo="bar"} | unwrap foo [1h])`,
+			indexChunks:     40,
+			expectedPlanned: 40,
+			expectedScanned: 5,
+		},
+		{
+			desc:            "bounded sharded query",
+			strategy:        logql.BoundedVersion,
+			query:           `{foo="bar"}`,
+			indexChunks:     40,
+			expectedPlanned: 35, // 15 + 20 from the shards, the index stats aren't looked up
+			expectedScanned: 10,
+		},
+		{
+			desc:     "nothing planned",
+			strategy: logql.PowerOfTwoVersion,
+			query:    `quantile_over_time(0.99, {foo="bar"} | unwrap foo [1h])`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			queried := stats.Result{Querier: stats.Querier{Store: stats.Store{TotalChunksScanned: 5}}}
+			handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				switch r := req.(type) {
+				case *logproto.IndexStatsRequest:
+					return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1 << 40, Chunks: tc.indexChunks}}, nil
+				case *logproto.ShardsRequest:
+					return &ShardsResponse{Response: &logproto.ShardsResponse{Shards: []logproto.Shard{
+						{Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64 / 2}, Stats: &logproto.IndexStatsResponse{Chunks: 15}},
+						{Bounds: logproto.FPBounds{Min: math.MaxUint64/2 + 1, Max: math.MaxUint64}, Stats: &logproto.IndexStatsResponse{Chunks: 20}},
+					}}}, nil
+				case *LokiRequest:
+					if _, ok := r.Plan.AST.(syntax.SampleExpr); ok {
+						return &LokiPromResponse{
+							Response: &queryrangebase.PrometheusResponse{
+								Status: loghttp.QueryStatusSuccess,
+								Data:   queryrangebase.PrometheusData{ResultType: loghttp.ResultTypeMatrix},
+							},
+							Statistics: queried,
+						}, nil
+					}
+					return &LokiResponse{
+						Status:     loghttp.QueryStatusSuccess,
+						Direction:  r.Direction,
+						Limit:      r.Limit,
+						Version:    1,
+						Data:       LokiData{ResultType: loghttp.ResultTypeStream},
+						Statistics: queried,
+					}, nil
+				default:
+					return nil, fmt.Errorf("request not supported: %T", req)
+				}
+			})
+
+			mware := newASTMapperware(
+				[]config.PeriodConfig{
+					{IndexType: types.IndexTypeTSDB},
+				},
+				testEngineOpts,
+				handler,
+				handler,
+				nil,
+				log.NewNopLogger(),
+				nilShardingMetrics,
+				fakeLimits{
+					maxSeries:               math.MaxInt32,
+					maxQueryParallelism:     1,
+					tsdbMaxQueryParallelism: 1,
+					queryTimeout:            time.Minute,
+					tsdbShardingStrategy: func(context.Context, string) string {
+						return tc.strategy.String()
+					},
+				},
+				2,
+				[]string{},
+			)
+
+			req := defaultReq()
+			req.Query = tc.query
+			req.Plan = testutil.MustPlan(tc.query)
+			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
+			require.NoError(t, err)
+
+			var idx stats.Index
+			switch resp := resp.(type) {
+			case *LokiResponse:
+				idx = resp.Statistics.Index
+			case *LokiPromResponse:
+				idx = resp.Statistics.Index
+			default:
+				t.Fatalf("unexpected response type %T", resp)
+			}
+			require.Equal(t, tc.expectedPlanned, idx.ShardPlannedChunks)
+			require.Equal(t, tc.expectedScanned, idx.ShardPlannedChunksScanned)
+		})
+	}
 }
 
 func Test_ShardingByPass(t *testing.T) {

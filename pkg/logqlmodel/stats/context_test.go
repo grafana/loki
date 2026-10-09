@@ -422,6 +422,53 @@ func TestResultMerge_DataobjSectionsResolutionMaxTime(t *testing.T) {
 	})
 }
 
+func TestResult_Merge_LoglineStats(t *testing.T) {
+	lookup := Index{
+		LoglineHintStatus:         "ok",
+		LoglineHintLookupTime:     int64(100 * time.Millisecond),
+		LoglineHintRanges:         2,
+		LoglineHintRangesDuration: int64(30 * time.Minute),
+	}
+	skipped := Result{Index: Index{
+		LoglineSkippedRequests: 1,
+		ShardPlannedChunks:     10,
+	}}
+	narrowed := Result{
+		Index: Index{
+			LoglineNarrowedRequests:   1,
+			ShardPlannedChunks:        8,
+			ShardPlannedChunksScanned: 2,
+		},
+		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
+		Ingester: Ingester{TotalChunksMatched: 3, Store: Store{TotalChunksScanned: 1}},
+	}
+
+	var res Result
+	res.Merge(skipped)
+	res.Merge(narrowed)
+	res.Merge(narrowed)
+	res.Merge(Result{Index: lookup})
+	// A second lookup-level value must not overwrite the first.
+	res.Merge(Result{Index: Index{LoglineHintStatus: "error", LoglineHintRanges: 5}})
+
+	require.Equal(t, "ok", res.Index.LoglineHintStatus)
+	require.Equal(t, int64(100*time.Millisecond), res.Index.LoglineHintLookupTime)
+	require.Equal(t, int64(2), res.Index.LoglineHintRanges)
+	require.Equal(t, int64(30*time.Minute), res.Index.LoglineHintRangesDuration)
+	require.Equal(t, int64(1), res.Index.LoglineSkippedRequests)
+	require.Equal(t, int64(2), res.Index.LoglineNarrowedRequests)
+	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
+	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
+	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
+}
+
+func TestContext_ChunksScanned(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+	statsCtx.AddChunksScanned(10)
+	statsCtx.AddChunksScanned(7)
+	require.Equal(t, int64(17), statsCtx.Result(0, 0, 0).TotalChunksScanned())
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)

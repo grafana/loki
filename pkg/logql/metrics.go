@@ -18,6 +18,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -275,6 +276,8 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
 
+	logValues = appendLoglineStats(logValues, stats)
+
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
 		logValues = append(logValues, "cardinality_estimate", cardinalityEstimate)
@@ -519,6 +522,34 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
+// appendLoglineStats adds the logline index fields for queries that went
+// through the logline query-frontend middleware.
+func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []interface{} {
+	idx := stats.Index
+	if idx.LoglineHintStatus == "" {
+		return logValues
+	}
+
+	logValues = append(logValues,
+		"logline_hint_status", idx.LoglineHintStatus,
+		"logline_hint_lookup_time", time.Duration(idx.LoglineHintLookupTime),
+		"logline_hint_ranges", idx.LoglineHintRanges,
+		"logline_hint_ranges_duration", time.Duration(idx.LoglineHintRangesDuration),
+		"logline_skipped_requests", idx.LoglineSkippedRequests,
+		"logline_narrowed_requests", idx.LoglineNarrowedRequests,
+		"shard_planned_chunks", idx.ShardPlannedChunks,
+		"logline_scanned_chunks", idx.ShardPlannedChunksScanned,
+	)
+	// Missing when no split went through shard planning, for example when the
+	// results cache answered the whole query. The planned chunks are an
+	// estimate, so more chunks than planned can be scanned.
+	if planned := idx.ShardPlannedChunks; planned > 0 {
+		ratio := 1 - float64(idx.ShardPlannedChunksScanned)/float64(planned)
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", min(max(ratio, 0), 1)))
+	}
+	return logValues
+}
+
 func RecordLoglineIndexQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
@@ -526,6 +557,7 @@ func RecordLoglineIndexQueryMetrics(
 	query string,
 	status string,
 	stats logql_stats.Result,
+	hintStats *logproto.HintQueryStats,
 ) {
 	var (
 		logger      = fixLogger(ctx, log)
@@ -555,6 +587,13 @@ func RecordLoglineIndexQueryMetrics(
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
+	if hintStats != nil {
+		logValues = append(logValues,
+			"logline_object_requests", hintStats.ObjectStorageRequests,
+			"logline_io_bytes", util.HumanizeBytes(uint64(hintStats.TotalIOBytes)),
+			"logline_io_wait", hintStats.TotalIOWait,
+		)
+	}
 	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

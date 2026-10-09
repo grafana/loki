@@ -250,6 +250,50 @@ func TestStatsCollectorMiddleware_PropagatesEstimatedQueryBytesFromIndexStats(t 
 	require.Equal(t, int64(2048), lokiResp.Statistics.Summary.EstimatedQueryBytes)
 }
 
+func TestStatsCollectorMiddleware_InternalRequestIsNotRecorded(t *testing.T) {
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	mw := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch req.(type) {
+		case *logproto.IndexStatsRequest:
+			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1024}}, nil
+		case *LokiRequest:
+			return nil, context.Canceled
+		default:
+			return nil, fmt.Errorf("unexpected request type %T", req)
+		}
+	}))
+
+	_, err := mw.Do(WithInternalRequest(ctx), &logproto.IndexStatsRequest{
+		From:     model.Time(100),
+		Through:  model.Time(200),
+		Matchers: `{foo="bar"}`,
+	})
+	require.NoError(t, err)
+	require.False(t, data.recorded)
+	require.Equal(t, int64(1024), data.estimatedQueryBytes)
+
+	_, err = mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, data.recorded, "a failed query must not log the internal index stats request")
+}
+
+func TestStatsCollectorMiddleware_RecordsStatsAddedAfterCollection(t *testing.T) {
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	mw := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiResponse{}, nil
+	}))
+
+	resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+	require.NoError(t, err)
+
+	// Middlewares outside the tripperware, such as the logline hint prefetch,
+	// attach stats to the response after StatsCollectorMiddleware returns.
+	resp.(*LokiResponse).Statistics.Index.LoglineHintStatus = "ok"
+	require.Equal(t, "ok", data.statistics.Index.LoglineHintStatus)
+}
+
 func TestStatsCollectorMiddleware_DoesNotOverwriteLargerEstimatedQueryBytes(t *testing.T) {
 	data := &queryData{
 		estimatedQueryBytes: 1024,

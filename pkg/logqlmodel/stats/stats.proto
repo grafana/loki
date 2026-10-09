@@ -138,6 +138,30 @@ message Index {
   // In addition to internal calculations this is also returned by the HTTP API.
   // Grafana expects time values to be returned in seconds as float.
   double bloomFilterTime = 7 [(gogoproto.jsontag) = "bloomFilterTime"];
+  // Chunks the frontend shard planner estimated for the splits it planned:
+  // the index stats chunk count with power_of_two sharding, or the sum over
+  // the GetShards shards with bounded sharding.
+  int64 shardPlannedChunks = 14 [(gogoproto.jsontag) = "shardPlannedChunks,omitempty"];
+  // Chunks scanned for the same splits as shardPlannedChunks. It can exceed
+  // shardPlannedChunks, which is an estimate.
+  int64 shardPlannedChunksScanned = 15 [(gogoproto.jsontag) = "shardPlannedChunksScanned,omitempty"];
+
+  // The logline* fields are set only for queries that went through the
+  // logline index query-frontend middleware.
+
+  // How the logline hint lookup ended: ok, unsupported, error, canceled,
+  // incomplete or ingester_window.
+  string loglineHintStatus = 8 [(gogoproto.jsontag) = "loglineHintStatus,omitempty"];
+  // Nanosecond wall time of the logline hint lookup.
+  int64 loglineHintLookupTime = 9 [(gogoproto.jsontag) = "loglineHintLookupTime,omitempty"];
+  // Number of hint ranges the lookup returned.
+  int64 loglineHintRanges = 10 [(gogoproto.jsontag) = "loglineHintRanges,omitempty"];
+  // Nanosecond sum of the hint range durations, clipped to the query bounds.
+  int64 loglineHintRangesDuration = 11 [(gogoproto.jsontag) = "loglineHintRangesDuration,omitempty"];
+  // Sub-requests answered without calling a querier.
+  int64 loglineSkippedRequests = 12 [(gogoproto.jsontag) = "loglineSkippedRequests,omitempty"];
+  // Sub-requests sent to queriers with hint ranges.
+  int64 loglineNarrowedRequests = 13 [(gogoproto.jsontag) = "loglineNarrowedRequests,omitempty"];
 }
 
 message Querier {
@@ -207,6 +231,11 @@ message Store {
   // counted even when propagateChunkFetchErrors tolerated the failure instead
   // of failing the query outright.
   int64 chunkFetchFailures = 15 [(gogoproto.jsontag) = "chunkFetchFailures"];
+
+  // Chunk refs left to read after time and logline hint filtering. Unlike
+  // totalChunksRef it leaves out the chunks those filters dropped, and unlike
+  // totalChunksDownloaded it includes chunks that a query limit left unread.
+  int64 totalChunksScanned = 16 [(gogoproto.jsontag) = "totalChunksScanned,omitempty"];
 }
 
 message Dataobj {

@@ -213,7 +213,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// If the ast can't be mapped to a sharded equivalent,
 	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		return ast.next.Do(ctx, r)
+		resp, err := ast.next.Do(ctx, r)
+		if err != nil {
+			return resp, err
+		}
+		switch resp := resp.(type) {
+		case *LokiResponse:
+			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+		case *LokiPromResponse:
+			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+		}
+		return resp, nil
 	}
 
 	var path string
@@ -238,6 +248,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// Merge index and volume stats result cache stats from shard resolver into the query stats.
 	res.Statistics.Merge(resolverStats.Result(0, 0, 0))
+	addShardPlannedChunks(&res.Statistics, resolver.plannedChunks.Load())
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
 		return nil, err
@@ -292,6 +303,17 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())
 	}
+}
+
+// addShardPlannedChunks records the chunks shard planning estimated for a
+// request together with the chunks scanned for it. Splits that bypass shard
+// planning add to neither, so the two stay comparable.
+func addShardPlannedChunks(s *stats.Result, planned int64) {
+	if planned <= 0 {
+		return
+	}
+	s.Index.ShardPlannedChunks += planned
+	s.Index.ShardPlannedChunksScanned += s.TotalChunksScanned()
 }
 
 // shardSplitter middleware will only shard appropriate requests that do not extend past the MinShardingLookback interval.
