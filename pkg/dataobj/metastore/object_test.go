@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -31,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -456,9 +458,22 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, capture := xcap.NewCapture(ctx, nil)
+
 			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
+
+			// Without a matcher, Sections returns before it reads the object store.
+			if len(tt.matchers) > 0 {
+				require.Positive(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration))
+				require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectRequestsGet))
+				require.Positive(t, xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded))
+
+				var getIndexesDuration dto.Metric
+				require.NoError(t, mstore.metrics.getIndexesTotalDuration.WithLabelValues(resultSuccess).(prometheus.Histogram).Write(&getIndexesDuration))
+				require.Positive(t, getIndexesDuration.GetHistogram().GetSampleCount())
+			}
 		})
 	}
 }
@@ -1163,7 +1178,7 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 
 	mstore := newTestObjectMetastore(builder.bucket)
 	defer func() {
-		require.NoError(t, mstore.bucket.Close())
+		require.NoError(t, builder.bucket.Close())
 	}()
 
 	ctx := user.InjectOrgID(context.Background(), tenant)
