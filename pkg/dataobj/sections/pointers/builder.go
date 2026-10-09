@@ -151,6 +151,9 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, id
 	b.streamLookup[b.key] = newPointer
 }
 
+// RecordColumnIndex records a column index pointer with the bloom filter of the
+// column values. Callers must record at most one column index pointer per
+// (path, section, columnName), so that Flush writes the pointers in a fixed order.
 func (b *Builder) RecordColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloomFilter []byte) {
 	newPointer := &SectionPointer{
 		Path:              path,
@@ -201,7 +204,7 @@ func (b *Builder) EstimatedSize() int {
 	return sizeEstimate
 }
 
-// Flush flushes the streams section to the provided writer.
+// Flush flushes the pointers section to the provided writer.
 //
 // After successful encoding, b is reset to a fresh state and can be reused.
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
@@ -235,7 +238,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 // pointers give the same section bytes.
 //
 // The order is total because ObserveStream keeps one stream index pointer per
-// (Path, Section, StreamIDRef). Callers must record at most one column index
+// (Path, Section, StreamIDRef), and RecordColumnIndex requires one column index
 // pointer per (Path, Section, ColumnName).
 func (b *Builder) sortPointerObjects() {
 	slices.SortFunc(b.pointers, func(x, y *SectionPointer) int {

@@ -22,15 +22,14 @@ import (
 
 // logsIndexCalculation is one calculation step for a logs section.
 //
-// Calculate runs Prepare and ProcessBatch for different sections in any order.
-// Their builder writes must not depend on that order. So they must not make
-// the builder cut a section, and the builder must sort their writes before it
-// encodes them.
-// Calculate then runs Flush once per section, in section order. Flush must
-// write to the builder in an order that depends only on the section data, so
-// it must not write in map iteration order.
-//
-// These rules make the index object the same on each build.
+// Implementations must follow these rules, so that the index object is the
+// same on each build:
+//   - Calculate runs Prepare and ProcessBatch for different sections
+//     concurrently, in any order. They must only call builder methods that
+//     never cut a section and that sort the data before encoding.
+//   - Calculate runs Flush once per section, in section order. Flush must
+//     write to the builder in an order that depends only on the section data,
+//     never in map iteration order.
 type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
@@ -49,8 +48,8 @@ type logsIndexCalculation interface {
 	// with other sections' lock-free ProcessBatch calls (each section has its
 	// own calculation-step state, so there is no cross-section sharing).
 	ProcessBatchNeedsBuilderLock() bool
-	// Flush is called after Prepare and ProcessBatch finish for every logs
-	// section of the object.
+	// Calculate calls Flush after Prepare and ProcessBatch finish for every
+	// logs section of the object.
 	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
 }
@@ -155,10 +154,10 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	}
 
 	// Flush the sections one at a time in section order, so that the index
-	// object is the same on each build. Flush appends pointers and stats rows,
-	// and the builder cuts a pointers or stats section when it reaches the
-	// target size. The flush order decides where these cuts fall, so it
-	// decides which rows each section holds.
+	// object is the same on each build. Flush appends column index pointers
+	// and stats rows. The builder cuts a pointers or stats section when its
+	// estimated size goes above the target size. The flush order decides where
+	// these cuts fall, so it decides which rows each section holds.
 	for i, p := range processed {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -280,7 +279,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	// PrepareBloomColumn. The Calculate method dispatches one goroutine per
 	// logs section (see g.Go in Calculate), so processLogsSection calls for
 	// the sections of one data object run concurrently against the same
-	// postings builder.
+	// index builder.
 	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
 		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {

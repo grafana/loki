@@ -73,7 +73,7 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 }
 
 func (c *columnValuesCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
-	// Append in sorted column order, because map order is random. The append
+	// Append in sorted column order, because map iteration order is random. The append
 	// order decides where AppendColumnIndex cuts pointers sections, so random
 	// order can give different index bytes between builds.
 	for _, columnName := range slices.Sorted(maps.Keys(c.columnIndexes)) {

@@ -169,9 +169,9 @@ func TestBuilder_Flush(t *testing.T) {
 		columnName  string
 	}
 
-	// For each tie-break field, one pair of neighbours differs only in that
-	// field and the fields after it. So each tie-break must work for the
-	// output to be in this order.
+	// For each tie-break field, one pair of neighbors differs only in that
+	// field and the fields after it. The next field goes the opposite way, so
+	// the earlier field must decide the order.
 	sorted := []sortKey{
 		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 1},
 		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 2},
