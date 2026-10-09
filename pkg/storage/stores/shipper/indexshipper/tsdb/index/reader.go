@@ -42,6 +42,9 @@ type Reader interface {
 	// (name, value) pairs.
 	Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error)
 
+	// ShardPostings restricts an existing postings list to a shard candidate range.
+	ShardPostings(Postings, FingerprintFilter) Postings
+
 	// NewSeriesScan returns a scan over the series records of one pass over a
 	// postings list.
 	// The caller owns the returned scan and must Close it.
