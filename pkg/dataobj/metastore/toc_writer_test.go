@@ -26,8 +26,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-func TestTableOfContentsWriter(t *testing.T) {
-	t.Run("WriteEntry appends the entry to an existing ToC", func(t *testing.T) {
+func TestWriteEntry(t *testing.T) {
+	t.Run("appends the entry to an existing ToC", func(t *testing.T) {
 		tenantID := "test"
 		tocBuilder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -55,20 +55,16 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, readToC(context.Background(), t, bucket, TableOfContentsPath(tenantID, unixTime(0))))
 	})
 
-	t.Run("append object whose time range sits exactly on a window boundary", func(t *testing.T) {
+	t.Run("writes a zero-width entry on a window boundary to the window that starts there", func(t *testing.T) {
 		tenantID := "test"
 		bucket := objstore.NewInMemBucket()
-
 		writer := newTableOfContentsWriter(t, bucket)
 
-		// An object holding a single log at a 12h-aligned instant produces a
-		// zero-width time range sitting exactly on the ToC window boundary.
-		// The pointer must still land in that window; regressing the overlap
-		// check leaves the builder empty and WriteEntry retries forever, so we
-		// bound the context to fail fast rather than hang.
 		boundary := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 		require.Equal(t, boundary, boundary.Truncate(MetastoreWindowSize))
 
+		// The timeout makes a regression fail fast instead of waiting through
+		// every retry.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		err := writer.WriteEntry(ctx, tenantID, TableOfContentsEntry{
@@ -77,70 +73,26 @@ func TestTableOfContentsWriter(t *testing.T) {
 			EndTime:   boundary,
 		})
 		require.NoError(t, err)
-
-		reader, err := bucket.Get(context.Background(), TableOfContentsPath(tenantID, boundary))
-		require.NoError(t, err)
-		object, err := io.ReadAll(reader)
-		require.NoError(t, err)
-		dobj, err := dataobj.FromReaderAt(bytes.NewReader(object), int64(len(object)))
-		require.NoError(t, err)
-		require.NotEmpty(t, dobj.Sections())
+		require.Equal(t, []tocRow{{Tenant: tenantID, Path: "testdata/metastore.obj", StartUnix: boundary.Unix(), EndUnix: boundary.Unix()}},
+			readToC(context.Background(), t, bucket, TableOfContentsPath(tenantID, boundary)))
 	})
 
-	t.Run("rebuildToc keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
-		tenantID := "test"
-		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
-		require.NoError(t, err)
-
+	t.Run("writes an entry that ends at the last instant of its window", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-
 		writer := newTableOfContentsWriter(t, bucket)
-		err = writer.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
-			Path:      "testdata/metastore.obj",
+
+		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
 			StartTime: unixTime(10),
-			EndTime:   unixTime(30),
+			EndTime:   unixTime(0).Add(MetastoreWindowSize - time.Nanosecond),
 		})
 		require.NoError(t, err)
-
-		reader, err := bucket.Get(context.Background(), TableOfContentsPath(tenantID, unixTime(0)))
-		require.NoError(t, err)
-		defer reader.Close()
-
-		rebuilt, err := writer.rebuildToc(context.Background(), builder, reader, tocChange{
-			add: []TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}},
-		})
-		require.NoError(t, err)
-		out := objstore.NewInMemBucket()
-		require.NoError(t, out.Upload(context.Background(), "toc", rebuilt))
-		require.NoError(t, rebuilt.Close())
-		require.ElementsMatch(t, []tocRow{
-			{Tenant: tenantID, Path: "testdata/metastore.obj", StartUnix: 10, EndUnix: 30},
-			{Tenant: tenantID, Path: "testdata/other.obj", StartUnix: 40, EndUnix: 50},
-		}, readToC(context.Background(), t, out, "toc"))
+		rows := readToC(context.Background(), t, bucket, TableOfContentsPath("tenant-a", unixTime(0)))
+		require.Len(t, rows, 1)
+		require.Equal(t, "indexes/a", rows[0].Path)
 	})
 
-	t.Run("rebuildToc returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
-		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
-		require.NoError(t, err)
-		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
-		obj, closer, err := source.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = closer.Close() })
-		reader, err := obj.Reader(context.Background())
-		require.NoError(t, err)
-		defer reader.Close()
-
-		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
-		require.NoError(t, err)
-		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
-		_, err = writer.rebuildToc(context.Background(), target, reader, tocChange{
-			add: []TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}},
-		})
-		require.ErrorContains(t, err, "reading index pointers")
-		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
-	})
-
-	t.Run("WriteEntry fails when the context is canceled before the ToC is written", func(t *testing.T) {
+	t.Run("fails when the context is canceled before the ToC is written", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 
@@ -155,7 +107,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Empty(t, bucket.Objects())
 	})
 
-	t.Run("WriteEntry writes each tenant's entry only to that tenant's ToC", func(t *testing.T) {
+	t.Run("writes each tenant's entry only to that tenant's ToC", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 
@@ -193,26 +145,26 @@ func TestTableOfContentsWriter(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "WriteEntry returns an error and writes nothing when the entry has no time range",
+			name:    "returns an error and writes nothing when the entry has no time range",
 			entry:   TableOfContentsEntry{Path: "indexes/a"},
 			wantErr: "indexes/a",
 		},
 		{
-			name:    "WriteEntry returns an error and writes nothing when the entry starts at the Unix epoch",
+			name:    "returns an error and writes nothing when the entry starts at the Unix epoch",
 			entry:   TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(0), EndTime: unixTime(10)},
 			wantErr: "indexes/a",
 		},
 		{
-			name:    "WriteEntry returns an error and writes nothing when the entry ends before it starts",
+			name:    "returns an error and writes nothing when the entry ends before it starts",
 			entry:   TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(20), EndTime: unixTime(10)},
 			wantErr: "indexes/a",
 		},
 		{
-			name: "WriteEntry returns an error and writes nothing when the entry spans two windows",
+			name: "returns an error and writes nothing when the entry ends on the next window boundary",
 			entry: TableOfContentsEntry{
 				Path:      "indexes/a",
 				StartTime: unixTime(10),
-				EndTime:   unixTime(10).Add(MetastoreWindowSize),
+				EndTime:   unixTime(0).Add(MetastoreWindowSize),
 			},
 			wantErr: "spans more than one ToC window",
 		},
@@ -223,11 +175,11 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 			err := writer.WriteEntry(context.Background(), "tenant-a", tc.entry)
 			require.ErrorContains(t, err, tc.wantErr)
-			require.Zero(t, bucket.calls)
+			require.Zero(t, bucket.Calls())
 		})
 	}
 
-	t.Run("WriteEntry leaves the ToC unchanged and reports already_present when the ToC already holds the entry's path", func(t *testing.T) {
+	t.Run("leaves the ToC unchanged and reports already_present when the ToC already holds the entry's path", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 		entry := TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20)}
@@ -245,7 +197,19 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, want, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
 	})
 
-	t.Run("WriteEntry skips the entry when its path is the last of more than one read batch of pointers", func(t *testing.T) {
+	t.Run("leaves the ToC unchanged when the ToC holds the entry's path with another time range", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
+
+		require.NoError(t, writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20)}))
+		require.NoError(t, writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(30)}))
+
+		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, bucket, tocPath))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+	})
+
+	t.Run("skips the entry when its path is the last of more than one read batch of pointers", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
 		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
 		paths := make([]string, 300)
@@ -265,7 +229,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, before, inner.Objects()[tocPath])
 	})
 
-	t.Run("WriteEntry appends the entry once and reports already_present when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
+	t.Run("appends the entry once and reports already_present when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
 		bucket := &failAfterWriteBucket{Bucket: inner}
 		writer := newTableOfContentsWriter(t, bucket)
@@ -284,13 +248,33 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
 	})
 
-	t.Run("WriteEntry returns an error after the last retry when every write fails", func(t *testing.T) {
+	t.Run("keeps the row that another writer added between two attempts and adds the entry once", func(t *testing.T) {
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenant-a", unixTime(0))
+		uploadToC(t, inner, tocPath, "tenant-a", "indexes/old")
+
+		bucket := &conflictBucket{Bucket: inner, concurrentWrite: func() {
+			uploadToC(t, inner, tocPath, "tenant-a", "indexes/old", "indexes/other")
+		}}
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(20),
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, bucket.calls)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenant-a", Path: "indexes/old", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenant-a", Path: "indexes/other", StartUnix: 10, EndUnix: 20},
+		}, readToC(context.Background(), t, inner, tocPath))
+	})
+
+	t.Run("returns an error after the last attempt when every write fails", func(t *testing.T) {
 		bucket := &failingBucket{Bucket: objstore.NewInMemBucket()}
-		writer := NewTableOfContentsWriter(bucket, backoff.Config{
-			MinBackoff: time.Millisecond,
-			MaxBackoff: time.Millisecond,
-			MaxRetries: 3,
-		}, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
+		writer := newTableOfContentsWriterWithBackoff(t, bucket, 3)
 
 		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
 			Path:      "indexes/a",
@@ -299,13 +283,13 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.ErrorContains(t, err, "terminated after 3 retries")
 		require.ErrorIs(t, err, errWriteFailed)
-		require.Equal(t, 3, bucket.calls)
+		require.Equal(t, 3, bucket.Calls())
 
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 3}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
 	})
 
-	t.Run("WriteEntry writes every entry when tenants write concurrently", func(t *testing.T) {
+	t.Run("writes every entry when tenants write concurrently", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 
@@ -335,11 +319,11 @@ func TestTableOfContentsWriter(t *testing.T) {
 		paths []string
 	}{
 		{
-			name:  "WriteEntry returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant",
+			name:  "returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant",
 			paths: []string{"indexes/b"},
 		},
 		{
-			name:  "WriteEntry returns an error without retrying and leaves the ToC unchanged when a section of another tenant holds the entry's path",
+			name:  "returns an error without retrying and leaves the ToC unchanged when a section of another tenant holds the entry's path",
 			paths: []string{"indexes/a"},
 		},
 	} {
@@ -352,8 +336,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 			bucket := &countingBucket{Bucket: inner}
 			writer := newTableOfContentsWriter(t, bucket)
 
-			// The timeout turns a regression that retries into a failure
-			// instead of a slow test.
+			// The timeout makes a regression that retries fail fast instead of
+			// waiting through every retry.
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			err := writer.WriteEntry(ctx, "tenant-a", TableOfContentsEntry{
@@ -365,6 +349,474 @@ func TestTableOfContentsWriter(t *testing.T) {
 			require.NotErrorIs(t, err, context.DeadlineExceeded)
 			require.Equal(t, 1, bucket.Calls())
 			require.Equal(t, before, readToC(context.Background(), t, inner, tocPath))
+
+			want := map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 1}
+			require.Equal(t, want, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+			require.Equal(t, want, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+		})
+	}
+}
+
+func TestRebuildToc(t *testing.T) {
+	t.Run("keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
+		tenantID := "test"
+		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+		err = writer.WriteEntry(context.Background(), tenantID, TableOfContentsEntry{
+			Path:      "testdata/metastore.obj",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(30),
+		})
+		require.NoError(t, err)
+
+		reader, err := bucket.Get(context.Background(), TableOfContentsPath(tenantID, unixTime(0)))
+		require.NoError(t, err)
+		defer reader.Close()
+
+		rebuilt, err := writer.rebuildToc(context.Background(), builder, reader, tocChange{
+			add: []TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}},
+		})
+		require.NoError(t, err)
+		out := objstore.NewInMemBucket()
+		require.NoError(t, out.Upload(context.Background(), "toc", rebuilt))
+		require.NoError(t, rebuilt.Close())
+		require.ElementsMatch(t, []tocRow{
+			{Tenant: tenantID, Path: "testdata/metastore.obj", StartUnix: 10, EndUnix: 30},
+			{Tenant: tenantID, Path: "testdata/other.obj", StartUnix: 40, EndUnix: 50},
+		}, readToC(context.Background(), t, out, "toc"))
+	})
+
+	t.Run("returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
+		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
+		obj, closer, err := source.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+		reader, err := obj.Reader(context.Background())
+		require.NoError(t, err)
+		defer reader.Close()
+
+		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
+		_, err = writer.rebuildToc(context.Background(), target, reader, tocChange{
+			add: []TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		})
+		require.ErrorContains(t, err, "reading index pointers")
+		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
+	})
+}
+
+func TestReplaceIndexPointers(t *testing.T) {
+	t.Run("replaces the old paths with the new entry and reports written", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+			{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-1"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+			{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
+		}, readWindowToCs(ctx, t, bucket, window))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 0, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+	})
+
+	t.Run("leaves the ToCs of the other tenants unchanged", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+			{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
+			{Tenant: "tenantC", Path: "idx/c-0", StartUnix: 12, EndUnix: 22},
+			{Tenant: "tenantC", Path: "idx/c-1", StartUnix: 32, EndUnix: 42},
+		})
+		otherRowsBefore := filterRows(readWindowToCs(ctx, t, bucket, window), "tenantB", "tenantC")
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-1", "idx/a-2"},
+			[]TableOfContentsEntry{{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+
+		after := readWindowToCs(ctx, t, bucket, window)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-merged", StartUnix: 10, EndUnix: 60}}, filterRows(after, "tenantA"))
+		require.Equal(t, otherRowsBefore, filterRows(after, "tenantB", "tenantC"))
+	})
+
+	t.Run("removes the old paths it finds and applies the swap when the ToC holds only some of them", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-gone"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("removes every pointer of an old path that the ToC holds more than once", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("drops the repeated pointers of a kept path when it rewrites the ToC", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("adds a new entry once when the ToC already holds its path", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("adds a new entry once when newEntries repeats a path that the ToC does not hold", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+			},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("returns false, leaves the ToC unchanged and reports race_lost when the ToC holds none of the old paths", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-already-rolled-up", StartUnix: 10, EndUnix: 60},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+		})
+		before := readWindowToCs(ctx, t, bucket, window)
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-1"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)}},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+	})
+
+	t.Run("returns false and reports race_lost when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}})
+		before := readWindowToCs(ctx, t, bucket, window)
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+				{Path: "idx/a-other", StartTime: unixTime(10), EndTime: unixTime(20)},
+			},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+	})
+
+	t.Run("returns false, creates no ToC and reports race_lost when the ToC does not exist", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+
+		exists, err := bucket.Exists(ctx, TableOfContentsPath("tenantA", window))
+		require.NoError(t, err)
+		require.False(t, exists)
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+	})
+
+	t.Run("applies the swap once and returns false when the conditional write lands and then returns an error", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
+
+		bucket := &failAfterWriteBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, 2, bucket.calls)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
+
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+	})
+
+	t.Run("retries and applies the swap when the first conditional write fails", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		seedToC(t, inner, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+		})
+
+		bucket := &conflictBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, 2, bucket.calls)
+		require.Equal(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
+			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
+		}, readWindowToCs(ctx, t, inner, window))
+	})
+
+	t.Run("returns an error after the last attempt when every write fails", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
+
+		bucket := &failingBucket{Bucket: inner}
+		writer := newTableOfContentsWriterWithBackoff(t, bucket, 3)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.False(t, swapped)
+		require.Equal(t, 3, bucket.Calls())
+	})
+
+	t.Run("returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		tocPath := TableOfContentsPath("tenantA", window)
+		uploadToC(t, inner, tocPath, "tenantB", "idx/a-0")
+		before := readToC(ctx, t, inner, tocPath)
+
+		bucket := &countingBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.ErrorIs(t, err, errUnrecoverable)
+		require.False(t, swapped)
+		require.Equal(t, 1, bucket.Calls())
+		require.Equal(t, before, readToC(ctx, t, inner, tocPath))
+	})
+
+	for _, tc := range []struct {
+		name       string
+		oldPaths   []string
+		newEntries []TableOfContentsEntry
+		wantErr    string
+	}{
+		{
+			name: "returns false without touching storage when oldPaths and newEntries are nil",
+		},
+		{
+			name:       "returns false without touching storage when oldPaths and newEntries are empty",
+			oldPaths:   []string{},
+			newEntries: []TableOfContentsEntry{},
+		},
+		{
+			name:       "returns an error without touching storage when oldPaths is empty",
+			newEntries: []TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)}},
+			wantErr:    "no old entries",
+		},
+		{
+			name:     "returns an error without touching storage when newEntries is empty",
+			oldPaths: []string{"idx/a-old"},
+			wantErr:  "no new entries",
+		},
+		{
+			name:       "returns an error without touching storage when a new entry ends before it starts",
+			oldPaths:   []string{"idx/a-0"},
+			newEntries: []TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
+			wantErr:    "idx/a-new",
+		},
+		{
+			name:     "returns an error without touching storage when a new entry starts at the end of the window",
+			oldPaths: []string{"idx/a-0"},
+			newEntries: []TableOfContentsEntry{{
+				Path:      "idx/a-new",
+				StartTime: unixTime(0).Add(MetastoreWindowSize),
+				EndTime:   unixTime(0).Add(MetastoreWindowSize + time.Hour),
+			}},
+			wantErr: "does not overlap the window",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket := &failingBucket{Bucket: objstore.NewInMemBucket()}
+			writer := newTableOfContentsWriter(t, bucket)
+
+			swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA", tc.oldPaths, tc.newEntries)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+			require.False(t, swapped)
+			require.Zero(t, bucket.Calls())
+		})
+	}
+
+	window := unixTime(0).Add(MetastoreWindowSize)
+	for _, tc := range []struct {
+		name       string
+		start, end time.Time
+		wantErr    bool
+	}{
+		{
+			name:  "applies the swap when a new entry starts before the window and ends inside it",
+			start: window.Add(-time.Hour),
+			end:   window.Add(time.Hour),
+		},
+		{
+			name:  "applies the swap when a new entry starts inside the window and ends after it",
+			start: window.Add(time.Hour),
+			end:   window.Add(MetastoreWindowSize + time.Hour),
+		},
+		{
+			name:  "applies the swap when a new entry ends at the start of the window",
+			start: window.Add(-time.Hour),
+			end:   window,
+		},
+		{
+			name:    "returns an error without touching storage when a new entry ends before the window",
+			start:   window.Add(-2 * time.Hour),
+			end:     window.Add(-time.Hour),
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inner := objstore.NewInMemBucket()
+			seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: window.Unix(), EndUnix: window.Unix()}})
+			bucket := &countingBucket{Bucket: inner}
+			writer := newTableOfContentsWriter(t, bucket)
+
+			swapped, err := writer.ReplaceIndexPointers(context.Background(), window, "tenantA",
+				[]string{"idx/a-0"},
+				[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: tc.start, EndTime: tc.end}},
+			)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "does not overlap the window")
+				require.False(t, swapped)
+				require.Zero(t, bucket.Calls())
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, swapped)
 		})
 	}
 }
@@ -397,6 +849,49 @@ func writeTimeRanges(ctx context.Context, w *TableOfContentsWriter, path string,
 	return nil
 }
 
+var errWriteFailed = errors.New("write failed")
+
+// countingBucket counts GetAndReplace calls and passes them through.
+type countingBucket struct {
+	objstore.Bucket
+	mu    sync.Mutex
+	calls int
+}
+
+func (b *countingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+	return b.Bucket.GetAndReplace(ctx, name, fn)
+}
+
+func (b *countingBucket) Calls() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.calls
+}
+
+// failingBucket returns errWriteFailed from every GetAndReplace call without
+// a write.
+type failingBucket struct {
+	objstore.Bucket
+	mu    sync.Mutex
+	calls int
+}
+
+func (b *failingBucket) GetAndReplace(context.Context, string, func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.calls++
+	return errWriteFailed
+}
+
+func (b *failingBucket) Calls() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.calls
+}
+
 // failAfterWriteBucket simulates a conditional write whose response is lost.
 // On the first GetAndReplace call it writes the object and then returns an
 // error. Later calls pass through. calls counts the GetAndReplace calls.
@@ -414,18 +909,25 @@ func (b *failAfterWriteBucket) GetAndReplace(ctx context.Context, name string, f
 	return err
 }
 
-var errWriteFailed = errors.New("write failed")
-
-// failingBucket returns errWriteFailed from every GetAndReplace call without
-// a write. calls counts the GetAndReplace calls.
-type failingBucket struct {
+// conflictBucket simulates a conditional write that loses to another writer.
+// On the first GetAndReplace call it runs concurrentWrite, if set, and returns
+// errWriteFailed without a write. Later calls pass through. calls counts the
+// GetAndReplace calls.
+type conflictBucket struct {
 	objstore.Bucket
-	calls int
+	concurrentWrite func()
+	calls           int
 }
 
-func (b *failingBucket) GetAndReplace(context.Context, string, func(io.ReadCloser) (io.ReadCloser, error)) error {
+func (b *conflictBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
 	b.calls++
-	return errWriteFailed
+	if b.calls == 1 {
+		if b.concurrentWrite != nil {
+			b.concurrentWrite()
+		}
+		return errWriteFailed
+	}
+	return b.Bucket.GetAndReplace(ctx, name, fn)
 }
 
 // sampleCounts returns the number of observations of vec for op and each
@@ -448,6 +950,20 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket) *TableOfCont
 	return NewTableOfContentsWriter(
 		bucket,
 		DefaultTocWriterBackoffConfig,
+		DefaultTocBuilderConfig,
+		log.NewNopLogger(),
+		NewTocWriterMetrics(prometheus.NewPedanticRegistry()),
+	)
+}
+
+// newTableOfContentsWriterWithBackoff returns a writer that makes at most
+// attempts attempts, with a short backoff to keep tests fast.
+func newTableOfContentsWriterWithBackoff(t *testing.T, bucket objstore.Bucket, attempts int) *TableOfContentsWriter {
+	t.Helper()
+
+	return NewTableOfContentsWriter(
+		bucket,
+		backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond, MaxRetries: attempts},
 		DefaultTocBuilderConfig,
 		log.NewNopLogger(),
 		NewTocWriterMetrics(prometheus.NewPedanticRegistry()),
@@ -485,7 +1001,8 @@ type tocRow struct {
 	EndUnix   int64
 }
 
-// readToC reads all index pointers from a ToC at the given path, flattened by tenant.
+// readToC reads all index pointers from a ToC at the given path, flattened by
+// tenant and sorted by tenant and path.
 func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocRow {
 	t.Helper()
 	rc, err := bucket.Get(ctx, path)
@@ -547,9 +1064,8 @@ func readWindowToCs(ctx context.Context, t *testing.T, bucket objstore.Bucket, w
 	return rows
 }
 
-// seedToC writes one ToC per tenant at the given window containing the
-// supplied (tenant,path,start,end) rows. Uses the same indexobj.Builder +
-// DefaultTocBuilderConfig path that the production writer uses.
+// seedToC writes one ToC per tenant in the window with the given rows. It uses
+// the builder and config of the production writer.
 func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocRow) {
 	t.Helper()
 	rowsByTenant := make(map[string][]tocRow)
@@ -573,109 +1089,9 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	}
 }
 
-func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := objstore.NewInMemBucket()
-
-	seedToC(t, bucket, window, []tocRow{
-		{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
-		{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-		{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
-	})
-
-	writer := newTableOfContentsWriter(t, bucket)
-
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0", "idx/a-1"},
-		[]TableOfContentsEntry{
-			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
-		},
-	)
-	require.NoError(t, err)
-	require.True(t, swapped, "expected swap to apply")
-
-	got := readWindowToCs(ctx, t, bucket, window)
-	want := []tocRow{
-		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
-		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-		{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
-	}
-	require.Equal(t, want, got)
-}
-
-func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
-	tests := []struct {
-		name           string
-		seedRows       []tocRow
-		targetTenant   string
-		oldPaths       []string
-		newEntries     []TableOfContentsEntry
-		wantTargetRows []tocRow
-		otherTenants   []string
-	}{
-		{
-			// Disjoint per-tenant index paths: each tenant owns its own set
-			// of idx/... paths. This is the L1 → L1 re-compaction shape.
-			name: "disjoint indexes per tenant",
-			seedRows: []tocRow{
-				{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
-				{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-				{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60},
-				{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-				{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
-				{Tenant: "tenantB", Path: "idx/b-2", StartUnix: 51, EndUnix: 61},
-				{Tenant: "tenantC", Path: "idx/c-0", StartUnix: 12, EndUnix: 22},
-				{Tenant: "tenantC", Path: "idx/c-1", StartUnix: 32, EndUnix: 42},
-				{Tenant: "tenantC", Path: "idx/c-2", StartUnix: 52, EndUnix: 62},
-			},
-			targetTenant: "tenantA",
-			oldPaths:     []string{"idx/a-0", "idx/a-1", "idx/a-2"},
-			newEntries: []TableOfContentsEntry{
-				{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)},
-			},
-			wantTargetRows: []tocRow{{Tenant: "tenantA", Path: "idx/a-merged", StartUnix: 10, EndUnix: 60}},
-			otherTenants:   []string{"tenantB", "tenantC"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			window := unixTime(0)
-			bucket := objstore.NewInMemBucket()
-			seedToC(t, bucket, window, tt.seedRows)
-
-			// Capture other tenants' rows pre-swap so we can show their ToCs
-			// are left untouched.
-			preSwap := readWindowToCs(ctx, t, bucket, window)
-			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
-
-			writer := newTableOfContentsWriter(t, bucket)
-
-			swapped, err := writer.ReplaceIndexPointers(ctx, window,
-				tt.targetTenant, tt.oldPaths, tt.newEntries,
-			)
-			require.NoError(t, err)
-			require.True(t, swapped, "expected %s swap to apply", tt.targetTenant)
-
-			postSwap := readWindowToCs(ctx, t, bucket, window)
-
-			// 1. Target tenant ends up with exactly the expected rows.
-			targetAfter := filterRows(postSwap, tt.targetTenant)
-			require.Equal(t, tt.wantTargetRows, targetAfter)
-
-			// 2. Other tenants' rows are unchanged.
-			otherRowsAfter := filterRows(postSwap, tt.otherTenants...)
-			require.Equal(t, otherRowsBefore, otherRowsAfter,
-				"non-target tenant rows must be preserved unchanged")
-		})
-	}
-}
-
 // uploadToC writes a ToC to path that holds one section of tenant with the
-// given index paths. The tenant does not have to match the path.
+// given index paths, each from 10 to 20 seconds after the Unix epoch. The
+// tenant does not have to match the path.
 func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexPaths ...string) {
 	t.Helper()
 	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
@@ -692,145 +1108,7 @@ func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexP
 	require.NoError(t, reader.Close())
 }
 
-// countingBucket counts GetAndReplace calls and passes them through.
-type countingBucket struct {
-	objstore.Bucket
-	callsMu sync.Mutex
-	calls   int
-}
-
-func (b *countingBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
-	b.callsMu.Lock()
-	b.calls++
-	b.callsMu.Unlock()
-	return b.Bucket.GetAndReplace(ctx, name, fn)
-}
-
-func (b *countingBucket) Calls() int {
-	b.callsMu.Lock()
-	defer b.callsMu.Unlock()
-	return b.calls
-}
-
-func TestReplaceIndexPointers(t *testing.T) {
-	t.Run("returns an error without retrying and leaves the ToC unchanged when the ToC holds a section of another tenant", func(t *testing.T) {
-		ctx := context.Background()
-		window := unixTime(0)
-		inner := objstore.NewInMemBucket()
-		tocPath := TableOfContentsPath("tenantA", window)
-		uploadToC(t, inner, tocPath, "tenantB", "idx/a-0")
-		before := readToC(ctx, t, inner, tocPath)
-
-		bucket := &countingBucket{Bucket: inner}
-		writer := newTableOfContentsWriter(t, bucket)
-
-		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
-		)
-		require.ErrorIs(t, err, errUnrecoverable)
-		require.False(t, swapped)
-		require.Equal(t, 1, bucket.Calls())
-		require.Equal(t, before, readToC(ctx, t, inner, tocPath))
-	})
-
-	t.Run("returns an error without touching storage when a new entry ends before it starts", func(t *testing.T) {
-		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
-		writer := newTableOfContentsWriter(t, bucket)
-
-		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
-		)
-		require.ErrorContains(t, err, "idx/a-new")
-		require.False(t, swapped)
-		require.Zero(t, bucket.Calls())
-	})
-
-	t.Run("adds a new entry once when the ToC already holds its path", func(t *testing.T) {
-		ctx := context.Background()
-		window := unixTime(0)
-		bucket := objstore.NewInMemBucket()
-		seedToC(t, bucket, window, []tocRow{
-			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
-			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
-		})
-
-		writer := newTableOfContentsWriter(t, bucket)
-		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{
-				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
-				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
-			},
-		)
-		require.NoError(t, err)
-		require.True(t, swapped)
-		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
-	})
-
-	t.Run("drops the repeated pointers of a path when it rewrites the ToC", func(t *testing.T) {
-		ctx := context.Background()
-		window := unixTime(0)
-		bucket := objstore.NewInMemBucket()
-		seedToC(t, bucket, window, []tocRow{
-			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
-			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-		})
-
-		writer := newTableOfContentsWriter(t, bucket)
-		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
-		)
-		require.NoError(t, err)
-		require.True(t, swapped)
-		require.ElementsMatch(t, []tocRow{
-			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
-		}, readWindowToCs(ctx, t, bucket, window))
-	})
-
-	t.Run("applies the swap once and returns false when the conditional write lands and then returns an error", func(t *testing.T) {
-		ctx := context.Background()
-		window := unixTime(0)
-		inner := objstore.NewInMemBucket()
-		seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
-
-		bucket := &failAfterWriteBucket{Bucket: inner}
-		writer := newTableOfContentsWriter(t, bucket)
-		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
-		)
-		require.NoError(t, err)
-		require.False(t, swapped)
-		require.Equal(t, 2, bucket.calls)
-		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
-
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
-	})
-
-	t.Run("returns an error without touching storage when a new entry does not overlap the window", func(t *testing.T) {
-		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
-		writer := newTableOfContentsWriter(t, bucket)
-
-		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{
-				Path:      "idx/a-new",
-				StartTime: unixTime(0).Add(MetastoreWindowSize),
-				EndTime:   unixTime(0).Add(MetastoreWindowSize + time.Hour),
-			}},
-		)
-		require.ErrorContains(t, err, "does not overlap the window")
-		require.False(t, swapped)
-		require.Zero(t, bucket.Calls())
-	})
-}
-
+// filterRows returns the rows of the given tenants.
 func filterRows(rows []tocRow, tenants ...string) []tocRow {
 	keep := make(map[string]struct{}, len(tenants))
 	for _, t := range tenants {
@@ -843,218 +1121,4 @@ func filterRows(rows []tocRow, tenants ...string) []tocRow {
 		}
 	}
 	return out
-}
-
-func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := objstore.NewInMemBucket()
-
-	seedToC(t, bucket, window, []tocRow{
-		{Tenant: "tenantA", Path: "idx/a-already-rolled-up", StartUnix: 10, EndUnix: 60}, // simulates "the other coordinator's swap already landed"
-		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-	})
-	preSwap := readWindowToCs(ctx, t, bucket, window)
-
-	writer := newTableOfContentsWriter(t, bucket)
-
-	// Caller still believes "idx/a-0" / "idx/a-1" are present — they're not.
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0", "idx/a-1"},
-		[]TableOfContentsEntry{
-			{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)},
-		},
-	)
-	require.NoError(t, err)
-	require.False(t, swapped, "expected no-op when oldPaths are no longer present")
-	require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
-
-	postSwap := readWindowToCs(ctx, t, bucket, window)
-	require.Equal(t, preSwap, postSwap, "ToC must be unchanged on race-loss")
-}
-
-func TestReplaceIndexPointers_MissingToC(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := objstore.NewInMemBucket()
-	tocPath := TableOfContentsPath("tenantA", window)
-
-	writer := newTableOfContentsWriter(t, bucket)
-
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0"},
-		[]TableOfContentsEntry{
-			{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
-		},
-	)
-	require.NoError(t, err)
-	require.False(t, swapped, "missing ToC must no-op")
-
-	// Verify the no-op did NOT materialize an empty object at tocPath.
-	exists, err := bucket.Exists(ctx, tocPath)
-	require.NoError(t, err)
-	require.False(t, exists, "missing-ToC no-op must not create an empty ToC blob")
-}
-
-// flakyBucket wraps an objstore.Bucket and, on the first N GetAndReplace calls,
-// returns the supplied error WITHOUT invoking the callback. Subsequent calls
-// pass through. Used to simulate a 412 PreconditionFailed on the first attempt.
-type flakyBucket struct {
-	objstore.Bucket
-	mu              sync.Mutex
-	remainingErrors []error
-}
-
-func (b *flakyBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
-	b.mu.Lock()
-	if len(b.remainingErrors) > 0 {
-		err := b.remainingErrors[0]
-		b.remainingErrors = b.remainingErrors[1:]
-		b.mu.Unlock()
-		return err
-	}
-	b.mu.Unlock()
-	return b.Bucket.GetAndReplace(ctx, name, fn)
-}
-
-// alwaysFailBucket wraps an objstore.Bucket and returns errPreconditionFailed
-// from every GetAndReplace call. Used to drive the retry-exhaustion test.
-type alwaysFailBucket struct {
-	objstore.Bucket
-}
-
-func (b *alwaysFailBucket) GetAndReplace(_ context.Context, _ string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
-	return errPreconditionFailed
-}
-
-// errPreconditionFailed is a synthetic 412-shaped error used by the retry tests.
-var errPreconditionFailed = errors.New("PreconditionFailed: simulated If-Match mismatch")
-
-func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	inner := objstore.NewInMemBucket()
-
-	seedToC(t, inner, window, []tocRow{
-		{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
-		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-	})
-
-	flaky := &flakyBucket{
-		Bucket:          inner,
-		remainingErrors: []error{errPreconditionFailed},
-	}
-
-	writer := newTableOfContentsWriter(t, flaky)
-
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0"},
-		[]TableOfContentsEntry{
-			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
-		},
-	)
-	require.NoError(t, err)
-	require.True(t, swapped)
-
-	got := readWindowToCs(ctx, t, inner, window)
-	require.Equal(t, []tocRow{
-		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
-		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
-	}, got)
-}
-
-func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	inner := objstore.NewInMemBucket()
-	seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
-
-	// Always fail. Build a wrapper that returns errPreconditionFailed every call.
-	alwaysFail := &alwaysFailBucket{Bucket: inner}
-
-	// A tight backoff keeps this test fast while it still runs the retry loop.
-	writer := NewTableOfContentsWriter(alwaysFail, backoff.Config{
-		MinBackoff: 1 * time.Millisecond,
-		MaxBackoff: 5 * time.Millisecond,
-		MaxRetries: 3,
-	}, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
-
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0"},
-		[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
-	)
-	require.Error(t, err)
-	require.ErrorIs(t, err, errPreconditionFailed)
-	require.False(t, swapped)
-}
-
-// countingFailBucket wraps an objstore.Bucket and tracks the number of
-// GetAndReplace calls. Used to prove the empty-oldPaths fast-path bypasses
-// storage entirely.
-type countingFailBucket struct {
-	objstore.Bucket
-	mu    sync.Mutex
-	calls int
-}
-
-func (b *countingFailBucket) GetAndReplace(_ context.Context, _ string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
-	b.mu.Lock()
-	b.calls++
-	b.mu.Unlock()
-	return errPreconditionFailed
-}
-
-func TestReplaceIndexPointers_EmptyOldAndNewPaths_BypassesStorage(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
-
-	writer := newTableOfContentsWriter(t, bucket)
-
-	// Even with a permanently-failing bucket, empty old and new paths must no-op
-	// without touching storage. This is the deterministic-no-op contract.
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		nil,
-		nil,
-	)
-	require.NoError(t, err)
-	require.False(t, swapped)
-	require.Equal(t, 0, bucket.calls, "empty oldPaths and newEntries must bypass GetAndReplace entirely")
-
-	// Same property for empty slice (not nil).
-	swapped, err = writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{},
-		[]TableOfContentsEntry{},
-	)
-	require.NoError(t, err)
-	require.False(t, swapped)
-	require.Equal(t, 0, bucket.calls, "empty oldPaths and newEntries must bypass GetAndReplace entirely")
-}
-
-func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
-
-	writer := newTableOfContentsWriter(t, bucket)
-
-	// Empty old, non empty new => error without calling storage.
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		nil,
-		[]TableOfContentsEntry{
-			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
-		},
-	)
-	require.Error(t, err)
-	require.False(t, swapped)
-	require.Equal(t, 0, bucket.calls, "must bypass GetAndReplace entirely")
-
-	// Non-empty old, empty new => error without calling storage.
-	swapped, err = writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-old"},
-		nil,
-	)
-	require.Error(t, err)
-	require.False(t, swapped)
-	require.Equal(t, 0, bucket.calls, "must bypass GetAndReplace entirely")
 }
