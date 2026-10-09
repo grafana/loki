@@ -19,7 +19,7 @@ func TestNewTocWriterMetrics(t *testing.T) {
 		} {
 			count, err := testutil.GatherAndCount(reg, name)
 			require.NoError(t, err)
-			require.Equal(t, 6, count, name)
+			require.Equal(t, 8, count, name)
 		}
 	})
 }

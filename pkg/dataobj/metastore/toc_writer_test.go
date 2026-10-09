@@ -227,7 +227,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 	}
 
-	t.Run("WriteEntry leaves the ToC unchanged and counts a skip when the ToC already holds the entry's path", func(t *testing.T) {
+	t.Run("WriteEntry leaves the ToC unchanged and reports already_present when the ToC already holds the entry's path", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 		entry := TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20)}
@@ -240,7 +240,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, bucket, tocPath))
 		require.Equal(t, before, bucket.Objects()[tocPath], "WriteEntry must not rewrite the ToC")
 
-		want := map[status]uint64{statusSuccess: 1, statusSkipped: 1, statusFailure: 0}
+		want := map[status]uint64{statusSuccess: 1, statusAlreadyPresent: 1, statusRaceLost: 0, statusFailure: 0}
 		require.Equal(t, want, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
 		require.Equal(t, want, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
@@ -280,8 +280,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, inner, tocPath))
 
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, map[status]uint64{statusSuccess: 1, statusSkipped: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusAlreadyPresent: 1, statusRaceLost: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 1, statusAlreadyPresent: 0, statusRaceLost: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
 
 	t.Run("WriteEntry returns an error after the last retry when every write fails", func(t *testing.T) {
@@ -301,8 +301,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, 3, bucket.calls)
 
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 3}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusAlreadyPresent: 0, statusRaceLost: 0, statusFailure: 3}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusAlreadyPresent: 0, statusRaceLost: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
 
 	t.Run("WriteEntry writes every entry when tenants write concurrently", func(t *testing.T) {
@@ -434,7 +434,7 @@ func sampleCounts(t *testing.T, vec *prometheus.HistogramVec, op string) map[sta
 	t.Helper()
 
 	counts := make(map[status]uint64)
-	for _, s := range []status{statusSuccess, statusSkipped, statusFailure} {
+	for _, s := range []status{statusSuccess, statusAlreadyPresent, statusRaceLost, statusFailure} {
 		var m dto.Metric
 		require.NoError(t, vec.WithLabelValues(op, string(s)).(prometheus.Metric).Write(&m))
 		counts[s] = m.GetHistogram().GetSampleCount()
@@ -809,8 +809,8 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
 
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
-		require.Equal(t, map[status]uint64{statusSuccess: 1, statusSkipped: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusAlreadyPresent: 1, statusRaceLost: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
+		require.Equal(t, map[status]uint64{statusSuccess: 1, statusAlreadyPresent: 0, statusRaceLost: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
 	})
 
 	t.Run("returns an error without touching storage when a new entry does not overlap the window", func(t *testing.T) {
@@ -867,6 +867,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.False(t, swapped, "expected no-op when oldPaths are no longer present")
+	require.Equal(t, map[status]uint64{statusSuccess: 0, statusAlreadyPresent: 0, statusRaceLost: 1, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
 
 	postSwap := readWindowToCs(ctx, t, bucket, window)
 	require.Equal(t, preSwap, postSwap, "ToC must be unchanged on race-loss")

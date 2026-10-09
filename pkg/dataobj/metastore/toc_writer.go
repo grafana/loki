@@ -255,6 +255,20 @@ const (
 	changeRaceLost
 )
 
+// status returns the metric label of r.
+func (r changeResult) status() status {
+	switch r {
+	case changeWritten:
+		return statusSuccess
+	case changePresent:
+		return statusAlreadyPresent
+	case changeRaceLost:
+		return statusRaceLost
+	default:
+		return statusFailure
+	}
+}
+
 // applyChange applies change to the tenant's ToC of window with a
 // conditional write. It retries a failed write with the backoff config of the
 // writer, and returns an error without retrying if the ToC holds a section of
@@ -264,10 +278,10 @@ const (
 // the response is lost. So if an earlier attempt failed and the ToC now holds
 // the change, applyChange returns changeWritten.
 func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant string, window time.Time, change tocChange) (changeResult, error) {
-	outcome := statusFailure
+	result := changeFailed
 	start := time.Now()
 	defer func() {
-		m.metrics.changeTotalSeconds.WithLabelValues(op, string(outcome)).Observe(time.Since(start).Seconds())
+		m.metrics.changeTotalSeconds.WithLabelValues(op, string(result.status())).Observe(time.Since(start).Seconds())
 	}()
 
 	tocPath := TableOfContentsPath(tenant, window)
@@ -276,10 +290,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 		return changeFailed, err
 	}
 
-	var (
-		result       = changeFailed
-		failedBefore bool
-	)
+	var failedBefore bool
 	b := backoff.New(ctx, m.backoffCfg)
 	for b.Ongoing() {
 		attemptStart := time.Now()
@@ -293,21 +304,21 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 
 		switch {
 		case err == nil:
-			result, outcome = changeWritten, statusSuccess
+			result = changeWritten
 			level.Info(m.logger).Log("msg", "toc updated", "op", op, "tocPath", tocPath)
 		case errors.Is(err, errChangePresent):
-			result, outcome = changePresent, statusSkipped
+			result = changePresent
 			level.Info(m.logger).Log("msg", "toc update skipped: toc already holds the change", "op", op, "tocPath", tocPath)
 		case errors.Is(err, errRaceLost):
-			result, outcome = changeRaceLost, statusSkipped
+			result = changeRaceLost
 			level.Info(m.logger).Log("msg", "toc update skipped: toc holds none of the paths to remove", "op", op, "tocPath", tocPath)
 		default:
-			result, outcome = changeFailed, statusFailure
+			result = changeFailed
 			level.Error(m.logger).Log("msg", "toc update failed", "op", op, "err", err, "tocPath", tocPath)
 		}
-		m.metrics.changeAttemptSeconds.WithLabelValues(op, string(outcome)).Observe(time.Since(attemptStart).Seconds())
+		m.metrics.changeAttemptSeconds.WithLabelValues(op, string(result.status())).Observe(time.Since(attemptStart).Seconds())
 
-		if outcome != statusFailure || errors.Is(err, errUnrecoverable) {
+		if result != changeFailed || errors.Is(err, errUnrecoverable) {
 			break
 		}
 		failedBefore = true
@@ -317,11 +328,11 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 	// The loop ends with a failure on an unrecoverable error, after the last
 	// retry, or once ctx is done. ctx can be done before the first attempt,
 	// when err is still nil.
-	if outcome == statusFailure {
+	if result == changeFailed {
 		return changeFailed, errors.Join(b.Err(), err)
 	}
 	if result == changePresent && failedBefore {
-		result, outcome = changeWritten, statusSuccess
+		result = changeWritten
 	}
 	return result, nil
 }
