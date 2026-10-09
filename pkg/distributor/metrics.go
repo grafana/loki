@@ -18,6 +18,7 @@ type metrics struct {
 	zeroStreamCount                       *prometheus.CounterVec
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
+	rejectedPartialWrites                 *prometheus.CounterVec
 
 	// metrics for limits service sharding, so rateStore sharding and
 	// limits-service sharding can be compared. They keep the shadow name they
@@ -85,6 +86,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant", "format"}),
+		rejectedPartialWrites: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_rejected_partial_writes_total",
+			Help:      "The total number of push requests rejected as a whole with a 429 instead of being partially written, because they contained streams of a policy with reject_partial_writes enabled. The policy label is the first such policy seen in the push.",
+		}, []string{"tenant", "policy"}),
 
 		limitsServiceShardShadowDivergence: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

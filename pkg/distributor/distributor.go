@@ -665,10 +665,13 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	var ingestionBlockedError error
 
-	// rejectPartialWrites is set when any stream in the push resolves to a policy configured with
-	// reject_partial_writes. Such pushes are rejected as a whole on a 429 instead of being partially
-	// written, see the check before the streams are sent.
-	var rejectPartialWrites bool
+	// rejectPartialWritesPolicy is the first policy in the push configured with
+	// reject_partial_writes, if any. Such pushes are rejected as a whole on a 429 instead of being
+	// partially written, see the check before the streams are sent.
+	var (
+		rejectPartialWrites       bool
+		rejectPartialWritesPolicy string
+	)
 
 	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
 	// resolved policy has a per-policy ingestion rate override are metered against their own
@@ -696,6 +699,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if !rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, policy) {
 				rejectPartialWrites = true
+				rejectPartialWritesPolicy = policy
 			}
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
@@ -891,6 +895,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	// on them would drop the valid streams for good.
 	if rejectPartialWrites && validationErr != nil {
 		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
 			return nil, validationErr
 		}
 	}

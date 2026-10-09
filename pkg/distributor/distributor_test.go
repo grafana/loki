@@ -3174,6 +3174,7 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 		blockStatusCode     int
 		expectedStatusCode  int32
 		expectWrites        bool
+		expectedRejected    map[string]float64
 	}{
 		{
 			name:               "partial write - policy not configured",
@@ -3187,6 +3188,7 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 			blockStatusCode:     http.StatusTooManyRequests,
 			expectedStatusCode:  http.StatusTooManyRequests,
 			expectWrites:        false,
+			expectedRejected:    map[string]float64{"backfill": 1},
 		},
 		{
 			name:                "full reject - rejected stream policy rejects partial writes",
@@ -3194,6 +3196,7 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 			blockStatusCode:     http.StatusTooManyRequests,
 			expectedStatusCode:  http.StatusTooManyRequests,
 			expectWrites:        false,
+			expectedRejected:    map[string]float64{"blocked": 1},
 		},
 		{
 			name:                "partial write - non 429 errors do not reject the whole push",
@@ -3240,6 +3243,12 @@ func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
 				require.Positive(t, pushed)
 			} else {
 				require.Zero(t, pushed)
+			}
+
+			rejected := distributors[0].m.rejectedPartialWrites
+			require.Equal(t, len(tc.expectedRejected), testutil.CollectAndCount(rejected))
+			for policy, count := range tc.expectedRejected {
+				require.Equal(t, count, testutil.ToFloat64(rejected.WithLabelValues("test", policy)))
 			}
 		})
 	}
