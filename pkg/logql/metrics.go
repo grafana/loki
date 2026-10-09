@@ -537,6 +537,8 @@ func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []int
 		"logline_hint_ranges_duration", time.Duration(idx.LoglineHintRangesDuration),
 		"logline_skipped_requests", idx.LoglineSkippedRequests,
 		"logline_narrowed_requests", idx.LoglineNarrowedRequests,
+		"shard_planned_chunks", idx.ShardPlannedChunks,
+		"logline_scanned_chunks", idx.ShardPlannedChunksScanned,
 	)
 	// Missing when no split went through shard planning, for example when the
 	// results cache answered the whole query. The planned chunks are an

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"slices"
 	"testing"
 	"time"
 
@@ -242,16 +241,20 @@ func TestAppendLoglineStats(t *testing.T) {
 		idx.ShardPlannedChunksScanned = scanned
 		return stats.Result{Index: idx}
 	}
-	loglineFields := []interface{}{
-		"logline_hint_status", "ok",
-		"logline_hint_lookup_time", 150 * time.Millisecond,
-		"logline_hint_ranges", int64(3),
-		"logline_hint_ranges_duration", 90 * time.Minute,
-		"logline_skipped_requests", int64(6),
-		"logline_narrowed_requests", int64(2),
+	loglineFields := func(planned, scanned int64) []interface{} {
+		return []interface{}{
+			"logline_hint_status", "ok",
+			"logline_hint_lookup_time", 150 * time.Millisecond,
+			"logline_hint_ranges", int64(3),
+			"logline_hint_ranges_duration", 90 * time.Minute,
+			"logline_skipped_requests", int64(6),
+			"logline_narrowed_requests", int64(2),
+			"shard_planned_chunks", planned,
+			"logline_scanned_chunks", scanned,
+		}
 	}
-	withRatio := func(ratio string) []interface{} {
-		return append(slices.Clone(loglineFields), "logline_chunk_filter_ratio", ratio)
+	withRatio := func(planned, scanned int64, ratio string) []interface{} {
+		return append(loglineFields(planned, scanned), "logline_chunk_filter_ratio", ratio)
 	}
 
 	for _, tc := range []struct {
@@ -267,27 +270,27 @@ func TestAppendLoglineStats(t *testing.T) {
 		{
 			name:     "some chunks filtered",
 			stats:    withPlannedChunks(40, 10),
-			expected: withRatio("0.75"),
+			expected: withRatio(40, 10, "0.75"),
 		},
 		{
 			name:     "no chunks filtered",
 			stats:    withPlannedChunks(40, 40),
-			expected: withRatio("0.00"),
+			expected: withRatio(40, 40, "0.00"),
 		},
 		{
 			name:     "all chunks filtered",
 			stats:    withPlannedChunks(40, 0),
-			expected: withRatio("1.00"),
+			expected: withRatio(40, 0, "1.00"),
 		},
 		{
 			name:     "more chunks scanned than planned",
 			stats:    withPlannedChunks(40, 50),
-			expected: withRatio("0.00"),
+			expected: withRatio(40, 50, "0.00"),
 		},
 		{
 			name:     "ratio omitted without shard planning",
 			stats:    withPlannedChunks(0, 0),
-			expected: loglineFields,
+			expected: loglineFields(0, 0),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -63,7 +63,8 @@ drop them. The prefetch middleware adds the lookup-level stats to the final resp
 `logline_chunk_filter_ratio` compares `Index.ShardPlannedChunks`, the chunks shard
 planning estimated, with `Index.ShardPlannedChunksScanned`, the chunks scanned for the
 same requests (`Store.TotalChunksScanned` plus ingester matches). The shard middleware
-records both per split, so splits that bypass shard planning count toward neither.
+records both per split, so splits that bypass shard planning count toward neither. The
+line also logs both inputs, as `shard_planned_chunks` and `logline_scanned_chunks`.
 
 ## Files
 
