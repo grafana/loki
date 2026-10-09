@@ -381,6 +381,17 @@ func (m *TableOfContentsWriter) rebuildToC(ctx context.Context, builder *indexob
 		}
 	}
 
+	if change.requireRemove && removed == 0 {
+		// The ToC is not written. If it holds every entry to add, an earlier
+		// swap already applied the change; otherwise the race is lost.
+		for _, entry := range change.add {
+			if _, ok := kept[entry.Path]; !ok {
+				return nil, errRaceLost
+			}
+		}
+		return nil, errChangePresent
+	}
+
 	var added int
 	for _, entry := range change.add {
 		if _, ok := kept[entry.Path]; ok {
@@ -388,11 +399,6 @@ func (m *TableOfContentsWriter) rebuildToC(ctx context.Context, builder *indexob
 		}
 		kept[entry.Path] = struct{}{}
 		added++
-		if change.requireRemove && removed == 0 {
-			// The ToC is not written, so do not append. Keep counting to tell
-			// a race lost from a change that is already present.
-			continue
-		}
 		if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
 			Path:    entry.Path,
 			StartTs: entry.StartTime,
@@ -402,13 +408,10 @@ func (m *TableOfContentsWriter) rebuildToC(ctx context.Context, builder *indexob
 		}
 	}
 
-	switch {
-	case change.requireRemove && removed == 0 && added > 0:
-		return nil, errRaceLost
-	case removed == 0 && added == 0:
+	if removed == 0 && added == 0 {
 		return nil, errChangePresent
 	}
-	return flushToC(ctx, builder)
+	return flushToc(ctx, builder)
 }
 
 // getBuffer returns an empty buffer from the pool, or a new one.
@@ -454,9 +457,9 @@ func forEachTocPointer(ctx context.Context, tocObject *dataobj.Object, fn func(i
 	return nil
 }
 
-// flushToC flushes builder. On success the caller owns the returned reader
+// flushToc flushes builder. On success the caller owns the returned reader
 // and must close it. If an error is returned the reader is nil.
-func flushToC(ctx context.Context, builder *indexobj.Builder) (io.ReadCloser, error) {
+func flushToc(ctx context.Context, builder *indexobj.Builder) (io.ReadCloser, error) {
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		return nil, fmt.Errorf("flushing metastore builder: %w", err)
