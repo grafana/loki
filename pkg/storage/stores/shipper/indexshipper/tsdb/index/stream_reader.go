@@ -267,9 +267,9 @@ func (s *StreamReader) Close() error {
 
 // ShardPostings selects the candidate series interval for a fingerprint shard.
 // Callers must still check each series fingerprint because offsets are sampled.
-func (r *StreamReader) ShardPostings(p Postings, fpFilter FingerprintFilter) Postings {
+func (s *StreamReader) ShardPostings(p Postings, fpFilter FingerprintFilter) Postings {
 	if fpFilter == nil {
 		return p
 	}
-	return NewShardedPostings(p, fpFilter, r.fingerprintOffsets)
+	return NewShardedPostings(p, fpFilter, s.fingerprintOffsets)
 }
