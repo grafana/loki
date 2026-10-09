@@ -193,4 +193,5 @@ For clusters still on V1 (no scheduler deployed), the equivalent metrics for est
 
 ## Drawbacks
 - The PoC removes support for V1-style `frontend_address`; existing clusters would need to drain in-flight queries before the scheduler is ready. A proper migration strategy is deferred.
+- `tls_insecure_skip_verify: true` on querier outbound connections: when `GRPCEncryption` is enabled, the querier's `frontend_worker.grpc_client_config` is shared between two outbound connections, querier→scheduler (to pull jobs) and querier→frontend (to deliver results). These connections need different TLS server names, but only one config exists. Since pod IPs have no cert SANs and the result-delivery connection dials a pod IP, server cert verification is disabled on both. Server-side mTLS is still enforced (servers verify the querier's client cert), so unauthenticated clients cannot connect. Loki's own reference deployment does not enable TLS on these internal connections at all and relies on network-level isolation instead. The proper fix? per-pod certificates, which requires changes to the built-in cert manager and is deferred to a follow-up.
 
