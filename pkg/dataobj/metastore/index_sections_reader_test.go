@@ -14,8 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -44,28 +43,19 @@ func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	t.Parallel()
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -83,37 +73,27 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               2,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "bar"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
 
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 2, 2, now.Add(-3*time.Hour), 5))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 2, 2, now.Add(-3*time.Hour), 5)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -145,27 +125,18 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -197,27 +168,18 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -243,31 +205,22 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 
 	traceBloomBytes := newTestBloomBytes(t, "abcd")
-	require.NoError(t, builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes))
+	builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -303,31 +256,22 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 
 	traceBloomBytes := newTestBloomBytes(t, "abcd")
-	require.NoError(t, builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes))
+	builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -352,33 +296,24 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
 	// Create a stream with label app=foo
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 
 	// Add a bloom filter for a metadata column (traceID), NOT for the stream label (app)
 	traceIDBloomBytes := newTestBloomBytes(t, "abcd")
-	require.NoError(t, builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes))
+	builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	start := now.Add(-4 * time.Hour)
@@ -416,34 +351,25 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err)
+	builder := fixtures.NewLegacyIndexBuilder(tenantID)
 
-	_, err = builder.AppendStream(streams.Stream{
+	builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
 		MaxTimestamp:     now.Add(-2 * time.Hour),
 		UncompressedSize: 5,
 	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-	require.NoError(t, builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 
 	traceBloomBytes := newTestBloomBytes(t, "abcd")
-	require.NoError(t, builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes))
+	builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceBloomBytes)
 
 	userBloomBytes := newTestBloomBytes(t, "user-123")
-	require.NoError(t, builder.AppendColumnIndex("test-path", 0, "userID", 1, userBloomBytes))
+	builder.AppendColumnIndex("test-path", 0, "userID", 1, userBloomBytes)
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
+	obj, closer := builder.Flush(t)
 	t.Cleanup(func() { _ = closer.Close() })
 
 	tests := []struct {
