@@ -1,0 +1,41 @@
+{
+  "name": "loki-operator-website",
+  "version": "2.0.0",
+  "description": "Doks theme",
+  "author": "Thulite",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thuliteio/doks.git"
+  },
+  "scripts": {
+    "create": "hugo new",
+    "dev": "hugo server --disableFastRender --noHTTPCache",
+    "portless": "portless run thulite-portless",
+    "format": "prettier **/** -w -c",
+    "build": "hugo --minify --gc",
+    "preview": "vite preview --outDir public"
+  },
+  "dependencies": {
+    "@thulite/doks-core": "^1.9.4",
+    "@tabler/icons": "^3.48.0",
+    "@thulite/images": "^3.3.4",
+    "@thulite/inline-svg": "^1.2.2",
+    "@thulite/seo": "^2.4.4",
+    "thulite": "^3.0.3"
+  },
+  "overrides": {
+    "minimatch": "^10.2.2",
+    "glob": "^13.0.6"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
+    "portless": "^0.15.7",
+    "prettier": "^3.9.9",
+    "vite": "^8.3.2"
+  },
+  "engines": {
+    "node": ">=24.13.0"
+  }
+}

@@ -1,18 +1,43 @@
-[build]
-  publish = "website/public"
-  functions = "functions"
-
 [build.environment]
-  # HUGO_VERSION = "..." is set by bingo which allows reproducible local environment.
-  NODE_VERSION = "22.10.0"
-  NPM_VERSION = "10.9.0"
-  GO_VERSION = "1.27.1"
+DART_SASS_VERSION = "1.104.1"
+GO_VERSION = "1.27.2"
+HUGO_VERSION = "0.167.0"
+NODE_VERSION = "24.21.0"
+NPM_VERSION = "11.19.0"
 
-[context.production]
-  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin) || (sleep 30; false)"
+[build]
+publish = "website/public"
+command = """\
+  cd website && \
+  curl -sfLO "https://github.com/sass/dart-sass/releases/download/${DART_SASS_VERSION}/dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  tar -C "${HOME}/.local" -xf "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  rm "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  export PATH="${HOME}/.local/dart-sass:${PATH}" && \
+  git config core.quotepath false && \
+  npm install && \
+  hugo build --gc --minify --baseURL "${URL}"
+  """
 
 [context.deploy-preview]
-  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+command = """\
+  cd website && \
+  curl -sfLO "https://github.com/sass/dart-sass/releases/download/${DART_SASS_VERSION}/dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  tar -C "${HOME}/.local" -xf "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  rm "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  export PATH="${HOME}/.local/dart-sass:${PATH}" && \
+  git config core.quotepath false && \
+  npm install && \
+  hugo build --gc --minify --baseURL "$DEPLOY_PRIME_URL"
+  """
 
 [context.branch-deploy]
-  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+command = """\
+  cd website && \
+  curl -sfLO "https://github.com/sass/dart-sass/releases/download/${DART_SASS_VERSION}/dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  tar -C "${HOME}/.local" -xf "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  rm "dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" && \
+  export PATH="${HOME}/.local/dart-sass:${PATH}" && \
+  git config core.quotepath false && \
+  npm install && \
+  hugo build --gc --minify --baseURL "$DEPLOY_PRIME_URL"
+  """

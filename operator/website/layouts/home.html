@@ -1,0 +1,68 @@
+{{ define "main" }}
+<section class="section container-fluid mt-n3 pb-3">
+  <div class="row justify-content-center">
+    <div class="col-lg-12 text-center">
+      <img style="height: 200px" src="{{ .Site.BaseURL | absURL }}logo.png" alt="Loki Logo">
+      <h1>{{ .Title }}</h1>
+    </div>
+    <div class="col-lg-9 col-xl-8 text-center">
+      <p class="lead">{{ .Params.lead | safeHTML }}</p>
+      <a class="btn btn-primary btn-lg px-4 mb-2" href="{{ "docs/prologue/introduction.md/" | relURL }}" role="button">Get started</a>
+      <p class="meta">AGPLv3 Licensed. <a href="https://github.com/grafana/loki">GitHub</a></p>
+      {{ .Content }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ define "sidebar-prefooter" }}
+  {{ if site.Params.doks.backgroundDots -}}
+  <div class="d-flex justify-content-start">
+    <div class="bg-dots"></div>
+  </div>
+  {{ end -}}
+  {{ if eq $.Site.Language.Label "English" }}
+  <section class="section section-md section-features">
+    <div class="container">
+      <div class="row justify-content-center text-center">
+        <div class="col-lg-5">
+          <h2 class="h4">LokiStack</h2>
+          <p>Secure and multi-tenant Loki instances with built-in authentication/authorization</p>
+        </div>
+        <div class="col-lg-5">
+          <h2 class="h4">Alerting Rules</h2>
+          <p>Notify Alertmanager hosts by declarative kubernetes native Alerting Rules</p>
+        </div>
+        <div class="col-lg-5">
+          <h2 class="h4">Recording rules</h2>
+          <p>Push recorded metrics by declarative kubernetes native Recording Rules</p>
+        </div>
+      </div>
+      <div class="row justify-content-center text-center">
+        <div class="col-lg-5">
+          <h2 class="h4">AlertManager Support</h2>
+        </div>
+        <div class="col-lg-5">
+          <h2 class="h4">Authentication using OIDC/OAuth2/OpenShift</h2>
+        </div>
+        <div class="col-lg-5">
+          <h2 class="h4">Authorization using Open Policy Agent</h2>
+        </div>
+      </div>
+    </div>
+  </section>
+  {{ end }}
+{{ end }}
+
+{{ define "sidebar-footer" }}
+{{ if site.Params.doks.sectionFooter -}}
+<section class="section section-md container-fluid bg-light">
+  <div class="row justify-content-center text-center">
+    <div class="col-lg-7">
+      <h2 class="mt-2">Start building with Doks today</h2>
+      <a class="btn btn-primary rounded-pill px-4 my-2" href="/docs/{{ if site.Params.doks.docsVersioning }}{{ site.Params.doks.docsVersion }}/{{ end }}prologue/introduction/" role="button">{{ i18n "get-started" }}</a>
+    </div>
+  </div>
+</section>
+{{ end -}}
+{{ end }}
