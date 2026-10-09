@@ -47,7 +47,7 @@ func ParsePrivateKey(keyBytes []byte) (crypto.PrivateKey, error) {
 	return privateKey, nil
 }
 
-func EncodePKCS8PrivateKey(privateKey interface{}) ([]byte, error) {
+func EncodePKCS8PrivateKey(privateKey any) ([]byte, error) {
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {
 		return nil, err
@@ -70,8 +70,8 @@ func EncodeCertificates(certificates []*x509.Certificate) []byte {
 	return pemBytes
 }
 
-func parseBlocks(blocksBytes []byte, expectedType string) ([]interface{}, error) {
-	objects := []interface{}{}
+func parseBlocks(blocksBytes []byte, expectedType string) ([]any, error) {
+	objects := []any{}
 	var foundBlocks = false
 	for {
 		if len(blocksBytes) == 0 {
@@ -94,7 +94,7 @@ func parseBlocks(blocksBytes []byte, expectedType string) ([]interface{}, error)
 	}
 }
 
-func parseBlock(pemBytes []byte, pemType string) (interface{}, []byte, bool, error) {
+func parseBlock(pemBytes []byte, pemType string) (any, []byte, bool, error) {
 	pemBlock, rest := pem.Decode(pemBytes)
 	if pemBlock == nil {
 		return nil, nil, false, nil
@@ -104,7 +104,7 @@ func parseBlock(pemBytes []byte, pemType string) (interface{}, []byte, bool, err
 		return nil, rest, true, nil
 	}
 
-	var object interface{}
+	var object any
 	var err error
 	switch pemType {
 	case certType:
