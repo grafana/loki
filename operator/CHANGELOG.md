@@ -1,5 +1,22 @@
 ## Main
 
+## [0.13.0](https://github.com/grafana/loki/compare/operator/v0.12.0...operator/v0.13.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** Stop reconciliation of deprecated BoltDB schemas ([#24990](https://github.com/grafana/loki/issues/24990))
+
+### Features
+
+* **operator:** Stop reconciliation of deprecated BoltDB schemas ([#24990](https://github.com/grafana/loki/issues/24990)) ([4c138a9](https://github.com/grafana/loki/commit/4c138a95daac240b90ab5de793dbc5022d1c09a6))
+
+
+### Bug Fixes
+
+* **security/UNKNOWN/operator:** Update go toolchain directive to v1.27.2 [SECURITY] (main) ([#25050](https://github.com/grafana/loki/issues/25050)) ([6e3df4d](https://github.com/grafana/loki/commit/6e3df4de08787a3d63f2056f34d1e308bf4eb178))
+* **security/UNKNOWN/operator:** Update module golang.org/x/net to v0.60.0 [SECURITY] (main) ([#25052](https://github.com/grafana/loki/issues/25052)) ([390e710](https://github.com/grafana/loki/commit/390e7106ce482d226cb54bae493491613a6effa7))
+
 ## [0.12.0](https://github.com/grafana/loki/compare/operator/v0.11.0...operator/v0.12.0) (2026-10-07)
 
 
