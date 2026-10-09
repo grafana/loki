@@ -58,7 +58,7 @@ dario.cat/mergo
 ## explicit; go 1.24.0
 filippo.io/edwards25519
 filippo.io/edwards25519/field
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.2
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3
 ## explicit; go 1.25.0
 github.com/Azure/azure-sdk-for-go/sdk/azcore
 github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource
@@ -93,6 +93,7 @@ github.com/Azure/azure-sdk-for-go/sdk/internal/exported
 github.com/Azure/azure-sdk-for-go/sdk/internal/log
 github.com/Azure/azure-sdk-for-go/sdk/internal/poller
 github.com/Azure/azure-sdk-for-go/sdk/internal/temporal
+github.com/Azure/azure-sdk-for-go/sdk/internal/transport
 github.com/Azure/azure-sdk-for-go/sdk/internal/uuid
 # github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0 => github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
 ## explicit; go 1.25.0
