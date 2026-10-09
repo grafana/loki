@@ -24,7 +24,8 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	m.tasksTotal.WithLabelValues("acme").Add(4)
 	m.tenantCyclesTotal.WithLabelValues("compacted", "acme").Inc()
 	m.tenantLogCyclesTotal.WithLabelValues("compacted", "acme").Inc()
-	m.observeLogPlan("acme", 100, time.Unix(10, 0))
+	m.observeLogPlan("acme", 100)
+	m.observeCompleteLogPlan("acme", time.Unix(10, 0))
 
 	// A second tenant that must survive.
 	m.unconsolidatedBacklog.WithLabelValues("other").Set(7)

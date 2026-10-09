@@ -12,21 +12,26 @@ import (
 // Each task produces one artifact, and the swap replaces the source index with
 // one ToC entry per task.
 //
-// rewriteBytes is the uncompressed size of the log sections that the tasks
-// rewrite. It excludes the runs that an IndexFilter keeps, because the filter
-// does not rewrite their data.
-//
 // The zero value has no work. Executing it is a no-op.
 type logCompactionPlan struct {
-	window       time.Time
-	sourceIndex  indexEntry
-	tasks        []logCompactionTask
-	rewriteBytes uint64
+	window      time.Time
+	sourceIndex indexEntry
+	tasks       []logCompactionTask
 }
 
 // hasWork reports whether p dispatches any task.
 func (p logCompactionPlan) hasWork() bool {
 	return len(p.tasks) > 0
+}
+
+// rewriteBytes returns the uncompressed size of the log sections that the
+// tasks of p rewrite.
+func (p logCompactionPlan) rewriteBytes() uint64 {
+	var total uint64
+	for _, task := range p.tasks {
+		total += task.rewriteBytes()
+	}
+	return total
 }
 
 // physicalPlans returns one physical plan per task, in task order.
@@ -59,6 +64,10 @@ type logCompactionTask interface {
 	// tocEntry returns the ToC entry for the artifact of the task, without a
 	// path.
 	tocEntry() metastore.TableOfContentsEntry
+
+	// rewriteBytes returns the uncompressed size of the log sections that the
+	// task rewrites.
+	rewriteBytes() uint64
 }
 
 // logMergeTask merges the runs of spec into new log objects.
@@ -77,7 +86,6 @@ func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Pl
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// rewriteBytes returns the uncompressed size of the sections that t merges.
 func (t logMergeTask) rewriteBytes() uint64 {
 	var total uint64
 	for _, run := range t.spec.Runs {
@@ -102,11 +110,17 @@ func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// sortObjectTask rewrites one log object with sortSchema.
+// rewriteBytes returns zero, because the filter keeps log data without
+// rewriting it.
+func (t indexFilterTask) rewriteBytes() uint64 { return 0 }
+
+// sortObjectTask rewrites one log object with sortSchema. bytes is the
+// uncompressed size of the sections of the object.
 type sortObjectTask struct {
 	objectPath string
 	sortSchema []string
 	entry      metastore.TableOfContentsEntry
+	bytes      uint64
 }
 
 func (t sortObjectTask) physicalPlan(string, time.Time) *physical.Plan {
@@ -114,3 +128,5 @@ func (t sortObjectTask) physicalPlan(string, time.Time) *physical.Plan {
 }
 
 func (t sortObjectTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
+
+func (t sortObjectTask) rewriteBytes() uint64 { return t.bytes }
