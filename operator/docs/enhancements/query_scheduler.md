@@ -158,6 +158,21 @@ The query-scheduler is stateless and can be deployed as a `Deployment`.
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
 
 
+#### Observability
+
+The query-scheduler exposes the following Prometheus metrics:
+
+- `loki_query_scheduler_inflight_requests` The only scheduler metric with [official documentation](https://grafana.com/docs/loki/latest/operations/autoscaling_queriers/); recommended signal for querier autoscaling.
+- `loki_query_scheduler_queue_duration_seconds`
+- `loki_query_scheduler_connected_querier_clients`
+- `loki_query_scheduler_connected_frontend_clients`
+- `loki_query_scheduler_running`
+- `loki_scheduler_queue_length`
+- `loki_scheduler_discarded_requests_total`
+- `loki_scheduler_enqueue_count`
+
+For clusters still on V1 (no scheduler deployed), the equivalent metrics for estimating future scheduler load are `loki_query_frontend_queue_length`, `loki_query_frontend_queue_duration_seconds`, and `loki_query_frontend_connected_clients`.
+
 ### Risks and Mitigations
 
 | Risk | Mitigation |
