@@ -265,7 +265,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, before, inner.Objects()[tocPath])
 	})
 
-	t.Run("WriteEntry appends the entry once and counts a success when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
+	t.Run("WriteEntry appends the entry once and reports already_present when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
 		bucket := &failAfterWriteBucket{Bucket: inner}
 		writer := newTableOfContentsWriter(t, bucket)
@@ -281,7 +281,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, inner, tocPath))
 
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 0, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
 
 	t.Run("WriteEntry returns an error after the last retry when every write fails", func(t *testing.T) {
@@ -792,7 +792,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		}, readWindowToCs(ctx, t, bucket, window))
 	})
 
-	t.Run("reports the swap as applied when the conditional write lands and then returns an error", func(t *testing.T) {
+	t.Run("applies the swap once and returns false when the conditional write lands and then returns an error", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		inner := objstore.NewInMemBucket()
@@ -805,12 +805,12 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
 		)
 		require.NoError(t, err)
-		require.True(t, swapped)
+		require.False(t, swapped)
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
 
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 0, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
 	})
 
 	t.Run("returns an error without touching storage when a new entry does not overlap the window", func(t *testing.T) {

@@ -178,7 +178,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 // The primitive is idempotent: re-invoking it with already-applied
 // oldPaths/newEntries is a no-op. If an attempt fails after its write landed,
 // for example because the response is lost, the retry finds the swap applied
-// and returns (true, nil).
+// and returns (false, nil).
 //
 // A ToC holds one tenant. If it holds a section of another tenant,
 // ReplaceIndexPointers returns an error without retrying.
@@ -262,8 +262,8 @@ const (
 // another tenant. op labels the metrics and logs.
 //
 // An attempt can fail after its conditional write landed, for example when
-// the response is lost. So if an earlier attempt failed and the ToC now holds
-// the change, applyChange returns changeWritten.
+// the response is lost. The retry then finds the change in the ToC and
+// returns changePresent.
 func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant string, window time.Time, change tocChange) (changeResult, error) {
 	result := changeFailed
 	start := time.Now()
@@ -277,7 +277,6 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 		return changeFailed, err
 	}
 
-	var failedBefore bool
 	b := backoff.New(ctx, m.backoffCfg)
 	for b.Ongoing() {
 		attemptStart := time.Now()
@@ -308,7 +307,6 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 		if result != changeFailed || errors.Is(err, errUnrecoverable) {
 			break
 		}
-		failedBefore = true
 		b.Wait()
 	}
 
@@ -317,9 +315,6 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 	// when err is still nil.
 	if result == changeFailed {
 		return changeFailed, errors.Join(b.Err(), err)
-	}
-	if result == changePresent && failedBefore {
-		result = changeWritten
 	}
 	return result, nil
 }
