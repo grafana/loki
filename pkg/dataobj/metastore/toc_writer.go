@@ -288,7 +288,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 			if existing != nil {
 				defer existing.Close()
 			}
-			return m.rebuildToC(ctx, builder, existing, change)
+			return m.rebuildToc(ctx, builder, existing, change)
 		})
 
 		switch {
@@ -326,18 +326,18 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op, tenant stri
 	return result, nil
 }
 
-// rebuildToC returns the ToC that results from applying change to the
+// rebuildToc returns the ToC that results from applying change to the
 // existing ToC. existing is nil or empty if the ToC does not exist yet. The
 // caller owns the returned reader and must close it.
 //
-// rebuildToC keeps one pointer for each path, so the ToC it returns holds no
+// rebuildToc keeps one pointer for each path, so the ToC it returns holds no
 // repeated paths, even if the existing ToC does.
 //
 // It returns errChangePresent if the existing ToC already holds the change,
 // and errRaceLost if the change requires a removal that the existing ToC does
 // not allow. It returns an error that wraps errUnrecoverable if the existing
 // ToC holds a section of another tenant.
-func (m *TableOfContentsWriter) rebuildToC(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
+func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
 
 	buf := m.getBuffer()

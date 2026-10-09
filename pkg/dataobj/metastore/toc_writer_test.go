@@ -87,7 +87,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NotEmpty(t, dobj.Sections())
 	})
 
-	t.Run("rebuildToC keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
+	t.Run("rebuildToc keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
 		tenantID := "test"
 		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 		defer reader.Close()
 
-		rebuilt, err := writer.rebuildToC(context.Background(), builder, reader, tocChange{
+		rebuilt, err := writer.rebuildToc(context.Background(), builder, reader, tocChange{
 			add: []TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}},
 		})
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, readToC(context.Background(), t, out, "toc"))
 	})
 
-	t.Run("rebuildToC returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
+	t.Run("rebuildToc returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
 		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
@@ -133,7 +133,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
-		_, err = writer.rebuildToC(context.Background(), target, reader, tocChange{
+		_, err = writer.rebuildToc(context.Background(), target, reader, tocChange{
 			add: []TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}},
 		})
 		require.ErrorContains(t, err, "reading index pointers")
