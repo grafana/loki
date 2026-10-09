@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -15,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -26,11 +26,10 @@ type postingsCache struct {
 	cache.Cache
 	logger  log.Logger
 	metrics *postingsCacheMetrics
-	lookups sync.Map // Cache key to in-flight fetch/decode; completed results are not retained.
+	lookups singleflight.Group // Cache key to in-flight fetch/decode; completed results are not retained.
 }
 
 type postingsLookup struct {
-	done     chan struct{}
 	refs     []storage.SeriesRef // Immutable; each caller creates its own iterator.
 	hit      bool                // An empty postings list is still a hit.
 	populate bool
@@ -209,28 +208,20 @@ func (c *postingsCache) fetchPostings(ctx context.Context, key string) (p index.
 	if ctx.Err() != nil {
 		return nil, false
 	}
-	call := &postingsLookup{done: make(chan struct{})}
-	actual, loaded := c.lookups.LoadOrStore(key, call)
-	if loaded {
-		call = actual.(*postingsLookup)
-		select {
-		case <-ctx.Done():
-			return nil, false
-		case <-call.done:
+	result := c.lookups.DoChan(key, func() (any, error) {
+		refs, hit, populate := c.fetchPostingsRefs(ctx, key)
+		return postingsLookup{refs: refs, hit: hit, populate: populate}, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, false
+	case result := <-result:
+		lookup := result.Val.(postingsLookup)
+		if lookup.hit {
+			return index.NewListPostings(lookup.refs), false
 		}
-	} else {
-		func() {
-			defer func() {
-				c.lookups.Delete(key)
-				close(call.done)
-			}()
-			call.refs, call.hit, call.populate = c.fetchPostingsRefs(ctx, key)
-		}()
+		return nil, lookup.populate
 	}
-	if call.hit {
-		return index.NewListPostings(call.refs), false
-	}
-	return nil, call.populate
 }
 
 func (c *postingsCache) fetchPostingsRefs(ctx context.Context, key string) (refs []storage.SeriesRef, hit, populate bool) {
