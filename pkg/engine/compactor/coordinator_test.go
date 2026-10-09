@@ -1578,27 +1578,53 @@ func TestRunLogMergePhase(t *testing.T) {
 	})
 }
 
-func TestRunPhase(t *testing.T) {
-	cycles := func(c *coordinator) float64 {
-		var total float64
-		for _, outcome := range []string{"compacted", "converged", "failed"} {
-			total += testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues(outcome))
-		}
-		return total
+// totalCycles returns the number of phase cycles that c recorded, over all
+// outcomes.
+func totalCycles(c *coordinator) float64 {
+	var total float64
+	for _, outcome := range []string{"compacted", "converged", "failed"} {
+		total += testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues(outcome))
 	}
+	return total
+}
 
+func TestRunPhase(t *testing.T) {
 	t.Run("records one cycle for a LogMerge phase across all windows", func(t *testing.T) {
 		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
 
 		require.Equal(t, phaseOutcomeSwapped, c.runPhase(t.Context(), "acme", phaseLogMerge))
-		require.Equal(t, 1.0, cycles(c))
+		require.Equal(t, 1.0, totalCycles(c))
 	})
 
-	t.Run("records one cycle per window and iteration for an IndexMerge phase", func(t *testing.T) {
+	t.Run("records one cycle per window for an IndexMerge phase", func(t *testing.T) {
 		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
 
 		c.runPhase(t.Context(), "acme", phaseIndexMerge)
-		require.Equal(t, float64(2*indexMergeIterations), cycles(c))
+		require.Equal(t, 2.0, totalCycles(c))
+	})
+}
+
+func TestRunMultiplePhases(t *testing.T) {
+	t.Run("runs the phase once per iteration", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+
+		c.runMultiplePhases(t.Context(), "acme", phaseIndexMerge, 3)
+		require.Equal(t, 6.0, totalCycles(c), "two windows per iteration")
+	})
+
+	t.Run("returns swapped when any iteration swaps", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+
+		require.Equal(t, phaseOutcomeSwapped, c.runMultiplePhases(t.Context(), "acme", phaseLogMerge, 2))
+	})
+
+	t.Run("runs no iteration when the context is cancelled", func(t *testing.T) {
+		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		require.Equal(t, phaseOutcomeNoWork, c.runMultiplePhases(ctx, "acme", phaseLogMerge, 3))
+		require.Zero(t, totalCycles(c))
 	})
 }
 

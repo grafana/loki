@@ -829,7 +829,12 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			continue
 		}
 
-		outcome := c.runPhase(ctx, tenant, p)
+		iterations := 1
+		if p == phaseIndexMerge {
+			iterations = indexMergeIterations
+		}
+
+		outcome := c.runMultiplePhases(ctx, tenant, p, iterations)
 		if ctx.Err() != nil {
 			return
 		}
@@ -859,12 +864,25 @@ func nextBackoff(outcome phaseOutcome, current, minWait, maxWait time.Duration) 
 	return current, next
 }
 
-// runPhase runs phase p for the tenant across every compacted window and
-// returns the worst outcome. Error dominates, so the caller re-arms the same
-// phase. Otherwise swapped (progress) outranks no-work.
+// runMultiplePhases runs phase p for the tenant iterations times and returns
+// the worst outcome. Error dominates, so the caller re-arms the same phase.
+// Otherwise swapped (progress) outranks no-work.
+func (c *coordinator) runMultiplePhases(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
+	worst := phaseOutcomeNoWork
+	for range iterations {
+		if ctx.Err() != nil {
+			return worst
+		}
+		worst = worstOutcome(worst, c.runPhase(ctx, tenant, p))
+	}
+	return worst
+}
+
+// runPhase runs phase p once for the tenant across every compacted window and
+// returns the worst outcome.
 //
-// IndexMerge runs every window indexMergeIterations times and records one
-// cycle per run. LogMerge covers all windows in one pass and records one cycle.
+// IndexMerge runs each window separately and records one cycle per window.
+// LogMerge covers all windows in one pass and records one cycle.
 func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phaseOutcome {
 	if p == phaseLogMerge {
 		start := c.clock()
@@ -874,16 +892,14 @@ func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phas
 	}
 
 	worst := phaseOutcomeNoWork
-	for range indexMergeIterations {
-		for _, window := range c.windows() {
-			if ctx.Err() != nil {
-				return worst
-			}
-			start := c.clock()
-			outcome := c.runIndexMergePhase(ctx, tenant, window)
-			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
-			worst = worstOutcome(worst, outcome)
+	for _, window := range c.windows() {
+		if ctx.Err() != nil {
+			return worst
 		}
+		start := c.clock()
+		outcome := c.runIndexMergePhase(ctx, tenant, window)
+		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+		worst = worstOutcome(worst, outcome)
 	}
 	return worst
 }
