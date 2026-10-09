@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"math"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -25,7 +26,7 @@ func (b BackoffFunc) Next() (time.Duration, bool) {
 // WithJitter wraps a backoff function and adds the specified jitter. j can be
 // interpreted as "+/- j". For example, if j were 5 seconds and the backoff
 // returned 20s, the value could be between 15 and 25 seconds. The value can
-// never be less than 0.
+// never be less than 0 or greater than the maximum time.Duration.
 func WithJitter(j time.Duration, next Backoff) Backoff {
 	return BackoffFunc(func() (time.Duration, bool) {
 		val, stop := next.Next()
@@ -37,10 +38,20 @@ func WithJitter(j time.Duration, next Backoff) Backoff {
 			return val, false
 		}
 
-		diff := time.Duration(rand.Int64N(int64(j)*2) - int64(j))
-		val = max(val+diff, 0)
-		return val, false
+		// The unsigned bound fits even when twice j exceeds MaxInt64.
+		diff := time.Duration(rand.Uint64N(uint64(j)*2) - uint64(j))
+		return addClamp(val, diff), false
 	})
+}
+
+func addClamp(a, b time.Duration) time.Duration {
+	if b > 0 && a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	if b < 0 && a < math.MinInt64-b {
+		return 0
+	}
+	return max(a+b, 0)
 }
 
 // WithJitterPercent wraps a backoff function and adds the specified jitter
@@ -48,6 +59,9 @@ func WithJitter(j time.Duration, next Backoff) Backoff {
 // the backoff returned 20s, the value could be between 19 and 21 seconds. The
 // value can never be less than 0 or greater than 100.
 func WithJitterPercent(j uint64, next Backoff) Backoff {
+	// Above 100 the computed percentage goes negative and int64(j)*2 overflows.
+	j = min(j, 100)
+
 	return BackoffFunc(func() (time.Duration, bool) {
 		val, stop := next.Next()
 		if stop {
@@ -62,9 +76,18 @@ func WithJitterPercent(j uint64, next Backoff) Backoff {
 		top := rand.Int64N(int64(j)*2) - int64(j)
 		pct := 1 - float64(top)/100.0
 
-		val = max(time.Duration(float64(val)*pct), 0)
-		return val, false
+		return durationFromFloat(float64(val) * pct), false
 	})
+}
+
+func durationFromFloat(f float64) time.Duration {
+	if f >= math.MaxInt64 {
+		return math.MaxInt64
+	}
+	if f <= 0 {
+		return 0
+	}
+	return time.Duration(f)
 }
 
 // WithFullJitter wraps a backoff function and returns a random value between
@@ -124,7 +147,7 @@ func WithCappedDuration(cap time.Duration, next Backoff) Backoff {
 			return 0, true
 		}
 
-		if val <= 0 || val > cap {
+		if val > cap {
 			val = cap
 		}
 		return val, false
@@ -148,7 +171,7 @@ func WithMaxDuration(timeout time.Duration, next Backoff) Backoff {
 			return 0, true
 		}
 
-		if val <= 0 || val > diff {
+		if val > diff {
 			val = diff
 		}
 		return val, false

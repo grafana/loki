@@ -7,10 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/xcap"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -180,6 +182,25 @@ func TestPlanner_Plan(t *testing.T) {
 		tasks, err := drainTasks(readPlanner.Plan(t.Context(), plainQuery(t)))
 		require.NoError(t, err)
 		require.Empty(t, tasks)
+	})
+
+	t.Run("it reads the objects it plans in a root region of their own", func(t *testing.T) {
+		readPlanner, _ := newTestPlanner(t, nil)
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+
+		_, err := drainTasks(readPlanner.Plan(ctx, plainQuery(t)))
+		require.NoError(t, err)
+
+		var region *xcap.Region
+		for _, r := range capture.Regions() {
+			if r.Name() == regionStreamsReader {
+				region = r
+			}
+		}
+		require.NotNil(t, region, "the planner opens its objects in the streams-reader region")
+		require.True(t, region.ParentID().IsZero(), "the region is a root, so its requests count for the streams-reader component")
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectRequestsGetRange))
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectBytesDownloaded))
 	})
 }
 

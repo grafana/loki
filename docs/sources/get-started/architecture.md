@@ -146,6 +146,17 @@ On a high level, the write path in Loki works as follows:
 
 Refer to [Components](../components/) for a more detailed description of the components involved in the write path.
 
+### Kafka-based write path (experimental)
+
+{{< admonition type="warning" >}}
+Kafka-based ingestion is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
+{{< /admonition >}}
+
+Loki can optionally use Apache Kafka, or a Kafka-protocol-compatible system, as a durable buffer on the write path. When you enable Kafka-based ingestion, the write path changes: the distributor writes log streams as Kafka records to a configured topic, instead of, or in addition to, pushing them directly to ingesters over gRPC.
+
+Each ingester consumes from exactly one Kafka partition, determined by its position in the partition ring. This decouples ingestion durability from ingester availability, because Kafka buffers writes while an ingester is restarting or unavailable.
+
+Enabling Kafka-based ingestion primarily changes the write path. The read path still works the same way, but the querier must be configured to look up ingesters using the partition ring instead of the classic hash ring. For full details, including configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
 
 ## Read path
 

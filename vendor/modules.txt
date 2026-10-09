@@ -954,7 +954,7 @@ github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
 ## explicit; go 1.26.7
 github.com/grafana/loki/pkg/push
-# github.com/grafana/otel-profiling-go v0.6.0
+# github.com/grafana/otel-profiling-go v0.7.0
 ## explicit; go 1.25.0
 github.com/grafana/otel-profiling-go
 # github.com/grafana/pyroscope-go/godeltaprof v0.1.12
@@ -1096,7 +1096,7 @@ github.com/leodido/go-urn/scim/schema
 # github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5
 ## explicit; go 1.21
 github.com/lufia/plan9stats
-# github.com/mattn/go-colorable v0.1.15
+# github.com/mattn/go-colorable v0.1.16
 ## explicit; go 1.18
 github.com/mattn/go-colorable
 # github.com/mattn/go-ieproxy v0.0.12
@@ -1507,7 +1507,7 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v6 v6.0.1
 ## explicit; go 1.22.0
 github.com/sercand/kuberesolver/v6
-# github.com/sethvargo/go-retry v0.4.0
+# github.com/sethvargo/go-retry v0.5.0
 ## explicit; go 1.25
 github.com/sethvargo/go-retry
 # github.com/shirou/gopsutil/v4 v4.26.9
@@ -1537,7 +1537,7 @@ github.com/spf13/afero/mem
 ## explicit; go 1.21.0
 github.com/spf13/cast
 github.com/spf13/cast/internal
-# github.com/spiffe/go-spiffe/v2 v2.8.2
+# github.com/spiffe/go-spiffe/v2 v2.9.0
 ## explicit; go 1.24.0
 github.com/spiffe/go-spiffe/v2/bundle/jwtbundle
 github.com/spiffe/go-spiffe/v2/bundle/spiffebundle
@@ -2011,7 +2011,7 @@ golang.org/x/crypto/sha3
 ## explicit; go 1.26.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/net v0.59.0
+# golang.org/x/net v0.60.0
 ## explicit; go 1.26.0
 golang.org/x/net/bpf
 golang.org/x/net/context/ctxhttp
@@ -2045,7 +2045,7 @@ golang.org/x/oauth2/google/internal/stsexchange
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.23.0
+# golang.org/x/sync v0.24.0
 ## explicit; go 1.26.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
@@ -2101,13 +2101,13 @@ google.golang.org/api/storage/v1
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20260928230214-8a89bd6388cc
+# google.golang.org/genproto v0.0.0-20261005182115-fad411399dd8
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/googleapis/type/timeofday
-# google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc
+# google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
@@ -2117,7 +2117,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8
 ## explicit; go 1.26.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails

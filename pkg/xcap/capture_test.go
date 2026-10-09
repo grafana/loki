@@ -476,6 +476,75 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 	require.Nil(t, capture.ValueFromRegion("logs.Reader.", stat))
 }
 
+func TestCapture_RootRegions(t *testing.T) {
+	names := func(regions []*Region) []string {
+		out := make([]string, 0, len(regions))
+		for _, r := range regions {
+			out = append(out, r.Name())
+		}
+		return out
+	}
+	treesByRootName := func(capture *Capture) map[string][]string {
+		out := map[string][]string{}
+		for root, tree := range capture.RootRegions() {
+			out[root.Name()] = names(tree)
+		}
+		return out
+	}
+
+	t.Run("an empty capture has no root region", func(t *testing.T) {
+		_, capture := NewCapture(context.Background(), nil)
+		require.Empty(t, capture.RootRegions())
+	})
+
+	t.Run("a region without a parent is the root of its own tree", func(t *testing.T) {
+		ctx, capture := NewCapture(context.Background(), nil)
+		_, _ = StartRegion(ctx, "first")
+		_, _ = StartRegion(ctx, "second")
+
+		require.Equal(t, map[string][]string{
+			"first":  {"first"},
+			"second": {"second"},
+		}, treesByRootName(capture))
+	})
+
+	t.Run("nested regions of any depth belong to the tree of their root", func(t *testing.T) {
+		ctx, capture := NewCapture(context.Background(), nil)
+		rootCtx, _ := StartRegion(ctx, "root")
+		childCtx, _ := StartRegion(rootCtx, "child")
+		_, _ = StartRegion(childCtx, "grandchild")
+		_, _ = StartRegion(rootCtx, "sibling")
+		_, _ = StartRegion(ctx, "other")
+
+		require.Equal(t, map[string][]string{
+			"root":  {"root", "child", "grandchild", "sibling"},
+			"other": {"other"},
+		}, treesByRootName(capture))
+	})
+
+	t.Run("a region whose parent is not in the capture is a root", func(t *testing.T) {
+		_, capture := NewCapture(context.Background(), nil)
+		capture.AddRegion(&Region{id: newID(), name: "orphan", parentID: newID()})
+
+		require.Equal(t, map[string][]string{"orphan": {"orphan"}}, treesByRootName(capture))
+	})
+
+	t.Run("a cycle of parent links ends and keeps every region once", func(t *testing.T) {
+		_, capture := NewCapture(context.Background(), nil)
+		a := &Region{id: newID(), name: "a"}
+		b := &Region{id: newID(), name: "b", parentID: a.id}
+		a.parentID = b.id
+		capture.AddRegion(a)
+		capture.AddRegion(b)
+
+		var all []string
+		for _, tree := range capture.RootRegions() {
+			all = append(all, names(tree)...)
+		}
+		require.ElementsMatch(t, []string{"a", "b"}, all)
+	})
+}
+
 func TestStatisticsFromRegions(t *testing.T) {
 	tests := []struct {
 		name      string

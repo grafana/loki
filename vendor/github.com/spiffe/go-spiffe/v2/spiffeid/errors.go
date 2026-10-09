@@ -10,6 +10,7 @@ var (
 	errEmpty              = errors.New("cannot be empty")
 	errEmptySegment       = errors.New("path cannot contain empty segments")
 	errMissingTrustDomain = errors.New("trust domain is missing")
+	errPrefixMissingPath  = errors.New("prefix must have a path")
 	errTrailingSlash      = errors.New("path cannot have a trailing slash")
 	errWrongScheme        = errors.New("scheme is missing or invalid")
 )

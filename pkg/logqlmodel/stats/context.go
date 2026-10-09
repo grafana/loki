@@ -303,6 +303,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
 	s.ChunkFetchFailures += m.ChunkFetchFailures
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
@@ -409,6 +410,12 @@ func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
 
 func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+// DataobjSectionsResolutionMaxTime returns the longest time one data-object read spent resolving
+// sections.
+func (r Result) DataobjSectionsResolutionMaxTime() time.Duration {
+	return time.Duration(r.Querier.Store.Dataobj.SectionsResolutionMaxTime)
 }
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
@@ -647,6 +654,20 @@ func (c *Context) AddStreamFirstQueries(num int64) {
 
 func (c *Context) AddTimestampFirstQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.TimestampFirstQueries, num)
+}
+
+// RecordDataobjSectionsResolutionTime records d as the section-resolution time of one data-object
+// read. The context keeps the largest value it has seen.
+func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
+	for {
+		current := atomic.LoadInt64(&c.store.Dataobj.SectionsResolutionMaxTime)
+		if int64(d) <= current {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.store.Dataobj.SectionsResolutionMaxTime, current, int64(d)) {
+			return
+		}
+	}
 }
 
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {

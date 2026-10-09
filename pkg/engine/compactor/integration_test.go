@@ -332,10 +332,10 @@ func TestE2ECompactionConvergence(t *testing.T) {
 			levelBase:   100_000,
 			levelRatio:  2,
 			wantRunsEnd: 2,
-			// Five level 0 runs give two merges and a one-run task. The two
-			// level 1 outputs then merge into level 2, and the lone level 0
-			// run is rewritten alone again.
-			wantTasks: map[string]int{"log-merge": 5},
+			// Five level 0 runs give two merges and a filter. The two level 1
+			// outputs then merge into level 2, and the lone level 0 run is
+			// filtered again.
+			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})
 	})
 }

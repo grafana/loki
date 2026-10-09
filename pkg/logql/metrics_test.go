@@ -208,6 +208,22 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		require.Contains(t, buf.String(), "stream_first_queries=3")
 		require.Contains(t, buf.String(), "timestamp_first_queries=5")
 	})
+
+	t.Run("adds the slowest data-object section resolution of the query", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		result := stats.Result{Querier: stats.Querier{Store: stats.Store{
+			Dataobj: stats.Dataobj{SectionsResolutionMaxTime: int64(1500 * time.Millisecond)},
+		}}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "dataobj_sections_resolution_max_time=1.5s")
+	})
+
+	t.Run("adds a zero section resolution time when the query read no data object", func(t *testing.T) {
+		require.Contains(t, record(t, nil), "dataobj_sections_resolution_max_time=0s")
+	})
 }
 
 func TestRecordBytesProcessedTotal(t *testing.T) {

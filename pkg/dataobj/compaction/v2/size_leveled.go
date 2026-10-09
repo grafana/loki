@@ -83,6 +83,17 @@ func (s *SizeLeveledStrategy) groupByLevels(runs []Run) [][]Run {
 	return levels
 }
 
+// RunsPerLevel returns the number of runs in each level, from level 0 up to
+// the highest level that holds a run.
+func (s *SizeLeveledStrategy) RunsPerLevel(runs []Run) []int {
+	levels := s.groupByLevels(runs)
+	counts := make([]int, len(levels))
+	for i, level := range levels {
+		counts[i] = len(level)
+	}
+	return counts
+}
+
 // NeedsCompaction reports whether any level holds at least k runs.
 //
 // A window where every level holds fewer than k runs counts as converged,
@@ -97,17 +108,23 @@ func (s *SizeLeveledStrategy) NeedsCompaction(runs []Run) bool {
 	return false
 }
 
-// Plan splits each level into tasks of at most k runs, so no task mixes
-// levels.
+// Plan splits each level into groups of at most k runs, so no group mixes
+// levels. Each group of two or more runs becomes a merge task.
 //
-// Every run lands in exactly one task, because the caller replaces the whole
-// source index with the task outputs. A run left out of all tasks would drop
-// out of the index. So a run alone in its level, or left over after the
-// split, becomes a task of one run that rewrites it without merging.
-func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, sortSchema []string) []*compactionv2pb.TaskSpec {
-	var tasks []*compactionv2pb.TaskSpec
+// A run alone in its level, or left over after the split, has nothing to
+// merge with. Plan returns it in unmerged instead of a task, so the caller can
+// keep it without rewriting its data. Every run lands in exactly one merge
+// task or in unmerged.
+func (s *SizeLeveledStrategy) Plan(runs []Run, tenant string, sortSchema []string) (merges []*compactionv2pb.TaskSpec, unmerged []Run) {
 	for _, level := range s.groupByLevels(runs) {
-		tasks = append(tasks, Plan(level, tenant, s.k, sortSchema)...)
+		for start := 0; start < len(level); start += s.k {
+			group := level[start:min(start+s.k, len(level))]
+			if len(group) == 1 {
+				unmerged = append(unmerged, group[0])
+				continue
+			}
+			merges = append(merges, Plan(group, tenant, len(group), sortSchema)...)
+		}
 	}
-	return tasks
+	return merges, unmerged
 }
