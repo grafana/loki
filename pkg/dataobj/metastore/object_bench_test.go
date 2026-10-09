@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,8 +13,6 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -63,7 +60,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		// Create multiple index files
 		for fileIdx := 0; fileIdx < bm.indexFilesNum; fileIdx++ {
 			// Create index builder for this file
-			builder := fixtures.NewLegacyIndexBuilder(tenantID)
+			builder := newTestIndexBuilder(b)
 
 			// Determine which streams to add to this index file
 			// Use modulo to cycle through testStreams if we need more entries than available
@@ -81,23 +78,14 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx := builder.AppendStream(streams.Stream{
-					ID:               globalStreamID,
-					Labels:           lbls,
-					MinTimestamp:     ts.Entries[0].Timestamp,
-					MaxTimestamp:     ts.Entries[0].Timestamp,
-					UncompressedSize: 0,
-				})
-
-				builder.ObserveLogLine("test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+				builder.observeLine("test-path", int64(fileIdx+1), globalStreamID, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 
 				globalStreamID++
 			}
 
 			// Build and store the index object
-			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
-			obj, closer := builder.Flush(b)
-			b.Cleanup(func() { _ = closer.Close() })
+			timeRanges := []dataobj.TimeRange{builder.timeRange()}
+			obj := builder.flush()
 
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
@@ -153,7 +141,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			name: "multiple predicate hit",
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
-				labels.MustNewMatcher(labels.MatchEqual, "traceID", "1234"),
+				labels.MustNewMatcher(labels.MatchEqual, "spanID", "wxyz"),
 			},
 			wantCount: 1,
 		},
@@ -170,34 +158,18 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 
-			builder := fixtures.NewLegacyIndexBuilder(tenantID)
+			builder := newTestIndexBuilder(b)
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
+			builder.observeLine("test-path", 0, 1, lbls, now.Add(-3*time.Hour), 5)
+			builder.observeLine("test-path", 0, 1, lbls, now.Add(-2*time.Hour), 0)
+			builder.observeMetadata("test-path", 0, 1, now.Add(-3*time.Hour), "traceID", "abcd", "1234")
+			builder.observeMetadata("test-path", 0, 1, now.Add(-3*time.Hour), "spanID", "wxyz")
 
-			builder.AppendStream(streams.Stream{
-				ID:               1,
-				Labels:           lbls,
-				MinTimestamp:     now.Add(-3 * time.Hour),
-				MaxTimestamp:     now.Add(-2 * time.Hour),
-				UncompressedSize: 5,
-			})
-
-			builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
-			builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
-
-			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
-			traceIDBloom.AddString("abcd")
-			traceIDBloom.AddString("1234")
-			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
-			require.NoError(b, err)
-
-			builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
-
-			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
+			timeRanges := []dataobj.TimeRange{builder.timeRange()}
 			require.Len(b, timeRanges, 1)
 
-			obj, closer := builder.Flush(b)
-			b.Cleanup(func() { _ = closer.Close() })
+			obj := builder.flush()
 
 			bucket := objstore.NewInMemBucket()
 

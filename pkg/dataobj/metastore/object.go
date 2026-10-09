@@ -820,37 +820,23 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	var reader ArrowRecordBatchReader
-	flow := flowStreams
-	// Index objects without a postings section for the tenant use the legacy
-	// streams-section reader.
-	if hasPostingsSection(idxObj, tenant) {
-		flow = flowPostings
-		reader = newPostingsIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	} else {
-		reader = newIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
+	// The metastore finds sections only through postings, so an index object
+	// without them cannot answer the request. Fail instead of returning no
+	// sections, which would drop the data of the object from the query.
+	if !hasPostingsSection(idxObj, tenant) {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("index object %s holds no postings section for tenant %s", req.IndexPath, tenant)
 	}
 
-	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
-	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
-
-	return IndexSectionsReaderResponse{Reader: reader}, nil
+	reader := newPostingsIndexSectionsReader(
+		m.logger,
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.BatchSize,
+	)
+	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }
 
 // hasPostingsSection reports whether obj has a postings section owned by tenant.

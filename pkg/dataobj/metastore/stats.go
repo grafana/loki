@@ -24,13 +24,6 @@ var (
 	// StatMetastoreSectionsResolved is the number of logs section resolved by the metastore query.
 	StatMetastoreSectionsResolved = xcap.NewStatisticInt64("metastore.logs.sections.resolved", xcap.AggregationTypeSum)
 
-	// StatMetastorePointerSectionsOpened is the number of pointer section opened.
-	StatMetastorePointerSectionsOpened = xcap.NewStatisticInt64("metastore.sections.opened", xcap.AggregationTypeSum)
-
-	// StatMetastorePointerSectionsProductive counts the number of pointer sections that yielded
-	// atleast one pointer.
-	StatMetastorePointerSectionsProductive = xcap.NewStatisticInt64("metastore.sections.productive", xcap.AggregationTypeSum)
-
 	// StatPostingsLabelColumnNameTotalPages – the total number of "column_name" column pages for label-based postings,
 	// sum across all the sections.
 	StatPostingsLabelColumnNameTotalPages = xcap.NewStatisticInt64(
@@ -60,11 +53,6 @@ var (
 	)
 )
 
-const (
-	flowPostings = "postings"
-	flowStreams  = "streams"
-)
-
 type readerStats struct {
 	// Initialized is false when the reader never performed a read, in which case
 	// ReadRows is meaningless and must not be observed.
@@ -79,7 +67,6 @@ type statsProvider interface {
 type instrumentedReader struct {
 	ArrowRecordBatchReader
 	metrics *ObjectMetastoreMetrics
-	flow    string
 	once    sync.Once
 }
 
@@ -91,7 +78,7 @@ func (r *instrumentedReader) Close() {
 	r.once.Do(func() {
 		s := r.stats()
 		if s.Initialized {
-			r.metrics.indexReadRowsPerObject.WithLabelValues(r.flow).Observe(float64(s.ReadRows))
+			r.metrics.indexReadRowsPerObject.Observe(float64(s.ReadRows))
 		}
 	})
 	r.ArrowRecordBatchReader.Close()
