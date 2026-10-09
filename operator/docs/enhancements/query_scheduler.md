@@ -46,12 +46,7 @@ Introducing the query-scheduler is proactive forward-compatibility. It positions
 
 - Providing a migration path from V1 to V2 for existing LokiStack instances (this can be addressed in a follow-up enhancement once resource profiles are established).
 - Horizontal pod autoscaling for the query-scheduler.
-- **Separate ruler query pool** — Loki docs recommend a dedicated query-frontend and
-  querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query
-  traffic. The operator currently shares a single pool for both. Introducing a separate
-  ruler pool is a distinct enhancement. The query-scheduler's hierarchical queue
-  (`max_queue_hierarchy_levels`) is the Loki-native stepping stone toward per-class
-  prioritisation and is noted as a follow-up open question.
+- Separate ruler query pool: Loki docs recommend a dedicated query-frontend and querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query traffic. The operator currently shares a single pool for both. Introducing a separate ruler pool is a distinct enhancement.
 
 ## Proposal
 
@@ -173,11 +168,13 @@ Loki's current implementation sets the RF of the query-scheduler component to 2.
 
 ### Open Questions
 
-1. **Resource requirements for query-scheduler**: this is the primary open question this spike is meant to answer. The query-scheduler holds an in-memory queue of pending sub-queries per tenant. Memory usage scales with `max_outstanding_requests_per_tenant × active_tenants`. CPU usage is expected to be low (mostly queue bookkeeping and gRPC plumbing).
+1. Resource requirements for query-scheduler: this is the primary open question this spike is meant to answer. The query-scheduler holds an in-memory queue of pending sub-queries per tenant. Memory usage scales with `max_outstanding_requests_per_tenant × active_tenants`. CPU usage is expected to be low (mostly queue bookkeeping and gRPC plumbing).
 
    **Investigation plan**: run the PoC branch against a realistic load profile (matching each supported t-shirt size) and record peak CPU and memory consumption of the scheduler pod. Use those measurements to set `Requests` values and derive sensible `Limits`.
-
-2. **`max_outstanding_requests_per_tenant` default**: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
+2. `max_outstanding_requests_per_tenant` default: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
+3. Does a separate ruler pool require a separate query-scheduler, or is one scheduler with prioritisation sufficient? With the current proposed design, all queries (ad-hoc or ruler) share the same scheduler queue. The scheduler's round-robin prevents contention between tenant queries but it doesn't differentiate between query classes within the same tenant. There are two possible solutions to isolate based on class:
+    - A second scheduler dedicated to the ruler pool.
+    - Priority queuing within the scheduler so ruler queries are dispatched ahead of non-ruler queries. Loki's scheduler already has a hierarchical queue (`max_queue_hierarchy_levels`, default 3) that places different query classes at different levels and round-robins across them, this is the Loki-native path toward per-class prioritisation without needing a second scheduler.
 
 ## Drawbacks
 - The PoC removes support for V1-style `frontend_address`; existing clusters would need to drain in-flight queries before the scheduler is ready. A proper migration strategy is deferred.
