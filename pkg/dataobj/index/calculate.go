@@ -20,6 +20,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+// logsIndexCalculation is one calculation step for a logs section.
+//
+// Calculate runs Prepare and ProcessBatch for different sections in any order.
+// Their builder writes must not depend on that order. So they must not make
+// the builder cut a section, and the builder must sort their writes before it
+// encodes them.
+// Calculate then runs Flush once per section, in section order. Flush must
+// write to the builder in an order that depends only on the section data, so
+// it must not write in map iteration order.
+//
+// These rules make the index object the same on each build.
 type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
@@ -38,8 +49,8 @@ type logsIndexCalculation interface {
 	// with other sections' lock-free ProcessBatch calls (each section has its
 	// own calculation-step state, so there is no cross-section sharing).
 	ProcessBatchNeedsBuilderLock() bool
-	// Flush is called once per section, in section order, after all logs
-	// sections of the object have been processed.
+	// Flush is called after Prepare and ProcessBatch finish for every logs
+	// section of the object.
 	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
 }
@@ -131,8 +142,6 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
-			// 1. A bloom filter for each column in the logs section.
-			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
 			p, err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup, streamLabels, shardBuckets)
 			if err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
@@ -146,13 +155,14 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	}
 
 	// Flush the sections one at a time in section order, so that the index
-	// object is the same on each build. The flush order sets the order of
-	// pointers and stats rows, and where the builder cuts their sections.
-	//
-	// Prepare and ProcessBatch can still run concurrently. The builder only
-	// aggregates their observations, and sorts the result before it encodes
-	// it, so their order does not change the index object.
+	// object is the same on each build. Flush appends pointers and stats rows,
+	// and the builder cuts a pointers or stats section when it reaches the
+	// target size. The flush order decides where these cuts fall, so it
+	// decides which rows each section holds.
 	for i, p := range processed {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := c.flushLogsSection(ctx, p); err != nil {
 			return fmt.Errorf("failed to flush logs section path=%s section=%d: %w", objectPath, i, err)
 		}
@@ -214,19 +224,17 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	return streamLabels, shardBuckets, nil
 }
 
-// processedLogsSection holds the calculation steps of a logs section between
+// processedLogsSection holds the state of a logs section between
 // processLogsSection and flushLogsSection.
 type processedLogsSection struct {
-	logger        log.Logger
 	calcCtx       *logsCalculationContext
 	steps         []logsIndexCalculation
 	stepDurations []time.Duration
-	rows          int
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
-// The caller must pass the result to flushLogsSection to complete the section index.
+// The caller must pass the result to flushLogsSection, which writes the rest of the section data into the builder.
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
 	logsBuf := make([]logs.Record, 8192)
 
@@ -338,22 +346,24 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		c.builderMtx.Unlock()
 	}
 
+	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return &processedLogsSection{
-		logger:        sectionLogger,
 		calcCtx:       calculationContext,
 		steps:         calculationSteps,
 		stepDurations: stepDurations,
-		rows:          cnt,
 	}, nil
 }
 
-// flushLogsSection flushes the calculation steps of p into the builder.
-// It must not run concurrently with other calls that use the builder.
+// flushLogsSection flushes the calculation steps of p into the builder, and
+// records the step durations.
+//
+// flushLogsSection does not lock builderMtx, so it must not run concurrently
+// with other calls that use the builder.
 func (c *Calculator) flushLogsSection(ctx context.Context, p *processedLogsSection) error {
 	for i, calculation := range p.steps {
 		start := time.Now()
 		if err := calculation.Flush(ctx, p.calcCtx); err != nil {
-			return fmt.Errorf("failed to flush calculation results: %w", err)
+			return fmt.Errorf("failed to flush calculation %s: %w", calculation.Name(), err)
 		}
 		p.stepDurations[i] += time.Since(start)
 	}
@@ -361,7 +371,5 @@ func (c *Calculator) flushLogsSection(ctx context.Context, p *processedLogsSecti
 	for i, calculation := range p.steps {
 		c.metrics.observeStepDuration(calculation.Name(), p.stepDurations[i])
 	}
-
-	level.Info(p.logger).Log("msg", "finished processing logs section", "rowsProcessed", p.rows)
 	return nil
 }

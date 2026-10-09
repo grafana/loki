@@ -69,11 +69,12 @@ var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:   128 * 1024,
 	TargetObjectSize: 1 << 28, // 256 MiB, large enough for the whole object
 	BufferSize:       2 << 20,
-	// TargetSectionSize is set to 1 byte so the index builder rolls a new
-	// section as soon as anything is written. This forces many small index
-	// sections, which exercises the parallel flush path in Calculate (each
-	// section flush contends on builderMtx) and is what makes this benchmark
-	// sensitive to lock-contention regressions. Matches calculate_test.go.
+	// TargetSectionSize is set to 1 byte so the index builder cuts a new
+	// pointers or stats section on each append in Flush. This forces many
+	// small index sections, so the benchmark includes the cost of the
+	// sequential flush phase in Calculate. Prepare and ProcessBatch still
+	// contend on builderMtx, which makes this benchmark sensitive to
+	// lock-contention regressions. Matches calculate_test.go.
 	SectionStripeMergeLimit: 2,
 	TargetSectionSize:       1,
 }
@@ -85,8 +86,9 @@ func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*datao
 	return buildSyntheticDataobj(tb, 2<<20, streamCount, entriesPerStream)
 }
 
-// buildSyntheticDataobj builds the object of [buildBenchDataobj] with logs
-// sections of logsSectionSize bytes. A smaller size gives more logs sections.
+// buildSyntheticDataobj builds an object for [benchTenant] with streamCount
+// streams of entriesPerStream entries each. logsSectionSize is the target size
+// of a logs section. A smaller size gives more logs sections.
 func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 

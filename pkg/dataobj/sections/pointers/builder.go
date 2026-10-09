@@ -225,13 +225,18 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	return n, err
 }
 
-// sortPointerObjects sorts stream index pointers by StreamID, and then column
-// index pointers by ColumnIndex.
+// sortPointerObjects puts stream index pointers before column index pointers.
+// It sorts stream index pointers by StreamID and column index pointers by
+// ColumnIndex.
 //
-// The other fields break ties, so the order is total. Pointers from different
-// sections share stream IDs and column indexes, and the order in which they
-// arrive can change between builds. A total order gives the same section bytes
-// for the same pointers.
+// Path, Section, StreamIDRef and ColumnName break ties. Pointers from
+// different sections share stream IDs and column indexes, and the order in
+// which they arrive can change between builds. With the tie-breaks, the same
+// pointers give the same section bytes.
+//
+// The order is total because ObserveStream keeps one stream index pointer per
+// (Path, Section, StreamIDRef). Callers must record at most one column index
+// pointer per (Path, Section, ColumnName).
 func (b *Builder) sortPointerObjects() {
 	slices.SortFunc(b.pointers, func(x, y *SectionPointer) int {
 		var byKind int
