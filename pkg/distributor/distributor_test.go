@@ -3162,6 +3162,98 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
+	const (
+		backfillLabels = `{app="backfill"}`
+		blockedLabels  = `{app="blocked"}`
+	)
+
+	for _, tc := range []struct {
+		name                string
+		rejectPartialWrites map[string]bool
+		blockStatusCode     int
+		expectedStatusCode  int32
+		expectWrites        bool
+		expectedRejected    map[string]float64
+	}{
+		{
+			name:               "partial write - policy not configured",
+			blockStatusCode:    http.StatusTooManyRequests,
+			expectedStatusCode: http.StatusTooManyRequests,
+			expectWrites:       true,
+		},
+		{
+			name:                "full reject - accepted stream policy rejects partial writes",
+			rejectPartialWrites: map[string]bool{"backfill": true},
+			blockStatusCode:     http.StatusTooManyRequests,
+			expectedStatusCode:  http.StatusTooManyRequests,
+			expectWrites:        false,
+			expectedRejected:    map[string]float64{"backfill": 1},
+		},
+		{
+			name:                "full reject - rejected stream policy rejects partial writes",
+			rejectPartialWrites: map[string]bool{"blocked": true},
+			blockStatusCode:     http.StatusTooManyRequests,
+			expectedStatusCode:  http.StatusTooManyRequests,
+			expectWrites:        false,
+			expectedRejected:    map[string]float64{"blocked": 1},
+		},
+		{
+			name:                "partial write - non 429 errors do not reject the whole push",
+			rejectPartialWrites: map[string]bool{"backfill": true},
+			blockStatusCode:     http.StatusBadRequest,
+			expectedStatusCode:  http.StatusBadRequest,
+			expectWrites:        true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+				"backfill": []*validation.PriorityStream{{Selector: backfillLabels, Priority: 1}},
+				"blocked":  []*validation.PriorityStream{{Selector: blockedLabels, Priority: 1}},
+			}
+			require.NoError(t, limits.PolicyStreamMapping.Validate())
+			limits.BlockIngestionPolicyUntil = map[string]flagext.Time{
+				"blocked": flagext.Time(time.Now().Add(time.Hour)),
+			}
+			limits.BlockIngestionStatusCode = tc.blockStatusCode
+			limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{}
+			for policy, reject := range tc.rejectPartialWrites {
+				limits.PolicyOverrideLimits[policy] = validation.PolicyOverridableLimits{RejectPartialWrites: reject}
+			}
+
+			distributors, ingesters := prepare(t, 1, 3, limits, nil)
+			request := makeWriteRequestWithLabels(1, 100, []string{backfillLabels, blockedLabels}, false, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			require.Error(t, err)
+
+			resp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok)
+			require.Equal(t, tc.expectedStatusCode, resp.Code)
+
+			var pushed int
+			for i := range ingesters {
+				ingesters[i].mu.Lock()
+				pushed += len(ingesters[i].pushed)
+				ingesters[i].mu.Unlock()
+			}
+			if tc.expectWrites {
+				require.Positive(t, pushed)
+			} else {
+				require.Zero(t, pushed)
+			}
+
+			rejected := distributors[0].m.rejectedPartialWrites
+			require.Equal(t, len(tc.expectedRejected), testutil.CollectAndCount(rejected))
+			for policy, count := range tc.expectedRejected {
+				require.Equal(t, count, testutil.ToFloat64(rejected.WithLabelValues("test", policy)))
+			}
+		})
+	}
+}
+
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)

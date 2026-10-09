@@ -305,6 +305,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
 	s.Dataobj.SectionsResolutionMaxTime = max(s.Dataobj.SectionsResolutionMaxTime, m.Dataobj.SectionsResolutionMaxTime)
 	s.ChunkFetchFailures += m.ChunkFetchFailures
+	s.TotalChunksScanned += m.TotalChunksScanned
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -351,6 +352,25 @@ func (i *Index) Merge(m Index) {
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
+	i.ShardPlannedChunks += m.ShardPlannedChunks
+	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
+
+	// Lookup-level logline fields describe the one hint lookup for the whole
+	// query, so they are kept rather than summed.
+	if i.LoglineHintStatus == "" {
+		i.LoglineHintStatus = m.LoglineHintStatus
+	}
+	if i.LoglineHintLookupTime == 0 {
+		i.LoglineHintLookupTime = m.LoglineHintLookupTime
+	}
+	if i.LoglineHintRanges == 0 {
+		i.LoglineHintRanges = m.LoglineHintRanges
+	}
+	if i.LoglineHintRangesDuration == 0 {
+		i.LoglineHintRangesDuration = m.LoglineHintRangesDuration
+	}
+	i.LoglineSkippedRequests += m.LoglineSkippedRequests
+	i.LoglineNarrowedRequests += m.LoglineNarrowedRequests
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -446,6 +466,12 @@ func (r Result) TotalChunksRef() int64 {
 // fetched or decoded for the query, whether or not the failure was tolerated.
 func (r Result) TotalChunkFetchFailures() int64 {
 	return r.Querier.Store.ChunkFetchFailures + r.Ingester.Store.ChunkFetchFailures
+}
+
+// TotalChunksScanned returns the chunks read from the store after time and
+// logline hint filtering, plus the chunks ingesters matched in memory.
+func (r Result) TotalChunksScanned() int64 {
+	return r.Querier.Store.TotalChunksScanned + r.Ingester.Store.TotalChunksScanned + r.Ingester.TotalChunksMatched
 }
 
 func (r Result) TotalDecompressedBytes() int64 {
@@ -550,6 +576,12 @@ func (c *Context) AddChunksRef(i int64) {
 // failure instead of failing the whole query.
 func (c *Context) AddChunkFetchFailures(i int64) {
 	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
+}
+
+// AddChunksScanned counts chunk refs left to read after time and logline hint
+// filtering.
+func (c *Context) AddChunksScanned(i int64) {
+	atomic.AddInt64(&c.store.TotalChunksScanned, i)
 }
 
 func (c *Context) AddIndexTotalChunkRefs(i int64) {

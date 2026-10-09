@@ -457,6 +457,7 @@ func (s *LokiStore) lazyChunks(
 		chks[i] = filterChunksByHintRanges(chks[i], hintRanges)
 		filtered += len(chks[i])
 	}
+	stats.AddChunksScanned(int64(filtered))
 
 	if storeChunksOverride != nil {
 		s.chunkMetrics.refsBypassed.Add(float64(len(storeChunksOverride.Refs)))

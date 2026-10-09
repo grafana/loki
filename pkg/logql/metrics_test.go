@@ -226,6 +226,98 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 	})
 }
 
+func TestAppendLoglineStats(t *testing.T) {
+	loglineIndex := stats.Index{
+		LoglineHintStatus:         "ok",
+		LoglineHintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
+		LoglineHintRanges:         3,
+		LoglineHintRangesDuration: (90 * time.Minute).Nanoseconds(),
+		LoglineSkippedRequests:    6,
+		LoglineNarrowedRequests:   2,
+	}
+	withPlannedChunks := func(planned, scanned int64) stats.Result {
+		idx := loglineIndex
+		idx.ShardPlannedChunks = planned
+		idx.ShardPlannedChunksScanned = scanned
+		return stats.Result{Index: idx}
+	}
+	loglineFields := func(planned, scanned int64) []interface{} {
+		return []interface{}{
+			"logline_hint_status", "ok",
+			"logline_hint_lookup_time", 150 * time.Millisecond,
+			"logline_hint_ranges", int64(3),
+			"logline_hint_ranges_duration", 90 * time.Minute,
+			"logline_skipped_requests", int64(6),
+			"logline_narrowed_requests", int64(2),
+			"shard_planned_chunks", planned,
+			"logline_scanned_chunks", scanned,
+		}
+	}
+	withRatio := func(planned, scanned int64, ratio string) []interface{} {
+		return append(loglineFields(planned, scanned), "logline_chunk_filter_ratio", ratio)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		stats    stats.Result
+		expected []interface{}
+	}{
+		{
+			name:     "no hint lookup",
+			stats:    stats.Result{Index: stats.Index{TotalChunks: 10, ShardPlannedChunks: 10}},
+			expected: []interface{}{},
+		},
+		{
+			name:     "some chunks filtered",
+			stats:    withPlannedChunks(40, 10),
+			expected: withRatio(40, 10, "0.75"),
+		},
+		{
+			name:     "no chunks filtered",
+			stats:    withPlannedChunks(40, 40),
+			expected: withRatio(40, 40, "0.00"),
+		},
+		{
+			name:     "all chunks filtered",
+			stats:    withPlannedChunks(40, 0),
+			expected: withRatio(40, 0, "1.00"),
+		},
+		{
+			name:     "more chunks scanned than planned",
+			stats:    withPlannedChunks(40, 50),
+			expected: withRatio(40, 50, "0.00"),
+		},
+		{
+			name:     "ratio omitted without shard planning",
+			stats:    withPlannedChunks(0, 0),
+			expected: loglineFields(0, 0),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, appendLoglineStats([]interface{}{}, tc.stats))
+		})
+	}
+}
+
+func TestRecordLoglineIndexQueryMetrics(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	now := time.Now()
+
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "200", stats.Result{}, &logproto.HintQueryStats{
+		ObjectStorageRequests: 12,
+		TotalIOBytes:          2048,
+		TotalIOWait:           40 * time.Millisecond,
+	})
+	require.Contains(t, buf.String(), "query_type=logline_index")
+	require.Contains(t, buf.String(), "logline_object_requests=12 logline_io_bytes=2.0kB logline_io_wait=40ms")
+
+	buf.Reset()
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "500", stats.Result{}, nil)
+	require.NotContains(t, buf.String(), "logline_object_requests")
+}
+
 func TestRecordBytesProcessedTotal(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 
