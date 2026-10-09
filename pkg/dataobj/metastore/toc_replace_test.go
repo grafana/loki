@@ -128,11 +128,7 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 		{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
 	})
 
-	writer := &TableOfContentsWriter{
-		bucket:  bucket,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, bucket)
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 		[]string{"idx/a-0", "idx/a-1"},
@@ -199,11 +195,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			preSwap := readWindowToCs(ctx, t, bucket, window)
 			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
 
-			writer := &TableOfContentsWriter{
-				bucket:  bucket,
-				metrics: NewTocWriterMetrics(nil),
-				logger:  log.NewNopLogger(),
-			}
+			writer := newTableOfContentsWriter(t, bucket)
 
 			swapped, err := writer.ReplaceIndexPointers(ctx, window,
 				tt.targetTenant, tt.oldPaths, tt.newEntries,
@@ -273,11 +265,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		before := readToC(ctx, t, inner, tocPath)
 
 		bucket := &countingBucket{Bucket: inner}
-		writer := &TableOfContentsWriter{
-			bucket:  bucket,
-			metrics: NewTocWriterMetrics(nil),
-			logger:  log.NewNopLogger(),
-		}
+		writer := newTableOfContentsWriter(t, bucket)
 
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 			[]string{"idx/a-0"},
@@ -291,17 +279,96 @@ func TestReplaceIndexPointers(t *testing.T) {
 
 	t.Run("returns an error without touching storage when a new entry ends before it starts", func(t *testing.T) {
 		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
-		writer := &TableOfContentsWriter{
-			bucket:  bucket,
-			metrics: NewTocWriterMetrics(nil),
-			logger:  log.NewNopLogger(),
-		}
+		writer := newTableOfContentsWriter(t, bucket)
 
 		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
 			[]string{"idx/a-0"},
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
 		)
 		require.ErrorContains(t, err, "idx/a-new")
+		require.False(t, swapped)
+		require.Zero(t, bucket.Calls())
+	})
+
+	t.Run("adds a new entry once when the ToC already holds its path", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+			},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("drops the repeated pointers of a path when it rewrites the ToC", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+		})
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.ElementsMatch(t, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		}, readWindowToCs(ctx, t, bucket, window))
+	})
+
+	t.Run("reports the swap as applied when the conditional write lands and then returns an error", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20}})
+
+		bucket := &failAfterWriteBucket{Bucket: inner}
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, 2, bucket.calls)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
+
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
+		require.Equal(t, map[status]uint64{statusSuccess: 1, statusSkipped: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opReplace))
+	})
+
+	t.Run("returns an error without touching storage when a new entry does not overlap the window", func(t *testing.T) {
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		writer := newTableOfContentsWriter(t, bucket)
+
+		swapped, err := writer.ReplaceIndexPointers(context.Background(), unixTime(0), "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{
+				Path:      "idx/a-new",
+				StartTime: unixTime(0).Add(MetastoreWindowSize),
+				EndTime:   unixTime(0).Add(MetastoreWindowSize + time.Hour),
+			}},
+		)
+		require.ErrorContains(t, err, "does not overlap the window")
 		require.False(t, swapped)
 		require.Zero(t, bucket.Calls())
 	})
@@ -332,11 +399,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	})
 	preSwap := readWindowToCs(ctx, t, bucket, window)
 
-	writer := &TableOfContentsWriter{
-		bucket:  bucket,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, bucket)
 
 	// Caller still believes "idx/a-0" / "idx/a-1" are present — they're not.
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -358,11 +421,7 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tocPath := TableOfContentsPath("tenantA", window)
 
-	writer := &TableOfContentsWriter{
-		bucket:  bucket,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, bucket)
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 		[]string{"idx/a-0"},
@@ -428,11 +487,7 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 		remainingErrors: []error{errPreconditionFailed},
 	}
 
-	writer := &TableOfContentsWriter{
-		bucket:  flaky,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, flaky)
 
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
 		[]string{"idx/a-0"},
@@ -459,21 +514,16 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 	// Always fail. Build a wrapper that returns errPreconditionFailed every call.
 	alwaysFail := &alwaysFailBucket{Bucket: inner}
 
-	writer := &TableOfContentsWriter{
-		bucket:  alwaysFail,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
-
-	// Use the same-package internal helper to override backoff to a tight budget,
-	// keeping this test fast (<100ms) while still exercising the retry loop.
-	tightBackoff := backoff.Config{
+	// A tight backoff keeps this test fast while it still runs the retry loop.
+	writer := NewTableOfContentsWriter(alwaysFail, backoff.Config{
 		MinBackoff: 1 * time.Millisecond,
 		MaxBackoff: 5 * time.Millisecond,
 		MaxRetries: 3,
-	}
-	swapped, err := writer.replaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0"}, nil, tightBackoff,
+	}, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
 	)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errPreconditionFailed)
@@ -501,11 +551,7 @@ func TestReplaceIndexPointers_EmptyOldAndNewPaths_BypassesStorage(t *testing.T) 
 	window := unixTime(0)
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
-	writer := &TableOfContentsWriter{
-		bucket:  bucket,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, bucket)
 
 	// Even with a permanently-failing bucket, empty old and new paths must no-op
 	// without touching storage. This is the deterministic-no-op contract.
@@ -532,11 +578,7 @@ func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
 	window := unixTime(0)
 	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
 
-	writer := &TableOfContentsWriter{
-		bucket:  bucket,
-		metrics: NewTocWriterMetrics(nil),
-		logger:  log.NewNopLogger(),
-	}
+	writer := newTableOfContentsWriter(t, bucket)
 
 	// Empty old, non empty new => error without calling storage.
 	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",

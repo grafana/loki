@@ -2384,8 +2384,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-	// The planner only replaces index pointers, which records no ToC writer
-	// metrics, so it does not register them.
+	// The writer metrics stay unregistered here. The dataobj-builder registers
+	// the same metric names with partition and component labels, and
+	// Prometheus rejects one name with two label sets.
 	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(nil))
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{

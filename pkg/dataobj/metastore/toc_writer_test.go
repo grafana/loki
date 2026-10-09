@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -84,7 +86,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NotEmpty(t, dobj.Sections())
 	})
 
-	t.Run("copyFromExistingToc copies every pointer of a ToC that WriteEntry wrote", func(t *testing.T) {
+	t.Run("rebuildToC keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
 		tenantID := "test"
 		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -103,11 +105,20 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 		defer reader.Close()
 
-		err = writer.copyFromExistingToc(context.Background(), builder, reader, TableOfContentsEntry{Path: "testdata/other.obj"})
+		rebuilt, err := writer.rebuildToC(context.Background(), builder, reader, tocChange{
+			add: []TableOfContentsEntry{{Path: "testdata/other.obj", StartTime: unixTime(40), EndTime: unixTime(50)}},
+		})
 		require.NoError(t, err)
+		out := objstore.NewInMemBucket()
+		require.NoError(t, out.Upload(context.Background(), "toc", rebuilt))
+		require.NoError(t, rebuilt.Close())
+		require.ElementsMatch(t, []tocRow{
+			{Tenant: tenantID, Path: "testdata/metastore.obj", StartUnix: 10, EndUnix: 30},
+			{Tenant: tenantID, Path: "testdata/other.obj", StartUnix: 40, EndUnix: 50},
+		}, readToC(context.Background(), t, out, "toc"))
 	})
 
-	t.Run("copyFromExistingToc returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
+	t.Run("rebuildToC returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
 		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
@@ -121,7 +132,9 @@ func TestTableOfContentsWriter(t *testing.T) {
 		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
-		err = writer.copyFromExistingToc(context.Background(), target, reader, TableOfContentsEntry{Path: "indexes/b"})
+		_, err = writer.rebuildToC(context.Background(), target, reader, tocChange{
+			add: []TableOfContentsEntry{{Path: "indexes/b", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		})
 		require.ErrorContains(t, err, "reading index pointers")
 		require.ErrorContains(t, err, "nil or zero value for min_timestamp")
 	})
@@ -227,8 +240,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, before, bucket.Objects()[tocPath], "WriteEntry must not rewrite the ToC")
 
 		want := map[status]uint64{statusSuccess: 1, statusSkipped: 1, statusFailure: 0}
-		require.Equal(t, want, sampleCounts(t, writer.metrics.writeEntryAttemptSeconds))
-		require.Equal(t, want, sampleCounts(t, writer.metrics.writeEntryTotalSeconds))
+		require.Equal(t, want, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+		require.Equal(t, want, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
 
 	t.Run("WriteEntry skips the entry when its path is the last of more than one read batch of pointers", func(t *testing.T) {
@@ -251,7 +264,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, before, inner.Objects()[tocPath])
 	})
 
-	t.Run("WriteEntry appends the entry once and counts a skip when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
+	t.Run("WriteEntry appends the entry once and counts a success when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
 		bucket := &failAfterWriteBucket{Bucket: inner}
 		writer := newTableOfContentsWriter(t, bucket)
@@ -266,8 +279,8 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, inner, tocPath))
 
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 1}, sampleCounts(t, writer.metrics.writeEntryAttemptSeconds))
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 0}, sampleCounts(t, writer.metrics.writeEntryTotalSeconds))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 1, statusFailure: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 1, statusSkipped: 0, statusFailure: 0}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
 	})
 
 	t.Run("WriteEntry returns an error after the last retry when every write fails", func(t *testing.T) {
@@ -287,8 +300,33 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, 3, bucket.calls)
 
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 3}, sampleCounts(t, writer.metrics.writeEntryAttemptSeconds))
-		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.writeEntryTotalSeconds))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 3}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[status]uint64{statusSuccess: 0, statusSkipped: 0, statusFailure: 1}, sampleCounts(t, writer.metrics.changeTotalSeconds, opWriteEntry))
+	})
+
+	t.Run("WriteEntry writes every entry when tenants write concurrently", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+
+		var wg sync.WaitGroup
+		for i := range 8 {
+			wg.Go(func() {
+				tenant := fmt.Sprintf("tenant-%d", i)
+				for j := range 4 {
+					assert.NoError(t, writer.WriteEntry(context.Background(), tenant, TableOfContentsEntry{
+						Path:      fmt.Sprintf("indexes/%s/%d", tenant, j),
+						StartTime: unixTime(10),
+						EndTime:   unixTime(20),
+					}))
+				}
+			})
+		}
+		wg.Wait()
+
+		for i := range 8 {
+			rows := readToC(context.Background(), t, bucket, TableOfContentsPath(fmt.Sprintf("tenant-%d", i), unixTime(0)))
+			require.Len(t, rows, 4)
+		}
 	})
 
 	for _, tc := range []struct {
@@ -389,14 +427,15 @@ func (b *failingBucket) GetAndReplace(context.Context, string, func(io.ReadClose
 	return errWriteFailed
 }
 
-// sampleCounts returns the number of observations of vec for each status.
-func sampleCounts(t *testing.T, vec *prometheus.HistogramVec) map[status]uint64 {
+// sampleCounts returns the number of observations of vec for op and each
+// status.
+func sampleCounts(t *testing.T, vec *prometheus.HistogramVec, op string) map[status]uint64 {
 	t.Helper()
 
 	counts := make(map[status]uint64)
 	for _, s := range []status{statusSuccess, statusSkipped, statusFailure} {
 		var m dto.Metric
-		require.NoError(t, vec.WithLabelValues(string(s)).(prometheus.Metric).Write(&m))
+		require.NoError(t, vec.WithLabelValues(op, string(s)).(prometheus.Metric).Write(&m))
 		counts[s] = m.GetHistogram().GetSampleCount()
 	}
 	return counts

@@ -5,8 +5,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// Values of the op label of the ToC writer metrics.
+const (
+	opWriteEntry = "write_entry"
+	opReplace    = "replace_index_pointers"
+)
+
 // status is the result label of the ToC writer metrics. statusSkipped means
-// the ToC already held the entry's path, so WriteEntry did not write it.
+// the ToC needed no change, so the writer did not write it.
 type status string
 
 const (
@@ -17,8 +23,8 @@ const (
 
 // TocWriterMetrics instruments a [TableOfContentsWriter].
 type TocWriterMetrics struct {
-	writeEntryAttemptSeconds *prometheus.HistogramVec
-	writeEntryTotalSeconds   *prometheus.HistogramVec
+	changeAttemptSeconds *prometheus.HistogramVec
+	changeTotalSeconds   *prometheus.HistogramVec
 }
 
 // NewTocWriterMetrics creates the metrics of a [TableOfContentsWriter] and
@@ -26,33 +32,33 @@ type TocWriterMetrics struct {
 func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 	factory := promauto.With(reg)
 	metrics := &TocWriterMetrics{
-		writeEntryAttemptSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_toc_write_entry_attempt_seconds",
-			Help:                            "Time taken by one attempt to write an entry to a ToC in seconds, by result.",
+		changeAttemptSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_toc_change_attempt_seconds",
+			Help:                            "Time taken by one attempt to change a ToC in seconds, by operation and result.",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
-		}, []string{"result"}),
+		}, []string{"op", "result"}),
 
-		writeEntryTotalSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_toc_write_entry_total_seconds",
-			Help:                            "Time taken to write an entry to a ToC in seconds, by result. It includes every attempt and the backoff between them.",
+		changeTotalSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_toc_change_total_seconds",
+			Help:                            "Time taken to change a ToC in seconds, by operation and result. It includes every attempt and the backoff between them.",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
-		}, []string{"result"}),
+		}, []string{"op", "result"}),
 	}
 
-	// Initialize each status to 0, otherwise neither the rate nor increase
+	// Initialize each series to 0, otherwise neither the rate nor increase
 	// PromQL functions detect increases from 0 to 1.
-	metrics.writeEntryAttemptSeconds.WithLabelValues(string(statusSuccess))
-	metrics.writeEntryAttemptSeconds.WithLabelValues(string(statusFailure))
-	metrics.writeEntryAttemptSeconds.WithLabelValues(string(statusSkipped))
-	metrics.writeEntryTotalSeconds.WithLabelValues(string(statusSuccess))
-	metrics.writeEntryTotalSeconds.WithLabelValues(string(statusFailure))
-	metrics.writeEntryTotalSeconds.WithLabelValues(string(statusSkipped))
+	for _, op := range []string{opWriteEntry, opReplace} {
+		for _, s := range []status{statusSuccess, statusFailure, statusSkipped} {
+			metrics.changeAttemptSeconds.WithLabelValues(op, string(s))
+			metrics.changeTotalSeconds.WithLabelValues(op, string(s))
+		}
+	}
 
 	return metrics
 }
