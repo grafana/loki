@@ -423,43 +423,104 @@ func TestResultMerge_DataobjSectionsResolutionMaxTime(t *testing.T) {
 }
 
 func TestResult_Merge_LoglineStats(t *testing.T) {
-	lookup := Index{
-		LoglineHintStatus:         "ok",
-		LoglineHintLookupTime:     int64(100 * time.Millisecond),
-		LoglineHintRanges:         2,
-		LoglineHintRangesDuration: int64(30 * time.Minute),
+	lookup := &Logline{
+		Outcome:            "data_skipped",
+		HintStatus:         "ok",
+		HintLookupTime:     int64(100 * time.Millisecond),
+		HintRanges:         2,
+		HintRangesDuration: int64(30 * time.Minute),
+		PlannedChunks:      26,
+		ScannedChunks:      4,
+		ChunkFilterRatio:   0.85,
+		ObjectRequests:     12,
+		IOBytes:            2048,
+		IOWait:             int64(40 * time.Millisecond),
 	}
-	skipped := Result{Index: Index{
-		LoglineSkippedRequests: 1,
-		ShardPlannedChunks:     10,
-	}}
+	skipped := Result{
+		Index:   Index{ShardPlannedChunks: 10},
+		Logline: &Logline{SkippedRequests: 1},
+	}
 	narrowed := Result{
 		Index: Index{
-			LoglineNarrowedRequests:   1,
 			ShardPlannedChunks:        8,
 			ShardPlannedChunksScanned: 2,
 		},
+		Logline:  &Logline{NarrowedRequests: 1},
 		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
 		Ingester: Ingester{TotalChunksMatched: 3, Store: Store{TotalChunksScanned: 1}},
 	}
 
 	var res Result
+	res.Merge(Result{})
+	require.Nil(t, res.Logline, "merging results without logline stats must not add them")
+
 	res.Merge(skipped)
 	res.Merge(narrowed)
 	res.Merge(narrowed)
-	res.Merge(Result{Index: lookup})
+	res.Merge(Result{Logline: lookup})
 	// A second lookup-level value must not overwrite the first.
-	res.Merge(Result{Index: Index{LoglineHintStatus: "error", LoglineHintRanges: 5}})
+	res.Merge(Result{Logline: &Logline{Outcome: "lookup_failed", HintStatus: "error", HintRanges: 5, IOBytes: 1}})
+	res.Merge(Result{})
 
-	require.Equal(t, "ok", res.Index.LoglineHintStatus)
-	require.Equal(t, int64(100*time.Millisecond), res.Index.LoglineHintLookupTime)
-	require.Equal(t, int64(2), res.Index.LoglineHintRanges)
-	require.Equal(t, int64(30*time.Minute), res.Index.LoglineHintRangesDuration)
-	require.Equal(t, int64(1), res.Index.LoglineSkippedRequests)
-	require.Equal(t, int64(2), res.Index.LoglineNarrowedRequests)
+	expected := *lookup
+	expected.SkippedRequests = 1
+	expected.NarrowedRequests = 2
+	require.Equal(t, &expected, res.Logline)
 	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
 	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
 	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
+
+	require.Equal(t, int64(1), skipped.Logline.SkippedRequests, "merging must not change the merged result")
+	require.Equal(t, int64(1), narrowed.Logline.NarrowedRequests, "merging must not change the merged result")
+}
+
+func TestResult_Merge_LoglineStatsDoesNotAlias(t *testing.T) {
+	src := Result{Logline: &Logline{SkippedRequests: 1}}
+
+	var res Result
+	res.Merge(src)
+	res.Logline.SkippedRequests++
+
+	require.Equal(t, int64(2), res.Logline.SkippedRequests)
+	require.Equal(t, int64(1), src.Logline.SkippedRequests)
+}
+
+func TestContext_LoglineStats(t *testing.T) {
+	statsCtx, ctx := NewContext(context.Background())
+	JoinResults(ctx, Result{Logline: &Logline{SkippedRequests: 1}})
+	JoinResults(ctx, Result{Logline: &Logline{NarrowedRequests: 2}})
+
+	res := statsCtx.Result(0, 0, 0)
+	require.Equal(t, &Logline{SkippedRequests: 1, NarrowedRequests: 2}, res.Logline)
+
+	// The returned result must not alias the context's own statistics.
+	res.Logline.SkippedRequests = 10
+	require.Equal(t, int64(1), statsCtx.Result(0, 0, 0).Logline.SkippedRequests)
+
+	statsCtx.Reset()
+	require.Nil(t, statsCtx.Result(0, 0, 0).Logline)
+}
+
+func TestIndex_ChunkFilterRatio(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		planned       int64
+		scanned       int64
+		expectedRatio float64
+		expectedOK    bool
+	}{
+		{name: "nothing planned", scanned: 5},
+		{name: "some chunks filtered", planned: 40, scanned: 10, expectedRatio: 0.75, expectedOK: true},
+		{name: "no chunks filtered", planned: 40, scanned: 40, expectedOK: true},
+		{name: "all chunks filtered", planned: 40, expectedRatio: 1, expectedOK: true},
+		{name: "more chunks scanned than planned", planned: 40, scanned: 50, expectedOK: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ratio, ok := Index{ShardPlannedChunks: tc.planned, ShardPlannedChunksScanned: tc.scanned}.ChunkFilterRatio()
+			require.Equal(t, tc.expectedOK, ok)
+			require.InDelta(t, tc.expectedRatio, ratio, 1e-9)
+		})
+	}
 }
 
 func TestContext_ChunksScanned(t *testing.T) {

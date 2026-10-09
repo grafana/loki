@@ -30,6 +30,51 @@ message Result {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "index"
   ];
+  // Set only for queries that went through the logline index query-frontend
+  // middleware, so that the key is left out of other responses.
+  Logline logline = 6 [(gogoproto.jsontag) = "logline,omitempty"];
+}
+
+// Logline holds the logline full-text index statistics of a query. Only the
+// query frontend sets them.
+message Logline {
+  // Whether the index skipped data, or why it didn't: data_skipped,
+  // tiny_data_skipped, skip_ratio_unavailable, time_range_not_indexed,
+  // recent_data_only, unsupported_query, query_too_small,
+  // size_estimate_failed, lookup_failed, lookup_timeout or canceled.
+  string outcome = 1 [(gogoproto.jsontag) = "outcome"];
+  // How the hint lookup ended: ok, unsupported, error, canceled, incomplete or
+  // ingester_window. Empty when the query was skipped before the lookup.
+  string hintStatus = 2 [(gogoproto.jsontag) = "hintStatus"];
+  // Nanosecond wall time of the hint lookup.
+  int64 hintLookupTime = 3 [(gogoproto.jsontag) = "hintLookupTime"];
+  // Number of hint ranges the lookup returned.
+  int64 hintRanges = 4 [(gogoproto.jsontag) = "hintRanges"];
+  // Nanosecond sum of the hint range durations, clipped to the query bounds.
+  int64 hintRangesDuration = 5 [(gogoproto.jsontag) = "hintRangesDuration"];
+  // Sub-requests answered without calling a querier.
+  int64 skippedRequests = 6 [(gogoproto.jsontag) = "skippedRequests"];
+  // Sub-requests sent to queriers with hint ranges.
+  int64 narrowedRequests = 7 [(gogoproto.jsontag) = "narrowedRequests"];
+  // Copy of index.shardPlannedChunks.
+  int64 plannedChunks = 8 [(gogoproto.jsontag) = "plannedChunks"];
+  // Copy of index.shardPlannedChunksScanned.
+  int64 scannedChunks = 9 [(gogoproto.jsontag) = "scannedChunks"];
+  // Share of plannedChunks that weren't scanned, from 0 to 1. It is 0 when
+  // plannedChunks is 0.
+  double chunkFilterRatio = 10 [(gogoproto.jsontag) = "chunkFilterRatio"];
+  // Object storage requests the hint lookup made.
+  int64 objectRequests = 11 [(gogoproto.jsontag) = "objectRequests"];
+  // Bytes the hint lookup read from object storage.
+  int64 ioBytes = 12 [
+    (gogoproto.customname) = "IOBytes",
+    (gogoproto.jsontag) = "ioBytes"
+  ];
+  // Nanosecond time the hint lookup waited on object storage.
+  int64 ioWait = 13 [
+    (gogoproto.customname) = "IOWait",
+    (gogoproto.jsontag) = "ioWait"
+  ];
 }
 
 message Caches {
@@ -146,22 +191,8 @@ message Index {
   // shardPlannedChunks, which is an estimate.
   int64 shardPlannedChunksScanned = 15 [(gogoproto.jsontag) = "shardPlannedChunksScanned,omitempty"];
 
-  // The logline* fields are set only for queries that went through the
-  // logline index query-frontend middleware.
-
-  // How the logline hint lookup ended: ok, unsupported, error, canceled,
-  // incomplete or ingester_window.
-  string loglineHintStatus = 8 [(gogoproto.jsontag) = "loglineHintStatus,omitempty"];
-  // Nanosecond wall time of the logline hint lookup.
-  int64 loglineHintLookupTime = 9 [(gogoproto.jsontag) = "loglineHintLookupTime,omitempty"];
-  // Number of hint ranges the lookup returned.
-  int64 loglineHintRanges = 10 [(gogoproto.jsontag) = "loglineHintRanges,omitempty"];
-  // Nanosecond sum of the hint range durations, clipped to the query bounds.
-  int64 loglineHintRangesDuration = 11 [(gogoproto.jsontag) = "loglineHintRangesDuration,omitempty"];
-  // Sub-requests answered without calling a querier.
-  int64 loglineSkippedRequests = 12 [(gogoproto.jsontag) = "loglineSkippedRequests,omitempty"];
-  // Sub-requests sent to queriers with hint ranges.
-  int64 loglineNarrowedRequests = 13 [(gogoproto.jsontag) = "loglineNarrowedRequests,omitempty"];
+  // Logline stats that moved to Result.logline.
+  reserved 8 to 13;
 }
 
 message Querier {

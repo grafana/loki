@@ -202,6 +202,11 @@ func (c *Context) Reset() {
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
 	r := c.result
+	// c.result keeps accumulating, so the returned Result gets its own Logline.
+	if r.Logline != nil {
+		logline := *r.Logline
+		r.Logline = &logline
+	}
 
 	r.Merge(Result{
 		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
@@ -354,23 +359,44 @@ func (i *Index) Merge(m Index) {
 	}
 	i.ShardPlannedChunks += m.ShardPlannedChunks
 	i.ShardPlannedChunksScanned += m.ShardPlannedChunksScanned
+}
 
-	// Lookup-level logline fields describe the one hint lookup for the whole
-	// query, so they are kept rather than summed.
-	if i.LoglineHintStatus == "" {
-		i.LoglineHintStatus = m.LoglineHintStatus
+// ChunkFilterRatio returns the share of ShardPlannedChunks that weren't
+// scanned, from 0 (no chunks filtered) to 1 (all chunks filtered). The planned
+// chunks are an estimate, so more chunks than planned can be scanned. It
+// reports false when no split went through shard planning.
+func (i Index) ChunkFilterRatio() (float64, bool) {
+	if i.ShardPlannedChunks <= 0 {
+		return 0, false
 	}
-	if i.LoglineHintLookupTime == 0 {
-		i.LoglineHintLookupTime = m.LoglineHintLookupTime
+	ratio := 1 - float64(i.ShardPlannedChunksScanned)/float64(i.ShardPlannedChunks)
+	return min(max(ratio, 0), 1), true
+}
+
+// Merge adds up the per-request counts. The other fields describe the one hint
+// lookup or the final response of the query, so the first value is kept.
+func (l *Logline) Merge(m Logline) {
+	l.SkippedRequests += m.SkippedRequests
+	l.NarrowedRequests += m.NarrowedRequests
+
+	keepFirst(&l.Outcome, m.Outcome)
+	keepFirst(&l.HintStatus, m.HintStatus)
+	keepFirst(&l.HintLookupTime, m.HintLookupTime)
+	keepFirst(&l.HintRanges, m.HintRanges)
+	keepFirst(&l.HintRangesDuration, m.HintRangesDuration)
+	keepFirst(&l.PlannedChunks, m.PlannedChunks)
+	keepFirst(&l.ScannedChunks, m.ScannedChunks)
+	keepFirst(&l.ChunkFilterRatio, m.ChunkFilterRatio)
+	keepFirst(&l.ObjectRequests, m.ObjectRequests)
+	keepFirst(&l.IOBytes, m.IOBytes)
+	keepFirst(&l.IOWait, m.IOWait)
+}
+
+func keepFirst[T comparable](dst *T, v T) {
+	var zero T
+	if *dst == zero {
+		*dst = v
 	}
-	if i.LoglineHintRanges == 0 {
-		i.LoglineHintRanges = m.LoglineHintRanges
-	}
-	if i.LoglineHintRangesDuration == 0 {
-		i.LoglineHintRangesDuration = m.LoglineHintRangesDuration
-	}
-	i.LoglineSkippedRequests += m.LoglineSkippedRequests
-	i.LoglineNarrowedRequests += m.LoglineNarrowedRequests
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -405,6 +431,14 @@ func (c *Cache) CacheQueryLengthServed() time.Duration {
 	return time.Duration(c.QueryLengthServed)
 }
 
+// LoglineStats returns the logline statistics, adding empty ones if r has none.
+func (r *Result) LoglineStats() *Logline {
+	if r.Logline == nil {
+		r.Logline = &Logline{}
+	}
+	return r.Logline
+}
+
 func (r *Result) MergeSplit(m Result) {
 	m.Summary.Splits = 1
 	r.Merge(m)
@@ -417,6 +451,11 @@ func (r *Result) Merge(m Result) {
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
+	// Results are copied by value, so merge into r's own Logline rather than
+	// sharing m's.
+	if m.Logline != nil {
+		r.LoglineStats().Merge(*m.Logline)
+	}
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
 		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))

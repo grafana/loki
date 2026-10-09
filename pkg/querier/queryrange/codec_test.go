@@ -3,12 +3,15 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2803,6 +2806,60 @@ func Test_codec_CountDistinctSketchResponseProtobufRoundTrip(t *testing.T) {
 	gotCD, ok := got.(*CountDistinctSketchResponse)
 	require.True(t, ok, "expected *CountDistinctSketchResponse, got %T", got)
 	require.Equal(t, want.Response, gotCD.Response)
+}
+
+func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
+	u := &url.URL{Path: "/loki/api/v1/query_range"}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
+	}
+	encodeStats := func(t *testing.T, s stats.Result) map[string]json.RawMessage {
+		resp, err := DefaultCodec.EncodeResponse(context.Background(), req, &LokiResponse{
+			Status:     loghttp.QueryStatusSuccess,
+			Direction:  logproto.BACKWARD,
+			Version:    uint32(loghttp.VersionV1),
+			Data:       LokiData{ResultType: loghttp.ResultTypeStream, Result: []logproto.Stream{}},
+			Statistics: s,
+		})
+		require.NoError(t, err)
+
+		var body struct {
+			Data struct {
+				Stats map[string]json.RawMessage `json:"stats"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		return body.Data.Stats
+	}
+
+	t.Run("logline query", func(t *testing.T) {
+		got := encodeStats(t, stats.Result{Logline: &stats.Logline{
+			Outcome:       "tiny_data_skipped",
+			HintStatus:    "ok",
+			PlannedChunks: 40,
+			ScannedChunks: 40,
+		}})
+		require.Contains(t, got, "logline")
+
+		var logline map[string]any
+		require.NoError(t, json.Unmarshal(got["logline"], &logline))
+		require.ElementsMatch(t, []string{
+			"outcome", "hintStatus", "hintLookupTime", "hintRanges", "hintRangesDuration",
+			"skippedRequests", "narrowedRequests", "plannedChunks", "scannedChunks",
+			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait",
+		}, slices.Collect(maps.Keys(logline)), "every field is written, including zeros")
+		require.Equal(t, "tiny_data_skipped", logline["outcome"])
+		require.Equal(t, 40.0, logline["plannedChunks"])
+		require.Equal(t, 0.0, logline["chunkFilterRatio"])
+	})
+
+	t.Run("query without logline stats", func(t *testing.T) {
+		got := encodeStats(t, stats.Result{})
+		require.Contains(t, got, "index")
+		require.NotContains(t, got, "logline")
+	})
 }
 
 func Benchmark_CodecDecodeLogs(b *testing.B) {
