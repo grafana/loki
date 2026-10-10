@@ -66,28 +66,36 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 const benchTenant = "bench-tenant"
 
 var benchCalculatorConfig = logsobj.BuilderBaseConfig{
-	TargetPageSize:   128 * 1024,
-	TargetObjectSize: 1 << 28, // 256 MiB, large enough for the whole object
-	BufferSize:       2 << 20,
-	// TargetSectionSize is set to 1 byte so the index builder rolls a new
-	// section as soon as anything is written. This forces many small index
-	// sections, which exercises the parallel flush path in Calculate (each
-	// section flush contends on builderMtx) and is what makes this benchmark
-	// sensitive to lock-contention regressions. Matches calculate_test.go.
+	TargetPageSize:          128 * 1024,
+	TargetObjectSize:        1 << 28, // 256 MiB, large enough for the whole object
+	BufferSize:              2 << 20,
 	SectionStripeMergeLimit: 2,
-	TargetSectionSize:       1,
+	// TargetSectionSize is 1 byte, so each append in Flush cuts a new pointers
+	// or stats section. The sequential flush phase in Calculate then encodes
+	// many small sections, and the benchmark measures that cost.
+	TargetSectionSize: 1,
 }
 
 // buildBenchDataobj builds a synthetic object for [benchTenant] shaped to
-// produce multiple logs sections (via a small TargetSectionSize) so
+// produce multiple logs sections (via a 2 MiB logs section size) so
 // Calculate's errgroup runs enough parallel workers to contend on builderMtx.
 func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
+	return buildSyntheticDataobj(tb, 2<<20, streamCount, entriesPerStream)
+}
+
+// buildSyntheticDataobj builds an object for [benchTenant] with streamCount
+// streams of entriesPerStream entries each. logsSectionSize is the target size
+// of a logs section. A smaller size gives more logs sections.
+//
+// buildSyntheticDataobj fails tb unless the object holds at least two logs
+// sections and exactly one streams section.
+func buildSyntheticDataobj(tb testing.TB, logsSectionSize flagext.Bytes, streamCount, entriesPerStream int) (*dataobj.Object, func()) {
 	tb.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          128 * 1024,
 		TargetObjectSize:        1 << 30, // 1 GiB ceiling
-		TargetSectionSize:       flagext.Bytes(2 << 20),
+		TargetSectionSize:       logsSectionSize,
 		BufferSize:              4 << 20,
 		SectionStripeMergeLimit: 2,
 	}, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
@@ -145,7 +153,7 @@ func buildBenchDataobj(tb testing.TB, streamCount, entriesPerStream int) (*datao
 	obj, closer, err := builder.Flush()
 	require.NoError(tb, err)
 
-	// Without multiple logs sections we aren't exercising the errgroup contention.
+	// Calculate runs sections concurrently only when the object holds several logs sections.
 	require.GreaterOrEqual(tb, obj.Sections().Count(logs.CheckSection), 2, "need multiple logs sections")
 	require.Equal(tb, 1, obj.Sections().Count(streams.CheckSection))
 

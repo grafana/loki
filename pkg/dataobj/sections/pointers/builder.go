@@ -1,9 +1,10 @@
 package pointers
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -150,6 +151,9 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, id
 	b.streamLookup[b.key] = newPointer
 }
 
+// RecordColumnIndex records a column index pointer with the bloom filter of the
+// column values. Callers must record at most one column index pointer per
+// (path, section, columnName), so that Flush writes the pointers in a fixed order.
 func (b *Builder) RecordColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloomFilter []byte) {
 	newPointer := &SectionPointer{
 		Path:              path,
@@ -200,7 +204,7 @@ func (b *Builder) EstimatedSize() int {
 	return sizeEstimate
 }
 
-// Flush flushes the streams section to the provided writer.
+// Flush flushes the pointers section to the provided writer.
 //
 // After successful encoding, b is reset to a fresh state and can be reused.
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
@@ -224,15 +228,35 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	return n, err
 }
 
-// sortPointerObjects sorts the pointers so all the column indexes are together and all the stream indexes are ordered by StreamID then Timestamp.
+// sortPointerObjects puts stream index pointers before column index pointers.
+// It sorts stream index pointers by StreamID and column index pointers by
+// ColumnIndex.
+//
+// Path, Section, StreamIDRef and ColumnName break ties. Pointers from
+// different sections share stream IDs and column indexes, and the order in
+// which they arrive can change between builds. With the tie-breaks, the same
+// pointers give the same section bytes.
+//
+// The order is total because ObserveStream keeps one stream index pointer per
+// (Path, Section, StreamIDRef), and RecordColumnIndex requires one column index
+// pointer per (Path, Section, ColumnName).
 func (b *Builder) sortPointerObjects() {
-	sort.Slice(b.pointers, func(i, j int) bool {
-		if b.pointers[i].PointerKind == PointerKindColumnIndex && b.pointers[j].PointerKind == PointerKindColumnIndex {
-			return b.pointers[i].ColumnIndex < b.pointers[j].ColumnIndex
-		} else if b.pointers[i].PointerKind == PointerKindStreamIndex && b.pointers[j].PointerKind == PointerKindStreamIndex {
-			return b.pointers[i].StreamID < b.pointers[j].StreamID
+	slices.SortFunc(b.pointers, func(x, y *SectionPointer) int {
+		var byKind int
+		switch x.PointerKind {
+		case PointerKindStreamIndex:
+			byKind = cmp.Compare(x.StreamID, y.StreamID)
+		case PointerKindColumnIndex:
+			byKind = cmp.Compare(x.ColumnIndex, y.ColumnIndex)
 		}
-		return int64(b.pointers[i].PointerKind) < int64(b.pointers[j].PointerKind)
+		return cmp.Or(
+			cmp.Compare(x.PointerKind, y.PointerKind),
+			byKind,
+			cmp.Compare(x.Path, y.Path),
+			cmp.Compare(x.Section, y.Section),
+			cmp.Compare(x.StreamIDRef, y.StreamIDRef),
+			cmp.Compare(x.ColumnName, y.ColumnName),
+		)
 	})
 }
 

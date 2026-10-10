@@ -3,6 +3,7 @@ package pointers
 import (
 	"context"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -154,4 +155,81 @@ func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
 		return nil, nil, err
 	}
 	return builder.Flush()
+}
+
+func TestBuilder_Flush(t *testing.T) {
+	// sortKey holds the SectionPointer fields that sortPointerObjects compares.
+	type sortKey struct {
+		kind        PointerKind
+		streamID    int64
+		columnIndex int64
+		path        string
+		section     int64
+		streamIDRef int64
+		columnName  string
+	}
+
+	// For each tie-break field, one pair of neighbors differs only in that
+	// field and the fields after it. The next field goes the opposite way, so
+	// the earlier field must decide the order.
+	sorted := []sortKey{
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 0, streamIDRef: 2},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "a", section: 1, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 1, path: "b", section: 0, streamIDRef: 1},
+		{kind: PointerKindStreamIndex, streamID: 2, path: "a", section: 0, streamIDRef: 3},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 0, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 0, columnName: "y"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "a", section: 1, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 1, path: "b", section: 0, columnName: "x"},
+		{kind: PointerKindColumnIndex, columnIndex: 2, path: "a", section: 0, columnName: "x"},
+	}
+
+	flush := func(t *testing.T, input []sortKey) []sortKey {
+		t.Helper()
+
+		builder := NewBuilder(nil, 1024, 0)
+		for _, k := range input {
+			if k.kind == PointerKindStreamIndex {
+				builder.ObserveStream(k.path, k.section, k.streamIDRef, k.streamID, time.Unix(10, 0), 5)
+			} else {
+				builder.RecordColumnIndex(k.path, k.section, k.columnName, k.columnIndex, []byte{0x01})
+			}
+		}
+		obj, closer, err := buildObject(builder)
+		require.NoError(t, err)
+		defer closer.Close()
+
+		var got []sortKey
+		for result := range Iter(context.Background(), obj) {
+			pointer, err := result.Value()
+			require.NoError(t, err)
+			got = append(got, sortKey{
+				kind:        pointer.PointerKind,
+				streamID:    pointer.StreamID,
+				columnIndex: pointer.ColumnIndex,
+				path:        pointer.Path,
+				section:     pointer.Section,
+				streamIDRef: pointer.StreamIDRef,
+				columnName:  pointer.ColumnName,
+			})
+		}
+		return got
+	}
+
+	t.Run("sorts pointers by kind, key and every tie-break field when they arrive in reverse order", func(t *testing.T) {
+		reversed := slices.Clone(sorted)
+		slices.Reverse(reversed)
+
+		require.Equal(t, sorted, flush(t, reversed))
+	})
+
+	t.Run("sorts pointers by kind, key and every tie-break field when kinds arrive interleaved", func(t *testing.T) {
+		var interleaved []sortKey
+		for i := range len(sorted) / 2 {
+			interleaved = append(interleaved, sorted[len(sorted)-1-i], sorted[i])
+		}
+
+		require.Equal(t, sorted, flush(t, interleaved))
+	})
 }
