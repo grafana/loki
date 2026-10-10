@@ -5,6 +5,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/functions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -45,7 +46,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 			return nil, err
 		}
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.DataType())
+		fn, err := functions.Unary.GetForSignature(expr.Op, lhr.DataType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
@@ -70,7 +71,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 		}
 
 		// TODO(chaudum): Resolve function by Loki type
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.DataType())
+		fn, err := functions.Binary.GetForSignature(expr.Op, lhs.DataType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.DataType(), rhs.DataType(), err)
 		}
@@ -91,7 +92,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 			args[i] = p
 		}
 
-		fn, err := variadicFunctions.GetForSignature(expr.Op)
+		fn, err := functions.Variadic.GetForSignature(expr.Op)
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup variadic function: %w", err)
 		}
