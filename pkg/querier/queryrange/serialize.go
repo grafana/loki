@@ -1,11 +1,10 @@
 package queryrange
 
 import (
+	"io"
 	"net/http"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -85,18 +84,23 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// TODO(karsten): use rt.codec.EncodeResponse(ctx, r, response) which is the central encoding logic instead.
-	if r.Header.Get("Accept") == ParquetType {
-		w.Header().Add("Content-Type", ParquetType)
-		if err := encodeResponseParquetTo(ctx, response, w); err != nil {
-			serverutil.WriteError(err, w)
-		}
+	resp, err := rt.codec.EncodeResponse(ctx, r, response)
+	if err != nil {
+		serverutil.WriteError(err, w)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	version := loghttp.GetVersion(r.RequestURI)
-	encodingFlags := httpreq.ExtractEncodingFlags(r)
-	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {
-		serverutil.WriteError(err, w)
+
+	_, err = writeResponse(w, resp)
+	if err != nil {
+		sp.RecordError(err)
 	}
+}
+
+func writeResponse(rw http.ResponseWriter, resp *http.Response) (int64, error) {
+	defer resp.Body.Close()
+	for k, v := range resp.Header {
+		rw.Header()[k] = v
+	}
+	rw.WriteHeader(resp.StatusCode)
+	return io.Copy(rw, resp.Body)
 }
