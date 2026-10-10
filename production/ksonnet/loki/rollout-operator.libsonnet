@@ -51,6 +51,17 @@
       policyRule.withApiGroups('apps') +
       policyRule.withResources(['statefulsets/status']) +
       policyRule.withVerbs(['update']),
+      // rollout-operator v0.29+ watches the ZoneAwarePodDisruptionBudget
+      // custom resource it ships with. Without these permissions the
+      // controller fails to list the CR and never reaches Ready
+      // (grafana/loki#20281). Mirrors the RBAC in the upstream
+      // rollout-operator jsonnet.
+      policyRule.withApiGroups('rollout-operator.grafana.com') +
+      policyRule.withResources(['zoneawarepoddisruptionbudgets']) +
+      policyRule.withVerbs(['list', 'get', 'watch']),
+      policyRule.withApiGroups('rollout-operator.grafana.com') +
+      policyRule.withResources(['zoneawarepoddisruptionbudgets/status']) +
+      policyRule.withVerbs(['update', 'patch']),
     ]),
 
   rollout_operator_rolebinding: if !rollout_operator_enabled then null else
