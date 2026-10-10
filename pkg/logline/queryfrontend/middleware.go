@@ -194,7 +194,16 @@ func appendHintStats(logValues []any, stats *hintprovider.QueryStats) []any {
 	)
 }
 
+// loglineLogCacheKeyNamespace isolates log result cache entries written while
+// the filter middleware is active.
+const loglineLogCacheKeyNamespace = "logline"
+
+// withHintPrefetch also namespaces the log result cache key. The cache sits
+// above the filter middleware, so without it an interval skipped or narrowed
+// to empty would be cached under the plain key and served to requests that
+// never consult the logline index (e.g. X-Logline-Index: off).
 func withHintPrefetch(ctx context.Context, r *hintPrefetchResult) context.Context {
+	ctx = queryrange.WithLogCacheKeyNamespace(ctx, loglineLogCacheKeyNamespace)
 	return context.WithValue(ctx, hintPrefetchKeyType{}, r)
 }
 
