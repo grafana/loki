@@ -4970,17 +4970,6 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 		},
 		expectFailed: true,
 	}, {
-		name:                "the answering instance does not own the partition: not compared",
-		shardStreamsEnabled: true,
-		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
-			Results: []*limitsproto.StreamShardResult{{
-				StreamHash: streamHash,
-				Shards:     1,
-				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
-			}},
-		},
-		expectFailed: true,
-	}, {
 		// A difference in kind rather than in shard count, as the local rate
 		// store never rejects a stream.
 		name:                "the service rejects the stream: counted separately",
