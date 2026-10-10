@@ -3,13 +3,32 @@ package explorer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"path/filepath"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/thanos-io/objstore"
 )
+
+// errInvalidObjectKey is returned for a request key that could escape the
+// configured object store root. The filesystem backend joins the key onto its
+// root directory with no containment, so a key like "../../etc/passwd" would
+// otherwise resolve to an arbitrary path on the host.
+var errInvalidObjectKey = errors.New("invalid path: must stay within the object store root")
+
+// validateObjectKey rejects absolute keys and keys with ".." segments that
+// traverse outside the bucket root. filepath.IsLocal mirrors the filepath.Join
+// the filesystem backend uses, so it accepts ordinary object keys and rejects
+// exactly the keys that would escape.
+func validateObjectKey(key string) error {
+	if !filepath.IsLocal(key) {
+		return errInvalidObjectKey
+	}
+	return nil
+}
 
 type Service struct {
 	*services.BasicService
