@@ -75,6 +75,12 @@ func executorHandler(
 	limits Limits,
 	reg prometheus.Registerer,
 ) (http.Handler, error) {
+	// Populate derived config fields (e.g. V1OnlyMatchers) in case the config
+	// was not validated upfront. Validate is idempotent.
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	var h queryrangebase.Handler = &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -545,6 +551,11 @@ func (h *queryHandler) validateMatcherGroup(matchers []*labels.Matcher, required
 }
 
 func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params logql.Params) (logqlmodel.Result, error) {
+	if h.cfg.MatchesV1OnlySelector(params) {
+		return logqlmodel.Result{}, httpgrpc.Error(http.StatusNotImplemented,
+			"query matches the configured v1-only stream selector and must be executed by the v1 engine")
+	}
+
 	if err := h.validateTimeRange(params); err != nil {
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusNotImplemented, err.Error())
 	}
