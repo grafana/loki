@@ -6233,6 +6233,13 @@ backoff_config:
 # Disable forcing S3 dualstack endpoint usage.
 # CLI flag: -<prefix>.s3.disable-dualstack
 [disable_dualstack: <boolean> | default = false]
+
+# The checksum algorithm sent with PutObject requests for upload integrity
+# checking. Supported values are: sha256, none. Set to none to disable sending
+# checksums on uploads, e.g. for S3-compatible backends that mishandle checksum
+# headers. Buckets with Object Lock enabled require a checksum.
+# CLI flag: -<prefix>.s3.checksum-algorithm
+[checksum_algorithm: <string> | default = "sha256"]
 ```
 
 ### schema_config
