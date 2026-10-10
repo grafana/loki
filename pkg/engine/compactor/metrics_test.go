@@ -24,6 +24,8 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	m.tasksTotal.WithLabelValues("acme").Add(4)
 	m.tenantCyclesTotal.WithLabelValues("compacted", "acme").Inc()
 	m.tenantLogCyclesTotal.WithLabelValues("compacted", "acme").Inc()
+	m.observeLogPlan("acme", 100)
+	m.observeCompleteLogPlan("acme", time.Unix(10, 0))
 
 	// A second tenant that must survive.
 	m.unconsolidatedBacklog.WithLabelValues("other").Set(7)
@@ -44,6 +46,8 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 2, testutil.CollectAndCount(m.tenantCyclesTotal), "acme + other before delete")
 	require.Equal(t, 1, testutil.CollectAndCount(m.tenantLogCyclesTotal))
 	require.Equal(t, 1, testutil.CollectAndCount(m.cyclesTotal))
+	require.Equal(t, 1, testutil.CollectAndCount(m.pendingLogBytes))
+	require.Equal(t, 1, testutil.CollectAndCount(m.lastPlanTimestampSeconds))
 
 	m.deleteTenant("acme")
 
@@ -54,6 +58,8 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	require.Equal(t, 0, testutil.CollectAndCount(m.indexesAddedTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.tasksTotal))
 	require.Equal(t, 0, testutil.CollectAndCount(m.tenantLogCyclesTotal))
+	require.Equal(t, 0, testutil.CollectAndCount(m.pendingLogBytes))
+	require.Equal(t, 0, testutil.CollectAndCount(m.lastPlanTimestampSeconds))
 
 	// The other tenant and the non-tenant metric are untouched.
 	require.Equal(t, 1, testutil.CollectAndCount(m.unconsolidatedBacklog), "only the surviving tenant remains")

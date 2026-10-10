@@ -62,6 +62,14 @@ type coordinatorMetrics struct {
 
 	// indexInputRuns measures the number of Runs in a tenant's index compaction cycle.
 	indexInputRuns prometheus.Histogram
+
+	// pendingLogBytes is the uncompressed log bytes that the current LogMerge
+	// phase of a tenant has not rewritten yet.
+	pendingLogBytes *prometheus.GaugeVec // tenant
+
+	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
+	// planned every index in every window without an error.
+	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -125,7 +133,42 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Help:    "Number of strict index runs offered to the task planner.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
 		}),
+		pendingLogBytes: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pending_log_bytes",
+			Help: "Uncompressed log bytes that the current LogMerge phase of the tenant has not rewritten yet, summed over all compacted windows. Set when the phase plans, and reduced after each index swap attempt that returns no error. Failed indexes stay counted until the next phase. Indexes that fail to plan are not counted. Data that the planner treats as converged counts as zero.",
+		}, []string{labelTenant}),
+		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
+			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
+		}, []string{labelTenant}),
 	}
+}
+
+// observeLogPlan sets the pending log bytes of the tenant to the total of a
+// new LogMerge phase.
+func (m *coordinatorMetrics) observeLogPlan(tenant string, pendingBytes uint64) {
+	if m == nil {
+		return
+	}
+	m.pendingLogBytes.WithLabelValues(tenant).Set(float64(pendingBytes))
+}
+
+// observeCompleteLogPlan records that a LogMerge phase of the tenant planned
+// every index in every window at now.
+func (m *coordinatorMetrics) observeCompleteLogPlan(tenant string, now time.Time) {
+	if m == nil {
+		return
+	}
+	m.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(now.UnixNano()) / 1e9)
+}
+
+// completeLogPlan removes the bytes of one executed index plan from the
+// pending log bytes of the tenant.
+func (m *coordinatorMetrics) completeLogPlan(tenant string, pendingBytes uint64) {
+	if m == nil {
+		return
+	}
+	m.pendingLogBytes.WithLabelValues(tenant).Sub(float64(pendingBytes))
 }
 
 func (m *coordinatorMetrics) observeIndexInputRuns(runs int) {
@@ -256,6 +299,8 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.pendingLogBytes.DeleteLabelValues(tenant)
+	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)
