@@ -20,6 +20,7 @@ import (
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -104,7 +105,7 @@ type dryRunLookupResult struct {
 	done     chan struct{}
 }
 
-// Values of the loglineHintStatus statistic.
+// Values of the logline hintStatus statistic.
 const (
 	hintStatusOK             = "ok"
 	hintStatusUnsupported    = "unsupported"
@@ -136,22 +137,85 @@ func (r *hintPrefetchResult) status() string {
 	}
 }
 
-// attachLoglineStats sets the lookup-level logline statistics on the final
-// query response. The stats collector aliases the response's statistics, so
-// these values reach the frontend metrics.go line.
+// Values of the logline outcome statistic, which tells whether the index
+// skipped data or why it didn't.
+const (
+	outcomeDataSkipped          = "data_skipped"
+	outcomeTinyDataSkipped      = "tiny_data_skipped"
+	outcomeSkipRatioUnavailable = "skip_ratio_unavailable"
+	outcomeTimeRangeNotIndexed  = "time_range_not_indexed"
+	outcomeRecentDataOnly       = "recent_data_only"
+	outcomeUnsupportedQuery     = "unsupported_query"
+	outcomeQueryTooSmall        = "query_too_small"
+	outcomeSizeEstimateFailed   = "size_estimate_failed"
+	outcomeLookupFailed         = "lookup_failed"
+	outcomeLookupTimeout        = "lookup_timeout"
+	outcomeCanceled             = "canceled"
+)
+
+// tinyDataSkippedRatio is the chunk filter ratio below which the index is
+// reported as having skipped too little data to help.
+const tinyDataSkippedRatio = 0.25
+
+// loglineOutcome derives the outcome of a query that went through the hint
+// lookup from its final logline statistics.
+func loglineOutcome(l *logqlstats.Logline) string {
+	switch l.HintStatus {
+	case hintStatusUnsupported:
+		return outcomeUnsupportedQuery
+	case hintStatusError:
+		return outcomeLookupFailed
+	case hintStatusIncomplete:
+		return outcomeLookupTimeout
+	case hintStatusCanceled:
+		return outcomeCanceled
+	case hintStatusIngesterWindow:
+		return outcomeRecentDataOnly
+	}
+	switch {
+	case l.PlannedChunks <= 0:
+		return outcomeSkipRatioUnavailable
+	case l.SkippedRequests+l.NarrowedRequests == 0:
+		return outcomeTimeRangeNotIndexed
+	case l.ChunkFilterRatio < tinyDataSkippedRatio:
+		return outcomeTinyDataSkipped
+	default:
+		return outcomeDataSkipped
+	}
+}
+
+// attachLoglineStats sets the lookup-level logline statistics and the outcome
+// on the final query response. The stats collector aliases the response's
+// statistics, so these values reach the frontend metrics.go line.
 func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult) {
 	lokiResp, ok := resp.(*queryrange.LokiResponse)
 	if !ok || result == nil {
 		return
 	}
-	idx := &lokiResp.Statistics.Index
-	idx.LoglineHintStatus = result.status()
-	if idx.LoglineHintStatus == hintStatusIncomplete {
-		return
+	l := lokiResp.Statistics.LoglineStats()
+	l.HintStatus = result.status()
+	if l.HintStatus != hintStatusIncomplete {
+		l.HintLookupTime = result.lookupDuration.Nanoseconds()
+		l.HintRanges = int64(len(result.ranges))
+		l.HintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
+		if result.stats != nil {
+			snap := result.stats.Snapshot()
+			l.ObjectRequests = snap.ObjectStorageRequests
+			l.IOBytes = snap.TotalIOBytes
+			l.IOWait = snap.TotalIOWait.Nanoseconds()
+		}
 	}
-	idx.LoglineHintLookupTime = result.lookupDuration.Nanoseconds()
-	idx.LoglineHintRanges = int64(len(result.ranges))
-	idx.LoglineHintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
+	setLoglineChunkStats(&lokiResp.Statistics)
+	l.Outcome = loglineOutcome(l)
+}
+
+// setLoglineChunkStats copies the shard planning chunk counts and their ratio
+// into the logline statistics.
+func setLoglineChunkStats(s *logqlstats.Result) {
+	l := s.LoglineStats()
+	l.PlannedChunks = s.Index.ShardPlannedChunks
+	l.ScannedChunks = s.Index.ShardPlannedChunksScanned
+	l.ChunkFilterRatio, _ = s.Index.ChunkFilterRatio()
 }
 
 // indexedHintDuration sums the hint ranges clipped to [start, end], leaving out
@@ -798,7 +862,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// When ngramLength is not configured (<=0), skip the early check and let
 	// ProvideHints handle support detection internally.
 	if h.ngramLength > 0 && len(hintprovider.SupportedQuery(expr, h.ngramLength)) == 0 {
-		return h.next.Do(ctx, req)
+		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
 	// Shared eligibility: stats-based byte threshold.
@@ -813,7 +877,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"err", err,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeSizeEstimateFailed)
 		}
 		if queryBytes < uint64(minQueryBytes) {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
@@ -824,7 +888,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"query_bytes", queryBytes,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeQueryTooSmall)
 		}
 	}
 
@@ -976,6 +1040,20 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 }
 
+// nextWithOutcome runs the query without a hint lookup. In live mode it records
+// why the lookup was skipped.
+func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryrangebase.Request, mode Mode, outcome string) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if mode != ModeLive || err != nil {
+		return resp, err
+	}
+	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok {
+		setLoglineChunkStats(&lokiResp.Statistics)
+		lokiResp.Statistics.LoglineStats().Outcome = outcome
+	}
+	return resp, nil
+}
+
 // NewLoglineFilterMiddleware intercepts each interval sub-request from
 // SplitByInterval and either skips it or attaches clipped hint ranges.
 func NewLoglineFilterMiddleware(
@@ -1072,14 +1150,14 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// merges add it up and discarded responses (retries, canceled provisional
 	// queries) drop it.
 	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok && err == nil {
-		lokiResp.Statistics.Index.LoglineNarrowedRequests++
+		lokiResp.Statistics.LoglineStats().NarrowedRequests++
 	}
 	return resp, err
 }
 
 func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 	resp := emptyLokiResponse(req)
-	resp.Statistics.Index.LoglineSkippedRequests = 1
+	resp.Statistics.LoglineStats().SkippedRequests = 1
 	return resp
 }
 

@@ -227,34 +227,41 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 }
 
 func TestAppendLoglineStats(t *testing.T) {
-	loglineIndex := stats.Index{
-		LoglineHintStatus:         "ok",
-		LoglineHintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
-		LoglineHintRanges:         3,
-		LoglineHintRangesDuration: (90 * time.Minute).Nanoseconds(),
-		LoglineSkippedRequests:    6,
-		LoglineNarrowedRequests:   2,
+	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
+		return stats.Result{Logline: &stats.Logline{
+			Outcome:            outcome,
+			HintStatus:         "ok",
+			HintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
+			HintRanges:         3,
+			HintRangesDuration: (90 * time.Minute).Nanoseconds(),
+			SkippedRequests:    6,
+			NarrowedRequests:   2,
+			PlannedChunks:      planned,
+			ScannedChunks:      scanned,
+			ChunkFilterRatio:   ratio,
+			ObjectRequests:     12,
+			IOBytes:            2048,
+			IOWait:             (40 * time.Millisecond).Nanoseconds(),
+		}}
 	}
-	withPlannedChunks := func(planned, scanned int64) stats.Result {
-		idx := loglineIndex
-		idx.ShardPlannedChunks = planned
-		idx.ShardPlannedChunksScanned = scanned
-		return stats.Result{Index: idx}
-	}
-	loglineFields := func(planned, scanned int64) []interface{} {
+	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
 		return []interface{}{
+			"logline_outcome", outcome,
 			"logline_hint_status", "ok",
 			"logline_hint_lookup_time", 150 * time.Millisecond,
 			"logline_hint_ranges", int64(3),
 			"logline_hint_ranges_duration", 90 * time.Minute,
 			"logline_skipped_requests", int64(6),
 			"logline_narrowed_requests", int64(2),
+			"logline_object_requests", int64(12),
+			"logline_io_bytes", "2.0kB",
+			"logline_io_wait", 40 * time.Millisecond,
 			"shard_planned_chunks", planned,
 			"logline_scanned_chunks", scanned,
 		}
 	}
-	withRatio := func(planned, scanned int64, ratio string) []interface{} {
-		return append(loglineFields(planned, scanned), "logline_chunk_filter_ratio", ratio)
+	withRatio := func(outcome string, planned, scanned int64, ratio string) []interface{} {
+		return append(loglineFields(outcome, planned, scanned), "logline_chunk_filter_ratio", ratio)
 	}
 
 	for _, tc := range []struct {
@@ -263,34 +270,29 @@ func TestAppendLoglineStats(t *testing.T) {
 		expected []interface{}
 	}{
 		{
-			name:     "no hint lookup",
+			name:     "no logline stats",
 			stats:    stats.Result{Index: stats.Index{TotalChunks: 10, ShardPlannedChunks: 10}},
 			expected: []interface{}{},
 		},
 		{
+			name:     "skipped before the hint lookup",
+			stats:    stats.Result{Logline: &stats.Logline{Outcome: "query_too_small", PlannedChunks: 10, ScannedChunks: 10}},
+			expected: []interface{}{"logline_outcome", "query_too_small"},
+		},
+		{
 			name:     "some chunks filtered",
-			stats:    withPlannedChunks(40, 10),
-			expected: withRatio(40, 10, "0.75"),
+			stats:    withChunks("data_skipped", 40, 10, 0.75),
+			expected: withRatio("data_skipped", 40, 10, "0.75"),
 		},
 		{
 			name:     "no chunks filtered",
-			stats:    withPlannedChunks(40, 40),
-			expected: withRatio(40, 40, "0.00"),
-		},
-		{
-			name:     "all chunks filtered",
-			stats:    withPlannedChunks(40, 0),
-			expected: withRatio(40, 0, "1.00"),
-		},
-		{
-			name:     "more chunks scanned than planned",
-			stats:    withPlannedChunks(40, 50),
-			expected: withRatio(40, 50, "0.00"),
+			stats:    withChunks("tiny_data_skipped", 40, 40, 0),
+			expected: withRatio("tiny_data_skipped", 40, 40, "0.00"),
 		},
 		{
 			name:     "ratio omitted without shard planning",
-			stats:    withPlannedChunks(0, 0),
-			expected: loglineFields(0, 0),
+			stats:    withChunks("skip_ratio_unavailable", 0, 0, 0),
+			expected: loglineFields("skip_ratio_unavailable", 0, 0),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
