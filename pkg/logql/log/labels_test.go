@@ -62,6 +62,22 @@ func TestLabelsBuilder_BaseHas(t *testing.T) {
 	require.False(t, b.BaseHas("already"))
 }
 
+func TestLabelsBuilder_GroupedLabels_ByAfterDelete(t *testing.T) {
+	lbs := labels.FromStrings("app", "a", "name", "stream")
+	b := NewBaseLabelsBuilderWithGrouping([]string{"name"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
+
+	// A deleted stream label is not grouped on.
+	b.Reset()
+	b.Del("name")
+	require.Equal(t, labels.EmptyLabels(), b.GroupedLabels().Labels())
+
+	// A label added after the delete is.
+	b.Reset()
+	b.Del("name")
+	b.Set(ParsedLabel, "name", "parsed")
+	require.Equal(t, labels.FromStrings("name", "parsed"), b.GroupedLabels().Labels())
+}
+
 func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))

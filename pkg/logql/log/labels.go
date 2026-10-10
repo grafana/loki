@@ -758,11 +758,6 @@ func (b *LabelsBuilder) toByGroup() LabelsResult {
 	}
 Outer:
 	for _, g := range b.groups {
-		for _, n := range b.del {
-			if g == n {
-				continue Outer
-			}
-		}
 		for category, la := range b.add {
 			for _, l := range la {
 				if g == l.Name {
@@ -773,6 +768,11 @@ Outer:
 					continue Outer
 				}
 			}
+		}
+
+		// A deleted stream label is gone, but a label added after the delete (e.g. by a parser) is not.
+		if slices.Contains(b.del, g) {
+			continue
 		}
 
 		value := b.base.Get(g)

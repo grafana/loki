@@ -56,6 +56,9 @@ eval select from 0 to 30s forward {app="a"} | drop name | logfmt
   {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
 eval select from 0 to 30s forward {app="a"} | logfmt | drop name
   {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+# Grouping sees the parsed label added after the drop, matching the full label output.
+eval instant at 10s sum by (name) (count_over_time({app="a"} | drop name | logfmt [1m]))
+  {name="parsed"} 1
 
 # logfmt() with a line key that ends in `_extracted`.
 clear
