@@ -30,7 +30,7 @@ func CABundleName(stackName string) string {
 	return fmt.Sprintf("%s-ca-bundle", stackName)
 }
 
-// ComponentCertSecretNames retruns a list of all loki component certificate secret names.
+// ComponentCertSecretNames returns a list of all loki component certificate secret names.
 func ComponentCertSecretNames(stackName string) []string {
 	return []string{
 		fmt.Sprintf("%s-gateway-client-http", stackName),
