@@ -539,7 +539,7 @@ func scenarioStreamSortKey(t *testing.T, stream streams.Stream, schema []string)
 		require.NotEmpty(t, name, "schema key %q must name a label", label)
 		values[i] = stream.Labels.Get(name)
 	}
-	return logSortPrefix{shard: uint32(stream.ShardBucket), labels: values}
+	return newLogSortPrefix(uint32(stream.ShardBucket), values)
 }
 
 // newIntegrationCoordinator owns an in-process scheduler and worker sharing the
