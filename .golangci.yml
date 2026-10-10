@@ -50,6 +50,7 @@ linters:
           files:
             - "!**/pkg/logproto/extensions.go"
             - "!**/pkg/logqlmodel/stats/context.go"
+            - "!**/pkg/pattern/streams_map.go"
             - "!**/pkg/querier/stats/stats.go"
           deny:
             - pkg: sync/atomic$
