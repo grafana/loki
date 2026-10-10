@@ -297,6 +297,11 @@ func listNodeFields(nodes []parse.Node) []string {
 			res = append(res, listNodeFieldsFromBranch(node)...)
 		case parse.NodeField:
 			res = append(res, node.(*parse.FieldNode).Ident...)
+		case parse.NodeVariable:
+			// $ is the root of the template data, so $.foo reads the label foo like .foo does.
+			if v := node.(*parse.VariableNode); len(v.Ident) > 1 && v.Ident[0] == "$" {
+				res = append(res, v.Ident[1:]...)
+			}
 		}
 	}
 	return res
