@@ -461,15 +461,6 @@ type KeyedStream struct {
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-type streamTracker struct {
-	KeyedStream
-	minSuccess  int
-	maxFailures int
-	succeeded   atomic.Int32
-	failed      atomic.Int32
-}
-
-// TODO taken from Cortex, see if we can refactor out an usable interface.
 type PushTracker struct {
 	streamsPending atomic.Int32
 	streamsFailed  atomic.Int32
@@ -903,9 +894,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		err:  make(chan error, 1),
 	}
 
-	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
-	var descs [maxExpectedReplicationSet]ring.InstanceDesc
-
 	streamsToWrite := 0
 	if d.cfg.IngesterEnabled {
 		streamsToWrite += len(streams)
@@ -946,58 +934,8 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}
 
 	if d.cfg.IngesterEnabled {
-		streamTrackers := make([]streamTracker, len(streams))
-		streamsByIngester := map[string][]*streamTracker{}
-		ingesterDescs := map[string]ring.InstanceDesc{}
-
-		if err := func() error {
-			sp := trace.SpanFromContext(ctx)
-			sp.AddEvent("started to query ingesters ring")
-			defer sp.AddEvent("finished to query ingesters ring")
-
-			for i, stream := range streams {
-				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
-				if err != nil {
-					return err
-				}
-
-				streamTrackers[i] = streamTracker{
-					KeyedStream: stream,
-					minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
-					maxFailures: replicationSet.MaxErrors,
-				}
-				for _, ingester := range replicationSet.Instances {
-					streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
-					ingesterDescs[ingester.Addr] = ingester
-				}
-			}
-			return nil
-		}(); err != nil {
+		if err := d.sendStreamsToIngesters(ctx, streams, &tracker); err != nil {
 			return nil, err
-		}
-
-		for ingester, streams := range streamsByIngester {
-			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
-				// This is to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				sp := trace.SpanFromContext(ctx)
-				localCtx = trace.ContextWithSpan(localCtx, sp)
-
-				select {
-				case <-ctx.Done():
-					cancel()
-					return
-				case d.ingesterTasks <- pushIngesterTask{
-					ingester:      ingester,
-					streamTracker: samples,
-					pushTracker:   &tracker,
-					ctx:           localCtx,
-					cancel:        cancel,
-				}:
-					return
-				}
-			}(ingesterDescs[ingester], streams)
 		}
 	}
 
@@ -1607,83 +1545,6 @@ func (d *Distributor) truncateLines(vContext validationContext, stream logproto.
 			"truncated_bytes", truncatedBytes,
 		)
 	}
-}
-
-type pushIngesterTask struct {
-	streamTracker []*streamTracker
-	pushTracker   *PushTracker
-	ingester      ring.InstanceDesc
-	ctx           context.Context
-	cancel        context.CancelFunc
-}
-
-func (d *Distributor) pushIngesterWorker(ctx context.Context) {
-	defer d.ingesterTaskWg.Done()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case task := <-d.ingesterTasks:
-			d.sendStreams(task)
-		}
-	}
-}
-
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreams(task pushIngesterTask) {
-	defer task.cancel()
-	err := d.sendStreamsErr(task.ctx, task.ingester, task.streamTracker)
-
-	// If we succeed, decrement each stream's pending count by one.
-	// If we reach the required number of successful puts on this stream, then
-	// decrement the number of pending streams by one.
-	// If we successfully push all streams to min success ingesters, wake up the
-	// waiting rpc so it can return early. Similarly, track the number of errors,
-	// and if it exceeds maxFailures shortcut the waiting rpc.
-	//
-	// The use of atomic increments here guarantees only a single sendStreams
-	// goroutine will write to either channel.
-	for i := range task.streamTracker {
-		if err != nil {
-			if task.streamTracker[i].failed.Inc() <= int32(task.streamTracker[i].maxFailures) {
-				continue
-			}
-			task.pushTracker.doneWithResult(err)
-		} else {
-			if task.streamTracker[i].succeeded.Inc() != int32(task.streamTracker[i].minSuccess) {
-				continue
-			}
-			task.pushTracker.doneWithResult(nil)
-		}
-	}
-}
-
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
-	c, err := d.ingesterClients.GetClientFor(ingester.Addr)
-	if err != nil {
-		return err
-	}
-
-	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(streams)),
-	}
-	for i, s := range streams {
-		// Ingester RPCs serialize the flat view without any modifications.
-		req.Streams[i] = s.Stream.FlatView()
-	}
-
-	_, err = c.(logproto.PusherClient).Push(ctx, req)
-	d.m.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
-	if err != nil {
-		if e, ok := status.FromError(err); ok {
-			switch e.Code() {
-			case codes.DeadlineExceeded:
-				d.m.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
-			}
-		}
-	}
-	return err
 }
 
 // sendStreamsToKafka sends all streams to Kafka or returns an error.
