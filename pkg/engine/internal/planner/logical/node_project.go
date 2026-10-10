@@ -37,6 +37,12 @@ func (p *Projection) String() string {
 }
 
 func (p *Projection) mode() string {
+	// A projection that is neither ALL, EXPAND nor DROP retains only the
+	// referenced columns.
+	if !p.All && !p.Expand && !p.Drop {
+		return "K"
+	}
+
 	var mode string
 	if p.All {
 		mode += "*"

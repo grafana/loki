@@ -936,6 +936,27 @@ func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewKeepLabels(e.keepLabels), nil
 }
 
+func (e *KeepLabelsExpr) HasNamedMatchers() bool {
+	for _, keepLabel := range e.keepLabels {
+		if keepLabel.Matcher != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *KeepLabelsExpr) Names() []string {
+	names := []string{}
+	for _, keepLabel := range e.keepLabels {
+		if keepLabel.Name != "" {
+			names = append(names, keepLabel.Name)
+		} else if keepLabel.Matcher != nil {
+			names = append(names, keepLabel.Matcher.Name)
+		}
+	}
+	return names
+}
+
 func (e *KeepLabelsExpr) String() string {
 	var sb strings.Builder
 
