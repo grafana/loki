@@ -259,11 +259,13 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Stats)
 	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
+	require.Greater(t, resp.Stats.TotalWorkNanos, int64(0))
 
-	// Query-frontend restores from proto then overwrites wall; work nanos are not on the wire.
 	restored := FromProtoStats(resp.Stats)
 	restored.SetWallTime(5 * time.Second)
-	require.Equal(t, resp.Stats.EffectiveConcurrency, restored.Snapshot().EffectiveConcurrency)
+	got := restored.Snapshot()
+	require.Equal(t, resp.Stats.TotalWorkNanos, got.TotalWorkNanos)
+	require.Equal(t, float64(resp.Stats.TotalWorkNanos)/float64(5*time.Second), got.EffectiveConcurrency)
 }
 
 func TestLoglineHintProvider_LookupParams(t *testing.T) {
