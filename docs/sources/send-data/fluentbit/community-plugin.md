@@ -61,6 +61,7 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
        Match        *
        Url          http://localhost:3100/loki/api/v1/push
        Labels       {job="fluentbit"}
+   ```
 
 ### Kubernetes
 
