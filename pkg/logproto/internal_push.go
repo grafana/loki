@@ -56,6 +56,17 @@ func FromPushRequest(req *PushRequest) *InternalPushRequest {
 	return &InternalPushRequest{Streams: streams, Format: req.Format}
 }
 
+// FlatView returns a flat push request for read-only use, flattening each stream
+// with [InternalStreamAdapter.FlatView]; it reverses FromPushRequest. Do not
+// modify the returned entries or their metadata.
+func (r *InternalPushRequest) FlatView() *PushRequest {
+	flat := &PushRequest{Streams: make([]Stream, len(r.Streams)), Format: r.Format}
+	for i := range r.Streams {
+		flat.Streams[i] = r.Streams[i].FlatView()
+	}
+	return flat
+}
+
 // FromStream wraps a flat stream in one resource and scope with no shared attributes.
 // The entries are shared with s.
 func FromStream(s Stream) *InternalStreamAdapter {

@@ -276,8 +276,9 @@ func (f *fakeRing) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing 
 
 type mockPoolClient struct {
 	mock.Mock
-	ctx context.Context
-	req *logproto.PushRequest
+	ctx         context.Context
+	req         *logproto.PushRequest
+	internalReq *logproto.InternalPushRequest
 }
 
 func (m *mockPoolClient) Push(
@@ -297,6 +298,10 @@ func (m *mockPoolClient) PushInternal(
 	_ ...grpc.CallOption,
 ) (*push.PushResponse, error) {
 	m.ctx = ctx
+	m.internalReq = in
+	// Also record the request in flat form, so tests can check what was sent
+	// with either method.
+	m.req = in.FlatView()
 	args := m.Called(ctx, in)
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }

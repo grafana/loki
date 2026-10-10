@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -199,18 +201,18 @@ func (ts *TeeService) flush() {
 	ts.buf = make(map[string][]teedStream)
 	ts.bufMtx.Unlock()
 
-	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
+	batches := make([]map[string]map[string]*logproto.InternalPushRequest, 0, len(buffered))
 	for tenant, streams := range buffered {
 		batches = append(batches, ts.batchesForTenant(tenant, streams))
 	}
 
-	byTenantAndPatternIngester := make(map[string]map[string][]*logproto.PushRequest)
+	byTenantAndPatternIngester := make(map[string]map[string][]*logproto.InternalPushRequest)
 	for _, b := range batches {
 		for tenant, requests := range b {
 			for addr, req := range requests {
 				byTenant, ok := byTenantAndPatternIngester[tenant]
 				if !ok {
-					byTenant = make(map[string][]*logproto.PushRequest)
+					byTenant = make(map[string][]*logproto.InternalPushRequest)
 				}
 
 				byTenant[addr] = append(
@@ -248,20 +250,20 @@ func (ts *TeeService) flush() {
 	}
 }
 
-// teedStream stores the flat stream and its reserved byte count.
+// teedStream stores the stream and its reserved byte count.
 // The same count must be released when the stream is sent or dropped.
 type teedStream struct {
 	hashKey uint32
-	stream  logproto.Stream
+	stream  logproto.InternalStreamAdapter
 	size    int
 }
 
 func (ts *TeeService) batchesForTenant(
 	tenant string,
 	streams []teedStream,
-) map[string]map[string]*logproto.PushRequest {
-	batches := map[string]map[string]*logproto.PushRequest{
-		tenant: make(map[string]*logproto.PushRequest),
+) map[string]map[string]*logproto.InternalPushRequest {
+	batches := map[string]map[string]*logproto.InternalPushRequest{
+		tenant: make(map[string]*logproto.InternalPushRequest),
 	}
 
 	if len(streams) == 0 {
@@ -281,7 +283,7 @@ func (ts *TeeService) batchesForTenant(
 		addr := replicationSet.Instances[0].Addr
 		batch, ok := batches[tenant][addr]
 		if !ok {
-			batch = &logproto.PushRequest{}
+			batch = &logproto.InternalPushRequest{}
 			batches[tenant][addr] = batch
 		}
 
@@ -302,7 +304,7 @@ func (ts *TeeService) batchesForTenant(
 type clientRequest struct {
 	ingesterAddr string
 	tenant       string
-	reqs         []*logproto.PushRequest
+	reqs         []*logproto.InternalPushRequest
 	// size is the total size of all streams in reqs.
 	size int
 }
@@ -319,6 +321,20 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// push sends req to a pattern ingester in the internal format. A pattern
+// ingester that predates PushInternal rejects it as Unimplemented without
+// processing it, so only then is req flattened and sent again with Push.
+// Once every pattern ingester supports PushInternal, the fallback can go.
+func (ts *TeeService) push(ctx context.Context, client logproto.PatternClient, req *logproto.InternalPushRequest) error {
+	_, err := client.PushInternal(ctx, req)
+	if status.Code(err) != codes.Unimplemented {
+		return err
+	}
+
+	_, err = client.Push(ctx, req.FlatView())
+	return err
 }
 
 func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest) {
@@ -354,7 +370,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 
 				// First try to send the request to the correct pattern ingester
 				defer cancel()
-				_, err = client.(logproto.PatternClient).Push(ctx, req)
+				err = ts.push(ctx, client.(logproto.PatternClient), req)
 				if err == nil {
 					// Success here means the stream will be processed for both metrics and patterns
 					ts.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
@@ -436,7 +452,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 						)
 						defer cancel()
 
-						_, err = client.(logproto.PatternClient).Push(ctx, req)
+						err = ts.push(ctx, client.(logproto.PatternClient), req)
 						if err != nil {
 							continue
 						}
@@ -481,25 +497,39 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
-		// Flatten once for buffer accounting and the pattern ingester's flat wire format.
-		flat := stream.Stream.FlatView()
-
-		// Check that the stream is allowed within the current limit.
-		size := flat.Size()
+		// Check that the stream is allowed within the current limit. Shared
+		// attributes are counted once, as they are buffered and sent.
+		teed := stream.Stream
+		size := teed.Size()
 		if !ts.reserveBufferedBytes(size) {
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
 
-		// A queued rate shard must not retain the other shards' entry storage.
+		// A queued rate shard must not block the other shards' entry storage
+		// from being freed up by the garbage collector.
 		if lbls.Has(ingester.ShardLbName) {
-			flat.Entries = slices.Clone(flat.Entries)
+			teed = cloneEntries(teed)
 		}
 
 		ts.bufMtx.Lock()
-		ts.buf[tenant] = append(ts.buf[tenant], teedStream{hashKey: stream.HashKey, stream: flat, size: size})
+		ts.buf[tenant] = append(ts.buf[tenant], teedStream{hashKey: stream.HashKey, stream: teed, size: size})
 		ts.bufMtx.Unlock()
 	}
+}
+
+// cloneEntries gives a stream its own resource, scope and entry slices,
+// leaving the original's untouched. Attributes and lines stay shared.
+func cloneEntries(s logproto.InternalStreamAdapter) logproto.InternalStreamAdapter {
+	s.ResourceLogs = slices.Clone(s.ResourceLogs)
+	for i := range s.ResourceLogs {
+		resource := &s.ResourceLogs[i]
+		resource.ScopeLogs = slices.Clone(resource.ScopeLogs)
+		for j := range resource.ScopeLogs {
+			resource.ScopeLogs[j].Entries = slices.Clone(resource.ScopeLogs[j].Entries)
+		}
+	}
+	return s
 }
 
 // reserveBufferedBytes attempts to reserve size bytes of capacity in the tee.
