@@ -84,6 +84,7 @@ func buildPlanForLogQuery(
 		hasJSONParser    bool
 		hasRegexParser   bool
 		hasFmtExpr       bool
+		hasLineFmtExpr   bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -99,6 +100,15 @@ func buildPlanForLogQuery(
 			selector = val
 			return true
 		case *syntax.LineFilterExpr:
+			// line_format replaces the line, so a line filter that follows one has to
+			// match the formatted line. Line filters are collected here and applied to
+			// the scan, ahead of every stage, which would match the original line
+			// instead.
+			if hasLineFmtExpr {
+				err = unimplementedFeature("line filter after line_format")
+				return false
+			}
+
 			val, innerErr := convertLineFilterExpr(e)
 			if innerErr != nil {
 				err = innerErr
@@ -135,6 +145,7 @@ func buildPlanForLogQuery(
 			return true
 		case *syntax.LineFmtExpr:
 			hasFmtExpr = true
+			hasLineFmtExpr = true
 			return true
 		case *syntax.LabelFmtExpr:
 			hasFmtExpr = true
