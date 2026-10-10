@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -160,6 +161,8 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	r.initialized = true
 	return nil
 }
+
+var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
 
 func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !r.initialized {

@@ -22,6 +22,7 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -574,50 +575,38 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 
 // buildSourceWithLegacySections builds a dataobj containing streams, pointers,
 // stats, and postings sections (all four section types), then uploads it.
-// This simulates a first-generation index object from indexobj.Builder.
+// This simulates an index object from before the index builder stopped
+// writing pointers sections.
 func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	ctx := context.Background()
-
-	// Use the indexobj.Builder from the observation API to create a full object.
-	// This produces objects with the full set of section types: streams, pointers,
-	// pointers (index pointers), stats, postings.
-	cfg := logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		MaxPageRows:             10000,
-		TargetObjectSize:        1 << 22, // 4 MiB
-		TargetSectionSize:       1 << 21, // 2 MiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	}
-
-	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err, "failed to create indexobj.Builder")
-
-	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "service", Value: "api"}),
-		MinTimestamp:     ts,
-		MaxTimestamp:     ts.Add(time.Second),
-		Rows:             10,
+
+	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000)
+	streamsBuilder.SetTenant(tenant)
+	streamID := streamsBuilder.Record(labels.New(labels.Label{Name: "service", Value: "api"}), ts, 1000)
+
+	pointersBuilder := pointers.NewBuilder(nil, 2048, 10000)
+	pointersBuilder.SetTenant(tenant)
+	pointersBuilder.ObserveStream("log-A", 0, 1, streamID, ts, 100)
+
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000))
+	statsBuilder.SetTenant(tenant)
+	statsBuilder.Append(stats.Stat{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		ShardBucket:      16,
+		SortSchema:       "label:service",
+		Labels:           map[string]string{"service": "api"},
+		MinTimestamp:     ts.UnixNano(),
+		MaxTimestamp:     ts.Add(time.Second).UnixNano(),
+		RowCount:         10,
 		UncompressedSize: 1000,
 	})
-	require.NoError(t, err, "failed to append stream")
 
-	// Observe a log line to get a pointers section.
-	err = builder.ObserveLogLine("log-A", 0, 1, 1, ts, 100)
-	require.NoError(t, err, "failed to observe log line")
-
-	// Append a stat to get a stats section.
-	err = builder.AppendStat("log-A", 0, 16, "label:service",
-		map[string]string{"service": "api"},
-		ts, ts.Add(time.Second), 10, 1000)
-	require.NoError(t, err, "failed to append stat")
-
-	// Observe a label posting to get a postings section.
-	builder.ObserveLabelPosting(postings.LabelObservation{
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant(tenant)
+	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
 		ColumnName:       "service",
@@ -628,12 +617,16 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		ShardBuckets:     16,
 	})
 
-	// Flush the builder to create the object.
-	obj, closer, err := builder.Flush()
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(streamsBuilder))
+	require.NoError(t, objBuilder.Append(pointersBuilder))
+	require.NoError(t, objBuilder.Append(statsBuilder))
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err, "failed to flush builder")
 	defer closer.Close()
 
-	// Upload to bucket.
 	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
 }
 

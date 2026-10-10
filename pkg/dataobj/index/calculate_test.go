@@ -2,9 +2,8 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -185,8 +184,8 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 		require.Equal(t, []string{tenant}, obj.Tenants())
 
-		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
-		requireValidPointers(t, obj)
+		require.Zero(t, obj.Sections().Count(pointers.CheckSection))
+		require.Equal(t, testObjectPaths(objects), indexedObjectPaths(t, obj))
 	})
 
 	t.Run("indexes several objects from an FS bucket into one range", func(t *testing.T) {
@@ -221,8 +220,8 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
 		require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 
-		require.GreaterOrEqual(t, obj.Sections().Count(pointers.CheckSection), 1)
-		requireValidPointers(t, obj)
+		require.Zero(t, obj.Sections().Count(pointers.CheckSection))
+		require.Equal(t, testObjectPaths(objects), indexedObjectPaths(t, obj))
 	})
 
 	t.Run("returns ErrNotSingleTenant and leaves the builder empty when the object holds several tenants", func(t *testing.T) {
@@ -383,51 +382,12 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	require.Equal(t, want, statsIndexes)
 }
 
-func requireValidPointers(t *testing.T, obj *dataobj.Object) {
-	totalPointers := 0
-	pointersByTenant := make(map[string]int)
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		require.NotEmpty(t, section.Tenant)
-
-		sec, err := pointers.Open(context.Background(), section)
-		require.NoError(t, err)
-
-		reader := pointers.NewRowReader(sec)
-		require.NoError(t, reader.Open(context.Background()))
-
-		buf := make([]pointers.SectionPointer, 1024)
-		for {
-			n, err := reader.Read(context.Background(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				require.NotEqual(t, pointer.Path, "")
-				require.Greater(t, pointer.PointerKind, pointers.PointerKind(0))
-				if pointer.PointerKind == pointers.PointerKindStreamIndex {
-					key := fmt.Sprintf("%s:%s:%d", section.Tenant, pointer.Path, pointer.Section)
-					pointersByTenant[key]++
-					require.Greater(t, pointer.StreamIDRef, int64(0))
-					require.Greater(t, pointer.StreamID, int64(0))
-					require.Greater(t, pointer.StartTs, time.Unix(0, 0))
-					require.Greater(t, pointer.EndTs, time.Unix(0, 0))
-					require.Greater(t, pointer.LineCount, int64(0))
-					require.Greater(t, pointer.UncompressedSize, int64(0))
-				} else {
-					require.Greater(t, pointer.ColumnIndex, int64(0))
-					require.Greater(t, len(pointer.ValuesBloomFilter), 0)
-				}
-				totalPointers++
-			}
-		}
-		require.Greater(t, totalPointers, 0)
+// testObjectPaths returns the sorted paths "test/path-0" to "test/path-<n-1>".
+func testObjectPaths(n int) []string {
+	paths := make([]string, 0, n)
+	for i := range n {
+		paths = append(paths, fmt.Sprintf("test/path-%d", i))
 	}
-
-	// Expect two pointers for each object section, because every log object holds two streams.
-	for _, count := range pointersByTenant {
-		require.Equal(t, 2, count)
-	}
+	sort.Strings(paths)
+	return paths
 }
