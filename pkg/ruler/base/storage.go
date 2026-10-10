@@ -132,7 +132,7 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
 
-	bucketClient, err := bucket.NewClient(ctx, cfg.Backend, cfg.Config, "ruler-storage", logger, nil)
+	bucketClient, err := bucket.NewClient(ctx, cfg.Backend, cfg.Config, "ruler-storage", logger, bucketclient.LoadConcurrency, nil)
 	if err != nil {
 		return nil, err
 	}
