@@ -92,7 +92,8 @@ func (p *LoglineHintProvider) QueryHints(
 	}
 
 	started := time.Now()
-	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel)
+	windowStart, windowEnd := queryWindow(req)
+	shardRanges, err := p.executeQuery(ctx, filters, fromProtoIndexMetas(req.Indexes), stats, ngramLength, maxParallel, windowStart, windowEnd)
 	stats.SetWallTime(time.Since(started))
 	snap := stats.Snapshot()
 
@@ -107,6 +108,16 @@ func (p *LoglineHintProvider) QueryHints(
 	}
 
 	return &logproto.LoglineIndexResponse{TimeRanges: ToProtoRanges(aggregateShardRanges(shardRanges)), Stats: &snap}, nil
+}
+
+// queryWindow returns the inclusive [from, through] bounds from a hint
+// request. Both zero means the caller did not set a window, and document
+// matches are not clipped.
+func queryWindow(req *logproto.LoglineIndexRequest) (start, end time.Time) {
+	if req == nil || (req.From == 0 && req.Through == 0) {
+		return time.Time{}, time.Time{}
+	}
+	return req.GetStart().UTC(), req.GetEnd().UTC()
 }
 
 func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {

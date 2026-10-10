@@ -3,6 +3,7 @@ package hintprovider
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -112,6 +113,7 @@ func (p *LoglineHintProvider) executeQuery(
 	overlapping []store.Meta,
 	stats *QueryStats,
 	ngramLength, maxParallel int,
+	windowStart, windowEnd time.Time,
 ) (map[shardKey][]HintTimeRange, error) {
 	jobs, metasByID, err := buildTermJobs(filters, overlapping, ngramLength)
 	if err != nil {
@@ -195,7 +197,7 @@ func (p *LoglineHintProvider) executeQuery(
 			if res.result.MatchesAll {
 				ranges = []HintTimeRange{hintTimeRangeForMeta(res.meta)}
 			} else if !res.result.IsEmpty() {
-				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents())
+				ranges = rangesForDocIDs(res.meta, res.result.Roaring.ToArray(), res.reader.Documents(), windowStart, windowEnd)
 			}
 			if len(ranges) == 0 {
 				continue
@@ -353,37 +355,135 @@ func hintTimeRangeForMeta(meta store.Meta) HintTimeRange {
 	}
 }
 
-func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata) []HintTimeRange {
+// rangesForDocIDs turns matching document IDs into hint ranges.
+//
+// Document IDs increase with time (epoch ticks, or the dense ranks assigned
+// from those ticks), and roaring.ToArray returns them sorted, so successive
+// matches are in time order. Abutting or overlapping buckets collapse into
+// one range during the scan. Emitting one range per document and merging
+// afterward retained one HintTimeRange plus a source string for every 100ms
+// bucket on a dense day.
+//
+// A zero windowStart and windowEnd keeps every match. Otherwise documents
+// outside the inclusive query window [windowStart, windowEnd] are skipped.
+// Bounds of a document that overlaps the window are left intact, matching
+// the coverage NormalizeRanges produced from the per-document ranges.
+func rangesForDocIDs(meta store.Meta, docIDs []uint32, docs []format.DocumentMetadata, windowStart, windowEnd time.Time) []HintTimeRange {
 	if len(docIDs) == 0 || len(docs) == 0 {
 		return nil
 	}
 
-	docByID := make(map[uint32]format.DocumentMetadata, len(docs))
-	for _, doc := range docs {
-		docByID[doc.ID] = doc
-	}
-
-	ranges := make([]HintTimeRange, 0, len(docIDs))
-	for _, id := range docIDs {
-		doc, ok := docByID[id]
-		if !ok {
-			continue
-		}
-
-		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
-		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
-		ranges = append(ranges, HintTimeRange{
-			Start: minTS,
-			End:   maxTS,
-			Source: fmt.Sprintf(
-				"index=%s,doc=%d,min=%s,max=%s",
-				meta.ID(),
-				doc.ID,
-				minTS.Format(time.RFC3339Nano),
-				maxTS.Format(time.RFC3339Nano),
-			),
+	ordered := docs
+	if !docsSortedByID(docs) {
+		ordered = make([]format.DocumentMetadata, len(docs))
+		copy(ordered, docs)
+		sort.Slice(ordered, func(i, j int) bool {
+			return ordered[i].ID < ordered[j].ID
 		})
 	}
 
+	clip := !windowStart.IsZero() || !windowEnd.IsZero()
+	var ranges []HintTimeRange
+	var run docRun
+	flush := func() {
+		if run.docs == 0 {
+			return
+		}
+		ranges = append(ranges, HintTimeRange{
+			Start:  run.start,
+			End:    run.end,
+			Source: runSource(meta, run),
+		})
+		run = docRun{}
+	}
+
+	j := 0
+	for _, id := range docIDs {
+		for j < len(ordered) && ordered[j].ID < id {
+			j++
+		}
+		if j >= len(ordered) || ordered[j].ID != id {
+			continue
+		}
+		doc := ordered[j]
+		minTS := time.UnixMilli(doc.MinTimeUnix).UTC()
+		maxTS := time.UnixMilli(doc.MaxTimeUnix).UTC()
+		if !maxTS.After(minTS) {
+			continue
+		}
+		if clip && !docOverlapsInclusiveWindow(minTS, maxTS, windowStart, windowEnd) {
+			continue
+		}
+		if !run.add(doc.ID, minTS, maxTS) {
+			flush()
+			run.add(doc.ID, minTS, maxTS)
+		}
+	}
+	flush()
 	return ranges
+}
+
+// docRun is one contiguous half-open cover built from successive documents.
+type docRun struct {
+	start, end time.Time
+	firstDoc   uint32
+	docs       int
+}
+
+// add extends the run when [minTS, maxTS) overlaps or abuts it. The same
+// condition as NormalizeRanges: a.End == b.Start is one cover.
+func (r *docRun) add(id uint32, minTS, maxTS time.Time) bool {
+	if r.docs == 0 {
+		*r = docRun{start: minTS, end: maxTS, firstDoc: id, docs: 1}
+		return true
+	}
+	if minTS.After(r.end) || maxTS.Before(r.start) {
+		return false
+	}
+	if minTS.Before(r.start) {
+		r.start = minTS
+	}
+	if maxTS.After(r.end) {
+		r.end = maxTS
+	}
+	r.docs++
+	return true
+}
+
+func runSource(meta store.Meta, run docRun) string {
+	if run.docs == 1 {
+		return fmt.Sprintf(
+			"index=%s,doc=%d,min=%s,max=%s",
+			meta.ID(),
+			run.firstDoc,
+			run.start.Format(time.RFC3339Nano),
+			run.end.Format(time.RFC3339Nano),
+		)
+	}
+	return fmt.Sprintf(
+		"index=%s,docs=%d,first=%d,min=%s,max=%s",
+		meta.ID(),
+		run.docs,
+		run.firstDoc,
+		run.start.Format(time.RFC3339Nano),
+		run.end.Format(time.RFC3339Nano),
+	)
+}
+
+func docsSortedByID(docs []format.DocumentMetadata) bool {
+	for i := 1; i < len(docs); i++ {
+		if docs[i].ID < docs[i-1].ID {
+			return false
+		}
+	}
+	return true
+}
+
+// docOverlapsInclusiveWindow reports whether half-open [minTS, maxTS) contains
+// any instant in the inclusive query window [windowStart, windowEnd].
+func docOverlapsInclusiveWindow(minTS, maxTS, windowStart, windowEnd time.Time) bool {
+	if minTS.After(windowEnd) {
+		return false
+	}
+	return maxTS.After(windowStart)
 }
