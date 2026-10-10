@@ -21,6 +21,7 @@ package kernels
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -189,9 +190,14 @@ func StringToTimestamp[OffsetT int32 | int64](ctx *exec.KernelCtx, batch *exec.E
 
 	return ScalarUnaryNotNullBinaryArg[arrow.Timestamp, OffsetT](func(_ *exec.KernelCtx, input []byte, err *error) arrow.Timestamp {
 		v := *(*string)(unsafe.Pointer(&input))
+		if n, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+			return arrow.Timestamp(n)
+		}
+
 		o, zonePresent, e := arrow.TimestampFromStringInLocation(v, outType.Unit, zn)
 		if e != nil {
 			*err = e
+			return o
 		}
 
 		if zonePresent != expectTimezone {

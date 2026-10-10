@@ -74,33 +74,34 @@ func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
 		}
 		return l.n == right.(*FixedSizeListType).n && l.elem.Nullable == right.(*FixedSizeListType).elem.Nullable
 	case *MapType:
-		if !TypeEqual(l.KeyType(), right.(*MapType).KeyType(), opts...) {
+		r := right.(*MapType)
+		if !TypeEqual(l.KeyType(), r.KeyType(), opts...) {
 			return false
 		}
-		if !TypeEqual(l.ItemType(), right.(*MapType).ItemType(), opts...) {
+		if !TypeEqual(l.ItemType(), r.ItemType(), opts...) {
 			return false
 		}
-		if l.KeyField().Nullable != right.(*MapType).KeyField().Nullable {
+		if l.KeysSorted != r.KeysSorted {
 			return false
 		}
-		if l.ItemField().Nullable != right.(*MapType).ItemField().Nullable {
+		if l.KeyField().Nullable != r.KeyField().Nullable {
+			return false
+		}
+		if l.ItemField().Nullable != r.ItemField().Nullable {
 			return false
 		}
 		if cfg.metadata {
-			if !l.KeyField().Metadata.Equal(right.(*MapType).KeyField().Metadata) {
+			if !l.KeyField().Metadata.Equal(r.KeyField().Metadata) {
 				return false
 			}
-			if !l.ItemField().Metadata.Equal(right.(*MapType).ItemField().Metadata) {
+			if !l.ItemField().Metadata.Equal(r.ItemField().Metadata) {
 				return false
 			}
 		}
 		return true
 	case *StructType:
 		r := right.(*StructType)
-		switch {
-		case len(l.fields) != len(r.fields):
-			return false
-		case !reflect.DeepEqual(l.index, r.index):
+		if len(l.fields) != len(r.fields) {
 			return false
 		}
 		for i := range l.fields {
@@ -149,7 +150,8 @@ func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
 	case *RunEndEncodedType:
 		r := right.(*RunEndEncodedType)
 		return TypeEqual(l.Encoded(), r.Encoded(), opts...) &&
-			TypeEqual(l.runEnds, r.runEnds, opts...)
+			TypeEqual(l.runEnds, r.runEnds, opts...) &&
+			l.ValueNullable == r.ValueNullable
 	case *ListViewType:
 		return l.elem.Equal(right.(*ListViewType).elem)
 	default:
