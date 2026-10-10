@@ -102,7 +102,7 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsNode_DoesNotError(t *test
 	// make sure patch was called because the Get succeeded
 	require.Equal(t, 1, k.PatchCallCount())
 	_, p, patch, _ := k.PatchArgsForCall(0)
-	require.Equal(t, p, &testPod)
+	require.Equal(t, &testPod, p)
 	actualPatch, _ := patch.Data(nil)
-	require.Equal(t, actualPatch, expectedPatch)
+	require.Equal(t, expectedPatch, actualPatch)
 }

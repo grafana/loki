@@ -2,6 +2,7 @@ package certrotation
 
 import (
 	"crypto/x509"
+	"errors"
 	"testing"
 	"time"
 
@@ -74,7 +75,11 @@ func TestCertificatesExpired(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorAs(t, err, &expired)
-	require.Len(t, err.(*CertExpiredError).Reasons, 15)
+	require.Len(t, func() *CertExpiredError {
+		target := &CertExpiredError{}
+		_ = errors.As(err, &target)
+		return target
+	}().Reasons, 15)
 }
 
 func TestBuildTargetCertKeyPairSecrets_Create(t *testing.T) {

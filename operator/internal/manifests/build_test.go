@@ -259,8 +259,8 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 			opts := Options{}
 			err := ApplyTLSSettings(&opts, &tc.profile)
 
-			require.EqualValues(t, tc.err, err)
-			require.EqualValues(t, tc.expected, opts.TLSProfile)
+			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.expected, opts.TLSProfile)
 		})
 	}
 }
@@ -389,7 +389,7 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 
 			for _, service := range svcs {
 				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
-					require.Equal(t, service.Annotations, map[string]string{})
+					require.Equal(t, map[string]string{}, service.Annotations)
 				} else {
 					require.NotNil(t, service.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
 				}
@@ -838,7 +838,7 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						require.True(t, *spec.SecurityContext.RunAsNonRoot)
 
 						require.NotNil(t, spec.SecurityContext.SeccompProfile)
-						require.Equal(t, spec.SecurityContext.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
+						require.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, spec.SecurityContext.SeccompProfile.Type)
 					} else {
 						require.Nil(t, spec.SecurityContext)
 					}
@@ -848,7 +848,7 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 							require.False(t, *c.SecurityContext.AllowPrivilegeEscalation)
 
 							require.Empty(t, c.SecurityContext.Capabilities.Add)
-							require.Equal(t, c.SecurityContext.Capabilities.Drop, []corev1.Capability{"ALL"})
+							require.Equal(t, []corev1.Capability{"ALL"}, c.SecurityContext.Capabilities.Drop)
 						} else {
 							require.Nil(t, c.SecurityContext)
 						}

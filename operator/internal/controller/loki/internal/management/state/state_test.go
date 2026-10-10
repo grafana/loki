@@ -74,7 +74,7 @@ func TestIsManaged(t *testing.T) {
 			}
 			ok, err := IsManaged(context.TODO(), r, k)
 			require.NoError(t, err)
-			require.Equal(t, ok, tst.wantOk)
+			require.Equal(t, tst.wantOk, ok)
 		})
 	}
 }
