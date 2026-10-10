@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"time"
+	"unsafe"
 
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
@@ -54,6 +55,10 @@ type prometheusCodec struct {
 	// when creating empty responses during merge, it need to be aware what kind of valueType it should create with.
 	// helps other middlewares to filter the correct result type.
 	resultType model.ValueType
+}
+
+func init() {
+	jsoniter.RegisterTypeEncoderFunc("queryrangebase.SampleStream", SampleStreamJsoniterEncode, nil)
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -298,6 +303,25 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
+}
+
+func SampleStreamJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	s := (*SampleStream)(ptr)
+
+	stream.WriteObjectStart()
+	stream.WriteObjectField("metric")
+	logproto.LabelAdaptersJsoniterEncode(s.Labels, stream)
+	stream.WriteMore()
+	stream.WriteObjectField("values")
+	stream.WriteArrayStart()
+	for i := range s.Samples {
+		if i > 0 {
+			stream.WriteMore()
+		}
+		logproto.SampleJsoniterEncode(&s.Samples[i], stream)
+	}
+	stream.WriteArrayEnd()
+	stream.WriteObjectEnd()
 }
 
 func matrixMerge(resps []*PrometheusResponse) []SampleStream {
