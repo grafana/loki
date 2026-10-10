@@ -155,8 +155,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.2 h1:i5nn7Ri5CgFfNRzwlUiZOIIU
 github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.2/go.mod h1:skwM/xsbR/1ReUTesv9BhpJp1VjajR7DWQnuVLwiXsQ=
 github.com/aws/aws-sdk-go-v2/service/sts v1.51.2 h1:AWSPqynwEJV8J2pl/p7aizCf7a23/NGHR+rK/KLOxi4=
 github.com/aws/aws-sdk-go-v2/service/sts v1.51.2/go.mod h1:26zA0GhDrLo+yiLI2yXWxqB1PdsShfLikoI7GOEgugM=
-github.com/aws/smithy-go v1.28.2 h1:myhcykQcatTul2B/zITjDk203G7t0awUAs1hVry5Bvg=
-github.com/aws/smithy-go v1.28.2/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
+github.com/aws/smithy-go v1.28.4 h1:vzBmFpcRUtotqGPfmnro2W2Pgg3mk103n9sZhNJY9YU=
+github.com/aws/smithy-go v1.28.4/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
 github.com/axiomhq/hyperloglog v0.3.0 h1:IQzzb1zjZiODMwCgBRHKak4oIp2Oj7K0Q0rVoAoFVuM=
 github.com/axiomhq/hyperloglog v0.3.0/go.mod h1:YjX/dQqCR/7QYX0g8mu8UZAjpIenz1FKM71UEsjFoTo=
 github.com/baidubce/bce-sdk-go v0.9.276 h1:EReI+nRVHGo9ZR7eFwBDlRys1eAqth9hRUGT0gAsmsM=
