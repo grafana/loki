@@ -92,6 +92,15 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 	execCtx, execCancel, inflightQuery := newExecutionContext(workerCtx, sp.log)
 	defer execCancel(errors.New("scheduler processor execution context canceled"))
 
+	// Log only the first consecutive connection failure at warn and demote repeats to debug,
+	// with a warn summary on recovery. During scheduler churn every worker redials each dead
+	// address until service discovery drops it, so per-attempt warns flood the log (and alerts)
+	// with failures that are expected and already handled by the backoff/rediscovery loop.
+	var (
+		consecutiveFailures int
+		firstFailure        time.Time
+	)
+
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
 		c, err := schedulerClient.QuerierLoop(execCtx)
@@ -100,10 +109,21 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 		}
 
 		if err != nil {
-			level.Warn(sp.log).Log("msg", "error contacting scheduler", "err", err, "addr", address)
+			if consecutiveFailures == 0 {
+				firstFailure = time.Now()
+				level.Warn(sp.log).Log("msg", "error contacting scheduler", "err", err, "addr", address)
+			} else {
+				level.Debug(sp.log).Log("msg", "error contacting scheduler", "attempt", consecutiveFailures+1, "err", err, "addr", address)
+			}
+			consecutiveFailures++
 			backoff.Wait()
 			continue
 		}
+
+		if consecutiveFailures > 1 {
+			level.Warn(sp.log).Log("msg", "scheduler connection re-established", "addr", address, "failed_attempts", consecutiveFailures, "unreachable_for", time.Since(firstFailure))
+		}
+		consecutiveFailures = 0
 
 		if err := sp.querierLoop(c, address, inflightQuery, workerID); err != nil {
 			// Do not log an error if the query-scheduler is shutting down.
