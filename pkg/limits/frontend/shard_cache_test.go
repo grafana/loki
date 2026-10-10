@@ -1,0 +1,329 @@
+package frontend
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/limits/proto"
+)
+
+func TestShardCacheLimitsClient(t *testing.T) {
+	t.Run("miss goes to backend and is cached", func(t *testing.T) {
+		onMiss := &mockLimitsClient{
+			t: t,
+			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			},
+			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 1}},
+			},
+		}
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+		resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+		require.Len(t, resp.Results, 1)
+		require.Equal(t, uint32(1), resp.Results[0].Shards)
+	})
+
+	t.Run("hit within ttl is served from cache and accumulates", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			onMiss := &mockLimitsClient{
+				t: t,
+				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 2}},
+				},
+			}
+			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+			_, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 5}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+			require.Len(t, resp.Results, 1)
+			require.Equal(t, uint32(2), resp.Results[0].Shards)
+
+			entry := c.entries[shardCacheKey{"test", 0x1}]
+			require.Equal(t, uint64(5), entry.accumSize)
+			require.Equal(t, uint32(1), entry.accumPushes)
+		})
+	})
+
+	t.Run("stale entry combines accumulated pushes into one request", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			onMiss := &mockLimitsClient{
+				t: t,
+				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
+				},
+			}
+			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+			_, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			})
+			require.NoError(t, err)
+
+			_, err = c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 5}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+
+			time.Sleep(time.Minute + time.Second)
+
+			onMiss.expectedCheckLimitsAndShardRequest = &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 12}},
+			}
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 7}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
+			require.Equal(t, uint32(3), resp.Results[0].Shards)
+		})
+	})
+
+	t.Run("backend error is not cached", func(t *testing.T) {
+		onMiss := &mockLimitsClient{
+			t:   t,
+			err: errors.New("backend unavailable"),
+		}
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+		_, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+		})
+		require.Error(t, err)
+		require.Len(t, c.entries, 1)
+		require.Nil(t, c.entries[shardCacheKey{"test", 0x1}].result)
+	})
+
+	t.Run("a call dispatched earlier does not clobber one dispatched later, however they complete", func(t *testing.T) {
+		// Two independent dispatches for the same stream can now only arise if
+		// the first call's pending placeholder is evicted while it is still in
+		// flight (e.g. by sweep, on a short enough ttl): otherwise a second
+		// caller rides along on the first rather than dispatching its own, see
+		// "concurrent misses for the same stream ride along on one backend
+		// call" below. Simulate that eviction directly rather than racing
+		// sweep's timing.
+		onMiss := newGatedMockLimitsClient()
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+
+		firstDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			})
+			require.NoError(t, err)
+			firstDone <- resp
+		}()
+		// Wait until the first call has dispatched and is blocked in onMiss,
+		// then evict its placeholder so the second call below finds nothing to
+		// ride along on and dispatches a second, independent call instead.
+		<-onMiss.calls
+		c.mtx.Lock()
+		delete(c.entries, shardCacheKey{"test", 0x1})
+		c.mtx.Unlock()
+
+		secondDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 20}},
+			})
+			require.NoError(t, err)
+			secondDone <- resp
+		}()
+		<-onMiss.calls
+
+		// Let the second, more recently dispatched call complete first.
+		onMiss.release(20, &proto.StreamShardResult{StreamHash: 0x1, Shards: 2})
+		resp := <-secondDone
+		require.Equal(t, uint32(2), resp.Results[0].Shards)
+
+		// The first, earlier call completes after, with a smaller shard count.
+		// It must not overwrite the second call's result, which is already
+		// cached.
+		onMiss.release(10, &proto.StreamShardResult{StreamHash: 0x1, Shards: 1})
+		<-firstDone
+
+		require.Equal(t, uint32(2), c.entries[shardCacheKey{"test", 0x1}].result.Shards)
+	})
+
+	t.Run("concurrent misses for the same stream ride along on one backend call", func(t *testing.T) {
+		onMiss := newGatedMockLimitsClient()
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+
+		leaderDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
+			})
+			require.NoError(t, err)
+			leaderDone <- resp
+		}()
+		// The leader has dispatched and is blocked in onMiss, so its
+		// placeholder is visible to the follower started below.
+		<-onMiss.calls
+
+		followerDone := make(chan *proto.CheckLimitsAndShardResponse, 1)
+		go func() {
+			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 20}},
+			})
+			require.NoError(t, err)
+			followerDone <- resp
+		}()
+
+		// Wait until the follower has recorded its push on the leader's
+		// pending entry, which only happens once it has taken the "ride
+		// along" branch rather than dispatching a second call.
+		require.Eventually(t, func() bool {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+			e := c.entries[shardCacheKey{"test", 0x1}]
+			return e != nil && e.accumSize == 20
+		}, time.Second, time.Millisecond)
+
+		// Exactly one call ever reached the backend: a second dispatch would
+		// have shown up as a second entry on this channel.
+		require.Empty(t, onMiss.calls)
+
+		onMiss.release(10, &proto.StreamShardResult{StreamHash: 0x1, Shards: 4})
+
+		leaderResp := <-leaderDone
+		followerResp := <-followerDone
+		require.Equal(t, uint32(4), leaderResp.Results[0].Shards)
+		require.Equal(t, uint32(4), followerResp.Results[0].Shards)
+
+		// The follower's push was not part of the request sent to the
+		// backend (its size never reached onMiss), so it must still be
+		// queued for whenever the entry next goes stale.
+		entry := c.entries[shardCacheKey{"test", 0x1}]
+		require.Equal(t, uint64(20), entry.accumSize)
+		require.Equal(t, uint32(1), entry.accumPushes)
+		require.Nil(t, entry.pending)
+	})
+
+	t.Run("a duplicate stream hash in one request is coalesced instead of deadlocking", func(t *testing.T) {
+		// The first occurrence would dispatch and the second would then await
+		// that same call's pending, which nothing resolves until this call
+		// reaches its own dispatch further down: without coalescing, this
+		// blocks until ctx runs out instead of returning.
+		onMiss := &mockLimitsClient{
+			t: t,
+			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 30}},
+			},
+			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 1}},
+			},
+		}
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		resp, err := c.CheckLimitsAndShard(ctx, &proto.CheckLimitsAndShardRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{
+				{StreamHash: 0x1, TotalSize: 10},
+				{StreamHash: 0x1, TotalSize: 20},
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+		require.Len(t, resp.Results, 1)
+		require.Equal(t, uint32(1), resp.Results[0].Shards)
+	})
+}
+
+func TestCoalesceDuplicateHashes(t *testing.T) {
+	t.Run("returns the input unmodified when there are no duplicates", func(t *testing.T) {
+		in := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 10},
+			{StreamHash: 0x2, TotalSize: 20},
+		}
+		out := coalesceDuplicateHashes(in)
+		require.Equal(t, in, out)
+	})
+
+	t.Run("sums the TotalSize of repeated hashes and keeps the first occurrence's position and policy", func(t *testing.T) {
+		in := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 10, IngestionPolicy: "p1"},
+			{StreamHash: 0x2, TotalSize: 5},
+			{StreamHash: 0x1, TotalSize: 20, IngestionPolicy: "p2"},
+		}
+		out := coalesceDuplicateHashes(in)
+		require.Equal(t, []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 30, IngestionPolicy: "p1"},
+			{StreamHash: 0x2, TotalSize: 5},
+		}, out)
+	})
+}
+
+// gatedMockLimitsClient blocks every CheckLimitsAndShard call until release
+// is called for it, identified by the TotalSize of its first stream, so a
+// test can control completion order independently of dispatch order.
+type gatedMockLimitsClient struct {
+	calls chan *proto.CheckLimitsAndShardRequest
+
+	mu    sync.Mutex
+	gates map[uint64]chan *proto.StreamShardResult
+}
+
+func newGatedMockLimitsClient() *gatedMockLimitsClient {
+	return &gatedMockLimitsClient{
+		calls: make(chan *proto.CheckLimitsAndShardRequest, 2),
+		gates: make(map[uint64]chan *proto.StreamShardResult),
+	}
+}
+
+func (m *gatedMockLimitsClient) ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+	return nil, nil
+}
+
+func (m *gatedMockLimitsClient) CheckLimitsAndShard(_ context.Context, req *proto.CheckLimitsAndShardRequest) (*proto.CheckLimitsAndShardResponse, error) {
+	gate := make(chan *proto.StreamShardResult)
+	m.mu.Lock()
+	m.gates[req.Streams[0].TotalSize] = gate
+	m.mu.Unlock()
+	m.calls <- req
+	result := <-gate
+	return &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{result}}, nil
+}
+
+// release unblocks the call whose first stream had the given size.
+func (m *gatedMockLimitsClient) release(size uint64, result *proto.StreamShardResult) {
+	m.mu.Lock()
+	gate := m.gates[size]
+	delete(m.gates, size)
+	m.mu.Unlock()
+	gate <- result
+}

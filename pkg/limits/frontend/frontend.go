@@ -129,6 +129,9 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 			f.limitsClient,
 		)
 	}
+	if cfg.ShardCacheTTL > 0 {
+		f.limitsClient = newShardCacheLimitsClient(cfg.ShardCacheTTL, f.limitsClient, reg)
+	}
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
