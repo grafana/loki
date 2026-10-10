@@ -26,6 +26,8 @@ func init() {
 // A plainBytesEncoder encodes byte array values to an [streamio.Writer].
 type plainBytesEncoder struct {
 	w streamio.Writer
+
+	written int // Bytes written to w since the last Reset.
 }
 
 var _ valueEncoder = (*plainBytesEncoder)(nil)
@@ -60,7 +62,16 @@ func (enc *plainBytesEncoder) Encode(v Value) error {
 	if n != len(sv) {
 		return fmt.Errorf("short write; expected %d bytes, wrote %d", len(sv), n)
 	}
+	enc.written += streamio.UvarintSize(uint64(len(sv))) + len(sv)
 	return err
+}
+
+// EstimatedSize returns the number of bytes already written to the
+// underlying [streamio.Writer] since the last Reset. plainBytesEncoder
+// writes values through immediately rather than buffering them, so this is
+// exact rather than an estimate.
+func (enc *plainBytesEncoder) EstimatedSize() int {
+	return enc.written
 }
 
 // Flush implements [valueEncoder]. It is a no-op for plainEncoder.
@@ -71,6 +82,7 @@ func (enc *plainBytesEncoder) Flush() error {
 // Reset implements [valueEncoder]. It resets the encoder to write to w.
 func (enc *plainBytesEncoder) Reset(w streamio.Writer) {
 	enc.w = w
+	enc.written = 0
 }
 
 // plainBytesDecoder decodes byte arrays from a byte slice.

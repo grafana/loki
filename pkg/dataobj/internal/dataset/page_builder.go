@@ -240,10 +240,11 @@ func valueSize(v Value) int {
 // EstimatedSize returns the estimated uncompressed size of the builder in
 // bytes.
 func (b *pageBuilder) EstimatedSize() int {
-	// This estimate doesn't account for any values in encoders which haven't
-	// been flushed yet. However, encoder buffers are usually small enough that
-	// we wouldn't massively overshoot our estimate.
-	return b.presenceBuffer.Len() + b.valuesWriter.BytesWritten()
+	// presenceEnc and valuesEnc buffer appended values in memory and only
+	// write to their underlying writers (presenceBuffer/valuesWriter) once
+	// Flush is called, so we ask each encoder directly for its own
+	// not-yet-flushed size rather than reading it back from the writers.
+	return b.presenceEnc.EstimatedSize() + b.valuesEnc.EstimatedSize()
 }
 
 // Rows returns the number of rows appended to the pageBuilder.
