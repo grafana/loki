@@ -59,6 +59,10 @@ func isChunkGet(r *http.Request) bool {
 	return r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, testChunkKey)
 }
 
+func isChunkPut(r *http.Request) bool {
+	return r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, testChunkKey)
+}
+
 // writeS3Object writes a well-formed S3 GetObject 200 response. minio-go parses
 // the response headers into ObjectInfo and errors if required headers (ETag,
 // Last-Modified) are missing, so we set them like a real S3 server would.
@@ -175,4 +179,28 @@ func TestCongestionControl_S3Throttling_RecoversAfterRetry(t *testing.T) {
 
 	// 2 throttled attempts + 1 successful attempt.
 	require.EqualValues(t, 3, serverGets.Load())
+}
+
+// TestCongestionControl_S3Throttling_PutObjectNotRetried verifies that a write throttled by S3 is surfaced
+// immediately, with no retry at the congestion-control layer: PutObject's request body is a single-pass
+// io.Reader, and retrying after a partial read would silently upload truncated or wrong data. The resulting
+// error must still be classified as retryable, since that's what makes the shared AIMD limiter react to
+// throttled writes the same way it reacts to throttled reads (counter internals covered in controller_test.go).
+func TestCongestionControl_S3Throttling_PutObjectNotRetried(t *testing.T) {
+	var serverPuts atomic.Int64
+	ctrl := newCongestionControlledS3(t, func(w http.ResponseWriter, r *http.Request) {
+		if isChunkPut(r) {
+			serverPuts.Inc()
+			writeS3Error(w, http.StatusServiceUnavailable, "SlowDown", "Please reduce your request rate.")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	err := ctrl.PutObject(context.Background(), testChunkKey, strings.NewReader("chunk-bytes"))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, congestion.RetriesExceeded, "PutObject must never go through the retrier")
+	require.True(t, ctrl.IsRetryableErr(err), "SlowDown on a write must still be recognised as retryable so the AIMD limiter reacts to it")
+
+	require.EqualValues(t, 1, serverPuts.Load(), "exactly one PUT should reach S3 — no retry-with-resend of the body")
 }
