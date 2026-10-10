@@ -51,6 +51,17 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestLabelsBuilder_BaseHas(t *testing.T) {
+	lbs := labels.FromStrings("already", "in")
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+	b.Reset()
+	require.True(t, b.BaseHas("already"))
+	require.False(t, b.BaseHas("missing"))
+
+	b.Del("already")
+	require.False(t, b.BaseHas("already"))
+}
+
 func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))

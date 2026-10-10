@@ -47,6 +47,17 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 
+# logfmt() after `drop`: a dropped stream label no longer clashes, so the parsed key keeps its name.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+
+eval select from 0 to 30s forward {app="a"} | drop name | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+# The parser runs before the drop, so the stream label still clashes.
+eval select from 0 to 30s forward {app="a"} | logfmt | drop name
+  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+
 # logfmt() with a line key that ends in `_extracted`.
 clear
 load
