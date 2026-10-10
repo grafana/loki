@@ -33,6 +33,7 @@ type teeMetrics struct {
 	bufferedBytes         prometheus.Summary
 	ingesterAppends       *prometheus.CounterVec
 	ingesterMetricAppends *prometheus.CounterVec
+	fallbackAppends       *prometheus.CounterVec
 	teedStreams           *prometheus.CounterVec
 	teedRequests          *prometheus.CounterVec
 	sendDuration          *instrument.HistogramCollector
@@ -54,6 +55,10 @@ func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 		ingesterMetricAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_metric_appends_total",
 			Help: "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
+		}, []string{"status"}),
+		fallbackAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "pattern_ingester_fallback_appends_total",
+			Help: "The total number of batches rejected by their owning pattern ingester that were sent to another pattern ingester for metric aggregation, by outcome.",
 		}, []string{"status"}),
 		teedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_teed_streams_total",
@@ -347,14 +352,16 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				if err != nil {
 					return err
 				}
-				ctx, cancel := context.WithTimeout(
+				// The send gets its own timeout, so a slow owner does not use up
+				// the time left for the fallback below.
+				pushCtx, cancel := context.WithTimeout(
 					user.InjectOrgID(ctx, clientRequest.tenant),
 					ts.cfg.ClientConfig.RemoteTimeout,
 				)
 
 				// First try to send the request to the correct pattern ingester
 				defer cancel()
-				_, err = client.(logproto.PatternClient).Push(ctx, req)
+				_, err = client.(logproto.PatternClient).Push(pushCtx, req)
 				if err == nil {
 					// Success here means the stream will be processed for both metrics and patterns
 					ts.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
@@ -414,6 +421,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					GetReplicationSetForOperation(ring.WriteNoExtend)
 				if err != nil || len(replicationSet.Instances) == 0 {
 					ts.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
+					ts.metrics.fallbackAppends.WithLabelValues("fail").Inc()
 					level.Error(ts.logger).Log(
 						"msg", "failed to send metrics to fallback pattern ingesters",
 						"num_instances", len(replicationSet.Instances),
@@ -430,24 +438,27 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					var client ring_client.PoolClient
 					client, err = ts.ringClient.GetClientFor(addr)
 					if err != nil {
-						ctx, cancel := context.WithTimeout(
-							user.InjectOrgID(ctx, clientRequest.tenant),
-							ts.cfg.ClientConfig.RemoteTimeout,
-						)
-						defer cancel()
-
-						_, err = client.(logproto.PatternClient).Push(ctx, req)
-						if err != nil {
-							continue
-						}
-
-						ts.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
-						// bail after any success to prevent sending more than one
-						return nil
+						continue
 					}
+
+					fallbackCtx, cancel := context.WithTimeout(
+						user.InjectOrgID(ctx, clientRequest.tenant),
+						ts.cfg.ClientConfig.RemoteTimeout,
+					)
+					_, err = client.(logproto.PatternClient).Push(fallbackCtx, req)
+					cancel()
+					if err != nil {
+						continue
+					}
+
+					ts.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
+					ts.metrics.fallbackAppends.WithLabelValues("success").Inc()
+					// bail after any success to prevent sending more than one
+					return nil
 				}
 
 				ts.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
+				ts.metrics.fallbackAppends.WithLabelValues("fail").Inc()
 				level.Error(ts.logger).Log(
 					"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
 					"addresses", strings.Join(fallbackAddrs, ", "),
