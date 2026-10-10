@@ -70,6 +70,11 @@ func validateArray(arr arrow.Array, full bool, path string) error {
 	if err := validateArrayStructure(data); err != nil {
 		return validationError(path, err)
 	}
+	if full {
+		if err := validateNullCount(data); err != nil {
+			return validationError(path, err)
+		}
+	}
 
 	if v, ok := arr.(Validator); ok {
 		var err error
@@ -127,6 +132,29 @@ func validateArray(arr arrow.Array, full bool, path string) error {
 		}
 	}
 
+	return nil
+}
+
+func validateNullCount(data *Data) error {
+	if data.nulls == UnknownNullCount {
+		return nil
+	}
+
+	var actualNulls int
+	switch data.dtype.ID() {
+	case arrow.NULL:
+		actualNulls = data.length
+	case arrow.SPARSE_UNION, arrow.DENSE_UNION, arrow.RUN_END_ENCODED:
+		actualNulls = 0
+	default:
+		if len(data.buffers) > 0 && data.buffers[0] != nil {
+			actualNulls = data.length - bitutil.CountSetBits(data.buffers[0].Bytes(), data.offset, data.length)
+		}
+	}
+
+	if actualNulls != data.nulls {
+		return fmt.Errorf("arrow/array: null count value (%d) does not match actual number of nulls in array (%d)", data.nulls, actualNulls)
+	}
 	return nil
 }
 

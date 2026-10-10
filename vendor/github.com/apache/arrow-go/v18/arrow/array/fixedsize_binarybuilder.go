@@ -84,9 +84,16 @@ func (b *FixedSizeBinaryBuilder) AppendNull() {
 }
 
 func (b *FixedSizeBinaryBuilder) AppendNulls(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendNull()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendNull()
+		return
+	}
+	b.Reserve(n)
+	b.values.Advance(n * b.dtype.ByteWidth)
+	b.unsafeAppendNulls(n)
 }
 
 func (b *FixedSizeBinaryBuilder) AppendEmptyValue() {
@@ -96,9 +103,16 @@ func (b *FixedSizeBinaryBuilder) AppendEmptyValue() {
 }
 
 func (b *FixedSizeBinaryBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+	if n == 1 {
+		b.AppendEmptyValue()
+		return
+	}
+	b.Reserve(n)
+	b.values.Advance(n * b.dtype.ByteWidth)
+	b.unsafeSetValid(n)
 }
 
 func (b *FixedSizeBinaryBuilder) UnsafeAppend(v []byte) {
@@ -148,6 +162,14 @@ func (b *FixedSizeBinaryBuilder) Reserve(n int) {
 // additional memory will be allocated. If n is smaller, the allocated memory may reduced.
 func (b *FixedSizeBinaryBuilder) Resize(n int) {
 	b.resize(n, b.init)
+	// Keep the value buffer sized to the effective builder capacity. b.resize
+	// may clamp n to minBuilderCapacity.
+	b.values.resize(b.capacity * b.dtype.ByteWidth)
+}
+
+func (b *FixedSizeBinaryBuilder) truncate(n int) {
+	b.builder.truncate(n)
+	b.values.SetLength(n * b.dtype.ByteWidth)
 }
 
 // NewArray creates a FixedSizeBinary array from the memory buffers used by the

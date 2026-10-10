@@ -78,19 +78,27 @@ func (w *Writer) Write(record arrow.RecordBatch) error {
 		}
 	}
 
-	recs := make([][]string, record.NumRows())
-	for i := range recs {
-		recs[i] = make([]string, record.NumCols())
+	columns := make([][]string, record.NumCols())
+	for j, col := range record.Columns() {
+		rows, err := w.transformColToStringArr(w.schema.Field(j).Type, col, w.stringReplacer)
+		if err != nil {
+			return err
+		}
+		columns[j] = rows
 	}
 
-	for j, col := range record.Columns() {
-		rows := w.transformColToStringArr(w.schema.Field(j).Type, col, w.stringReplacer)
-		for i, row := range rows {
-			recs[i][j] = row
+	row := make([]string, record.NumCols())
+	for i := 0; i < int(record.NumRows()); i++ {
+		for j := range columns {
+			row[j] = columns[j][i]
+		}
+		if err := w.w.Write(row); err != nil {
+			return err
 		}
 	}
 
-	return w.w.WriteAll(recs)
+	w.w.Flush()
+	return w.w.Error()
 }
 
 // Flush writes any buffered data to the underlying csv Writer.

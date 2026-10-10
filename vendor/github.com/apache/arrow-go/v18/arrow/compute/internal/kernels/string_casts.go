@@ -483,15 +483,16 @@ func castTimestampToString(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.
 		fmtstring += ".000000000"
 	}
 
-	switch inputType.TimeZone {
-	case "UTC":
-		fmtstring += "Z"
-	case "":
-	default:
-		fmtstring += "-0700"
+	if inputType.TimeZone != "" {
+		fmtstring += "Z0700"
 	}
 
 	strlen := len(fmtstring)
+	if inputType.TimeZone != "" {
+		// Historical IANA offsets can include seconds, which need two extra
+		// characters compared with the usual ±HHMM form.
+		strlen += 2
+	}
 	bldr.Reserve(int(input.Len))
 	if err := reserveFormattedData(bldr, input, strlen); err != nil {
 		return err
@@ -499,7 +500,19 @@ func castTimestampToString(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.
 
 	bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
 		func(pos int64) {
-			bldr.Append(toTime(inputData[pos]).Format(fmtstring))
+			value := toTime(inputData[pos])
+			if value.Year() < 0 || value.Year() > 9999 {
+				bldr.Append(strconv.FormatInt(int64(inputData[pos]), 10))
+				return
+			}
+			valueFormat := fmtstring
+			if inputType.TimeZone != "" {
+				_, offset := value.Zone()
+				if offset%60 != 0 {
+					valueFormat = fmtstring[:len(fmtstring)-5] + "Z070000"
+				}
+			}
+			bldr.Append(value.Format(valueFormat))
 		},
 		func() { bldr.AppendNull() })
 
