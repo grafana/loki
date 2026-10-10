@@ -93,7 +93,7 @@ func TestBuildOptions_WhenInvalidTenantsConfiguration_SetDegraded(t *testing.T) 
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -176,7 +176,7 @@ func TestBuildOptions_WhenMissingGatewaySecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -263,7 +263,7 @@ func TestBuildOptions_WhenInvalidGatewaySecret_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -354,7 +354,7 @@ func TestBuildOptions_MissingTenantsSpec_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -424,7 +424,7 @@ func TestBuildOptions_PassthroughMode_MissingCA_SetDegraded(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},

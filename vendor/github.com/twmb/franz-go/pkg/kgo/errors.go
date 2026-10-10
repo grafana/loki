@@ -55,7 +55,7 @@ func isRetryableBrokerErr(err error) bool {
 	// We favor testing os.SyscallError first, because net.OpError _always_
 	// implements Temporary, so if we test that first, it'll return false
 	// in many cases when we want to return true from os.SyscallError.
-	if _, ok := errors.AsType[*os.SyscallError](err); ok {
+	if se := (*os.SyscallError)(nil); errors.As(err, &se) {
 		// Non-timeout dial errors are deliberately *not* retryable here.
 		// The carve-out forces every caller that wants dial-error retry
 		// behavior to opt in explicitly, because the right recovery
@@ -95,14 +95,14 @@ func isRetryableBrokerErr(err error) bool {
 		// If the FIRST read is EOF, that is usually not a good sign,
 		// often it's from bad SASL. We err on the side of pessimism
 		// and do not retry.
-		if ee, ok := errors.AsType[*ErrFirstReadEOF](err); ok && !ee.retry {
+		if ee := (*ErrFirstReadEOF)(nil); errors.As(err, &ee) && !ee.retry {
 			return false
 		}
 		return true
 	}
 	// We could have a retryable producer ID failure, which then bubbled up
 	// as errProducerIDLoadFail so as to be retried later.
-	if _, ok := errors.AsType[*errProducerIDLoadFail](err); ok {
+	if pe := (*errProducerIDLoadFail)(nil); errors.As(err, &pe) {
 		return true
 	}
 	// We could have chosen a broker, and then a concurrent metadata update
@@ -118,30 +118,28 @@ func isRetryableBrokerErr(err error) bool {
 	// We sometimes load the controller before issuing requests, and the
 	// cluster may not yet be ready and will return -1 for the controller.
 	// We can backoff and retry and hope the cluster has stabilized.
-	if _, ok := errors.AsType[*errUnknownController](err); ok {
+	if ce := (*errUnknownController)(nil); errors.As(err, &ce) {
 		return true
 	}
 	// Same thought for a non-existing coordinator.
-	if _, ok := errors.AsType[*errUnknownCoordinator](err); ok {
+	if ce := (*errUnknownCoordinator)(nil); errors.As(err, &ce) {
 		return true
 	}
-	if tempErr, ok := errors.AsType[interface {
-		error
-		Temporary() bool
-	}](err); ok {
+	var tempErr interface{ Temporary() bool }
+	if errors.As(err, &tempErr) {
 		return tempErr.Temporary()
 	}
 	return false
 }
 
 func isDialNonTimeoutErr(err error) bool {
-	ne, ok := errors.AsType[*net.OpError](err)
-	return ok && ne.Op == "dial" && !ne.Timeout()
+	var ne *net.OpError
+	return errors.As(err, &ne) && ne.Op == "dial" && !ne.Timeout()
 }
 
 func isAnyDialErr(err error) bool {
-	ne, ok := errors.AsType[*net.OpError](err)
-	return ok && ne.Op == "dial"
+	var ne *net.OpError
+	return errors.As(err, &ne) && ne.Op == "dial"
 }
 
 // isPermanentDialErr reports whether a dial error is a hard configuration
@@ -160,7 +158,8 @@ func isPermanentDialErr(err error) bool {
 	if !isAnyDialErr(err) {
 		return false
 	}
-	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
 		return true
 	}
 	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
@@ -185,7 +184,8 @@ func isSkippableBrokerErr(err error) bool {
 	if errors.Is(err, errUnknownBroker) {
 		return true
 	}
-	if _, ok := errors.AsType[*net.OpError](err); ok && !isContextErr(err) {
+	var ne *net.OpError
+	if errors.As(err, &ne) && !isContextErr(err) {
 		return true
 	}
 	return false
@@ -234,8 +234,6 @@ var (
 
 	// Returned for all buffered produce records when a user purges topics.
 	errPurged = errors.New("topic purged while buffered")
-
-	errMergedBatchUnsupported = errors.New("merged batch cannot be sent: the partition moved to a broker that does not support the batch's compression or record format")
 
 	errMissingMetadataPartition = errors.New("metadata update is missing a partition that we were previously using")
 
@@ -362,22 +360,14 @@ type ErrDataLoss struct {
 	// ConsumedToEpoch is the epoch for the offset the client was currently
 	// consuming.
 	ConsumedToEpoch int32
-	// ResetTo is what the client reset the partition to. If the client
-	// located where the log diverged, everything from ResetTo to ConsumedTo
-	// was lost. If it could not, [ConsumeResetOffset] chose ResetTo and
-	// records below ResetTo may also have been replaced.
+	// ResetTo is what the client reset the partition to; everything from
+	// ResetTo to ConsumedTo was lost.
 	ResetTo int64
 	// ResetToEpoch is the epoch the client was reset to.
 	ResetToEpoch int32
 }
 
 func (e *ErrDataLoss) Error() string {
-	if e.ResetTo == e.ConsumedTo {
-		return fmt.Sprintf("topic %s partition %d lost records;"+
-			" the client consumed to offset %d epoch %d and resumed there,"+
-			" but records below that offset may have been replaced and were not re-read",
-			e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch)
-	}
 	return fmt.Sprintf("topic %s partition %d lost records;"+
 		" the client consumed to offset %d epoch %d but was reset to offset %d epoch %d",
 		e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch, e.ResetTo, e.ResetToEpoch)
@@ -429,34 +419,6 @@ func (e *ErrGroupSession) Error() string {
 
 func (e *ErrGroupSession) Unwrap() error { return e.Err }
 
-// ErrDecompressTooLarge is returned from PollFetches when a batch would
-// decompress to more than [MaxDecompressBatchBytes]. The client stops
-// consuming the partition: it is not fetched again until you [SetOffsets]
-// it past the batch, to NextOffset. Alternatively, create a new client with
-// a larger bound.
-type ErrDecompressTooLarge struct {
-	// Topic is the topic the batch is in.
-	Topic string
-	// Partition is the partition the batch is in.
-	Partition int32
-	// Offset is the batch's first offset.
-	Offset int64
-	// Epoch is the leader epoch of the batch. Use SetOffsets with {Epoch,
-	// NextOffset} to skip this batch.
-	Epoch int32
-	// NextOffset is the offset after the batch's last record, i.e., where
-	// to SetOffsets to skip the batch.
-	NextOffset int64
-}
-
-func (e *ErrDecompressTooLarge) Error() string {
-	return fmt.Sprintf("topic %s partition %d: the batch at offset %d decompresses to more than MaxDecompressBatchBytes;"+
-		" consuming stopped, use SetOffsets to skip to offset %d",
-		e.Topic, e.Partition, e.Offset, e.NextOffset)
-}
-
-func (*ErrDecompressTooLarge) Unwrap() error { return ErrMaxDecompress }
-
 type errDecompress struct {
 	err error
 }
@@ -471,8 +433,8 @@ func isDecompressErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	_, ok := errors.AsType[*errDecompress](err)
-	return ok
+	var ed *errDecompress
+	return errors.As(err, &ed)
 }
 
 func errCodeMessage(code int16, errMessage *string) error {

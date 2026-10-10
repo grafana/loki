@@ -245,20 +245,13 @@ func (w *withTestMetricReaderConfig) ApplyStorageOpt(c *storageConfig) {
 	c.manualReader = w.metricReader
 }
 
-// WithReadStallTimeout is an option that may be passed to [NewClient].
+// WithReadStallTimeout is an option that may be passed to [NewClient] or [NewGRPCClient].
 // It enables the client to retry the stalled read request, happens as part of
 // storage.Reader creation. As the name suggest, timeout is adjusted dynamically
 // based on past observed read-req latencies.
 //
-// This is only supported for the read operation and that too for http(XML) client.
-// Grpc read-operation will be supported soon.
+// This is supported for read operations on HTTP (XML) and gRPC clients (not implemented for HTTP JSON client).
 func withReadStallTimeout(rstc *experimental.ReadStallTimeoutConfig) option.ClientOption {
-	// TODO (raj-prince): To keep separate dynamicDelay instance for different BucketHandle.
-	// Currently, dynamicTimeout is kept at the client and hence shared across all the
-	// BucketHandle, which is not the ideal state. As latency depends on location of VM
-	// and Bucket, and read latency of different buckets may lie in different range.
-	// Hence having a separate dynamicTimeout instance at BucketHandle level will
-	// be better
 	if rstc.Min == time.Duration(0) {
 		rstc.Min = defaultDynamicReadReqMinTimeout
 	}

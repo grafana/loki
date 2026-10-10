@@ -1399,3 +1399,31 @@ logline_query_min_query_bytes_for_index: 0
 		require.ErrorContains(t, negative.Validate(), "logline_query_min_query_bytes_for_index")
 	})
 }
+
+func TestOverrides_DataObjQueryStartTime(t *testing.T) {
+	t.Run("returns the zero time when no start time is set", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+
+		require.True(t, ov.DataObjQueryStartTime("tenant").IsZero())
+	})
+
+	t.Run("returns the start time a tenant override sets in YAML instead of the CLI flag value", func(t *testing.T) {
+		var defaults Limits
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		defaults.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-querier.dataobj-query-start-time=2025-06-07T08:09:10Z"}))
+
+		var tenantLimits Limits
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_query_start_time: "2026-01-02T03:04:05Z"`), &tenantLimits))
+
+		ov, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"tenant": &tenantLimits}))
+		require.NoError(t, err)
+
+		require.Equal(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), ov.DataObjQueryStartTime("tenant").UTC())
+		require.Equal(t, time.Date(2025, 6, 7, 8, 9, 10, 0, time.UTC), ov.DataObjQueryStartTime("other-tenant").UTC())
+	})
+}

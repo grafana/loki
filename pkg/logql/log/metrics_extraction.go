@@ -75,13 +75,15 @@ type cachedStreamSampleExtractor struct {
 
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
+func NewLineSampleExtractor(ex LineExtractor, stages Stages, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "", stages)
+	hints := NewParserHint(stages.RequiredLabelNames(), groups, without, noLabels, "")
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]cachedStreamSampleExtractor),
 	}, nil
 }
@@ -290,13 +292,13 @@ func (e *filteredConstantLabelStreamExtractor) ReferencedStructuredMetadata() bo
 	return false
 }
 
-type convertionFn func(value string) (float64, error)
+type conversionFn func(value string) (float64, error)
 
 type labelSampleExtractor struct {
 	preStage     Stage
 	postFilter   Stage
 	labelName    string
-	conversionFn convertionFn
+	conversionFn conversionFn
 
 	baseBuilder      *BaseLabelsBuilder
 	streamExtractors map[uint64]StreamSampleExtractor
@@ -308,10 +310,10 @@ type labelSampleExtractor struct {
 func LabelExtractorWithStages(
 	labelName, conversion string,
 	groups []string, without, noLabels bool,
-	preStages []Stage,
+	preStages Stages,
 	postFilter Stage,
 ) (SampleExtractor, error) {
-	var convFn convertionFn
+	var convFn conversionFn
 	switch conversion {
 	case ConvertBytes:
 		convFn = convertBytes
@@ -327,14 +329,17 @@ func LabelExtractorWithStages(
 		groups = append(groups, labelName)
 		sort.Strings(groups)
 	}
-	preStage := ReduceStages(preStages)
-	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName, append(preStages, postFilter))
+	stages := make(Stages, 0, len(preStages)+1)
+	stages = append(append(stages, preStages...), postFilter)
+	hints := NewParserHint(stages.RequiredLabelNames(), groups, without, noLabels, labelName)
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &labelSampleExtractor{
-		preStage:         preStage,
+		preStage:         ReduceStages(preStages),
 		conversionFn:     convFn,
 		labelName:        labelName,
 		postFilter:       postFilter,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }
@@ -382,8 +387,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 	var err error
 	v, err = l.conversionFn(stringValue)
 	if err != nil {
-		l.builder.SetErr(errSampleExtraction)
-		l.builder.SetErrorDetails(err.Error())
+		l.builder.SetErr(errSampleExtraction, err)
 	}
 
 	// post filters
@@ -416,11 +420,13 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 	copy(sortedGroups, groups)
 	sort.Strings(sortedGroups)
 	preStage := ReduceStages(stages)
-	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName, stages)
+	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, without, noLabels, labelName)
+	baseBuilder := NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels).
+		WithLabelFilterHints(NewLabelFilterHints(stages))
 	return &distinctValueSampleExtractor{
 		preStage:         preStage,
 		labelName:        labelName,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, without, noLabels),
+		baseBuilder:      baseBuilder,
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

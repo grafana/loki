@@ -1,6 +1,8 @@
 # golangci.com configuration
 # https://golangci-lint.run/usage/configuration/
 version: "2"
+run:
+  go: "1.26"
 linters:
   enable:
     - copyloopvar

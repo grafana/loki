@@ -39,6 +39,10 @@ type ScannerReaders struct {
 
 // NewScannerReaders creates the readers needed to scan sec. The returned
 // readers must be opened before they are passed to [NewScanner].
+//
+// predicates may be of any matcher type. Bloom lookups use only the equality
+// predicates, and their names must be distinct. The stream label lookup uses
+// every predicate name.
 func NewScannerReaders(
 	sec *Section,
 	matchers []CompiledMatcher,
@@ -61,13 +65,15 @@ func NewScannerReaders(
 		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
 	}
 
-	if len(predicates) > 0 && kindCol != nil && nameCol != nil && bloomCol != nil {
-		if err := validateMatcherNames(predicates); err != nil {
-			return nil, err
-		}
-
-		readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, predicates), bloomStats)
+	equal := equalPredicates(predicates)
+	if err := validateMatcherNames(equal); err != nil {
+		return nil, err
+	}
+	if len(predicates) > 0 && kindCol != nil && nameCol != nil {
 		readers.LabelNames = newScannerReader(sec, matcherLabelNamesPredicate(kindCol, nameCol, predicates), nil)
+		if len(equal) > 0 && bloomCol != nil {
+			readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, equal), bloomStats)
+		}
 	}
 
 	return readers, nil
@@ -87,6 +93,16 @@ func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
 		byName[cm.matcher.Name] = append(byName[cm.matcher.Name], i)
 	}
 	return byName
+}
+
+func equalPredicates(predicates []*labels.Matcher) []*labels.Matcher {
+	var out []*labels.Matcher
+	for _, m := range predicates {
+		if m.Type == labels.MatchEqual {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func validateMatcherNames(matchers []*labels.Matcher) error {
@@ -373,30 +389,38 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 	return out
 }
 
-// MatcherHits scans the section against [matchers]. The first return is the
-// per-section (name,value) bloom hits. The second is the per-section set of
-// matcher names that occur as a stream label. Returns nil maps when the section
-// lacks the required columns.
-func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
-	if len(matchers) == 0 {
+// MatcherHits scans the section against [predicates]. The first return is the
+// per-section (name,value) bloom hits of the equality predicates. The second is
+// the per-section set of predicate names, of any matcher type, that occur as a
+// stream label. Returns nil maps when the section lacks the kind or name column.
+// A section without a bloom column has no bloom hits but still reports stream
+// label names.
+func (s *Scanner) MatcherHits(ctx context.Context, predicates []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+	if len(predicates) == 0 {
 		return nil, nil, nil
 	}
 
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	bloomCol := sectionColumn(s.sec, ColumnTypeBloomFilter)
-	if kindCol == nil || nameCol == nil || bloomCol == nil {
+	if kindCol == nil || nameCol == nil {
 		return nil, nil, nil
 	}
-	if s.readers == nil || s.readers.BloomMatches == nil || s.readers.LabelNames == nil {
+	if s.readers == nil || s.readers.LabelNames == nil {
 		return nil, nil, errors.New("matcher hits readers not provided")
 	}
 
-	// The bloom match predicate assumes no two matchers will match on the same
-	// name, which is validated when the scanner readers are created.
-	byName := make(map[string]*labels.Matcher, len(matchers))
-	for _, p := range matchers {
-		byName[p.Name] = p
+	// Bloom lookups use only equality predicates, and their names are distinct.
+	// The scanner readers check this when they are created. Other predicate types
+	// are skipped here.
+	byName := make(map[string]*labels.Matcher, len(predicates))
+	for _, p := range predicates {
+		if p.Type == labels.MatchEqual {
+			byName[p.Name] = p
+		}
+	}
+	if len(byName) > 0 && bloomCol != nil && s.readers.BloomMatches == nil {
+		return nil, nil, errors.New("matcher hits bloom reader not provided")
 	}
 
 	matched := make(map[SectionRef]map[PredicateValue]struct{})

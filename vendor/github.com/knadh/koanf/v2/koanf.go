@@ -50,7 +50,7 @@ type KeyMap map[string][]string
 // Unmarshal() to unmarshal conf maps into arbitrary structs.
 type UnmarshalConf struct {
 	// Tag is the struct field tag to unmarshal.
-	// `koanf` is used if left empty.
+	// If empty, DecoderConfig.TagName (`koanf`) is used.
 	Tag string
 
 	// If this is set to true, instead of unmarshalling nested structures
@@ -201,7 +201,7 @@ func (ko *Koanf) Cut(path string) *Koanf {
 		out = v
 	}
 
-	n := New(ko.conf.Delim)
+	n := NewWithConf(ko.conf)
 	_ = n.merge(out, new(options))
 	return n
 }
@@ -263,25 +263,27 @@ func (ko *Koanf) Unmarshal(path string, o any) error {
 // See mitchellh/mapstructure's DecoderConfig for advanced customization
 // of the unmarshal behaviour.
 func (ko *Koanf) UnmarshalWithConf(path string, o any, c UnmarshalConf) error {
-	if c.DecoderConfig == nil {
-		c.DecoderConfig = &mapstructure.DecoderConfig{
+	var dc mapstructure.DecoderConfig
+	if c.DecoderConfig != nil {
+		dc = *c.DecoderConfig
+	} else {
+		dc = mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
 				textUnmarshalerHookFunc()),
-			Metadata:         nil,
 			WeaklyTypedInput: true,
 		}
 	}
 
-	c.DecoderConfig.Result = o
+	dc.Result = o
 
-	if c.Tag == "" {
-		c.DecoderConfig.TagName = "koanf"
-	} else {
-		c.DecoderConfig.TagName = c.Tag
+	if c.Tag != "" {
+		dc.TagName = c.Tag
+	} else if dc.TagName == "" {
+		dc.TagName = "koanf"
 	}
 
-	d, err := mapstructure.NewDecoder(c.DecoderConfig)
+	d, err := mapstructure.NewDecoder(&dc)
 	if err != nil {
 		return err
 	}
@@ -368,29 +370,26 @@ func (ko *Koanf) Get(path string) any {
 	return out
 }
 
-// Slices returns a list of Koanf instances constructed out of a
-// []map[string]any interface at the given path.
+// Slices returns a list of Koanf instances constructed from the value
+// at path. It accepts []map[string]any or []any containing map[string]any
+// elements. Non-slice elements are skipped.
 func (ko *Koanf) Slices(path string) []*Koanf {
 	out := []*Koanf{}
 	if path == "" {
 		return out
 	}
 
-	// Does the path exist?
-	sl, ok := ko.Get(path).([]any)
-	if !ok {
-		return out
-	}
-
-	for _, s := range sl {
-		mp, ok := s.(map[string]any)
-		if !ok {
-			continue
+	switch v := ko.Get(path).(type) {
+	case []map[string]any:
+		for _, mp := range v {
+			out = ko.appendMap(mp, out)
 		}
-
-		k := New(ko.conf.Delim)
-		_ = k.merge(mp, new(options))
-		out = append(out, k)
+	case []any:
+		for _, item := range v {
+			if mp, ok := item.(map[string]any); ok {
+				out = ko.appendMap(mp, out)
+			}
+		}
 	}
 
 	return out
@@ -416,13 +415,23 @@ func (ko *Koanf) MapKeys(path string) []string {
 		return out
 	}
 
-	mp, ok := o.(map[string]any)
-	if !ok {
-		return out
-	}
-	out = make([]string, 0, len(mp))
-	for k := range mp {
-		out = append(out, k)
+	if mp, ok := o.(map[string]any); ok {
+		out = make([]string, 0, len(mp))
+		for k := range mp {
+			out = append(out, k)
+		}
+	} else {
+		// A value set with Set() or by a Provider such as `structs`` keeps its
+		// native map type. Use reflection for other map types.
+		rv := reflect.ValueOf(o)
+		if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+			return out
+		}
+
+		out = make([]string, 0, rv.Len())
+		for _, k := range rv.MapKeys() {
+			out = append(out, k.String())
+		}
 	}
 	sort.Strings(out)
 	return out
@@ -452,10 +461,12 @@ func (ko *Koanf) merge(c map[string]any, opts *options) error {
 		}
 		ko.confMap = dest
 	} else if ko.conf.StrictMerge {
-		if err := maps.MergeStrict(c, ko.confMap); err != nil {
+		dest := maps.Copy(ko.confMap)
+		if err := maps.MergeStrict(c, dest); err != nil {
 			ko.mu.Unlock()
 			return err
 		}
+		ko.confMap = dest
 	} else {
 		maps.Merge(c, ko.confMap)
 	}
@@ -655,4 +666,11 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFuncType {
 		}
 		return result, nil
 	}
+}
+
+// appendMap creates new Koanf instances from a map returns a slice of Koanf instances.
+func (ko *Koanf) appendMap(mp map[string]any, out []*Koanf) []*Koanf {
+	k := NewWithConf(ko.conf)
+	_ = k.merge(mp, new(options))
+	return append(out, k)
 }

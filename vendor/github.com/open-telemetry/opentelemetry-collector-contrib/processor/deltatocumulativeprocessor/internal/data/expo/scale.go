@@ -139,10 +139,11 @@ func Limit(maxBuckets int, scale Scale, arel, brel pmetric.ExponentialHistogramD
 		up--
 	}
 
-	// Keep downscaling until the number of buckets is within the limit.
+	// Match Collapse: round the lower index down and the exclusive upper index
+	// up, including negative indexes, so the merged range stays within the limit.
 	for up-lo > maxBuckets {
-		lo /= 2
-		up /= 2
+		lo >>= 1
+		up = (up + 1) >> 1
 		scale--
 	}
 

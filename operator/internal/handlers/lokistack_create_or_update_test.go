@@ -164,8 +164,8 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -250,8 +250,8 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -361,8 +361,8 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -417,8 +417,8 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -524,8 +524,8 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -586,8 +586,8 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
-						EffectiveDate: "2020-10-11",
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
@@ -699,7 +699,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 			Storage: lokiv1.ObjectStorageSpec{
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV12,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2023-05-22",
 					},
 				},
@@ -739,6 +739,123 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 	// make sure error is returned
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenDeprecatedSchemaVersion_SetDegraded(t *testing.T) {
+	// Any v11/v12 schema is rejected - only v13 is supported.
+	// Users must migrate to v13 and remove all v11/v12 schemas.
+	tests := []struct {
+		name    string
+		schemas []lokiv1.ObjectStorageSchema
+	}{
+		{
+			name: "v11 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-01-01",
+				},
+			},
+		},
+		{
+			name: "v12 schema is rejected",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2020-01-01",
+				},
+			},
+		},
+		{
+			name: "v11 schema is rejected even with v13 present",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2020-01-01",
+				},
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2030-01-01",
+				},
+			},
+		},
+		{
+			name: "v12 schema is rejected even with v13 present",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2020-01-01",
+				},
+				{
+					//nolint:staticcheck
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2030-01-01",
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sw := &k8sfakes.FakeStatusWriter{}
+			k := &k8sfakes.FakeClient{}
+			r := ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+				},
+			}
+
+			stack := &lokiv1.LokiStack{
+				TypeMeta: metav1.TypeMeta{
+					Kind: "LokiStack",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+				},
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: tc.schemas,
+						Secret: lokiv1.ObjectStorageSecretSpec{
+							Name: defaultSecret.Name,
+							Type: lokiv1.ObjectStorageSecretS3,
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: "openshift",
+					},
+				},
+			}
+
+			k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+				if r.Name == name.Name && r.Namespace == name.Namespace {
+					k.SetClientObject(object, stack)
+				}
+				if defaultSecret.Name == name.Name {
+					k.SetClientObject(object, &defaultSecret)
+				}
+				return nil
+			}
+
+			k.StatusStub = func() client.StatusWriter { return sw }
+
+			_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+			require.Error(t, err)
+			require.IsType(t, &status.DegradedError{}, err)
+
+			degradedErr := err.(*status.DegradedError)
+			require.Contains(t, degradedErr.Message, "spec contains deprecated schema versions")
+			require.Equal(t, lokiv1.ReasonInvalidObjectStorageSchema, degradedErr.Reason)
+			require.False(t, degradedErr.Requeue)
+		})
+	}
 }
 
 func TestGetGatewayImage(t *testing.T) {

@@ -65,7 +65,7 @@ const (
 	EnvRelatedImagePassthroughGateway = "RELATED_IMAGE_PASSTHROUGH_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:3.7.7"
+	DefaultContainerImage = "docker.io/grafana/loki:3.7.8"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"

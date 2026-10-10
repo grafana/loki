@@ -22,8 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -32,7 +30,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, loghttppush.ParseOTLPRequest, loghttppush.OTLPError, constants.OTLP)
+	d.pushHandler(w, r, loghttppush.NewOTLPRequestParser(d.cfg.OTLPConfig.DeferAttributeExpansion), loghttppush.OTLPError, constants.OTLP)
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser loghttppush.RequestParser, errorWriter loghttppush.ErrorWriter, format string) {
@@ -136,9 +134,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
 	}
 
-	// Parsers still return flat requests; wrap them for nested processing.
-	internal := logproto.FromPushRequest(req)
-	_, err = d.pushWithResolver(r.Context(), internal, streamResolver, format)
+	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -193,7 +189,7 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	streams []push.Stream,
+	streams []logproto.InternalStreamAdapter,
 	streamResolver *requestScopedStreamResolver,
 	pushStats *loghttppush.Stats,
 	presumedAgentIP string,

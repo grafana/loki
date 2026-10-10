@@ -1,6 +1,9 @@
 package spiffeid
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Matcher is used to match a SPIFFE ID.
 type Matcher func(ID) error
@@ -19,6 +22,24 @@ func MatchID(expected ID) Matcher {
 			return fmt.Errorf("unexpected ID %q", actual)
 		}
 		return nil
+	})
+}
+
+// MatchIDPrefix matches any SPIFFE ID with the given ID prefix. A matching ID
+// must be in the same trust domain and have either the same path as the prefix
+// or a path with the prefix on a segment boundary. If the prefix has no path,
+// no ID matches.
+func MatchIDPrefix(expected ID) Matcher {
+	if expected.Path() == "" {
+		return Matcher(func(actual ID) error {
+			return errPrefixMissingPath
+		})
+	}
+	return Matcher(func(actual ID) error {
+		if actual.MemberOf(expected.TrustDomain()) && matchPathPrefix(actual.Path(), expected.Path()) {
+			return nil
+		}
+		return fmt.Errorf("unexpected ID %q", actual)
 	})
 }
 
@@ -44,4 +65,8 @@ func MatchMemberOf(expected TrustDomain) Matcher {
 		}
 		return nil
 	})
+}
+
+func matchPathPrefix(actual, expected string) bool {
+	return actual == expected || strings.HasPrefix(actual, expected+"/")
 }

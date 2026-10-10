@@ -190,6 +190,40 @@ Abnormal behavior:
 - Sharp drops (possible data path interruption).
 - Unexpected spikes (possible overload or noisy tenants).
 
+## Kafka-based ingestion (experimental)
+
+{{< admonition type="note" >}}
+These metrics only apply if you've enabled [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/), an experimental write-path feature.
+{{< /admonition >}}
+
+**Key metrics:**
+
+- `loki_kafka_client_partition_reader_consumption_lag_seconds`: the single most important Kafka health signal. Growing lag means ingesters can't keep up with the rate at which the distributor produces records.
+- `loki_distributor_kafka_appends_total` (label `status`): produce success and failure rate. A rising failure rate means writes aren't reaching Kafka.
+- `loki_distributor_kafka_latency_seconds`: produce latency. A sustained increase points to Kafka broker pressure or network issues.
+- `loki_kafka_client_partition_reader_fetch_errors_total`: errors fetching records from Kafka brokers. This should stay near zero.
+
+**Example queries:**
+
+```promql
+# Consumption lag p99 by partition state
+histogram_quantile(0.99, sum(rate(loki_kafka_client_partition_reader_consumption_lag_seconds_bucket{phase="running", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (le, cluster, namespace))
+```
+
+```promql
+# Kafka produce error rate
+sum(rate(loki_distributor_kafka_appends_total{status="fail", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (cluster, namespace)
+```
+
+**Abnormal behavior:**
+
+- Consumption lag growing over time (ingesters can't keep up with the produce rate).
+- Any sustained produce failures.
+- Rising produce latency (broker pressure, network issues, or too few partitions).
+- Fetch errors (broker unavailability or a protocol version mismatch).
+
+For a complete list of Kafka metrics, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#monitoring-kafka-ingestion).
+
 ## Object store operations
 
 Object store latency and failures directly impact query and retention workflows.

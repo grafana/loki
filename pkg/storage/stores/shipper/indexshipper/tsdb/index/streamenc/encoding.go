@@ -35,13 +35,13 @@ var crc32BufferPool = sync.Pool{
 }
 
 // Decbuf provides safe methods to extract data from a big-endian binary data.
-// It the Prometheus encoding.Decbuf type, but for a generic BufReader rather than []byte.
+// It is the Prometheus encoding.Decbuf type, but for a FileReader rather than a []byte.
 // Decbuf handles all necessary bounds checking and advancing of the underlying reader.
 // Consumers may extract multiple datums without checking for errors,
 // but the Err() must be checked before using the extracted data.
 // New Decbuf instances must be created via a DecbufFactory.
 type Decbuf struct {
-	r BufReader
+	r *FileReader
 	E error
 }
 
@@ -93,10 +93,10 @@ func (d *Decbuf) CheckCrc32(castagnoliTable *crc32.Table) {
 	}
 }
 
-// Skip advances the pointer of the underlying BufReader by the given number
+// Skip advances the pointer of the underlying FileReader by the given number
 // of bytes. If E is non-nil, this method has no effect. Skip-ing beyond the
-// end of the underlying BufReader will set E to an error and not advance the
-// pointer of the BufReader.
+// end of the underlying FileReader will set E to an error and not advance the
+// pointer of the FileReader.
 func (d *Decbuf) Skip(l int) {
 	if d.E != nil {
 		return
@@ -115,26 +115,20 @@ func (d *Decbuf) ReadInto(dst []byte) {
 	d.E = d.r.ReadInto(dst)
 }
 
-// SkipUvarintBytes advances the pointer of the underlying BufReader past the
+// SkipUvarintBytes advances the pointer of the underlying FileReader past the
 // next varint-prefixed bytes. If E is non-nil, this method has no effect.
 func (d *Decbuf) SkipUvarintBytes() {
 	l := d.Uvarint64()
 	d.Skip(int(l))
 }
 
-// ResetAt sets the pointer of the underlying BufReader to the absolute
-// offset and discards any buffered data. If E is non-nil, this method has
-// no effect. ResetAt-ing beyond the end of the underlying BufReader will set
-// E to an error and not advance the pointer of BufReader.
+// ResetAt sets the pointer of the underlying FileReader to the absolute
+// offset.
+// If E is non-nil, this method has no effect.
+// ResetAt-ing beyond the end of the underlying FileReader will set E to an error and
+// not advance the pointer of the FileReader.
 func (d *Decbuf) ResetAt(off int) {
 	if d.E != nil {
-		return
-	}
-
-	// If we are trying to reset at an offset which is already buffered,
-	// we can avoid resetting the BufReader and just discard some of the buffer instead.
-	if dist := off - d.Offset(); dist >= 0 && dist < d.r.Buffered() {
-		d.E = d.r.Skip(dist)
 		return
 	}
 
@@ -301,10 +295,10 @@ func (d *Decbuf) Byte() byte {
 
 func (d *Decbuf) Err() error { return d.E }
 
-// Len returns the remaining number of bytes in the underlying BufReader.
+// Len returns the remaining number of bytes in the underlying FileReader.
 func (d *Decbuf) Len() int { return d.r.Len() }
 
-// Offset returns the current offset of the underlying BufReader.
+// Offset returns the current offset of the underlying FileReader.
 // Calling d.ResetAt(d.Offset()) is effectively a no-op.
 func (d *Decbuf) Offset() int { return d.r.Offset() }
 

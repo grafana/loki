@@ -31,9 +31,10 @@ func (g *groupConsumer) adoptAssignedTopic(topic string) {
 }
 
 func (g *groupConsumer) should848() bool {
-	// The context key was the hidden beta opt-in before ServerSideBalancer
-	// existed. It is honored for one release and then removed.
-	if !g.cfg.serverSideBalancer && g.cl.ctx.Value("opt_in_kafka_next_gen_balancer_beta") == nil {
+	if wantBeta := g.cl.ctx.Value("opt_in_kafka_next_gen_balancer_beta"); wantBeta == nil { // !!! TODO REMOVE ONCE BROKER IMPROVES
+		return false
+	}
+	if g.cl.cfg.disableNextGenBalancer {
 		return false
 	}
 	// We pin to v1, introduced in Kafka 4, which fully stabilizes KIP-848.
@@ -127,7 +128,8 @@ outer:
 		// management.
 		if !known848Support {
 			if err != nil {
-				if ke, ok := errors.AsType[*kerr.Error](err); ok {
+				var ke *kerr.Error
+				if errors.As(err, &ke) {
 					if ke.Code == kerr.UnsupportedVersion.Code {
 						// It's okay to update is848 here. This is used while leaving
 						// and while heartbeating. We have not yet entered heartbeating.

@@ -450,6 +450,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
+					Groups:        []string{"curve1", "curve2"},
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
@@ -488,6 +489,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
 				"--tls.cipher-suites=cipher1,cipher2",
+				"--tls.curve-preferences=curve1,curve2",
 			},
 		},
 		{
@@ -503,6 +505,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
+					Groups:        []string{"curve1", "curve2"},
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
@@ -519,6 +522,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
 				"--tls.cipher-suites=cipher1,cipher2",
+				"--tls.curve-preferences=curve1,curve2",
 			},
 		},
 		{
@@ -534,6 +538,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
 					Ciphers:       []string{"cipher1", "cipher2"},
+					Groups:        []string{"curve1", "curve2"},
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
@@ -550,6 +555,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			expectedArgs: []string{
 				"--tls.min-version=min-version",
 				"--tls.cipher-suites=cipher1,cipher2",
+				"--tls.curve-preferences=curve1,curve2",
 			},
 		},
 	}
@@ -847,6 +853,7 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 		"--tls.min-version=",
 		"--tls.cipher-suites=",
+		"--tls.curve-preferences=",
 		"--logs.tls.ca-file=/var/run/ca/upstream/service-ca.crt",
 		"--logs.tls.cert-file=/var/run/tls/http/upstream/tls.crt",
 		"--logs.tls.key-file=/var/run/tls/http/upstream/tls.key",
@@ -1043,6 +1050,7 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.min-version=",
 				"--tls.cipher-suites=",
+				"--tls.curve-preferences=",
 				"--logs.tls.ca-file=/var/run/ca/upstream/service-ca.crt",
 				"--logs.tls.cert-file=/var/run/tls/http/upstream/tls.crt",
 				"--logs.tls.key-file=/var/run/tls/http/upstream/tls.key",
@@ -1207,6 +1215,7 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.min-version=",
 				"--tls.cipher-suites=",
+				"--tls.curve-preferences=",
 				"--logs.tls.ca-file=/var/run/ca/upstream/service-ca.crt",
 				"--logs.tls.cert-file=/var/run/tls/http/upstream/tls.crt",
 				"--logs.tls.key-file=/var/run/tls/http/upstream/tls.key",
@@ -1686,6 +1695,7 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption(t *testing.T) {
 		TLSProfile: TLSProfileSpec{
 			MinTLSVersion: "VersionTLS12",
 			Ciphers:       []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+			Groups:        []string{"X25519", "secp256r1"},
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
@@ -1725,6 +1735,7 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption(t *testing.T) {
 	require.Contains(t, c.Args, "-tls-client-ca-file=/var/run/ca/client/ca.crt")
 	require.Contains(t, c.Args, "-tls-min-version=VersionTLS12")
 	require.Contains(t, c.Args, "-tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+	require.Contains(t, c.Args, "-tls-curve-preferences=X25519,secp256r1")
 
 	// Verify upstream TLS args
 	require.Contains(t, c.Args, "-loki-ca-file=/var/run/ca/upstream/service-ca.crt")
@@ -1877,6 +1888,7 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testin
 				"-tls-client-ca-file=/var/run/ca/client/ca.crt",
 				"-tls-min-version=",
 				"-tls-cipher-suites=",
+				"-tls-curve-preferences=",
 			},
 			expectedVolumeMounts: []corev1.VolumeMount{
 				{
@@ -1998,6 +2010,7 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testin
 				"-tls-client-ca-file=/var/run/ca/client/ca.crt",
 				"-tls-min-version=",
 				"-tls-cipher-suites=",
+				"-tls-curve-preferences=",
 			},
 			expectedVolumeMounts: []corev1.VolumeMount{
 				{

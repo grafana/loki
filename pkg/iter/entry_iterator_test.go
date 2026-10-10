@@ -680,14 +680,14 @@ func (i *CloseTestingIterator) Close() error {
 	return nil
 }
 
-func TestNonOverlappingClose(t *testing.T) {
+func TestChainedClose(t *testing.T) {
 	a, b := &CloseTestingIterator{}, &CloseTestingIterator{}
-	itr := NewNonOverlappingIterator([]EntryIterator{a, b})
+	itr := NewChainedIterator([]EntryIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()
 
-	require.NotNil(t, itr.(*nonOverlappingIterator).curr)
+	require.NotNil(t, itr.(*chainedIterator).curr)
 
 	itr.Close()
 
@@ -962,10 +962,10 @@ func TestMergeIteratorNoDedupDifferentStructuredMetadata(t *testing.T) {
 	require.NotEqual(t, got[0].StructuredMetadata, got[1].StructuredMetadata)
 }
 
-// TestNonOverlappingIterator_ShouldSurfaceErrors verifies the entry concatenation
+// TestChainedIterator_ShouldSurfaceErrors verifies the entry concatenation
 // reports a sub-iterator failure through Err instead of treating it as normal
 // exhaustion.
-func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
+func TestChainedIterator_ShouldSurfaceErrors(t *testing.T) {
 	line := func(ts int) logproto.Entry {
 		return logproto.Entry{Timestamp: time.Unix(int64(ts), 0), Line: fmt.Sprintf("%d", ts)}
 	}
@@ -978,7 +978,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error stops iteration and is surfaced", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			failing(1, `{app="a"}`, wantErr),
 			healthy(2, `{app="b"}`),
 		})
@@ -993,7 +993,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error in the last stream is surfaced", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			healthy(1, `{app="a"}`),
 			failing(2, `{app="b"}`, wantErr),
 		})
@@ -1004,7 +1004,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 	})
 
 	t.Run("no error returns nil", func(t *testing.T) {
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			healthy(1, `{app="a"}`),
 			healthy(2, `{app="b"}`),
 		})
@@ -1019,7 +1019,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("close error surfaces through Close, not Err", func(t *testing.T) {
 		wantErr := errors.New("close boom")
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, closeErr: wantErr},
 			healthy(2, `{app="b"}`),
 		})
@@ -1032,7 +1032,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 		// The first iterator reads cleanly, then its Close fails while iterating.
 		// That is a cleanup failure, not a read failure, so iteration continues
 		// and Err stays nil.
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, closeErr: errors.New("close boom")},
 			healthy(2, `{app="b"}`),
 		})
@@ -1047,7 +1047,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("stream that errors before any entry stops immediately", func(t *testing.T) {
 		wantErr := errors.New("open failed")
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			&erroringEntryIterator{labels: `{app="a"}`, err: wantErr}, // no entries
 			healthy(2, `{app="b"}`),
 		})
@@ -1062,7 +1062,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error in a middle stream stops before later streams", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			healthy(1, `{app="a"}`),
 			failing(2, `{app="b"}`, wantErr),
 			healthy(3, `{app="c"}`),
@@ -1081,7 +1081,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 		later1 := &erroringEntryIterator{entries: []logproto.Entry{line(2)}, labels: `{app="b"}`}
 		later2 := &erroringEntryIterator{entries: []logproto.Entry{line(3)}, labels: `{app="c"}`}
 
-		it := NewNonOverlappingIterator([]EntryIterator{errored, later1, later2})
+		it := NewChainedIterator([]EntryIterator{errored, later1, later2})
 		for it.Next() { //nolint:revive
 		}
 		require.NoError(t, it.Close())
@@ -1099,7 +1099,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 		wantErr := errors.New("boom")
 		errored := &erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, err: wantErr, closeErr: wantErr}
 
-		it := NewNonOverlappingIterator([]EntryIterator{errored, healthy(2, `{app="b"}`)})
+		it := NewChainedIterator([]EntryIterator{errored, healthy(2, `{app="b"}`)})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
@@ -1108,7 +1108,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 	})
 
 	t.Run("Close surfaces every close error", func(t *testing.T) {
-		it := NewNonOverlappingIterator([]EntryIterator{
+		it := NewChainedIterator([]EntryIterator{
 			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, closeErr: errors.New("close a")},
 			&erroringEntryIterator{entries: []logproto.Entry{line(2)}, closeErr: errors.New("close b")},
 		})
@@ -1120,7 +1120,7 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("Err is stable after a read error", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingIterator([]EntryIterator{failing(1, `{app="a"}`, wantErr)})
+		it := NewChainedIterator([]EntryIterator{failing(1, `{app="a"}`, wantErr)})
 
 		for it.Next() { //nolint:revive
 		}

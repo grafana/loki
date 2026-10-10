@@ -18,14 +18,6 @@ common:
     kvstore:
       store: inmemory
 
-dataobj:
-  consumer:
-    lifecycler:
-      ring:
-        kvstore:
-          store: inmemory
-        replication_factor: 1
-
 kafka_config:
   topic: "loki"
   reader_config:

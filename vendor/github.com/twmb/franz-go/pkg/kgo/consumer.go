@@ -28,21 +28,13 @@ type Offset struct {
 
 	noReset    bool
 	afterMilli bool
-	lookback   time.Duration // for atLookback and atRewind
 }
 
-// Random negatives, only significant within this package.
-const (
-	atCommitted = -999
-	atRewind    = -998 // RewindOffset: d before the last consumed record
-	atLookback  = -997 // LookbackOffset: d before the newest record
-)
+// Random negative, only significant within this package.
+const atCommitted = -999
 
 // MarshalJSON implements json.Marshaler.
 func (o Offset) MarshalJSON() ([]byte, error) {
-	if o.at == atRewind || o.at == atLookback {
-		return fmt.Appendf(nil, `{"At":%d,"Lookback":"%s","Epoch":%d,"CurrentEpoch":%d}`, o.at, o.lookback, o.epoch, o.currentEpoch), nil
-	}
 	if o.relative == 0 {
 		return fmt.Appendf(nil, `{"At":%d,"Epoch":%d,"CurrentEpoch":%d}`, o.at, o.epoch, o.currentEpoch), nil
 	}
@@ -51,9 +43,6 @@ func (o Offset) MarshalJSON() ([]byte, error) {
 
 // String returns the offset as a string; the purpose of this is for logs.
 func (o Offset) String() string {
-	if o.at == atRewind || o.at == atLookback {
-		return fmt.Sprintf("{%d lookback %s e%d ce%d}", o.at, o.lookback, o.epoch, o.currentEpoch)
-	}
 	if o.relative == 0 {
 		return fmt.Sprintf("{%d e%d ce%d}", o.at, o.epoch, o.currentEpoch)
 	} else if o.relative > 0 {
@@ -119,29 +108,6 @@ func (o Offset) AfterMilli(millisec int64) Offset {
 	o.epoch = -1
 	o.afterMilli = true
 	return o
-}
-
-// LookbackOffset returns an offset that begins a duration before the newest
-// record in a partition: the first record stamped at or after that record's
-// timestamp minus d. This is Kafka's auto.offset.reset "by_duration".
-//
-// The newest record's timestamp comes from ListOffsets v7, Kafka 3.0
-// (KIP-734). On brokers without it, the client uses the current time minus d
-// instead.
-//
-// As a reset offset, this keeps the last d of a partition after data loss. A
-// negative duration is treated as zero. Relative and WithEpoch have no effect
-// on this offset.
-func LookbackOffset(d time.Duration) Offset {
-	return Offset{at: atLookback, epoch: -1, afterMilli: true, lookback: max(d, 0)}
-}
-
-// RewindOffset returns an offset that resumes a duration before the last
-// record the client consumed. It is only valid as a [ConsumeResetOffset]; see
-// that option. A negative duration is treated as zero. Relative and WithEpoch
-// have no effect on this offset.
-func RewindOffset(d time.Duration) Offset {
-	return Offset{at: atRewind, epoch: -1, afterMilli: true, lookback: max(d, 0)}
 }
 
 // AtStart copies 'o' and returns an offset starting at the beginning of a
@@ -212,23 +178,6 @@ func (o Offset) At(at int64) Offset {
 	}
 	o.at = at
 	return o
-}
-
-// listMilli returns the timestamp a reset by this offset lists by, given the
-// millisecond of the last record consumed. Only a by-time offset lists at all.
-func (o Offset) listMilli(lastConsumedMilli int64) int64 {
-	if o.at == atRewind {
-		return lookbackMilli(lastConsumedMilli, o.lookback)
-	}
-	return max(o.at, 1)
-}
-
-func lookbackMilli(milli int64, d time.Duration) int64 {
-	back := d.Milliseconds()
-	if milli-back > milli { // avoid wraparound on massive durations
-		return 1
-	}
-	return max(milli-back, 1) // never a reserved timestamp (-1 end, -2 start)
 }
 
 type consumer struct {
@@ -899,15 +848,6 @@ func (c *consumer) purgeTopics(topics []string) {
 	if c.g != nil {
 		c.g.mu.Lock() // required when updating using
 		defer c.g.mu.Unlock()
-		// The rebalance this purge causes commits our uncommitted
-		// offsets. By then the topic is gone from tps and uncommittedFrom
-		// cannot tell it was recreated, so we drop its offsets now.
-		tps := c.g.tps.load()
-		for _, topic := range topics {
-			if _, recreated := c.g.uncommittedFrom(tps, topic); recreated {
-				delete(c.g.uncommitted, topic)
-			}
-		}
 		c.assignPartitions(purgeAssignments, assignPurgeMatching, c.g.tps, fmt.Sprintf("purge of %v requested", topics))
 		for _, topic := range topics {
 			delete(c.g.using, topic)
@@ -1230,12 +1170,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 							// re-enable the cursor ourselves. Safe here because
 							// the session is stopped (no source can use the
 							// cursor until the new session starts).
-							//
-							// A cursor stopped by a batch over
-							// MaxDecompressBatchBytes is re-enabled
-							// the same way: the set offset is how the
-							// user skips the batch.
-							if loadOffsets.removeLoad(usedCursor.topic, usedCursor.partition) || usedCursor.fatal.Swap(false) {
+							if loadOffsets.removeLoad(usedCursor.topic, usedCursor.partition) {
 								usedCursor.allowUsable()
 							}
 						}
@@ -1556,8 +1491,12 @@ type offsetLoadMap map[string]map[int32]offsetLoad
 // offsetLoad is effectively an Offset, but also includes a potential replica
 // to directly use if a cursor had a preferred replica.
 type offsetLoad struct {
-	replica           int32 // -1 means leader
-	lastConsumedMilli int64 // for handling OffsetOutOfRange
+	replica int32 // -1 means leader
+	// ooorMilli is non-zero when we are resetting a cursor that received
+	// OFFSET_OUT_OF_RANGE while consuming: the timestamp of the last
+	// record it consumed. The offset itself is the one that was out of
+	// range. See listOffsetsForBrokerLoad.
+	ooorMilli int64
 	Offset
 }
 
@@ -2281,9 +2220,9 @@ func (s *consumerSession) handleListOrEpochResults(loaded loadedOffsets) (reload
 			s.c.usingCursors.use(load.cursor)
 		}
 
-		_, isDataLoss := errors.AsType[*ErrDataLoss](load.err)
+		var edl *ErrDataLoss
 		switch {
-		case isDataLoss:
+		case errors.As(load.err, &edl):
 			s.c.addFakeReadyForDraining(load.topic, load.partition, load.err, "notification of data loss") // signal we lost data, but set the cursor to what we can
 			use()
 
@@ -2488,12 +2427,7 @@ func alignListResps(a, b *kmsg.ListOffsetsResponse) {
 func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, load offsetLoadMap, tps *topicsPartitions, results chan<- loadedOffsets) {
 	loaded := loadedOffsets{broker: broker.meta.NodeID, loadType: loadTypeList}
 
-	lookbacks, err := cl.lookbackMillis(ctx, broker, load)
-	if err != nil {
-		results <- loaded.addAll(load.errToLoaded(err))
-		return
-	}
-	req1, req2, req3 := load.buildListReq(cl.cfg.isolationLevel, cl.cfg.resetOffset, lookbacks)
+	req1, req2, req3 := load.buildListReq(cl.cfg.isolationLevel)
 	var (
 		wg     sync.WaitGroup
 		kresp2 kmsg.Response
@@ -2595,7 +2529,6 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 
 			offset := poffset(&rPartition)
 			epoch := rPartition.LeaderEpoch
-			var err error
 			end := func() (int64, int32) {
 				p := &resp2.Topics[i].Partitions[j]
 				return poffset(p), p.LeaderEpoch
@@ -2607,58 +2540,30 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 
 			// We ensured the resp2 shape is as we want and has no
 			// error, so resp2 lookups are safe.
-			if loadPart.lastConsumedMilli != 0 {
+			if loadPart.ooorMilli != 0 {
+				// We were consuming at loadPart.at and fell out of range. We resume by the last consumed
+				// timestamp, never ahead of where we were, bounded within the log. Below the start, every record
+				// left is one we never consumed, so we resume at the start. Past the end, the broker lost data,
+				// and the timestamp is our best guess at where we were. In range means the log lost data and
+				// regrew under us: by-time re-reads what replaced our records rather than skipping them. If the
+				// by-time answer is ahead of us, the records from our offset up to it are stamped older than our
+				// last record; we never read them, so we keep our offset. If there is no by-time answer, every
+				// record left is stamped older than our last record, and we keep our offset for the same reason.
 				n := loadPart.at
 				start, startEpoch := offset, epoch
 				end, endEpoch := end()
-				if n < start {
-					// The broker deleted what we were consuming. Every record left is one we never
-					// consumed, so the start is exact: no policy, and no data loss to report beyond
-					// the warning we already logged.
-					offset, epoch = start, startEpoch
-				} else {
-					// The log shrank below us, at a point we cannot determine: the epoch path either
-					// did not run or could not answer. ConsumeResetOffset decides where we resume,
-					// and we never resume ahead of where we were. An offset we did not list, our own
-					// or one moved by a relative amount, has no epoch to validate against, so it
-					// gets -1.
-					r := cl.cfg.resetOffset
-					switch {
-					case r.at == atLookback:
-						// Keep the last d of the log, even if that is ahead of us.
-						if offset, epoch = third(); offset == -1 {
-							offset, epoch = end, endEpoch
-						}
-					case r.afterMilli || r.at == atRewind:
-						// If the by-time answer is ahead of us, the records between are
-						// stamped older than our last record and we never read them, so
-						// we keep our offset; no answer at all means the same thing.
-						offset, epoch = n, -1
-						if byTime, byTimeEpoch := third(); byTime >= 0 && byTime <= n {
-							offset, epoch = byTime, byTimeEpoch
-						}
-					case r.at == -2:
-						offset, epoch = start, startEpoch
-						if r.relative != 0 {
-							offset, epoch = offset+r.relative, -1
-						}
-					case r.at == -1:
-						offset, epoch = end, endEpoch
-						if r.relative != 0 {
-							offset, epoch = offset+r.relative, -1
-						}
-					default:
-						offset, epoch = r.at+r.relative, -1
-					}
-					if offset < start {
-						offset, epoch = start, startEpoch
-					}
-					if offset > end {
-						offset, epoch = end, endEpoch
-					}
-					err = &ErrDataLoss{topic, partition, n, loadPart.epoch, offset, epoch}
+				byTime, byTimeEpoch := third()
+				offset, epoch = n, -1
+				if byTime >= 0 && byTime < n {
+					offset, epoch = byTime, byTimeEpoch
 				}
-			} else if loadPart.afterMilli || loadPart.at == atLookback {
+				if offset < start {
+					offset, epoch = start, startEpoch
+				}
+				if offset > end {
+					offset, epoch = end, endEpoch
+				}
+			} else if loadPart.afterMilli {
 				// If after a milli, if the milli is after the
 				// end of a partition, the offset is -1. We use
 				// our end offset request: anything after the
@@ -2721,7 +2626,6 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 				cursor:      topicPartition.cursor,
 				offset:      offset,
 				leaderEpoch: epoch,
-				err:         err,
 				request:     loadPart,
 			})
 		}
@@ -2730,7 +2634,7 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 	results <- loaded.addAll(load.errToLoaded(kerr.UnknownTopicOrPartition))
 }
 
-func (cl *Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load offsetLoadMap, tps *topicsPartitions, results chan<- loadedOffsets) {
+func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load offsetLoadMap, tps *topicsPartitions, results chan<- loadedOffsets) {
 	loaded := loadedOffsets{broker: broker.meta.NodeID, loadType: loadTypeEpoch}
 
 	kresp, err := broker.waitResp(ctx, load.buildEpochReq())
@@ -2795,27 +2699,20 @@ func (cl *Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, l
 				// KIP-320 UNDEFINED_EPOCH_OFFSET: the broker has no record of the epoch we asked about. Its epoch
 				// cache is empty, or ends before the epoch we consumed at: an unclean election to a replica
 				// without history, or a leader that diverged from the one we consumed from. Asking again gets
-				// the same answer, since a leader's cache only gains the epochs it writes itself. We cannot
-				// locate where the log diverged, so we reset exactly as an out of range fetch after consuming
-				// does; see the addList closure in source.go.
-				//
-				// lastConsumedMilli is non-zero only if we consumed something. With nothing consumed there is
-				// no loss to reset from, and with NoResetOffset we never move, so in both cases we keep the
-				// offset we were validating rather than strand the cursor. If that offset is no longer in
-				// the log, the next fetch returns OFFSET_OUT_OF_RANGE and the fetch path handles it.
-				if loadPart.lastConsumedMilli != 0 && !cl.cfg.resetOffset.noReset {
-					loaded.add(loadedOffset{
-						topic:     topic,
-						partition: partition,
-						err:       errResetAfterUndefinedEpoch,
-						request: offsetLoad{
-							replica:           -1,
-							lastConsumedMilli: loadPart.lastConsumedMilli,
-							Offset:            NewOffset().At(offset).WithEpoch(loadPart.epoch),
-						},
-					})
-					continue
-				}
+				// the same answer, since a leader's cache only gains the epochs it writes itself. That is not
+				// data loss, but we can no longer trust our offset, so we reset exactly as an out of range fetch
+				// after consuming does: by the last consumed timestamp, never ahead of where we were.
+				loaded.add(loadedOffset{
+					topic:     topic,
+					partition: partition,
+					err:       errResetAfterUndefinedEpoch,
+					request: offsetLoad{
+						replica:   -1,
+						ooorMilli: loadPart.ooorMilli,
+						Offset:    NewOffset().At(offset),
+					},
+				})
+				continue
 			case rPartition.EndOffset < offset:
 				err = &ErrDataLoss{topic, partition, offset, loadPart.epoch, rPartition.EndOffset, rPartition.LeaderEpoch}
 				offset = rPartition.EndOffset
@@ -2836,89 +2733,12 @@ func (cl *Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, l
 	results <- loaded.addAll(load.errToLoaded(kerr.UnknownTopicOrPartition))
 }
 
-// lookbackMillis returns the timestamp each LookbackOffset in the load lists
-// by: the newest record's timestamp minus the duration, from ListOffsets -3
-// (v7, KIP-734). A broker without v7 answers -3 as an ordinary timestamp, so
-// we only ask when the cluster advertises v7, and a broker that still answers
-// with an error keeps the current time instead. A load with no LookbackOffset
-// costs one pass over the map.
-func (cl *Client) lookbackMillis(ctx context.Context, broker *broker, load offsetLoadMap) (map[string]map[int32]int64, error) {
-	lookback := func(l offsetLoad) (Offset, bool) {
-		offset := l.Offset
-		if l.lastConsumedMilli != 0 {
-			offset = cl.cfg.resetOffset
-		}
-		return offset, offset.at == atLookback
-	}
-	var (
-		lookbacks map[string]map[int32]int64
-		req       *kmsg.ListOffsetsRequest
-		now       int64
-	)
-	for topic, partitions := range load {
-		for partition, l := range partitions {
-			offset, ok := lookback(l)
-			if !ok {
-				continue
-			}
-			if lookbacks == nil {
-				lookbacks = make(map[string]map[int32]int64)
-				now = time.Now().UnixMilli()
-				if cl.supportsKeyVersion(int16(kmsg.ListOffsets), 7) {
-					req = kmsg.NewPtrListOffsetsRequest()
-					req.ReplicaID = -1
-					req.IsolationLevel = cl.cfg.isolationLevel
-				}
-			}
-			if lookbacks[topic] == nil {
-				lookbacks[topic] = make(map[int32]int64)
-				if req != nil {
-					t := kmsg.NewListOffsetsRequestTopic()
-					t.Topic = topic
-					req.Topics = append(req.Topics, t)
-				}
-			}
-			lookbacks[topic][partition] = lookbackMilli(now, offset.lookback)
-			if req == nil {
-				continue
-			}
-			p := kmsg.NewListOffsetsRequestTopicPartition()
-			p.Partition = partition
-			p.CurrentLeaderEpoch = l.currentEpoch
-			p.Timestamp = -3
-			t := &req.Topics[len(req.Topics)-1]
-			t.Partitions = append(t.Partitions, p)
-		}
-	}
-	if req == nil {
-		return lookbacks, nil
-	}
-	kresp, err := broker.waitResp(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	// A version-capped client, or an older broker mid-roll, negotiates
-	// below v7 and the broker answered -3 as an ordinary timestamp.
-	resp := kresp.(*kmsg.ListOffsetsResponse)
-	if resp.Version < 7 {
-		return lookbacks, nil
-	}
-	for _, t := range resp.Topics {
-		for _, p := range t.Partitions {
-			if offset, ok := lookback(load[t.Topic][p.Partition]); ok && p.ErrorCode == 0 && p.Timestamp >= 0 {
-				lookbacks[t.Topic][p.Partition] = lookbackMilli(p.Timestamp, offset.lookback)
-			}
-		}
-	}
-	return lookbacks, nil
-}
-
 // In general this returns one request, but if the user is using exact offsets
 // rather than start/end, then we issue both the start and end requests to
 // ensure the user's requested offset is within bounds. A load resetting after
 // an out of range fetch also issues a third request, listing by the
 // millisecond of the last record the cursor consumed.
-func (o offsetLoadMap) buildListReq(isolationLevel int8, reset Offset, lookbacks map[string]map[int32]int64) (r1, r2, r3 *kmsg.ListOffsetsRequest) {
+func (o offsetLoadMap) buildListReq(isolationLevel int8) (r1, r2, r3 *kmsg.ListOffsetsRequest) {
 	r1 = kmsg.NewPtrListOffsetsRequest()
 	r1.ReplicaID = -1
 	r1.IsolationLevel = isolationLevel
@@ -2944,21 +2764,13 @@ func (o offsetLoadMap) buildListReq(isolationLevel int8, reset Offset, lookbacks
 			// consuming, we issue the by-time list as well: we
 			// resume by time, bounded by the start and the end.
 			timestamp := offset.at
-			switch {
-			case offset.at == atLookback:
-				timestamp = lookbacks[topic][partition]
+			if offset.afterMilli {
 				createEnd = true
-			case offset.at == atRewind: // nothing consumed, so nothing to rewind from
-				timestamp = -2
-			case offset.afterMilli:
-				createEnd = true
-			case timestamp >= 0 || timestamp == -2 && offset.relative > 0 || timestamp == -1 && offset.relative < 0:
+			} else if timestamp >= 0 || timestamp == -2 && offset.relative > 0 || timestamp == -1 && offset.relative < 0 {
 				timestamp = -2
 				createEnd = true
 			}
-			// A reset lists by time only if the policy resuming it needs a
-			// timestamp; AtStart and AtEnd resolve from the other two lists.
-			if offset.lastConsumedMilli != 0 && (reset.afterMilli || reset.at == atRewind || reset.at == atLookback) {
+			if offset.ooorMilli != 0 {
 				createByTime = true
 			}
 			p := kmsg.NewListOffsetsRequestTopicPartition()
@@ -3007,11 +2819,8 @@ func (o offsetLoadMap) buildListReq(isolationLevel int8, reset Offset, lookbacks
 			for i := range l.Partitions {
 				p := &l.Partitions[i]
 				p.Timestamp = -1
-				if milli := o[r.Topic][p.Partition].lastConsumedMilli; milli != 0 {
-					p.Timestamp = reset.listMilli(milli)
-					if reset.at == atLookback {
-						p.Timestamp = lookbacks[r.Topic][p.Partition]
-					}
+				if milli := o[r.Topic][p.Partition].ooorMilli; milli != 0 {
+					p.Timestamp = milli
 				}
 			}
 		}

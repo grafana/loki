@@ -216,10 +216,12 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 			desc: "no V13 in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-11",
 				},
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2023-10-11",
 				},
@@ -234,6 +236,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 			desc: "with V13 not as the last element in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-11",
 				},
@@ -242,6 +245,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 					EffectiveDate: "2023-10-11",
 				},
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2024-10-11",
 				},
@@ -256,10 +260,12 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 			desc: "with V13 as the last element in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-11",
 				},
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2023-10-11",
 				},

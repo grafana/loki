@@ -46,6 +46,12 @@ func WithDataObjRangeConfig(cfg rangeio.Config) DataObjStoreOption {
 	return func(s *DataObjStore) { s.rangeConfig = cfg }
 }
 
+// WithDataObjMaxConcurrency sets how many logs sections a query scans at once. A value below one
+// becomes one.
+func WithDataObjMaxConcurrency(n int) DataObjStoreOption {
+	return func(s *DataObjStore) { s.maxConcurrency = max(n, 1) }
+}
+
 // WithDataObjStreamFilterer drops streams a request may not read.
 func WithDataObjStreamFilterer(filterer chunk.RequestChunkFilterer) DataObjStoreOption {
 	return func(s *DataObjStore) { s.filterer = filterer }
@@ -66,9 +72,10 @@ type DataObjStore struct {
 	// filterer rejects streams a request may not read. It is nil when nothing filters.
 	filterer chunk.RequestChunkFilterer
 
-	prefetchBytes int64
-	rangeConfig   rangeio.Config
-	metadataCache dataobj.MetadataCache
+	prefetchBytes  int64
+	maxConcurrency int
+	rangeConfig    rangeio.Config
+	metadataCache  dataobj.MetadataCache
 }
 
 // NewDataObjStore returns a [Store] that serves stream-first metric queries from the data objects
@@ -88,12 +95,13 @@ func NewDataObjStore(chunkStore Store, bucket objstore.BucketReader, ms metastor
 	}
 
 	s := &DataObjStore{
-		Store:         chunkStore,
-		bucket:        bucket,
-		metastore:     ms,
-		metrics:       dataobjread.NewMetrics(reg),
-		prefetchBytes: dataobjread.DefaultHeadPrefetchBytes,
-		rangeConfig:   rangeio.DefaultConfig,
+		Store:          chunkStore,
+		bucket:         bucket,
+		metastore:      ms,
+		metrics:        dataobjread.NewMetrics(reg),
+		prefetchBytes:  dataobjread.DefaultHeadPrefetchBytes,
+		maxConcurrency: dataobjread.DefaultMaxConcurrency,
+		rangeConfig:    rangeio.DefaultConfig,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -108,9 +116,9 @@ func (s *DataObjStore) String() string { return "dataobj" }
 // data objects and hands every other one to the chunk store.
 //
 // A timestamp-first request goes to the chunk store because the samples read here carry no order.
-// Each logs section is sorted, but up to [dataobjread.DefaultMaxConcurrency] of them are scanned
-// at once and whichever batch finishes first is forwarded, so the samples of one query interleave
-// across sections and objects.
+// Each logs section is sorted, but the store scans several of them at once (see
+// [WithDataObjMaxConcurrency]) and forwards whichever batch finishes first, so the samples of one
+// query interleave across sections and objects.
 func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	if req.Order != logproto.SAMPLE_ORDER_BY_STREAM {
 		return s.Store.SelectSamples(ctx, req)
@@ -178,9 +186,10 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query, but only observations recorded into the logs.RegionRead
-	// region below reach the query stats: ValueFromRegion rolls up that one name. The planner's
-	// object opens and streams reads run outside any region and go unreported.
+	// One capture spans the query. When the reader closes, it reads the query stats from the
+	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
+	// per-component object-store metrics. The planner's object opens and streams reads record
+	// into a region of their own, so only the metrics see them.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 
@@ -191,7 +200,7 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	// under logs.RowReader starts one, so without this the query's byte and row counts are lost.
 	// The region name matches what the v2 engine reads, so both report the same statistics.
 	readCtx, _ := xcap.StartRegion(ctx, logs.RegionRead)
-	reader := dataobjread.NewLogReader(readCtx, objects, tasks, dataobjread.DefaultMaxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
+	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
 
 	// Resolving no section is not an error: the reader then yields no sample and a nil error.
 	return dataobjread.NewSampleIterator(reader, extractor), nil

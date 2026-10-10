@@ -18,7 +18,7 @@ import (
 
 // fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
 // enables index-only compaction for the listed tenants (log stays off). Use
-// setLog / setIndex to adjust a tenant at runtime. The zero value enables
+// setLog to adjust a tenant at runtime. The zero value enables
 // nothing.
 type fakeLimits struct {
 	mu    sync.Mutex
@@ -44,12 +44,6 @@ func (*fakeLimits) SortSchemaLabels(string) []string {
 	return []string{"label:service_name"}
 }
 
-func (f *fakeLimits) setIndex(userID string, on bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.index[userID] = on
-}
-
 func (f *fakeLimits) setLog(userID string, on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -68,6 +62,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		},
 		PollingInterval:           defaultPollingInterval,
 		MaxRunsPerTask:            defaultMaxRunsPerTask,
+		LogMaxRunsPerTask:         defaultLogMaxRunsPerTask,
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
 		PlanVersion:               defaultPlanVersion,

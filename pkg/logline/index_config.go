@@ -31,7 +31,7 @@ type IndexConfig struct {
 	// DensityThreshold is the fraction of a full day's documents above which
 	// an n-gram is stored as match-all. 0 selects the format default.
 	DensityThreshold float64 `yaml:"density_threshold"`
-	// ShardCount is the number of n-gram shards per date. 0 or 1 disables sharding.
+	// ShardCount is the number of n-gram shards per date. Either 0 or 1 disables sharding.
 	ShardCount     int    `yaml:"shard_count"`
 	ShardAlgorithm string `yaml:"shard_algorithm"`
 }
@@ -46,7 +46,7 @@ func (c *IndexConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Float64Var(&c.DensityThreshold, prefix+".density-threshold", 0,
 		"Store n-grams covering more than this fraction of a full day's documents as match-all. 0 uses the format default (v3: 0.20).")
 	f.IntVar(&c.ShardCount, prefix+".shard-count", 0,
-		"Number of n-gram shards per date. 0 or 1 disables sharding (one file per date).")
+		"Number of n-gram shards per date. Either 0 or 1 disables sharding (one file per date).")
 	f.StringVar(&c.ShardAlgorithm, prefix+".shard-algorithm", "murmur3_mix",
 		"Shard algorithm for n-gram routing. Valid values: first_byte, murmur3_mix.")
 }

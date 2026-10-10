@@ -31,6 +31,53 @@ func TestLogRecords(t *testing.T) {
 	requireEqualLogs(t, obj)
 }
 
+func TestReadTenantStreamsAndLogs(t *testing.T) {
+	first := NewLogsFixtureBuilder(t)
+	first.ForStream(`{app="first"}`).Entry(10, "{}", "one")
+	second := NewLogsFixtureBuilder(t)
+	second.ForStream(`{app="second"}`).Entry(11, "{}", "two")
+	other := NewLogsFixtureBuilder(t)
+	other.ForStream(`{app="other"}`).Entry(12, "{}", "skip")
+
+	obj, closer := DataObject(t,
+		StreamsSection(t, "tenant", first.Streams()),
+		LogsSection(t, "tenant", first.Logs()),
+		StreamsSection(t, "other", other.Streams()),
+		LogsSection(t, "other", other.Logs()),
+		StreamsSection(t, "tenant", second.Streams()),
+		LogsSection(t, "tenant", second.Logs()),
+	)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	gotStreams := ReadTenantStreams(t, obj, "tenant")
+	require.Len(t, gotStreams, 2)
+	require.Equal(t, "first", gotStreams[0].Labels.Get("app"))
+	require.Equal(t, "second", gotStreams[1].Labels.Get("app"))
+
+	gotLogs := ReadTenantLogs(t, obj, "tenant")
+	require.Equal(t, []string{"one", "two"}, []string{string(gotLogs[0].Line), string(gotLogs[1].Line)})
+	require.Equal(t, "two", string(ReadTenantLogSection(t, obj, "tenant", 2)[0].Line))
+	gotLogs[0].Line[0] = 'X'
+	require.Equal(t, "one", string(ReadTenantLogSection(t, obj, "tenant", 0)[0].Line))
+}
+
+func TestLogFixtureBuilder_SchemaLabels(t *testing.T) {
+	b := NewLogsFixtureBuilder(t, WithSchemaLabels("label:cluster", "label:app"))
+	b.ForStream(`{app="api",cluster="prod"}`).Entry(10, "{}", "first")
+	b.ForStream(`{app="worker",cluster="dev"}`).Entry(11, "{}", "second")
+	b.ForStream(`{app="api",cluster="prod"}`).Entry(12, "{}", "third")
+
+	require.Equal(t, []string{"prod\x00api", "dev\x00worker", "prod\x00api"}, []string{
+		b.Logs()[0].SchemaKey,
+		b.Logs()[1].SchemaKey,
+		b.Logs()[2].SchemaKey,
+	})
+
+	withoutSchema := NewLogsFixtureBuilder(t)
+	withoutSchema.ForStream(`{app="api"}`).Entry(10, "{}", "no key")
+	require.Empty(t, withoutSchema.Logs()[0].SchemaKey)
+}
+
 func requireEqualStreams(t *testing.T, obj *dataobj.Object) {
 	// Verify streams
 	expectedStreams := []streams.Stream{

@@ -48,7 +48,7 @@ func (xxh *XXHZero) Size() int {
 	return 4
 }
 
-// BlockSizeIndex gives the minimum number of bytes accepted by Write().
+// BlockSize gives the minimum number of bytes accepted by Write().
 func (xxh *XXHZero) BlockSize() int {
 	return 1
 }

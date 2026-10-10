@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-type OptionFlag uint8
+type OptionFlag uint16
 
 const (
 	HTMLEscapeOption OptionFlag = 1 << iota
@@ -16,6 +16,10 @@ const (
 	ContextOption
 	NormalizeUTF8Option
 	FieldQueryOption
+	// OptimizeFieldOrderOption lets the encoder order the fields of a struct as it encodes them fastest:
+	// the fields of the same kind together, and a recursive field last. The opcodes of a type are compiled
+	// for it apart from the ones for the order of the struct.
+	OptimizeFieldOrderOption
 )
 
 type Option struct {

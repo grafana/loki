@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -47,6 +48,7 @@ func main() {
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	pathPrefix := flag.String("path-prefix", "", "Path prefix for the Loki server")
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
+	pushProtocol := flag.String("push-protocol", writer.PushProtocolLoki, "Write protocol: loki or otlp (requires -push)")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
 	keyFile := flag.String("key-file", "", "Client PEM encoded X.509 key for optional use with TLS connection to Loki")
@@ -96,6 +98,11 @@ func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
 	flag.Parse()
+
+	if err := validatePushFlags(flag.CommandLine, *push, *pushProtocol); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	if *sValue == "" {
 		*sValue = "stdout"
@@ -203,6 +210,7 @@ func main() {
 				*user, *pass,
 				&backoffCfg,
 				*logBatchSize,
+				*pushProtocol,
 				log.NewLogfmtLogger(os.Stderr),
 			)
 			if err != nil {
@@ -217,7 +225,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *pathPrefix, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels, *pushProtocol == writer.PushProtocolOTLP)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
@@ -276,4 +284,17 @@ func (c *canary) stop() {
 	c.writer = nil
 	c.reader = nil
 	c.comparator = nil
+}
+
+func validatePushFlags(flags *flag.FlagSet, push bool, protocol string) error {
+	if protocol != writer.PushProtocolLoki && protocol != writer.PushProtocolOTLP {
+		return fmt.Errorf("unsupported push protocol %q: expected loki or otlp", protocol)
+	}
+	var err error
+	flags.Visit(func(f *flag.Flag) {
+		if !push && strings.HasPrefix(f.Name, "push-") {
+			err = fmt.Errorf("-%s requires -push=true", f.Name)
+		}
+	})
+	return err
 }

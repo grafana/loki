@@ -1,5 +1,20 @@
 # Changes
 
+## 2.7.0 - 2026-09-29
+
+- Go 1.26 or later is now required. CI now tests Go 1.26 and 1.27.
+- Fixed `Reader.Verify()` rejecting a search-tree record that points to a value
+  nested in another data record. The MaxMind DB spec permits this, and
+  mmdbwriter can write such databases. GitHub #250.
+- Decoding now rejects extended type bytes 0 and 250 through 255, which the
+  MaxMind DB spec does not define. Before, they decoded as other types. For
+  example, `0x00 0xfb` decoded as a string.
+- `Reader.Verify()` now rejects a data pointer that points into the middle of a
+  field.
+- `Reader.Verify()` now also checks the metadata section. Its pointers must
+  point to the start of a field, and all data after the metadata map must be
+  valid values.
+
 ## 2.6.0 - 2026-09-07
 
 - Fixed a denial-of-service issue where a crafted database could use repeated

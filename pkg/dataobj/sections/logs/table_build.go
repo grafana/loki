@@ -13,7 +13,7 @@ import (
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
-func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder) *table {
+func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder, dropDuplicates bool) *table {
 	sortRecords(records, sortOrder)
 
 	buf.Reset()
@@ -27,11 +27,13 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 	var prev Record
 	row := 0
 	for _, record := range records {
-		if equalRecords(prev, record) {
-			// Skip equal records
-			continue
+		if dropDuplicates {
+			if equalRecords(prev, record) {
+				// Skip equal records
+				continue
+			}
+			prev = record
 		}
-		prev = record
 
 		// Append only fails if given out-of-order data, where the provided row
 		// number is less than the previous row number. That can't happen here, so

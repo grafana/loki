@@ -658,9 +658,13 @@ type ObjectStorageSchemaVersion string
 
 const (
 	// ObjectStorageSchemaV11 when using v11 for the storage schema
+	//
+	// Deprecated: ObjectStorageSchemaV11 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.
 	ObjectStorageSchemaV11 ObjectStorageSchemaVersion = "v11"
 
 	// ObjectStorageSchemaV12 when using v12 for the storage schema
+	//
+	// Deprecated: ObjectStorageSchemaV12 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
 
 	// ObjectStorageSchemaV13 when using v13 for the storage schema
@@ -693,10 +697,9 @@ type ObjectStorageSchema struct {
 type ObjectStorageSpec struct {
 	// Schemas for reading and writing logs.
 	//
-	// +optional
-	// +kubebuilder:validation:Optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems:=1
-	// +kubebuilder:default:={{version:v11,effectiveDate:"2020-10-11"}}
 	Schemas []ObjectStorageSchema `json:"schemas"`
 
 	// Secret for object storage authentication.

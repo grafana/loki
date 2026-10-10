@@ -235,7 +235,7 @@ type limiter struct {
 	n int
 }
 
-func (l *limiter) MaxQuerySeries(_ context.Context, _ string) int {
+func (l *limiter) MaxQuerySeries(_ string) int {
 	return l.n
 }
 
@@ -253,6 +253,10 @@ func (l *limiter) BlockedQueries(_ context.Context, _ string) []*validation.Bloc
 
 func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
+}
+
+func (l *limiter) StreamFirstExecutionEnabled(_ string) bool {
+	return false
 }
 
 func (l *limiter) DebugEngineTasks(_ string) bool {

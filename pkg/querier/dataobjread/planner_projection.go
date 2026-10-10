@@ -49,14 +49,6 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		needMessage bool
 		anyWithout  bool
 
-		// canError records a failure that survives to the output labels.
-		//
-		// A failure keeps every label: LabelsBuilder.GroupedLabels returns the whole set when
-		// the builder holds an error, so the error is not lost along with the labels the
-		// grouping would drop. So such a query cannot have its metadata narrowed, whatever its
-		// grouping says. See [canErrorInOrder] for what stops a failure surviving.
-		canError bool
-
 		// queryDerivesLabels and deleteDerivesLabels record a parser, formatter or other stage
 		// that builds labels out of the line. They are tracked apart because they have
 		// different consequences: either one forces every metadata column to be read, but only
@@ -74,7 +66,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	)
 
 	addMetadataName := func(name string) {
-		if name == "" || isPipelineErrorLabel(name) {
+		if name == "" || logqlmodel.IsPipelineErrorLabel(name) {
 			return
 		}
 		metadataNames[name] = struct{}{}
@@ -111,16 +103,11 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 			if typed.Operation == syntax.OpRangeTypeBytes || typed.Operation == syntax.OpRangeTypeBytesRate {
 				needMessage = true
 			}
-			if typed.Left != nil {
-				if canErrorInOrder(typed.Left.Left, typed.Left.Unwrap) {
-					canError = true
-				}
-				if typed.Left.Unwrap != nil {
-					addMetadataName(typed.Left.Unwrap.Identifier)
-					for _, filter := range typed.Left.Unwrap.PostFilters {
-						for _, name := range filter.RequiredLabelNames() {
-							addMetadataName(name)
-						}
+			if typed.Left != nil && typed.Left.Unwrap != nil {
+				addMetadataName(typed.Left.Unwrap.Identifier)
+				for _, filter := range typed.Left.Unwrap.PostFilters {
+					for _, name := range filter.RequiredLabelNames() {
+						addMetadataName(name)
 					}
 				}
 			}
@@ -161,21 +148,20 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	walkStages(selector, true, &queryDerivesLabels)
 	for _, del := range deletes {
 		walkStages(del, false, &deleteDerivesLabels)
-		// A delete's pipeline runs against the same line, so its failures reach the same output
-		// labels. It carries no unwrap.
-		if canErrorInOrder(del, nil) {
-			canError = true
-		}
 	}
 
 	derivesLabels := queryDerivesLabels || deleteDerivesLabels
 	plan := ProjectionPlan{
 		needMessage: needMessage || derivesLabels,
 		// The output carries names that cannot be listed ahead of time unless the top-level
-		// aggregation reduces it to a known label set and no stage can fail.
-		needAllMetadata: derivesLabels || anyWithout || canError || !reducesOutputLabels(expr),
+		// aggregation reduces it to a known label set.
+		needAllMetadata: derivesLabels || anyWithout || !reducesOutputLabels(expr),
 	}
 	if !plan.needAllMetadata {
+		// A metadata key named after an error label sets the pipeline error, the same way a
+		// failed stage does. So read those columns even when the query does not name them.
+		metadataNames[logqlmodel.ErrorLabel] = struct{}{}
+		metadataNames[logqlmodel.ErrorDetailsLabel] = struct{}{}
 		plan.metadataNames = slices.Sorted(maps.Keys(metadataNames))
 	}
 	if !queryDerivesLabels {
@@ -280,67 +266,6 @@ func metadataPredicate(matcher *labels.Matcher) logs.RowPredicate {
 	}
 }
 
-// canErrorInOrder reports whether a failure of the pipeline's label filters, or of its unwrap,
-// survives to the output labels.
-//
-// A parser or a formatter can fail too. Those are not considered here, because the caller reads
-// every metadata column for them anyway.
-//
-// It follows the order the stages run in, which is not the order a plan walks the expression: the
-// pipeline stages first, then the unwrap, then the unwrap's own filters. That order decides the
-// answer, because a filter that keeps only the lines carrying no error clears every failure set
-// before it and none set after it. So `| unwrap x | __error__=""` cannot fail, while
-// `| __error__="" | unwrap x` still can.
-func canErrorInOrder(sel syntax.LogSelectorExpr, unwrap *syntax.UnwrapExpr) bool {
-	var canError bool
-	apply := func(filter logqllog.LabelFilterer) {
-		switch {
-		// A label filter never adds, removes or replaces a real label, so the only label it can
-		// modify is the pipeline error one. Its own hint therefore answers whether it can fail,
-		// and a filter type added later cannot be forgotten here.
-		case filter.Hints().CanModifyLabels:
-			canError = true
-		case dropsErroredLines(filter):
-			canError = false
-		}
-	}
-
-	if pipeline, ok := sel.(*syntax.PipelineExpr); ok {
-		for _, stage := range pipeline.MultiStages {
-			if filter, ok := stage.(*syntax.LabelFilterExpr); ok {
-				apply(filter.LabelFilterer)
-			}
-		}
-	}
-	if unwrap == nil {
-		return canError
-	}
-
-	// An unwrap converts a label to a number, which fails on a value that is not one. It runs
-	// after the whole pipeline, so it fails whatever the stages before it dropped.
-	canError = true
-	for _, filter := range unwrap.PostFilters {
-		apply(filter)
-	}
-	return canError
-}
-
-// dropsErroredLines reports whether a label filter keeps only the lines that carry no pipeline
-// error.
-//
-// Only an equality against an empty value does. A filter selecting one error keeps the lines
-// carrying it, and a negation keeps the lines carrying a different one, so neither clears a
-// failure.
-func dropsErroredLines(filter logqllog.LabelFilterer) bool {
-	typed, ok := filter.(*logqllog.LineFilterLabelFilter)
-	if !ok || typed.Matcher == nil {
-		return false
-	}
-	return typed.Name == logqlmodel.ErrorLabel &&
-		typed.Type == labels.MatchEqual &&
-		typed.Value == ""
-}
-
 // reducesOutputLabels reports whether the top-level aggregation of expr reduces the output to a
 // label set that can be listed ahead of time, so unreferenced metadata cannot surface.
 func reducesOutputLabels(expr syntax.SampleExpr) bool {
@@ -393,21 +318,14 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 	return nil
 }
 
+// pushdownCandidate returns matcher as a pushdown candidate, or nil when it is not one.
 func pushdownCandidate(matcher *labels.Matcher) []*labels.Matcher {
-	if matcher == nil || isPipelineErrorLabel(matcher.Name) {
+	// A filter on an error label reads the error the builder holds, not a column. A failed stage
+	// or a stored metadata key can set that error, so a predicate on the column does not match the
+	// filter. Pushing one down would drop rows the pipeline keeps, and handing one to the metastore
+	// would drop sections the query needs.
+	if matcher == nil || logqlmodel.IsPipelineErrorLabel(matcher.Name) {
 		return nil
 	}
 	return []*labels.Matcher{matcher}
-}
-
-// isPipelineErrorLabel reports whether a name is one of the labels the pipeline sets when a
-// stage fails.
-//
-// A filter on one of them reads the error the builder holds, never a stored column, so none is a
-// metadata matcher in any direction: pushing one down would filter rows against a column no
-// object has, and handing one to the metastore would drop every section.
-func isPipelineErrorLabel(name string) bool {
-	return name == logqlmodel.ErrorLabel ||
-		name == logqlmodel.ErrorDetailsLabel ||
-		name == logqlmodel.PreserveErrorLabel
 }

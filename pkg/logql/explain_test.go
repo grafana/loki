@@ -24,7 +24,7 @@ func TestExplain(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	defaultEv := NewDefaultEvaluator(querier, 30*time.Second, 10_000)
+	defaultEv := NewDefaultEvaluator(querier, 30*time.Second, 10_000, NoLimits)
 	downEv := &DownstreamEvaluator{Downstreamer: MockDownstreamer{regular}, defaultEvaluator: defaultEv}
 
 	strategy := NewPowerOfTwoStrategy(ConstantShards(4))
@@ -39,7 +39,7 @@ func TestExplain(t *testing.T) {
 		limit:       1000,
 	}
 
-	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params)
+	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params, true)
 	require.NoError(t, err)
 
 	tree := NewTree()

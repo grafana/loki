@@ -8,8 +8,8 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -87,7 +87,7 @@ func encodeLogsParquetTo(response *LokiResponse, w io.Writer) error {
 	writer := parquet.NewGenericWriter[LogStreamRowType](w, schema)
 
 	for _, stream := range response.Data.Result {
-		lbls, err := parser.NewParser(parser.Options{}).ParseMetric(stream.Labels)
+		lbls, err := syntax.ParseMetric(stream.Labels)
 		if err != nil {
 			return err
 		}

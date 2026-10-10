@@ -1168,6 +1168,16 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 }
 
+func Test_codec_hints_EncodeRequest(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	got, err := DefaultCodec.EncodeRequest(ctx, &logproto.LoglineIndexRequest{
+		Expr: `{job="foo"}`,
+	})
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.ErrorContains(t, err, "LoglineIndexRequest requires frontend.encoding=protobuf")
+}
+
 func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
 	toEncode := &logproto.VolumeRequest{
@@ -2073,6 +2083,7 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"sectionsResolutionMaxTime": 0,
 					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0,
 					"wireBytesTransferred": 0
@@ -2118,6 +2129,7 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"sectionsResolutionMaxTime": 0,
 					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0,
 					"wireBytesTransferred": 0
@@ -2249,7 +2261,9 @@ var (
 			"queueTime": 21,
 			"shards": 0,
 			"splits": 0,
+			"streamFirstQueries": 0,
 			"subqueries": 0,
+			"timestampFirstQueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25,

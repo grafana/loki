@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -95,10 +95,20 @@ type IndexMergeObserver interface {
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
-// LogMergeObserver receives per-task compaction summaries from LogMerge.
+// LogMergeObserver receives LogMerge statistics from one worker thread.
 type LogMergeObserver interface {
+	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
+
+	// ObserveLogMergeInputBytes receives the size of a batch of merged records
+	// while the task runs. It reports during the task, not once at the end,
+	// so that rate() stays steady for tasks that run for many minutes.
+	ObserveLogMergeInputBytes(bytes int64)
 }
+
+// NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
+// with the given index.
+type NewLogMergeObserverFunc func(thread int) LogMergeObserver
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
@@ -219,6 +229,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	case *physical.SortObject:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeSortObject(n))
+	case *physical.IndexFilter:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexFilter(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}

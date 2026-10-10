@@ -125,17 +125,18 @@ func (p *Processor) processPendingNotifications(
 		// see if we should skip this notification
 		notificationName, err := rd.PeekPushNotificationName()
 		if err != nil {
-			// Name too long to peek: consume & dispatch below rather than leave the
-			// frame at the buffer head (which would stall and desync the next reply).
-			if !errors.Is(err, proto.ErrPushNotificationNameTooLong) {
-				if bufferedContinuation {
-					if isTimeoutError(err) {
-						return nil
-					}
-					return err
-				}
-				break
+			// A buffered probe stops cleanly when no full frame is available yet.
+			if bufferedContinuation && isTimeoutError(err) {
+				return nil
 			}
+			// The frame is a CONFIRMED push (peeked above) but its name cannot be
+			// peeked — too long, or a non-string / malformed name. Fall through to
+			// ReadReply to CONSUME it. Do NOT break: that leaves the push at the
+			// buffer head for the caller's reply read to eat as the command value
+			// (cache poison / one-frame reply shift). A genuine mid-frame read error
+			// surfaces at ReadReply below (fatal → the reply-expected drain retires
+			// the conn); a non-string name is gracefully ignored (the type assertion
+			// below fails, so no handler runs).
 		} else if willHandleNotificationInClient(notificationName) {
 			break
 		}

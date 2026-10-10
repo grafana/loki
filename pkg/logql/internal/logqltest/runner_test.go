@@ -514,13 +514,13 @@ func TestComparators_ValuesToleration(t *testing.T) {
 }
 
 func TestEffectiveEpsilon(t *testing.T) {
-	exp := expectations{valuesToleration: map[string]float64{directStackName: 0.1}}
+	exp := expectations{valuesToleration: map[string]float64{directTimestampFirstStackName: 0.1}}
 
-	require.Equal(t, 0.1, effectiveEpsilon(exp, directStackName))
+	require.Equal(t, 0.1, effectiveEpsilon(exp, directTimestampFirstStackName))
 	// A stack not named in a values-toleration directive keeps the tight default, rather than
 	// inheriting a toleration meant for a different stack.
-	require.Equal(t, defaultEpsilon, effectiveEpsilon(exp, queryFrontendShardStackName))
-	require.Equal(t, defaultEpsilon, effectiveEpsilon(expectations{}, directStackName))
+	require.Equal(t, defaultEpsilon, effectiveEpsilon(exp, queryFrontendShardTimestampFirstStackName))
+	require.Equal(t, defaultEpsilon, effectiveEpsilon(expectations{}, directTimestampFirstStackName))
 }
 
 // oneStreamWithMetadata builds a single-stream, single-line expectation carrying one structured

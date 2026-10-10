@@ -48,20 +48,56 @@ func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestQuantileSketchStepEvaluatorError(t *testing.T) {
-	iter := errorRangeVectorIterator{
-		result: ProbabilisticQuantileVector([]ProbabilisticQuantileSample{
-			{T: 43, F: nil, Metric: labels.FromStrings(logqlmodel.ErrorLabel, "my error")},
-		}),
-	}
-	ev := QuantileSketchStepEvaluator{
-		iter: iter,
-	}
-	ok, _, _ := ev.Next()
-	require.False(t, ok)
+func TestQuantileSketchStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and records the pipeline error from an errored sample", func(t *testing.T) {
+		iter := errorRangeVectorIterator{
+			result: ProbabilisticQuantileVector([]ProbabilisticQuantileSample{
+				{T: 43, F: nil, Metric: labels.FromStrings(logqlmodel.ErrorLabel, "my error")},
+			}),
+		}
+		ev := QuantileSketchStepEvaluator{iter: iter}
 
-	err := ev.Error()
-	require.ErrorContains(t, err, "my error")
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorContains(t, ev.Error(), "my error")
+	})
+
+	t.Run("returns false and records the error when the iterator succeeds but carries an error", func(t *testing.T) {
+		innerErr := errors.New("iterator failed mid-iteration")
+		iter := errorRangeVectorIterator{
+			result: ProbabilisticQuantileVector{
+				{T: 0, F: sketch.NewTDigestSketch(), Metric: labels.FromStrings("foo", "bar")},
+			},
+			err: innerErr,
+		}
+		ev := &QuantileSketchStepEvaluator{iter: iter}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call the iterator again", func(t *testing.T) {
+		calls := 0
+		innerErr := errors.New("iterator failed mid-iteration")
+		iter := errorRangeVectorIterator{
+			result: ProbabilisticQuantileVector{
+				{T: 0, F: sketch.NewTDigestSketch(), Metric: labels.FromStrings("foo", "bar")},
+			},
+			err:    innerErr,
+			onNext: func() { calls++ },
+		}
+		ev := &QuantileSketchStepEvaluator{iter: iter}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
 }
 
 func TestJoinQuantileSketchVectorError(t *testing.T) {
@@ -73,34 +109,89 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
-func TestQuantileSketchVectorStepEvaluator_Next_ShouldSurfaceUnderlyingError(t *testing.T) {
-	// DDSketchQuantile.Quantile never errors today (it returns NaN/±Inf at the edges
-	// instead), so this uses a TDigestQuantile sample, whose Quantile still rejects a
-	// quantile outside (0, 1).
-	//
-	// We still want to preserve this test to protect for future regressions in case
-	// DDSketchQuantile.Quantile implementation will change.
-	inner := &QuantileSketchStepEvaluator{
-		iter: errorRangeVectorIterator{
-			result: ProbabilisticQuantileVector{
-				{T: 0, F: sketch.NewTDigestSketch(), Metric: labels.FromStrings("foo", "bar")},
+func TestQuantileSketchVectorStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and records the error when computing a step's quantile fails", func(t *testing.T) {
+		// DDSketchQuantile.Quantile never errors today (it returns NaN/±Inf at the edges
+		// instead), so this uses a TDigestQuantile sample, whose Quantile still rejects a
+		// quantile outside (0, 1).
+		//
+		// We still want to preserve this test to protect for future regressions in case
+		// DDSketchQuantile.Quantile implementation will change.
+		inner := &QuantileSketchStepEvaluator{
+			iter: errorRangeVectorIterator{
+				result: ProbabilisticQuantileVector{
+					{T: 0, F: sketch.NewTDigestSketch(), Metric: labels.FromStrings("foo", "bar")},
+				},
 			},
-		},
-	}
+		}
 
-	ev := NewQuantileSketchVectorStepEvaluator(inner, -0.1)
+		ev := NewQuantileSketchVectorStepEvaluator(inner, -0.1)
 
-	ok, _, _ := ev.Next()
-	require.False(t, ok)
-	require.Error(t, ev.Error())
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Error(t, ev.Error())
+	})
+
+	t.Run("returns false and surfaces the error when the inner evaluator succeeds but carries an error", func(t *testing.T) {
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: ProbabilisticQuantileVector{}, err: innerErr}
+
+		ev := NewQuantileSketchVectorStepEvaluator(inner, 0.5)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call the inner evaluator again", func(t *testing.T) {
+		calls := 0
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: ProbabilisticQuantileVector{}, err: innerErr, onNext: func() error { calls++; return nil }}
+
+		ev := NewQuantileSketchVectorStepEvaluator(inner, 0.5)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+}
+
+func TestQuantileSketchVectorStepEvaluator_Close(t *testing.T) {
+	t.Run("delegates to the inner evaluator", func(t *testing.T) {
+		closes := 0
+		inner := &fakeEvaluator{onClose: func() { closes++ }}
+
+		ev := NewQuantileSketchVectorStepEvaluator(inner, 0.5)
+
+		require.NoError(t, ev.Close())
+		require.Equal(t, 1, closes)
+	})
+
+	t.Run("returns the error from closing the inner evaluator", func(t *testing.T) {
+		closeErr := errors.New("failed to close inner evaluator")
+		inner := &fakeEvaluator{closeErr: closeErr}
+
+		ev := NewQuantileSketchVectorStepEvaluator(inner, 0.5)
+
+		require.ErrorIs(t, ev.Close(), closeErr)
+	})
 }
 
 type errorRangeVectorIterator struct {
 	err    error
 	result StepResult
+	onNext func()
 }
 
 func (e errorRangeVectorIterator) Next() bool {
+	if e.onNext != nil {
+		e.onNext()
+	}
 	return e.result != nil
 }
 

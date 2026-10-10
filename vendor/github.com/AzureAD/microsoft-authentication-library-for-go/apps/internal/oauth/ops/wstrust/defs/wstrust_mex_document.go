@@ -112,11 +112,12 @@ func bindings(defs Definitions, policies map[string]endpointType) (map[string]ws
 				bindingName := binding.Name
 				specVersion := binding.Operation.Operation.SoapAction
 
-				if specVersion == trust13Spec {
+				switch specVersion {
+				case trust13Spec:
 					bindings[bindingName] = wsEndpointData{Trust13, policy}
-				} else if specVersion == trust2005Spec {
+				case trust2005Spec:
 					bindings[bindingName] = wsEndpointData{Trust2005, policy}
-				} else {
+				default:
 					return nil, errors.New("found unknown spec version in mex document")
 				}
 			}

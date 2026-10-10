@@ -71,6 +71,12 @@ TEXT ·ChecksumZero(SB), NOSPLIT, $0-28
 	ADD x1, p, pend
 	AND $15, n, n
 
+	// The loop body is 68 bytes; aligning it keeps it in two 64-byte
+	// fetch lines wherever the linker places this function. Unaligned, it
+	// can straddle three, which cost ~5% of frame decoding on Graviton 5
+	// when an unrelated change moved it. PCALIGN also raises the function's
+	// alignment to 64 bytes.
+	PCALIGN $64
 loop16:
 	round16
 	CMP pend, p
@@ -148,6 +154,8 @@ blocks:
 	CMP pend, p
 	BHS store
 
+	// See loop16 in ChecksumZero.
+	PCALIGN $64
 loop:
 	round16
 	CMP pend, p

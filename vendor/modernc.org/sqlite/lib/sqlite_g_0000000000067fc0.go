@@ -8,11 +8,7 @@ const __DEC_EVAL_METHOD__ = 2
 
 const __FLT32X_DECIMAL_DIG__ = 17
 
-const __FLT32X_DENORM_MIN__ = 0
-
 const __FLT32X_DIG__ = 15
-
-const __FLT32X_EPSILON__ = 0
 
 const __FLT32X_HAS_DENORM__ = 1
 
@@ -26,23 +22,13 @@ const __FLT32X_MAX_10_EXP__ = 308
 
 const __FLT32X_MAX_EXP__ = 1024
 
-const __FLT32X_MAX__ = 0
-
 const __FLT32X_MIN_10_EXP__ = -307
 
 const __FLT32X_MIN_EXP__ = -1021
 
-const __FLT32X_MIN__ = 0
-
-const __FLT32X_NORM_MAX__ = 0
-
 const __FLT32_DECIMAL_DIG__ = 9
 
-const __FLT32_DENORM_MIN__ = 0
-
 const __FLT32_DIG__ = 6
-
-const __FLT32_EPSILON__ = 0
 
 const __FLT32_HAS_DENORM__ = 1
 
@@ -56,23 +42,13 @@ const __FLT32_MAX_10_EXP__ = 38
 
 const __FLT32_MAX_EXP__ = 128
 
-const __FLT32_MAX__ = 0
-
 const __FLT32_MIN_10_EXP__ = -37
 
 const __FLT32_MIN_EXP__ = -125
 
-const __FLT32_MIN__ = 0
-
-const __FLT32_NORM_MAX__ = 0
-
 const __FLT64_DECIMAL_DIG__ = 17
 
-const __FLT64_DENORM_MIN__ = 0
-
 const __FLT64_DIG__ = 15
-
-const __FLT64_EPSILON__ = 0
 
 const __FLT64_HAS_DENORM__ = 1
 
@@ -86,15 +62,19 @@ const __FLT64_MAX_10_EXP__ = 308
 
 const __FLT64_MAX_EXP__ = 1024
 
-const __FLT64_MAX__ = 0
-
 const __FLT64_MIN_10_EXP__ = -307
 
 const __FLT64_MIN_EXP__ = -1021
 
-const __FLT64_MIN__ = 0
+const __FLT_DENORM_MIN__ = 1.401298464324817e-45
 
-const __FLT64_NORM_MAX__ = 0
+const __FLT_EPSILON__ = 1.1920928955078125e-07
+
+const __FLT_MAX__ = 3.4028234663852886e+38
+
+const __FLT_MIN__ = 1.1754943508222875e-38
+
+const __FLT_NORM_MAX__ = 3.4028234663852886e+38
 
 const __GCC_IEC_559 = 2
 
@@ -108,4 +88,4 @@ const __SCHAR_WIDTH__ = 8
 
 const __SIG_ATOMIC_MIN__ = -2147483648
 
-const __SIG_ATOMIC_TYPE__ = 0
+const __SIG_ATOMIC_TYPE__ = "int"

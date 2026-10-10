@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -54,6 +55,67 @@ func TestCountDistinctSketchVectorMerge(t *testing.T) {
 	}
 	require.Equal(t, uint64(3), byVersion["1"])
 	require.Equal(t, uint64(1), byVersion["2"])
+}
+
+func TestCountDistinctSketchVectorStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and surfaces the error when the inner evaluator succeeds but carries an error", func(t *testing.T) {
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}, err: innerErr}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+
+	t.Run("reports no error when the inner evaluator succeeds cleanly", func(t *testing.T) {
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.True(t, ok)
+		require.NoError(t, ev.Error())
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call the inner evaluator again", func(t *testing.T) {
+		calls := 0
+		innerErr := errors.New("inner evaluator failed mid-iteration")
+		inner := &fakeEvaluator{ok: true, result: CountDistinctSketchVector{}, err: innerErr, onNext: func() error { calls++; return nil }}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, calls)
+		require.ErrorIs(t, ev.Error(), innerErr)
+	})
+}
+
+func TestCountDistinctSketchVectorStepEvaluator_Close(t *testing.T) {
+	t.Run("delegates to the inner evaluator", func(t *testing.T) {
+		closes := 0
+		inner := &fakeEvaluator{onClose: func() { closes++ }}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		require.NoError(t, ev.Close())
+		require.Equal(t, 1, closes)
+	})
+
+	t.Run("returns the error from closing the inner evaluator", func(t *testing.T) {
+		closeErr := errors.New("failed to close inner evaluator")
+		inner := &fakeEvaluator{closeErr: closeErr}
+
+		ev := NewCountDistinctSketchVectorStepEvaluator(inner)
+
+		require.ErrorIs(t, ev.Close(), closeErr)
+	})
 }
 
 func TestCountDistinctSketchMatrixMerge(t *testing.T) {
@@ -166,7 +228,7 @@ func TestCountDistinctSketchEvalNilMergeExpr(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params)
+	_, err = ev.NewStepEvaluator(context.Background(), nil, &CountDistinctSketchEvalExpr{}, params, true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing merge expression")
 }
@@ -427,12 +489,12 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	step, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = step.Close() })
 	okNext, _, result := step.Next()
@@ -468,12 +530,12 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 	require.True(t, ok)
 	sketch := syntax.NewCountDistinctSketchFromLabelAggregation(parsed)
 
-	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000)
+	ev := NewDefaultEvaluator(q, 5*time.Minute, 10_000, NoLimits)
 	sketchParams := ParamsWithExpressionOverride{
 		Params:             params,
 		ExpressionOverride: sketch,
 	}
-	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams)
+	stepEv, err := ev.NewStepEvaluator(user.InjectOrgID(context.Background(), "fake"), ev, sketch, sketchParams, true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stepEv.Close() })
 

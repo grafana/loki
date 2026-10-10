@@ -130,7 +130,7 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 		b = fsBucket
 		// Use the same defaults as metastore.Config.RegisterFlagsWithPrefix.
 		// --dir assumes no StorageBucketPrefix is in play.
-		mCfg = metastore.Config{IndexStoragePrefix: "index/v0", PartitionRatio: 10}
+		mCfg = metastore.Config{IndexStoragePrefix: "index/v0"}
 
 	case *cmd.lokiConfigFile != "":
 		if *cmd.tenant == "" {

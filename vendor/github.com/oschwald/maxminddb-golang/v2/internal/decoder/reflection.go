@@ -276,7 +276,10 @@ func (d *ReflectionDecoder) structFieldValueIsInlineContainer(offset uint) bool 
 		ctrlByte := d.buffer[offset]
 		if ctrlByte>>5 == byte(KindMap) ||
 			(ctrlByte>>5 == byte(KindExtended) && offset+1 < uint(len(d.buffer)) &&
-				(d.buffer[offset+1] == byte(KindMap-7) ||
+				// Extended type byte 0 is not a valid type, but the
+				// budgeted skip rejects it, while nextValueOffset would
+				// skip it as a scalar.
+				(d.buffer[offset+1] == 0 ||
 					d.buffer[offset+1] == byte(KindSlice-7))) {
 			return true
 		}
@@ -399,8 +402,7 @@ func (d *ReflectionDecoder) nextValueOffsetBudgetedSlow(
 
 func wrapRootDecodeError(err error, offset uint) error {
 	// Check if error already has context (including path), if so just add offset if missing
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
 		if contextErr.Offset != 0 || offset == 0 {
 			return err
 		}
@@ -600,8 +602,7 @@ func wrapErrorWithPath(err error, prepend func(*mmdberrors.PathBuilder)) error {
 		return nil
 	}
 
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
 		pathBuilder := mmdberrors.NewPathBuilder()
 		if contextErr.Path != "" && contextErr.Path != "/" {
 			pathBuilder.ParseAndExtend(contextErr.Path)
@@ -1020,12 +1021,9 @@ func (d *ReflectionDecoder) unmarshalPointer(
 
 	// Check for pointer-to-pointer by looking at what we're about to decode
 	// This is done efficiently by checking the control byte at the pointer location
+	// An extended type cannot encode a pointer, so only the control byte can.
 	controlByte := d.buffer[pointer]
-	kind := Kind(controlByte >> 5)
-	if kind == KindExtended && pointer+1 < uint(len(d.buffer)) {
-		kind = Kind(d.buffer[pointer+1] + 7)
-	}
-	if kind == KindPointer {
+	if Kind(controlByte>>5) == KindPointer {
 		return 0, mmdberrors.NewInvalidDatabaseError(
 			"invalid pointer to pointer at offset %d",
 			pointer,
@@ -1808,11 +1806,12 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 		switch fieldInfo.dispatch {
 		case dispatchFast:
 			if len(fieldInfo.index) == 0 {
-				if fastOffset, ok := d.tryFastDecodeTyped(
+				fastOffset, ok := d.tryFastDecodeTyped(
 					offset,
 					fieldValue,
 					fieldInfo.fieldType,
-				); ok {
+				)
+				if ok {
 					offset = fastOffset
 					continue
 				}
@@ -1917,8 +1916,7 @@ func (d *ReflectionDecoder) decodeValueMaxSize(
 		}
 		value, next, err := cursor.ReadStringMaxSize(maximum)
 		if err != nil {
-			var mismatch UnexpectedKindError
-			if errors.As(err, &mismatch) {
+			if _, ok := errors.AsType[UnexpectedKindError](err); ok {
 				return d.decodeValueSkipUnmarshaler(offset, result, depth)
 			}
 			return 0, err

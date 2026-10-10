@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/builder"
+	"github.com/grafana/loki/v3/pkg/logline/correctness"
 	"github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 )
@@ -24,6 +25,9 @@ type Config struct {
 
 	// Query is the logline read path config.
 	Query queryfrontend.Config `yaml:"query"`
+
+	// Correctness is the logline correctness config.
+	Correctness correctness.Config `yaml:"correctness"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -31,6 +35,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Store.RegisterFlags(f)
 	cfg.Builder.RegisterFlagsWithPrefix("logline-builder", f)
 	cfg.Query.RegisterFlagsWithPrefix("logline-query", f)
+	cfg.Correctness.RegisterFlagsWithPrefix("logline-correctness", f)
 }
 
 // ValidateBuilder checks the config index building needs.
@@ -63,4 +68,20 @@ func (cfg *Config) ValidateQueryConfig() error {
 		return fmt.Errorf("invalid query config: %w", err)
 	}
 	return nil
+}
+
+// ValidateCorrectness checks the config the correctness target needs.
+//
+// Correctness.QueryIngestersWithin must already hold a copy of
+// querier.query_ingesters_within. NgramLength and Store.QueryIngestersWithin
+// are filled at construction in initLoglineCorrectness, not here. Validation
+// applies defaults as a side effect, so it must run before the config is used.
+func (cfg *Config) ValidateCorrectness() error {
+	if err := cfg.Index.Validate(); err != nil {
+		return fmt.Errorf("invalid index config: %w", err)
+	}
+	if err := cfg.Store.Validate(); err != nil {
+		return fmt.Errorf("invalid store config: %w", err)
+	}
+	return cfg.Correctness.Validate()
 }

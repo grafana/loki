@@ -70,7 +70,7 @@ func TestBackfillShardContext(t *testing.T) {
 func TestParseRequest_BackfillShard(t *testing.T) {
 	const lokiBody = `{"streams":[{"stream":{"foo":"bar"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
 
-	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.PushRequest, error) {
+	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.InternalPushRequest, error) {
 		streamResolver := newMockStreamResolver("fake", limits)
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, r, limits, nil, parser, NewMockTracker(), streamResolver, "", "loki")
 		return data, err
@@ -102,7 +102,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 	})
 
 	t.Run("otlp: header adds backfill labels", func(t *testing.T) {
-		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), ParseOTLPRequest, &fakeLimits{enabled: true})
+		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), NewOTLPRequestParser(false), &fakeLimits{enabled: true})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -129,7 +129,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 		// index label could smuggle it in without this check.
 		req, err := parse(
 			newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1", constants.BackfillLabel, "true"), ""),
-			ParseOTLPRequest,
+			NewOTLPRequestParser(false),
 			&fakeLimits{enabled: true, indexAttributes: []string{constants.BackfillLabel}},
 		)
 		require.Error(t, err)
@@ -148,7 +148,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 
 		stats := NewPushStats()
 		streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-		_, err := otlpToLokiPushRequest(context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+		_, err := otlpToLokiPushRequest(context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reserved")
 	})
@@ -156,7 +156,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 	t.Run("otlp: restrictive tenant config cannot drop backfill labels", func(t *testing.T) {
 		// Service-name discovery is off and the only indexed attribute does not match the resource,
 		// so without injection this stream would carry no index labels at all.
-		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), ParseOTLPRequest, &fakeLimits{enabled: false, indexAttributes: []string{"nonexistent"}})
+		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), NewOTLPRequestParser(false), &fakeLimits{enabled: false, indexAttributes: []string{"nonexistent"}})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -184,12 +184,12 @@ func TestOTLPBackfillLabelsOnCombinedStreams(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 	ctx := InjectBackfillShardContext(context.Background(), testBackfillShard)
 
-	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP, false)
 	require.NoError(t, err)
 
 	nonEmpty := 0
 	for _, s := range pushReq.Streams {
-		if len(s.Entries) == 0 {
+		if s.EntryCount() == 0 {
 			continue
 		}
 		nonEmpty++

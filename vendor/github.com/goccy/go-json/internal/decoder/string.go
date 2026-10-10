@@ -2,10 +2,11 @@ package decoder
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"math/bits"
 	"reflect"
-	"unicode"
-	"unicode/utf16"
+	"strconv"
 	"unicode/utf8"
 	"unsafe"
 
@@ -15,12 +16,15 @@ import (
 type stringDecoder struct {
 	structName string
 	fieldName  string
+	// typ is the type of the string, which the type errors report.
+	typ reflect.Type
 }
 
 func newStringDecoder(structName, fieldName string) *stringDecoder {
 	return &stringDecoder{
 		structName: structName,
 		fieldName:  fieldName,
+		typ:        reflect.TypeOf(""),
 	}
 }
 
@@ -34,30 +38,26 @@ func (d *stringDecoder) errUnmarshalType(typeName string, offset int64) *errors.
 	}
 }
 
-func (d *stringDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) error {
-	bytes, err := d.decodeStreamByte(s)
-	if err != nil {
-		return err
-	}
-	if bytes == nil {
-		return nil
-	}
-	**(**string)(unsafe.Pointer(&p)) = *(*string)(unsafe.Pointer(&bytes))
-	s.reset()
-	return nil
-}
-
 func (d *stringDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
-	bytes, c, err := d.decodeByte(ctx.Buf, cursor)
+	var (
+		s   string
+		c   int64
+		ok  bool
+		err error
+	)
+	buf := ctx.Buf
+	if start := skipWhiteSpace(buf, cursor); buf[start] == '"' {
+		s, c, ok, err = d.decodeStringField(ctx, start+1)
+	} else {
+		s, c, ok, err = d.decodeStringValue(ctx, cursor)
+	}
 	if err != nil {
 		return 0, err
 	}
-	if bytes == nil {
-		return c, nil
+	if ok {
+		**(**string)(unsafe.Pointer(&p)) = s
 	}
-	cursor = c
-	**(**string)(unsafe.Pointer(&p)) = *(*string)(unsafe.Pointer(&bytes))
-	return cursor, nil
+	return c, nil
 }
 
 func (d *stringDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][]byte, int64, error) {
@@ -98,281 +98,453 @@ var (
 	}
 )
 
-func unicodeToRune(code []byte) rune {
-	var r rune
-	for i := 0; i < len(code); i++ {
-		r = r*16 + rune(hexToInt[code[i]])
-	}
-	return r
+var runeErrBytes = []byte(string(utf8.RuneError))
+
+// stringInfo is what scanString found in a string.
+type stringInfo struct {
+	// firstEscape is the offset of the first backslash in the bytes of the string, or -1 if it has no escape:
+	// its bytes are the ones of the value then.
+	firstEscape int
+	// nonASCII is whether a byte of the string is not ASCII: the string may be invalid UTF-8.
+	nonASCII bool
 }
 
-func readAtLeast(s *Stream, n int64, p *unsafe.Pointer) bool {
-	for s.cursor+n >= s.length {
-		if !s.read() {
-			return false
-		}
-		*p = s.bufptr()
+// decodeByte returns the bytes of the string at cursor, or nil for null: a part of buf, or a slice of their own if
+// the string has an escape or invalid UTF-8 ( see decodeLiteral ).
+func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, error) {
+	literal, next, info, err := d.scanString(buf, cursor)
+	if next < 0 {
+		literal, next, info, err = d.scanStringRest(buf, literal, -next-1, info)
 	}
-	return true
+	if err != nil || literal == nil {
+		return literal, next, err
+	}
+	return decodeLiteral(literal, info), next, nil
 }
 
-func decodeUnicodeRune(s *Stream, p unsafe.Pointer) (rune, int64, unsafe.Pointer, error) {
-	const defaultOffset = 5
-	const surrogateOffset = 11
-
-	if !readAtLeast(s, defaultOffset, &p) {
-		return rune(0), 0, nil, errors.ErrInvalidCharacter(s.char(), "escaped string", s.totalOffset())
+// unescapeLong returns the string of the literal, which has an escape and is too long for the arena: it is decoded
+// into the scratch bytes of the context, and copied, so that the bytes of the string are not zeroed before they are
+// written, and the buffer is not written.
+func (ctx *RuntimeContext) unescapeLong(literal []byte, info stringInfo) string {
+	if len(literal) > maxUnescapeScratchSize {
+		decoded := decodeLiteral(literal, info)
+		return unsafe.String(unsafe.SliceData(decoded), len(decoded))
 	}
-
-	r := unicodeToRune(s.buf[s.cursor+1 : s.cursor+defaultOffset])
-	if utf16.IsSurrogate(r) {
-		if !readAtLeast(s, surrogateOffset, &p) {
-			return unicode.ReplacementChar, defaultOffset, p, nil
-		}
-		if s.buf[s.cursor+defaultOffset] != '\\' || s.buf[s.cursor+defaultOffset+1] != 'u' {
-			return unicode.ReplacementChar, defaultOffset, p, nil
-		}
-		r2 := unicodeToRune(s.buf[s.cursor+defaultOffset+2 : s.cursor+surrogateOffset])
-		if r := utf16.DecodeRune(r, r2); r != unicode.ReplacementChar {
-			return r, surrogateOffset, p, nil
-		}
+	if cap(ctx.unescaped) < len(literal) {
+		ctx.unescaped = make([]byte, len(literal))
 	}
-	return r, defaultOffset, p, nil
+	n := unescapeTo(unsafe.Pointer(unsafe.SliceData(ctx.unescaped)), literal, info.firstEscape)
+	decoded := ctx.unescaped[:n]
+	if info.nonASCII && !utf8.Valid(decoded) {
+		return string(coerceUTF8(decoded))
+	}
+	return string(decoded)
 }
 
-func decodeUnicode(s *Stream, p unsafe.Pointer) (unsafe.Pointer, error) {
-	const backSlashAndULen = 2 // length of \u
+// decodeLiteral decodes the escapes of the literal and replaces its invalid UTF-8, into a slice of its own if it
+// has any: the buffer is never written, so that it keeps the input, which is checked again for a syntax error
+// ( see Stream.decodeError ).
+func decodeLiteral(literal []byte, info stringInfo) []byte {
+	if info.firstEscape >= 0 {
+		out := make([]byte, len(literal))
+		literal = out[:unescapeTo(unsafe.Pointer(unsafe.SliceData(out)), literal, info.firstEscape)]
+	}
+	if info.nonASCII && !utf8.Valid(literal) {
+		literal = coerceUTF8(literal)
+	}
+	return literal
+}
 
-	r, offset, pp, err := decodeUnicodeRune(s, p)
+// validLiteral returns the literal of a string without an escape, whose bytes are not all ASCII, with its invalid
+// UTF-8 replaced ( see decodeLiteral ).
+func validLiteral(literal []byte) []byte {
+	if !utf8.Valid(literal) {
+		return coerceUTF8(literal)
+	}
+	return literal
+}
+
+// decodeStringValue is decodeString for the value of a string: a value of another kind is a type error, which is
+// recorded, and skipped ( see skipOtherValue ). It is a function of its own, so that the decoding of the other
+// strings, as the keys, is the one it was, and that Decode keeps nothing across its call.
+func (d *stringDecoder) decodeStringValue(ctx *RuntimeContext, cursor int64) (string, int64, bool, error) {
+	literal, next, info, err := d.scanString(ctx.Buf, cursor)
+	if next < 0 {
+		return d.decodeStringRest(ctx, literal, -next-1, info)
+	}
 	if err != nil {
-		return nil, err
+		return d.skipOtherValue(ctx, err)
 	}
-	unicode := []byte(string(r))
-	unicodeLen := int64(len(unicode))
-	s.buf = append(append(s.buf[:s.cursor-1], unicode...), s.buf[s.cursor+offset:]...)
-	unicodeOrgLen := offset - 1
-	s.length = s.length - (backSlashAndULen + (unicodeOrgLen - unicodeLen))
-	s.cursor = s.cursor - backSlashAndULen + unicodeLen
-	return pp, nil
-}
-
-func decodeEscapeString(s *Stream, p unsafe.Pointer) (unsafe.Pointer, error) {
-	s.cursor++
-RETRY:
-	switch s.buf[s.cursor] {
-	case '"':
-		s.buf[s.cursor] = '"'
-	case '\\':
-		s.buf[s.cursor] = '\\'
-	case '/':
-		s.buf[s.cursor] = '/'
-	case 'b':
-		s.buf[s.cursor] = '\b'
-	case 'f':
-		s.buf[s.cursor] = '\f'
-	case 'n':
-		s.buf[s.cursor] = '\n'
-	case 'r':
-		s.buf[s.cursor] = '\r'
-	case 't':
-		s.buf[s.cursor] = '\t'
-	case 'u':
-		return decodeUnicode(s, p)
-	case nul:
-		if !s.read() {
-			return nil, errors.ErrInvalidCharacter(s.char(), "escaped string", s.totalOffset())
+	if literal == nil {
+		return "", next, false, nil
+	}
+	if info.firstEscape >= 0 && len(literal) <= maxArenaStringSize {
+		// an escaped string is decoded into the arena, out of the buffer, which is never written
+		dst := ctx.reserveArena(len(literal))
+		n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, info.firstEscape)
+		decoded := dst[:n]
+		if info.nonASCII && !utf8.Valid(decoded) {
+			return string(coerceUTF8(decoded)), next, true, nil
 		}
-		p = s.bufptr()
-		goto RETRY
-	default:
-		return nil, errors.ErrUnexpectedEndOfJSON("string", s.totalOffset())
+		ctx.arena = ctx.arena[:len(ctx.arena)+n]
+		return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
 	}
-	s.buf = append(s.buf[:s.cursor-1], s.buf[s.cursor:]...)
-	s.length--
-	s.cursor--
-	p = s.bufptr()
-	return p, nil
+	if info.firstEscape >= 0 {
+		return ctx.unescapeLong(literal, info), next, true, nil
+	}
+	if info.nonASCII {
+		literal = validLiteral(literal)
+	}
+	return ctx.makeString(literal), next, true, nil
 }
 
-var (
-	runeErrBytes    = []byte(string(utf8.RuneError))
-	runeErrBytesLen = int64(len(runeErrBytes))
-)
-
-func stringBytes(s *Stream) ([]byte, error) {
-	_, cursor, p := s.stat()
-	cursor++ // skip double quote char
-	start := cursor
+// decodeStringField is decodeStringValue for the string whose bytes start at start, after its quote, which the decoder
+// of a string field decodes. Its words are looked at for their end, an escape and a control byte, and, until the
+// first one is met, a byte which is not ASCII: the words of a plain ASCII string are looked at for nothing more, and
+// its bytes are the string. An escape is validated where it is met, and a byte which is not ASCII makes the words
+// look past such bytes, so that any string is scanned once. The string is then decoded as decodeStringValue decodes
+// it: a short escaped string into the arena, a long one from where the words stop ( see decodeStringRest ). Where
+// the CPU has a SIMD scan, the words are looked at in the first 64 bytes only, after which a long string is scanned
+// by SIMD. An error in the string is a syntax error of the string.
+func (d *stringDecoder) decodeStringField(ctx *RuntimeContext, start int64) (string, int64, bool, error) {
+	buf := ctx.Buf
+	b := (*sliceHeader)(unsafe.Pointer(&buf)).data
+	buflen := int64(len(buf))
+	cursor := start
+	wordsEnd := buflen
+	if hasStringSIMD {
+		wordsEnd = min(buflen, start+64)
+	}
+	// The words of a plain ASCII string, which most are, are looked at by this loop, which keeps nothing else: the
+	// loop below goes on from the byte it stops at, which is not read again.
+	for cursor+8 <= wordsEnd {
+		w := load64(buf, cursor)
+		if stop := keyEndBytes(w) | w&msb; stop != 0 {
+			cursor += int64(bits.TrailingZeros64(stop) / 8)
+			if char(b, cursor) == '"' {
+				return ctx.makeString(buf[start:cursor]), cursor + 1, true, nil
+			}
+			break
+		}
+		cursor += 8
+	}
+	firstEscape := int64(-1)
+	nonASCII := false
+	// ascii are the top bits which stop the words at a byte which is not ASCII, until the first one is met.
+	ascii := uint64(msb)
 	for {
-		switch char(p, cursor) {
-		case '\\':
-			s.cursor = cursor
-			pp, err := decodeEscapeString(s, p)
-			if err != nil {
-				return nil, err
+		c := char(b, cursor)
+		switch {
+		case c == '"':
+			literal, next := buf[start:cursor], cursor+1
+			if firstEscape < 0 {
+				if nonASCII {
+					literal = validLiteral(literal)
+				}
+				return ctx.makeString(literal), next, true, nil
 			}
-			p = pp
-			cursor = s.cursor
-		case '"':
-			literal := s.buf[start:cursor]
+			if len(literal) <= maxArenaStringSize {
+				// an escaped string is decoded into the arena, out of the buffer, which is never written
+				dst := ctx.reserveArena(len(literal))
+				n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, int(firstEscape))
+				decoded := dst[:n]
+				if nonASCII && !utf8.Valid(decoded) {
+					return string(coerceUTF8(decoded)), next, true, nil
+				}
+				ctx.arena = ctx.arena[:len(ctx.arena)+n]
+				return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
+			}
+			return ctx.unescapeLong(literal, stringInfo{firstEscape: int(firstEscape), nonASCII: nonASCII}), next, true, nil
+		case c == '\\':
+			if firstEscape < 0 {
+				firstEscape = cursor - start
+			}
 			cursor++
-			s.cursor = cursor
-			return literal, nil
-		case
-			// 0x00 is nul, 0x5c is '\\', 0x22 is '"' .
-			0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, // 0x00-0x0F
-			0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, // 0x10-0x1F
-			0x20, 0x21 /*0x22,*/, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, // 0x20-0x2F
-			0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, // 0x30-0x3F
-			0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, // 0x40-0x4F
-			0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B /*0x5C,*/, 0x5D, 0x5E, 0x5F, // 0x50-0x5F
-			0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, // 0x60-0x6F
-			0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F: // 0x70-0x7F
-			// character is ASCII. skip to next char
-		case
-			0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, // 0x80-0x8F
-			0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, // 0x90-0x9F
-			0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF, // 0xA0-0xAF
-			0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, // 0xB0-0xBF
-			0xC0, 0xC1, // 0xC0-0xC1
-			0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF: // 0xF5-0xFE
-			// character is invalid
-			s.buf = append(append(append([]byte{}, s.buf[:cursor]...), runeErrBytes...), s.buf[cursor+1:]...)
-			_, _, p = s.stat()
-			cursor += runeErrBytesLen
-			s.length += runeErrBytesLen
-			continue
-		case nul:
-			s.cursor = cursor
-			if s.read() {
-				_, cursor, p = s.stat()
-				continue
+			switch char(b, cursor) {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				cursor++
+			case 'u':
+				if cursor+5 >= buflen {
+					return "", 0, false, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
+				}
+				for i := int64(1); i <= 4; i++ {
+					c := char(b, cursor+i)
+					if !(('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')) {
+						return "", 0, false, errors.ErrSyntax(fmt.Sprintf("json: invalid character %c in \\u hexadecimal character escape", c), cursor+i)
+					}
+				}
+				cursor += 5
+			default:
+				return "", 0, false, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
 			}
-			goto ERROR
-		case 0xEF:
-			// RuneError is {0xEF, 0xBF, 0xBD}
-			if s.buf[cursor+1] == 0xBF && s.buf[cursor+2] == 0xBD {
-				// found RuneError: skip
-				cursor += 2
+		case c >= 0x80:
+			nonASCII, ascii = true, 0
+			cursor++
+		case c == nul:
+			return "", 0, false, errors.ErrUnexpectedEndOfJSON("string", cursor)
+		case c < 0x20:
+			return "", 0, false, errors.ErrSyntax(fmt.Sprintf("invalid character %s in string literal", quoteChar(c)), cursor+1)
+		default:
+			// the words stopped where they may not be read, not at a byte to look at
+			if wordsEnd != buflen {
+				// the words stopped at wordsEnd, not at a byte to look at: the rest is scanned by SIMD
+				return d.decodeStringRest(ctx, buf[start:cursor], cursor, stringInfo{firstEscape: int(firstEscape), nonASCII: nonASCII})
+			}
+			cursor++
+		}
+		for cursor+8 <= wordsEnd {
+			w := load64(buf, cursor)
+			if stop := keyEndBytes(w) | w&ascii; stop != 0 {
+				cursor += int64(bits.TrailingZeros64(stop) / 8)
 				break
 			}
-			fallthrough
-		default:
-			// multi bytes character
-			if !utf8.FullRune(s.buf[cursor : len(s.buf)-1]) {
-				s.cursor = cursor
-				if s.read() {
-					_, cursor, p = s.stat()
-					continue
-				}
-				goto ERROR
-			}
-			r, size := utf8.DecodeRune(s.buf[cursor:])
-			if r == utf8.RuneError {
-				s.buf = append(append(append([]byte{}, s.buf[:cursor]...), runeErrBytes...), s.buf[cursor+1:]...)
-				cursor += runeErrBytesLen
-				s.length += runeErrBytesLen
-				_, _, p = s.stat()
-			} else {
-				cursor += int64(size)
-			}
-			continue
+			cursor += 8
 		}
-		cursor++
 	}
-ERROR:
-	return nil, errors.ErrUnexpectedEndOfJSON("string", s.totalOffset())
 }
 
-func (d *stringDecoder) decodeStreamByte(s *Stream) ([]byte, error) {
-	for {
-		switch s.char() {
-		case ' ', '\n', '\t', '\r':
-			s.cursor++
-			continue
-		case '[':
-			return nil, d.errUnmarshalType("array", s.totalOffset())
-		case '{':
-			return nil, d.errUnmarshalType("object", s.totalOffset())
-		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return nil, d.errUnmarshalType("number", s.totalOffset())
-		case '"':
-			return stringBytes(s)
-		case 'n':
-			if err := nullBytes(s); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		case nul:
-			if s.read() {
-				continue
-			}
+// skipOtherValue returns the error of scanString for a value which is not a string, or, for a value of another
+// kind, which scanString reports by an error at its position, records its type error and skips it. The skipped
+// value is not nested in the ones before it: its depth is counted from 0.
+//
+//go:noinline
+func (d *stringDecoder) skipOtherValue(ctx *RuntimeContext, err error) (string, int64, bool, error) {
+	var cursor int64
+	switch e := err.(type) {
+	case *errors.UnmarshalTypeError:
+		// a number, an array or an object
+		cursor = e.Offset
+	case *errors.SyntaxError:
+		// true and false start no string
+		if c := ctx.Buf[e.Offset]; c != 't' && c != 'f' {
+			return "", 0, false, err
 		}
-		break
+		cursor = e.Offset
+	default:
+		return "", 0, false, err
 	}
-	return nil, errors.ErrInvalidBeginningOfValue(s.char(), s.totalOffset())
+	next, err := ctx.skipTypeError(cursor, 0, d.typ)
+	return "", next, false, err
 }
 
-func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, error) {
+// decodeString returns the string at cursor as a value to store, and false for null.
+// An escaped string is decoded out of the buffer directly.
+func (d *stringDecoder) decodeString(ctx *RuntimeContext, cursor int64) (string, int64, bool, error) {
+	literal, next, info, err := d.scanString(ctx.Buf, cursor)
+	if next < 0 {
+		literal, next, info, err = d.scanStringRest(ctx.Buf, literal, -next-1, info)
+	}
+	if err != nil || literal == nil {
+		return "", next, false, err
+	}
+	if info.firstEscape >= 0 && len(literal) <= maxArenaStringSize {
+		// an escaped string is decoded into the arena, out of the buffer, which is never written
+		dst := ctx.reserveArena(len(literal))
+		n := unescapeTo(unsafe.Pointer(unsafe.SliceData(dst)), literal, info.firstEscape)
+		decoded := dst[:n]
+		if info.nonASCII && !utf8.Valid(decoded) {
+			return string(coerceUTF8(decoded)), next, true, nil
+		}
+		ctx.arena = ctx.arena[:len(ctx.arena)+n]
+		return unsafe.String(unsafe.SliceData(decoded), n), next, true, nil
+	}
+	if info.firstEscape >= 0 {
+		return ctx.unescapeLong(literal, info), next, true, nil
+	}
+	if info.nonASCII {
+		literal = validLiteral(literal)
+	}
+	return ctx.makeString(literal), next, true, nil
+}
+
+// plainStringEnd returns the position of the quote which ends the string whose bytes start at start, if its bytes
+// are all ASCII and none of them is escaped, and -1 for any other string, which the caller decodes by decodeString.
+// Most of the keys and many of the values are such strings: this is their scan alone, eight bytes at a time, with
+// nothing to keep about the bytes it passes. A word is read only where the buffer has room for it, so that a string
+// at the end of the buffer is left to decodeString too.
+func plainStringEnd(buf []byte, start int64) int64 {
+	cursor := start
+	buflen := int64(len(buf))
+	for cursor+8 <= buflen {
+		w := load64(buf, cursor)
+		// keyEndBytes has no false bit before its first true one, and none at a byte which is not ASCII, which the top
+		// bits add: the first bit is the first byte which ends the plain bytes.
+		if stop := keyEndBytes(w) | w&msb; stop != 0 {
+			cursor += int64(bits.TrailingZeros64(stop) / 8)
+			if buf[cursor] == '"' {
+				return cursor
+			}
+			return -1
+		}
+		cursor += 8
+	}
+	return -1
+}
+
+// scanString finds the string at cursor, and returns its bytes as they are in buf, the position after it and
+// what it found in it, or nil for null.
+//
+// Most strings are short, and scanned by its loop, which calls nothing so that it keeps its values in the
+// registers. After 64 bytes of plain bytes, it stops and returns the bytes of the string so far, -1 minus the
+// position it stopped at, and what it found so far: the caller continues the scan by scanStringRest, which scans
+// the runs of plain bytes of a long string by SIMD where the CPU has it. The position is negative so that the
+// result has no field more, whose return every string would pay for.
+func (d *stringDecoder) scanString(buf []byte, cursor int64) ([]byte, int64, stringInfo, error) {
 	for {
 		switch buf[cursor] {
 		case ' ', '\n', '\t', '\r':
 			cursor++
 		case '[':
-			return nil, 0, d.errUnmarshalType("array", cursor)
+			return nil, 0, stringInfo{}, d.errUnmarshalType("array", cursor)
 		case '{':
-			return nil, 0, d.errUnmarshalType("object", cursor)
+			return nil, 0, stringInfo{}, d.errUnmarshalType("object", cursor)
 		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return nil, 0, d.errUnmarshalType("number", cursor)
+			return nil, 0, stringInfo{}, d.errUnmarshalType("number", cursor)
 		case '"':
 			cursor++
 			start := cursor
 			b := (*sliceHeader)(unsafe.Pointer(&buf)).data
-			escaped := 0
+			buflen := int64(len(buf))
+			firstEscape := int64(-1)
+			// high accumulates the bytes of the string: it is not zero if one of them is not ASCII.
+			var high uint64
+			// The words are read up to wordsEnd: the end of the buffer, or, where the CPU has a SIMD scan, 64
+			// bytes after the start, after which the rest of a long string is left to scanStringRest ( see
+			// scanString ). It is looked at once for a string, not for every word.
+			wordsEnd := buflen
+			if hasStringSIMD {
+				wordsEnd = min(buflen, start+64)
+			}
 			for {
-				switch char(b, cursor) {
+				// The words with nothing to look at are skipped eight bytes at a time: a word is read only where
+				// the buffer has room for it, so that its end is scanned byte by byte.
+				for cursor+8 <= wordsEnd {
+					w := load64(buf, cursor)
+					if special := keyEndBytes(w); special != 0 {
+						i := int64(bits.TrailingZeros64(special) / 8)
+						high |= w & msb & (1<<(uint(i)*8&63) - 1)
+						cursor += i
+						break
+					}
+					high |= w & msb
+					cursor += 8
+				}
+				c := char(b, cursor)
+				switch c {
 				case '\\':
-					escaped++
+					if firstEscape < 0 {
+						firstEscape = cursor - start
+					}
 					cursor++
 					switch char(b, cursor) {
 					case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
 						cursor++
 					case 'u':
-						buflen := int64(len(buf))
 						if cursor+5 >= buflen {
-							return nil, 0, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
+							return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
 						}
 						for i := int64(1); i <= 4; i++ {
 							c := char(b, cursor+i)
 							if !(('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')) {
-								return nil, 0, errors.ErrSyntax(fmt.Sprintf("json: invalid character %c in \\u hexadecimal character escape", c), cursor+i)
+								return nil, 0, stringInfo{}, errors.ErrSyntax(fmt.Sprintf("json: invalid character %c in \\u hexadecimal character escape", c), cursor+i)
 							}
 						}
 						cursor += 5
 					default:
-						return nil, 0, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
+						return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
 					}
-					continue
 				case '"':
-					literal := buf[start:cursor]
-					if escaped > 0 {
-						literal = literal[:unescapeString(literal)]
-					}
-					cursor++
-					return literal, cursor, nil
+					return buf[start:cursor], cursor + 1, stringInfo{firstEscape: int(firstEscape), nonASCII: high&msb != 0}, nil
 				case nul:
-					return nil, 0, errors.ErrUnexpectedEndOfJSON("string", cursor)
+					return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("string", cursor)
+				default:
+					if c < 0x20 {
+						return nil, 0, stringInfo{}, errors.ErrSyntax(fmt.Sprintf("invalid character %s in string literal", quoteChar(c)), cursor+1)
+					}
+					if wordsEnd != buflen {
+						// the words stopped at wordsEnd, not at a byte to look at
+						return buf[start:cursor], -cursor - 1, stringInfo{firstEscape: int(firstEscape), nonASCII: high&msb != 0}, nil
+					}
+					high |= uint64(c)
+					cursor++
 				}
-				cursor++
 			}
 		case 'n':
 			if err := validateNull(buf, cursor); err != nil {
-				return nil, 0, err
+				return nil, 0, stringInfo{}, err
 			}
 			cursor += 4
-			return nil, cursor, nil
+			return nil, cursor, stringInfo{}, nil
 		default:
-			return nil, 0, errors.ErrInvalidBeginningOfValue(buf[cursor], cursor)
+			return nil, 0, stringInfo{}, errors.ErrInvalidBeginningOfValue(buf[cursor], cursor)
+		}
+	}
+}
+
+// scanStringRest continues the scan of a long string from where scanString stopped, which returned the bytes
+// of the string so far, the position it stopped at and what it found so far: the runs of plain bytes are scanned
+// by SIMD ( see indexStringSpecial ), and a run near the end of the buffer by words. The escapes are validated as
+// scanString does.
+func (d *stringDecoder) scanStringRest(buf, literal []byte, cursor int64, info stringInfo) ([]byte, int64, stringInfo, error) {
+	start := cursor - int64(len(literal))
+	firstEscape := int64(info.firstEscape)
+	var high uint64
+	if info.nonASCII {
+		high = msb
+	}
+	b := (*sliceHeader)(unsafe.Pointer(&buf)).data
+	buflen := int64(len(buf))
+	for {
+		if i, h, ok := indexStringSpecial(unsafe.Add(b, cursor), int(buflen-cursor)); ok {
+			high |= h
+			cursor += int64(i)
+		} else {
+			for cursor+8 <= buflen {
+				w := load64(buf, cursor)
+				if special := keyEndBytes(w); special != 0 {
+					i := int64(bits.TrailingZeros64(special) / 8)
+					high |= w & msb & (1<<(uint(i)*8&63) - 1)
+					cursor += i
+					break
+				}
+				high |= w & msb
+				cursor += 8
+			}
+		}
+		c := char(b, cursor)
+		switch c {
+		case '\\':
+			if firstEscape < 0 {
+				firstEscape = cursor - start
+			}
+			cursor++
+			switch char(b, cursor) {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				cursor++
+			case 'u':
+				if cursor+5 >= buflen {
+					return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
+				}
+				for i := int64(1); i <= 4; i++ {
+					c := char(b, cursor+i)
+					if !(('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')) {
+						return nil, 0, stringInfo{}, errors.ErrSyntax(fmt.Sprintf("json: invalid character %c in \\u hexadecimal character escape", c), cursor+i)
+					}
+				}
+				cursor += 5
+			default:
+				return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
+			}
+		case '"':
+			return buf[start:cursor], cursor + 1, stringInfo{firstEscape: int(firstEscape), nonASCII: high&msb != 0}, nil
+		case nul:
+			return nil, 0, stringInfo{}, errors.ErrUnexpectedEndOfJSON("string", cursor)
+		default:
+			if c < 0x20 {
+				return nil, 0, stringInfo{}, errors.ErrSyntax(fmt.Sprintf("invalid character %s in string literal", quoteChar(c)), cursor+1)
+			}
+			high |= uint64(c)
+			cursor++
 		}
 	}
 }
@@ -389,15 +561,66 @@ var unescapeMap = [256]byte{
 }
 
 func unsafeAdd(ptr unsafe.Pointer, offset int) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(ptr) + uintptr(offset))
+	return unsafe.Add(ptr, offset)
 }
 
-func unescapeString(buf []byte) int {
+// copyToBackslash copies the bytes from src up to the first backslash of the n bytes, or all of them, to dst, and
+// returns how many it copied: bytes.IndexByte and copy go by vectors. It is not inlined, so that unescapeTo keeps
+// its registers for the short runs, which most are.
+//
+//go:noinline
+func copyToBackslash(dst, src unsafe.Pointer, n int) int {
+	rest := unsafe.Slice((*byte)(src), n)
+	if i := bytes.IndexByte(rest, '\\'); i >= 0 {
+		n = i
+	}
+	copy(unsafe.Slice((*byte)(dst), n), rest[:n])
+	return n
+}
+
+// unescapeTo decodes the escapes of the bytes of an escaped string into out, which has room for as many bytes and
+// is not the bytes themselves, and returns the length of the result, which is at most the length of the bytes.
+//
+// first is the offset of the first backslash, which scanString found.
+func unescapeTo(out unsafe.Pointer, buf []byte, first int) int {
 	p := (*sliceHeader)(unsafe.Pointer(&buf)).data
 	end := unsafeAdd(p, len(buf))
-	src := unsafeAdd(p, bytes.IndexByte(buf, '\\'))
-	dst := src
+	// the bytes before the first escape, by words: a short string is not worth a call of memmove.
+	i := 0
+	for ; i+8 <= first; i += 8 {
+		*(*uint64)(unsafeAdd(out, i)) = *(*uint64)(unsafeAdd(p, i))
+	}
+	for ; i < first; i++ {
+		*(*byte)(unsafeAdd(out, i)) = *(*byte)(unsafeAdd(p, i))
+	}
+	src := unsafeAdd(p, first)
+	dst := unsafeAdd(out, first)
 	for src != end {
+		// The bytes up to the next backslash are copied eight at a time, from the words which are all in the
+		// string. A word is written whole, and the output goes on to its backslash: out has the length of buf, and
+		// is never ahead of the bytes read, so that a word written at dst ends before out does. A run longer than
+		// two words is looked through by bytes.IndexByte and moved by copy, which go by vectors.
+		for words := 0; *(*byte)(src) != '\\' && uintptr(src)+8 <= uintptr(end); words++ {
+			if words == 2 {
+				n := copyToBackslash(dst, src, int(uintptr(end)-uintptr(src)))
+				src = unsafeAdd(src, n)
+				dst = unsafeAdd(dst, n)
+				break
+			}
+			w := binary.LittleEndian.Uint64((*[8]byte)(src)[:])
+			binary.LittleEndian.PutUint64((*[8]byte)(dst)[:], w)
+			if backslash := firstByteMask(w, '\\'); backslash != 0 {
+				n := bits.TrailingZeros64(backslash) / 8
+				src = unsafeAdd(src, n)
+				dst = unsafeAdd(dst, n)
+				break
+			}
+			src = unsafeAdd(src, 8)
+			dst = unsafeAdd(dst, 8)
+		}
+		if src == end {
+			break
+		}
 		c := char(src, 0)
 		if c == '\\' {
 			escapeChar := char(src, 1)
@@ -448,5 +671,40 @@ func unescapeString(buf []byte) int {
 			dst = unsafeAdd(dst, 1)
 		}
 	}
-	return int(uintptr(dst) - uintptr(p))
+	return int(uintptr(dst) - uintptr(out))
+}
+
+// firstByteMask returns the word which has the top bit of the first byte of w which is c, if it has one, and maybe
+// the top bits of bytes after it: a subtraction borrows from the next byte only at a byte which is c.
+func firstByteMask(w, c uint64) uint64 {
+	x := w ^ (c * lsb)
+	return (x - lsb) &^ x & msb
+}
+
+// coerceUTF8 returns a copy of the literal in which every byte of an invalid UTF-8 sequence
+// is replaced by utf8.RuneError, as encoding/json does.
+func coerceUTF8(literal []byte) []byte {
+	out := make([]byte, 0, len(literal)+2*utf8.UTFMax)
+	for i := 0; i < len(literal); {
+		r, size := utf8.DecodeRune(literal[i:])
+		if r == utf8.RuneError && size == 1 {
+			out = append(out, runeErrBytes...)
+		} else {
+			out = append(out, literal[i:i+size]...)
+		}
+		i += size
+	}
+	return out
+}
+
+// quoteChar formats c as a quoted character literal, as encoding/json does in its errors.
+func quoteChar(c byte) string {
+	if c == '\'' {
+		return `'\''`
+	}
+	if c == '"' {
+		return `'"'`
+	}
+	s := strconv.Quote(string(c))
+	return "'" + s[1:len(s)-1] + "'"
 }

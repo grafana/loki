@@ -4,6 +4,6 @@
 
 package sqlite3
 
-const __const = 0
+const __const = "const"
 
-const __signed = 0
+const __signed = "signed"

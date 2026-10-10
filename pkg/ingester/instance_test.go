@@ -1991,3 +1991,72 @@ func assertStreamFirstOrder(t *testing.T, got []receivedSample) map[uint64]struc
 
 	return seen
 }
+
+func TestInstance_PolicyStreamLimitBuckets(t *testing.T) {
+	for _, useOwnedStreamCount := range []bool{false, true} {
+		t.Run(fmt.Sprintf("use_owned_stream_count=%t", useOwnedStreamCount), func(t *testing.T) {
+			cfg := defaultLimitsTestConfig()
+			cfg.MaxLocalStreamsPerUser = 3
+			cfg.MaxGlobalStreamsPerUser = 0
+			cfg.UseOwnedStreamCount = useOwnedStreamCount
+			cfg.PolicyStreamMapping = validation.PolicyStreamMapping{
+				"finance": {{Selector: `{app="billing"}`, Priority: 1}},
+				"debug":   {{Selector: `{app="debug"}`, Priority: 1}},
+			}
+			require.NoError(t, cfg.PolicyStreamMapping.Validate())
+			// Only "finance" overrides the stream limit, so only it gets its own bucket.
+			cfg.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+				"finance": {MaxLocalStreamsPerUser: ptr(5)},
+			}
+
+			limits, err := validation.NewOverrides(cfg, nil)
+			require.NoError(t, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, retention.NewTenantsRetention(limits))
+			require.NoError(t, err)
+
+			push := func(app string, n int) error {
+				return inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{{
+					Labels:  fmt.Sprintf(`{app=%q, n="%d"}`, app, n),
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "line"}},
+				}}})
+			}
+			const limitErr = "maximum active stream limit exceeded"
+
+			// Streams of a policy with its own bucket don't consume the default budget.
+			for n := range 3 {
+				require.NoError(t, push("billing", n))
+			}
+			for n := range 3 {
+				require.NoError(t, push("default", n))
+			}
+			require.ErrorContains(t, push("default", 3), limitErr)
+
+			// The policy bucket is enforced against its own limit and ignores default streams.
+			for n := 3; n < 5; n++ {
+				require.NoError(t, push("billing", n))
+			}
+			require.ErrorContains(t, push("billing", 5), limitErr)
+
+			// A policy that doesn't override the stream limit shares the default bucket.
+			require.ErrorContains(t, push("debug", 0), limitErr)
+
+			// Removing a default stream frees a slot in the default bucket.
+			s, ok := inst.streams.Load(`{app="default", n="0"}`)
+			require.True(t, ok)
+			inst.removeStream(s)
+			require.NoError(t, push("debug", 0))
+			require.ErrorContains(t, push("default", 0), limitErr)
+
+			require.Equal(t, 5, inst.memoryPolicyStreams.get("finance"))
+			require.Equal(t, 1, inst.memoryPolicyStreams.get("debug"))
+			require.Equal(t, 8, inst.streams.Len())
+			if useOwnedStreamCount {
+				// With owned stream counting, the owned counts are the ones enforcing the limits.
+				require.Equal(t, 5, inst.ownedStreamsSvc.getPolicyStreamCount("finance"))
+				require.Equal(t, 1, inst.ownedStreamsSvc.getPolicyStreamCount("debug"))
+				require.Equal(t, 8, inst.ownedStreamsSvc.getOwnedStreamCount())
+			}
+		})
+	}
+}

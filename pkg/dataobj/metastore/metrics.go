@@ -1,6 +1,9 @@
 package metastore
 
 import (
+	"context"
+	"errors"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -45,7 +48,7 @@ func newTableOfContentsMetrics() *tocMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		tocWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_metastore_writes_total",
+			Name: "loki_metastore_toc_writes_total",
 			Help: "Total number of metastore writes",
 		}, []string{"status"}),
 	}
@@ -93,7 +96,35 @@ func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
+// Values of the diverged label of the duplicate sections metric.
+const (
+	divergedFalse = "false"
+	divergedTrue  = "true"
+)
+
+// Values of the result label of the get indexes duration metric.
+const (
+	resultSuccess          = "success"
+	resultError            = "error"
+	resultCanceled         = "canceled"
+	resultDeadlineExceeded = "deadline_exceeded"
+)
+
+func getIndexesResult(err error) string {
+	switch {
+	case err == nil:
+		return resultSuccess
+	case errors.Is(err, context.Canceled):
+		return resultCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return resultDeadlineExceeded
+	default:
+		return resultError
+	}
+}
+
 type ObjectMetastoreMetrics struct {
+	getIndexesTotalDuration             *prometheus.HistogramVec
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
@@ -109,10 +140,19 @@ type ObjectMetastoreMetrics struct {
 	indexReadFlowTotal        *prometheus.CounterVec
 	indexReadRowsPerObject    *prometheus.HistogramVec
 	resolvedSectionsPerObject prometheus.Histogram
+	duplicateSectionsTotal    *prometheus.CounterVec
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
 	metrics := &ObjectMetastoreMetrics{
+		getIndexesTotalDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_get_indexes_duration_seconds",
+			Help:                            "Time taken to list the index objects for a Metastore query window in seconds",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{"result"}),
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
@@ -221,7 +261,21 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		duplicateSectionsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_metastore_duplicate_sections_total",
+			Help: "Total number of duplicate sections found when more than one index object describes the same section. A section in N index objects counts N-1 with diverged=false. The copies of a diverged section disagree on the streams, the row count or the size. That fails the section lookup at the first one, so diverged=true counts at most one for each lookup",
+		}, []string{"diverged"}),
 	}
+
+	// Report both outcomes from the start, so that a rate over diverged duplicates reads as
+	// zero rather than going missing until the first one happens.
+	metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse)
+	metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue)
+
+	for _, result := range []string{resultSuccess, resultError, resultCanceled, resultDeadlineExceeded} {
+		metrics.getIndexesTotalDuration.WithLabelValues(result)
+	}
+
 	metrics.register(reg)
 
 	return metrics
@@ -233,6 +287,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	}
 
 	collectors := []prometheus.Collector{
+		p.getIndexesTotalDuration,
 		p.indexObjectsTotal,
 		p.streamFilterTotalDuration,
 		p.streamFilterSections,
@@ -247,6 +302,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 		p.indexReadFlowTotal,
 		p.indexReadRowsPerObject,
 		p.resolvedSectionsPerObject,
+		p.duplicateSectionsTotal,
 	}
 
 	for _, collector := range collectors {

@@ -118,6 +118,10 @@ const FASYNC = 64
 
 const FILENAME_MAX = 1024
 
+const FIOGETOWN = 1074030203
+
+const FIOSETOWN = 2147772028
+
 const FNDELAY = 4
 
 const FREAD = 1
@@ -135,6 +139,8 @@ const F_WRLCK = 3
 const HAVE_MREMAP = 0
 
 const IOCPARM_MASK = 8191
+
+const IOC_DIRMASK = 3758096384
 
 const LOCK_EX = 2
 
@@ -182,15 +188,19 @@ const O_TRUNC = 1024
 
 const PPPDISC = 5
 
-const RTLD_DEFAULT = -2
+const RTLD_DEFAULT = 18446744073709551614
 
-const RTLD_SELF = -3
+const RTLD_SELF = 18446744073709551613
 
 const SF_APPEND = 262144
 
 const SF_ARCHIVED = 65536
 
 const SF_IMMUTABLE = 131072
+
+const SIOCGPGRP = 1074033417
+
+const SIOCSPGRP = 2147775240
 
 const SLIPDISC = 4
 
@@ -199,6 +209,46 @@ const SQLITE_MAX_PATHLEN = 1024
 const S_BLKSIZE = 512
 
 const S_ISTXT = 512
+
+const TIOCCBRK = 536900730
+
+const TIOCCDTR = 536900728
+
+const TIOCCONS = 2147775586
+
+const TIOCDRAIN = 536900702
+
+const TIOCEXCL = 536900621
+
+const TIOCEXT = 2147775584
+
+const TIOCFLUSH = 2147775504
+
+const TIOCGETD = 1074033690
+
+const TIOCMBIC = 2147775595
+
+const TIOCMBIS = 2147775596
+
+const TIOCMGET = 1074033770
+
+const TIOCMSET = 2147775597
+
+const TIOCNOTTY = 536900721
+
+const TIOCNXCL = 536900622
+
+const TIOCPKT = 2147775600
+
+const TIOCSBRK = 536900731
+
+const TIOCSCTTY = 536900705
+
+const TIOCSDTR = 536900729
+
+const TIOCSETD = 2147775515
+
+const TIOCUCNTL = 2147775590
 
 type TSQLiteThread = struct {
 	FxTask   uintptr
@@ -348,6 +398,8 @@ const _POSIX_THREAD_ATTR_STACKADDR = 200112
 
 const _POSIX_THREAD_ATTR_STACKSIZE = 200112
 
+const _POSIX_VDISABLE = 255
+
 const _QUAD_HIGHWORD = 1
 
 const _QUAD_LOWWORD = 0
@@ -406,9 +458,9 @@ const _SC_VERSION = 8
 
 const __WINT_MAX__ = 2147483647
 
-const __WINT_TYPE__ = 0
+const __WINT_TYPE__ = "int"
 
-const __volatile = 0
+const __volatile = "volatile"
 
 // C documentation
 //

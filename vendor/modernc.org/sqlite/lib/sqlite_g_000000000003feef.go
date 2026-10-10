@@ -1186,6 +1186,11 @@ type TWal = struct {
 	FiReCksum            Tu32
 	FzWalName            uintptr
 	FnCkpt               Tu32
+	FlockMask            Tu32
+	FpFree               uintptr
+	FpWiValue            uintptr
+	FiWiPg               int32
+	FiSysErrno           int32
 	FpSnapshot           uintptr
 	FbGetSnapshot        int32
 }

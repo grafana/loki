@@ -141,7 +141,7 @@ func (id *ResourceID) init(parent *ResourceID, resourceType ResourceType, name s
 		id.SubscriptionID = name
 	}
 
-	if resourceType.lastType() == locationsKey {
+	if strings.EqualFold(resourceType.lastType(), locationsKey) {
 		id.Location = name
 	}
 

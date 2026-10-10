@@ -20,7 +20,7 @@ import (
 
 type Config struct {
 	// SHAPrefixSize is the size of the SHA prefix used for splitting object storage keys
-	SHAPrefixSize int
+	SHAPrefixSize int `yaml:"sha_prefix_size"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -36,7 +36,7 @@ func (cfg *Config) Validate() error {
 }
 
 type Uploader struct {
-	SHAPrefixSize int
+	SHAPrefixSize int `yaml:"sha_prefix_size"`
 	bucket        objstore.Bucket
 	metrics       *metrics
 	logger        log.Logger

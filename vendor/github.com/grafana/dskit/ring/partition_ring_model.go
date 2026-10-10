@@ -2,6 +2,7 @@ package ring
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -482,18 +483,21 @@ func (m *PartitionRingDesc) RemoveTombstones(limit time.Time) (total, removed in
 	return
 }
 
-// Clone implements memberlist.Mergeable.
+// Clone copies the ring description and its maps. Partition tokens remain shared
+// and must be treated as immutable.
 func (m *PartitionRingDesc) Clone() memberlist.Mergeable {
-	clone := proto.Clone(m).(*PartitionRingDesc)
-
-	// Ensure empty maps are preserved (easier to compare with a deep equal in tests).
-	if m.Partitions != nil && clone.Partitions == nil {
-		clone.Partitions = map[int32]PartitionDesc{}
+	// Non-nullable protobuf map values already share their token slices; typed
+	// copies preserve that ownership without reflection on every memberlist read.
+	clone := &PartitionRingDesc{}
+	// Size by live entries so removed partitions and owners don't retain capacity.
+	if m.Partitions != nil {
+		clone.Partitions = make(map[int32]PartitionDesc, len(m.Partitions))
+		maps.Copy(clone.Partitions, m.Partitions)
 	}
-	if m.Owners != nil && clone.Owners == nil {
-		clone.Owners = map[string]OwnerDesc{}
+	if m.Owners != nil {
+		clone.Owners = make(map[string]OwnerDesc, len(m.Owners))
+		maps.Copy(clone.Owners, m.Owners)
 	}
-
 	return clone
 }
 

@@ -132,6 +132,7 @@ func policyFromHeaderValue(headerString string) (string, *types.LabelPolicy, err
 	if err != nil {
 		return "", nil, fmt.Errorf("%w, '%v'", errInvalidHeaderEscape, err)
 	}
+	//nolint:forbidigo // parses a matcher selector with regexes, not a plain label set
 	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(selectorString)
 	if err != nil {
 		return "", nil, fmt.Errorf("%w '%s', error: '%v'", errInvalidSelector, selectorString, err)

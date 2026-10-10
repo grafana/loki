@@ -7,12 +7,16 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
+	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/test"
 )
@@ -268,5 +272,89 @@ func TestCache_GetOrLoadMetadataRegion(t *testing.T) {
 		require.ErrorIs(t, err, sentinel)
 		require.Zero(t, testutil.ToFloat64(c.errors.WithLabelValues("fetch")), "a load failure is not a Fetch-side backend error")
 		require.Empty(t, mc.GetInternal(), "a failed load must not be stored")
+	})
+}
+
+func TestNewFromConfig(t *testing.T) {
+	embeddedConfig := func(prefix string) cache.Config {
+		return cache.Config{
+			Prefix:        prefix,
+			EmbeddedCache: cache.EmbeddedCacheConfig{Enabled: true, MaxSizeMB: 1, TTL: time.Minute},
+		}
+	}
+	memcachedConfig := func(prefix string, maxItemSize int) cache.Config {
+		return cache.Config{
+			Prefix:         prefix,
+			MemcacheClient: cache.MemcachedClientConfig{Addresses: "localhost:11211", UpdateInterval: time.Minute, MaxItemSize: maxItemSize},
+		}
+	}
+
+	t.Run("returns a working cache for an embedded backend", func(t *testing.T) {
+		c, err := NewFromConfig(embeddedConfig("test.metadata-cache."), prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(c.Stop)
+
+		var loads int
+		load := func(context.Context) ([]byte, error) {
+			loads++
+			return []byte("metadata-blob"), nil
+		}
+
+		for range 2 {
+			got, err := c.GetOrLoadMetadataRegion(context.Background(), "obj", load)
+			require.NoError(t, err)
+			require.Equal(t, []byte("metadata-blob"), got)
+		}
+		require.Equal(t, 1, loads, "the second call is served from the cache")
+		require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
+	})
+
+	t.Run("uses the memcached max item size as the region limit", func(t *testing.T) {
+		c, err := NewFromConfig(memcachedConfig("test.metadata-cache.", 1024), prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(c.Stop)
+
+		require.Equal(t, int64(1024), c.MaxItemBytes())
+	})
+
+	t.Run("falls back to the default limit when the memcached max item size is zero", func(t *testing.T) {
+		c, err := NewFromConfig(memcachedConfig("test.metadata-cache.", 0), prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(c.Stop)
+
+		require.Equal(t, int64(DefaultMaxItemBytes), c.MaxItemBytes())
+	})
+
+	t.Run("ignores the memcached max item size when the backend is not memcached", func(t *testing.T) {
+		cfg := embeddedConfig("test.metadata-cache.")
+		cfg.MemcacheClient.MaxItemSize = 1024
+
+		c, err := NewFromConfig(cfg, prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(c.Stop)
+
+		require.Equal(t, int64(DefaultMaxItemBytes), c.MaxItemBytes())
+	})
+
+	t.Run("returns an error when memcached and redis are both set", func(t *testing.T) {
+		cfg := memcachedConfig("test.metadata-cache.", 0)
+		cfg.Redis.Endpoint = "localhost:6379"
+
+		_, err := NewFromConfig(cfg, prometheus.NewRegistry(), log.NewNopLogger())
+		require.Error(t, err)
+	})
+
+	t.Run("does not panic when a sibling memcached cache shares the registry", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+
+		sibling, err := cache.New(memcachedConfig("querier.chunk-cache.", 0), reg, log.NewNopLogger(), stats.ChunkCache, "loki")
+		require.NoError(t, err)
+		t.Cleanup(sibling.Stop)
+
+		require.NotPanics(t, func() {
+			c, err := NewFromConfig(memcachedConfig("dataobj.metadata-cache.", 0), reg, log.NewNopLogger())
+			require.NoError(t, err)
+			t.Cleanup(c.Stop)
+		})
 	})
 }

@@ -27,6 +27,7 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 		new(physical.ColumnCompat),
 		new(physical.DataObjScan),
 		new(physical.Filter),
+		new(physical.IndexFilter),
 		new(physical.IndexMerge),
 		new(physical.Join),
 		new(physical.Limit),

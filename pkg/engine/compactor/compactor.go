@@ -72,19 +72,24 @@ func New(params PlannerParams) (*Planner, error) {
 		return nil, fmt.Errorf("dataobj compaction planner: construct scheduler: %w", err)
 	}
 
+	coord, err := newCoordinator(
+		params.Config,
+		log.With(logger, "component", "dataobj-compaction-coordinator"),
+		params.Bucket,
+		sched.inner,
+		params.MetastoreWriter,
+		params.Registerer,
+		params.Limits,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("dataobj compaction planner: construct coordinator: %w", err)
+	}
+
 	p := &Planner{
-		cfg:       params.Config,
-		logger:    logger,
-		scheduler: sched,
-		coordinator: newCoordinator(
-			params.Config,
-			log.With(logger, "component", "dataobj-compaction-coordinator"),
-			params.Bucket,
-			sched.inner,
-			params.MetastoreWriter,
-			params.Registerer,
-			params.Limits,
-		),
+		cfg:         params.Config,
+		logger:      logger,
+		scheduler:   sched,
+		coordinator: coord,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p, nil

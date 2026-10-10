@@ -13,46 +13,6 @@ import (
 // C documentation
 //
 //	/*
-//	** Compare the 19-character string zNum against the text representation
-//	** value 2^63:  9223372036854775808.  Return negative, zero, or positive
-//	** if zNum is less than, equal to, or greater than the string.
-//	** Note that zNum must contain exactly 19 characters.
-//	**
-//	** Unlike memcmp() this routine is guaranteed to return the difference
-//	** in the values of the last digit if the only difference is in the
-//	** last digit.  So, for example,
-//	**
-//	**      compare2pow63("9223372036854775800", 1)
-//	**
-//	** will return -8.
-//	*/
-func _compare2pow63(tls *libc.TLS, zNum uintptr, incr int32) (r int32) {
-	var c, i int32
-	var pow63 uintptr
-	_, _, _ = c, i, pow63
-	c = 0
-	/* 012345678901234567 */
-	pow63 = __ccgo_ts + 1813
-	i = 0
-	for {
-		if !(c == 0 && i < int32(18)) {
-			break
-		}
-		c = (int32(**(**int8)(__ccgo_up(zNum + uintptr(i*incr)))) - int32(**(**int8)(__ccgo_up(pow63 + uintptr(i))))) * int32(10)
-		goto _1
-	_1:
-		;
-		i = i + 1
-	}
-	if c == 0 {
-		c = int32(**(**int8)(__ccgo_up(zNum + uintptr(int32(18)*incr)))) - int32('8')
-	}
-	return c
-}
-
-// C documentation
-//
-//	/*
 //	** Parse times of the form HH:MM or HH:MM:SS or HH:MM:SS.FFFF.
 //	** The HH, MM, and SS must each be exactly 2 digits.  The
 //	** fractional seconds FFFF can be one or more digits.

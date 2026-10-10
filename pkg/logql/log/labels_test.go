@@ -1,6 +1,7 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -54,7 +55,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
-	b.SetErr("err")
+	b.SetErr("err", nil)
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
@@ -166,7 +167,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, lbs, b.LabelsResult())
-	b.SetErr("err")
+	b.SetErr("err", nil)
 	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.LabelsResult())
 
@@ -370,7 +371,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, labels.FromStrings("namespace", "loki"), b.GroupedLabels())
-	b.SetErr("err")
+	b.SetErr("err", nil)
 	assertLabelResult(t, labels.FromStrings("namespace", "loki", logqlmodel.ErrorLabel, "err"), b.GroupedLabels())
 
 	b.Reset()
@@ -443,8 +444,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 	t.Run("noLabels reports the error instead of an empty result", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, true).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
-		b.SetErr("JSONParserErr")
-		b.SetErrorDetails("Malformed JSON error")
+		b.SetErr("JSONParserErr", errors.New("Malformed JSON error"))
 
 		assertLabelResult(t, labels.FromStrings(
 			logqlmodel.ErrorLabel, "JSONParserErr",
@@ -452,67 +452,14 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		), b.GroupedLabels())
 	})
 
-	t.Run("by() reports a parsed __preserve_error__ that is not a group key", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
-		b.Reset()
-		b.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
-		b.SetErr("JSONParserErr")
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
-	t.Run("by() reports __preserve_error__ that arrives as structured metadata", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
-		b.Reset()
-		b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.PreserveErrorLabel, "true"))
-		b.SetErr("JSONParserErr")
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
-	t.Run("noLabels reports __preserve_error__ that arrives as structured metadata", func(t *testing.T) {
-		b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, true).ForLabels(lbs, labels.StableHash(lbs))
-		b.Reset()
-		b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.PreserveErrorLabel, "true"))
-		b.SetErr("JSONParserErr")
-
-		assertLabelResult(t, labels.FromStrings(
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
-	t.Run("by() reports __preserve_error__ that arrives as a stream label", func(t *testing.T) {
-		base := labels.FromStrings(logqlmodel.PreserveErrorLabel, "true", "pod", "p1")
-		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, false, false).ForLabels(base, labels.StableHash(base))
-		b.Reset()
-		b.SetErr("JSONParserErr")
-
-		assertLabelResult(t, labels.FromStrings(
-			"pod", "p1",
-			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
-		), b.GroupedLabels())
-	})
-
 	t.Run("without() reports each error label once", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
-		b.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
-		b.SetErr("JSONParserErr")
+		b.SetErr("JSONParserErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
 			logqlmodel.ErrorLabel, "JSONParserErr",
-			logqlmodel.PreserveErrorLabel, "true",
 		), b.GroupedLabels())
 	})
 
@@ -520,8 +467,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
-		b.SetErr("SampleExtractionErr")
-		b.SetErrorDetails("bad number")
+		b.SetErr("SampleExtractionErr", errors.New("bad number"))
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
@@ -534,7 +480,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{"pod"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 		b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "from the line")
-		b.SetErr("SampleExtractionErr")
+		b.SetErr("SampleExtractionErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(
 			"namespace", "loki",
@@ -545,7 +491,7 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 	t.Run("grouping by __error__ reports the builder's value once", func(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
-		b.SetErr("JSONParserErr")
+		b.SetErr("JSONParserErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(logqlmodel.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
 	})
@@ -554,9 +500,85 @@ func TestLabelsBuilder_GroupedLabelsResult_PipelineError(t *testing.T) {
 		base := labels.FromStrings(logqlmodel.ErrorLabel, "frombase", "pod", "p1")
 		b := NewBaseLabelsBuilderWithGrouping([]string{logqlmodel.ErrorLabel}, nil, false, false).ForLabels(base, labels.StableHash(base))
 		b.Reset()
-		b.SetErr("JSONParserErr")
+		b.SetErr("JSONParserErr", nil)
 
 		assertLabelResult(t, labels.FromStrings(logqlmodel.ErrorLabel, "JSONParserErr"), b.GroupedLabels())
+	})
+}
+
+func TestLabelsBuilder_SetErr(t *testing.T) {
+	lbs := labels.FromStrings("pod", "p1")
+
+	newBuilder := func(hints ParserHint) *LabelsBuilder {
+		b := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false).ForLabels(lbs, labels.StableHash(lbs))
+		b.Reset()
+		return b
+	}
+
+	t.Run("sets the error and its details together", func(t *testing.T) {
+		b := newBuilder(nil)
+		b.SetErr("JSONParserErr", errors.New("Malformed JSON error"))
+
+		require.Equal(t, "JSONParserErr", b.GetErr())
+		require.Equal(t, "Malformed JSON error", b.GetErrorDetails())
+	})
+
+	t.Run("leaves no details when passed a nil error", func(t *testing.T) {
+		b := newBuilder(nil)
+		b.SetErr("JSONParserErr", nil)
+
+		require.False(t, b.HasErrorDetails())
+	})
+
+	t.Run("a replacing error drops the details of the one before it", func(t *testing.T) {
+		b := newBuilder(nil)
+		b.SetErr("JSONParserErr", errors.New("Malformed JSON error"))
+		b.SetErr("SampleExtractionErr", nil)
+
+		require.Equal(t, "SampleExtractionErr", b.GetErr())
+		require.False(t, b.HasErrorDetails())
+	})
+}
+
+// TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel checks that __preserve_error__ has no special
+// meaning to the builder. A line that carries it, from any category, keeps it unchanged even
+// when the line errors.
+func TestLabelsBuilder_PreserveErrorIsAnOrdinaryLabel(t *testing.T) {
+	const preserveErrorLabel = "__preserve_error__"
+
+	buildErrored := func(category LabelCategory, groups []string, without bool) *LabelsBuilder {
+		base := labels.FromStrings("pod", "p1")
+		if category == StreamLabel {
+			base = labels.FromStrings("pod", "p1", preserveErrorLabel, "true")
+		}
+		b := NewBaseLabelsBuilderWithGrouping(groups, nil, without, false).ForLabels(base, labels.StableHash(base))
+		b.Reset()
+		if category != StreamLabel {
+			b.Set(category, preserveErrorLabel, "true")
+		}
+		b.SetErr("SampleExtractionErr", nil)
+		return b
+	}
+
+	t.Run("survives an errored line with no grouping, whichever category it came from", func(t *testing.T) {
+		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
+			b := buildErrored(category, nil, false)
+			require.Equal(t, "true", b.LabelsResult().Labels().Get(preserveErrorLabel), "category %v", category)
+		}
+	})
+
+	t.Run("without(pod) keeps it, whichever category it came from", func(t *testing.T) {
+		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
+			b := buildErrored(category, []string{"pod"}, true)
+			require.Equal(t, "true", b.GroupedLabels().Labels().Get(preserveErrorLabel), "category %v", category)
+		}
+	})
+
+	t.Run("by(pod) drops it like any other label the grouping does not name, whichever category it came from", func(t *testing.T) {
+		for _, category := range []LabelCategory{StreamLabel, StructuredMetadataLabel, ParsedLabel} {
+			b := buildErrored(category, []string{"pod"}, false)
+			require.False(t, b.GroupedLabels().Labels().Has(preserveErrorLabel), "category %v", category)
+		}
 	})
 }
 

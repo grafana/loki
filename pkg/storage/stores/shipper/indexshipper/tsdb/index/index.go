@@ -2512,3 +2512,12 @@ func overlap(from, through, chkFrom, chkThrough int64) bool {
 	// sample timestamp in the chunk, whereas through is exclusive
 	return from <= chkThrough && through > chkFrom
 }
+
+// ShardPostings selects the candidate series interval for a fingerprint shard.
+// Callers must still check each series fingerprint because offsets are sampled.
+func (r *ByteSliceReader) ShardPostings(p Postings, fpFilter FingerprintFilter) Postings {
+	if fpFilter == nil {
+		return p
+	}
+	return NewShardedPostings(p, fpFilter, r.fingerprintOffsets)
+}

@@ -930,6 +930,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
 										"--tls.cipher-suites=cipher1,cipher2",
+										"--tls.curve-preferences=curve1,curve2",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -1159,6 +1160,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
 										"--tls.cipher-suites=cipher1,cipher2",
+										"--tls.curve-preferences=curve1,curve2",
 										`--openshift.mappings=network=loki.grafana.com`,
 									},
 									Ports: []corev1.ContainerPort{
@@ -1419,7 +1421,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 	for _, tc := range tc {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2", tc.adminGroups)
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2", "curve1,curve2", tc.adminGroups)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})

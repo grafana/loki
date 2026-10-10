@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"crypto/pbkdf2"
+	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
@@ -26,7 +26,8 @@ type ErrAndMessage struct {
 }
 
 func (e *ErrAndMessage) Error() string {
-	if ke, ok := errors.AsType[*kerr.Error](e.Err); ok && e.ErrMessage != "" {
+	var ke *kerr.Error
+	if errors.As(e.Err, &ke) && e.ErrMessage != "" {
 		return ke.Message + ": " + e.ErrMessage
 	}
 	return e.Err.Error()
@@ -103,8 +104,7 @@ func (rs FindCoordinatorResponses) Ok() bool {
 
 // FindGroupCoordinators returns the coordinator for all requested group names.
 //
-// Failures are reported per key via each response's Err field, which can
-// unwrap to *AuthError.
+// This may return *ShardErrors or *AuthError.
 func (cl *Client) FindGroupCoordinators(ctx context.Context, groups ...string) FindCoordinatorResponses {
 	return cl.findCoordinators(ctx, 0, groups...)
 }
@@ -112,8 +112,7 @@ func (cl *Client) FindGroupCoordinators(ctx context.Context, groups ...string) F
 // FindTxnCoordinators returns the coordinator for all requested transactional
 // IDs.
 //
-// Failures are reported per key via each response's Err field, which can
-// unwrap to *AuthError.
+// This may return *ShardErrors or *AuthError.
 func (cl *Client) FindTxnCoordinators(ctx context.Context, txnIDs ...string) FindCoordinatorResponses {
 	return cl.findCoordinators(ctx, 1, txnIDs...)
 }
@@ -128,8 +127,7 @@ func (cl *Client) FindTxnCoordinators(ctx context.Context, txnIDs ...string) Fin
 //
 // This requires Kafka 4.2+ (KIP-932).
 //
-// Failures are reported per key via each response's Err field, which can
-// unwrap to *AuthError.
+// This may return *ShardErrors or *AuthError.
 func (cl *Client) FindShareCoordinators(ctx context.Context, shareGroups ...string) FindCoordinatorResponses {
 	return cl.findCoordinators(ctx, 2, shareGroups...)
 }
@@ -730,48 +728,22 @@ func (as AlteredUserSCRAMs) Ok() bool {
 // and deletes. This modifies elements of the upsert slice that need to have a
 // salted password generated.
 func (cl *Client) AlterUserSCRAMs(ctx context.Context, del []DeleteSCRAM, upsert []UpsertSCRAM) (AlteredUserSCRAMs, error) {
-	// Validate mechanisms up front for every input: the zero value would
-	// go on the wire as UNKNOWN, which the broker rejects per-user with
-	// UNSUPPORTED_SASL_MECHANISM. The password-generating path below has
-	// always validated; deletions and salt-based upsertions did not.
-	for _, d := range del {
-		if d.Mechanism != ScramSha256 && d.Mechanism != ScramSha512 {
-			return nil, fmt.Errorf("user %s: unknown deletion mechanism", d.User)
-		}
-	}
 	for i, u := range upsert {
-		if u.Mechanism != ScramSha256 && u.Mechanism != ScramSha512 {
-			return nil, fmt.Errorf("user %s: unknown mechanism", u.User)
-		}
 		if u.Password != "" {
 			if len(u.Salt) > 0 || len(u.SaltedPassword) > 0 {
 				return nil, fmt.Errorf("user %s: cannot specify both a password and a salt / salted password", u.User)
-			}
-			// Enforce the documented (and broker-enforced) iteration
-			// bounds up front: a zero or tiny count previously produced
-			// a weak pbkdf2 result client-side that only the broker's
-			// own validation caught. Zero defaults to the minimum.
-			if u.Iterations == 0 {
-				u.Iterations = 4096
-			}
-			if u.Iterations < 4096 || u.Iterations > 16384 {
-				return nil, fmt.Errorf("user %s: iterations %d is outside the allowed 4096 to 16384 range", u.User, u.Iterations)
 			}
 			u.Salt = make([]byte, 24)
 			if _, err := rand.Read(u.Salt); err != nil {
 				return nil, fmt.Errorf("user %s: unable to generate salt: %v", u.User, err)
 			}
-			var kdfErr error
 			switch u.Mechanism {
 			case ScramSha256:
-				u.SaltedPassword, kdfErr = pbkdf2.Key(sha256.New, u.Password, u.Salt, int(u.Iterations), sha256.Size)
+				u.SaltedPassword = pbkdf2.Key([]byte(u.Password), u.Salt, int(u.Iterations), sha256.Size, sha256.New)
 			case ScramSha512:
-				u.SaltedPassword, kdfErr = pbkdf2.Key(sha512.New, u.Password, u.Salt, int(u.Iterations), sha512.Size)
+				u.SaltedPassword = pbkdf2.Key([]byte(u.Password), u.Salt, int(u.Iterations), sha512.Size, sha512.New)
 			default:
 				return nil, fmt.Errorf("user %s: unknown mechanism, unable to generate password", u.User)
-			}
-			if kdfErr != nil {
-				return nil, fmt.Errorf("user %s: pbkdf2 err: %v", u.User, kdfErr)
 			}
 			upsert[i] = u
 		} else if len(u.Salt) == 0 || len(u.SaltedPassword) == 0 {

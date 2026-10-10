@@ -43,10 +43,12 @@ type Regexp struct {
 	options RegexOptions // options
 	debug   bool
 
-	caps     map[int]int    // capnum->index
-	capnames map[string]int //capture group name -> index
-	capslist []string       //sorted list of capture group names
-	capsize  int            // size of the capture array
+	caps                  map[int]int      // public group number -> dense capture slot
+	capnames              map[string]int   // capture group name -> first public group number
+	duplicateCapnames     map[string][]int // ECMAScript name -> dense capture slots
+	duplicateGroupNumbers map[string][]int // ECMAScript name -> public group numbers; shared when dense
+	capslist              []string         // sorted list of capture group names
+	capsize               int              // size of the capture array
 
 	code *syntax.Code // compiled program
 
@@ -125,6 +127,7 @@ func compile(expr string, c compileConfig) (*Regexp, error) {
 			re.stringPrefixFilter = withEqualASCIIPrefixSearch(re.stringPrefixFilter, re.prefixSearch, opts.MinRequiredLength)
 		}
 	}
+	re.initCaptureNames()
 	re.initCaches()
 	return re, nil
 }
@@ -224,7 +227,13 @@ func (re *Regexp) getReplacerData(replacement string) (*syntax.ReplacerData, err
 		}
 	}
 
-	data, err := syntax.NewReplacerData(replacement, re.caps, re.capsize, re.capnames, syntax.RegexOptions(re.options))
+	var data *syntax.ReplacerData
+	var err error
+	if len(re.duplicateCapnames) > 0 {
+		data, err = syntax.NewReplacerDataWithGroupNumbers(replacement, re.caps, re.capsize, re.capnames, syntax.RegexOptions(re.options), re.duplicateGroupNumbers)
+	} else {
+		data, err = syntax.NewReplacerData(replacement, re.caps, re.capsize, re.capnames, syntax.RegexOptions(re.options))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -486,7 +495,8 @@ func (re *Regexp) MatchRunes(r []rune) (bool, error) {
 	return m != nil, nil
 }
 
-// GetGroupNames Returns the set of strings used to name capturing groups in the expression.
+// GetGroupNames returns the capture-group names in group-number order.
+// Duplicate ECMAScript names appear once for each group with that name.
 func (re *Regexp) GetGroupNames() []string {
 	var result []string
 
@@ -556,6 +566,9 @@ func (re *Regexp) GroupNameFromNumber(i int) string {
 // Returns -1 if the name is not a recognized group name. Numbered groups
 // automatically get a group name that is the decimal string equivalent of its
 // number, except in ECMAScript mode where unnamed groups have no name.
+// For a name shared by multiple ECMAScript groups, it returns the number of
+// the first declaration, which may differ from the group selected by GroupByName.
+// This first-declaration lookup is regexp2's API policy.
 func (re *Regexp) GroupNumberFromName(name string) int {
 	// look up name if we have a hashtable of names
 	if re.capnames != nil {
@@ -602,6 +615,53 @@ func (re *Regexp) UnmarshalText(text []byte) error {
 	}
 	*re = *newRE
 	return nil
+}
+
+// initCaptureNames builds immutable duplicate-name mappings during construction,
+// before the compiled or registered regexp is shared.
+func (re *Regexp) initCaptureNames() {
+	if re.options&ECMAScript != 0 {
+		for slot, name := range re.capslist {
+			if name == "" {
+				continue
+			}
+			firstNumber, ok := re.capnames[name]
+			if !ok {
+				continue
+			}
+			first := firstNumber
+			if re.caps != nil {
+				first = re.caps[firstNumber]
+			}
+			if slot != first {
+				if re.duplicateCapnames == nil {
+					re.duplicateCapnames = make(map[string][]int)
+				}
+				if re.duplicateCapnames[name] == nil {
+					re.duplicateCapnames[name] = []int{first}
+				}
+				re.duplicateCapnames[name] = append(re.duplicateCapnames[name], slot)
+			}
+		}
+		// Replacements use public numbers; name lookup uses dense slots.
+		// Both are immutable after initialization and can share storage when
+		// the public numbering is already dense.
+		re.duplicateGroupNumbers = re.duplicateCapnames
+		if len(re.duplicateCapnames) > 0 && re.caps != nil {
+			numbers := make([]int, re.capsize)
+			for number, slot := range re.caps {
+				numbers[slot] = number
+			}
+			re.duplicateGroupNumbers = make(map[string][]int, len(re.duplicateCapnames))
+			for name, slots := range re.duplicateCapnames {
+				groups := make([]int, len(slots))
+				for i, slot := range slots {
+					groups[i] = numbers[slot]
+				}
+				re.duplicateGroupNumbers[name] = groups
+			}
+		}
+	}
 }
 
 func (re *Regexp) initCaches() {

@@ -1,3 +1,34 @@
+## Decimal v1.5.0
+
+#### BEHAVIOR CHANGES
+- `NewFromString` and `UnmarshalBinary`, and so JSON, text, SQL, gob and Spanner decoding, reject exponents larger than the new `MaxDecodeExponent` setting (default 10,000). Such input could hang the process or use gigabytes of memory. Raise `MaxDecodeExponent` if you need larger exponents [#440](https://github.com/shopspring/decimal/pull/440)
+- `Pow`, `PowWithPrecision`, `PowInt32` and `PowBigInt` round correctly. Results for fractional exponents have `PowPrecisionNegativeExponent` (16) decimal places, and negative powers that used to return 0 keep 16 significant digits, so `10^-18` is `0.000000000000000001`. Results too large to represent return an error, or 0 from `Pow`, instead of hanging or panicking [#439](https://github.com/shopspring/decimal/pull/439)
+- `RoundUp`, `RoundDown`, `RoundCeil` and `RoundFloor` always return exponent `-places`, like `Round`. Values don't change, but `Exponent()`, `Coefficient()` and `String()` with `TrimTrailingZeros = false` can [#426](https://github.com/shopspring/decimal/pull/426) [#441](https://github.com/shopspring/decimal/pull/441)
+- `Truncate` supports negative precision: `5432` truncated to `-2` is `5400`. Before, it returned `5432` unchanged [#426](https://github.com/shopspring/decimal/pull/426)
+- `Shift` panics when the exponent overflows an int32, instead of wrapping around [#437](https://github.com/shopspring/decimal/pull/437)
+- `NewFromString` rejects a sign right after a leading decimal point, such as `".-5"` [#447](https://github.com/shopspring/decimal/pull/447)
+
+#### FEATURES
+- Add `TrimTrailingZeros` and `UseScientificNotation` settings for string output [#389](https://github.com/shopspring/decimal/pull/389) [#416](https://github.com/shopspring/decimal/pull/416)
+- Add Spanner support with `EncodeSpanner` and `DecodeSpanner` for `Decimal` and `NullDecimal` [#395](https://github.com/shopspring/decimal/pull/395)
+
+#### ENHANCEMENTS
+- Most operations are faster and allocate less, about twice as fast on average across the benchmarks [#444](https://github.com/shopspring/decimal/pull/444) [#445](https://github.com/shopspring/decimal/pull/445) [#446](https://github.com/shopspring/decimal/pull/446) [#447](https://github.com/shopspring/decimal/pull/447) [#448](https://github.com/shopspring/decimal/pull/448) [#449](https://github.com/shopspring/decimal/pull/449) [#451](https://github.com/shopspring/decimal/pull/451)
+- Faster `UnmarshalJSON`, `Scan` and `NewFromString` [#403](https://github.com/shopspring/decimal/pull/403)
+- `ExpHullAbrham` raises its partial sum to a power by squaring. Large inputs that took minutes now take seconds [#450](https://github.com/shopspring/decimal/pull/450)
+- Document that `NewFromFloat` returns the shortest decimal that converts back to the same float, and how to convert large whole numbers exactly [#442](https://github.com/shopspring/decimal/pull/442)
+- Split `decimal.go` into `decimal.go`, `math.go` and `encoding.go` [#452](https://github.com/shopspring/decimal/pull/452)
+- Lint with golangci-lint in CI, and test on Go 1.26 and 1.27 [#453](https://github.com/shopspring/decimal/pull/453) [#454](https://github.com/shopspring/decimal/pull/454)
+
+#### BUGFIXES
+- Fix `Float64` hanging on decimals with huge exponents [#438](https://github.com/shopspring/decimal/pull/438)
+- Fix `ExpHullAbrham` returning `10^exp` instead of 1 for tiny inputs [#433](https://github.com/shopspring/decimal/pull/433)
+- Fix a data race in `ExpTaylor` [#414](https://github.com/shopspring/decimal/pull/414)
+- Fix `NumDigits` for some exact powers of ten [#425](https://github.com/shopspring/decimal/pull/425)
+- Fix the `omitzero` struct tag for `Decimal` fields in nested structs [#415](https://github.com/shopspring/decimal/pull/415)
+- Fix `RoundCash` giving wrong results with a low `DivisionPrecision` [#443](https://github.com/shopspring/decimal/pull/443)
+- `NullDecimal` is no longer `Valid` after a failed `Scan`, `UnmarshalJSON` or `DecodeSpanner` [#443](https://github.com/shopspring/decimal/pull/443)
+
 ## Decimal v1.4.0
 #### BREAKING
 - Drop support for Go version older than 1.10 [#361](https://github.com/shopspring/decimal/pull/361)

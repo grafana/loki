@@ -274,7 +274,7 @@ func TestErrorFiltering(t *testing.T) {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
-			b.SetErr(tt.err)
+			b.SetErr(tt.err, nil)
 			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
@@ -518,6 +518,40 @@ func TestLineFilterLabelFilter_String(t *testing.T) {
 			}
 			if got := s.String(); got != tt.want {
 				t.Errorf("LineFilterLabelFilter.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewStringLabelFilter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		matcher *labels.Matcher
+		want    LabelFilterer
+	}{
+		{
+			name:    `an always-true comparison on __error__ stays a filter, so it still reports the label it reads`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorLabel, ".*"),
+			want:    &LineFilterLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorLabel, ".*"), Filter: TrueFilter},
+		},
+		{
+			name:    `an always-true comparison on __error_details__ stays a filter`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, ".*"),
+			want:    &LineFilterLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchRegexp, logqlmodel.ErrorDetailsLabel, ".*"), Filter: TrueFilter},
+		},
+		{
+			name:    `an always-true comparison on any other label reduces to a no-op`,
+			matcher: labels.MustNewMatcher(labels.MatchRegexp, "pod", ".*"),
+			want:    &NoopLabelFilter{labels.MustNewMatcher(labels.MatchRegexp, "pod", ".*")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NewStringLabelFilter(tc.matcher)
+			require.IsType(t, tc.want, got)
+			require.Equal(t, tc.matcher.String(), got.String())
+			require.Equal(t, tc.want.RequiredLabelNames(), got.RequiredLabelNames())
+			if want, ok := tc.want.(*LineFilterLabelFilter); ok {
+				require.Equal(t, want.Filter, got.(*LineFilterLabelFilter).Filter)
 			}
 		})
 	}

@@ -230,8 +230,7 @@ func (p *THttpClient) RemainingBytes() (num_bytes uint64) {
 		return uint64(len)
 	}
 
-	const maxSize = ^uint64(0)
-	return maxSize // the truth is, we just don't know unless framed is used
+	return UnknownRemainingBytes
 }
 
 // Deprecated: Use NewTHttpClientTransportFactory instead.

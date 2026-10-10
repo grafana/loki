@@ -82,6 +82,18 @@ const FDSYNC = 16777216
 
 const FD_NONE = -200
 
+const FIOBMAP2 = 3222300259
+
+const FIOGETLBA = 1074030201
+
+const FIOGSHMLPGCNF = 1076913765
+
+const FIONSPACE = 1074030198
+
+const FIONWRITE = 1074030199
+
+const FIOSSHMLPGCNF = 2150655588
+
 const FRDAHEAD = 512
 
 const F_ADD_SEALS = 19
@@ -158,8 +170,6 @@ const MAP_32BIT = 524288
 
 const MAP_ALIGNED_SUPER = 16777216
 
-const MAP_ALIGNMENT_MASK = 4278190080
-
 const MAP_EXCL = 16384
 
 const MAP_GUARD = 8192
@@ -178,7 +188,7 @@ const MAP_RESERVED0100 = 256
 
 const MAP_STACK = 1024
 
-const MFD_HUGE_16GB = 2281701376
+const MFD_HUGE_16GB = -2013265920
 
 const MFD_HUGE_16MB = 1610612736
 
@@ -256,7 +266,7 @@ const RFNOTEG = 8
 
 const RFNOWAIT = 64
 
-const RFPPWAIT = 2147483648
+const RFPPWAIT = -2147483648
 
 const RFPROC = 16
 
@@ -288,11 +298,23 @@ const RTLD_DI_SERINFOSIZE = 5
 
 const RTLD_MODEMASK = 3
 
+const SBT_1M = 257698037760
+
+const SBT_1MS = 4294967
+
+const SBT_1NS = 4
+
+const SBT_1S = 4294967296
+
+const SBT_1US = 4294
+
 const SBT_MAX = 9223372036854775807
 
 const SFBSD_NAMEDATTR = 1
 
 const SHM_ALLOW_SEALING = 1
+
+const SHM_ANON = 1
 
 const SHM_GROW_ON_WRITE = 2
 
@@ -327,7 +349,13 @@ type TDl_serpath = struct {
 
 const TIME_MONOTONIC = 2
 
+const TIOCGPTN = 1074033679
+
 const TIOCM_DCD = 64
+
+const TIOCPTMASTER = 536900636
+
+const TIOCSIG = 537162847
 
 type T_RuneEntry = struct {
 	F__min   t__rune_t
@@ -466,7 +494,7 @@ func Xsqlite3_blob_reopen(tls *libc.TLS, pBlob uintptr, iRow Tsqlite3_int64) (r 
 	_, _, _, _ = db, p, rc, v1
 	p = pBlob
 	if p == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(106649))
+		return _sqlite3MisuseError(tls, int32(106918))
 	}
 	db = (*TIncrblob)(unsafe.Pointer(p)).Fdb
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
@@ -739,7 +767,7 @@ func Xsqlite3_set_errmsg(tls *libc.TLS, db uintptr, errcode int32, zMsg uintptr)
 	_ = rc
 	rc = SQLITE_OK
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(190279))
+		return _sqlite3MisuseError(tls, int32(190548))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if zMsg != 0 {
@@ -909,8 +937,6 @@ func Xsqlite3rbu_savestate(tls *libc.TLS, p uintptr) (r int32) {
 
 const _CTYPE_N = 4194304
 
-const _CurrentRuneLocale = 0
-
 const _MADV_DONTNEED = 4
 
 const _MADV_NORMAL = 0
@@ -920,8 +946,6 @@ const _MADV_RANDOM = 1
 const _MADV_SEQUENTIAL = 2
 
 const _MADV_WILLNEED = 3
-
-const _NFDBITS = 0
 
 const _PC_ACL_EXTENDED = 59
 
@@ -1100,7 +1124,7 @@ const _V6_LP64_OFF64 = 0
 
 const _V6_LPBIG_OFFBIG = -1
 
-const _XLOCALE_INLINE = 0
+const _XLOCALE_INLINE = "inline"
 
 const _XLOCALE_RUN_FUNCTIONS_DEFINED = 1
 
@@ -1166,13 +1190,9 @@ var __ccgo_ts1 = "ATOMIC_INTRINSICS=1\x00COMPILER=clang-19.1.7\x00DEFAULT_AUTOVA
 
 const __clang_version__ = "19.1.7 (https://github.com/llvm/llvm-project.git llvmorg-19.1.7-0-gcd708029e0b2)"
 
-const __isnan = 0
+const __isnan = "__inline_isnan"
 
-const __isnanf = 0
-
-const __lockable = 0
-
-const __no_lock_analysis = 0
+const __isnanf = "__inline_isnanf"
 
 const __writeonly = "__unused"
 
@@ -4815,7 +4835,7 @@ func _sqlite3Close(tls *libc.TLS, db uintptr, forceZombie int32) (r int32) {
 		return SQLITE_OK
 	}
 	if !(_sqlite3SafetyCheckSickOrOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(188794))
+		return _sqlite3MisuseError(tls, int32(189063))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if libc.Int32FromUint8((*Tsqlite3)(unsafe.Pointer(db)).FmTrace)&int32(SQLITE_TRACE_CLOSE) != 0 {
@@ -5779,7 +5799,7 @@ func _unixDelete(tls *libc.TLS, NotUsed uintptr, zPath uintptr, dirSync int32) (
 		if **(**int32)(__ccgo_up(libc.X__error(tls))) == int32(ENOENT) {
 			rc = libc.Int32FromInt32(SQLITE_IOERR) | libc.Int32FromInt32(23)<<libc.Int32FromInt32(8)
 		} else {
-			rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(10)<<libc.Int32FromInt32(8), __ccgo_ts+3650, zPath, int32(47191))
+			rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(10)<<libc.Int32FromInt32(8), __ccgo_ts+3650, zPath, int32(47195))
 		}
 		return rc
 	}
@@ -5787,9 +5807,9 @@ func _unixDelete(tls *libc.TLS, NotUsed uintptr, zPath uintptr, dirSync int32) (
 		rc = (*(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{_aSyscall[int32(17)].FpCurrent})))(tls, zPath, bp)
 		if rc == SQLITE_OK {
 			if _full_fsync(tls, **(**int32)(__ccgo_up(bp)), 0, 0) != 0 {
-				rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(5)<<libc.Int32FromInt32(8), __ccgo_ts+4067, zPath, int32(47201))
+				rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(5)<<libc.Int32FromInt32(8), __ccgo_ts+4067, zPath, int32(47205))
 			}
-			_robust_close(tls, uintptr(0), **(**int32)(__ccgo_up(bp)), int32(47203))
+			_robust_close(tls, uintptr(0), **(**int32)(__ccgo_up(bp)), int32(47207))
 		} else {
 			rc = SQLITE_OK
 		}
@@ -6108,7 +6128,7 @@ func _unixLockSharedMemory(tls *libc.TLS, pDbFd uintptr, pShmNode uintptr) (r in
 				 ** help detect if a -shm file truncation is legitimate or is the work
 				 ** or a rogue process. */
 				if rc == SQLITE_OK && _robust_ftruncate(tls, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FhShm, int64(3)) != 0 {
-					rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(18)<<libc.Int32FromInt32(8), __ccgo_ts+3576, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename, int32(45245))
+					rc = _unixLogErrorAtLine(tls, libc.Int32FromInt32(SQLITE_IOERR)|libc.Int32FromInt32(18)<<libc.Int32FromInt32(8), __ccgo_ts+3576, (*TunixShmNode)(unsafe.Pointer(pShmNode)).FzFilename, int32(45249))
 				}
 			}
 		} else {
@@ -6319,7 +6339,7 @@ type dl_serpath = Tdl_serpath
 
 type dlfunc_t = Tdlfunc_t
 
-const fds_bits = 0
+const fds_bits = "__fds_bits"
 
 type fflags_t = Tfflags_t
 
@@ -6495,6 +6515,10 @@ type uint_fast64_t = Tuint_fast64_t
 /*
 ** Enable SQLITE_USE_SEH by default on MSVC builds.  Only omit
 ** SEH support if the -DSQLITE_OMIT_SEH option is given.
+**
+** modernc.org/sqlite: also enabled under ccgo, where the __try/__except
+** blocks of wal.c are emulated through modernc_seh_try() (see the
+** SQLITE_USE_SEH section of wal.c and https://gitlab.com/cznic/sqlite/-/issues/221).
  */
 
 /*

@@ -12,9 +12,8 @@ import (
 
 const MaxInternedStrings = 1024
 
-// errorLabelsCount is how many labels appendErrorLabels can add: __error__, __error_details__ and
-// __preserve_error__.
-const errorLabelsCount = 3
+// errorLabelsCount is how many labels appendErrorLabels can add: __error__ and __error_details__.
+const errorLabelsCount = 2
 
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.StableHash(labels.EmptyLabels()), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
@@ -127,7 +126,8 @@ type BaseLabelsBuilder struct {
 
 	groups                       []string
 	baseMap                      map[string]string
-	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints               ParserHint       // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -160,19 +160,31 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
 			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
-		resultCache:    make(map[uint64]LabelsResult),
-		hasher:         newHasher(),
-		groups:         groups,
-		parserKeyHints: parserKeyHints,
-		noLabels:       noLabels,
-		without:        without,
-		jsonPaths:      make(map[string][]string),
+		resultCache:      make(map[uint64]LabelsResult),
+		hasher:           newHasher(),
+		groups:           groups,
+		parserKeyHints:   parserKeyHints,
+		labelFilterHints: NoLabelFilterHints(),
+		noLabels:         noLabels,
+		without:          without,
+		jsonPaths:        make(map[string][]string),
 	}
 }
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+}
+
+// WithLabelFilterHints sets the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline. Returns b for chaining.
+func (b *BaseLabelsBuilder) WithLabelFilterHints(h LabelFilterHints) *BaseLabelsBuilder {
+	if h == nil {
+		h = NoLabelFilterHints()
+	}
+	b.labelFilterHints = h
+	return b
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -216,6 +228,13 @@ func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
 }
 
+// LabelFilterHints returns the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline.
+func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
+	return b.labelFilterHints
+}
+
 func (b *BaseLabelsBuilder) hasDel() bool {
 	return len(b.del) > 0
 }
@@ -237,9 +256,17 @@ func (b *BaseLabelsBuilder) sizeAdd() int {
 	return length
 }
 
-// SetErr sets the error label.
-func (b *LabelsBuilder) SetErr(err string) *LabelsBuilder {
+// SetErr sets the error and its details. The input details may be nil.
+//
+// The two go together, because each error owns its own details. A later stage that replaces the
+// error must not inherit the details of the one before it.
+func (b *LabelsBuilder) SetErr(err string, details error) *LabelsBuilder {
 	b.err = err
+	b.errDetails = ""
+	if details != nil {
+		b.errDetails = details.Error()
+	}
+
 	return b
 }
 
@@ -401,6 +428,13 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, DuplicateSuffix)
+
+			// The renamed label can itself already be taken (e.g. by a stream label of that
+			// exact name): in such case, we preserve the already existing one and the this value
+			// gets dropped.
+			if _, _, ok := b.getWithCategory(name); ok {
+				return
+			}
 		}
 
 		if name == logqlmodel.ErrorLabel {
@@ -447,6 +481,7 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 			Value: b.errDetails,
 		})
 	}
+
 	return buf
 }
 
@@ -834,16 +869,6 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 	buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	if b.errDetails != "" {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
-	}
-
-	// Unlike the other two special error labels, __preserve_error__ is an ordinary label rather than
-	// a builder field, so grouping drops it unless it is a group key. Losing it makes the evaluator
-	// fail the query on a sample the filter asked to keep.
-	if !labelsContain(buf, logqlmodel.PreserveErrorLabel) {
-		// The __preserve_error__ label can reach the builder in any category.
-		if v, _, ok := b.getWithCategory(logqlmodel.PreserveErrorLabel); ok {
-			buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: v})
-		}
 	}
 
 	return buf

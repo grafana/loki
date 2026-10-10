@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	Marshal   func(interface{}) ([]byte, error)
-	Unmarshal func([]byte, interface{}) error
+	Marshal   func(any) ([]byte, error)
+	Unmarshal func([]byte, any) error
 )
 
 type FieldQuery struct {
@@ -47,7 +47,7 @@ func (q *FieldQuery) QueryString() (FieldQueryString, error) {
 type FieldQueryString string
 
 func (s FieldQueryString) Build() (*FieldQuery, error) {
-	var query interface{}
+	var query any
 	if err := Unmarshal([]byte(s), &query); err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s FieldQueryString) buildString(v reflect.Value) (*FieldQuery, error) {
 	b := []byte(v.String())
 	switch b[0] {
 	case '[', '{':
-		var query interface{}
+		var query any
 		if err := Unmarshal(b, &query); err != nil {
 			return nil, err
 		}

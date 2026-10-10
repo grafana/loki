@@ -27,7 +27,7 @@ func FromPath(td TrustDomain, path string) (ID, error) {
 // domain. The formatted path must be a valid absolute path according to the
 // SPIFFE specification.
 // See https://github.com/spiffe/spiffe/blob/main/standards/SPIFFE-ID.md#22-path
-func FromPathf(td TrustDomain, format string, args ...interface{}) (ID, error) {
+func FromPathf(td TrustDomain, format string, args ...any) (ID, error) {
 	path, err := FormatPath(format, args...)
 	if err != nil {
 		return ID{}, err
@@ -82,7 +82,7 @@ func FromString(id string) (ID, error) {
 }
 
 // FromStringf parses a SPIFFE ID from a formatted string.
-func FromStringf(format string, args ...interface{}) (ID, error) {
+func FromStringf(format string, args ...any) (ID, error) {
 	return FromString(fmt.Sprintf(format, args...))
 }
 
@@ -161,7 +161,7 @@ func (id ID) AppendPath(path string) (ID, error) {
 // called on a zero value. The formatted path must be a valid absolute path
 // according to the SPIFFE specification.
 // See https://github.com/spiffe/spiffe/blob/main/standards/SPIFFE-ID.md#22-path
-func (id ID) AppendPathf(format string, args ...interface{}) (ID, error) {
+func (id ID) AppendPathf(format string, args ...any) (ID, error) {
 	if id.IsZero() {
 		return ID{}, errors.New("cannot append path on a zero ID value")
 	}
@@ -204,7 +204,7 @@ func (id ID) ReplacePath(path string) (ID, error) {
 // It will fail if called on a zero value. The formatted path must be a valid
 // absolute path according to the SPIFFE specification.
 // See https://github.com/spiffe/spiffe/blob/main/standards/SPIFFE-ID.md#22-path
-func (id ID) ReplacePathf(format string, args ...interface{}) (ID, error) {
+func (id ID) ReplacePathf(format string, args ...any) (ID, error) {
 	if id.IsZero() {
 		return ID{}, errors.New("cannot replace path on a zero ID value")
 	}

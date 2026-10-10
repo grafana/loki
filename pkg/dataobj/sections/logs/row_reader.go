@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"slices"
 	"strconv"
 	"unsafe"
 
@@ -367,15 +368,12 @@ func (r *RowReader) Close() error {
 }
 
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*Column) dataset.Predicate {
-	var values []dataset.Value
-	for i := range ids {
-		values = append(values, dataset.Int64Value(i))
-	}
+	members := slices.Collect(ids)
 
 	// No IDs means no stream filter at all. Decide that before looking the column up, so an
 	// unmatched read does not depend on whether the column was projected: reading the whole
 	// section without projecting the stream ID would otherwise drop every row.
-	if len(values) == 0 {
+	if len(members) == 0 {
 		return nil
 	}
 
@@ -386,9 +384,14 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
+	// A logs section keeps the rows of one stream together, so consecutive rows usually share
+	// a stream ID and the memoized set skips most map lookups.
+	//
+	// A memoized set is not safe for concurrent use. Each call builds a new set, and the
+	// reader that owns the predicate uses it on one goroutine.
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		Values: dataset.NewMemoizedInt64ValueSetOf(members...),
 	}
 }
 

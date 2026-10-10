@@ -1022,6 +1022,8 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *logproto.LoglineIndexRequest:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "LoglineIndexRequest requires frontend.encoding=protobuf")
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", fmt.Sprintf("invalid request format, got (%T)", r))
 	}
@@ -1045,6 +1047,9 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/query"
 	case *logproto.IndexStatsRequest:
 		return "/loki/api/v1/index/stats"
+	case *logproto.LoglineIndexRequest:
+		// Internal scheduler request. Not an HTTP route.
+		return "logline_index"
 	case *logproto.VolumeRequest:
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
@@ -1295,6 +1300,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetLabels().WithHeaders(headers), nil
 	case *logproto.IndexStatsRequest:
 		return resp.GetStats().WithHeaders(headers), nil
+	case *logproto.LoglineIndexRequest:
+		return resp.GetHints().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
 	case *DetectedLabelsRequest:
@@ -2261,6 +2268,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 	case *logproto.IndexStatsRequest:
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{},
+		}, nil
+	case *logproto.LoglineIndexRequest:
+		return &LoglineIndexResponse{
+			Response: &logproto.LoglineIndexResponse{},
 		}, nil
 	case *logproto.VolumeRequest:
 		return &VolumeResponse{

@@ -212,3 +212,74 @@ func TestCountDistinctSketchExprValidatesMatchers(t *testing.T) {
 	}, &Grouping{Groups: []string{"version"}})
 	require.NoError(t, validateSampleExpr(valid))
 }
+
+func TestKeepsErroredLines(t *testing.T) {
+	leftOf := func(t *testing.T, query string) *LogRangeExpr {
+		t.Helper()
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		switch e := expr.(type) {
+		case *RangeAggregationExpr:
+			return e.Left
+		case *LabelAggregationExpr:
+			return e.Left
+		default:
+			t.Fatalf("query %q parsed into %T, want a range or label aggregation", query, expr)
+			return nil
+		}
+	}
+
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		{
+			name:  "a plain query does not keep the errored lines",
+			query: `count_over_time({app="a"}[1m])`,
+			want:  false,
+		},
+		{
+			name:  `__error__!="" keeps the errored lines`,
+			query: `count_over_time({app="a"} | json | __error__!="" [1m])`,
+			want:  true,
+		},
+		{
+			name:  `__error__="" drops the errored lines`,
+			query: `count_over_time({app="a"} | json | __error__="" [1m])`,
+			want:  false,
+		},
+		{
+			name:  `a __error__!="" post filter after the unwrap keeps the errored lines`,
+			query: `sum_over_time({app="a"} | unwrap v | __error__!="" [1m])`,
+			want:  true,
+		},
+		{
+			name:  `a __error__="" post filter after the unwrap drops the errored lines`,
+			query: `sum_over_time({app="a"} | unwrap v | __error__="" [1m])`,
+			want:  false,
+		},
+		{
+			name:  "a plain approx_count_distinct query does not keep the errored lines",
+			query: `approx_count_distinct(mac, {app="a"}[1m])`,
+			want:  false,
+		},
+		{
+			name:  `__error__!="" keeps the errored lines in an approx_count_distinct query`,
+			query: `approx_count_distinct(mac, {app="a"} | logfmt | __error__!="" [1m])`,
+			want:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := KeepsErroredLines(leftOf(t, tc.query))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("a pipeline stage that fails to build returns the build error", func(t *testing.T) {
+		query := `count_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])`
+		_, err := KeepsErroredLines(leftOf(t, query))
+		require.Error(t, err)
+	})
+}

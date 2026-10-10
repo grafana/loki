@@ -1,0 +1,124 @@
+package logsobj
+
+import (
+	"errors"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+)
+
+// BuilderMetrics provides instrumentation for a [Builder].
+type BuilderMetrics struct {
+	logs    *logs.Metrics
+	streams *streams.Metrics
+	dataobj *dataobj.Metrics
+
+	targetPageSize   prometheus.Gauge
+	targetObjectSize prometheus.Gauge
+
+	appends       prometheus.Counter
+	appendTime    prometheus.Histogram
+	buildTime     prometheus.Histogram
+	flushFailures prometheus.Counter
+
+	builtSize prometheus.Histogram
+}
+
+// NewBuilderMetrics creates a new set of [BuilderMetrics] for instrumenting
+// logs objects.
+func NewBuilderMetrics() *BuilderMetrics {
+	return &BuilderMetrics{
+		logs:    logs.NewMetrics(),
+		streams: streams.NewMetrics(),
+		dataobj: dataobj.NewMetrics(),
+		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_config_target_page_size_bytes",
+			Help: "Configured target page size in bytes.",
+		}),
+		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_config_target_object_size_bytes",
+			Help: "Configured target object size in bytes.",
+		}),
+		appends: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_appends_total",
+			Help: "Total number of appends.",
+		}),
+		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_append_time_seconds",
+			Help: "Time taken appending a set of log lines in a stream to a data object.",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_build_time_seconds",
+			Help: "Time taken building a data object to flush.",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_built_size_bytes",
+			Help: "Distribution of constructed data object sizes in bytes.",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_flush_failures_total",
+			Help: "Total number of flush failures.",
+		}),
+	}
+}
+
+// ObserveConfig updates config metrics based on the provided [BuilderBaseConfig].
+func (m *BuilderMetrics) ObserveConfig(cfg BuilderBaseConfig) {
+	m.targetPageSize.Set(float64(cfg.TargetPageSize))
+	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
+}
+
+// Register registers metrics to report to reg.
+func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, m.logs.Register(reg))
+	errs = append(errs, m.streams.Register(reg))
+	errs = append(errs, m.dataobj.Register(reg))
+
+	errs = append(errs, reg.Register(m.targetPageSize))
+	errs = append(errs, reg.Register(m.targetObjectSize))
+
+	errs = append(errs, reg.Register(m.appends))
+	errs = append(errs, reg.Register(m.appendTime))
+	errs = append(errs, reg.Register(m.buildTime))
+
+	errs = append(errs, reg.Register(m.builtSize))
+	errs = append(errs, reg.Register(m.flushFailures))
+
+	return errors.Join(errs...)
+}
+
+// Unregister unregisters metrics from the provided Registerer.
+func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
+	m.logs.Unregister(reg)
+	m.streams.Unregister(reg)
+	m.dataobj.Unregister(reg)
+
+	reg.Unregister(m.targetPageSize)
+	reg.Unregister(m.targetObjectSize)
+
+	reg.Unregister(m.appends)
+	reg.Unregister(m.appendTime)
+	reg.Unregister(m.buildTime)
+
+	reg.Unregister(m.builtSize)
+	reg.Unregister(m.flushFailures)
+}

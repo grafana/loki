@@ -94,7 +94,7 @@ NewExponential(1 * time.Second)
 
 The Fibonacci backoff uses the Fibonacci sequence to calculate the backoff. The
 next value is the sum of the current value and the previous value. This means
-retires happen quickly at first, but then gradually take slower, ideal for
+retries happen quickly at first, but then gradually slow down, ideal for
 network-type issues. Here is an example:
 
 ```text

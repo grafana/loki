@@ -56,6 +56,7 @@ message Node {
     IndexMerge index_merge = 17;
     LogMerge log_merge = 18;
     SortObject sort_object = 19;
+    IndexFilter index_filter = 20;
   }
 }
 
@@ -320,6 +321,15 @@ message LogMerge {
 message SortObject {
   string source_object_path = 1;
   repeated string sort_schema = 2;
+}
+
+// IndexFilter copies the postings and stats rows of the listed log objects
+// from one tenant's index into a new index object. It reads only the source
+// index.
+message IndexFilter {
+  string tenant = 1;
+  string source_index_path = 2;
+  repeated string object_paths = 3;
 }
 
 // Cache controls Task-level caching.

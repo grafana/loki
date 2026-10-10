@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -106,11 +106,11 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint:      params.Config.Endpoint,
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
-		IndexobjCfg:        params.IndexobjCfg,
-		LogsobjCfg:         params.LogsobjCfg,
-		UploaderCfg:        params.UploaderCfg,
-		IndexMergeObserver: wm,
-		LogMergeObserver:   wm,
+		IndexobjCfg:         params.IndexobjCfg,
+		LogsobjCfg:          params.LogsobjCfg,
+		UploaderCfg:         params.UploaderCfg,
+		IndexMergeObserver:  wm,
+		NewLogMergeObserver: wm.logMergeObserver,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

@@ -3,36 +3,39 @@ package decoder
 import (
 	"encoding/base64"
 	"fmt"
+	"reflect"
 	"unsafe"
 
 	"github.com/goccy/go-json/internal/errors"
-	"github.com/goccy/go-json/internal/runtime"
 )
 
 type bytesDecoder struct {
-	typ           *runtime.Type
+	typ           reflect.Type
 	sliceDecoder  Decoder
 	stringDecoder *stringDecoder
 	structName    string
 	fieldName     string
+	// sliceType is the type of the slice, which the type errors report.
+	sliceType reflect.Type
 }
 
-func byteUnmarshalerSliceDecoder(typ *runtime.Type, structName string, fieldName string) Decoder {
+func byteUnmarshalerSliceDecoder(typ reflect.Type, structName string, fieldName string) Decoder {
 	var unmarshalDecoder Decoder
 	switch {
-	case runtime.PtrTo(typ).Implements(unmarshalJSONType):
-		unmarshalDecoder = newUnmarshalJSONDecoder(runtime.PtrTo(typ), structName, fieldName)
-	case runtime.PtrTo(typ).Implements(unmarshalTextType):
-		unmarshalDecoder = newUnmarshalTextDecoder(runtime.PtrTo(typ), structName, fieldName)
+	case reflect.PointerTo(typ).Implements(unmarshalJSONType):
+		unmarshalDecoder = newUnmarshalJSONDecoder(reflect.PointerTo(typ), structName, fieldName)
+	case reflect.PointerTo(typ).Implements(unmarshalTextType):
+		unmarshalDecoder = newUnmarshalTextDecoder(reflect.PointerTo(typ), structName, fieldName)
 	default:
 		unmarshalDecoder, _ = compileUint8(typ, structName, fieldName)
 	}
 	return newSliceDecoder(unmarshalDecoder, typ, 1, structName, fieldName)
 }
 
-func newBytesDecoder(typ *runtime.Type, structName string, fieldName string) *bytesDecoder {
+func newBytesDecoder(typ reflect.Type, structName string, fieldName string) *bytesDecoder {
 	return &bytesDecoder{
 		typ:           typ,
+		sliceType:     reflect.SliceOf(typ),
 		sliceDecoder:  byteUnmarshalerSliceDecoder(typ, structName, fieldName),
 		stringDecoder: newStringDecoder(structName, fieldName),
 		structName:    structName,
@@ -40,29 +43,14 @@ func newBytesDecoder(typ *runtime.Type, structName string, fieldName string) *by
 	}
 }
 
-func (d *bytesDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) error {
-	bytes, err := d.decodeStreamBinary(s, depth, p)
-	if err != nil {
-		return err
-	}
-	if bytes == nil {
-		s.reset()
-		return nil
-	}
-	decodedLen := base64.StdEncoding.DecodedLen(len(bytes))
-	buf := make([]byte, decodedLen)
-	n, err := base64.StdEncoding.Decode(buf, bytes)
-	if err != nil {
-		return err
-	}
-	*(*[]byte)(p) = buf[:n]
-	s.reset()
-	return nil
-}
-
 func (d *bytesDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) (int64, error) {
+	cursor = skipWhiteSpace(ctx.Buf, cursor)
+	start := cursor
 	bytes, c, err := d.decodeBinary(ctx, cursor, depth, p)
 	if err != nil {
+		if c := ctx.Buf[cursor]; c != '[' && isOtherValue(c, stringValue) {
+			return ctx.skipTypeError(cursor, depth, d.sliceType)
+		}
 		return 0, err
 	}
 	if bytes == nil {
@@ -73,7 +61,8 @@ func (d *bytesDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe
 	b := make([]byte, decodedLen)
 	n, err := base64.StdEncoding.Decode(b, bytes)
 	if err != nil {
-		return 0, err
+		ctx.base64Error(start, cursor, d.sliceType, err)
+		return cursor, nil
 	}
 	*(*[]byte)(p) = b[:n]
 	return cursor, nil
@@ -83,28 +72,13 @@ func (d *bytesDecoder) DecodePath(ctx *RuntimeContext, cursor, depth int64) ([][
 	return nil, 0, fmt.Errorf("json: []byte decoder does not support decode path")
 }
 
-func (d *bytesDecoder) decodeStreamBinary(s *Stream, depth int64, p unsafe.Pointer) ([]byte, error) {
-	c := s.skipWhiteSpace()
-	if c == '[' {
-		if d.sliceDecoder == nil {
-			return nil, &errors.UnmarshalTypeError{
-				Type:   runtime.RType2Type(d.typ),
-				Offset: s.totalOffset(),
-			}
-		}
-		err := d.sliceDecoder.DecodeStream(s, depth, p)
-		return nil, err
-	}
-	return d.stringDecoder.decodeStreamByte(s)
-}
-
 func (d *bytesDecoder) decodeBinary(ctx *RuntimeContext, cursor, depth int64, p unsafe.Pointer) ([]byte, int64, error) {
 	buf := ctx.Buf
 	cursor = skipWhiteSpace(buf, cursor)
 	if buf[cursor] == '[' {
 		if d.sliceDecoder == nil {
 			return nil, 0, &errors.UnmarshalTypeError{
-				Type:   runtime.RType2Type(d.typ),
+				Type:   d.typ,
 				Offset: cursor,
 			}
 		}

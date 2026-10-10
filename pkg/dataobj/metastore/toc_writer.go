@@ -3,7 +3,8 @@ package metastore
 import (
 	"bytes"
 	"context"
-	stderrors "errors"
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -11,14 +12,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -35,16 +34,35 @@ var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular time range.
-// The Table of Contents files are used to look up other objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
-type TableOfContentsWriter struct {
-	tocBuilder *indexobj.Builder // New index pointer based builder.
-	metrics    *tocMetrics
-	bucket     objstore.Bucket
-	logger     log.Logger
-	buf        *bytes.Buffer
+// errUnrecoverable marks a ToC error that retrying can't fix, for example a
+// ToC that holds a section of another tenant.
+var errUnrecoverable = errors.New("unrecoverable ToC error")
 
-	builderOnce sync.Once
+// checkTenant returns an error that wraps errUnrecoverable unless tenant is
+// the only tenant of tocObject.
+func checkTenant(tocObject *dataobj.Object, tenant string) error {
+	tocObjTenant, err := tocObject.Tenant()
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUnrecoverable, err)
+	}
+	if tenant != tocObjTenant {
+		return fmt.Errorf("%w: ToC holds tenant %q, want %q", errUnrecoverable, tocObjTenant, tenant)
+	}
+
+	return nil
+}
+
+// TableOfContentsWriter (ToC writer) manages the metastore's Table of Contents files, which are a list of other
+// index data objects in storage for a particular tenant and time range.
+type TableOfContentsWriter struct {
+	metrics *tocMetrics
+	bucket  objstore.Bucket
+	logger  log.Logger
+
+	// buf and builderMetrics are set on the first WriteEntry call.
+	buf            *bytes.Buffer
+	builderMetrics *indexobj.BuilderMetrics
+	initOnce       sync.Once
 }
 
 // NewTableOfContentsWriter creates a new Writer for adding entries to the metastore's Table of Contents files.
@@ -52,10 +70,9 @@ func NewTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *TableO
 	metrics := newTableOfContentsMetrics()
 
 	return &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     metrics,
-		logger:      logger,
-		builderOnce: sync.Once{},
+		bucket:  bucket,
+		metrics: metrics,
+		logger:  logger,
 	}
 }
 
@@ -67,49 +84,48 @@ func (m *TableOfContentsWriter) UnregisterMetrics(reg prometheus.Registerer) {
 	m.metrics.unregister(reg)
 }
 
-func (m *TableOfContentsWriter) initBuilder() error {
-	var initErr error
-
-	m.builderOnce.Do(func() {
-		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
-		indexBuilder, err := indexobj.NewBuilder(tocBuilderCfg, nil, indexobj.NewBuilderMetrics(nil))
-		if err != nil {
-			initErr = err
-			return
-		}
-		m.tocBuilder = indexBuilder
-	})
-	return initErr
-}
-
-// WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
-func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
-	var err error
+// WriteEntry adds entry to the tenant's ToC of every window that entry
+// overlaps. It writes one window at a time and retries each window until the
+// write succeeds or ctx is done.
+//
+// WriteEntry returns an error without retrying if entry fails validation or a
+// ToC holds a section of another tenant.
+//
+// WriteEntry is not safe for concurrent use, because all calls share one
+// buffer.
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
-	// Initialize builder if this is the first call for this partition
-	if err := m.initBuilder(); err != nil {
+	if err := entry.validate(); err != nil {
 		return err
 	}
 
-	var globalMinTime, globalMaxTime time.Time
-	for _, timeRange := range tenantTimeRanges {
-		if globalMinTime.IsZero() || timeRange.MinTime.Before(globalMinTime) {
-			globalMinTime = timeRange.MinTime
-		}
-		if globalMaxTime.IsZero() || timeRange.MaxTime.After(globalMaxTime) {
-			globalMaxTime = timeRange.MaxTime
-		}
+	// The buffer is large, so allocate it on the first call only.
+	m.initOnce.Do(func() {
+		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
+		m.builderMetrics = indexobj.NewBuilderMetrics(nil)
+	})
+
+	// A builder is bound to one tenant, so each call creates its own. This is
+	// cheap, because the builders share their metrics and a builder creates
+	// its section builders on first use.
+	tocBuilder, err := indexobj.NewBuilder(tenant, tocBuilderCfg, nil, m.builderMetrics)
+	if err != nil {
+		return err
 	}
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range IterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+	for tocPath := range IterTableOfContentsPaths(tenant, entry.StartTime, entry.EndTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
 		})
+		var (
+			err     error
+			written bool
+		)
 		for b.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
 				if existing != nil {
@@ -117,12 +133,12 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				}
 
 				m.buf.Reset()
-				m.tocBuilder.Reset()
+				tocBuilder.Reset()
 
 				if existing != nil {
 					_, err := io.Copy(m.buf, existing)
 					if err != nil {
-						return nil, errors.Wrap(err, "copying to local buffer")
+						return nil, fmt.Errorf("copying to local buffer: %w", err)
 					}
 				}
 
@@ -130,30 +146,23 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 					replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
 					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
 					if err != nil {
-						return nil, errors.Wrap(err, "creating object from buffer")
+						return nil, fmt.Errorf("creating object from buffer: %w", err)
 					}
-					err = m.copyFromExistingToc(ctx, object)
+					err = copyFromExistingToc(ctx, tocBuilder, object)
 					if err != nil {
-						return nil, errors.Wrap(err, "reading existing metastore version")
+						return nil, fmt.Errorf("reading existing metastore version: %w", err)
 					}
 					replayDuration.ObserveDuration()
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				// Append all the tenant time ranges that overlap with the current Table of Contents window.
-				for _, timeRange := range tenantTimeRanges {
-					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
-							Path:                 dataobjPath,
-							StartTs:              timeRange.MinTime,
-							EndTs:                timeRange.MaxTime,
-							FileSize:             timeRange.FileSize,
-							UncompressedLogsSize: timeRange.UncompressedLogsSize,
-						})
-						if err != nil {
-							return nil, errors.Wrap(err, "appending index pointer")
-						}
-					}
+				err := tocBuilder.AppendIndexPointer(indexpointers.IndexPointer{
+					Path:    entry.Path,
+					StartTs: entry.StartTime,
+					EndTs:   entry.EndTime,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("appending index pointer: %w", err)
 				}
 
 				var (
@@ -161,9 +170,9 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 					closer io.Closer
 				)
 
-				obj, closer, err = m.tocBuilder.Flush()
+				obj, closer, err = tocBuilder.Flush()
 				if err != nil {
-					return nil, errors.Wrap(err, "flushing metastore builder")
+					return nil, fmt.Errorf("flushing metastore builder: %w", err)
 				}
 
 				reader, err := obj.Reader(ctx)
@@ -181,24 +190,32 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 						var errs []error
 						errs = append(errs, reader.Close())
 						errs = append(errs, closer.Close())
-						return stderrors.Join(errs...)
+						return errors.Join(errs...)
 					},
 				}, nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
 				m.metrics.incTableOfContentsWrites(statusSuccess)
+				written = true
 				break
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
 			m.metrics.incTableOfContentsWrites(statusFailure)
+			if errors.Is(err, errUnrecoverable) {
+				break
+			}
 			b.Wait()
 		}
 
-		// Reset at the end too so we don't leave our memory hanging around between calls.
-		m.tocBuilder.Reset()
+		// The loop stops without writing on an unrecoverable error, or once
+		// the context is done. The context can be done before the first attempt,
+		// when err is still nil.
+		if !written {
+			return errors.Join(b.Err(), err)
+		}
 	}
-	return err
+	return nil
 }
 
 // wrappedReadCloser wraps an io.ReadCloser and calls OnClose when Close is
@@ -220,7 +237,12 @@ func (w *wrappedReadCloser) Close() error {
 }
 
 // copyFromExistingToc reads the provided table of contents (toc) object and appends the contained index pointers to the builder. The resulting builder will contain exactly the same entries as the input object.
-func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObject *dataobj.Object) error {
+// It returns an error that wraps errUnrecoverable if the object holds a section of a tenant other than the builder's tenant.
+func copyFromExistingToc(ctx context.Context, builder *indexobj.Builder, tocObject *dataobj.Object) error {
+	if err := checkTenant(tocObject, builder.Tenant()); err != nil {
+		return err
+	}
+
 	var indexPointersReader indexpointers.RowReader
 	defer indexPointersReader.Close()
 
@@ -230,22 +252,24 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
-			return errors.Wrap(err, "opening section")
+			return fmt.Errorf("opening section: %w", err)
 		}
-		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
 		if err := indexPointersReader.Open(ctx); err != nil {
-			return errors.Wrap(err, "opening index pointers reader")
+			return fmt.Errorf("opening index pointers reader: %w", err)
 		}
-		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
-			if err != nil && err != io.EOF {
-				return errors.Wrap(err, "reading index pointers")
+		for {
+			n, err := indexPointersReader.Read(ctx, pbuf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return fmt.Errorf("reading index pointers: %w", err)
 			}
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer)
-				if err != nil {
-					return errors.Wrap(err, "appending index pointers")
+				if err := builder.AppendIndexPointer(indexPointer); err != nil {
+					return fmt.Errorf("appending index pointers: %w", err)
 				}
+			}
+			if errors.Is(err, io.EOF) {
+				break
 			}
 		}
 	}

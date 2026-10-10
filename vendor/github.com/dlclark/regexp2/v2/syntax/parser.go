@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 )
 
 type RegexOptions int32
@@ -79,6 +80,7 @@ const (
 	ErrMissingBrace               = "missing closing }"
 	ErrInvalidRepeatOp            = "invalid nested repetition operator"
 	ErrMissingRepeatArgument      = "missing argument to repetition operator"
+	ErrQuantifiedAssertion        = "assertion cannot be quantified"
 	ErrConditionalExpression      = "illegal conditional (?(...)) expression"
 	ErrTooManyAlternates          = "too many | in (?()|)"
 	ErrUnrecognizedGrouping       = "unrecognized grouping construct: (%v"
@@ -132,6 +134,10 @@ type parser struct {
 
 	caps     map[int]int
 	capnames map[string]int
+	// ECMAScript names can refer to multiple distinct capture slots.
+	namedCaptures  map[string][]int
+	duplicateNames bool
+	capturePaths   map[string][]captureAlternative
 
 	maintainCaptureOrder bool
 
@@ -141,6 +147,11 @@ type parser struct {
 	options         RegexOptions
 	optionsStack    []RegexOptions
 	ignoreNextParen bool
+}
+
+type captureAlternative struct {
+	group  int
+	branch int
 }
 
 type ParseOptions struct {
@@ -216,9 +227,103 @@ func (p *parser) noteCaptureSlot(i, pos int) {
 	}
 }
 
+// checkCapturePath enforces ECMAScript 2025 §22.2.1.1's duplicate-name early
+// error using §22.2.1.4 MightBothParticipate: a common disjunction must separate
+// the declarations. Check the original grammar before reductions change it.
+// https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-static-semantics-mightbothparticipate
+func (p *parser) checkCapturePath(name string, path []captureAlternative) error {
+	if len(p.namedCaptures[name]) < 2 {
+		return nil
+	}
+	if p.capturePaths == nil {
+		p.capturePaths = make(map[string][]captureAlternative)
+	}
+	// Declarations in each alternative are contiguous in source order. If
+	// any pair can participate together, an adjacent pair can too.
+	previous := p.capturePaths[name]
+	if len(previous) != 0 {
+		separated := false
+		for i := 0; i < len(previous) && i < len(path); i++ {
+			if previous[i].group != path[i].group {
+				break
+			}
+			if previous[i].branch != path[i].branch {
+				separated = true
+				break
+			}
+		}
+		if !separated {
+			return p.getErr(ErrDuplicateGroupName)
+		}
+	}
+	p.capturePaths[name] = append(previous[:0], path...)
+	return nil
+}
+
+// ECMAScript 2025 §22.2.2.7.2 BackreferenceMatcher selects the sole defined
+// capture among the named slots (step 1.6) and consumes nothing if none is
+// defined (step 1.7). Concatenating numeric references has the same effect.
+// https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-backreferencematcher
+func (p *parser) namedReference(name string) *RegexNode {
+	slots := p.namedCaptures[name]
+	if !p.useOptionE() || len(slots) < 2 {
+		return newRegexNodeM(NtRef, p.options, p.captureSlotFromName(name))
+	}
+	node := newRegexNode(NtConcatenate, p.options)
+	for _, slot := range slots {
+		node.addChild(newRegexNodeM(NtRef, p.options, slot))
+	}
+	return node
+}
+
+// ECMAScript 2025 §22.2.2.3.1 RepeatMatcher, step 4, clears the quantified
+// atom's captures before each iteration. Resets stay distinct from references
+// so boolean compilation can omit unobserved slots; full compilation lowers
+// them to guarded balancing captures. For v2 compatibility, this is applied
+// only to newly supported duplicate-name patterns.
+// https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-repeatmatcher
+func (p *parser) resetQuantifiedCaptures(atom *RegexNode) *RegexNode {
+	var slots []int
+	stack := []*RegexNode{atom}
+	for len(stack) > 0 {
+		node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if node.T == NtCapture && node.M > 0 {
+			slots = append(slots, node.M)
+		}
+		stack = append(stack, node.Children...)
+	}
+	if len(slots) == 0 {
+		return atom
+	}
+	sequence := newRegexNode(NtConcatenate, atom.Options)
+	for _, slot := range slots {
+		sequence.addChild(newRegexNodeM(NtResetCapture, atom.Options, slot))
+	}
+	sequence.addChild(atom)
+	return sequence
+}
+
 func (p *parser) noteCaptureName(name string, pos int) error {
 	if p.capnames == nil {
 		p.capnames = make(map[string]int)
+	}
+	if p.useOptionE() {
+		// §22.2.1.3 CountLeftCapturingParensBefore assigns each declaration
+		// its own number in source order, including duplicate names. Keeping
+		// the first number in capnames is regexp2's static API lookup policy.
+		if p.namedCaptures == nil {
+			p.namedCaptures = make(map[string][]int)
+		}
+		slot := p.consumeAutocap()
+		p.noteCaptureSlot(slot, pos)
+		if _, ok := p.capnames[name]; !ok {
+			p.capnames[name] = slot
+		} else {
+			p.duplicateNames = true
+		}
+		p.namedCaptures[name] = append(p.namedCaptures[name], slot)
+		return nil
 	}
 
 	if _, ok := p.capnames[name]; !ok {
@@ -230,8 +335,6 @@ func (p *parser) noteCaptureName(name string, pos int) error {
 			p.capnames[name] = pos
 		}
 		p.capnamelist = append(p.capnamelist, name)
-	} else if p.useOptionE() {
-		return p.getErr(ErrDuplicateGroupName)
 	}
 	return nil
 }
@@ -330,6 +433,14 @@ func (p *parser) assignOrderedNameSlots() {
 	p.capnamelist = make([]string, p.capcount)
 	if p.capnames == nil {
 		p.capnames = make(map[string]int, p.capcount)
+	}
+	if p.useOptionE() {
+		for name, slots := range p.namedCaptures {
+			for _, slot := range slots {
+				p.capnamelist[slot] = name
+			}
+		}
+		return
 	}
 
 	for _, name := range names {
@@ -515,6 +626,11 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 	isQuant := false
 
 	p.startGroup(newRegexNodeMN(NtCapture, p.options, 0, -1))
+	var path []captureAlternative
+	if p.duplicateNames {
+		path = []captureAlternative{{}}
+	}
+	nextGroup := 0
 
 	for p.charsRight() > 0 {
 		wasPrevQuantifier := isQuant
@@ -608,6 +724,18 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 			} else if grouper == nil {
 				p.popKeepOptions()
 			} else {
+				if p.duplicateNames && grouper.T == NtCapture {
+					name := p.capnamelist[grouper.M]
+					if name != "" {
+						if err := p.checkCapturePath(name, path); err != nil {
+							return nil, err
+						}
+					}
+				}
+				if p.duplicateNames {
+					nextGroup++
+					path = append(path, captureAlternative{group: nextGroup})
+				}
 				p.pushGroup()
 				p.startGroup(grouper)
 			}
@@ -615,6 +743,9 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 			continue
 
 		case '|':
+			if p.duplicateNames {
+				path[len(path)-1].branch++
+			}
 			p.addAlternate()
 			goto ContinueOuterScan
 
@@ -630,6 +761,9 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 				return nil, err
 			}
 			p.popOptions()
+			if p.duplicateNames {
+				path = path[:len(path)-1]
+			}
 
 			if p.unit == nil {
 				goto ContinueOuterScan
@@ -700,6 +834,10 @@ func (p *parser) scanRegex() (*RegexNode, error) {
 			//maintain odd C# assignment order -- not sure if required, could clean up?
 			p.addConcatenate()
 			goto ContinueOuterScan
+		}
+
+		if p.useOptionE() && p.unit != nil && !p.isECMAQuantifiable(p.unit) {
+			return nil, p.getErr(ErrQuantifiedAssertion)
 		}
 
 		ch = p.moveRightGetChar()
@@ -820,6 +958,12 @@ func (p *parser) scanReplacement() (*RegexNode, error) {
 				if err != nil {
 					return nil, err
 				}
+				if n.T == NtConcatenate {
+					for _, child := range n.Children {
+						p.concatenation.addChild(child)
+					}
+					continue
+				}
 				p.addUnitNode(n)
 			}
 			p.addConcatenate()
@@ -903,7 +1047,7 @@ func (p *parser) scanDollar() (*RegexNode, error) {
 
 		if p.charsRight() > 0 && p.moveRightGetChar() == '}' {
 			if p.isCaptureName(capname) {
-				return newRegexNodeM(NtRef, p.options, p.captureSlotFromName(capname)), nil
+				return p.namedReference(capname), nil
 			}
 		}
 	} else if !angled {
@@ -968,7 +1112,7 @@ func (p *parser) scanPythonNamedBackref() (*RegexNode, error) {
 		return nil, p.getErr(ErrUndefinedNameRef, capname)
 	}
 
-	return newRegexNodeM(NtRef, p.options, p.captureSlotFromName(capname)), nil
+	return p.namedReference(capname), nil
 }
 
 // scanGroupOpen scans chars following a '(' (not counting the '('), and returns
@@ -1068,7 +1212,11 @@ func (p *parser) scanGroupOpen() (*RegexNode, error) {
 					}
 
 					if p.isCaptureName(capname) {
-						capnum = p.captureSlotFromName(capname)
+						if p.useOptionE() {
+							capnum = p.autocap
+						} else {
+							capnum = p.captureSlotFromName(capname)
+						}
 					}
 
 					// check if we have bogus character after the name
@@ -1221,7 +1369,11 @@ func (p *parser) scanGroupOpen() (*RegexNode, error) {
 					}
 
 					if p.isCaptureName(capname) {
-						capnum = p.captureSlotFromName(capname)
+						if p.useOptionE() {
+							capnum = p.autocap
+						} else {
+							capnum = p.captureSlotFromName(capname)
+						}
 					}
 
 					// check if we have bogus character after the name
@@ -1379,7 +1531,7 @@ func (p *parser) scanBackslash(scanOnly bool) (*RegexNode, error) {
 			return nil, err
 		}
 		cc := &CharSet{}
-		cc.addCategory(prop, (ch != 'p'), p.useOptionI())
+		p.addProperty(cc, prop, (ch != 'p'), p.useOptionI())
 		if p.useOptionI() {
 			cc.addLowercase()
 		}
@@ -1539,7 +1691,7 @@ func (p *parser) scanBasicBackslash(scanOnly bool) (*RegexNode, error) {
 			}
 
 			if p.isCaptureName(capname) {
-				return newRegexNodeM(NtRef, p.options, p.captureSlotFromName(capname)), nil
+				return p.namedReference(capname), nil
 			}
 			return nil, p.getErr(ErrUndefinedNameRef, capname)
 		} else {
@@ -1604,7 +1756,11 @@ func (p *parser) parseProperty() (string, error) {
 		return "", p.getErr(ErrIncompleteSlashP)
 	}
 
-	canonical, ok := canonicalUnicodeCatName(capname)
+	resolve := canonicalUnicodeCatName
+	if p.useOptionE() && p.useOptionU() {
+		resolve = canonicalECMAProperty
+	}
+	canonical, ok := resolve(capname)
 	if !ok {
 		return "", p.getErr(ErrUnknownSlashP, capname)
 	}
@@ -1705,13 +1861,19 @@ func (p *parser) scanECMACapname() (string, error) {
 			escaped = true
 			p.moveRight(1)
 			if p.charsRight() > 0 && p.rightChar(0) == '{' {
-				if !p.useOptionU() {
-					return "", p.getErr(ErrInvalidECMAGroupName)
-				}
 				p.moveRight(1)
 				ch, err = p.scanHexUntilBrace()
 			} else {
 				ch, err = p.scanHex(4)
+				if err == nil && ch >= 0xD800 && ch <= 0xDBFF && p.charsRight() >= 6 && p.rightChar(0) == '\\' && p.rightChar(1) == 'u' {
+					pos := p.textpos()
+					p.moveRight(2)
+					if lo, err := p.scanHex(4); err == nil && lo >= 0xDC00 && lo <= 0xDFFF {
+						ch = utf16.DecodeRune(ch, lo)
+					} else {
+						p.textto(pos)
+					}
+				}
 			}
 			if err != nil {
 				return "", err
@@ -1903,11 +2065,16 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 					if inRange {
 						return nil, p.getErr(ErrShorthandClassInCharRange, string(ch))
 					}
-					cc.addCategory(prop, (ch != 'p'), caseInsensitive)
+					p.addProperty(cc, prop, (ch != 'p'), caseInsensitive)
 				} else {
 					if _, err := p.parseProperty(); err != nil {
 						return nil, err
 					}
+				}
+				if p.useOptionE() && p.useOptionU() && p.charsRight() >= 2 && p.rightChar(0) == '-' && p.rightChar(1) != ']' {
+					// A property escape denotes a set, so it cannot start a range.
+					// https://tc39.es/ecma262/#sec-patterns-static-semantics-early-errors
+					return nil, p.getErr(ErrShorthandClassInCharRange, string(ch))
 				}
 
 				continue
@@ -2404,6 +2571,9 @@ func (p *parser) addConcatenate() {
 
 // Finish the current quantifiable (when a quantifier is found)
 func (p *parser) addConcatenate3(lazy, possessive bool, min, max int) {
+	if p.duplicateNames && p.useOptionE() {
+		p.unit = p.resetQuantifiedCaptures(p.unit)
+	}
 	node := p.unit.makeQuantifier(lazy, min, max)
 	if possessive {
 		atomic := newRegexNode(NtAtomic, p.options)
@@ -2631,6 +2801,17 @@ func isStopperX(ch rune) bool {
 // Returns true for those characters that begin a quantifier.
 func isQuantifier(ch rune) bool {
 	return (ch <= '{' && _category[ch] >= Q)
+}
+
+// Returns false for assertions, which cannot be quantified in ECMAScript except for lookaheads without the Unicode option.
+func (p *parser) isECMAQuantifiable(n *RegexNode) bool {
+	switch n.T {
+	case NtBol, NtEol, NtBeginning, NtEndZ, NtEnd, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+		return false
+	case NtPosLook, NtNegLook:
+		return n.Options&RightToLeft == 0 && !p.useOptionU()
+	}
+	return true
 }
 
 func (p *parser) isTrueQuantifier() bool {

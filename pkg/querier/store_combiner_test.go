@@ -1,8 +1,11 @@
 package querier
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"math/rand"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,12 +23,14 @@ import (
 )
 
 func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
+	type indexRange struct{ from, through model.Time }
+
 	tests := []struct {
 		name      string
 		stores    []StoreConfig
 		from      model.Time
 		through   model.Time
-		expected  []storeWithRange
+		expected  []indexRange
 		wantEmpty bool
 	}{
 		{
@@ -42,7 +47,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(100),
 			through: model.Time(200),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(100), through: model.Time(200)},
 			},
 		},
@@ -64,7 +69,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(150),
 			through: model.Time(250),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(150), through: model.Time(199)},
 				{from: model.Time(200), through: model.Time(250)},
 			},
@@ -77,7 +82,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(100),
 			through: model.Time(200),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(100), through: model.Time(199)},
 				{from: model.Time(200), through: model.Time(200)},
 			},
@@ -91,7 +96,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(-50),
 			through: model.Time(50),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(-50), through: model.Time(-1)},
 				{from: model.Time(0), through: model.Time(50)},
 			},
@@ -105,7 +110,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(50),
 			through: model.Time(350),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(100), through: model.Time(199)},
 				{from: model.Time(200), through: model.Time(299)},
 				{from: model.Time(300), through: model.Time(350)},
@@ -119,7 +124,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(200),
 			through: model.Time(300),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(200), through: model.Time(300)},
 			},
 		},
@@ -131,7 +136,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 			},
 			from:    model.Time(0),
 			through: model.Time(300),
-			expected: []storeWithRange{
+			expected: []indexRange{
 				{from: model.Time(0), through: model.Time(99)},
 				{from: model.Time(100), through: model.Time(300)},
 			},
@@ -141,7 +146,7 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sc := NewStoreCombiner(tc.stores)
-			got := sc.findStoresForTimeRange(tc.from, tc.through)
+			got := sc.findStoresForTimeRange(toHalfOpenTimeRange(tc.from, tc.through))
 
 			if tc.wantEmpty {
 				require.Empty(t, got)
@@ -150,8 +155,8 @@ func TestStoreCombiner_findStoresForTimeRange(t *testing.T) {
 
 			require.Equal(t, len(tc.expected), len(got), "number of store ranges", tc.expected, got)
 			for i := range tc.expected {
-				require.Equal(t, tc.expected[i].from, got[i].from, "from time for store %d", i)
-				require.Equal(t, tc.expected[i].through, got[i].through, "through time for store %d", i)
+				require.Equal(t, tc.expected[i].from, got[i].inclusiveFrom(), "from time for store %d", i)
+				require.Equal(t, tc.expected[i].through, got[i].inclusiveThrough(), "through time for store %d", i)
 			}
 		})
 	}
@@ -218,12 +223,12 @@ func TestStoreCombiner_TimeRangeBoundaries(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sc := NewStoreCombiner(stores)
-			ranges := sc.findStoresForTimeRange(tc.from, tc.through)
+			ranges := sc.findStoresForTimeRange(toHalfOpenTimeRange(tc.from, tc.through))
 
 			require.Equal(t, len(tc.expectedRanges), len(ranges), "number of time ranges")
 			for i, expected := range tc.expectedRanges {
-				require.Equal(t, expected[0], ranges[i].from, "from time for range %d", i)
-				require.Equal(t, expected[1], ranges[i].through, "through time for range %d", i)
+				require.Equal(t, expected[0], ranges[i].inclusiveFrom(), "from time for range %d", i)
+				require.Equal(t, expected[1], ranges[i].inclusiveThrough(), "through time for range %d", i)
 			}
 		})
 	}
@@ -657,6 +662,75 @@ func TestStoreCombiner_Merging(t *testing.T) {
 		require.Equal(t, uint64(200), result.Volumes[0].Volume)
 		require.Equal(t, uint64(100), result.Volumes[1].Volume)
 	})
+
+	t.Run("SelectSamples deduplicates chunk samples against another source while a data-object band returns samples in no order", func(t *testing.T) {
+		const chunksFrom = model.Time(1000)
+
+		type sampleKey struct {
+			labels    string
+			timestamp int64
+		}
+
+		for seed := int64(0); seed < 100; seed++ {
+			rnd := rand.New(rand.NewSource(seed))
+
+			var (
+				chunkSeries    []logproto.Series
+				dataObjSamples []labeledSample
+				want           []sampleKey
+			)
+			for _, app := range []string{"a", "b", "c", "d"} {
+				lbs := fmt.Sprintf(`{app=%q}`, app)
+				hash := labels.StableHash(labels.FromStrings("app", app))
+
+				// The chunks hold samples at or after chunksFrom. Each has its own sample hash, so
+				// the merge can drop its duplicate.
+				series := logproto.Series{Labels: lbs, StreamHash: hash}
+				chunkEnd := int64(chunksFrom) + int64(rnd.Intn(20))
+				for ts := int64(chunksFrom); ts < chunkEnd; ts++ {
+					series.Samples = append(series.Samples, logproto.Sample{Timestamp: model.Time(ts).Time().UnixNano(), Value: 1, Hash: uint64(ts)})
+				}
+				chunkSeries = append(chunkSeries, series)
+				for _, sample := range series.Samples {
+					want = append(want, sampleKey{lbs, sample.Timestamp})
+				}
+
+				// The data objects hold samples before chunksFrom, with no sample hash.
+				numDataObjSamples := int64(rnd.Intn(20))
+				for ts := int64(0); ts < numDataObjSamples; ts++ {
+					sample := logproto.Sample{Timestamp: model.Time(ts).Time().UnixNano(), Value: 1}
+					dataObjSamples = append(dataObjSamples, labeledSample{labels: lbs, streamHash: hash, sample: sample})
+					want = append(want, sampleKey{lbs, sample.Timestamp})
+				}
+			}
+			slices.SortFunc(chunkSeries, func(a, b logproto.Series) int { return cmp.Compare(a.StreamHash, b.StreamHash) })
+			rnd.Shuffle(len(dataObjSamples), func(i, j int) { dataObjSamples[i], dataObjSamples[j] = dataObjSamples[j], dataObjSamples[i] })
+
+			sc := NewStoreCombiner([]StoreConfig{
+				{Store: &unorderedSampleStore{samples: dataObjSamples}, From: 0},
+				{Store: &mockStore{sampleSeries: chunkSeries}, From: chunksFrom},
+			})
+			req := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+				Start: model.Time(0).Time(),
+				End:   (chunksFrom + 100).Time(),
+				Order: logproto.SAMPLE_ORDER_BY_STREAM,
+			}}
+			storeIter, err := sc.SelectSamples(context.Background(), req)
+			require.NoError(t, err)
+
+			// An ingester holds a copy of every chunk sample.
+			ingesterIter := iter.NewStreamFirstMultiSeriesIterator(chunkSeries)
+			merged := iter.NewStreamFirstMergeSampleIterator(context.Background(), []iter.SampleIterator{ingesterIter, storeIter})
+
+			var got []sampleKey
+			for merged.Next() {
+				got = append(got, sampleKey{merged.Labels(), merged.At().Timestamp})
+			}
+			require.NoError(t, merged.Err())
+			require.NoError(t, merged.Close())
+			require.ElementsMatch(t, want, got, "seed %d", seed)
+		}
+	})
 }
 
 func TestStoreCombiner_PerStoreTimeRange(t *testing.T) {
@@ -670,7 +744,7 @@ func TestStoreCombiner_PerStoreTimeRange(t *testing.T) {
 	)
 
 	expectedRanges := [][2]time.Time{
-		{queryStart.Time(), (store2From - 1).Time()},
+		{queryStart.Time(), store2From.Time()},
 		{store2From.Time(), queryEnd.Time()},
 	}
 
@@ -743,6 +817,61 @@ func TestStoreCombiner_PerStoreTimeRange(t *testing.T) {
 		require.Equal(t, queryStart.Time(), req.Start, "caller's start must not change")
 		require.Equal(t, queryEnd.Time(), req.End, "caller's end must not change")
 	})
+
+	t.Run("sends no request to a store that starts at the end of the request", func(t *testing.T) {
+		store1, store2 := &mockStore{}, &mockStore{}
+		sc := NewStoreCombiner([]StoreConfig{
+			{Store: store1, From: queryStart},
+			{Store: store2, From: store2From},
+		})
+
+		req := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start: queryStart.Time(),
+			End:   store2From.Time(),
+			Order: logproto.SAMPLE_ORDER_BY_STREAM,
+		}}
+
+		it, err := sc.SelectSamples(context.Background(), req)
+		require.NoError(t, err)
+		require.NoError(t, it.Close())
+
+		require.Len(t, store1.receivedSampleReqs, 1)
+		require.Equal(t, queryStart.Time(), store1.receivedSampleReqs[0].Start)
+		require.Equal(t, store2From.Time(), store1.receivedSampleReqs[0].End)
+		require.Empty(t, store2.receivedSampleReqs)
+	})
+
+	t.Run("keeps the nanosecond bounds of the request and splits at the store boundaries", func(t *testing.T) {
+		store1, store2, store3 := &mockStore{}, &mockStore{}, &mockStore{}
+		sc := NewStoreCombiner([]StoreConfig{
+			{Store: store1, From: 0},
+			{Store: store2, From: store2From},
+			{Store: store3, From: model.Time(250)},
+		})
+
+		start := queryStart.Time().Add(time.Nanosecond)
+		end := queryEnd.Time().Add(time.Nanosecond)
+		req := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start: start,
+			End:   end,
+			Order: logproto.SAMPLE_ORDER_BY_STREAM,
+		}}
+
+		it, err := sc.SelectSamples(context.Background(), req)
+		require.NoError(t, err)
+		require.NoError(t, it.Close())
+
+		want := [][2]time.Time{
+			{start, store2From.Time()},
+			{store2From.Time(), model.Time(250).Time()},
+			{model.Time(250).Time(), end},
+		}
+		for i, store := range []*mockStore{store1, store2, store3} {
+			require.Len(t, store.receivedSampleReqs, 1, "store %d call count", i)
+			require.Equal(t, want[i][0], store.receivedSampleReqs[0].Start, "store %d start", i)
+			require.Equal(t, want[i][1], store.receivedSampleReqs[0].End, "store %d end", i)
+		}
+	})
 }
 
 func requireLogRanges(t *testing.T, expected [][2]time.Time, stores ...*mockStore) {
@@ -756,3 +885,36 @@ func requireLogRanges(t *testing.T, expected [][2]time.Time, stores ...*mockStor
 	}
 	require.NotSame(t, stores[0].receivedLogReqs[0], stores[1].receivedLogReqs[0], "stores must not share a request")
 }
+
+// unorderedSampleStore returns samples in slice order, which the test shuffles. It mimics the
+// data-object store, which returns samples in no order.
+type unorderedSampleStore struct {
+	mockStore
+	samples []labeledSample
+}
+
+type labeledSample struct {
+	labels     string
+	streamHash uint64
+	sample     logproto.Sample
+}
+
+func (s *unorderedSampleStore) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return &labeledSampleIterator{samples: s.samples, pos: -1}, nil
+}
+
+type labeledSampleIterator struct {
+	samples []labeledSample
+	pos     int
+}
+
+func (it *labeledSampleIterator) Next() bool {
+	it.pos++
+	return it.pos < len(it.samples)
+}
+
+func (it *labeledSampleIterator) At() logproto.Sample { return it.samples[it.pos].sample }
+func (it *labeledSampleIterator) Labels() string      { return it.samples[it.pos].labels }
+func (it *labeledSampleIterator) StreamHash() uint64  { return it.samples[it.pos].streamHash }
+func (it *labeledSampleIterator) Err() error          { return nil }
+func (it *labeledSampleIterator) Close() error        { return nil }

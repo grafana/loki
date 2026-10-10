@@ -40,6 +40,7 @@ type Push struct {
 	httpClient  *http.Client
 	userAgent   string
 	contentType string
+	protocol    string
 	logger      log.Logger
 
 	// channel for incoming logs
@@ -64,6 +65,7 @@ type Push struct {
 // Depending on the `logBatchSize` passed to this function, the implementing `EntryWriter` instance
 // is either a `Push` instance (which sends each log line immediately to Loki), or a `BatchedPush`
 // instance which sends log lines to Loki in batches.
+// The protocol must be PushProtocolLoki or PushProtocolOTLP.
 func NewPush(
 	lokiAddr, pathPrefix, tenantID string,
 	timeout time.Duration,
@@ -76,8 +78,12 @@ func NewPush(
 	username, password string,
 	backoffCfg *backoff.Config,
 	logBatchSize int,
+	protocol string,
 	logger log.Logger,
 ) (EntryWriter, error) {
+	if protocol != PushProtocolLoki && protocol != PushProtocolOTLP {
+		return nil, fmt.Errorf("unsupported push protocol %q: expected loki or otlp", protocol)
+	}
 	client, err := config.NewClientFromConfig(cfg, "canary-push", config.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
@@ -111,7 +117,11 @@ func NewPush(
 		scheme = "https"
 	}
 
-	pushPath, err := url.JoinPath(pathPrefix, pushEndpoint)
+	endpoint := pushEndpoint
+	if protocol == PushProtocolOTLP {
+		endpoint = "/otlp/v1/logs"
+	}
+	pushPath, err := url.JoinPath(pathPrefix, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
 	}
@@ -123,6 +133,7 @@ func NewPush(
 	}
 
 	p := &Push{
+		protocol:    protocol,
 		lokiURL:     u.String(),
 		tenantID:    tenantID,
 		httpClient:  client,
@@ -175,8 +186,11 @@ func (p *Push) Stop() {
 	}
 }
 
-// buildPayload creates the snappy compressed protobuf to send to Loki
+// buildPayload encodes a log entry using the configured push protocol.
 func (p *Push) buildPayload(e entry) ([]byte, error) {
+	if p.protocol == PushProtocolOTLP {
+		return p.buildOTLPPayload([]entry{e})
+	}
 	req := &logproto.PushRequest{
 		Streams: []logproto.Stream{
 			p.buildStream(e),
@@ -274,6 +288,9 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
 	req.Header.Set("Content-Type", p.contentType)
+	if p.protocol == PushProtocolOTLP {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 	req.Header.Set("User-Agent", p.userAgent)
 
 	// set org-id
@@ -298,6 +315,10 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 			line = scanner.Text()
 		}
 		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+	}
+
+	if status/100 == 2 && p.protocol == PushProtocolOTLP {
+		err = validateOTLPResponse(resp.Body)
 	}
 
 	if err := resp.Body.Close(); err != nil {
