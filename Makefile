@@ -68,6 +68,7 @@ LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
+LOKITOOL_IMAGE         := $(IMAGE_PREFIX)/lokitool:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 MAKEFILE_IMAGE         := $(IMAGE_PREFIX)/loki-makefile:latest
@@ -140,7 +141,7 @@ help: ## Display this help
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
-.PHONY: loki-image build-image build-image-push
+.PHONY: loki-image build-image build-image-push lokitool-image
 .PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
@@ -411,6 +412,7 @@ clean: ## clean the generated files
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf cmd/loki/loki
+	rm -rf cmd/lokitool/lokitool
 	rm -rf cmd/migrate/migrate
 	rm -rf cmd/querytee/querytee
 	rm -rf dist/
@@ -608,6 +610,10 @@ helm-test-push: helm-test-image
 # Query Tee image
 loki-querytee-image: ## build the querytee docker image
 	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile .
+
+# lokitool image
+lokitool-image: ## build the lokitool docker image
+	$(OCI_BUILD) -t $(LOKITOOL_IMAGE) -f cmd/lokitool/Dockerfile .
 
 # Migrate image
 migrate-image: ## build the migrate docker image
