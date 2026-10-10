@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/grafana/dskit/user"
@@ -688,4 +689,195 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 		ct++
 	}
 	require.Equal(t, l.maxQueryParallelism, ct)
+}
+
+// gatedShardAccumulator holds the collector while other shards finish execution.
+type gatedShardAccumulator struct {
+	logql.Accumulator
+	firstResultReceived chan struct{}
+	releaseFirstResult  <-chan struct{}
+}
+
+func (a *gatedShardAccumulator) Accumulate(ctx context.Context, result logqlmodel.Result, index int) error {
+	if index == 0 {
+		// Pause before the wrapped accumulator can accept or reject shard 0.
+		// Tests can then complete shard 1 while its delivery is blocked.
+		close(a.firstResultReceived)
+		<-a.releaseFirstResult
+	}
+	return a.Accumulator.Accumulate(ctx, result, index)
+}
+
+type controlledShardDownstreamer struct {
+	instance
+	query func(logql.DownstreamQuery) (logqlmodel.Result, error)
+}
+
+func (d controlledShardDownstreamer) Downstream(ctx context.Context, queries []logql.DownstreamQuery, acc logql.Accumulator) ([]logqlmodel.Result, error) {
+	return d.For(ctx, queries, acc, d.query)
+}
+
+func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
+	workerErr := errors.New("shard execution failed")
+	for _, tc := range []struct {
+		name                 string
+		queryCount           int
+		limit                uint32
+		workerErr            error
+		cancelQuery          bool
+		returnScalar         bool
+		useSketchAccumulator bool
+		wantErr              error
+		wantErrorContains    string
+	}{
+		{name: "success", queryCount: 2, limit: 2},
+		// Both shards reach the accumulator, but only one entry is returned.
+		{name: "line limit", queryCount: 2, limit: 1},
+		{
+			name: "worker failure", queryCount: 3, limit: 2, workerErr: workerErr,
+			wantErr: workerErr,
+		},
+		{
+			name: "cancellation", queryCount: 4, limit: 2, cancelQuery: true,
+			wantErr: context.Canceled,
+		},
+		{
+			name: "stream rejection", queryCount: 2, limit: 2, returnScalar: true,
+			wantErrorContains: "unexpected",
+		},
+		{
+			name: "sketch rejection", queryCount: 2, limit: 2, returnScalar: true, useSketchAccumulator: true,
+			wantErrorContains: "unexpected",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				// Check normal and partial statistics independently so bytes recorded
+				// in both contexts cannot pass the assertions.
+				parent, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				partial, ctx := stats.NewPartialContext(parent)
+				queryStats, ctx := stats.NewContext(ctx)
+
+				// Create downstream jobs representing shard queries; execution is simulated
+				// below. Jobs 0 and 1 return results while collection is paused in the first
+				// Accumulate call. Failure and cancellation cases add jobs that fail, wait
+				// for cancellation, or finish after usage has been finalized.
+				queries := make([]logql.DownstreamQuery, tc.queryCount)
+				for i := range queries {
+					params, err := logql.NewLiteralParams(`{app="test"}`, time.Unix(int64(i), 0), time.Unix(int64(i+1), 0), 0, 0, logproto.FORWARD, tc.limit, nil, nil)
+					require.NoError(t, err)
+					queries[i].Params = params
+				}
+
+				// Choose the accumulator and hold its first call while sibling shards finish.
+				var accumulator logql.Accumulator = logql.NewStreamAccumulator(queries[0].Params)
+				if tc.useSketchAccumulator {
+					accumulator = &logql.QuantileSketchAccumulator{}
+				}
+
+				firstReceived := make(chan struct{})
+				releaseFirst := make(chan struct{})
+				defer close(releaseFirst)
+				releaseFailure := make(chan struct{})
+				defer close(releaseFailure)
+				releaseLate := make(chan struct{})
+				defer close(releaseLate)
+
+				acc := &gatedShardAccumulator{
+					Accumulator:         accumulator,
+					firstResultReceived: firstReceived,
+					releaseFirstResult:  releaseFirst,
+				}
+
+				// Use the real fan-out with controlled worker completion and result types.
+				var calls atomic.Int64
+				downstream := controlledShardDownstreamer{instance: instance{parallelism: tc.queryCount}}
+				downstream.query = func(query logql.DownstreamQuery) (logqlmodel.Result, error) {
+					calls.Add(1)
+					index := int(query.Params.Start().Unix())
+					switch index {
+					case 1:
+						<-firstReceived
+					case 2:
+						if tc.workerErr != nil {
+							<-releaseFailure
+							return logqlmodel.Result{}, tc.workerErr
+						}
+						<-ctx.Done()
+						return logqlmodel.Result{}, ctx.Err()
+					case 3:
+						<-releaseLate // A worker that ignores cancellation and finishes after finalization.
+					}
+
+					result, err := ResponseToResult(logResponseWithScanUsage(int64(100 * (index + 1))))
+					if index == 0 && tc.returnScalar {
+						// Neither accumulator accepts scalars. Reject shard 0 while
+						// preserving its usage and shard 1's pending usage separately.
+						result.Data = promql.Scalar{}
+					}
+					return result, err
+				}
+
+				// Run collection concurrently so the test can control failure and cancellation.
+				evaluator := logql.NewDownstreamEvaluator(downstream)
+				var results []logqlmodel.Result
+				var queryErr error
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					results, queryErr = evaluator.Downstream(ctx, queries, acc)
+				}()
+
+				// The collector is inside Accumulate for shard 0. Shard 1 has
+				// completed and is blocked on the real, unbuffered result channel.
+				synctest.Wait()
+				require.Equal(t, int64(tc.queryCount), calls.Load())
+
+				// For failure and cancellation, interrupt delivery before allowing
+				// the accumulator to finish processing shard 0.
+				if tc.workerErr != nil {
+					releaseFailure <- struct{}{}
+					synctest.Wait()
+				}
+				if tc.cancelQuery {
+					cancel()
+					synctest.Wait()
+				}
+
+				releaseFirst <- struct{}{}
+				<-done
+
+				// Finish the late worker only after finalization to verify the cutoff.
+				if tc.cancelQuery {
+					releaseLate <- struct{}{}
+				}
+				synctest.Wait()
+
+				// On success, expect 300 bytes in normal stats and zero in partial
+				// stats. On failure, expect the reverse: each shard must be counted once.
+				if tc.wantErr == nil && tc.wantErrorContains == "" {
+					require.NoError(t, queryErr)
+					require.Len(t, results, 1)
+					require.Equal(t, int64(tc.limit), results[0].Data.(logqlmodel.Streams).Lines())
+					require.Equal(t, int64(300), queryStats.Result(time.Second, 0, 0).Summary.TotalBytesProcessed)
+					require.Equal(t, int64(2), queryStats.Result(time.Second, 0, 0).Summary.Shards)
+					require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+				} else {
+					require.Error(t, queryErr)
+					if tc.wantErr != nil {
+						require.ErrorIs(t, queryErr, tc.wantErr)
+					}
+					if tc.wantErrorContains != "" {
+						require.ErrorContains(t, queryErr, tc.wantErrorContains)
+					}
+
+					require.Nil(t, results)
+					require.Equal(t, int64(300), partial.Result().Summary.TotalBytesProcessed, "100 accumulated + 200 completed but discarded; late work excluded")
+					require.Equal(t, int64(2), partial.Result().Summary.Shards)
+					require.Zero(t, queryStats.Result(time.Second, 0, 0).Summary.TotalBytesProcessed)
+				}
+			})
+		})
+	}
 }
