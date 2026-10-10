@@ -240,7 +240,10 @@ func (f *FSObjectClient) DeleteObject(_ context.Context, objectKey string) error
 
 // DeleteChunksBefore implements BucketClient
 func (f *FSObjectClient) DeleteChunksBefore(_ context.Context, ts time.Time) error {
-	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, _ error) error {
+	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if !info.IsDir() && info.ModTime().Before(ts) {
 			level.Info(util_log.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
 			if err := os.Remove(path); err != nil {
