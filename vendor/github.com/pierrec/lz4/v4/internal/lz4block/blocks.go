@@ -12,6 +12,10 @@ const (
 	Block1Mb
 	Block4Mb
 	Block8Mb = 2 * Block4Mb
+
+	// legacyBlockBound is CompressBlockBound(Block8Mb): legacy frames have
+	// no uncompressed blocks, so a compressed block may be larger than 8MB.
+	legacyBlockBound = Block8Mb + Block8Mb/255 + 16
 )
 
 var (
@@ -20,6 +24,8 @@ var (
 	blockPool1M   = sync.Pool{New: func() any { return &[Block1Mb]byte{} }}
 	blockPool4M   = sync.Pool{New: func() any { return &[Block4Mb]byte{} }}
 	blockPool8M   = sync.Pool{New: func() any { return &[Block8Mb]byte{} }}
+
+	blockPoolLegacy = sync.Pool{New: func() any { return &[legacyBlockBound]byte{} }}
 )
 
 func Index(b uint32) BlockSizeIndex {
@@ -69,6 +75,11 @@ func (b BlockSizeIndex) Get() []byte {
 	}
 }
 
+// GetLegacy returns a buffer for one compressed legacy block.
+func GetLegacy() []byte {
+	return blockPoolLegacy.Get().(*[legacyBlockBound]byte)[:]
+}
+
 func Put(buf []byte) {
 	// Safeguard: do not allow invalid buffers.
 	switch c := cap(buf); uint32(c) {
@@ -82,6 +93,8 @@ func Put(buf []byte) {
 		blockPool4M.Put((*[Block4Mb]byte)(buf[:c]))
 	case Block8Mb:
 		blockPool8M.Put((*[Block8Mb]byte)(buf[:c]))
+	case legacyBlockBound:
+		blockPoolLegacy.Put((*[legacyBlockBound]byte)(buf[:c]))
 	case 0:
 		// Allow "returning" an empty buffer.
 	default:
