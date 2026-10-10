@@ -359,7 +359,7 @@ func query(params url.Values) (string, syntax.LogSelectorExpr, error) {
 		return "", nil, errors.New("query not set")
 	}
 
-	parsedExpr, err := parseDeletionQuery(query)
+	parsedExpr, err := parseDeletionQuery(query, true)
 	if err != nil {
 		return "", nil, err
 	}

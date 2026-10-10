@@ -25,7 +25,7 @@ func TestParseLogQLExpressionForDeletion(t *testing.T) {
 		{"invalid ip pattern in line filter", `{env="dev"} |= ip("garbage")`, `ip: invalid pattern: "garbage"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			logSelectorExpr, err := parseDeletionQuery(tc.query)
+			logSelectorExpr, err := parseDeletionQuery(tc.query, true)
 			require.Nil(t, logSelectorExpr)
 			require.ErrorIs(t, err, errInvalidQuery)
 			// the reason has to reach the caller, "invalid query expression" alone is not actionable
@@ -47,9 +47,37 @@ func TestParseLogQLExpressionForDeletion(t *testing.T) {
 		{"valid ip cidr in line filter", `{env="dev"} |= ip("192.168.4.0/24")`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			logSelectorExpr, err := parseDeletionQuery(tc.query)
+			logSelectorExpr, err := parseDeletionQuery(tc.query, true)
 			require.NotNil(t, logSelectorExpr)
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestParseLogQLExpressionForDeletion_WithoutSemanticValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{"matcher matching everything", `{job=~".*"}`, false},
+		{"only empty-compatible matchers", `{job!="dev"}`, false},
+		{"unclosed character class in line filter", `{job="app"} |~ "["`, true},
+		{"invalid ip pattern in line filter", `{job="app"} |= ip("garbage")`, true},
+		{"legacy matcher with invalid line filter", `{job=~".*"} |~ "["`, true},
+		{"invalid logql", "not a query", true},
+		{"invalid matcher regexp", `{job=~"["}`, true},
+		{"sample expression", `count_over_time({job="app"}[1h])`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := parseDeletionQuery(tc.query, false)
+			if tc.wantErr {
+				require.Nil(t, expr)
+				require.ErrorIs(t, err, errInvalidQuery)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, expr)
 		})
 	}
 }
