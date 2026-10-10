@@ -17,6 +17,8 @@ import (
 
 	"go.yaml.in/yaml/v4"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +26,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -812,5 +815,47 @@ func TestChunkDelimiter_RoundTrip(t *testing.T) {
 			require.Equal(tt, tc.name, string(body))
 			require.ElementsMatch(tt, []string{tc.remoteKey}, mock.getKeys)
 		})
+	}
+}
+
+func TestS3ObjectClient_SDKLogsFollowLokiLogLevel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// No x-amz-checksum-* headers, so the SDK warns that it cannot validate the payload.
+		_, _ = w.Write([]byte("chunk"))
+	}))
+	defer ts.Close()
+
+	for _, tc := range []struct {
+		allow    level.Option
+		expected bool
+	}{
+		{allow: level.AllowWarn(), expected: true},
+		{allow: level.AllowError(), expected: false},
+	} {
+		var buf bytes.Buffer
+		orig := util_log.Logger
+		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(&buf)), tc.allow)
+
+		client, err := NewS3ObjectClient(S3Config{
+			Endpoint:         ts.URL,
+			BucketNames:      "buck-o",
+			S3ForcePathStyle: true,
+			Insecure:         true,
+			AccessKeyID:      "key",
+			SecretAccessKey:  flagext.SecretWithValue("secret"),
+		}, hedging.Config{})
+		util_log.Logger = orig
+		require.NoError(t, err)
+
+		rc, _, err := client.GetObject(context.Background(), "key")
+		require.NoError(t, err)
+		_, _ = io.ReadAll(rc)
+		require.NoError(t, rc.Close())
+
+		out := buf.String()
+		require.Equal(t, tc.expected, strings.Contains(out, "Response has no supported checksum"), out)
+		if tc.expected {
+			require.Contains(t, out, "level=warn")
+		}
 	}
 }
