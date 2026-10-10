@@ -21,8 +21,12 @@ import (
 
 var noQueueLimits = limits.NewQueueLimits(nil)
 
+// testQueueSize is the local queue size used by tests that need to enqueue
+// requests to keep tenant queues non-empty.
+const testQueueSize = 4
+
 func TestQueues(t *testing.T) {
-	uq := newTenantQueues(0, 0, noQueueLimits)
+	uq := newTenantQueues(testQueueSize, 0, noQueueLimits)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -80,7 +84,7 @@ func TestQueues(t *testing.T) {
 }
 
 func TestQueuesOnTerminatingConsumer(t *testing.T) {
-	uq := newTenantQueues(0, 0, noQueueLimits)
+	uq := newTenantQueues(testQueueSize, 0, noQueueLimits)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -111,7 +115,7 @@ func TestQueuesOnTerminatingConsumer(t *testing.T) {
 
 func TestQueuesWithConsumers(t *testing.T) {
 	maxConsumers := 5
-	uq := newTenantQueues(0, 0, &mockQueueLimits{maxConsumers: maxConsumers})
+	uq := newTenantQueues(testQueueSize, 0, &mockQueueLimits{maxConsumers: maxConsumers})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -177,6 +181,41 @@ func TestQueuesWithConsumers(t *testing.T) {
 	assert.InDelta(t, stdDev, 0, mean*0.2)
 }
 
+func TestRemoveIdleQueues(t *testing.T) {
+	uq := newTenantQueues(testQueueSize, 0, noQueueLimits)
+	uq.addConsumerToConnection("consumer-1")
+
+	// "one" holds a request, "two" is empty.
+	getOrAdd(t, uq, "one")
+	_, err := uq.getOrAddQueue("two", nil)
+	require.NoError(t, err)
+
+	// The first run only resets the usage flag, both queues were used since the
+	// previous run.
+	require.Equal(t, 0, uq.removeIdleQueues())
+	require.NotNil(t, uq.mapping.GetByKey("one"))
+	require.NotNil(t, uq.mapping.GetByKey("two"))
+
+	// The empty and unused queue is removed, the non-empty one is kept.
+	require.Equal(t, 1, uq.removeIdleQueues())
+	require.NotNil(t, uq.mapping.GetByKey("one"))
+	require.Nil(t, uq.mapping.GetByKey("two"))
+	require.NoError(t, isConsistent(uq))
+}
+
+func TestGetNextQueueForConsumerSkipsEmptyQueues(t *testing.T) {
+	uq := newTenantQueues(testQueueSize, 0, noQueueLimits)
+	uq.addConsumerToConnection("consumer-1")
+
+	_, err := uq.getOrAddQueue("empty", nil)
+	require.NoError(t, err)
+	qTwo := getOrAdd(t, uq, "non-empty")
+
+	q, tenant, _ := uq.getNextQueueForConsumer(StartIndex, "consumer-1")
+	require.Equal(t, qTwo, q)
+	require.Equal(t, "non-empty", tenant)
+}
+
 func TestQueuesConsistency(t *testing.T) {
 	tests := map[string]struct {
 		forgetDelay time.Duration
@@ -238,7 +277,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	)
 
 	now := time.Now()
-	uq := newTenantQueues(0, forgetDelay, &mockQueueLimits{maxConsumers: maxConsumers})
+	uq := newTenantQueues(testQueueSize, forgetDelay, &mockQueueLimits{maxConsumers: maxConsumers})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -330,7 +369,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleConsumerReconnectingBeforeForge
 	)
 
 	now := time.Now()
-	uq := newTenantQueues(0, forgetDelay, &mockQueueLimits{maxConsumers: maxConsumers})
+	uq := newTenantQueues(testQueueSize, forgetDelay, &mockQueueLimits{maxConsumers: maxConsumers})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -407,6 +446,9 @@ func generateConsumer(r *rand.Rand) string {
 	return fmt.Sprint("consumer-", r.Int()%5)
 }
 
+// getOrAdd creates the tenant queue and enqueues a single request, so that the
+// queue is not skipped by getNextQueueForConsumer, which only returns
+// non-empty queues.
 func getOrAdd(t *testing.T, uq *tenantQueues, tenant string) Queue {
 	actor := []string{}
 	q, err := uq.getOrAddQueue(tenant, actor)
@@ -416,6 +458,10 @@ func getOrAdd(t *testing.T, uq *tenantQueues, tenant string) Queue {
 	q2, err := uq.getOrAddQueue(tenant, actor)
 	assert.NoError(t, err)
 	assert.Equal(t, q, q2)
+	if q.Len() == 0 {
+		q.Chan() <- "request"
+		uq.perUserQueueLen.Inc(tenant)
+	}
 	return q
 }
 
