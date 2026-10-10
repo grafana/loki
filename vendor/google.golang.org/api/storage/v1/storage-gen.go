@@ -1350,6 +1350,10 @@ type BucketSoftDeletePolicy struct {
 	// the policy, or one with a greater retention, was effective. This value is in
 	// RFC 3339 format.
 	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// HardDeletePause: The bucket's hard delete pause configuration. If set,
+	// soft-deleted objects in the bucket will not be permanently deleted until the
+	// hard delete pause is disabled.
+	HardDeletePause *BucketSoftDeletePolicyHardDeletePause `json:"hardDeletePause,omitempty"`
 	// RetentionDurationSeconds: The duration in seconds that soft-deleted objects
 	// in the bucket will be retained and cannot be permanently deleted.
 	RetentionDurationSeconds int64 `json:"retentionDurationSeconds,omitempty,string"`
@@ -1368,6 +1372,33 @@ type BucketSoftDeletePolicy struct {
 
 func (s BucketSoftDeletePolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketSoftDeletePolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketSoftDeletePolicyHardDeletePause: The bucket's hard delete pause
+// configuration. If set, soft-deleted objects in the bucket will not be
+// permanently deleted until the hard delete pause is disabled.
+type BucketSoftDeletePolicyHardDeletePause struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// the hard delete pause became effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// Enabled: Whether hard deletions are paused.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketSoftDeletePolicyHardDeletePause) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketSoftDeletePolicyHardDeletePause
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
