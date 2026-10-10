@@ -53,7 +53,7 @@ func New(ctx context.Context, t *testing.T, window time.Time, sources []Source) 
 	t.Helper()
 	require.Equal(t, window.Truncate(metastore.MetastoreWindowSize), window, "scenario window must be aligned")
 	bucket := objstore.NewInMemBucket()
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil))
 	seen := make(map[string]struct{}, len(sources))
 	for i, source := range sources {
 		require.NotContains(t, seen, source.Path, "duplicate log object path")

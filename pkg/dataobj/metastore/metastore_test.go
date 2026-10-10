@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -34,7 +35,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 		// Test writing metastores
 		stats := stats[i%len(stats)]
 		err := toc.WriteEntry(ctx, tenantID, TableOfContentsEntry{
-			Path:      "path",
+			Path:      fmt.Sprintf("path-%d", i),
 			StartTime: stats.MinTimestamp,
 			EndTime:   stats.MaxTimestamp,
 		})
@@ -51,7 +52,7 @@ func TestWriteMetastores(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil))
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)

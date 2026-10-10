@@ -149,8 +149,8 @@ func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
+	logsMetastoreToc := newTableOfContentsWriter(bucket, logger)
+	indexMetastoreToc := newTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &Builder{
 		t:      t,
@@ -345,15 +345,39 @@ func (b *Builder) Metastore() *metastore.ObjectMetastore {
 
 // writeTableOfContentsEntries records the object at path in the ToC of every tenant in
 // timeRanges, for every window each time range overlaps.
+//
+// WriteEntry accepts an entry of one window only, so writeTableOfContentsEntries
+// writes one entry for each window, with the time range cut to that window.
 func writeTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
-		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
-			Path:      path,
-			StartTime: tr.MinTime,
-			EndTime:   tr.MaxTime,
-		}); err != nil {
-			return err
+		for window := tr.MinTime.UTC().Truncate(metastore.MetastoreWindowSize); !window.After(tr.MaxTime); window = window.Add(metastore.MetastoreWindowSize) {
+			start, end := tr.MinTime, tr.MaxTime
+			if start.Before(window) {
+				start = window
+			}
+			if lastInstant := window.Add(metastore.MetastoreWindowSize - time.Nanosecond); end.After(lastInstant) {
+				end = lastInstant
+			}
+			if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
+				Path:      path,
+				StartTime: start,
+				EndTime:   end,
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// newTableOfContentsWriter returns a ToC writer for bucket with the default
+// configs. It does not register the writer's metrics.
+func newTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *metastore.TableOfContentsWriter {
+	return metastore.NewTableOfContentsWriter(
+		bucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(nil),
+	)
 }
