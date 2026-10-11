@@ -47,7 +47,7 @@ jobs:
       # This includes forks and non-Grafanistas. If you want to change the action, ensure this behaviour is maintained.
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@38c80c1a32cdbc0c6f34042464a0669d89363dde # v1.0.246
+        uses: anthropics/claude-code-action@2dca132ff0e0c4094ce6048b422c6915a071210b # v1.0.247
         with:
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
 
