@@ -541,8 +541,8 @@ github.com/davecgh/go-spew/spew
 # github.com/dennwc/varint v1.0.0
 ## explicit; go 1.12
 github.com/dennwc/varint
-# github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33
-## explicit
+# github.com/dgryski/go-metro v0.0.0-20261008173524-5059e0b1da03
+## explicit; go 1.24
 github.com/dgryski/go-metro
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
