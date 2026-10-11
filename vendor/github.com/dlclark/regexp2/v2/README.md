@@ -60,6 +60,8 @@ The __last__ capture is embedded in each group, so `g.String()` will return the 
 
 In `ECMAScript` mode, duplicate group names are allowed in separate alternatives and keep distinct group numbers. `GroupByName(name)` selects the participating group (or the first if none participated); `GroupNumberFromName(name)` always returns the first declaration's number, which may differ from the selected group.
 
+In `ECMAScript` mode, captures inside a quantified group are cleared before each repetition. Only the final successful repetition's captures remain; a group that does not participate in that repetition has no captures, and its backreference matches the empty string. Other modes retain capture history across repetitions.
+
 If you want to find multiple matches from a single input string you should use the `FindNextMatch` method.  For example, to implement a function similar to `regexp.FindAllString`:
 
 ```go
