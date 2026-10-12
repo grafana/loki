@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"slices"
 	"sort"
 	"sync"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
+	"github.com/minio/minio-go/v7"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -55,44 +58,7 @@ func TestWriteEntry(t *testing.T) {
 		}, readToC(context.Background(), t, bucket, TableOfContentsPath(tenantID, unixTime(0))))
 	})
 
-	t.Run("writes a zero-width entry on a window boundary to the window that starts there", func(t *testing.T) {
-		tenantID := "test"
-		bucket := objstore.NewInMemBucket()
-		writer := newTableOfContentsWriter(t, bucket)
-
-		boundary := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-		require.Equal(t, boundary, boundary.Truncate(MetastoreWindowSize))
-
-		// The timeout makes a regression fail fast instead of waiting through
-		// every retry.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		err := writer.WriteEntry(ctx, tenantID, TableOfContentsEntry{
-			Path:      "testdata/metastore.obj",
-			StartTime: boundary,
-			EndTime:   boundary,
-		})
-		require.NoError(t, err)
-		require.Equal(t, []tocRow{{Tenant: tenantID, Path: "testdata/metastore.obj", StartUnix: boundary.Unix(), EndUnix: boundary.Unix()}},
-			readToC(context.Background(), t, bucket, TableOfContentsPath(tenantID, boundary)))
-	})
-
-	t.Run("writes an entry that ends at the last instant of its window", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		writer := newTableOfContentsWriter(t, bucket)
-
-		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
-			Path:      "indexes/a",
-			StartTime: unixTime(10),
-			EndTime:   unixTime(0).Add(MetastoreWindowSize - time.Nanosecond),
-		})
-		require.NoError(t, err)
-		rows := readToC(context.Background(), t, bucket, TableOfContentsPath("tenant-a", unixTime(0)))
-		require.Len(t, rows, 1)
-		require.Equal(t, "indexes/a", rows[0].Path)
-	})
-
-	t.Run("fails when the context is canceled before the ToC is written", func(t *testing.T) {
+	t.Run("fails and reports cancelled when the context is canceled before the ToC is written", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 
@@ -105,6 +71,7 @@ func TestWriteEntry(t *testing.T) {
 		})
 		require.ErrorIs(t, err, context.Canceled, "a caller must not treat an unwritten entry as recorded")
 		require.Empty(t, bucket.Objects())
+		require.Equal(t, uint64(1), sampleCount(t, writer.metrics.writeSeconds, opWriteEntry, changeCancelled))
 	})
 
 	t.Run("writes each tenant's entry only to that tenant's ToC", func(t *testing.T) {
@@ -139,47 +106,20 @@ func TestWriteEntry(t *testing.T) {
 		}
 	})
 
-	for _, tc := range []struct {
-		name    string
-		entry   TableOfContentsEntry
-		wantErr string
-	}{
-		{
-			name:    "returns an error and writes nothing when the entry has no time range",
-			entry:   TableOfContentsEntry{Path: "indexes/a"},
-			wantErr: "indexes/a",
-		},
-		{
-			name:    "returns an error and writes nothing when the entry starts at the Unix epoch",
-			entry:   TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(0), EndTime: unixTime(10)},
-			wantErr: "indexes/a",
-		},
-		{
-			name:    "returns an error and writes nothing when the entry ends before it starts",
-			entry:   TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(20), EndTime: unixTime(10)},
-			wantErr: "indexes/a",
-		},
-		{
-			name: "returns an error and writes nothing when the entry ends on the next window boundary",
-			entry: TableOfContentsEntry{
-				Path:      "indexes/a",
-				StartTime: unixTime(10),
-				EndTime:   unixTime(0).Add(MetastoreWindowSize),
-			},
-			wantErr: "spans more than one ToC window",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
-			writer := newTableOfContentsWriter(t, bucket)
+	t.Run("returns the TimeWindow error and writes nothing when the entry is not valid", func(t *testing.T) {
+		bucket := &countingBucket{Bucket: objstore.NewInMemBucket()}
+		writer := newTableOfContentsWriter(t, bucket)
 
-			err := writer.WriteEntry(context.Background(), "tenant-a", tc.entry)
-			require.ErrorContains(t, err, tc.wantErr)
-			require.Zero(t, bucket.Calls())
+		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(0).Add(MetastoreWindowSize),
 		})
-	}
+		require.ErrorContains(t, err, "spans more than one ToC window")
+		require.Zero(t, bucket.Calls())
+	})
 
-	t.Run("leaves the ToC unchanged and reports already_present when the ToC already holds the entry's path", func(t *testing.T) {
+	t.Run("leaves the ToC unchanged and reports already_applied when the ToC already holds the entry's path", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writer := newTableOfContentsWriter(t, bucket)
 		entry := TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(20)}
@@ -192,9 +132,9 @@ func TestWriteEntry(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, bucket, tocPath))
 		require.Equal(t, before, bucket.Objects()[tocPath], "WriteEntry must not rewrite the ToC")
 
-		want := map[changeResult]uint64{changeWritten: 1, changePresent: 1, changeRaceLost: 0, changeFailed: 0}
-		require.Equal(t, want, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, want, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+		want := map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}
+		require.Equal(t, want, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+		require.Equal(t, want, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
 	t.Run("leaves the ToC unchanged when the ToC holds the entry's path with another time range", func(t *testing.T) {
@@ -206,7 +146,7 @@ func TestWriteEntry(t *testing.T) {
 		require.NoError(t, writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{Path: "indexes/a", StartTime: unixTime(10), EndTime: unixTime(30)}))
 
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, bucket, tocPath))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
 	t.Run("skips the entry when its path is the last of more than one read batch of pointers", func(t *testing.T) {
@@ -229,7 +169,7 @@ func TestWriteEntry(t *testing.T) {
 		require.Equal(t, before, inner.Objects()[tocPath])
 	})
 
-	t.Run("appends the entry once and reports already_present when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
+	t.Run("appends the entry once and reports already_applied when GetAndReplace writes the ToC and then returns an error", func(t *testing.T) {
 		inner := objstore.NewInMemBucket()
 		bucket := &failAfterWriteBucket{Bucket: inner}
 		writer := newTableOfContentsWriter(t, bucket)
@@ -244,8 +184,8 @@ func TestWriteEntry(t *testing.T) {
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenant-a", Path: "indexes/a", StartUnix: 10, EndUnix: 20}}, readToC(context.Background(), t, inner, tocPath))
 
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 1, changeConflict: 0}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
 	t.Run("keeps the row that another writer added between two attempts and adds the entry once", func(t *testing.T) {
@@ -270,6 +210,26 @@ func TestWriteEntry(t *testing.T) {
 			{Tenant: "tenant-a", Path: "indexes/old", StartUnix: 10, EndUnix: 20},
 			{Tenant: "tenant-a", Path: "indexes/other", StartUnix: 10, EndUnix: 20},
 		}, readToC(context.Background(), t, inner, tocPath))
+
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 1}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
+	})
+
+	t.Run("returns an error and reports failed after the last attempt when every conditional write conflicts", func(t *testing.T) {
+		bucket := &failingBucket{Bucket: objstore.NewInMemBucket(), err: errConditionalWriteConflict}
+		writer := newTableOfContentsWriterWithBackoff(t, bucket, 3)
+
+		err := writer.WriteEntry(context.Background(), "tenant-a", TableOfContentsEntry{
+			Path:      "indexes/a",
+			StartTime: unixTime(10),
+			EndTime:   unixTime(20),
+		})
+		require.ErrorContains(t, err, "terminated after 3 retries")
+		require.ErrorIs(t, err, errConditionalWriteConflict)
+		require.Equal(t, 3, bucket.Calls())
+
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 3}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 1, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
 	t.Run("returns an error after the last attempt when every write fails", func(t *testing.T) {
@@ -285,8 +245,8 @@ func TestWriteEntry(t *testing.T) {
 		require.ErrorIs(t, err, errWriteFailed)
 		require.Equal(t, 3, bucket.Calls())
 
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 3}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 3, changeConflict: 0}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 1, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
 	})
 
 	t.Run("writes every entry when tenants write concurrently", func(t *testing.T) {
@@ -350,9 +310,81 @@ func TestWriteEntry(t *testing.T) {
 			require.Equal(t, 1, bucket.Calls())
 			require.Equal(t, before, readToC(context.Background(), t, inner, tocPath))
 
-			want := map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 0, changeFailed: 1}
-			require.Equal(t, want, sampleCounts(t, writer.metrics.changeAttemptSeconds, opWriteEntry))
-			require.Equal(t, want, sampleCounts(t, writer.metrics.changeDurationSeconds, opWriteEntry))
+			want := map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 1, changeConflict: 0}
+			require.Equal(t, want, sampleCounts(t, writer.metrics.writeAttemptSeconds, opWriteEntry))
+			require.Equal(t, want, sampleCounts(t, writer.metrics.writeSeconds, opWriteEntry))
+		})
+	}
+}
+
+func TestTableOfContentsEntryTimeWindow(t *testing.T) {
+	window := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, window, window.Truncate(MetastoreWindowSize))
+
+	for _, tc := range []struct {
+		name       string
+		start, end time.Time
+		wantWindow time.Time
+		wantErr    string
+	}{
+		{
+			name:       "returns the window that holds the entry",
+			start:      window.Add(time.Hour),
+			end:        window.Add(2 * time.Hour),
+			wantWindow: window,
+		},
+		{
+			name:       "returns the window that starts at the entry when the entry is zero-width on a window boundary",
+			start:      window,
+			end:        window,
+			wantWindow: window,
+		},
+		{
+			name:       "returns the window when the entry ends at the last instant of the window",
+			start:      window.Add(time.Hour),
+			end:        window.Add(MetastoreWindowSize - time.Nanosecond),
+			wantWindow: window,
+		},
+		{
+			name:       "returns the window in UTC when the entry times are in another time zone",
+			start:      window.Add(time.Hour).In(time.FixedZone("UTC+5", 5*60*60)),
+			end:        window.Add(2 * time.Hour).In(time.FixedZone("UTC+5", 5*60*60)),
+			wantWindow: window,
+		},
+		{
+			name:    "returns an error when the entry has no time range",
+			wantErr: "not after the Unix epoch",
+		},
+		{
+			name:    "returns an error when the entry starts at the Unix epoch",
+			start:   unixTime(0),
+			end:     unixTime(10),
+			wantErr: "not after the Unix epoch",
+		},
+		{
+			name:    "returns an error when the entry ends before it starts",
+			start:   window.Add(2 * time.Hour),
+			end:     window.Add(time.Hour),
+			wantErr: "before its start",
+		},
+		{
+			name:    "returns an error when the entry ends on the next window boundary",
+			start:   window.Add(time.Hour),
+			end:     window.Add(MetastoreWindowSize),
+			wantErr: "spans more than one ToC window",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := TableOfContentsEntry{Path: "indexes/a", StartTime: tc.start, EndTime: tc.end}.TimeWindow()
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.ErrorContains(t, err, "indexes/a")
+				require.True(t, got.IsZero())
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantWindow, got)
+			require.Equal(t, time.UTC, got.Location())
 		})
 	}
 }
@@ -435,7 +467,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
 			{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41},
 		}, readWindowToCs(ctx, t, bucket, window))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changePresent: 0, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
 	t.Run("leaves the ToCs of the other tenants unchanged", func(t *testing.T) {
@@ -572,7 +604,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
 	})
 
-	t.Run("returns false, leaves the ToC unchanged and reports race_lost when the ToC holds none of the old paths", func(t *testing.T) {
+	t.Run("returns false, leaves the ToC unchanged and reports superseded when the ToC holds none of the old paths", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -590,10 +622,10 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, swapped)
 		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("returns false and reports race_lost when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
+	t.Run("returns false and reports superseded when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -611,10 +643,10 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, swapped)
 		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("returns false, creates no ToC and reports race_lost when the ToC does not exist", func(t *testing.T) {
+	t.Run("returns false, creates no ToC and reports superseded when the ToC does not exist", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -630,7 +662,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		exists, err := bucket.Exists(ctx, TableOfContentsPath("tenantA", window))
 		require.NoError(t, err)
 		require.False(t, exists)
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 0, changeRaceLost: 1, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
 	t.Run("applies the swap once and returns false when the conditional write lands and then returns an error", func(t *testing.T) {
@@ -650,11 +682,11 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, 2, bucket.calls)
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, inner, window))
 
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 1}, sampleCounts(t, writer.metrics.changeAttemptSeconds, opReplace))
-		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changePresent: 1, changeRaceLost: 0, changeFailed: 0}, sampleCounts(t, writer.metrics.changeDurationSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 1, changeConflict: 0}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opReplace))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("retries and applies the swap when the first conditional write fails", func(t *testing.T) {
+	t.Run("retries and applies the swap when the first conditional write conflicts", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		inner := objstore.NewInMemBucket()
@@ -676,6 +708,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110},
 			{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21},
 		}, readWindowToCs(ctx, t, inner, window))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 1}, sampleCounts(t, writer.metrics.writeAttemptSeconds, opReplace))
 	})
 
 	t.Run("returns an error after the last attempt when every write fails", func(t *testing.T) {
@@ -740,20 +773,29 @@ func TestReplaceIndexPointers(t *testing.T) {
 			wantErr:  "no new entries",
 		},
 		{
-			name:       "returns an error without touching storage when a new entry ends before it starts",
+			name:       "returns the TimeWindow error without touching storage when a new entry is not valid",
 			oldPaths:   []string{"idx/a-0"},
 			newEntries: []TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(20), EndTime: unixTime(10)}},
-			wantErr:    "idx/a-new",
+			wantErr:    "ends at",
 		},
 		{
-			name:     "returns an error without touching storage when a new entry starts at the end of the window",
+			name:     "returns an error without touching storage when a new entry is in the next window",
 			oldPaths: []string{"idx/a-0"},
 			newEntries: []TableOfContentsEntry{{
 				Path:      "idx/a-new",
 				StartTime: unixTime(0).Add(MetastoreWindowSize),
 				EndTime:   unixTime(0).Add(MetastoreWindowSize + time.Hour),
 			}},
-			wantErr: "does not overlap the window",
+			wantErr: "want window",
+		},
+		{
+			name:     "returns an error without touching storage when a valid entry and an entry of another window are new",
+			oldPaths: []string{"idx/a-0"},
+			newEntries: []TableOfContentsEntry{
+				{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+				{Path: "idx/b-new", StartTime: unixTime(0).Add(MetastoreWindowSize), EndTime: unixTime(0).Add(MetastoreWindowSize + time.Hour)},
+			},
+			wantErr: "idx/b-new",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -771,54 +813,21 @@ func TestReplaceIndexPointers(t *testing.T) {
 		})
 	}
 
-	window := unixTime(0).Add(MetastoreWindowSize)
-	for _, tc := range []struct {
-		name       string
-		start, end time.Time
-		wantErr    bool
-	}{
-		{
-			name:  "applies the swap when a new entry starts before the window and ends inside it",
-			start: window.Add(-time.Hour),
-			end:   window.Add(time.Hour),
-		},
-		{
-			name:  "applies the swap when a new entry starts inside the window and ends after it",
-			start: window.Add(time.Hour),
-			end:   window.Add(MetastoreWindowSize + time.Hour),
-		},
-		{
-			name:  "applies the swap when a new entry ends at the start of the window",
-			start: window.Add(-time.Hour),
-			end:   window,
-		},
-		{
-			name:    "returns an error without touching storage when a new entry ends before the window",
-			start:   window.Add(-2 * time.Hour),
-			end:     window.Add(-time.Hour),
-			wantErr: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			inner := objstore.NewInMemBucket()
-			seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: window.Unix(), EndUnix: window.Unix()}})
-			bucket := &countingBucket{Bucket: inner}
-			writer := newTableOfContentsWriter(t, bucket)
+	t.Run("applies the swap when the new entry lies in a window that the call names with an unaligned time", func(t *testing.T) {
+		window := unixTime(0).Add(MetastoreWindowSize)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: window.Unix(), EndUnix: window.Unix()}})
+		writer := newTableOfContentsWriter(t, bucket)
 
-			swapped, err := writer.ReplaceIndexPointers(context.Background(), window, "tenantA",
-				[]string{"idx/a-0"},
-				[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: tc.start, EndTime: tc.end}},
-			)
-			if tc.wantErr {
-				require.ErrorContains(t, err, "does not overlap the window")
-				require.False(t, swapped)
-				require.Zero(t, bucket.Calls())
-				return
-			}
-			require.NoError(t, err)
-			require.True(t, swapped)
-		})
-	}
+		swapped, err := writer.ReplaceIndexPointers(context.Background(), window.Add(time.Hour), "tenantA",
+			[]string{"idx/a-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: window.Add(time.Hour), EndTime: window.Add(2 * time.Hour)}},
+		)
+		require.NoError(t, err)
+		require.True(t, swapped)
+		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: window.Add(time.Hour).Unix(), EndUnix: window.Add(2 * time.Hour).Unix()}},
+			readWindowToCs(context.Background(), t, bucket, window))
+	})
 }
 
 // writeTimeRanges records path in the ToC of every tenant in timeRanges.
@@ -871,10 +880,11 @@ func (b *countingBucket) Calls() int {
 	return b.calls
 }
 
-// failingBucket returns errWriteFailed from every GetAndReplace call without
-// a write.
+// failingBucket returns err from every GetAndReplace call without a write, or
+// errWriteFailed if err is nil.
 type failingBucket struct {
 	objstore.Bucket
+	err   error
 	mu    sync.Mutex
 	calls int
 }
@@ -883,6 +893,9 @@ func (b *failingBucket) GetAndReplace(context.Context, string, func(io.ReadClose
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.calls++
+	if b.err != nil {
+		return b.err
+	}
 	return errWriteFailed
 }
 
@@ -909,10 +922,14 @@ func (b *failAfterWriteBucket) GetAndReplace(ctx context.Context, name string, f
 	return err
 }
 
+// errConditionalWriteConflict is the error that the S3 bucket returns when a
+// conditional write loses to another writer.
+var errConditionalWriteConflict = pkgerrors.Wrap(minio.ErrorResponse{Code: "PreconditionFailed", StatusCode: http.StatusPreconditionFailed}, "upload s3 object")
+
 // conflictBucket simulates a conditional write that loses to another writer.
 // On the first GetAndReplace call it runs concurrentWrite, if set, and returns
-// errWriteFailed without a write. Later calls pass through. calls counts the
-// GetAndReplace calls.
+// errConditionalWriteConflict without a write. Later calls pass through. calls
+// counts the GetAndReplace calls.
 type conflictBucket struct {
 	objstore.Bucket
 	concurrentWrite func()
@@ -925,23 +942,30 @@ func (b *conflictBucket) GetAndReplace(ctx context.Context, name string, fn func
 		if b.concurrentWrite != nil {
 			b.concurrentWrite()
 		}
-		return errWriteFailed
+		return errConditionalWriteConflict
 	}
 	return b.Bucket.GetAndReplace(ctx, name, fn)
 }
 
 // sampleCounts returns the number of observations of vec for op and each
-// change result.
+// change result except changeCancelled.
 func sampleCounts(t *testing.T, vec *prometheus.HistogramVec, op tocOp) map[changeResult]uint64 {
 	t.Helper()
 
 	counts := make(map[changeResult]uint64)
-	for _, result := range []changeResult{changeWritten, changePresent, changeRaceLost, changeFailed} {
-		var m dto.Metric
-		require.NoError(t, vec.WithLabelValues(string(op), string(result)).(prometheus.Metric).Write(&m))
-		counts[result] = m.GetHistogram().GetSampleCount()
+	for _, result := range []changeResult{changeWritten, changeAlreadyApplied, changeSuperseded, changeFailed, changeConflict} {
+		counts[result] = sampleCount(t, vec, op, result)
 	}
 	return counts
+}
+
+// sampleCount returns the number of observations of vec for op and result.
+func sampleCount(t *testing.T, vec *prometheus.HistogramVec, op tocOp, result changeResult) uint64 {
+	t.Helper()
+
+	var m dto.Metric
+	require.NoError(t, vec.WithLabelValues(string(op), string(result)).(prometheus.Metric).Write(&m))
+	return m.GetHistogram().GetSampleCount()
 }
 
 func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket) *TableOfContentsWriter {
@@ -953,6 +977,7 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket) *TableOfCont
 		DefaultTocBuilderConfig,
 		log.NewNopLogger(),
 		NewTocWriterMetrics(prometheus.NewPedanticRegistry()),
+		indexobj.NewBuilderMetrics(nil),
 	)
 }
 
@@ -967,6 +992,7 @@ func newTableOfContentsWriterWithBackoff(t *testing.T, bucket objstore.Bucket, a
 		DefaultTocBuilderConfig,
 		log.NewNopLogger(),
 		NewTocWriterMetrics(prometheus.NewPedanticRegistry()),
+		indexobj.NewBuilderMetrics(nil),
 	)
 }
 

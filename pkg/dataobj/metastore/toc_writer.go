@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 // DefaultTocBuilderConfig is the builder config for ToC objects. Its sizes are
@@ -43,14 +44,14 @@ var DefaultTocWriterBackoffConfig = backoff.Config{
 var errUnrecoverable = errors.New("unrecoverable ToC error")
 
 // rebuildToc returns these errors to cancel the conditional write of a ToC
-// that needs no write. applyChange turns them into a changeResult and returns
-// no error.
+// that needs no write from this call. applyChange returns them to its caller,
+// which treats both as a change that wrote nothing.
 var (
-	// errChangePresent means the ToC already holds the change.
-	errChangePresent = errors.New("ToC already holds the change")
-	// errRaceLost means the change requires a removal, the ToC holds none of
-	// the paths to remove, and the ToC lacks an entry to add.
-	errRaceLost = errors.New("ToC holds none of the paths to remove")
+	// errChangeAlreadyApplied means the ToC already holds the change.
+	errChangeAlreadyApplied = errors.New("ToC already holds the change")
+	// errChangeSuperseded means another writer replaced the paths to remove
+	// first: the ToC holds none of them, and it lacks an entry to add.
+	errChangeSuperseded = errors.New("ToC holds none of the paths to remove")
 )
 
 // checkTenant returns an error that wraps errUnrecoverable unless tenant is
@@ -77,20 +78,24 @@ type TableOfContentsEntry struct {
 	EndTime   time.Time
 }
 
-// validate returns an error if e has no valid time range for a ToC.
-func (e TableOfContentsEntry) validate() error {
+// TimeWindow returns the time of the time window this entry belongs to.
+func (e TableOfContentsEntry) TimeWindow() (time.Time, error) {
 	// The ToC writer fails to read back a row with a timestamp of 0, so a row
 	// that starts at the Unix epoch would block every later write to its ToC.
 	if !e.StartTime.After(time.Unix(0, 0)) {
-		return fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
+		return time.Time{}, fmt.Errorf("ToC entry %s starts at %s, not after the Unix epoch", e.Path, e.StartTime)
 	}
-	// The window checks of WriteEntry and ReplaceIndexPointers accept an
-	// entry that ends before it starts if both ends fall in one window, so
-	// without this check the ToC would hold the inverted range.
+
 	if e.EndTime.Before(e.StartTime) {
-		return fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
+		return time.Time{}, fmt.Errorf("ToC entry %s ends at %s, before its start at %s", e.Path, e.EndTime, e.StartTime)
 	}
-	return nil
+
+	window := e.StartTime.UTC().Truncate(MetastoreWindowSize)
+	if endWindow := e.EndTime.UTC().Truncate(MetastoreWindowSize); !endWindow.Equal(window) {
+		return time.Time{}, fmt.Errorf("entry %s spans more than one ToC window: %s to %s", e.Path, window.Format(time.RFC3339), endWindow.Format(time.RFC3339))
+	}
+
+	return window, nil
 }
 
 // TableOfContentsWriter (ToC writer) manages the metastore's Table of Contents files, which are a list of other
@@ -115,16 +120,15 @@ func NewTableOfContentsWriter(
 	builderCfg logsobj.BuilderBaseConfig,
 	logger log.Logger,
 	metrics *TocWriterMetrics,
+	builderMetrics *indexobj.BuilderMetrics,
 ) *TableOfContentsWriter {
 	return &TableOfContentsWriter{
-		bucket:     bucket,
-		backoffCfg: backoffCfg,
-		builderCfg: builderCfg,
-		logger:     logger,
-		metrics:    metrics,
-		// The writer does not register the ToC builder metrics, because the
-		// index builder registers collectors with the same names.
-		builderMetrics: indexobj.NewBuilderMetrics(nil),
+		bucket:         bucket,
+		backoffCfg:     backoffCfg,
+		builderCfg:     builderCfg,
+		logger:         logger,
+		metrics:        metrics,
+		builderMetrics: builderMetrics,
 	}
 }
 
@@ -139,18 +143,17 @@ func NewTableOfContentsWriter(
 // error without retrying if entry fails validation, entry spans more than one
 // window, or the ToC holds a section of another tenant.
 func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, entry TableOfContentsEntry) error {
-	if err := entry.validate(); err != nil {
+	window, err := entry.TimeWindow()
+	if err != nil {
 		return err
 	}
 
-	window := entry.StartTime.UTC().Truncate(MetastoreWindowSize)
-	if endWindow := entry.EndTime.UTC().Truncate(MetastoreWindowSize); !endWindow.Equal(window) {
-		return fmt.Errorf("entry %s spans more than one ToC window: %s to %s", entry.Path, window.Format(time.RFC3339), endWindow.Format(time.RFC3339))
-	}
-
-	_, err := m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
+	err = m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
 		add: []TableOfContentsEntry{entry},
 	})
+	if errors.Is(err, errChangeAlreadyApplied) {
+		return nil
+	}
 	return err
 }
 
@@ -171,8 +174,8 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 //     wrote it and lost the response.
 //
 // It returns an error if exactly one of oldPaths and newEntries is empty, if
-// an entry in newEntries has no valid time range or does not overlap the
-// window, after the last attempt, or once ctx is done. If the ToC holds a
+// an entry in newEntries has no valid time range or lies in another window,
+// after the last attempt, or once ctx is done. If the ToC holds a
 // section of another tenant, it returns an error without retrying.
 //
 // Concurrent calls for the same ToC are safe on a bucket whose GetAndReplace
@@ -195,13 +198,19 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 
 	window = window.Truncate(MetastoreWindowSize).UTC()
 	for _, e := range newEntries {
-		if err := e.validate(); err != nil {
+		entryWindow, err := e.TimeWindow()
+		if err != nil {
 			return false, err
 		}
-		// An entry may extend past the window, because the data of older
-		// objects can cross a window boundary. It must overlap the window.
-		if e.EndTime.Before(window) || !e.StartTime.Before(window.Add(MetastoreWindowSize)) {
-			return false, fmt.Errorf("ToC entry %s from %s to %s does not overlap the window at %s", e.Path, e.StartTime, e.EndTime, window.Format(time.RFC3339))
+		// An entry outside the window would put a pointer in a ToC whose window
+		// does not hold the entry's data.
+		if !entryWindow.Equal(window) {
+			return false, fmt.Errorf(
+				"want window: %s, got ToC entry %s at %s",
+				window.Format(time.RFC3339),
+				e.Path,
+				entryWindow.Format(time.RFC3339),
+			)
 		}
 	}
 
@@ -210,11 +219,18 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 		remove[p] = struct{}{}
 	}
 
-	result, err := m.applyChange(ctx, opReplace, tenant, window, tocChange{
+	err := m.applyChange(ctx, opReplace, tenant, window, tocChange{
 		remove: remove,
 		add:    newEntries,
 	})
-	return result == changeWritten, err
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, errChangeAlreadyApplied), errors.Is(err, errChangeSuperseded):
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 // tocChange is one change to a tenant's ToC. It removes the pointers whose
@@ -237,13 +253,20 @@ const (
 	changeFailed changeResult = "failed"
 	// changeWritten means the attempt wrote the change to the ToC.
 	changeWritten changeResult = "written"
-	// changePresent means the attempt found the change already in the ToC and
-	// wrote nothing. An earlier attempt of the same call may have written it.
-	changePresent changeResult = "already_present"
-	// changeRaceLost means the change requires a removal, the ToC held none of
-	// the paths to remove, and the ToC lacked an entry to add. The attempt
-	// wrote nothing.
-	changeRaceLost changeResult = "race_lost"
+	// changeAlreadyApplied means the ToC already held the change, so the
+	// attempt wrote nothing. An earlier attempt of the same call may have
+	// written it.
+	changeAlreadyApplied changeResult = "already_applied"
+	// changeSuperseded means another writer replaced the paths to remove
+	// first: the ToC held none of them, and it lacked an entry to add. The
+	// attempt wrote nothing, so the new index objects are not referenced.
+	changeSuperseded changeResult = "superseded"
+	// changeConflict means the attempt lost its conditional write to another
+	// writer and wrote nothing. Only an attempt has this result.
+	changeConflict changeResult = "conflict"
+	// changeCancelled means ctx was canceled before the call finished. Only a
+	// call has this result.
+	changeCancelled changeResult = "cancelled"
 )
 
 // applyChange applies change to the tenant's ToC of window with a
@@ -251,20 +274,19 @@ const (
 // writer, and returns an error without retrying if the ToC holds a section of
 // another tenant. op labels the metrics and logs.
 //
-// An attempt can fail after its conditional write landed, for example when
-// the response is lost. The retry then finds the change in the ToC and
-// returns changePresent.
-func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenant string, window time.Time, change tocChange) (changeResult, error) {
+// It returns nil if it wrote the change. It returns errChangeAlreadyApplied
+// or errChangeSuperseded if the ToC needed no write from this call.
+func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenant string, window time.Time, change tocChange) error {
 	result := changeFailed
 	start := time.Now()
 	defer func() {
-		m.metrics.changeDurationSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(start).Seconds())
+		m.metrics.writeSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(start).Seconds())
 	}()
 
 	tocPath := TableOfContentsPath(tenant, window)
 	builder, err := indexobj.NewBuilder(tenant, m.builderCfg, nil, m.builderMetrics)
 	if err != nil {
-		return changeFailed, err
+		return err
 	}
 
 	var attempts int
@@ -284,35 +306,57 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 		case err == nil:
 			result = changeWritten
 			level.Info(m.logger).Log("msg", "toc updated", "op", op, "tocPath", tocPath)
-		case errors.Is(err, errChangePresent):
-			result = changePresent
+			m.reportAttempt(op, result, attemptStart)
+			return nil
+
+		case errors.Is(err, errChangeAlreadyApplied):
+			result = changeAlreadyApplied
 			level.Info(m.logger).Log("msg", "toc update skipped: toc already holds the change", "op", op, "tocPath", tocPath)
-		case errors.Is(err, errRaceLost):
-			result = changeRaceLost
+			m.reportAttempt(op, result, attemptStart)
+			return err
+
+		case errors.Is(err, errChangeSuperseded):
+			result = changeSuperseded
 			level.Info(m.logger).Log("msg", "toc update skipped: toc holds none of the paths to remove", "op", op, "tocPath", tocPath)
-		default:
-			// A failed attempt is often a conditional write that lost to
-			// another writer, which the next attempt resolves.
+			m.reportAttempt(op, result, attemptStart)
+			return err
+
+		case errors.Is(err, errUnrecoverable):
 			result = changeFailed
-			level.Warn(m.logger).Log("msg", "toc update attempt failed", "op", op, "tocPath", tocPath, "attempt", attempts, "err", err)
-		}
-		m.metrics.changeAttemptSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(attemptStart).Seconds())
+			level.Error(m.logger).Log("msg", "toc update attempt failed unrecoverably", "op", op, "tocPath", tocPath, "attempt", attempts, "err", err)
+			m.reportAttempt(op, result, attemptStart)
+			return err
 
-		if result != changeFailed || errors.Is(err, errUnrecoverable) {
-			break
+		case bucket.IsConditionalWriteConflict(err):
+			result = changeConflict
+			level.Debug(m.logger).Log("msg", "toc update attempt lost a conditional write", "op", op, "tocPath", tocPath, "attempt", attempts)
+			m.reportAttempt(op, result, attemptStart)
+			b.Wait()
+			continue
+
+		default:
+			result = changeFailed
+			level.Warn(m.logger).Log("msg", "toc update attempt failed, retrying", "op", op, "tocPath", tocPath, "attempt", attempts, "err", err)
+			m.reportAttempt(op, result, attemptStart)
+			b.Wait()
+			continue
 		}
-		b.Wait()
 	}
 
-	// The loop ends with a failure on an unrecoverable error, after the last
-	// attempt, or once ctx is done. ctx can be done before the first attempt,
-	// when err is still nil.
-	if result == changeFailed {
-		err = errors.Join(b.Err(), err)
-		level.Error(m.logger).Log("msg", "toc update failed", "op", op, "tocPath", tocPath, "attempts", attempts, "err", err)
-		return changeFailed, err
+	if errors.Is(b.Err(), context.Canceled) {
+		result = changeCancelled
+		level.Info(m.logger).Log("msg", "toc update cancelled", "op", op, "tocPath", tocPath, "attempt", attempts, "err", b.Err())
+		return b.Err()
 	}
-	return result, nil
+
+	result = changeFailed
+	finalErr := fmt.Errorf("gave up after all retries: %w", errors.Join(err, b.Err()))
+	level.Error(m.logger).Log("msg", "toc update failed, gave up", "op", op, "tocPath", tocPath, "attempts", attempts, "err", finalErr)
+	return finalErr
+}
+
+func (m *TableOfContentsWriter) reportAttempt(op tocOp, result changeResult, since time.Time) {
+	m.metrics.writeAttemptSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(since).Seconds())
 }
 
 // rebuildToc returns the ToC that results from applying change to the
@@ -323,10 +367,10 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 // repeated paths, even if the existing ToC does. It does not rewrite a ToC
 // only to drop repeated paths, so they stay until the next change that writes.
 //
-// It returns errChangePresent if the existing ToC already holds the change. It
-// returns errRaceLost if the change requires a removal, the existing ToC holds
-// none of the paths to remove, and the existing ToC lacks an entry to add. It
-// returns an error that wraps errUnrecoverable if the existing ToC holds a
+// It returns errChangeAlreadyApplied if the existing ToC already holds the
+// change. It returns errChangeSuperseded if the change requires a removal, the
+// existing ToC holds none of the paths to remove, and it lacks an entry to add.
+// It returns an error that wraps errUnrecoverable if the existing ToC holds a
 // section of another tenant.
 func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
@@ -373,13 +417,13 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	if len(change.remove) > 0 && removed == 0 {
 		// Write nothing, because no path to remove is left. If the ToC holds
 		// every entry to add, an earlier swap applied the change. Otherwise
-		// another writer won the race.
+		// another writer superseded it.
 		for _, entry := range change.add {
 			if _, ok := kept[entry.Path]; !ok {
-				return nil, errRaceLost
+				return nil, errChangeSuperseded
 			}
 		}
-		return nil, errChangePresent
+		return nil, errChangeAlreadyApplied
 	}
 
 	var added int
@@ -399,7 +443,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	}
 
 	if removed == 0 && added == 0 {
-		return nil, errChangePresent
+		return nil, errChangeAlreadyApplied
 	}
 	return flushToc(ctx, builder)
 }

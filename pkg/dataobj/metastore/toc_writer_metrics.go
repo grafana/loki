@@ -15,8 +15,8 @@ const (
 
 // TocWriterMetrics instruments a [TableOfContentsWriter].
 type TocWriterMetrics struct {
-	changeAttemptSeconds  *prometheus.HistogramVec
-	changeDurationSeconds *prometheus.HistogramVec
+	writeAttemptSeconds *prometheus.HistogramVec
+	writeSeconds        *prometheus.HistogramVec
 }
 
 // NewTocWriterMetrics creates the metrics of a [TableOfContentsWriter] and
@@ -25,18 +25,18 @@ type TocWriterMetrics struct {
 func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 	factory := promauto.With(reg)
 	metrics := &TocWriterMetrics{
-		changeAttemptSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_toc_change_attempt_seconds",
-			Help:                            "Time taken by one attempt to change a ToC in seconds, by operation and result.",
+		writeAttemptSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_toc_write_attempt_duration_seconds",
+			Help:                            "Time taken by one attempt to write a ToC in seconds, by operation and result.",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}, []string{"op", "result"}),
 
-		changeDurationSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_toc_change_duration_seconds",
-			Help:                            "Time taken to change a ToC in seconds, by operation and result. It includes every attempt and the backoff between them.",
+		writeSeconds: factory.NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_toc_write_duration_seconds",
+			Help:                            "Time taken to write a ToC in seconds, by operation and result. It includes every attempt and the backoff between them.",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -47,10 +47,14 @@ func NewTocWriterMetrics(reg prometheus.Registerer) *TocWriterMetrics {
 	// Initialize each series to 0, otherwise neither the rate nor increase
 	// PromQL functions detect increases from 0 to 1.
 	for _, op := range []tocOp{opWriteEntry, opReplace} {
-		for _, result := range []changeResult{changeFailed, changeWritten, changePresent, changeRaceLost} {
-			metrics.changeAttemptSeconds.WithLabelValues(string(op), string(result))
-			metrics.changeDurationSeconds.WithLabelValues(string(op), string(result))
+		for _, result := range []changeResult{changeFailed, changeWritten, changeAlreadyApplied, changeSuperseded} {
+			metrics.writeAttemptSeconds.WithLabelValues(string(op), string(result))
+			metrics.writeSeconds.WithLabelValues(string(op), string(result))
 		}
+		// changeConflict is only reported for the attempts
+		metrics.writeAttemptSeconds.WithLabelValues(string(op), string(changeConflict))
+		// changeCancelled is only reported for the overall results
+		metrics.writeSeconds.WithLabelValues(string(op), string(changeCancelled))
 	}
 
 	return metrics

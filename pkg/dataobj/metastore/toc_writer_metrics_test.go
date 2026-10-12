@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewTocWriterMetrics(t *testing.T) {
-	t.Run("creates a series for every operation and result before the first write", func(t *testing.T) {
+	t.Run("creates a series for every operation and result before the first write, with conflict only for attempts and cancelled only for calls", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
 		NewTocWriterMetrics(reg)
 
@@ -27,16 +27,16 @@ func TestNewTocWriterMetrics(t *testing.T) {
 		}
 
 		want := []string{
-			"replace_index_pointers/already_present",
+			"replace_index_pointers/already_applied",
 			"replace_index_pointers/failed",
-			"replace_index_pointers/race_lost",
+			"replace_index_pointers/superseded",
 			"replace_index_pointers/written",
-			"write_entry/already_present",
+			"write_entry/already_applied",
 			"write_entry/failed",
-			"write_entry/race_lost",
+			"write_entry/superseded",
 			"write_entry/written",
 		}
-		require.ElementsMatch(t, want, series["loki_metastore_toc_change_attempt_seconds"])
-		require.ElementsMatch(t, want, series["loki_metastore_toc_change_duration_seconds"])
+		require.ElementsMatch(t, append(want, "replace_index_pointers/conflict", "write_entry/conflict"), series["loki_metastore_toc_write_attempt_duration_seconds"])
+		require.ElementsMatch(t, append(want, "replace_index_pointers/cancelled", "write_entry/cancelled"), series["loki_metastore_toc_write_duration_seconds"])
 	})
 }

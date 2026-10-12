@@ -93,7 +93,7 @@ type testIndex struct {
 // it to a different ToC file).
 func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Bucket, entries map[string][]testIndex) {
 	t.Helper()
-	w := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil))
+	w := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	for tenant, paths := range entries {
 		for _, e := range paths {
 			require.NoError(t, w.WriteEntry(ctx, tenant, metastore.TableOfContentsEntry{
