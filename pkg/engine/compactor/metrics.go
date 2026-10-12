@@ -144,43 +144,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	}
 }
 
-// observeLogPlan sets the pending log bytes of the tenant to the total of a
-// new LogMerge phase.
-func (m *coordinatorMetrics) observeLogPlan(tenant string, pendingBytes uint64) {
-	if m == nil {
-		return
-	}
-	m.pendingLogBytes.WithLabelValues(tenant).Set(float64(pendingBytes))
-}
-
-// observeCompleteLogPlan records that a LogMerge phase of the tenant planned
-// every index in every window at now.
-func (m *coordinatorMetrics) observeCompleteLogPlan(tenant string, now time.Time) {
-	if m == nil {
-		return
-	}
-	m.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(now.UnixNano()) / 1e9)
-}
-
-// completeLogPlan removes the bytes of one executed index plan from the
-// pending log bytes of the tenant.
-func (m *coordinatorMetrics) completeLogPlan(tenant string, pendingBytes uint64) {
-	if m == nil {
-		return
-	}
-	m.pendingLogBytes.WithLabelValues(tenant).Sub(float64(pendingBytes))
-}
-
-func (m *coordinatorMetrics) observeIndexInputRuns(runs int) {
-	if m != nil {
-		m.indexInputRuns.Observe(float64(runs))
-	}
-}
-
 func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexEntry, now time.Time) {
-	if m == nil {
-		return
-	}
 	backlog := max(0, runs-1)
 	if converged {
 		backlog = 0
@@ -197,13 +161,6 @@ func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bo
 	m.oldestBacklogLogAgeSeconds.WithLabelValues(tenant).Set(oldestAge)
 }
 
-// observeEntries records the raw ToC index count before section discovery.
-func (m *coordinatorMetrics) observeEntries(tenant string, entries []indexEntry) {
-	if m != nil {
-		m.indexesPerTenantWindow.WithLabelValues(tenant).Set(float64(len(entries)))
-	}
-}
-
 // oldestEnd returns the minimum End timestamp across entries, or the zero
 // time when entries is empty.
 func oldestEnd(entries []indexEntry) (oldest time.Time) {
@@ -218,19 +175,8 @@ func oldestEnd(entries []indexEntry) (oldest time.Time) {
 // observeCycle records the outcome and wall-clock duration of one worker-loop
 // phase iteration.
 func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration) {
-	if m == nil {
-		return
-	}
 	m.cyclesTotal.WithLabelValues(outcome).Inc()
 	m.cycleDurationSeconds.Observe(duration.Seconds())
-}
-
-// observeBackoff records the wait a worker applies between phases.
-func (m *coordinatorMetrics) observeBackoff(wait time.Duration) {
-	if m == nil {
-		return
-	}
-	m.cycleBackoffSeconds.Observe(wait.Seconds())
 }
 
 // observeTenantCycle records per-tenant index-compaction cycle outcomes and
@@ -242,9 +188,6 @@ func (m *coordinatorMetrics) observeTenantCycle(
 	duration time.Duration,
 	stats compactionStats,
 ) {
-	if m == nil {
-		return
-	}
 	m.tenantCyclesTotal.WithLabelValues(outcome, tenant).Inc()
 	m.recordTenantCycle(tenant, outcome, duration, stats)
 }
@@ -258,9 +201,6 @@ func (m *coordinatorMetrics) observeTenantLogCycle(
 	duration time.Duration,
 	stats compactionStats,
 ) {
-	if m == nil {
-		return
-	}
 	m.tenantLogCyclesTotal.WithLabelValues(outcome, tenant).Inc()
 	m.recordTenantCycle(tenant, outcome, duration, stats)
 }
@@ -293,9 +233,6 @@ func (m *coordinatorMetrics) recordTenantCycle(
 // cycleDurationSeconds carry no tenant label, and tenantCycleDurationSeconds
 // carries only an outcome label (no tenant label).
 func (m *coordinatorMetrics) deleteTenant(tenant string) {
-	if m == nil {
-		return
-	}
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
@@ -378,9 +315,6 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 // ObserveIndexMergeOutput satisfies executor.IndexMergeObserver. Called by
 // the IndexMerge executor on the worker after each successful task.
 func (m *workerMetrics) ObserveIndexMergeOutput(tenant string, compressed, uncompressed int64) {
-	if m == nil {
-		return
-	}
 	if compressed > 0 {
 		m.outputBytesCompressed.WithLabelValues(tenant).Observe(float64(compressed))
 	}
@@ -414,9 +348,6 @@ func (m *threadLogMergeMetrics) ObserveLogMergeInputBytes(bytes int64) {
 // ObserveLogMerge satisfies executor.LogMergeObserver. Called by the LogMerge
 // executor on the worker after each task attempt.
 func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeObservedStats, duration time.Duration) {
-	if m == nil {
-		return
-	}
 	outcome := stats.Outcome
 	if outcome == "" {
 		outcome = "unknown"

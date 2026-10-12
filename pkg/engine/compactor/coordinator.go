@@ -314,7 +314,9 @@ func (c *coordinator) executeLogCompaction(
 	if err != nil {
 		return compactionStats{}, err
 	}
-	if stats.removed > 0 {
+	if stats.removed == 0 {
+		level.Debug(c.logger).Log("msg", "log-compaction step for index was a no-op", "tenant", tenant, "entry", plan.sourceIndex.Path)
+	} else {
 		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndex.Path, "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
@@ -451,7 +453,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 
 	runs := v2.CalculateRuns(sections, compareIndexSortKey)
 	inputRuns := len(runs)
-	c.metrics.observeIndexInputRuns(inputRuns)
+	c.metrics.indexInputRuns.Observe(float64(inputRuns))
 	converged := v2.IsConverged(sections, compareIndexSortKey)
 	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
 	if converged {
@@ -643,7 +645,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		return phaseOutcomeError
 	}
 
-	c.metrics.observeEntries(tenant, entries)
+	c.metrics.indexesPerTenantWindow.WithLabelValues(tenant).Set(float64(len(entries)))
 
 	stats, err := c.compactTenantIndexes(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
@@ -690,8 +692,7 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 
 // runLogMergePhase plans the log compaction of every index in every window for
 // the tenant, then executes the plans. Any error retries. Retries are safe
-// because swapping an index that already swapped is a no-op. Context
-// cancellation is not an error.
+// because swapping an index that already swapped is a no-op.
 //
 // All planning finishes before any task runs, so the pending log bytes gauge
 // shows the whole phase. The last plan timestamp moves only when every index
@@ -713,9 +714,9 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 	for _, plan := range plans {
 		pendingBytes += plan.rewriteBytes()
 	}
-	c.metrics.observeLogPlan(tenant, pendingBytes)
+	c.metrics.pendingLogBytes.WithLabelValues(tenant).Set(float64(pendingBytes))
 	if !anyError {
-		c.metrics.observeCompleteLogPlan(tenant, c.clock())
+		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(c.clock().UnixNano()) / 1e9)
 	}
 
 	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "plans", len(plans), "pending_bytes", pendingBytes)
@@ -742,7 +743,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 		// A no-op swap also removes the plan's bytes. It happens in dry-run
 		// mode or when another writer replaced the source index first. In both
 		// cases this phase does not rewrite those bytes again.
-		c.metrics.completeLogPlan(tenant, plan.rewriteBytes())
+		c.metrics.pendingLogBytes.WithLabelValues(tenant).Sub(float64(plan.rewriteBytes()))
 		if stats.added > 0 {
 			anySwapped = true
 			agg = agg.Merge(stats)
@@ -845,7 +846,7 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 
 		var wait time.Duration
 		wait, backoff = nextBackoff(outcome, backoff, c.cfg.MinBackoff, c.cfg.MaxBackoff)
-		c.metrics.observeBackoff(wait)
+		c.metrics.cycleBackoffSeconds.Observe(wait.Seconds())
 		c.sleep(ctx, wait)
 	}
 }
@@ -884,24 +885,27 @@ func (c *coordinator) runMultiplePhases(ctx context.Context, tenant string, p ph
 // IndexMerge runs each window separately and records one cycle per window.
 // LogMerge covers all windows in one pass and records one cycle.
 func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phaseOutcome {
-	if p == phaseLogMerge {
+	switch p {
+	case phaseLogMerge:
 		start := c.clock()
 		outcome := c.runLogMergePhase(ctx, tenant)
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 		return outcome
-	}
-
-	worst := phaseOutcomeNoWork
-	for _, window := range c.windows() {
-		if ctx.Err() != nil {
-			return worst
+	case phaseIndexMerge:
+		worst := phaseOutcomeNoWork
+		for _, window := range c.windows() {
+			if ctx.Err() != nil {
+				return worst
+			}
+			start := c.clock()
+			outcome := c.runIndexMergePhase(ctx, tenant, window)
+			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+			worst = worstOutcome(worst, outcome)
 		}
-		start := c.clock()
-		outcome := c.runIndexMergePhase(ctx, tenant, window)
-		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
-		worst = worstOutcome(worst, outcome)
+		return worst
+	default:
+		return phaseOutcomeError
 	}
-	return worst
 }
 
 // worstOutcome ranks phase outcomes so the tenant loop retries on any error and
