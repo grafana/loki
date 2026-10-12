@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -51,7 +50,8 @@ type Service struct {
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
-	logger = log.With(logger, "component", "dataobj-builder")
+	const componentName = "dataobj-builder"
+	logger = log.With(logger, "component", componentName)
 
 	// Each instance consumes exactly one partition, taken from the ordinal
 	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3),
@@ -99,15 +99,10 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	}
 
 	builderMetrics := logsobj.NewBuilderMetrics()
-	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
-		"partition": strconv.Itoa(int(partitionID)),
-	}, reg)
-	// The logs and index builders share the same section and encoding
-	// collectors, so both must carry a component label. Registering only one of
-	// them with it makes the label names differ for the same metric name, which
-	// the Prometheus registry rejects.
-	logsReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "logs"}, wrapped)
-	indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index"}, wrapped)
+
+	logsReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.logs", componentName)}, reg)
+	indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.index", componentName)}, reg)
+	tocReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.toc", componentName)}, reg)
 	err = builderMetrics.Register(logsReg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
@@ -136,10 +131,14 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create indexer: %w", err)
 	}
 
-	tocWriter := metastore.NewTableOfContentsWriter(idxBucket, logger)
-	if err := tocWriter.RegisterMetrics(indexReg); err != nil {
-		return nil, fmt.Errorf("failed to register Table of Contents writer metrics: %w", err)
-	}
+	tocWriter := metastore.NewTableOfContentsWriter(
+		idxBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(tocReg),
+		indexobj.NewBuilderMetrics(tocReg),
+	)
 
 	flushCommitter := newFlushCommitter(
 		flusher,
@@ -148,7 +147,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		tocWriter,
 		partitionID,
 		logger,
-		wrapped,
+		reg,
 	)
 	processor := newProcessor(
 		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
@@ -157,7 +156,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
 		logger,
-		wrapped,
+		reg,
 	)
 
 	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)

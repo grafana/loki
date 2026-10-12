@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
@@ -2363,6 +2364,7 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
+	const componentName = "dataobj-compaction-planner"
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
 	}
@@ -2371,9 +2373,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
+	logger := log.With(util_log.Logger, "component", componentName)
 
-	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
@@ -2384,7 +2386,19 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": componentName},
+		prometheus.DefaultRegisterer,
+	)
+	tocWriter := metastore.NewTableOfContentsWriter(
+		indexBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(reg),
+		indexobj.NewBuilderMetrics(reg),
+	)
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
