@@ -735,7 +735,8 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
 		builderMetrics: logsobj.NewBuilderMetrics(),
 
-		logger: log.NewNopLogger(),
+		logMergeObserver: nopLogMergeObserver{},
+		logger:           log.NewNopLogger(),
 	}
 }
 
