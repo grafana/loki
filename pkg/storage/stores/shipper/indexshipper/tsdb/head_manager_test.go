@@ -343,116 +343,6 @@ func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
 	require.Equal(t, want, recovered)
 }
 
-// Test_HeadManager_Append_ConcurrentNewStreamAppends_CanOrderChunksBeforeSeries
-// demonstrates the mechanism behind "found tsdb chunk metas without series in
-// WAL replay": HeadManager.Append's entire body is
-//
-//	rec := m.activeHeads.Append(userID, ls, fprint, chks)
-//	return m.active.Log(rec)
-//
-// guarded only by m.mtx.RLock(). RLock excludes Rotate, but it does not
-// order two concurrent Append calls against each other.
-//
-// Note, this test **does not** test actual behaviour of concurrent Append,
-// because m.activeHeads.Append() and m.active.Log() are now gated with a
-// dedicated lock to "atomize" the two calls.
-// The actual test is [Test_HeadManager_Append_ConcurrentCallsReplaySafely].
-func Test_HeadManager_Append_ConcurrentNewStreamAppends_CanOrderChunksBeforeSeries(t *testing.T) {
-	now := time.Now()
-	dir := t.TempDir()
-
-	const user = "tenant1"
-	ls := mustParseLabels(`{foo="bar", bazz="buzz"}`)
-	fp := labels.StableHash(ls)
-
-	// An unrelated, earlier stream for the same tenant. Logged synchronously
-	// (no race) so that, by the time the raced record below is replayed,
-	// seriesMap already has an entry for this tenant -- otherwise recoverHead
-	// would trip the sibling "found tsdb chunk metas without user" check
-	// instead of the reported "...without series" one.
-	priorLs := mustParseLabels(`{foo="other", bazz="buzz"}`)
-	priorFp := labels.StableHash(priorLs)
-
-	storeName := "store_2026-10-12"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
-	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.Nil(t, util.EnsureDirectory(d))
-	}
-	// Rotate() gives us a real, empty activeHeads to replay into below, the
-	// same way a restart would.
-	require.Nil(t, mgr.Rotate(now))
-
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
-	require.Nil(t, err)
-
-	// heads stands in for HeadManager.activeHeads; it is driven the same way,
-	// by two concurrent callers racing to append the same brand-new stream.
-	heads := newTenantHeads(now, defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
-
-	recPrior := heads.Append(user, priorLs, priorFp, index.ChunkMetas{{MinTime: 1, MaxTime: 5, Checksum: 9}})
-	require.False(t, recPrior.Series.Labels.IsEmpty())
-	require.Nil(t, w.Log(recPrior))
-
-	chksWinner := index.ChunkMetas{{MinTime: 1, MaxTime: 10, Checksum: 1}}
-	chksLoser := index.ChunkMetas{{MinTime: 11, MaxTime: 20, Checksum: 2}}
-
-	var recWinner, recLoser *WALRecord
-	var errWinnerLog, errLoserLog error
-
-	winnerAppended := make(chan struct{})
-	releaseWinnerLog := make(chan struct{})
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// "Winner": the first goroutine to reach stripeSeries.Append always
-	// creates the series and gets the Series-bearing record back. It is then
-	// descheduled before logging -- legal, since nothing serializes its
-	// eventual w.Log call against other Append callers.
-	go func() {
-		defer wg.Done()
-		recWinner = heads.Append(user, ls, fp, chksWinner)
-		close(winnerAppended)
-		<-releaseWinnerLog
-		errWinnerLog = w.Log(recWinner)
-	}()
-
-	// "Loser": starts its in-memory append only once the winner has already
-	// created the series (so it deterministically observes created==false and
-	// gets a chunks-only record), then logs immediately -- before the
-	// winner's delayed Log call.
-	go func() {
-		defer wg.Done()
-		<-winnerAppended
-		recLoser = heads.Append(user, ls, fp, chksLoser)
-		errLoserLog = w.Log(recLoser)
-		close(releaseWinnerLog)
-	}()
-
-	wg.Wait()
-	require.NoError(t, errWinnerLog)
-	require.NoError(t, errLoserLog)
-	require.Nil(t, w.Stop())
-
-	// Sanity-check the in-memory behaviour this test relies on: it is the
-	// real tenantHeads/stripeSeries logic deciding this, not a hand-rolled
-	// stand-in for it.
-	require.False(t, recWinner.Series.Labels.IsEmpty(), "first append of a new stream must carry the series record")
-	require.True(t, recLoser.Series.Labels.IsEmpty(), "second concurrent append of the same new stream must be chunks-only")
-
-	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
-	require.Nil(t, err)
-	require.True(t, ok)
-	require.Equal(t, 1, len(grp.wals))
-
-	// recoverHead is the production WAL-replay path (run on ingester
-	// startup). It fails exactly like the reported bug: a chunk-metas record
-	// for a ref with no preceding series record in this WAL file.
-	err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "found tsdb chunk metas without series in WAL replay")
-}
-
 // Test_HeadManager_Append_ConcurrentCallsReplaySafely is a regression test
 // for the appendMtx fix: many goroutines call the real, public
 // HeadManager.Append concurrently, racing to create several brand-new
@@ -480,14 +370,12 @@ func Test_HeadManager_Append_ConcurrentCallsReplaySafely(t *testing.T) {
 		ls := mustParseLabels(fmt.Sprintf(`{foo="bar", stream="%d"}`, s))
 		fp := labels.StableHash(ls)
 		for writer := 0; writer < numWriters; writer++ {
-			wg.Add(1)
-			go func(ls labels.Labels, fp uint64, writer int) {
-				defer wg.Done()
+			wg.Go(func() {
 				chks := index.ChunkMetas{{MinTime: int64(writer + 1), MaxTime: int64(writer + 2), Checksum: uint32(writer)}}
 				if err := mgr.Append(user, ls, fp, chks); err != nil {
 					errs <- err
 				}
-			}(ls, fp, writer)
+			})
 		}
 	}
 	wg.Wait()
