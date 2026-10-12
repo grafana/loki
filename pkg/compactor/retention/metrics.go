@@ -1,6 +1,7 @@
 package retention
 
 import (
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -25,24 +26,24 @@ type sweeperMetrics struct {
 func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
 	return &sweeperMetrics{
 		deleteChunkDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_sweeper_chunk_deleted_duration_seconds",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_sweeper_chunk_deleted_duration_seconds",
 			Help:      "Time (in seconds) spent in deleting chunk",
 			Buckets:   prometheus.ExponentialBuckets(0.1, 2, 8),
 		}, []string{"status"}),
 		markerFilesCurrent: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_sweeper_marker_files_current",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_sweeper_marker_files_current",
 			Help:      "The current total of marker files valid for deletion.",
 		}),
 		markerFileCurrentTime: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_sweeper_marker_file_processing_current_time",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_sweeper_marker_file_processing_current_time",
 			Help:      "The current time of creation of the marker file being processed.",
 		}),
 		markerFilesDeletedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_sweeper_marker_files_deleted_total",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_sweeper_marker_files_deleted_total",
 			Help:      "The total of marker files deleted after being fully processed.",
 		}),
 	}
@@ -55,8 +56,8 @@ type expirationMetrics struct {
 func newExpirationMetrics(r prometheus.Registerer) *expirationMetrics {
 	return &expirationMetrics{
 		chunksExpiredByIngestionTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_compactor",
-			Name:      "retention_chunks_expired_by_ingestion_time_total",
+			Namespace: constants.Loki,
+			Name:      "compactor_retention_chunks_expired_by_ingestion_time_total",
 			Help:      "Total number of chunks expired based on their ingestion time (IngestedAt) rather than their data time range.",
 		}),
 	}
@@ -72,24 +73,24 @@ type markerMetrics struct {
 func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
 	return &markerMetrics{
 		tableProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_marker_table_processed_total",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_marker_table_processed_total",
 			Help:      "Total amount of table processed for each user per action. Empty string for user_id is for common index",
 		}, []string{"table", "user_id", "action"}),
 		tableMarksCreatedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_marker_count_total",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_marker_count_total",
 			Help:      "Total count of markers created per table.",
 		}, []string{"table"}),
 		tableProcessedDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_boltdb_shipper",
-			Name:      "retention_marker_table_processed_duration_seconds",
+			Namespace: constants.Loki,
+			Name:      "tsdb_shipper_retention_marker_table_processed_duration_seconds",
 			Help:      "Time (in seconds) spent in marking table for chunks to delete",
 			Buckets:   []float64{1, 2.5, 5, 10, 20, 40, 90, 360, 600, 1800},
 		}, []string{"table", "status"}),
 		missingChunksTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_compactor",
-			Name:      "deletion_missing_chunks_total",
+			Namespace: constants.Loki,
+			Name:      "compactor_deletion_missing_chunks_total",
 			Help:      "Total count of chunks which were indexed but missing from the object storage while processing a delete request with a line filter. Only incremented when -compactor.deletion-ignore-missing-chunks is enabled.",
 		}, []string{"table", "user_id"}),
 	}
