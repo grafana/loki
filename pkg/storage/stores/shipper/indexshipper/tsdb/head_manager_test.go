@@ -266,6 +266,134 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 }
 
+// Test_HeadManager_RecoverHead_IngestedAt asserts that a chunk's ingestion
+// timestamp survives WAL replay once the WAL is written as
+// WalRecordChunksV2. Without it, an index built from a recovered head would
+// drop the timestamp that an index built from the same data without a restart
+// carries, and retention would silently fall back to expiring those chunks by
+// their log timestamps.
+func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const user = "tenant1"
+	ls := mustParseLabels(`{foo="bar", __backfill__="true"}`)
+	chks := index.ChunkMetas{
+		// A backfilled chunk, stamped at flush time.
+		{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6, IngestedAt: now.UnixMilli()},
+		// A live chunk in the same record keeps the zero value.
+		{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      user,
+		Fingerprint: labels.StableHash(ls),
+		Series:      record.RefSeries{Ref: chunks.HeadSeriesRef(0), Labels: ls},
+		Chks:        ChunkMetasRecord{Chks: chks, Ref: 0},
+	}))
+	require.Nil(t, w.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	want := chks
+	if CurrentChunksRec < WalRecordChunksV2 {
+		// The encoder still writes the layout without ingestion timestamps,
+		// so replay zeroes them. Remove once CurrentChunksRec is
+		// WalRecordChunksV2.
+		want = index.ChunkMetas{
+			{MinTime: 1, MaxTime: 10, Checksum: 3, KB: 5, Entries: 6},
+			{MinTime: 11, MaxTime: 20, Checksum: 4, KB: 7, Entries: 8},
+		}
+	}
+
+	var recovered index.ChunkMetas
+	require.Nil(t, mgr.activeHeads.forAll(func(u string, _ labels.Labels, _ uint64, c index.ChunkMetas) error {
+		require.Equal(t, user, u)
+		recovered = append(recovered, c...)
+		return nil
+	}))
+	require.Equal(t, want, recovered)
+}
+
+// Test_HeadManager_Append_ConcurrentCallsReplaySafely is a regression test
+// for the appendMtx fix: many goroutines call the real, public
+// HeadManager.Append concurrently, racing to create several brand-new
+// streams, with no manual scheduling to force any particular interleaving.
+func Test_HeadManager_Append_ConcurrentCallsReplaySafely(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const (
+		user       = "tenant1"
+		numStreams = 8
+		numWriters = 25 // concurrent writers racing to create each stream
+	)
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	errs := make(chan error, numStreams*numWriters)
+	var wg sync.WaitGroup
+	for s := 0; s < numStreams; s++ {
+		ls := mustParseLabels(fmt.Sprintf(`{foo="bar", stream="%d"}`, s))
+		fp := labels.StableHash(ls)
+		for writer := 0; writer < numWriters; writer++ {
+			wg.Go(func() {
+				chks := index.ChunkMetas{{MinTime: int64(writer + 1), MaxTime: int64(writer + 2), Checksum: uint32(writer)}}
+				if err := mgr.Append(user, ls, fp, chks); err != nil {
+					errs <- err
+				}
+			})
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	// Stop (flush+close) the WAL mgr.Append wrote into, without going through
+	// a full Rotate/build/truncate cycle, so we can replay the raw file from
+	// disk exactly as a restart would.
+	require.Nil(t, mgr.active.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+
+	fresh := newTenantHeads(now, defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	require.NoError(t, recoverHead(mgr.name, mgr.dir, fresh, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	for s := 0; s < numStreams; s++ {
+		refs, err := fresh.GetChunkRefs(
+			context.Background(),
+			user,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchEqual, "stream", fmt.Sprintf("%d", s)),
+		)
+		require.NoError(t, err)
+		require.Len(t, refs, numWriters, "stream %d: expected every concurrent writer's chunk to survive replay", s)
+	}
+}
+
 // test head recover from corrupted wal
 func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 	for _, tc := range []struct {
