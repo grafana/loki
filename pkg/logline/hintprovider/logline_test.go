@@ -259,13 +259,13 @@ func TestLoglineHintProvider_QueryHints_RecordsEffectiveConcurrency(t *testing.T
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.Stats)
 	require.Greater(t, resp.Stats.EffectiveConcurrency, 0.0)
-	require.Greater(t, resp.Stats.TotalWorkNanos, int64(0))
+	require.Greater(t, resp.Stats.TotalIOWait, time.Duration(0))
 
 	restored := FromProtoStats(resp.Stats)
 	restored.SetWallTime(5 * time.Second)
 	got := restored.Snapshot()
-	require.Equal(t, resp.Stats.TotalWorkNanos, got.TotalWorkNanos)
-	require.Equal(t, float64(resp.Stats.TotalWorkNanos)/float64(5*time.Second), got.EffectiveConcurrency)
+	require.Equal(t, resp.Stats.TotalIOWait, got.TotalIOWait)
+	require.Equal(t, float64(resp.Stats.TotalIOWait)/float64(5*time.Second), got.EffectiveConcurrency)
 }
 
 func TestLoglineHintProvider_LookupParams(t *testing.T) {
