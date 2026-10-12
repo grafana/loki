@@ -203,5 +203,5 @@ tests:
               description: |-
                 The LokiStack "boltdb-stack" in namespace "deprecated-ns" is using a deprecated BoltDB schema (v11).
                 BoltDB storage schemas (v11 and v12) are deprecated and will be removed in a future release. Please migrate to schema v13 (TSDB).
-                Migration steps: https://grafana.com/docs/loki/latest/operations/storage/schema/
+                Migration steps: https://loki-operator.dev/docs/user-guides/migrate-to-v13-schemas.md/
               runbook_url: "[[ .RunbookURL ]]#Lokistack-Deprecated-BoltDB-Schema"
