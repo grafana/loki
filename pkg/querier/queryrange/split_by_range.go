@@ -17,15 +17,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
-	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitByRange struct {
-	logger  log.Logger
-	next    queryrangebase.Handler
-	limits  Limits
-	ng      *logql.DownstreamEngine
-	metrics *logql.MapperMetrics
+	logger      log.Logger
+	next        queryrangebase.Handler
+	limits      Limits
+	chunkPolicy chunkSplitIntervalPolicy
+	ng          *logql.DownstreamEngine
+	metrics     *logql.MapperMetrics
 
 	// Whether to align rangeInterval align to splitByInterval in the subqueries.
 	splitAlign bool
@@ -35,9 +35,10 @@ type splitByRange struct {
 func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, splitAlign bool, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
-			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
-			next:   next,
-			limits: limits,
+			logger:      log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
+			next:        next,
+			limits:      limits,
+			chunkPolicy: newChunkSplitIntervalPolicy(limits),
 			ng: logql.NewDownstreamEngine(engineOpts, DownstreamHandler{
 				limits:     limits,
 				next:       next,
@@ -62,7 +63,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.InstantMetricQuerySplitDuration)
+	interval := s.chunkPolicy.InstantQueryInterval(tenants)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)
