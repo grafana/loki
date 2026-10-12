@@ -29,7 +29,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.8
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.8
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.2
-	github.com/aws/smithy-go v1.28.4
+	github.com/aws/smithy-go v1.28.5
 	github.com/axiomhq/hyperloglog v0.3.0
 	github.com/baidubce/bce-sdk-go v0.9.276
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
