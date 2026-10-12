@@ -226,10 +226,10 @@ func newMetricQuerySplitter(cfg Config, limits Limits, iqo util.IngesterQueryOpt
 	}
 }
 
-// policy returns the split policy of the request. A request without a plan cannot prefer data
-// objects.
+// policy returns the split policy of the request.
 func (s *metricQuerySplitter) policy(tenantIDs []string, r *LokiRequest) splitIntervalPolicy {
-	if r.Plan != nil && s.dataObjPolicy.shouldUse(tenantIDs, r.Plan.AST, r.StartTs, r.EndTs) {
+	expr, err := planExpr(r.Plan, r.Query)
+	if err == nil && s.dataObjPolicy.shouldUse(tenantIDs, expr, r.StartTs, r.EndTs) {
 		return s.dataObjPolicy
 	}
 	return s.chunkPolicy

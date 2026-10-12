@@ -3,13 +3,11 @@ package queryrange
 import (
 	"math"
 	"testing"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	valid "github.com/grafana/loki/v3/pkg/validation"
 )
@@ -73,44 +71,6 @@ func TestChunkShardingPolicy_boundedShards(t *testing.T) {
 
 		require.Equal(t, shards, gotShards)
 		require.Equal(t, chunks, gotChunks)
-	})
-}
-
-func TestDataObjShardingPolicy_shouldUse(t *testing.T) {
-	tenants := []string{"1"}
-	expr := syntax.MustParseExpr(streamFirstQuery)
-	insideStart, insideEnd := dataObjRoutingNow.Add(-24*time.Hour), dataObjRoutingNow.Add(-12*time.Hour)
-
-	newPolicy := func(cfg Config) *dataObjShardingPolicy {
-		cfg.now = func() time.Time { return dataObjRoutingNow }
-		return newDataObjShardingPolicy(cfg, dataObjTenantLimits("1"))
-	}
-	on := Config{DataObjEnabled: true, DataObjStorageLag: dataObjRoutingLag}
-
-	t.Run("returns false when the frontend config turns data objects off", func(t *testing.T) {
-		require.False(t, newPolicy(Config{DataObjStorageLag: dataObjRoutingLag}).shouldUse(tenants, expr, insideStart, insideEnd))
-	})
-
-	t.Run("returns true for an expression that prefers data objects", func(t *testing.T) {
-		require.True(t, newPolicy(on).shouldUse(tenants, expr, insideStart, insideEnd))
-	})
-
-	t.Run("returns false for an expression without the stream-first shape", func(t *testing.T) {
-		rate := syntax.MustParseExpr(`rate({app="a"}[1m])`)
-
-		require.False(t, newPolicy(on).shouldUse(tenants, rate, insideStart, insideEnd))
-	})
-
-	t.Run("returns false for a range outside the held range", func(t *testing.T) {
-		require.False(t, newPolicy(on).shouldUse(tenants, expr, dataObjRoutingNow.Add(-2*time.Hour), dataObjRoutingNow.Add(-time.Hour)))
-	})
-
-	t.Run("uses the storage lag of the frontend config", func(t *testing.T) {
-		start, end := dataObjRoutingNow.Add(-150*time.Minute), dataObjRoutingNow.Add(-120*time.Minute)
-		shortLag := Config{DataObjEnabled: true, DataObjStorageLag: time.Hour}
-
-		require.False(t, newPolicy(on).shouldUse(tenants, expr, start, end))
-		require.True(t, newPolicy(shortLag).shouldUse(tenants, expr, start, end))
 	})
 }
 

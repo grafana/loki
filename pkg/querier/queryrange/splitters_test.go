@@ -226,6 +226,7 @@ func TestMetricQuerySplitter_split(t *testing.T) {
 
 		splits := split(t, splitter, newRangeRequest(streamFirstQuery, start.Add(17*time.Second), end))
 
+		require.NotEmpty(t, splits)
 		for _, s := range splits {
 			require.Zero(t, s.GetStart().UnixMilli()%60000)
 			require.Zero(t, s.GetEnd().UnixMilli()%60000)
@@ -253,16 +254,18 @@ func TestMetricQuerySplitter_split(t *testing.T) {
 
 		splits := split(t, splitter, newRangeRequest(streamFirstQuery, dataObjRoutingNow.Add(-30*time.Hour), dataObjRoutingNow.Add(-time.Hour)))
 
-		var sawLongSplit bool
+		var sawLongSplit, sawIngesterSplit bool
 		for _, s := range splits {
 			length := s.GetEnd().Sub(s.GetStart())
 			if !s.GetStart().Before(ingesterWindowStart) {
+				sawIngesterSplit = true
 				require.LessOrEqual(t, length, 15*time.Minute)
 			} else if length >= 11*time.Hour {
 				sawLongSplit = true
 			}
 		}
 		require.True(t, sawLongSplit)
+		require.True(t, sawIngesterSplit)
 	})
 
 	t.Run("returns enabled false when the tenant turns splitting off for a query that prefers data objects", func(t *testing.T) {
@@ -271,6 +274,19 @@ func TestMetricQuerySplitter_split(t *testing.T) {
 		splitter := newMetricQuerySplitter(cfg, limits, nil)
 
 		splits, enabled := splitter.split(dataObjRoutingNow, tenants, newRangeRequest(streamFirstQuery, start, end))
+
+		require.False(t, enabled)
+		require.Empty(t, splits)
+	})
+
+	t.Run("returns enabled false for a request without a plan when the tenant turns splitting off", func(t *testing.T) {
+		limits := newSplitTestLimits("1")
+		limits.splitDuration["1"] = 0
+		splitter := newMetricQuerySplitter(cfg, limits, nil)
+		req := newRangeRequest(streamFirstQuery, start, end)
+		req.Plan = nil
+
+		splits, enabled := splitter.split(dataObjRoutingNow, tenants, req)
 
 		require.False(t, enabled)
 		require.Empty(t, splits)

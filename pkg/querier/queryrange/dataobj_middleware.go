@@ -40,7 +40,7 @@ func NewDataObjMetrics(registerer prometheus.Registerer, metricsNamespace string
 	eligibility := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Namespace: metricsNamespace,
 		Name:      "query_frontend_dataobj_eligibility_total",
-		Help:      "Requests the query-frontend sends to queriers, by data-object eligibility outcome. Counts every sub-query: sharding and range splitting turn one user query into many requests, and each one adds one count.",
+		Help:      "Query requests that the query-frontend sends to queriers, by data-object eligibility outcome. Sharding and range splitting turn one user query into many requests, and a retry sends a request again. Each request adds one count.",
 	}, []string{"outcome"})
 
 	// A series that does not exist yet hides its first count from rate() and increase().
@@ -76,10 +76,9 @@ func newDataObjEligibilityMiddleware(cfg Config, limits Limits, metrics *DataObj
 }
 
 func (m *dataObjEligibilityMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return m.next.Do(ctx, r)
-	}
+	// A request without a valid tenant ID has no tenants, so it is never eligible. The middleware
+	// then clears the options that the request carried.
+	tenantIDs, _ := tenant.TenantIDs(ctx)
 
 	// The request may be in use elsewhere, so the middleware sets the options on a copy.
 	switch req := r.(type) {

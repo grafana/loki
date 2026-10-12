@@ -97,8 +97,8 @@ func newQueryFrontendDataObjStackFrom(t *testing.T, stackName string, dataObjQue
 // querier-worker loop wired over gRPC. The querier runs queries with limits, over the querier
 // that newQuerier builds.
 //
-// A non-zero dataObjQueryStart turns data objects on in the query-frontend, from that time on, so the
-// frontend marks the queries that a querier may read from data objects.
+// A non-zero dataObjQueryStart turns data objects on in the query-frontend from that time on. The
+// query-frontend then marks the queries that a querier may read from data objects.
 func newQueryFrontendStack(t *testing.T, stackName string, queryShardingEnabled bool, limits logql.Limits, newQuerier newScriptQuerierFunc, dataObjQueryStart time.Time) (*queryFrontendExecutionStack, error) {
 	var (
 		logger       = log.NewNopLogger()
@@ -345,7 +345,8 @@ func newQueryFrontendOverrides(streamFirstEnabled bool, dataObjQueryStart time.T
 	limits.StreamFirstExecutionEnabled = streamFirstEnabled
 	limits.DataObjQueryStartTime = flagext.Time(dataObjQueryStart)
 
-	// Set TSDBMaxBytesPerShard to a low value to deterministically fan out each query into a handful of shards.
+	// Set both bytes-per-shard limits to a low value to deterministically fan out each query into a
+	// handful of shards.
 	if err := limits.TSDBMaxBytesPerShard.Set("1024"); err != nil {
 		return nil, err
 	}

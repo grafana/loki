@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -32,5 +33,33 @@ func TestDynamicShardResolver_ShardingRanges(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, shards, gotShards)
 		require.Equal(t, chunkGroups, gotChunkGroups)
+	})
+}
+
+func TestDynamicShardResolver_policy(t *testing.T) {
+	cfg := Config{DataObjEnabled: true, DataObjStorageLag: dataObjRoutingLag, now: func() time.Time { return dataObjRoutingNow }}
+	limits := dataObjTenantLimits("1")
+	tenants := []string{"1"}
+	expr := syntax.MustParseExpr(streamFirstQuery)
+
+	newResolver := func(start, end time.Time) *dynamicShardResolver {
+		return &dynamicShardResolver{
+			start:         start,
+			end:           end,
+			chunkPolicy:   newChunkShardingPolicy(limits),
+			dataObjPolicy: newDataObjShardingPolicy(cfg, limits),
+		}
+	}
+
+	t.Run("returns the data-object policy for a split that crosses the end of the held range and lies mostly inside it", func(t *testing.T) {
+		resolver := newResolver(dataObjRoutingBandEnd.Add(-40*time.Minute), dataObjRoutingBandEnd.Add(20*time.Minute))
+
+		require.IsType(t, &dataObjShardingPolicy{}, resolver.policy(tenants, expr))
+	})
+
+	t.Run("returns the chunk policy for a split that crosses the end of the held range and lies mostly outside it", func(t *testing.T) {
+		resolver := newResolver(dataObjRoutingBandEnd.Add(-20*time.Minute), dataObjRoutingBandEnd.Add(40*time.Minute))
+
+		require.IsType(t, chunkShardingPolicy{}, resolver.policy(tenants, expr))
 	})
 }

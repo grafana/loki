@@ -18,8 +18,9 @@ import (
 
 // newScriptQuerier returns the production querier over stores.
 //
-// From dataObjQueryStart on, the querier reads stream-first queries from data objects. It reads
-// everything else from chunks. A zero-value dataObjQueryStart makes it read only chunks.
+// The querier reads stream-first requests from data objects, from dataObjQueryStart on. It does so
+// only for requests that the caller marked eligible. It reads everything else from chunks. A
+// zero-value dataObjQueryStart makes it read only chunks.
 //
 // The querier is valid until the next stores.setStreams, which stops its chunk store.
 //

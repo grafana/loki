@@ -179,9 +179,9 @@ type SingleTenantQuerier struct {
 
 // New makes a new Querier.
 //
-// The querier reads stream-first sample requests from dataObjStore, from the tenant's data-object
-// start time to now minus the storage lag. A nil dataObjStore makes the querier read no data
-// objects.
+// The querier reads a stream-first sample request from dataObjStore only when the query-frontend
+// marked the request eligible. It reads from the tenant's data-object start time to now minus the
+// storage lag. A nil dataObjStore makes the querier read no data objects.
 func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
@@ -373,10 +373,15 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 // storeForSelectSamples returns the store that serves the store part of a sample request.
 func (q *SingleTenantQuerier) storeForSelectSamples(ctx context.Context, params logql.SelectSampleParams) (Store, error) {
-	// A stream-first request needs two more conditions to read data objects. The query-frontend
-	// marked the request eligible, and the tenant has a data-object start time. The store then
-	// reads [start time, now - storage lag) from data objects and the rest from chunks. For any
-	// other request, or one that does not overlap that range, it returns the chunk store.
+	// A request reads data objects only when all of these hold:
+	//   - The querier has a data-object store.
+	//   - The request is stream-first.
+	//   - The query-frontend marked the request eligible.
+	//   - The tenant has a data-object start time.
+	//   - The request overlaps [start time, now - storage lag).
+	//
+	// The returned store then reads that range from data objects and the rest from chunks. Any
+	// other request uses the chunk store.
 	if q.dataObjStore == nil || !params.DataObjOptions.GetEligible() || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
 		return q.chunkStore, nil
 	}

@@ -4486,7 +4486,8 @@ discover_generic_fields:
 # Target maximum number of bytes assigned to a single sharded query that reads
 # chunks. Also expressible in human readable forms (1GB, etc). Note: This is a
 # _target_ and not an absolute limit. The actual limit can be higher, but the
-# query planner will try to build shards up to this limit.
+# query planner will try to build shards up to this limit. The bounded sharding
+# strategy also uses this setting for queries that read data objects.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
@@ -4583,7 +4584,8 @@ discover_generic_fields:
 # Target maximum number of bytes assigned to a single sharded query that reads
 # data objects. Also expressible in human readable forms (1GB, etc). Note: This
 # is a _target_ and not an absolute limit. The query-frontend reads this
-# setting.
+# setting. The query-frontend uses it only with the power-of-two sharding
+# strategy. The bounded strategy uses -querier.tsdb-max-bytes-per-shard.
 # CLI flag: -querier.dataobj-max-bytes-per-shard
 [dataobj_max_bytes_per_shard: <int> | default = 6000MB]
 

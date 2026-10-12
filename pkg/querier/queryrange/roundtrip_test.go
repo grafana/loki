@@ -937,7 +937,9 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 	const storageLag = 3 * time.Hour
 
 	ctx := user.InjectOrgID(t.Context(), "1")
-	now := time.Now().UTC()
+	// The clock stands at 12:00 UTC, so that no range below crosses a UTC midnight. A stats request
+	// that crosses one splits in two, and the fake index answers both halves.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(-12 * time.Hour)
 	heldEnd := now.Add(-storageLag)
 
 	newLimits := func(opts ...func(*fakeLimits)) Limits {
@@ -973,6 +975,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		cfg.ShardedQueries = true
 		cfg.DataObjEnabled = dataObjEnabled
 		cfg.DataObjStorageLag = storageLag
+		cfg.now = func() time.Time { return now }
 
 		reg := prometheus.NewRegistry()
 		tripperware, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, newLimits(opts...), config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, reg, constants.Loki)
@@ -1014,8 +1017,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 			Path:      "/loki/api/v1/query_range",
 		}
 	}
-	// The range sits inside one UTC day and starts after 00:00. A stats request that crosses a day
-	// boundary becomes two requests, and the fake index answers both, so the shard count doubles.
+	// The range sits inside one UTC day and starts after 00:00.
 	yesterday := now.Truncate(24 * time.Hour).Add(-24 * time.Hour)
 	insideRange := func(query string) *LokiRequest {
 		return rangeRequest(query, yesterday.Add(time.Hour), yesterday.Add(14*time.Hour))
@@ -1052,7 +1054,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(streamFirstQuery))
 
 		require.NoError(t, err)
-		require.LessOrEqual(t, len(requests.requestsBySplit()), 2)
+		require.Len(t, requests.requestsBySplit(), 2)
 	})
 
 	t.Run("shards an eligible range query by the data-object limit on the bytes of a shard", func(t *testing.T) {
@@ -1061,6 +1063,7 @@ func TestNewMiddleware_ShouldSupportDataObjQuerying(t *testing.T) {
 		_, err := handler.Do(ctx, insideRange(streamFirstQuery))
 
 		require.NoError(t, err)
+		require.NotEmpty(t, requests.requestsBySplit())
 		for _, shards := range requests.requestsBySplit() {
 			require.Equal(t, 16, shards)
 		}

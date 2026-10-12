@@ -58,8 +58,8 @@ func NewSplitByRangeMiddleware(logger log.Logger, cfg Config, engineOpts logql.E
 func (s *splitByRange) policy(tenantIDs []string, request queryrangebase.Request) splitIntervalPolicy {
 	req, ok := request.(*LokiInstantRequest)
 	if !ok {
-		// The router sends only instant requests to this middleware, so this is not expected in
-		// practice.
+		// The instant tripperware passes only instant requests to this middleware, so this case does
+		// not happen.
 		return s.chunkPolicy
 	}
 

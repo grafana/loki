@@ -54,6 +54,12 @@ func TestDataObjEligibilityMiddleware(t *testing.T) {
 		}
 	}
 
+	// streamFirstRequestRange returns the request range whose read window for streamFirstQuery is
+	// windowStart to windowEnd. The range vector of 1m moves the start by 1m, and the end is exclusive.
+	streamFirstRequestRange := func(windowStart, windowEnd time.Time) (start, end time.Time) {
+		return windowStart.Add(time.Minute), windowEnd.Add(-time.Nanosecond)
+	}
+
 	t.Run("marks an eligible range request", func(t *testing.T) {
 		rec := &requestRecorder{}
 		handler, reg := newMiddleware(dataObjTenantLimits("1"), rec)
@@ -142,16 +148,16 @@ func TestDataObjEligibilityMiddleware(t *testing.T) {
 		requireEligibilityCounts(t, reg, nil)
 	})
 
-	t.Run("forwards a request without a tenant as it is", func(t *testing.T) {
+	t.Run("clears the options of a request without a tenant and counts it as disabled", func(t *testing.T) {
 		rec := &requestRecorder{}
 		handler, reg := newMiddleware(dataObjTenantLimits("1"), rec)
-		req := rangeRequest(streamFirstQuery, nil)
+		req := rangeRequest(streamFirstQuery, &logproto.DataObjOptions{Eligible: true})
 
 		_, err := handler.Do(t.Context(), req)
 
 		require.NoError(t, err)
-		require.Same(t, req, rec.requests[0])
-		requireEligibilityCounts(t, reg, nil)
+		require.Nil(t, rec.requests[0].(*LokiRequest).DataObjOptions)
+		requireEligibilityCounts(t, reg, map[string]int{"data_objects_disabled": 1})
 	})
 
 	t.Run("parses the query of a request without a plan", func(t *testing.T) {
@@ -159,6 +165,34 @@ func TestDataObjEligibilityMiddleware(t *testing.T) {
 		handler, reg := newMiddleware(dataObjTenantLimits("1"), rec)
 		req := rangeRequest(streamFirstQuery, nil)
 		req.Plan = nil
+
+		_, err := handler.Do(ctx, req)
+
+		require.NoError(t, err)
+		require.True(t, rec.requests[0].(*LokiRequest).DataObjOptions.GetEligible())
+		requireEligibilityCounts(t, reg, map[string]int{"eligible": 1})
+	})
+
+	t.Run("marks a request that overlaps the end of the data-object range by a quarter of its read window", func(t *testing.T) {
+		rec := &requestRecorder{}
+		handler, reg := newMiddleware(dataObjTenantLimits("1"), rec)
+		windowStart := dataObjRoutingBandEnd.Add(-25 * time.Minute)
+		req := rangeRequest(streamFirstQuery, nil)
+		req.StartTs, req.EndTs = streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
+
+		_, err := handler.Do(ctx, req)
+
+		require.NoError(t, err)
+		require.True(t, rec.requests[0].(*LokiRequest).DataObjOptions.GetEligible())
+		requireEligibilityCounts(t, reg, map[string]int{"eligible": 1})
+	})
+
+	t.Run("marks a request that overlaps the start of the data-object range by a quarter of its read window", func(t *testing.T) {
+		rec := &requestRecorder{}
+		handler, reg := newMiddleware(dataObjTenantLimits("1"), rec)
+		windowEnd := dataObjRoutingBandStart.Add(25 * time.Minute)
+		req := rangeRequest(streamFirstQuery, nil)
+		req.StartTs, req.EndTs = streamFirstRequestRange(windowEnd.Add(-100*time.Minute), windowEnd)
 
 		_, err := handler.Do(ctx, req)
 
@@ -206,16 +240,6 @@ func TestDataObjEligibilityMiddleware(t *testing.T) {
 	})
 }
 
-func TestNewDataObjMetrics(t *testing.T) {
-	t.Run("creates a series with a count of zero for every outcome", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-
-		NewDataObjMetrics(reg, "loki")
-
-		requireEligibilityCounts(t, reg, nil)
-	})
-}
-
 // requireEligibilityCounts compares the eligibility metric with the expected count of each outcome.
 // An outcome that is not in want must have a count of zero, because the metric creates every series
 // up front.
@@ -224,7 +248,7 @@ func requireEligibilityCounts(t *testing.T, reg prometheus.Gatherer, want map[st
 
 	const name = "loki_query_frontend_dataobj_eligibility_total"
 	var expected strings.Builder
-	fmt.Fprintf(&expected, "# HELP %s Requests the query-frontend sends to queriers, by data-object eligibility outcome. Counts every sub-query: sharding and range splitting turn one user query into many requests, and each one adds one count.\n", name)
+	fmt.Fprintf(&expected, "# HELP %s Query requests that the query-frontend sends to queriers, by data-object eligibility outcome. Sharding and range splitting turn one user query into many requests, and a retry sends a request again. Each request adds one count.\n", name)
 	fmt.Fprintf(&expected, "# TYPE %s counter\n", name)
 	for _, outcome := range dataObjOutcomes {
 		fmt.Fprintf(&expected, "%s{outcome=%q} %d\n", name, outcome, want[outcome])

@@ -57,9 +57,8 @@ func newDataObjSplitIntervalPolicy(cfg Config, limits Limits) *dataObjSplitInter
 	return &dataObjSplitIntervalPolicy{cfg: cfg, limits: limits}
 }
 
-// shouldUse predicts whether a piece of the query that expr describes will prefer data objects,
-// over the request range from start to end. The query-frontend splits a query in time before it
-// shards it, so it cannot yet see the pieces that a querier will run.
+// shouldUse predicts whether a piece of the query that expr describes will prefer data objects, over
+// the request range from start to end.
 func (p *dataObjSplitIntervalPolicy) shouldUse(tenantIDs []string, expr syntax.Expr, start, end time.Time) bool {
 	return dataObjAnyPrefers(p.cfg, p.limits, tenantIDs, expr, start, end)
 }

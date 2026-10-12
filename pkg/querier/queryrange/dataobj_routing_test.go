@@ -40,6 +40,12 @@ func TestDataObjResolve(t *testing.T) {
 		return dataObjResolve(cfg, limits, tenants, syntax.MustParseExpr(query), start, end)
 	}
 
+	// streamFirstRequestRange returns the request range whose read window for streamFirstQuery is
+	// windowStart to windowEnd. The range vector of 1m moves the start by 1m, and the end is exclusive.
+	streamFirstRequestRange := func(windowStart, windowEnd time.Time) (start, end time.Time) {
+		return windowStart.Add(time.Minute), windowEnd.Add(-time.Nanosecond)
+	}
+
 	t.Run("accepts a stream-first sum inside the data-object range", func(t *testing.T) {
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, insideStart, insideEnd)
 
@@ -171,12 +177,8 @@ func TestDataObjResolve(t *testing.T) {
 	})
 
 	t.Run("reports the share of the read window that data objects hold", func(t *testing.T) {
-		// The read window is 100 minutes long, and data objects hold its first 25 minutes. The query
-		// has a range vector of 1m, so the request starts 1m after the window starts and ends 1ns
-		// before it ends.
 		windowStart := dataObjRoutingBandEnd.Add(-25 * time.Minute)
-		windowEnd := windowStart.Add(100 * time.Minute)
-		start, end := windowStart.Add(time.Minute), windowEnd.Add(-time.Nanosecond)
+		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
@@ -187,8 +189,7 @@ func TestDataObjResolve(t *testing.T) {
 
 	t.Run("does not prefer data objects at exactly half coverage", func(t *testing.T) {
 		windowStart := dataObjRoutingBandEnd.Add(-50 * time.Minute)
-		windowEnd := windowStart.Add(100 * time.Minute)
-		start, end := windowStart.Add(time.Minute), windowEnd.Add(-time.Nanosecond)
+		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
@@ -198,8 +199,7 @@ func TestDataObjResolve(t *testing.T) {
 
 	t.Run("prefers data objects above half coverage", func(t *testing.T) {
 		windowStart := dataObjRoutingBandEnd.Add(-51 * time.Minute)
-		windowEnd := windowStart.Add(100 * time.Minute)
-		start, end := windowStart.Add(time.Minute), windowEnd.Add(-time.Nanosecond)
+		start, end := streamFirstRequestRange(windowStart, windowStart.Add(100*time.Minute))
 
 		res := resolve(dataObjTenantLimits("1"), []string{"1"}, streamFirstQuery, start, end)
 
@@ -279,6 +279,21 @@ func TestDataObjAnyPrefers(t *testing.T) {
 
 		require.False(t, dataObjAnyPrefers(cfg, limits, tenants, syntax.MustParseExpr(streamFirstQuery), start, end))
 		require.True(t, dataObjAnyPrefers(cfg, limits, tenants, withLongRange, start, end))
+	})
+
+	t.Run("uses the longest offset of the whole query for the time range", func(t *testing.T) {
+		withLongOffset := syntax.MustParseExpr(streamFirstQuery + ` + sum(count_over_time({app="b"}[1m] offset 24h))`)
+		start, end := dataObjRoutingNow.Add(-2*time.Hour), dataObjRoutingNow.Add(-time.Hour)
+
+		require.False(t, dataObjAnyPrefers(cfg, limits, tenants, syntax.MustParseExpr(streamFirstQuery), start, end))
+		require.True(t, dataObjAnyPrefers(cfg, limits, tenants, withLongOffset, start, end))
+	})
+
+	t.Run("predicts true when the offset moves a short range vector into the held range", func(t *testing.T) {
+		expr := syntax.MustParseExpr(`sum(count_over_time({app="a"}[30m] offset 2h))`)
+		ts := dataObjRoutingNow.Add(-time.Hour)
+
+		require.True(t, dataObjAnyPrefers(cfg, limits, tenants, expr, ts, ts))
 	})
 
 	t.Run("predicts false when the config turns data objects off", func(t *testing.T) {

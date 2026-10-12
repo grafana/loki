@@ -50,8 +50,8 @@ The querier reads data objects for a request only when all of these hold:
 - the tenant has a data-object start time, and the request overlaps the time range that data
   objects hold.
 
-The querier reads the part of the request outside that time range from chunks, as it did before.
-A request that did not pass through a query-frontend is never marked, so it reads chunks.
+The querier reads the part of the request outside that time range from chunks. A request that did
+not pass through a query-frontend is never marked, so it reads chunks.
 
 ## Which queries prefer data objects
 
@@ -66,11 +66,11 @@ applies this rule to the piece it is working on:
 
 ## How time splitting changes
 
-A query that prefers data objects gets a longer split interval. The interval is never shorter than
-the window of time that one data objects ToC file of data objects covers, which is 12 hours. A
-longer interval is rounded up to a multiple of that window. The cut points stay aligned to UTC, and
-the step alignment and the ingester window behave as before. The same rule applies to the split of
-the range vector of an instant query.
+When splitting is on, a query that prefers data objects gets a split interval of at least one
+metastore window, which is 12 hours. One Table of Contents file of the metastore covers that
+window. A longer interval is rounded up to a multiple of the window. The cut points stay aligned to
+UTC. The step alignment and the ingester window work as for any other query. The same rule applies
+to the split of the range vector of an instant query.
 
 Time splitting runs before sharding, so the query-frontend cannot yet see the sub-queries that the
 queriers will receive. It predicts from the whole query. It treats the query as data-object shaped
@@ -87,17 +87,20 @@ configured sharding strategy:
 - with the power-of-two strategy, the number of shards comes from the bytes of the query and the
   setting `-querier.dataobj-max-bytes-per-shard`. The number of shards is capped at 256, which is
   8 times the number of shard buckets of a data object. A data object has 32 buckets, so above 32
-  shards several shards read the same bucket. The query then reads up to 8 times more data objects
-  than it needs. We accept that to get more shards and finish the query sooner;
-- with the bounded strategy, the index returns its shards as before. If it returns more than 256,
-  the query-frontend merges neighbouring shards by size into at most 256 shards. The merged shards
-  still cover the same range without gaps. The same over-read applies. The shards carry no chunk
-  refs, because the query reads most of its range from data objects, and the querier resolves the
-  chunks it needs itself.
+  shards several shards read the same bucket. The query then reads up to 8 times as much data as
+  it needs. We accept that to get more shards and finish the query sooner;
+- with the bounded strategy, the index returns its shards. If it returns more than 256, the
+  query-frontend merges neighbouring shards by size into at most 256 shards. The merged shards
+  still cover the same range without gaps. The same over-read applies. The query-frontend drops the
+  chunk refs of the shards, merged or not, because the query reads most of its range from data
+  objects. The querier resolves the chunks it needs itself.
 
 ## Limitations
 
 - The shard count still comes from the chunk index.
 - The bounded strategy still asks the index for shards of the size of the chunk setting, then merges
   them. It does not use the data-object setting.
+- The cap of 256 shards can make a shard larger than `max_querier_bytes_read` allows. The
+  query-frontend then rejects a query that the chunk logic would shard into smaller pieces and
+  accept. This affects only the largest queries.
 - The prediction for time splitting is approximate.

@@ -431,14 +431,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order. The query-frontend and the querier read this setting.")
 	f.Var(&l.DataObjQueryStartTime, "querier.dataobj-query-start-time", "Time, inclusive, from which stream-first metric queries read data objects. The query-frontend and the querier read this setting. 0 disables it.")
 	_ = l.DataObjMaxBytesPerShard.Set(strconv.FormatInt(DefaultDataObjMaxBytesPerShard, 10))
-	f.Var(&l.DataObjMaxBytesPerShard, "querier.dataobj-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads data objects. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The query-frontend reads this setting.")
+	f.Var(&l.DataObjMaxBytesPerShard, "querier.dataobj-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads data objects. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The query-frontend reads this setting. The query-frontend uses it only with the power-of-two sharding strategy. The bounded strategy uses -querier.tsdb-max-bytes-per-shard.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how far back in time series data and metadata can be queried, up until lookback duration ago. This limit is enforced in the query frontend, the querier and the ruler. If the requested time range is outside the allowed range, the request will not fail, but will be modified to only query data within the allowed time range. The default value of 0 does not set a limit.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 128, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
-	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads chunks. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit.")
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads chunks. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit. The bounded sharding strategy also uses this setting for queries that read data objects.")
 	f.StringVar(
 		&l.TSDBShardingStrategy,
 		"limits.tsdb-sharding-strategy",
@@ -1372,8 +1372,8 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
-// DataObjMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a
-// query that reads data objects.
+// DataObjMaxBytesPerShard returns the target maximum number of bytes assigned to a specific shard
+// in a query that reads data objects.
 //
 // The result is a uint64, because the default does not fit in an int that has 32 bits.
 func (o *Overrides) DataObjMaxBytesPerShard(userID string) uint64 {

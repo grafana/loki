@@ -96,7 +96,8 @@ func newChunkQuerier(t *testing.T, stores *scriptStores) logql.Querier {
 }
 
 // newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the streams of
-// stream-first queries from the data objects for the time range from dataObjQueryStart on.
+// stream-first queries from data objects, from dataObjQueryStart on. It does so only for queries
+// that the caller marked eligible.
 func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 	return func(t *testing.T, stores *scriptStores) logql.Querier {
 		return newScriptQuerier(t, stores, dataObjQueryStart)
