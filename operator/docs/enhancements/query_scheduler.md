@@ -47,6 +47,7 @@ Introducing the query-scheduler is proactive forward-compatibility. It positions
 - Providing a migration path from V1 to V2 for existing LokiStack instances (this can be addressed in a follow-up enhancement once resource profiles are established).
 - Horizontal pod autoscaling for the query-scheduler.
 - Separate ruler query pool: Loki docs recommend a dedicated query-frontend and querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query traffic. The operator currently shares a single pool for both. Introducing a separate ruler pool is a distinct enhancement.
+- Benchmarking the interaction between ruler and ad-hoc query load under shared scheduler capacity.
 
 ## Proposal
 
