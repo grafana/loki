@@ -351,17 +351,12 @@ func Test_HeadManager_RecoverHead_IngestedAt(t *testing.T) {
 //	return m.active.Log(rec)
 //
 // guarded only by m.mtx.RLock(). RLock excludes Rotate, but it does not
-// order two concurrent Append calls against each other. For a brand-new
-// stream, tenantHeads/stripeSeries correctly hands the Series-bearing record
-// to whichever caller creates the series first and a chunks-only record to
-// every later caller -- but nothing then stops the chunks-only record from
-// reaching the WAL (via headWAL.Log) before the Series-bearing one does.
+// order two concurrent Append calls against each other.
 //
-// This test drives the same two calls HeadManager.Append makes, from two
-// real goroutines synchronized with channels so the harmful interleaving is
-// forced deterministically (not left to chance), then feeds the resulting
-// WAL into the production recoverHead replay path and asserts it fails
-// exactly like the reported bug.
+// Note, this test **does not** test actual behaviour of concurrent Append,
+// because m.activeHeads.Append() and m.active.Log() are now gated with a
+// dedicated lock to "atomize" the two calls.
+// The actual test is [Test_HeadManager_Append_ConcurrentCallsReplaySafely].
 func Test_HeadManager_Append_ConcurrentNewStreamAppends_CanOrderChunksBeforeSeries(t *testing.T) {
 	now := time.Now()
 	dir := t.TempDir()
@@ -456,6 +451,75 @@ func Test_HeadManager_Append_ConcurrentNewStreamAppends_CanOrderChunksBeforeSeri
 	err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "found tsdb chunk metas without series in WAL replay")
+}
+
+// Test_HeadManager_Append_ConcurrentCallsReplaySafely is a regression test
+// for the appendMtx fix: many goroutines call the real, public
+// HeadManager.Append concurrently, racing to create several brand-new
+// streams, with no manual scheduling to force any particular interleaving.
+func Test_HeadManager_Append_ConcurrentCallsReplaySafely(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	const (
+		user       = "tenant1"
+		numStreams = 8
+		numWriters = 25 // concurrent writers racing to create each stream
+	)
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	errs := make(chan error, numStreams*numWriters)
+	var wg sync.WaitGroup
+	for s := 0; s < numStreams; s++ {
+		ls := mustParseLabels(fmt.Sprintf(`{foo="bar", stream="%d"}`, s))
+		fp := labels.StableHash(ls)
+		for writer := 0; writer < numWriters; writer++ {
+			wg.Add(1)
+			go func(ls labels.Labels, fp uint64, writer int) {
+				defer wg.Done()
+				chks := index.ChunkMetas{{MinTime: int64(writer + 1), MaxTime: int64(writer + 2), Checksum: uint32(writer)}}
+				if err := mgr.Append(user, ls, fp, chks); err != nil {
+					errs <- err
+				}
+			}(ls, fp, writer)
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	// Stop (flush+close) the WAL mgr.Append wrote into, without going through
+	// a full Rotate/build/truncate cycle, so we can replay the raw file from
+	// disk exactly as a restart would.
+	require.Nil(t, mgr.active.Stop())
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+
+	fresh := newTenantHeads(now, defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	require.NoError(t, recoverHead(mgr.name, mgr.dir, fresh, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
+
+	for s := 0; s < numStreams; s++ {
+		refs, err := fresh.GetChunkRefs(
+			context.Background(),
+			user,
+			0, math.MaxInt64,
+			nil, nil,
+			labels.MustNewMatcher(labels.MatchEqual, "stream", fmt.Sprintf("%d", s)),
+		)
+		require.NoError(t, err)
+		require.Len(t, refs, numWriters, "stream %d: expected every concurrent writer's chunk to survive replay", s)
+	}
 }
 
 // test head recover from corrupted wal
