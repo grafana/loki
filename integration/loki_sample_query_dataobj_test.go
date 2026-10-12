@@ -104,8 +104,13 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 
 	// Start querier and query-frontend. Store-only and stream-first are enabled from the start:
 	// store-only only affects whether ingesters are consulted, not which store is picked, so there's
-	// no need to restart for it. The -dataobj.* flags come later, once the object exists, so the
-	// first query below is a genuine chunks-only baseline.
+	// no need to restart for it. The querier gets its -dataobj.* flags later, once the object exists,
+	// so the first query below is a genuine chunks-only baseline.
+	//
+	// The query-frontend decides which queries a querier may read from data objects. It gets the
+	// data-object flags and the data-object start time from the start. The baseline query is then
+	// eligible, and the querier, which has no data-object store yet, still reads chunks.
+	dataObjQueryStart := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
 	var (
 		tQuerier = clu.AddComponent(
 			"querier",
@@ -121,6 +126,11 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
 			"-frontend.default-validity=0s",
+			"-querier.query-store-only=true",
+			"-querier.stream-first-execution-enabled=true",
+			"-querier.dataobj-query-start-time="+dataObjQueryStart,
+			"-dataobj.enabled=true",
+			"-dataobj.storage-lag=0s",
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
@@ -224,7 +234,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
 		tQuerier.AddFlags(
 			"-dataobj.enabled=true",
-			"-querier.dataobj-query-start-time="+now.Add(-48*time.Hour).UTC().Format(time.RFC3339),
+			"-querier.dataobj-query-start-time="+dataObjQueryStart,
 			"-dataobj.storage-lag=0s",
 			"-dataobj.metadata-cache.embedded-cache.enabled=true",
 		)

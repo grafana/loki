@@ -19,26 +19,30 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
+// splitByRange splits the range vector of an instant metric request into sub-queries. The split
+// interval comes from the chunk policy or from the data-object policy, whichever fits the request.
 type splitByRange struct {
-	logger      log.Logger
-	next        queryrangebase.Handler
-	limits      Limits
-	chunkPolicy chunkSplitIntervalPolicy
-	ng          *logql.DownstreamEngine
-	metrics     *logql.MapperMetrics
+	logger        log.Logger
+	next          queryrangebase.Handler
+	limits        Limits
+	chunkPolicy   chunkSplitIntervalPolicy
+	dataObjPolicy *dataObjSplitIntervalPolicy
+	ng            *logql.DownstreamEngine
+	metrics       *logql.MapperMetrics
 
 	// Whether to align rangeInterval align to splitByInterval in the subqueries.
 	splitAlign bool
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, splitAlign bool, metrics *logql.MapperMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, cfg Config, engineOpts logql.EngineOpts, limits Limits, splitAlign bool, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
-			logger:      log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
-			next:        next,
-			limits:      limits,
-			chunkPolicy: newChunkSplitIntervalPolicy(limits),
+			logger:        log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
+			next:          next,
+			limits:        limits,
+			chunkPolicy:   newChunkSplitIntervalPolicy(limits),
+			dataObjPolicy: newDataObjSplitIntervalPolicy(cfg, limits),
 			ng: logql.NewDownstreamEngine(engineOpts, DownstreamHandler{
 				limits:     limits,
 				next:       next,
@@ -48,6 +52,23 @@ func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, l
 			splitAlign: splitAlign,
 		}
 	})
+}
+
+// policy returns the split policy of the request.
+func (s *splitByRange) policy(tenantIDs []string, request queryrangebase.Request) splitIntervalPolicy {
+	req, ok := request.(*LokiInstantRequest)
+	if !ok {
+		// The router sends only instant requests to this middleware, so this is not expected in
+		// practice.
+		return s.chunkPolicy
+	}
+
+	expr, err := planExpr(req.Plan, req.Query)
+	if err == nil && s.dataObjPolicy.shouldUse(tenantIDs, expr, req.TimeTs, req.TimeTs) {
+		return s.dataObjPolicy
+	}
+
+	return s.chunkPolicy
 }
 
 func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
@@ -63,7 +84,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	interval := s.chunkPolicy.instantQueryInterval(tenants)
+	interval := s.policy(tenants, request).instantQueryInterval(tenants)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)

@@ -96,10 +96,10 @@ func newChunkQuerier(t *testing.T, stores *scriptStores) logql.Querier {
 }
 
 // newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the streams of
-// stream-first queries from the data objects for the time range from dataObjStart on.
-func newDataObjQuerierFunc(dataObjStart time.Time) newScriptQuerierFunc {
+// stream-first queries from the data objects for the time range from dataObjQueryStart on.
+func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
 	return func(t *testing.T, stores *scriptStores) logql.Querier {
-		return newScriptQuerier(t, stores, dataObjStart)
+		return newScriptQuerier(t, stores, dataObjQueryStart)
 	}
 }
 
@@ -130,9 +130,9 @@ func (execLimits) DebugEngineStreams(string) bool { return false }
 // chunks, which the results alone cannot show, because chunks hold every stream too.
 //
 // Only a stream-first query reads data objects. A sample comes only from data objects when its
-// whole range window is at or after dataObjStart. A zero-value dataObjStart disables the check.
-func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Time) error {
-	if dataObjStart.IsZero() {
+// whole range window is at or after dataObjQueryStart. A zero-value dataObjQueryStart disables the check.
+func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart time.Time) error {
+	if dataObjQueryStart.IsZero() {
 		return nil
 	}
 	rangeAgg, ok := logql.StreamFirstRangeAggregation(query)
@@ -148,12 +148,12 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjStart time.Ti
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		for _, s := range data {
-			needsDataObj = needsDataObj || (s.F > 0 && !windowStart(s.T).Before(dataObjStart))
+			needsDataObj = needsDataObj || (s.F > 0 && !windowStart(s.T).Before(dataObjQueryStart))
 		}
 	case promql.Matrix:
 		for _, series := range data {
 			for _, p := range series.Floats {
-				needsDataObj = needsDataObj || (p.F > 0 && !windowStart(p.T).Before(dataObjStart))
+				needsDataObj = needsDataObj || (p.F > 0 && !windowStart(p.T).Before(dataObjQueryStart))
 			}
 		}
 	}

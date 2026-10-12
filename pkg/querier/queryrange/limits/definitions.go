@@ -23,11 +23,17 @@ type Limits interface {
 	MaxQuerySeries(userID string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
 	MinShardingLookback(string) time.Duration
+	// DataObjQueryStartTime returns the time from which the tenant reads stream-first metric queries
+	// from data objects. The zero time turns data-object reads off for the tenant.
+	DataObjQueryStartTime(userID string) time.Time
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
 	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
 	TSDBMaxBytesPerShard(string) int
+	// DataObjMaxBytesPerShard returns the limit to the number of bytes a single shard of a query
+	// that reads data objects.
+	DataObjMaxBytesPerShard(string) int
 	TSDBShardingStrategy(context.Context, string) string
 
 	RequiredLabels(context.Context, string) []string

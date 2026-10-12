@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -19,10 +20,11 @@ func TestDynamicShardResolver_ShardingRanges(t *testing.T) {
 			return &ShardsResponse{Response: &logproto.ShardsResponse{Shards: shards, ChunkGroups: chunkGroups}}, nil
 		})
 		resolver := &dynamicShardResolver{
-			ctx:              t.Context(),
+			ctx:              user.InjectOrgID(t.Context(), "1"),
 			logger:           log.NewNopLogger(),
 			retryNextHandler: index,
 			chunkPolicy:      newChunkShardingPolicy(fakeLimits{}),
+			dataObjPolicy:    newDataObjShardingPolicy(Config{}, fakeLimits{}),
 		}
 
 		gotShards, gotChunkGroups, err := resolver.ShardingRanges(syntax.MustParseExpr(`{app="a"}`), 1<<20)

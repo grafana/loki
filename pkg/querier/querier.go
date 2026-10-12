@@ -373,10 +373,11 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 
 // storeForSelectSamples returns the store that serves the store part of a sample request.
 func (q *SingleTenantQuerier) storeForSelectSamples(ctx context.Context, params logql.SelectSampleParams) (Store, error) {
-	// For a stream-first request of a tenant with a data-object start time, the store reads
-	// [start time, now - storage lag) from data objects and the rest from chunks. For any other
-	// request, or one that does not overlap that range, it returns the chunk store.
-	if q.dataObjStore == nil || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
+	// A stream-first request needs two more conditions to read data objects. The query-frontend
+	// marked the request eligible, and the tenant has a data-object start time. The store then
+	// reads [start time, now - storage lag) from data objects and the rest from chunks. For any
+	// other request, or one that does not overlap that range, it returns the chunk store.
+	if q.dataObjStore == nil || !params.DataObjOptions.GetEligible() || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
 		return q.chunkStore, nil
 	}
 	userID, err := tenant.TenantID(ctx)

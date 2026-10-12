@@ -211,17 +211,28 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 }
 
 type metricQuerySplitter struct {
-	limits      Limits
-	iqo         util.IngesterQueryOptions
-	chunkPolicy chunkSplitIntervalPolicy
+	limits        Limits
+	iqo           util.IngesterQueryOptions
+	chunkPolicy   chunkSplitIntervalPolicy
+	dataObjPolicy *dataObjSplitIntervalPolicy
 }
 
-func newMetricQuerySplitter(limits Limits, iqo util.IngesterQueryOptions) *metricQuerySplitter {
+func newMetricQuerySplitter(cfg Config, limits Limits, iqo util.IngesterQueryOptions) *metricQuerySplitter {
 	return &metricQuerySplitter{
-		limits:      limits,
-		iqo:         iqo,
-		chunkPolicy: newChunkSplitIntervalPolicy(limits),
+		limits:        limits,
+		iqo:           iqo,
+		chunkPolicy:   newChunkSplitIntervalPolicy(limits),
+		dataObjPolicy: newDataObjSplitIntervalPolicy(cfg, limits),
 	}
+}
+
+// policy returns the split policy of the request. A request without a plan cannot prefer data
+// objects.
+func (s *metricQuerySplitter) policy(tenantIDs []string, r *LokiRequest) splitIntervalPolicy {
+	if r.Plan != nil && s.dataObjPolicy.shouldUse(tenantIDs, r.Plan.AST, r.StartTs, r.EndTs) {
+		return s.dataObjPolicy
+	}
+	return s.chunkPolicy
 }
 
 // Round up to the step before the next interval boundary.
@@ -242,7 +253,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 
 	lokiReq := r.(*LokiRequest)
 
-	interval := s.chunkPolicy.rangeQueryInterval(tenantIDs, lokiReq)
+	interval := s.policy(tenantIDs, lokiReq).rangeQueryInterval(tenantIDs, lokiReq)
 	if interval == 0 {
 		return nil, false
 	}

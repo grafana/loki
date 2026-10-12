@@ -4483,10 +4483,10 @@ discover_generic_fields:
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Target maximum number of bytes assigned to a single sharded query. Also
-# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
-# not an absolute limit. The actual limit can be higher, but the query planner
-# will try to build shards up to this limit.
+# Target maximum number of bytes assigned to a single sharded query that reads
+# chunks. Also expressible in human readable forms (1GB, etc). Note: This is a
+# _target_ and not an absolute limit. The actual limit can be higher, but the
+# query planner will try to build shards up to this limit.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
@@ -4569,15 +4569,23 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
-# When enabled, the querier evaluates eligible metric queries in stream-first
-# order, which reads samples one stream at a time instead of in timestamp order.
+# When enabled, Loki evaluates eligible metric queries in stream-first order,
+# which reads samples one stream at a time instead of in timestamp order. The
+# query-frontend and the querier read this setting.
 # CLI flag: -querier.stream-first-execution-enabled
 [stream_first_execution_enabled: <boolean> | default = false]
 
-# Time, inclusive, from which the querier reads stream-first metric queries from
-# data objects. 0 disables it.
+# Time, inclusive, from which stream-first metric queries read data objects. The
+# query-frontend and the querier read this setting. 0 disables it.
 # CLI flag: -querier.dataobj-query-start-time
 [dataobj_query_start_time: <time> | default = 0]
+
+# Target maximum number of bytes assigned to a single sharded query that reads
+# data objects. Also expressible in human readable forms (1GB, etc). Note: This
+# is a _target_ and not an absolute limit. The query-frontend reads this
+# setting.
+# CLI flag: -querier.dataobj-max-bytes-per-shard
+[dataobj_max_bytes_per_shard: <int> | default = 6000MB]
 
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result

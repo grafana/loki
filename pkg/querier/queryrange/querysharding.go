@@ -158,6 +158,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	resolver, ok := newDynamicShardResolver(
 		ctx,
+		ast.cfg,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),

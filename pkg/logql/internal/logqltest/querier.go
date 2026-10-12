@@ -18,14 +18,14 @@ import (
 
 // newScriptQuerier returns the production querier over stores.
 //
-// From dataObjStart on, the querier reads stream-first queries from data objects. It reads
-// everything else from chunks. A zero-value dataObjStart makes it read only chunks.
+// From dataObjQueryStart on, the querier reads stream-first queries from data objects. It reads
+// everything else from chunks. A zero-value dataObjQueryStart makes it read only chunks.
 //
 // The querier is valid until the next stores.setStreams, which stops its chunk store.
 //
 // The data objects and the chunks both hold every stream, so the querier's routing alone decides
 // which one a sample comes from.
-func newScriptQuerier(t *testing.T, stores *scriptStores, dataObjStart time.Time) logql.Querier {
+func newScriptQuerier(t *testing.T, stores *scriptStores, dataObjQueryStart time.Time) logql.Querier {
 	t.Helper()
 	chunks := stores.chunks
 
@@ -39,9 +39,9 @@ func newScriptQuerier(t *testing.T, stores *scriptStores, dataObjStart time.Time
 
 	var dataObjStore querier.Store
 	// A script that loads no stream has no data objects to read.
-	if !dataObjStart.IsZero() && stores.dataObjBucket != nil {
+	if !dataObjQueryStart.IsZero() && stores.dataObjBucket != nil {
 		cfg.DataObjEnabled = true
-		limits.DataObjQueryStartTime = flagext.Time(dataObjStart)
+		limits.DataObjQueryStartTime = flagext.Time(dataObjQueryStart)
 
 		store, err := querier.NewDataObjStore(chunks.store, stores.dataObjBucket, stores.dataObjMetastore, nil)
 		require.NoError(t, err)
