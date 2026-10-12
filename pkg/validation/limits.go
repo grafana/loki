@@ -430,7 +430,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. When a specific per-tenant timeout is used, the global timeout is ignored.")
 	f.BoolVar(&l.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order. The query-frontend and the querier read this setting.")
 	f.Var(&l.DataObjQueryStartTime, "querier.dataobj-query-start-time", "Time, inclusive, from which stream-first metric queries read data objects. The query-frontend and the querier read this setting. 0 disables it.")
-	_ = l.DataObjMaxBytesPerShard.Set(strconv.Itoa(DefaultDataObjMaxBytesPerShard))
+	_ = l.DataObjMaxBytesPerShard.Set(strconv.FormatInt(DefaultDataObjMaxBytesPerShard, 10))
 	f.Var(&l.DataObjMaxBytesPerShard, "querier.dataobj-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads data objects. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The query-frontend reads this setting.")
 
 	_ = l.MaxQueryLookback.Set("0s")
@@ -1374,8 +1374,10 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 
 // DataObjMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a
 // query that reads data objects.
-func (o *Overrides) DataObjMaxBytesPerShard(userID string) int {
-	return o.getOverridesForUser(userID).DataObjMaxBytesPerShard.Val()
+//
+// The result is a uint64, because the default does not fit in an int that has 32 bits.
+func (o *Overrides) DataObjMaxBytesPerShard(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).DataObjMaxBytesPerShard)
 }
 
 // DataObjQueryStartTime returns the time from which the tenant reads stream-first metric queries

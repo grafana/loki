@@ -33,7 +33,7 @@ type Limits interface {
 	TSDBMaxBytesPerShard(string) int
 	// DataObjMaxBytesPerShard returns the limit to the number of bytes a single shard of a query
 	// that reads data objects.
-	DataObjMaxBytesPerShard(string) int
+	DataObjMaxBytesPerShard(string) uint64
 	TSDBShardingStrategy(context.Context, string) string
 
 	RequiredLabels(context.Context, string) []string

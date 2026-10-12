@@ -1920,7 +1920,7 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
 
-func (f fakeLimits) DataObjMaxBytesPerShard(_ string) int {
+func (f fakeLimits) DataObjMaxBytesPerShard(_ string) uint64 {
 	return valid.DefaultDataObjMaxBytesPerShard
 }
 

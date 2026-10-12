@@ -1205,7 +1205,17 @@ func TestOverrides_DataObjMaxBytesPerShard(t *testing.T) {
 		ov, err := NewOverrides(defaults, nil)
 		require.NoError(t, err)
 
-		require.Equal(t, 10*DefaultTSDBMaxBytesPerShard, ov.DataObjMaxBytesPerShard("tenant-1"))
+		require.Equal(t, uint64(10*DefaultTSDBMaxBytesPerShard), ov.DataObjMaxBytesPerShard("tenant-1"))
+	})
+
+	t.Run("returns a setting that does not fit in an int that has 32 bits", func(t *testing.T) {
+		tenantLimits := map[string]*Limits{
+			"tenant-1": {DataObjMaxBytesPerShard: 6 << 30},
+		}
+		ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(6<<30), ov.DataObjMaxBytesPerShard("tenant-1"))
 	})
 
 	t.Run("returns the setting of the tenant and the default for other tenants", func(t *testing.T) {
@@ -1215,8 +1225,8 @@ func TestOverrides_DataObjMaxBytesPerShard(t *testing.T) {
 		ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 		require.NoError(t, err)
 
-		require.Equal(t, 1<<20, ov.DataObjMaxBytesPerShard("tenant-1"))
-		require.Equal(t, DefaultDataObjMaxBytesPerShard, ov.DataObjMaxBytesPerShard("tenant-2"))
+		require.Equal(t, uint64(1<<20), ov.DataObjMaxBytesPerShard("tenant-1"))
+		require.Equal(t, uint64(DefaultDataObjMaxBytesPerShard), ov.DataObjMaxBytesPerShard("tenant-2"))
 	})
 
 	t.Run("fails validation when the setting is 0", func(t *testing.T) {
