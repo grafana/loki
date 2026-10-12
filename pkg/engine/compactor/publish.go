@@ -29,9 +29,11 @@ type tocPublisher struct {
 // Replace atomically replaces oldPaths with newEntries in the tenant's ToC
 // for window. It returns true only when this call applied the swap.
 //
-// Replace returns false without an error in two cases: in dry-run mode, and
-// when a concurrent writer changed oldPaths first. Callers treat both as
-// no progress.
+// Replace returns false without an error in dry-run mode, and when the ToC
+// holds none of oldPaths. The ToC holds none of them when a concurrent writer
+// changed oldPaths first, or when the ToC already holds the swap, for example
+// because an earlier attempt wrote it and lost the response. Callers treat
+// every false as no progress.
 //
 // The timeout applies to the swap only. A DeadlineExceeded error from it does
 // not mean the parent ctx is done.

@@ -2,6 +2,7 @@ package streams
 
 import (
 	"cmp"
+	"strings"
 
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -42,8 +43,44 @@ func CompareSortKey(a, b SortKey) int {
 // Labels are not compared directly. Use CompareSortKey for a full deduplication using labels.
 func (a SortKey) Compare(b SortKey) int {
 	return cmp.Or(
-		cmp.Compare(a.ShardBucket, b.ShardBucket),
-		cmp.Compare(a.SchemaKey, b.SchemaKey),
+		a.Prefix().Compare(b.Prefix()),
 		cmp.Compare(a.Hash, b.Hash),
 	)
+}
+
+// Prefix returns the leading [shard, schema key] part of the sort key.
+func (a SortKey) Prefix() SortPrefix {
+	return SortPrefix{ShardBucket: a.ShardBucket, SchemaKey: a.SchemaKey}
+}
+
+// SortPrefix is the [shard bucket, schema key] prefix of a [SortKey]. Streams
+// with the same prefix are contiguous in stream ID order, so a range of
+// prefixes selects a contiguous range of stream IDs.
+type SortPrefix struct {
+	ShardBucket uint32
+	SchemaKey   string
+}
+
+// NewSortPrefix returns the prefix for a shard bucket and the stream's values
+// of the sort-schema labels, in schema order.
+func NewSortPrefix(shardBucket uint32, schemaValues []string) SortPrefix {
+	return SortPrefix{ShardBucket: shardBucket, SchemaKey: EncodeSchemaKey(schemaValues)}
+}
+
+// Compare reports the order of a and b by shard bucket, then schema key.
+func (a SortPrefix) Compare(b SortPrefix) int {
+	return cmp.Or(
+		cmp.Compare(a.ShardBucket, b.ShardBucket),
+		cmp.Compare(a.SchemaKey, b.SchemaKey),
+	)
+}
+
+// EncodeSchemaKey joins sort-schema label values into one schema key. A NUL
+// byte separates the values.
+//
+// Stream IDs in written objects follow the byte order of this encoding. Code
+// that must agree with stream ID order compares encoded keys, not the
+// separate values: they order differently when a value contains a NUL byte.
+func EncodeSchemaKey(values []string) string {
+	return strings.Join(values, "\x00")
 }

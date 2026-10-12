@@ -352,23 +352,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 					return nil, err
 				}
 
-				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-					&logproto.SampleQueryRequest{
-						// extend startTs backwards by step
-						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
-						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
-						// intentionally send the vector for reducing labels.
-						Selector: e.String(),
-						Shards:   q.Shards(),
-						Plan: &plan.QueryPlan{
-							AST: expr,
-						},
-						StoreChunks: q.GetStoreChunks(),
-						HintRanges:  q.GetHintRanges(),
-						Order:       sampleOrder,
-					},
-				})
+				it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, rangExpr.Left, sampleOrder))
 				if err != nil {
 					return nil, err
 				}
@@ -392,30 +376,15 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 
-		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-			&logproto.SampleQueryRequest{
-				// extend startTs backwards by step
-				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
-				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
-				// intentionally send the vector for reducing labels.
-				Selector: e.String(),
-				Shards:   q.Shards(),
-				Plan: &plan.QueryPlan{
-					AST: expr,
-				},
-				StoreChunks: q.GetStoreChunks(),
-				HintRanges:  q.GetHintRanges(),
-			},
-		})
+		it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, e.Left, logproto.SAMPLE_ORDER_BY_TIMESTAMP))
 		if err != nil {
 			return nil, err
 		}
 		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines)
 	case *syntax.LabelAggregationExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false)
 	case *syntax.CountDistinctSketchExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, true)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -428,6 +397,30 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
+	}
+}
+
+// selectSampleParamsFor returns the params that select the samples of left, the log range of expr.
+//
+// The request sends the whole expr as the selector, so the querier can reduce labels at the source.
+// It carries the shards and hints of q. The caller must pass the order that its step evaluator
+// consumes.
+func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRangeExpr, order logproto.SampleOrder) SelectSampleParams {
+	return SelectSampleParams{
+		&logproto.SampleQueryRequest{
+			// extend startTs backwards by the range interval and the offset
+			Start: q.Start().Add(-left.Interval).Add(-left.Offset),
+			// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
+			Selector: expr.String(),
+			Shards:   q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			StoreChunks: q.GetStoreChunks(),
+			HintRanges:  q.GetHintRanges(),
+			Order:       order,
+		},
 	}
 }
 
@@ -470,7 +463,6 @@ func (ev *DefaultEvaluator) maxQuerySeries(ctx context.Context) int {
 func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	ctx context.Context,
 	expr syntax.SampleExpr,
-	selector string,
 	left *syntax.LogRangeExpr,
 	q Params,
 	emitSketch bool,
@@ -480,19 +472,7 @@ func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 		return nil, err
 	}
 
-	it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-		&logproto.SampleQueryRequest{
-			Start:    q.Start().Add(-left.Interval).Add(-left.Offset),
-			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
-			Selector: selector,
-			Shards:   q.Shards(),
-			Plan: &plan.QueryPlan{
-				AST: expr,
-			},
-			StoreChunks: q.GetStoreChunks(),
-			HintRanges:  q.GetHintRanges(),
-		},
-	})
+	it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, left, logproto.SAMPLE_ORDER_BY_TIMESTAMP))
 	if err != nil {
 		return nil, err
 	}

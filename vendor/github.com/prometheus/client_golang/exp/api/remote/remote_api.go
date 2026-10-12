@@ -247,7 +247,7 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts
 		}
 	case proto.Message:
 		// Generic proto.
-		*buf, err = (proto.MarshalOptions{}).MarshalAppend(*buf, m)
+		*buf, err = (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], m)
 		if err != nil {
 			return WriteResponseStats{}, fmt.Errorf("encoding request %w", err)
 		}
