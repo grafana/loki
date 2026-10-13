@@ -101,6 +101,9 @@ type HeadManager struct {
 	// Locked before rotating heads/wal
 	mtx sync.RWMutex
 
+	// Locked to synchronize appending to active tenantHeads and logging to active headWAL
+	appendMtx sync.Mutex
+
 	// how often WALs should be rotated and TSDBs cut
 	period period
 
@@ -258,6 +261,14 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
+
+	// Hold appendMtx across both the in-memory decision and the WAL write so
+	// concurrent Appends to the same series can't have their WAL records land
+	// out of order. The mtx.RLock alone isn't desired, since m.mtx.Lock() would
+	// lock against all other in-flight operations gated with m.mtx and cause a
+	// performance regression.
+	m.appendMtx.Lock()
+	defer m.appendMtx.Unlock()
 
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
