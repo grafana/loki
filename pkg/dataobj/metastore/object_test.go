@@ -443,13 +443,13 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: "matcher returns no matching sections if time range is out of bounds",
+			name: "matcher returns no matching sections if time range ends before the section in its ToC window",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			predicates: nil,
-			start:      now.Add(-24 * time.Hour),
-			end:        now.Add(-13 * time.Hour),
+			start:      now.Add(-12 * time.Hour).Truncate(MetastoreWindowSize),
+			end:        now.Add(-12*time.Hour - time.Nanosecond),
 			wantCount:  0,
 		},
 	}
