@@ -127,7 +127,8 @@ type Config struct {
 	// configuration is settled. Until then the section is flags-only and left
 	// out of the config reference. Every field is reachable through
 	// -logline-index.*, -logline-store.*, -logline-builder.*,
-	// -logline-query.* and -logline-correctness.*.
+	// -logline-query.*, -logline-correctness.*, -logline-compaction.* and
+	// -logline-retention.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
@@ -379,6 +380,16 @@ func (c *Config) Validate() error {
 	if c.isTarget(LoglineCorrectness) {
 		c.Logline.Correctness.QueryIngestersWithin = c.Querier.QueryIngestersWithin
 		if err := c.Logline.ValidateCorrectness(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
+	if c.isTarget(LoglineScheduler) {
+		if err := c.Logline.ValidateScheduler(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
+	if c.isTarget(LoglineCompactor) {
+		if err := c.Logline.ValidateCompactor(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
 	}
@@ -842,6 +853,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(LoglineCorrectness, t.initLoglineCorrectness, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineScheduler, t.initLoglineScheduler, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(LoglineCompactor, t.initLoglineCompactor, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
@@ -899,6 +912,8 @@ func (t *Loki) setupModuleManager() error {
 		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
 		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
 		LoglineCorrectness:              {Server},
+		LoglineScheduler:                {Server, Overrides},
+		LoglineCompactor:                {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
