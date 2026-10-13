@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Partially rejected ingester pushes preserve retryable errors
+
+Ingester push responses now preserve failures from every stream in a request. A later successful stream no longer hides an earlier rejection. Internal errors take precedence over rate limits (HTTP 429), which take precedence over permanent rejections (HTTP 400). The same rule applies when a stream contains both rate-limited and out-of-order entries.
+
+Clients may therefore retry partially accepted requests that previously received a successful response or a permanent rejection. Accepted entries remain stored; a retry is not a rollback or an atomic batch operation. Existing retry and duplicate-handling behavior still applies. No configuration change is required.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.
