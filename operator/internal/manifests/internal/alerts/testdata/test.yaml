@@ -52,6 +52,9 @@ tests:
       - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Ready", status="false"}'
         values: '1+0x25'
 
+      - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", condition="Degraded", reason="InvalidObjectStorageSchema", status="true"}'
+        values: '0x5 1+0x20'
+
       - series: 'loki_ingester_chunks_flush_failures_total{namespace="my-ns", pod="ingester-0"}'
         values: '0+25x20'
       - series: 'loki_ingester_chunks_flush_requests_total{namespace="my-ns", pod="ingester-0"}'
@@ -174,6 +177,21 @@ tests:
               description: 'The LokiStack "mystack" in namespace "my-ns" has components that are not ready.'
               summary: "One or more LokiStack components are not ready."
               runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
+      - eval_time: 11m
+        alertname: LokistackDeprecatedBoltDBSchema
+        exp_alerts:
+          - exp_labels:
+              stack_namespace: my-ns
+              stack_name: mystack
+              severity: warning
+            exp_annotations:
+              description: |-
+                The LokiStack "mystack" in namespace "my-ns" is using BoltDB storage schema versions (v11 or v12) which are not supported.
+                The LokiStack is in a degraded state and will not reconcile until all v11 and v12 schemas are removed from the configuration.
+                You must migrate to v13 schemas before this LokiStack can be reconciled.
+                Refer to the runbook for migration documentation.
+              summary: "LokiStack is using unsupported BoltDB schema versions and is in a degraded state."
+              runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
       - eval_time: 16m
         alertname: LokiIngesterFlushFailureRateCritical
         exp_alerts:
