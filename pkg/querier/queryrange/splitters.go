@@ -242,7 +242,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 
 	lokiReq := r.(*LokiRequest)
 
-	interval := s.chunkPolicy.RangeQueryInterval(tenantIDs, lokiReq)
+	interval := s.chunkPolicy.rangeQueryInterval(tenantIDs, lokiReq)
 	if interval == 0 {
 		return nil, false
 	}

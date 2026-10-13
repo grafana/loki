@@ -63,7 +63,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	interval := s.chunkPolicy.InstantQueryInterval(tenants)
+	interval := s.chunkPolicy.instantQueryInterval(tenants)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
 		return s.next.Do(ctx, request)

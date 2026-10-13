@@ -9,13 +9,13 @@ import (
 // splitIntervalPolicy holds the parts of time splitting that depend on where a query reads its
 // data from.
 type splitIntervalPolicy interface {
-	// RangeQueryInterval returns the interval that cuts the time range of a metric range request.
+	// rangeQueryInterval returns the interval that cuts the time range of a metric range request.
 	// It returns 0 when the tenants turn splitting off.
-	RangeQueryInterval(tenantIDs []string, r *LokiRequest) time.Duration
+	rangeQueryInterval(tenantIDs []string, r *LokiRequest) time.Duration
 
-	// InstantQueryInterval returns the interval that cuts the range vector of an instant request.
+	// instantQueryInterval returns the interval that cuts the range vector of an instant request.
 	// It returns 0 when the tenants turn splitting off.
-	InstantQueryInterval(tenantIDs []string) time.Duration
+	instantQueryInterval(tenantIDs []string) time.Duration
 }
 
 var _ splitIntervalPolicy = chunkSplitIntervalPolicy{}
@@ -29,7 +29,7 @@ func newChunkSplitIntervalPolicy(limits Limits) chunkSplitIntervalPolicy {
 	return chunkSplitIntervalPolicy{limits: limits}
 }
 
-func (p chunkSplitIntervalPolicy) RangeQueryInterval(tenantIDs []string, r *LokiRequest) time.Duration {
+func (p chunkSplitIntervalPolicy) rangeQueryInterval(tenantIDs []string, r *LokiRequest) time.Duration {
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, p.limits.QuerySplitDuration)
 	if interval == 0 {
 		return 0
@@ -41,6 +41,6 @@ func (p chunkSplitIntervalPolicy) RangeQueryInterval(tenantIDs []string, r *Loki
 	return max(interval, maxRange)
 }
 
-func (p chunkSplitIntervalPolicy) InstantQueryInterval(tenantIDs []string) time.Duration {
+func (p chunkSplitIntervalPolicy) instantQueryInterval(tenantIDs []string) time.Duration {
 	return validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, p.limits.InstantMetricQuerySplitDuration)
 }

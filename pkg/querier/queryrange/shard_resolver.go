@@ -193,7 +193,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		return 0, 0, err
 	}
 
-	factor := r.chunkPolicy.PowerOfTwoShards(tenantIDs, combined, r.maxShards)
+	factor := r.chunkPolicy.powerOfTwoShards(tenantIDs, combined, r.maxShards)
 
 	bytesPerShard := combined.Bytes
 	if factor > 0 {
@@ -301,6 +301,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"precomputed_refs", refs,
 	)
 
-	shards, chunkGroups := r.chunkPolicy.BoundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
+	shards, chunkGroups := r.chunkPolicy.boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
 	return shards, chunkGroups, nil
 }
