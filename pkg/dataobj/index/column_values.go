@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -70,21 +69,6 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 	return batchErr
 }
 
-func (c *columnValuesCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
-	for columnName := range c.columnIndexes {
-		bloomBytes, err := calcCtx.builder.BloomBytes(
-			calcCtx.objectPath, calcCtx.sectionIdx, columnName,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to get bloom bytes for %s: %w", columnName, err)
-		}
-		err = calcCtx.builder.AppendColumnIndex(
-			calcCtx.objectPath, calcCtx.sectionIdx,
-			columnName, c.columnIndexes[columnName], bloomBytes,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append column index: %w", err)
-		}
-	}
+func (c *columnValuesCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
 	return nil
 }
