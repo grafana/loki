@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
-func TestLogCompactionPlanLogInputs(t *testing.T) {
+func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	sortTask := func(oldest time.Time, bytes uint64) sortObjectTask {
 		return sortObjectTask{entry: metastore.TableOfContentsEntry{StartTime: oldest}, bytes: bytes}
@@ -23,10 +23,10 @@ func TestLogCompactionPlanLogInputs(t *testing.T) {
 			sortTask(now.Add(-12*time.Hour), 100),
 		}}
 
-		require.Equal(t, []logInput{
-			{bytes: 16, oldestTimestamp: now.Add(-30 * time.Minute)},
-			{bytes: 100, oldestTimestamp: now.Add(-12 * time.Hour)},
-		}, slices.Collect(plan.logInputs()))
+		require.Equal(t, []logTaskStats{
+			{inputBytes: 16, oldestTimestamp: now.Add(-30 * time.Minute)},
+			{inputBytes: 100, oldestTimestamp: now.Add(-12 * time.Hour)},
+		}, slices.Collect(plan.logTaskStats()))
 	})
 
 	t.Run("skips an IndexFilter task", func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestLogCompactionPlanLogInputs(t *testing.T) {
 			indexFilterTask{entry: metastore.TableOfContentsEntry{StartTime: now.Add(-48 * time.Hour)}},
 		}}
 
-		require.Empty(t, slices.Collect(plan.logInputs()))
+		require.Empty(t, slices.Collect(plan.logTaskStats()))
 	})
 
 	t.Run("stops yielding when the caller stops iterating", func(t *testing.T) {
@@ -43,16 +43,16 @@ func TestLogCompactionPlanLogInputs(t *testing.T) {
 			sortTask(now, 2),
 		}}
 
-		var seen []logInput
-		for input := range plan.logInputs() {
-			seen = append(seen, input)
+		var seen []logTaskStats
+		for stats := range plan.logTaskStats() {
+			seen = append(seen, stats)
 			break
 		}
 		require.Len(t, seen, 1)
 	})
 }
 
-func TestLogMergeTaskLogInput(t *testing.T) {
+func TestLogMergeTaskLogStats(t *testing.T) {
 	section := func(path string, minTS int64, size int64) *compactionv2pb.SectionRef {
 		return &compactionv2pb.SectionRef{ObjectPath: path, MinTimestamp: minTS, MaxTimestamp: minTS + 10, UncompressedSize: size}
 	}
@@ -63,6 +63,6 @@ func TestLogMergeTaskLogInput(t *testing.T) {
 			{Sections: []*compactionv2pb.SectionRef{section("logs/b", 100, 30)}},
 		}})
 
-		require.Equal(t, logInput{bytes: 60, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logInput())
+		require.Equal(t, logTaskStats{inputBytes: 60, oldestTimestamp: time.Unix(0, 100).UTC()}, task.logStats())
 	})
 }

@@ -25,26 +25,27 @@ func (p logCompactionPlan) hasWork() bool {
 	return len(p.tasks) > 0
 }
 
-// logInputs yields the log input of each task of p. It skips tasks that read
+// logTaskStats yields the log stats of each task of p. It skips tasks that read
 // no log data.
-func (p logCompactionPlan) logInputs() iter.Seq[logInput] {
-	return func(yield func(logInput) bool) {
+func (p logCompactionPlan) logTaskStats() iter.Seq[logTaskStats] {
+	return func(yield func(logTaskStats) bool) {
 		for _, task := range p.tasks {
-			input := task.logInput()
-			if input.bytes == 0 {
+			stats := task.logStats()
+			if stats.inputBytes == 0 {
 				continue
 			}
-			if !yield(input) {
+			if !yield(stats) {
 				return
 			}
 		}
 	}
 }
 
-// logInput describes the log data that one task reads.
-type logInput struct {
-	// bytes is the uncompressed size of the log sections.
-	bytes uint64
+// logTaskStats describes the log data that one task reads.
+type logTaskStats struct {
+	// inputBytes is the uncompressed size of the log sections that the task
+	// reads.
+	inputBytes uint64
 
 	// oldestTimestamp is the earliest log timestamp in the sections.
 	oldestTimestamp time.Time
@@ -81,9 +82,9 @@ type logCompactionTask interface {
 	// path.
 	tocEntry() metastore.TableOfContentsEntry
 
-	// logInput returns the log data that the task reads. Its bytes are zero
+	// logTaskStats returns the log data that the task reads. Its bytes are zero
 	// if the task reads no log data.
-	logInput() logInput
+	logStats() logTaskStats
 }
 
 // logMergeTask merges the runs of spec into new log objects.
@@ -102,14 +103,14 @@ func (t logMergeTask) physicalPlan(tenant string, window time.Time) *physical.Pl
 
 func (t logMergeTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-func (t logMergeTask) logInput() logInput {
-	input := logInput{oldestTimestamp: t.entry.StartTime}
+func (t logMergeTask) logStats() logTaskStats {
+	stats := logTaskStats{oldestTimestamp: t.entry.StartTime}
 	for _, run := range t.spec.Runs {
 		for _, section := range run.Sections {
-			input.bytes += uint64(section.UncompressedSize)
+			stats.inputBytes += uint64(section.UncompressedSize)
 		}
 	}
-	return input
+	return stats
 }
 
 // indexFilterTask writes a new index that keeps only the rows of objectPaths
@@ -126,9 +127,9 @@ func (t indexFilterTask) physicalPlan(tenant string, _ time.Time) *physical.Plan
 
 func (t indexFilterTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-// logInput returns zero bytes, because the filter reads only the source
+// logTaskStats returns zero bytes, because the filter reads only the source
 // index.
-func (t indexFilterTask) logInput() logInput { return logInput{} }
+func (t indexFilterTask) logStats() logTaskStats { return logTaskStats{} }
 
 // sortObjectTask rewrites one log object with sortSchema. bytes is the
 // uncompressed size of the sections of the object.
@@ -145,6 +146,6 @@ func (t sortObjectTask) physicalPlan(string, time.Time) *physical.Plan {
 
 func (t sortObjectTask) tocEntry() metastore.TableOfContentsEntry { return t.entry }
 
-func (t sortObjectTask) logInput() logInput {
-	return logInput{bytes: t.bytes, oldestTimestamp: t.entry.StartTime}
+func (t sortObjectTask) logStats() logTaskStats {
+	return logTaskStats{inputBytes: t.bytes, oldestTimestamp: t.entry.StartTime}
 }

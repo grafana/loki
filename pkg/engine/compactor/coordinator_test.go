@@ -416,8 +416,8 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 // totalLogInputBytes returns the sum of the log input bytes of plan.
 func totalLogInputBytes(plan logCompactionPlan) uint64 {
 	var total uint64
-	for input := range plan.logInputs() {
-		total += input.bytes
+	for stats := range plan.logTaskStats() {
+		total += stats.inputBytes
 	}
 	return total
 }
@@ -502,7 +502,7 @@ func TestPlanLogCompaction(t *testing.T) {
 			sort, ok := task.(sortObjectTask)
 			require.True(t, ok)
 			require.Equal(t, []string{"label:service_name"}, sort.sortSchema)
-			bytesByObject[sort.objectPath] = sort.logInput().bytes
+			bytesByObject[sort.objectPath] = sort.logStats().inputBytes
 		}
 		require.Equal(t, map[string]uint64{"logs/log-0": 150, "logs/log-1": 100}, bytesByObject)
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))

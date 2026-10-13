@@ -9,7 +9,7 @@ import (
 // pendingLogBytes keeps the pending log bytes gauge of one tenant in step with
 // one LogMerge phase.
 //
-// It labels every log input with its age at the plan time of the phase. A
+// It labels the log stats of every task with its age at the plan time of the phase. A
 // completed plan subtracts its bytes at the same time, so they leave the same
 // buckets that they joined, however long the phase runs.
 type pendingLogBytes struct {
@@ -39,9 +39,9 @@ func startPendingLogBytes(
 	}
 	var total uint64
 	for _, plan := range plans {
-		for input := range plan.logInputs() {
-			bytesByAge[p.age(input)] += input.bytes
-			total += input.bytes
+		for stats := range plan.logTaskStats() {
+			bytesByAge[p.age(stats)] += stats.inputBytes
+			total += stats.inputBytes
 		}
 	}
 	for age, bytes := range bytesByAge {
@@ -52,11 +52,11 @@ func startPendingLogBytes(
 
 // complete removes the log input bytes of plan from the gauge.
 func (p pendingLogBytes) complete(plan logCompactionPlan) {
-	for input := range plan.logInputs() {
-		p.gauge.WithLabelValues(p.tenant, p.age(input)).Sub(float64(input.bytes))
+	for stats := range plan.logTaskStats() {
+		p.gauge.WithLabelValues(p.tenant, p.age(stats)).Sub(float64(stats.inputBytes))
 	}
 }
 
-func (p pendingLogBytes) age(input logInput) string {
-	return p.buckets.label(input.oldestTimestamp, p.planTime)
+func (p pendingLogBytes) age(stats logTaskStats) string {
+	return p.buckets.label(stats.oldestTimestamp, p.planTime)
 }
