@@ -268,7 +268,7 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
-	tenantFlushMtx sync.Mutex
+	tenantFlushLock *keyedLock
 
 	// Spread out calls to the chunk store over the flush period
 	flushRateLimiter *rate.Limiter
@@ -343,6 +343,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
 		readRing:              readRing,
+		tenantFlushLock:       newKeyedLock(128),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 

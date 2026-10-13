@@ -174,8 +174,9 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Do not allow concurrent flushes
-	i.tenantFlushMtx.Lock()
-	defer i.tenantFlushMtx.Unlock()
+	mtx := i.tenantFlushLock.forKey(tenantID)
+	mtx.Lock()
+	defer mtx.Unlock()
 
 	instance, ok := i.getInstanceByID(tenantID)
 	if !ok {
@@ -190,19 +191,36 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	// Resolve the in-memory numStreams matching the (optional) selector.
 	// An empty matcher set resolves to all of the tenant's numStreams.
 	_ = instance.forMatchingStreams(ctx, time.Now(), matchers, nil, func(s *stream) error {
+
+		// Ignore streams without chunks
+		// chunkMtx does not allow nested RLock() calls, but i.sweepStream() acquires the lock as well.
+		// Therefore we cannot simply RLock() at the beginning of the function and defer RUnlock()
+		s.chunkMtx.RLock()
+		if len(s.chunks) == 0 {
+			return nil
+		}
+		s.chunkMtx.RUnlock()
+
 		// First, sweep the matching stream for the given tenant.
 		i.sweepStream(instance, s, true)
+
+		s.chunkMtx.RLock()
+		defer s.chunkMtx.RUnlock()
+
 		// Then, enqueue a marker with low priority to the same queue the flush op got enqueued to.
 		// The marker holds a channel that it used to send a message to the caller, so we know when
 		// the stream has been flushed.
 		flushQueueIndex := int(uint64(s.fp) % uint64(i.cfg.ConcurrentFlushes))
-		i.flushQueues[flushQueueIndex].Enqueue(&markerOp{
+		oldestTs, _ := s.chunks[0].chunk.Bounds()
+		ok := i.flushQueues[flushQueueIndex].Enqueue(&markerOp{
 			done:   done,
-			ts:     time.Now(),
+			ts:     oldestTs.Add(5 * flushBackoff), // the Priority() uses negative ts.UnixMilli(), so add 5x the backoff to decrease priority
 			fp:     uint64(s.fp),
 			tenant: tenantID,
 		})
-		numStreams++
+		if ok {
+			numStreams++
+		}
 		return nil
 	})
 
@@ -245,7 +263,7 @@ func (o *markerOp) Key() string {
 }
 
 func (o *markerOp) Priority() int64 {
-	return -o.ts.UnixNano()
+	return -o.ts.UnixMilli()
 }
 
 type flushOp struct {

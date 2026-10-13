@@ -16,13 +16,6 @@ const (
 	updateInterval = time.Second
 )
 
-// stripeLock is taken from ruler/storage/wal/series.go
-type stripeLock struct {
-	sync.RWMutex
-	// Padding to avoid multiple locks being on the same cache line.
-	_ [40]byte
-}
-
 type StreamRateCalculator struct {
 	size     int
 	samples  []map[string]map[uint64]logproto.StreamRate
