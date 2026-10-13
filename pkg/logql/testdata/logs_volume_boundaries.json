@@ -1,0 +1,979 @@
+{
+  "base_time": "2026-10-01T00:00:00Z",
+  "selector": "{app=\"volume-boundary\"} |= \"keep\"",
+  "scenarios": [
+    {
+      "name": "partial_both",
+      "start_ns": "30000000000",
+      "end_ns": "210000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "-59999999999",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "29999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "30000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "info",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "120000000001",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "179999999999",
+          "level": "warn",
+          "line": "keep entry-11"
+        },
+        {
+          "offset_ns": "180000000000",
+          "level": "info",
+          "line": "keep entry-12"
+        },
+        {
+          "offset_ns": "180000000001",
+          "level": "error",
+          "line": "keep entry-13"
+        },
+        {
+          "offset_ns": "209999999999",
+          "level": "warn",
+          "line": "keep entry-14"
+        },
+        {
+          "offset_ns": "209999999999",
+          "level": "warn",
+          "line": "keep entry-15"
+        },
+        {
+          "offset_ns": "210000000000",
+          "level": "error",
+          "line": "keep entry-16"
+        },
+        {
+          "offset_ns": "210000000001",
+          "level": "error",
+          "line": "keep entry-17"
+        }
+      ],
+      "expected_logs": {
+        "info": 6,
+        "warn": 5,
+        "error": 3
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 7,
+        "warn": 3,
+        "error": 2
+      }
+    },
+    {
+      "name": "aligned_both",
+      "start_ns": "60000000000",
+      "end_ns": "240000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "1",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "120000000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "150000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "179999999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "180000000000",
+          "level": "info",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "180000000001",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "239999999999",
+          "level": "warn",
+          "line": "keep entry-11"
+        },
+        {
+          "offset_ns": "239999999999",
+          "level": "warn",
+          "line": "keep entry-12"
+        },
+        {
+          "offset_ns": "240000000000",
+          "level": "error",
+          "line": "keep entry-13"
+        },
+        {
+          "offset_ns": "240000000001",
+          "level": "error",
+          "line": "keep entry-14"
+        }
+      ],
+      "expected_logs": {
+        "info": 5,
+        "warn": 4,
+        "error": 2
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 6,
+        "warn": 4,
+        "error": 3
+      }
+    },
+    {
+      "name": "aligned_start",
+      "start_ns": "60000000000",
+      "end_ns": "210000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "1",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "120000000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "135000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "179999999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "180000000000",
+          "level": "info",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "180000000001",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "209999999999",
+          "level": "warn",
+          "line": "keep entry-11"
+        },
+        {
+          "offset_ns": "209999999999",
+          "level": "warn",
+          "line": "keep entry-12"
+        },
+        {
+          "offset_ns": "210000000000",
+          "level": "error",
+          "line": "keep entry-13"
+        },
+        {
+          "offset_ns": "210000000001",
+          "level": "error",
+          "line": "keep entry-14"
+        }
+      ],
+      "expected_logs": {
+        "info": 5,
+        "warn": 4,
+        "error": 2
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 6,
+        "warn": 2,
+        "error": 1
+      }
+    },
+    {
+      "name": "aligned_end",
+      "start_ns": "30000000000",
+      "end_ns": "240000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "-59999999999",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "29999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "30000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "info",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "120000000001",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "135000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "179999999999",
+          "level": "warn",
+          "line": "keep entry-11"
+        },
+        {
+          "offset_ns": "180000000000",
+          "level": "info",
+          "line": "keep entry-12"
+        },
+        {
+          "offset_ns": "180000000001",
+          "level": "error",
+          "line": "keep entry-13"
+        },
+        {
+          "offset_ns": "239999999999",
+          "level": "warn",
+          "line": "keep entry-14"
+        },
+        {
+          "offset_ns": "239999999999",
+          "level": "warn",
+          "line": "keep entry-15"
+        },
+        {
+          "offset_ns": "240000000000",
+          "level": "error",
+          "line": "keep entry-16"
+        },
+        {
+          "offset_ns": "240000000001",
+          "level": "error",
+          "line": "keep entry-17"
+        }
+      ],
+      "expected_logs": {
+        "info": 6,
+        "warn": 5,
+        "error": 3
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 7,
+        "warn": 5,
+        "error": 4
+      }
+    },
+    {
+      "name": "within_one_bucket",
+      "start_ns": "31000000000",
+      "end_ns": "39000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "-59999999999",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "30999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "31000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "31000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "31000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "35000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "38999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "38999999999",
+          "level": "warn",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "39000000000",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "39000000001",
+          "level": "error",
+          "line": "keep entry-08"
+        }
+      ],
+      "expected_logs": {
+        "info": 3,
+        "warn": 2
+      },
+      "expected_current": {
+        "debug": 1
+      }
+    },
+    {
+      "name": "crosses_one_boundary",
+      "start_ns": "59000000000",
+      "end_ns": "61000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "-59999999999",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "58999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "59000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "59000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "59000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "60999999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "60999999999",
+          "level": "warn",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "61000000000",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "61000000001",
+          "level": "error",
+          "line": "keep entry-11"
+        }
+      ],
+      "expected_logs": {
+        "info": 4,
+        "warn": 3,
+        "error": 1
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 5,
+        "warn": 1
+      }
+    },
+    {
+      "name": "one_full_bucket",
+      "start_ns": "60000000000",
+      "end_ns": "120000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "1",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "90000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "119999999999",
+          "level": "warn",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "120000000001",
+          "level": "error",
+          "line": "keep entry-08"
+        }
+      ],
+      "expected_logs": {
+        "info": 3,
+        "warn": 2
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 4,
+        "warn": 2,
+        "error": 1
+      }
+    },
+    {
+      "name": "subsecond_866ms",
+      "start_ns": "123000000",
+      "end_ns": "989000000",
+      "step_ns": "100000000",
+      "entries": [
+        {
+          "offset_ns": "1",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "122999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "123000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "123000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "123000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "199999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "200000000",
+          "level": "info",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "200000001",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "299999999",
+          "level": "warn",
+          "line": "keep entry-08"
+        },
+        {
+          "offset_ns": "300000000",
+          "level": "info",
+          "line": "keep entry-09"
+        },
+        {
+          "offset_ns": "300000001",
+          "level": "error",
+          "line": "keep entry-10"
+        },
+        {
+          "offset_ns": "399999999",
+          "level": "warn",
+          "line": "keep entry-11"
+        },
+        {
+          "offset_ns": "400000000",
+          "level": "info",
+          "line": "keep entry-12"
+        },
+        {
+          "offset_ns": "400000001",
+          "level": "error",
+          "line": "keep entry-13"
+        },
+        {
+          "offset_ns": "499999999",
+          "level": "warn",
+          "line": "keep entry-14"
+        },
+        {
+          "offset_ns": "500000000",
+          "level": "info",
+          "line": "keep entry-15"
+        },
+        {
+          "offset_ns": "500000001",
+          "level": "error",
+          "line": "keep entry-16"
+        },
+        {
+          "offset_ns": "556000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "599999999",
+          "level": "warn",
+          "line": "keep entry-17"
+        },
+        {
+          "offset_ns": "600000000",
+          "level": "info",
+          "line": "keep entry-18"
+        },
+        {
+          "offset_ns": "600000001",
+          "level": "error",
+          "line": "keep entry-19"
+        },
+        {
+          "offset_ns": "699999999",
+          "level": "warn",
+          "line": "keep entry-20"
+        },
+        {
+          "offset_ns": "700000000",
+          "level": "info",
+          "line": "keep entry-21"
+        },
+        {
+          "offset_ns": "700000001",
+          "level": "error",
+          "line": "keep entry-22"
+        },
+        {
+          "offset_ns": "799999999",
+          "level": "warn",
+          "line": "keep entry-23"
+        },
+        {
+          "offset_ns": "800000000",
+          "level": "info",
+          "line": "keep entry-24"
+        },
+        {
+          "offset_ns": "800000001",
+          "level": "error",
+          "line": "keep entry-25"
+        },
+        {
+          "offset_ns": "899999999",
+          "level": "warn",
+          "line": "keep entry-26"
+        },
+        {
+          "offset_ns": "900000000",
+          "level": "info",
+          "line": "keep entry-27"
+        },
+        {
+          "offset_ns": "900000001",
+          "level": "error",
+          "line": "keep entry-28"
+        },
+        {
+          "offset_ns": "988999999",
+          "level": "warn",
+          "line": "keep entry-29"
+        },
+        {
+          "offset_ns": "988999999",
+          "level": "warn",
+          "line": "keep entry-30"
+        },
+        {
+          "offset_ns": "989000000",
+          "level": "error",
+          "line": "keep entry-31"
+        },
+        {
+          "offset_ns": "989000001",
+          "level": "error",
+          "line": "keep entry-32"
+        }
+      ],
+      "expected_logs": {
+        "info": 11,
+        "warn": 10,
+        "error": 8
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 12,
+        "warn": 8,
+        "error": 7
+      }
+    },
+    {
+      "name": "one_millisecond",
+      "start_ns": "60000000000",
+      "end_ns": "60001000000",
+      "step_ns": "1000000000",
+      "entries": [
+        {
+          "offset_ns": "59000000001",
+          "level": "debug",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "59999999999",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-02"
+        },
+        {
+          "offset_ns": "60000000000",
+          "level": "info",
+          "line": "keep entry-03"
+        },
+        {
+          "offset_ns": "60000000001",
+          "level": "info",
+          "line": "keep entry-04"
+        },
+        {
+          "offset_ns": "60000500000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "60000999999",
+          "level": "warn",
+          "line": "keep entry-05"
+        },
+        {
+          "offset_ns": "60000999999",
+          "level": "warn",
+          "line": "keep entry-06"
+        },
+        {
+          "offset_ns": "60001000000",
+          "level": "error",
+          "line": "keep entry-07"
+        },
+        {
+          "offset_ns": "60001000001",
+          "level": "error",
+          "line": "keep entry-08"
+        }
+      ],
+      "expected_logs": {
+        "info": 3,
+        "warn": 2
+      },
+      "expected_current": {
+        "debug": 1,
+        "info": 3
+      }
+    },
+    {
+      "name": "start_only",
+      "start_ns": "30000000000",
+      "end_ns": "210000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "30000000000",
+          "level": "info",
+          "line": "keep entry-01"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        }
+      ],
+      "expected_logs": {
+        "info": 2
+      },
+      "expected_current": {
+        "info": 2
+      }
+    },
+    {
+      "name": "end_only",
+      "start_ns": "30000000000",
+      "end_ns": "210000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "120000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "210000000000",
+          "level": "error",
+          "line": "keep entry-00"
+        }
+      ],
+      "expected_logs": {},
+      "expected_current": {}
+    },
+    {
+      "name": "empty_range",
+      "start_ns": "30000000000",
+      "end_ns": "210000000000",
+      "step_ns": "60000000000",
+      "entries": [
+        {
+          "offset_ns": "29999999999",
+          "level": "info",
+          "line": "keep entry-00"
+        },
+        {
+          "offset_ns": "120000000000",
+          "level": "debug",
+          "line": "drop filtered-entry"
+        },
+        {
+          "offset_ns": "210000000000",
+          "level": "error",
+          "line": "keep entry-01"
+        }
+      ],
+      "expected_logs": {},
+      "expected_current": {
+        "info": 1
+      }
+    }
+  ]
+}
