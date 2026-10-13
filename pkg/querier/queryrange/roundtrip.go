@@ -682,11 +682,11 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -751,13 +751,13 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					// Too many shards on limited queries results in slowing down this type of query
 					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
 					32, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}
@@ -1032,11 +1032,11 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -1160,11 +1160,11 @@ func NewInstantMetricTripperware(
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}
