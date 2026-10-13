@@ -1963,6 +1963,62 @@ func TestNewPollingService_StartsAndStops(t *testing.T) {
 	}
 }
 
+func TestNewBackgroundPollingService_RunningWhileFirstPollBlocked(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	bucket := &blockingIterBucket{
+		Bucket:  objstore.NewInMemBucket(),
+		release: release,
+		started: started,
+	}
+	s := newTestStore(t, bucket)
+	now := time.Now().UTC()
+	writeTestIndex(t, s, Meta{
+		Date: "2026-02-23", Hash: "blocked", Version: "v3",
+		MinLogTs: now.Add(-time.Hour), MaxLogTs: now,
+	}, "blocked index")
+
+	svc := NewBackgroundPollingService(s, "querier-logline-store", nil)
+	require.NoError(t, services.StartAndAwaitRunning(t.Context(), svc))
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), svc))
+	})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first poll did not start")
+	}
+	require.Equal(t, services.Running, svc.State())
+	require.Empty(t, s.Snapshot().All(), "snapshot stays empty until the cold poll finishes")
+
+	close(release)
+	require.Eventually(t, func() bool {
+		return len(s.IndexesForRange(now.Add(-2*time.Hour), now.Add(time.Hour))) == 1
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestNewBackgroundPollingService_PollErrorDoesNotFail(t *testing.T) {
+	bucket := &errorBucket{Bucket: objstore.NewInMemBucket(), failIter: true}
+	s := newTestStore(t, bucket)
+	svc := NewBackgroundPollingService(s, "querier-logline-store", nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(t.Context(), svc))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), svc))
+	})
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(s.metrics.pollErrors) >= 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, services.Running, svc.State())
+}
+
 // ---- Delta poll tests ----
 
 func TestStore_DeltaPoll_FirstPollFetchesAll(t *testing.T) {
@@ -2146,6 +2202,24 @@ func TestStore_DeltaPoll_ErrorPreservesKnownMetas(t *testing.T) {
 	require.Contains(t, newCalls, meta3.MetaPath(), "healed poll must fetch meta3")
 	require.NotContains(t, newCalls, meta1.MetaPath(), "meta1 must remain cached after healed poll")
 	require.NotContains(t, newCalls, meta2.MetaPath(), "meta2 must remain cached after healed poll")
+}
+
+// blockingIterBucket holds the first Iter until release is closed.
+type blockingIterBucket struct {
+	objstore.Bucket
+	release chan struct{}
+	started chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingIterBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	b.once.Do(func() { close(b.started) })
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return b.Bucket.Iter(ctx, dir, f, options...)
 }
 
 // errorBucket wraps an InMemBucket and injects errors for testing.
