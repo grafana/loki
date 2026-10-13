@@ -13,6 +13,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/plugin/kotel"
 	"github.com/twmb/franz-go/plugin/kprom"
@@ -158,6 +159,7 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 
 func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
 	opts := []kgo.Opt{
+		kgo.MaxVersions(maxKafkaVersions()),
 		kgo.DialTimeout(cfg.DialTimeout),
 
 		// A cluster metadata update is a request sent to a broker and getting back the map of partitions and
@@ -220,6 +222,14 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 	}
 
 	return opts
+}
+
+// maxKafkaVersions caps ApiVersions at v4. WarpStream agents close the connection on v5
+// instead of replying UNSUPPORTED_VERSION, so franz-go >= 1.22 can't fall back on its own.
+func maxKafkaVersions() *kversion.Versions {
+	v := kversion.Stable()
+	v.SetMaxKeyVersion(kmsg.ApiVersions.Int16(), 4)
+	return v
 }
 
 // Producer is a kgo.Client wrapper exposing some higher level features and metrics useful for producers.
