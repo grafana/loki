@@ -180,9 +180,9 @@ func Test_astMapper(t *testing.T) {
 		statsHandler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		2,
-		[]string{},
 	)
 
 	req := defaultReq()
@@ -315,6 +315,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
+				Config{},
 				fakeLimits{
 					maxSeries:               math.MaxInt32,
 					maxQueryParallelism:     1,
@@ -323,7 +324,6 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
-				[]string{},
 			)
 
 			req := defaultReq()
@@ -337,6 +337,54 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
 		})
 	}
+}
+
+func Test_astMapper_ShardAggregations(t *testing.T) {
+	const query = `quantile_over_time(0.5, {app="foo"} | unwrap foo [1h])`
+
+	// The index reports 100 B and the limit is 10 B, so every subtest fails before the query runs.
+	// The subtests do not check that failure. They check which error comes back, because the
+	// message says whether the query is shardable.
+	exceedQuerierBytesRead := func(t *testing.T, cfg Config) error {
+		t.Helper()
+
+		handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 100}}, nil
+		})
+		mware := newASTMapperware(
+			[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
+			testEngineOpts,
+			handler,
+			handler,
+			nil,
+			log.NewNopLogger(),
+			nilShardingMetrics,
+			cfg,
+			fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1, queryTimeout: time.Minute, maxQuerierBytesRead: 10},
+			0,
+		)
+
+		req := defaultReq()
+		req.Query = query
+		req.Plan = testutil.MustPlan(query)
+		_, err := mware.Do(user.InjectOrgID(t.Context(), "1"), req)
+		return err
+	}
+
+	t.Run("shards an aggregation that the config lists", func(t *testing.T) {
+		cfg := Config{}
+		cfg.ShardAggregations = []string{logql.ShardQuantileOverTime}
+
+		err := exceedQuerierBytesRead(t, cfg)
+
+		require.ErrorContains(t, err, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
+	})
+
+	t.Run("does not shard an aggregation that the config does not list", func(t *testing.T) {
+		err := exceedQuerierBytesRead(t, Config{})
+
+		require.ErrorContains(t, err, fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"))
+	})
 }
 
 func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
@@ -368,6 +416,7 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     1,
@@ -381,7 +430,6 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 			},
 		},
 		0,
-		[]string{},
 	)
 
 	req := defaultReq()
@@ -478,6 +526,7 @@ func Test_astMapper_ShardPlannedChunks(t *testing.T) {
 				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
+				Config{},
 				fakeLimits{
 					maxSeries:               math.MaxInt32,
 					maxQueryParallelism:     1,
@@ -488,7 +537,6 @@ func Test_astMapper_ShardPlannedChunks(t *testing.T) {
 					},
 				},
 				2,
-				[]string{},
 			)
 
 			req := defaultReq()
@@ -529,9 +577,9 @@ func Test_ShardingByPass(t *testing.T) {
 		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1},
 		0,
-		[]string{},
 	)
 
 	req := defaultReq()
@@ -576,6 +624,7 @@ func Test_InstantSharding(t *testing.T) {
 		cpyPeriodConf,
 	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     10,
@@ -585,7 +634,6 @@ func Test_InstantSharding(t *testing.T) {
 		3,
 		statsHandler,
 		nil,
-		[]string{},
 	)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
@@ -865,9 +913,9 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				statsHandler,
 				log.NewNopLogger(),
 				nilShardingMetrics,
+				Config{},
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 				2,
-				[]string{},
 			)
 
 			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
@@ -1002,9 +1050,9 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		statsHandler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
-		[]string{},
 	)
 
 	q := `{cluster="dev-us-central-0"}`

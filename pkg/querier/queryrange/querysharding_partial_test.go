@@ -96,6 +96,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     4,
@@ -103,7 +104,6 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 			queryTimeout:            time.Minute,
 		},
 		shardsPerLeg,
-		[]string{},
 	)
 
 	query := `count_over_time({app="left"}[1h]) / count_over_time({app="right"}[1h])`
@@ -163,6 +163,7 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     1,
@@ -171,7 +172,6 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 			maxQuerierBytesRead:     10,
 		},
 		0,
-		[]string{},
 	)
 
 	query := `avg_over_time({app="foo"} | json busy="utilization" | unwrap busy [5m])`
