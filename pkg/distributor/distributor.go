@@ -867,6 +867,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 					// Do not return early here even if nothing was accepted: the
 					// live-mode rejection below still needs to run so its discards
 					// are tracked too.
+					return nil, validationErr
 				}
 				streams = accepted
 			}
