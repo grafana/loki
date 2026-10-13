@@ -245,6 +245,54 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("it pushes down every line filter when no stage modifies the line", func(t *testing.T) {
+		filterStream := logproto.Stream{
+			Labels: `{app="f"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "alpha"),
+				entry(t, 2, "beta"),
+				entry(t, 3, "alpha beta"),
+				entry(t, 4, "beta alpha"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{filterStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="f"} |= "alpha" | logfmt |= "beta" [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="f"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+			{Labels: `{app="f"}`, TimestampSec: 4, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+		}, got)
+
+		// The fixture has no other secondary column, so the read reports none when the message is
+		// read as a primary column, which happens only when a line filter is pushed down.
+		require.Zero(t, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+	})
+
+	t.Run("it pushes down only the line filters before the stage that modifies the line", func(t *testing.T) {
+		filterStream := logproto.Stream{
+			Labels: `{app="f"}`,
+			Entries: []push.Entry{
+				entry(t, 1, "alpha"),
+				entry(t, 2, "beta"),
+				entry(t, 3, "alpha beta"),
+			},
+		}
+		store := newTestDataObjStore(t, []logproto.Stream{filterStream})
+		statsCtx, ctx := stats.NewContext(testCtx(t))
+
+		// The filter on "beta" runs on the formatted line, not the stored one, so the read must ignore
+		// it. Pushed down, it would drop row 3, whose stored line has "beta".
+		got := store.selectSamples(ctx, `sum by (app) (count_over_time({app="f"} |= "alpha" | line_format "{{.app}}" != "beta" [1m]))`, at(0), at(10))
+
+		require.Equal(t, []sampleRow{
+			{Labels: `{app="f"}`, TimestampSec: 1, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+			{Labels: `{app="f"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(filterStream.Labels)},
+		}, got)
+		require.Zero(t, statsCtx.Result(time.Second, 0, len(got)).Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+	})
+
 	t.Run("a bare range aggregation surfaces structured metadata in the output labels", func(t *testing.T) {
 		store := newTestDataObjStore(t, []logproto.Stream{metadataStream})
 		got := store.selectSamples(testCtx(t), `count_over_time({app="c"}[1m])`, at(0), at(10))
