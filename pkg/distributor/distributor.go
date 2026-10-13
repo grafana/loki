@@ -547,6 +547,23 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
+	if push.ExtractBackfillShardContext(ctx) != "" {
+		// Drop labels other than service_name, __backfill__ and __backfill_shard__
+		for i, stream := range req.Streams {
+			ls, err := syntax.ParseLabels(stream.Labels)
+			if err != nil {
+				// Leave the stream untouched so the invalid labels are
+				// reported by validation below.
+				continue
+			}
+			req.Streams[i].Labels = ls.MatchLabels(true,
+				push.LabelServiceName,
+				constants.BackfillLabel,
+				constants.BackfillShardLabel,
+			).String()
+		}
+	}
+
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
