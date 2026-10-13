@@ -356,6 +356,94 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.Equal(t, expectedRecords, actualRecords)
 }
 
+// TestBuilder_CopyAndSort_ShardBuckets asserts a sorted copy stores the same bucket as the source
+// for every stream.
+//
+// The copy takes the bucket from the source section. It does not compute the bucket again. The
+// query side skips the stream-hash check when a shard maps exactly onto buckets. A wrong bucket
+// would then put the stream in the wrong shard.
+func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
+	const (
+		tenant      = "t1"
+		streamCount = 16
+	)
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+
+	source := func(t *testing.T) *dataobj.Object {
+		t.Helper()
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{tenant: {"label:app"}})
+		require.NoError(t, err)
+		for i := range streamCount {
+			require.NoError(t, builder.Append(tenant, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="app-%d", cluster="test"}`, i),
+				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+			}, now))
+		}
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	bucketsByLabels := func(t *testing.T, obj *dataobj.Object) map[string]int64 {
+		t.Helper()
+		buckets := map[string]int64{}
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamsSection, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamsSection) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				buckets[stream.Labels.String()] = stream.ShardBucket
+			}
+		}
+		return buckets
+	}
+
+	tests := []struct {
+		name      string
+		overrides TenantOverrides
+		resort    bool
+	}{
+		{
+			name:      "the merge-only copy keeps the bucket of every stream",
+			overrides: tenantOverrides{tenant: {"label:app"}},
+			resort:    false,
+		},
+		{
+			name:      "the re-sorting copy keeps the bucket of every stream",
+			overrides: tenantOverrides{tenant: {"label:cluster"}},
+			resort:    true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			src := source(t)
+
+			builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), test.overrides)
+			require.NoError(t, err)
+			resort, err := builder.requiresResort(t.Context(), src)
+			require.NoError(t, err)
+			require.Equal(t, test.resort, resort, "the case must take the copy path it names")
+
+			copied, closer, err := builder.CopyAndSort(t.Context(), src)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			sourceBuckets := bucketsByLabels(t, src)
+			require.Len(t, sourceBuckets, streamCount)
+			require.Equal(t, sourceBuckets, bucketsByLabels(t, copied))
+
+			distinctBuckets := map[int64]struct{}{}
+			for _, bucket := range sourceBuckets {
+				distinctBuckets[bucket] = struct{}{}
+			}
+			require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
+		})
+	}
+}
+
 func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 	target := TargetSortLayout([]string{"label:app"})
 	tests := []struct {
