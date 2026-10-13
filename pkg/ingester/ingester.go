@@ -268,6 +268,8 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	tenantFlushMtx sync.Mutex
+
 	// Spread out calls to the chunk store over the flush period
 	flushRateLimiter *rate.Limiter
 

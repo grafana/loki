@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -140,22 +139,23 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	level.Debug(i.logger).Log("msg", "flush queues have drained")
 }
 
-// FlushHandler triggers a flush of all in memory chunks.  Mainly used for
-// local testing.
+// FlushHandler triggers a flush of all in memory chunks.
+// Mainly used for local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// FlushTenantHandler triggers a synchronous flush of the in-memory chunks for a
+// FlushTenantHandler triggers an asynchronous flush of the in-memory chunks for a
 // single tenant (read from the X-Scope-OrgID header), optionally restricted to
 // the streams matching a LogQL stream selector passed via the "streams" param.
 // An empty/absent selector flushes all of the tenant's in-memory streams.
 //
 // After the matched chunks are flushed, it forces the in-memory index (the TSDB
 // head) to be built and shipped to object storage so the flushed chunks are
-// immediately referenceable. The flush is synchronous, so
-// callers should set a generous client timeout.
+// immediately referenceable.
+//
+// The handler is synchronous, so callers should set a generous client timeout.
 func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID, err := tenant.TenantID(ctx)
@@ -173,6 +173,10 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Do not allow concurrent flushes
+	i.tenantFlushMtx.Lock()
+	defer i.tenantFlushMtx.Unlock()
+
 	instance, ok := i.getInstanceByID(tenantID)
 	if !ok {
 		// Nothing in memory for this tenant, nothing to flush.
@@ -180,22 +184,41 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the in-memory streams matching the (optional) selector. An empty
-	// matcher set resolves to all of the tenant's streams.
-	var fps []model.Fingerprint
-	if err := instance.forMatchingStreams(ctx, time.Now(), matchers, nil, func(s *stream) error {
-		fps = append(fps, s.fp)
+	var numStreams int
+	done := make(chan struct{})
+
+	// Resolve the in-memory numStreams matching the (optional) selector.
+	// An empty matcher set resolves to all of the tenant's numStreams.
+	_ = instance.forMatchingStreams(ctx, time.Now(), matchers, nil, func(s *stream) error {
+		// First, sweep the matching stream for the given tenant.
+		i.sweepStream(instance, s, true)
+		// Then, enqueue a marker with low priority to the same queue the flush op got enqueued to.
+		// The marker holds a channel that it used to send a message to the caller, so we know when
+		// the stream has been flushed.
+		flushQueueIndex := int(uint64(s.fp) % uint64(i.cfg.ConcurrentFlushes))
+		i.flushQueues[flushQueueIndex].Enqueue(&markerOp{
+			done:   done,
+			ts:     time.Now(),
+			fp:     uint64(s.fp),
+			tenant: tenantID,
+		})
+		numStreams++
 		return nil
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	})
+
+	// Update the flush rate to spread out the flush operations
+	i.setFlushRate()
+
+	level.Info(i.logger).Log("msg", "flushing tenant streams", "tenant", tenantID, "streams", numStreams)
+
+	// Wait for all streams to be flushed
+	for range numStreams {
+		<-done
 	}
 
-	level.Info(i.logger).Log("msg", "flushing tenant streams", "tenant", tenantID, "streams", len(fps))
-
-	if err := i.flushMatchedStreamsChunks(tenantID, fps); err != nil {
-		level.Error(i.logger).Log("msg", "failed flushing tenant streams", "tenant", tenantID, "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Do not flush the index if no streams have been flushed.
+	if numStreams == 0 {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -210,32 +233,19 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// flushMatchedStreamsChunks synchronously flushes the chunks of the given streams
-// for a tenant, bounded by the configured flush concurrency (ConcurrentFlushes),
-// matching the regular flush path. Each stream is flushed through flushOp so it
-// gets the same FlushOpBackoff retry behaviour as the regular (queue-driven)
-// immediate flush.
-func (i *Ingester) flushMatchedStreamsChunks(tenantID string, fps []model.Fingerprint) error {
-	if len(fps) == 0 {
-		return nil
-	}
+type markerOp struct {
+	done   chan struct{}
+	ts     time.Time
+	fp     uint64
+	tenant string
+}
 
-	logger := util_log.WithUserID(tenantID, i.logger)
+func (o *markerOp) Key() string {
+	return fmt.Sprintf("%s-%16x-%d", o.tenant, o.fp, o.ts.UnixNano())
+}
 
-	var g errgroup.Group
-	if i.cfg.ConcurrentFlushes > 0 {
-		g.SetLimit(i.cfg.ConcurrentFlushes)
-	}
-	for _, fp := range fps {
-		g.Go(func() error {
-			return i.flushOp(logger, &flushOp{
-				userID:    tenantID,
-				fp:        fp,
-				immediate: true,
-			})
-		})
-	}
-	return g.Wait()
+func (o *markerOp) Priority() int64 {
+	return -o.ts.UnixNano()
 }
 
 type flushOp struct {
@@ -322,23 +332,27 @@ func (i *Ingester) flushLoop(j int) {
 		if o == nil {
 			return
 		}
-		op := o.(*flushOp)
+		switch op := o.(type) {
+		case *flushOp:
+			if !op.immediate {
+				_ = i.flushRateLimiter.Wait(context.Background())
+			}
 
-		if !op.immediate {
-			_ = i.flushRateLimiter.Wait(context.Background())
-		}
+			m := util_log.WithUserID(op.userID, l)
+			err := i.flushOp(m, op)
+			if err != nil {
+				level.Error(m).Log("msg", "failed to flush", "err", err)
+			}
 
-		m := util_log.WithUserID(op.userID, l)
-		err := i.flushOp(m, op)
-		if err != nil {
-			level.Error(m).Log("msg", "failed to flush", "err", err)
-		}
+			// If we're exiting & we failed to flush, put the failed operation
+			// back in the queue at a later point.
+			if op.immediate && err != nil {
+				op.from = op.from.Add(flushBackoff)
+				i.flushQueues[j].Enqueue(op)
+			}
 
-		// If we're exiting & we failed to flush, put the failed operation
-		// back in the queue at a later point.
-		if op.immediate && err != nil {
-			op.from = op.from.Add(flushBackoff)
-			i.flushQueues[j].Enqueue(op)
+		case *markerOp:
+			op.done <- struct{}{}
 		}
 	}
 }
