@@ -75,6 +75,49 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
 }
 
+func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+
+	newParams := func(t *testing.T, query string) LiteralParams {
+		t.Helper()
+		params, err := NewLiteralParams(query, start, start.Add(time.Hour), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+		require.NoError(t, err)
+		return params
+	}
+
+	queries := map[string]string{
+		"a sum of a range aggregation":  `sum(count_over_time({app="foo"}[1m]))`,
+		"a range aggregation":           `count_over_time({app="foo"}[1m])`,
+		"an approximate count distinct": `approx_count_distinct(mac, {app="foo"}[1m]) by (version)`,
+	}
+	for name, query := range queries {
+		t.Run("copies the options into the sample request of "+name, func(t *testing.T) {
+			querier := &hintCapturingQuerier{}
+			evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
+			options := &logproto.DataObjOptions{Eligible: true}
+			params := newParams(t, query).WithDataObjOptions(options)
+
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+			require.NoError(t, err)
+			require.NoError(t, stepEvaluator.Close())
+
+			require.Equal(t, options, querier.sampleParams.DataObjOptions)
+		})
+	}
+
+	t.Run("leaves the options unset when the params do not set them", func(t *testing.T) {
+		querier := &hintCapturingQuerier{}
+		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
+		params := newParams(t, queries["a sum of a range aggregation"])
+
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+		require.NoError(t, err)
+		require.NoError(t, stepEvaluator.Close())
+
+		require.Nil(t, querier.sampleParams.DataObjOptions)
+	})
+}
+
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 	op, err := syntax.MergeBinOp(syntax.OpTypeDiv,
 		&promql.Sample{

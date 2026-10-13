@@ -45,6 +45,7 @@ type Params interface {
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
 	GetHintRanges() []logproto.HintTimeRange
+	GetDataObjOptions() *logproto.DataObjOptions
 	CachingOptions() resultscache.CachingOptions
 }
 
@@ -134,9 +135,16 @@ type LiteralParams struct {
 	storeChunks    *logproto.ChunkRefGroup
 	hintRanges     []logproto.HintTimeRange
 	cachingOptions resultscache.CachingOptions
+	dataObjOptions *logproto.DataObjOptions
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
+
+// WithDataObjOptions returns a copy of the params with the given data-object options.
+func (p LiteralParams) WithDataObjOptions(options *logproto.DataObjOptions) LiteralParams {
+	p.dataObjOptions = options
+	return p
+}
 
 // String impls Params
 func (p LiteralParams) QueryString() string { return p.queryString }
@@ -170,6 +178,9 @@ func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.store
 
 // GetHintRanges implements Params.
 func (p LiteralParams) GetHintRanges() []logproto.HintTimeRange { return p.hintRanges }
+
+// GetDataObjOptions implements Params.
+func (p LiteralParams) GetDataObjOptions() *logproto.DataObjOptions { return p.dataObjOptions }
 
 // CachingOptions returns whether Loki query created from this params should be cached.
 func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
@@ -403,8 +414,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 // selectSampleParamsFor returns the params that select the samples of left, the log range of expr.
 //
 // The request sends the whole expr as the selector, so the querier can reduce labels at the source.
-// It carries the shards and hints of q. The caller must pass the order that its step evaluator
-// consumes.
+// It carries the shards, hints and data-object options of q. The caller must pass the order that
+// its step evaluator consumes.
 func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRangeExpr, order logproto.SampleOrder) SelectSampleParams {
 	return SelectSampleParams{
 		&logproto.SampleQueryRequest{
@@ -417,9 +428,10 @@ func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRan
 			Plan: &plan.QueryPlan{
 				AST: expr,
 			},
-			StoreChunks: q.GetStoreChunks(),
-			HintRanges:  q.GetHintRanges(),
-			Order:       order,
+			StoreChunks:    q.GetStoreChunks(),
+			HintRanges:     q.GetHintRanges(),
+			DataObjOptions: q.GetDataObjOptions(),
+			Order:          order,
 		},
 	}
 }

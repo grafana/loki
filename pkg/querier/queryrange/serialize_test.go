@@ -131,10 +131,10 @@ func TestResponseFormat(t *testing.T) {
 	}
 }
 
-func TestSerializeRoundTripperStripsClientHintRanges(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), "1")
+// requestWithHintRanges returns a range request that carries hint ranges, as a client could send it.
+func requestWithHintRanges() *LokiRequest {
 	start := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
-	httpRequest, err := DefaultCodec.EncodeRequest(ctx, &LokiRequest{
+	return &LokiRequest{
 		Query:     `{foo="bar"}`,
 		Limit:     100,
 		Path:      "/loki/api/v1/query_range",
@@ -145,58 +145,99 @@ func TestSerializeRoundTripperStripsClientHintRanges(t *testing.T) {
 			Start: start.Add(5 * time.Minute),
 			End:   start.Add(10 * time.Minute),
 		}},
-	})
-	require.NoError(t, err)
-
-	var got *LokiRequest
-	next := queryrangebase.HandlerFunc(func(_ context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
-		got = request.(*LokiRequest)
-		return &LokiResponse{
-			Status: loghttp.QueryStatusSuccess,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     []logproto.Stream{},
-			},
-		}, nil
-	})
-
-	response, err := NewSerializeRoundTripper(next, DefaultCodec, false).RoundTrip(httpRequest)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, response.Body.Close()) })
-	require.Empty(t, got.HintRanges)
+	}
 }
 
-func TestSerializeHTTPHandlerStripsClientHintRanges(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), "1")
-	start := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
-	httpRequest, err := DefaultCodec.EncodeRequest(ctx, &LokiRequest{
-		Query:     `{foo="bar"}`,
-		Limit:     100,
-		Path:      "/loki/api/v1/query_range",
-		StartTs:   start,
-		EndTs:     start.Add(time.Hour),
-		Direction: logproto.BACKWARD,
-		HintRanges: []logproto.HintTimeRange{{
-			Start: start.Add(5 * time.Minute),
-			End:   start.Add(10 * time.Minute),
-		}},
-	})
-	require.NoError(t, err)
-
-	var got *LokiRequest
-	next := queryrangebase.HandlerFunc(func(_ context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
-		got = request.(*LokiRequest)
-		return &LokiResponse{
+// successResponseFor returns a successful response of the type that the codec expects for the request.
+func successResponseFor(req queryrangebase.Request) queryrangebase.Response {
+	if _, ok := req.(*LokiInstantRequest); ok {
+		return &LokiPromResponse{Response: &queryrangebase.PrometheusResponse{
 			Status: loghttp.QueryStatusSuccess,
-			Data: LokiData{
-				ResultType: loghttp.ResultTypeStream,
-				Result:     []logproto.Stream{},
-			},
-		}, nil
+			Data:   queryrangebase.PrometheusData{ResultType: loghttp.ResultTypeVector},
+		}}
+	}
+	return &LokiResponse{
+		Status: loghttp.QueryStatusSuccess,
+		Data:   LokiData{ResultType: loghttp.ResultTypeStream, Result: []logproto.Stream{}},
+	}
+}
+
+func TestSerializeRoundTripperStripsClientHints(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), "1")
+
+	roundTrip := func(t *testing.T, req queryrangebase.Request) queryrangebase.Request {
+		t.Helper()
+
+		httpRequest, err := DefaultCodec.EncodeRequest(ctx, req)
+		require.NoError(t, err)
+
+		var got queryrangebase.Request
+		next := queryrangebase.HandlerFunc(func(_ context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+			got = request
+			return successResponseFor(request), nil
+		})
+
+		response, err := NewSerializeRoundTripper(next, DefaultCodec, false).RoundTrip(httpRequest)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, response.Body.Close()) })
+		return got
+	}
+
+	t.Run("clears the hint ranges a client sends", func(t *testing.T) {
+		got := roundTrip(t, requestWithHintRanges())
+
+		require.Empty(t, got.(*LokiRequest).HintRanges)
 	})
 
-	w := httptest.NewRecorder()
-	NewSerializeHTTPHandler(next, DefaultCodec).ServeHTTP(w, httpRequest)
-	require.Equal(t, http.StatusOK, w.Code)
-	require.Empty(t, got.HintRanges)
+	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
+		got := roundTrip(t, dataObjRangeRequest(true))
+
+		require.Nil(t, got.(*LokiRequest).DataObjOptions)
+	})
+
+	t.Run("clears the data-object options a client sends with an instant request", func(t *testing.T) {
+		got := roundTrip(t, dataObjInstantRequest(true))
+
+		require.Nil(t, got.(*LokiInstantRequest).DataObjOptions)
+	})
+}
+
+func TestSerializeHTTPHandlerStripsClientHints(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), "1")
+
+	serve := func(t *testing.T, req queryrangebase.Request) queryrangebase.Request {
+		t.Helper()
+
+		httpRequest, err := DefaultCodec.EncodeRequest(ctx, req)
+		require.NoError(t, err)
+
+		var got queryrangebase.Request
+		next := queryrangebase.HandlerFunc(func(_ context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+			got = request
+			return successResponseFor(request), nil
+		})
+
+		w := httptest.NewRecorder()
+		NewSerializeHTTPHandler(next, DefaultCodec).ServeHTTP(w, httpRequest)
+		require.Equal(t, http.StatusOK, w.Code)
+		return got
+	}
+
+	t.Run("clears the hint ranges a client sends", func(t *testing.T) {
+		got := serve(t, requestWithHintRanges())
+
+		require.Empty(t, got.(*LokiRequest).HintRanges)
+	})
+
+	t.Run("clears the data-object options a client sends with a range request", func(t *testing.T) {
+		got := serve(t, dataObjRangeRequest(true))
+
+		require.Nil(t, got.(*LokiRequest).DataObjOptions)
+	})
+
+	t.Run("clears the data-object options a client sends with an instant request", func(t *testing.T) {
+		got := serve(t, dataObjInstantRequest(true))
+
+		require.Nil(t, got.(*LokiInstantRequest).DataObjOptions)
+	})
 }
