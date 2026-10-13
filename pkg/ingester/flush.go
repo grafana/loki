@@ -140,22 +140,25 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	level.Debug(i.logger).Log("msg", "flush queues have drained")
 }
 
-// FlushHandler triggers a flush of all in memory chunks.  Mainly used for
-// local testing.
+// FlushHandler triggers an asynchonous flush of all in-memory chunks.
+// Mainly used for local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// FlushTenantHandler triggers a synchronous flush of the in-memory chunks for a
-// single tenant (read from the X-Scope-OrgID header), optionally restricted to
-// the streams matching a LogQL stream selector passed via the "streams" param.
-// An empty/absent selector flushes all of the tenant's in-memory streams.
+// FlushTenantHandler triggers a synchronous flush of in-memory chunks and indexes.
 //
-// After the matched chunks are flushed, it forces the in-memory index (the TSDB
-// head) to be built and shipped to object storage so the flushed chunks are
-// immediately referenceable. The flush is synchronous, so
-// callers should set a generous client timeout.
+// It is scoped for a single tenant, optionally restricted to the streams matching a stream selector.
+// An empty or absent selector flushes all of the tenant's in-memory streams.
+// After the matched chunks are flushed, it forces the index (TSDB head) to be built and shipped
+// to object storage so the flushed chunks are immediately referenceable. Only after all chunks
+// are availbale on object storage, the index referencing the chunks must be uploaded.
+//
+// Therefore, the handler explicitly bypasses the existing flush queues mechanism, which is asynchonous,
+// but would ensure sequential flushing and non-concurrent writing of the TSDB head and WAL head.
+//
+// The handler is synchronous, so callers should set a generous client timeout.
 func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID, err := tenant.TenantID(ctx)
