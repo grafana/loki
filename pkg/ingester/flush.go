@@ -196,10 +196,11 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 		// chunkMtx does not allow nested RLock() calls, but i.sweepStream() acquires the lock as well.
 		// Therefore we cannot simply RLock() at the beginning of the function and defer RUnlock()
 		s.chunkMtx.RLock()
-		if len(s.chunks) == 0 {
+		n := len(s.chunks)
+		s.chunkMtx.RUnlock()
+		if n == 0 {
 			return nil
 		}
-		s.chunkMtx.RUnlock()
 
 		// First, sweep the matching stream for the given tenant.
 		i.sweepStream(instance, s, true)
