@@ -34,6 +34,14 @@ func TestChunkShardingPolicy_PowerOfTwoShards(t *testing.T) {
 		require.Equal(t, 1024, got)
 	})
 
+	t.Run("uses the limit below the default when another tenant has the default limit", func(t *testing.T) {
+		limits := bytesPerShardLimits{tsdbBytesPerShard: map[string]int{"1": maxBytesPerShard}}
+
+		got := newChunkShardingPolicy(limits).PowerOfTwoShards([]string{"2", "1"}, stats.Stats{Bytes: bytes}, 0)
+
+		require.Equal(t, 1024, got)
+	})
+
 	t.Run("uses the default limit when a tenant has a limit of 0", func(t *testing.T) {
 		limits := bytesPerShardLimits{tsdbBytesPerShard: map[string]int{"1": 0, "2": maxBytesPerShard}}
 		indexStats := stats.Stats{Bytes: 4 * valid.DefaultTSDBMaxBytesPerShard}
