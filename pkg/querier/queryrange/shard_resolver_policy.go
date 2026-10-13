@@ -7,9 +7,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-// ShardingPolicy holds the parts of dynamic shard resolution that depend on where a query reads
+// shardingPolicy holds the parts of dynamic shard resolution that depend on where a query reads
 // its data from.
-type ShardingPolicy interface {
+type shardingPolicy interface {
 	// PowerOfTwoShards returns the number of shards of the power-of-two strategy for a query
 	// with the given index stats. The policy takes the byte limit of one shard from the limits of
 	// the tenants. A positive maxShards caps the result. A policy can also apply a cap of its
@@ -22,7 +22,7 @@ type ShardingPolicy interface {
 	BoundedShards(shards []logproto.Shard, chunks []logproto.ChunkRefGroup) ([]logproto.Shard, []logproto.ChunkRefGroup)
 }
 
-var _ ShardingPolicy = chunkShardingPolicy{}
+var _ shardingPolicy = chunkShardingPolicy{}
 
 // chunkShardingPolicy is the policy of queries that read chunks.
 type chunkShardingPolicy struct {

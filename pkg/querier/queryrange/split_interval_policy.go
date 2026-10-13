@@ -6,9 +6,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-// SplitIntervalPolicy holds the parts of time splitting that depend on where a query reads its
+// splitIntervalPolicy holds the parts of time splitting that depend on where a query reads its
 // data from.
-type SplitIntervalPolicy interface {
+type splitIntervalPolicy interface {
 	// RangeQueryInterval returns the interval that cuts the time range of a metric range request.
 	// It returns 0 when the tenants turn splitting off.
 	RangeQueryInterval(tenantIDs []string, r *LokiRequest) time.Duration
@@ -18,7 +18,7 @@ type SplitIntervalPolicy interface {
 	InstantQueryInterval(tenantIDs []string) time.Duration
 }
 
-var _ SplitIntervalPolicy = chunkSplitIntervalPolicy{}
+var _ splitIntervalPolicy = chunkSplitIntervalPolicy{}
 
 // chunkSplitIntervalPolicy is the policy of queries that read chunks.
 type chunkSplitIntervalPolicy struct {
