@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -51,10 +49,8 @@ var errUnrecoverable = errors.New("unrecoverable ToC error")
 var (
 	// errChangeAlreadyApplied means the ToC already holds the change.
 	errChangeAlreadyApplied = errors.New("ToC already holds the change")
-	// errChangeSuperseded means another writer removed a path to remove
-	// first: the ToC lacks at least one of them, and it does not already
-	// hold the change.
-	errChangeSuperseded = errors.New("ToC lacks a path to remove")
+	// errChangeSuperseded means another writer removed a path to remove first.
+	errChangeSuperseded = errors.New("ToC is missing paths to remove")
 )
 
 // checkTenant returns an error that wraps errUnrecoverable unless tenant is
@@ -244,8 +240,8 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 // path is in remove, then adds the entries of add that the ToC does not hold.
 //
 // If remove is not empty, the change applies only if the ToC holds every path
-// in remove. Otherwise it writes nothing. A missing ToC holds no path, so such
-// a change does not create it.
+// in remove. Otherwise it writes nothing. If a ToC doesn't exist yet and
+// remove is not empty, the change does not create it.
 type tocChange struct {
 	remove map[string]struct{}
 	add    []TableOfContentsEntry
@@ -265,10 +261,8 @@ const (
 	// attempt wrote nothing. An earlier attempt of the same call may have
 	// written it.
 	changeAlreadyApplied changeResult = "already_applied"
-	// changeSuperseded means another writer removed a path to remove first:
-	// the ToC lacked at least one of them, and it did not already hold the
-	// change. The attempt wrote nothing, so the ToC still holds the paths it
-	// found, and the new index objects are not referenced.
+	// changeSuperseded means another writer removed a path to remove first,
+	// so the attempt wrote nothing.
 	changeSuperseded changeResult = "superseded"
 	// changeConflict means the attempt lost its conditional write to another
 	// writer and wrote nothing. Only an attempt has this result.
@@ -284,8 +278,7 @@ const (
 // another tenant. op labels the metrics and logs.
 //
 // It returns nil if it wrote the change. It returns errChangeAlreadyApplied
-// or errChangeSuperseded if the ToC needed no write from this call. It does
-// not retry these.
+// or errChangeSuperseded if the ToC needed no write from this call.
 func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenant string, window time.Time, change tocChange) error {
 	result := changeFailed
 	start := time.Now()
@@ -327,7 +320,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 
 		case errors.Is(err, errChangeSuperseded):
 			result = changeSuperseded
-			level.Info(m.logger).Log("msg", "toc update skipped: toc lacks a path to remove", "op", op, "tocPath", tocPath, "err", err)
+			level.Info(m.logger).Log("msg", "toc update skipped: toc is missing paths to remove", "op", op, "tocPath", tocPath, "err", err)
 			m.reportAttempt(op, result, attemptStart)
 			return err
 
@@ -369,23 +362,9 @@ func (m *TableOfContentsWriter) reportAttempt(op tocOp, result changeResult, sin
 	m.metrics.writeAttemptSeconds.WithLabelValues(string(op), string(result)).Observe(time.Since(since).Seconds())
 }
 
-// rebuildToc returns the ToC that results from applying change to the
-// existing ToC. existing is nil or empty if the ToC does not exist yet. The
-// caller owns the returned reader and must close it.
-//
-// rebuildToc keeps one pointer for each path, so the ToC it returns holds no
-// repeated paths, even if the existing ToC does. It does not rewrite a ToC
-// only to drop repeated paths, so they stay until the next change that writes.
-//
-// If the change has paths to remove, rebuildToc writes nothing unless the
-// existing ToC holds every one of them. It then returns
-// errChangeAlreadyApplied if the ToC holds none of them and every entry to
-// add. Otherwise it returns an error that wraps errChangeSuperseded and names
-// the missing paths.
-//
-// It also returns errChangeAlreadyApplied if the change has no paths to
-// remove and the ToC holds every entry to add. It returns an error that wraps
-// errUnrecoverable if the existing ToC holds a section of another tenant.
+// rebuildToc returns the ToC that results from applying change to existing,
+// which is nil or empty if the ToC does not exist yet. The caller owns the
+// returned reader and must close it.
 func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexobj.Builder, existing io.Reader, change tocChange) (io.ReadCloser, error) {
 	builder.Reset()
 
@@ -397,8 +376,8 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	}
 
 	var (
-		kept  = make(map[string]struct{})
-		found = make(map[string]struct{}, len(change.remove))
+		kept    = make(map[string]struct{})
+		removed = make(map[string]struct{}, len(change.remove))
 	)
 	if buf.Len() > 0 {
 		tocObject, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -411,9 +390,11 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 
 		err = forEachTocPointer(ctx, tocObject, func(pointer indexpointers.IndexPointer) error {
 			if _, ok := change.remove[pointer.Path]; ok {
-				found[pointer.Path] = struct{}{}
+				removed[pointer.Path] = struct{}{}
 				return nil
 			}
+			// Keep one pointer for each path. The ToC can hold repeated paths
+			// from before, and they stay until the next change that writes.
 			if _, ok := kept[pointer.Path]; ok {
 				return nil
 			}
@@ -428,14 +409,10 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	if len(found) < len(change.remove) {
-		// Write nothing. Without every path to remove, the new entries would
-		// cover the data of the remaining old paths a second time.
-		//
-		// An earlier attempt of this call that wrote the change and lost the
-		// response removed every path. So if no path to remove is left and the
-		// ToC holds every entry to add, an earlier swap applied the change.
-		alreadyApplied := len(found) == 0
+	if len(removed) < len(change.remove) {
+		// Write nothing. An earlier attempt may have written the change and
+		// lost the response.
+		alreadyApplied := len(removed) == 0
 		for _, entry := range change.add {
 			if _, ok := kept[entry.Path]; !ok {
 				alreadyApplied = false
@@ -446,14 +423,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 			return nil, errChangeAlreadyApplied
 		}
 
-		missing := make([]string, 0, len(change.remove)-len(found))
-		for path := range change.remove {
-			if _, ok := found[path]; !ok {
-				missing = append(missing, path)
-			}
-		}
-		slices.Sort(missing)
-		return nil, fmt.Errorf("%w: %s", errChangeSuperseded, strings.Join(missing, ", "))
+		return nil, fmt.Errorf("%w: %d of %d", errChangeSuperseded, len(change.remove)-len(removed), len(change.remove))
 	}
 
 	var added int
@@ -472,7 +442,9 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	if len(found) == 0 && added == 0 {
+	// The change has no paths to remove, and the ToC already holds every
+	// entry to add.
+	if len(removed) == 0 && added == 0 {
 		return nil, errChangeAlreadyApplied
 	}
 	return flushToc(ctx, builder)

@@ -528,7 +528,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.False(t, swapped)
 		require.Equal(t, 1, bucket.Calls())
 		require.Equal(t, before, readRawToC(ctx, t, inner, tocPath))
-		require.Contains(t, logs.String(), "idx/a-gone-0, idx/a-gone-1")
+		require.Contains(t, logs.String(), "ToC is missing paths to remove: 2 of 4")
 
 		want := map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}
 		require.Equal(t, want, sampleCounts(t, writer.metrics.writeAttemptSeconds, opReplace))
