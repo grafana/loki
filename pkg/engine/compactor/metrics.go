@@ -16,24 +16,44 @@ const (
 	labelOutcome = "outcome"
 	labelThread  = "thread"
 	labelAge     = "age"
+	labelPhase   = "phase"
 )
+
+// Values of the outcome label of a phase cycle.
+const (
+	cycleCompacted = "compacted"
+	cycleConverged = "converged"
+	cycleFailed    = "failed"
+)
+
+// cycleOutcomeLabel returns the outcome label of a phase cycle. A cycle that
+// applied a swap is compacted even when another window or index failed, so
+// the label shows progress. The phase outcome still makes the loop retry.
+func cycleOutcomeLabel(stats compactionStats, failed bool) string {
+	switch {
+	case stats.added > 0:
+		return cycleCompacted
+	case failed:
+		return cycleFailed
+	default:
+		return cycleConverged
+	}
+}
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
 // per-tenant worker loops.
+//
+// Every cycle metric has one observation per phase cycle. A phase cycle is one
+// run of IndexMerge or LogMerge for a tenant over every compacted window.
 type coordinatorMetrics struct {
+	// unconsolidatedBacklog, oldestBacklogLogAgeSeconds, and tenantIndexes
+	// describe the state that the last IndexMerge cycle without an error read.
 	unconsolidatedBacklog      *prometheus.GaugeVec // tenant
 	oldestBacklogLogAgeSeconds *prometheus.GaugeVec // tenant
-	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
+	tenantIndexes              *prometheus.GaugeVec // tenant
 
-	// cyclesTotal counts worker-loop phase iterations by outcome.
-	// outcome=compacted|converged|failed
-	cyclesTotal *prometheus.CounterVec
-
-	// tenantCyclesTotal counts per-tenant index-compaction cycle outcomes.
-	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
-
-	// tenantLogCyclesTotal counts per-tenant log-compaction cycle outcomes.
-	tenantLogCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
+	tenantCyclesTotal    *prometheus.CounterVec   // phase, outcome, tenant
+	cycleDurationSeconds *prometheus.HistogramVec // phase, outcome
 
 	// indexesRemovedTotal counts source indexes removed by compaction
 	// (cumulative). Use with indexesAddedTotal to compute net reduction:
@@ -43,25 +63,18 @@ type coordinatorMetrics struct {
 	// indexesAddedTotal counts new compacted indexes written.
 	indexesAddedTotal *prometheus.CounterVec // tenant
 
-	// tasksTotal counts compaction tasks of every kind that successful tenant
-	// cycles dispatched. The kinds are IndexMerge, LogMerge, SortObject, and
+	// tasksTotal counts compaction tasks of every kind that compacted cycles
+	// dispatched. The kinds are IndexMerge, LogMerge, SortObject, and
 	// IndexFilter.
 	tasksTotal *prometheus.CounterVec // tenant
-
-	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
-	// iteration (IndexMerge or LogMerge).
-	cycleDurationSeconds prometheus.Histogram
 
 	// cycleBackoffSeconds measures the wait a worker applies between phases. A
 	// rising distribution means workers are increasingly idle (converged, empty,
 	// or failing) and backing off rather than hammering object storage.
 	cycleBackoffSeconds prometheus.Histogram
 
-	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
-	// duration. Excludes the converged-skip path.
-	tenantCycleDurationSeconds *prometheus.HistogramVec // outcome=compacted|failed
-
-	// indexInputRuns measures the number of Runs in a tenant's index compaction cycle.
+	// indexInputRuns has one observation each time the IndexMerge planner
+	// reads one layout group of one window.
 	indexInputRuns prometheus.Histogram
 
 	// pendingLogBytes is the uncompressed log bytes that the current LogMerge
@@ -78,60 +91,45 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	return &coordinatorMetrics{
 		unconsolidatedBacklog: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_unconsolidated_index_backlog",
-			Help: "Per-tenant count of nonterminal index runs beyond one. Steady state: 0.",
+			Help: "Per-tenant count of nonterminal index runs beyond one, summed over every layout group in every compacted window. Set by each IndexMerge cycle without an error. Steady state: 0.",
 		}, []string{labelTenant}),
 		oldestBacklogLogAgeSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_oldest_backlog_log_age_seconds",
-			Help: "Per-tenant age (now - min(max_timestamp)) of the oldest unconsolidated index in the current + previous ToC windows. Zero when there is no backlog.",
+			Help: "Per-tenant age (now - min(max_timestamp)) of the oldest unconsolidated index in every compacted window. Set by each IndexMerge cycle without an error. Zero when there is no backlog.",
 		}, []string{labelTenant}),
-		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant raw index count for the current ToC window. Bounded cardinality (1 series per tenant).",
+		tenantIndexes: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_tenant_indexes",
+			Help: "Per-tenant raw index count, summed over every compacted window. Set by each IndexMerge cycle without an error.",
 		}, []string{labelTenant}),
-
-		// Operational counters / histograms.
-		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_compaction_cycles_total",
-			Help: "Total worker-loop phase iterations by outcome (compacted = ToC swap applied, converged = no work, failed = phase error).",
-		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
-			Help: "Per-tenant index-compaction cycle outcomes. compacted = ToC swapped, converged = no true section overlap, failed = cycle returned error.",
-		}, []string{labelOutcome, labelTenant}),
-		tenantLogCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_compaction_tenant_log_cycles_total",
-			Help: "Per-tenant log-compaction cycle outcomes. compacted = ToC swapped, converged = no worthwhile section overlap, failed = cycle returned error.",
-		}, []string{labelOutcome, labelTenant}),
+			Help: "Per-tenant phase cycles over every compacted window, by phase and outcome. compacted = at least one ToC swap applied, converged = no work, failed = an error and no swap.",
+		}, []string{labelPhase, labelOutcome, labelTenant}),
+		cycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
+			Help:    "Wall-clock duration of one phase cycle over every compacted window, by phase and outcome.",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 20), // 10ms .. ~87m
+		}, []string{labelPhase, labelOutcome}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
-			Help: "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
+			Help: "Cumulative count of source index pointers removed from the ToC by compacted cycles.",
 		}, []string{labelTenant}),
 		indexesAddedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_added_total",
-			Help: "Cumulative count of compacted index pointers written to the ToC by successful tenant cycles.",
+			Help: "Cumulative count of compacted index pointers written to the ToC by compacted cycles.",
 		}, []string{labelTenant}),
 		tasksTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tasks_total",
-			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, SortObject, IndexFilter) dispatched per tenant by successful tenant cycles.",
+			Help: "Cumulative count of compaction tasks (IndexMerge, LogMerge, SortObject, IndexFilter) dispatched per tenant by compacted cycles.",
 		}, []string{labelTenant}),
-		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
-			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
-			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
-		}),
 		cycleBackoffSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_backoff_seconds",
 			Help:    "Wait a worker applies between phases. Grows exponentially for idle (converged/empty) or failing tenants up to max-backoff.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s .. ~68m
 		}),
-		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_tenant_cycle_duration_seconds",
-			Help:    "Per-tenant cycle wall-clock duration. Excludes the converged-skip path.",
-			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14),
-		}, []string{"outcome"}),
 		indexInputRuns: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_index_input_runs",
-			Help:    "Number of strict index runs offered to the task planner.",
+			Help:    "Number of strict index runs offered to the task planner. One observation per layout group in each window of an IndexMerge cycle.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
 		}),
 		pendingLogBytes: f.NewGaugeVec(prometheus.GaugeOpts{
@@ -145,21 +143,38 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	}
 }
 
-func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexEntry, now time.Time) {
-	backlog := max(0, runs-1)
-	if converged {
-		backlog = 0
-	}
-	m.unconsolidatedBacklog.WithLabelValues(tenant).Set(float64(backlog))
+// indexBacklog is the unconsolidated index state that one IndexMerge cycle
+// read for a tenant. Merge combines the state of layout groups and windows.
+type indexBacklog struct {
+	// indexes is the raw index count.
+	indexes int
+	// runs is the count of nonterminal runs beyond one in each layout group.
+	runs int
+	// oldestEnd is the minimum End of the indexes in layout groups with
+	// backlog. It is zero when runs is zero.
+	oldestEnd time.Time
+}
 
-	var oldestAge float64
-	if backlog > 0 {
-		oldest := oldestEnd(entries)
-		if !oldest.IsZero() {
-			oldestAge = now.Sub(oldest).Seconds()
-		}
+// Merge returns the combined backlog of b and other.
+func (b indexBacklog) Merge(other indexBacklog) indexBacklog {
+	oldest := b.oldestEnd
+	if oldest.IsZero() || (!other.oldestEnd.IsZero() && other.oldestEnd.Before(oldest)) {
+		oldest = other.oldestEnd
 	}
-	m.oldestBacklogLogAgeSeconds.WithLabelValues(tenant).Set(oldestAge)
+	return indexBacklog{
+		indexes:   b.indexes + other.indexes,
+		runs:      b.runs + other.runs,
+		oldestEnd: oldest,
+	}
+}
+
+// groupBacklog returns the backlog of one layout group with the given run
+// count. It does not count indexes, because the window counts them once.
+func groupBacklog(converged bool, runs int, entries []indexEntry) indexBacklog {
+	if converged || runs <= 1 {
+		return indexBacklog{}
+	}
+	return indexBacklog{runs: runs - 1, oldestEnd: oldestEnd(entries)}
 }
 
 // oldestEnd returns the minimum End timestamp across entries, or the zero
@@ -173,54 +188,24 @@ func oldestEnd(entries []indexEntry) (oldest time.Time) {
 	return oldest
 }
 
-// observeCycle records the outcome and wall-clock duration of one worker-loop
-// phase iteration.
-func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration) {
-	m.cyclesTotal.WithLabelValues(outcome).Inc()
-	m.cycleDurationSeconds.Observe(duration.Seconds())
-}
+func (m *coordinatorMetrics) observeIndexBacklog(tenant string, b indexBacklog, now time.Time) {
+	m.unconsolidatedBacklog.WithLabelValues(tenant).Set(float64(b.runs))
+	m.tenantIndexes.WithLabelValues(tenant).Set(float64(b.indexes))
 
-// observeTenantCycle records per-tenant index-compaction cycle outcomes and
-// counts. stats is consulted for the compacted outcome; pass the zero value for
-// converged/failed.
-func (m *coordinatorMetrics) observeTenantCycle(
-	tenant string,
-	outcome string,
-	duration time.Duration,
-	stats compactionStats,
-) {
-	m.tenantCyclesTotal.WithLabelValues(outcome, tenant).Inc()
-	m.recordTenantCycle(tenant, outcome, duration, stats)
-}
-
-// observeTenantLogCycle records per-tenant log-compaction cycle outcomes and
-// counts. stats is consulted for the compacted outcome; pass the zero value for
-// converged/failed.
-func (m *coordinatorMetrics) observeTenantLogCycle(
-	tenant string,
-	outcome string,
-	duration time.Duration,
-	stats compactionStats,
-) {
-	m.tenantLogCyclesTotal.WithLabelValues(outcome, tenant).Inc()
-	m.recordTenantCycle(tenant, outcome, duration, stats)
-}
-
-// recordTenantCycle records the duration and index/task deltas shared by both
-// index- and log-compaction cycles.
-func (m *coordinatorMetrics) recordTenantCycle(
-	tenant string,
-	outcome string,
-	duration time.Duration,
-	stats compactionStats,
-) {
-	// The converged outcome skips the duration histogram.
-	if outcome != "converged" {
-		m.tenantCycleDurationSeconds.WithLabelValues(outcome).Observe(duration.Seconds())
+	var oldestAge float64
+	if !b.oldestEnd.IsZero() {
+		oldestAge = now.Sub(b.oldestEnd).Seconds()
 	}
-	// The compacted outcome adds/removes indexes and dispatches tasks, so
-	// record its deltas.
-	if outcome == "compacted" {
+	m.oldestBacklogLogAgeSeconds.WithLabelValues(tenant).Set(oldestAge)
+}
+
+// observeCycle records one phase cycle of the tenant. stats holds the swaps
+// that applied. failed reports an error in any window or index.
+func (m *coordinatorMetrics) observeCycle(tenant string, p phase, stats compactionStats, failed bool, duration time.Duration) {
+	outcome := cycleOutcomeLabel(stats, failed)
+	m.tenantCyclesTotal.WithLabelValues(p.String(), outcome, tenant).Inc()
+	m.cycleDurationSeconds.WithLabelValues(p.String(), outcome).Observe(duration.Seconds())
+	if outcome == cycleCompacted {
 		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed))
 		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
 		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
@@ -229,21 +214,18 @@ func (m *coordinatorMetrics) recordTenantCycle(
 
 // deleteTenant drops every per-tenant coordinator series for the tenant so a
 // stopped worker's gauges do not linger and report a disabled tenant's
-// last-known values. cyclesTotal, cycleDurationSeconds, and
-// tenantCycleDurationSeconds are intentionally omitted: cyclesTotal and
-// cycleDurationSeconds carry no tenant label, and tenantCycleDurationSeconds
-// carries only an outcome label (no tenant label).
+// last-known values. cycleDurationSeconds and cycleBackoffSeconds have no
+// tenant label, so they keep their series.
 func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
 	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
-	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.tenantIndexes.DeleteLabelValues(tenant)
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)
 	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
-	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

@@ -75,7 +75,7 @@ func newCompactionScenario(ctx context.Context, t *testing.T, input scenarioInpu
 func (s *compactionScenario) compactUntilIdle(tenant string) {
 	s.t.Helper()
 	for cycle := range 10 {
-		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window)
+		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
 		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)
@@ -126,7 +126,7 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
 	require.Equal(t, []string{"indexes/aa/src-0", "indexes/dd/idx-d-0"}, pathsOf(initial["untouched"]))
 	require.Len(t, initial["acme"], 3, "sanity: 3 source indexes seeded")
-	_, runErr := c.compactTenantIndexes(ctx, "acme", window, initial["acme"])
+	_, _, runErr := c.compactTenantIndexes(ctx, "acme", window, initial["acme"])
 	require.NoError(t, runErr)
 
 	postCycle1 := mustLoadTenantIndexes(ctx, t, bucket, window)
@@ -153,7 +153,7 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 		if len(before) <= 1 {
 			break
 		}
-		_, runErr := c.compactTenantIndexes(ctx, "acme", window, before)
+		_, _, runErr := c.compactTenantIndexes(ctx, "acme", window, before)
 		require.NoError(t, runErr)
 		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
 		require.LessOrEqual(t, len(after), len(before), "cycle %d must not increase index count", cycle+2)

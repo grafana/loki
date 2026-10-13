@@ -619,7 +619,7 @@ func TestCompactTenant_DispatchesIndexMergePlans(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	stats, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
+	stats, _, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
 		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
 		{Path: "indexes/b", Start: window.Add(time.Hour), End: window.Add(2 * time.Hour)},
 	})
@@ -713,7 +713,7 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	result, err := c.compactTenantIndexes(ctx, "acme", window, entries)
+	result, _, err := c.compactTenantIndexes(ctx, "acme", window, entries)
 	require.NoError(t, err)
 	require.Equal(t, compactionStats{removed: 4, added: 2, dispatched: 2}, result)
 
@@ -906,7 +906,8 @@ func TestCompactJobToCEdgeCases(t *testing.T) {
 				return bucket, func(c *coordinator) (compactionStats, error) {
 					indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 					require.NoError(t, err)
-					return c.compactTenantIndexes(ctx, "acme", window, indexes)
+					stats, _, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
+					return stats, err
 				}
 			},
 		},
@@ -1006,7 +1007,7 @@ func TestCompact_SplitsWhenRunsExceedK(t *testing.T) {
 
 		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
-		stats, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
+		stats, _, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
 		require.NoError(t, err)
 		require.Equal(t, 2, stats.dispatched, "3 overlapping runs with K=2 must split into 2 tasks")
 		require.Equal(t, 2, stats.added)
@@ -1173,7 +1174,8 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		indexes, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
 		return bucket, func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantIndexes(ctx, "acme", window, indexes)
+			stats, _, err := c.compactTenantIndexes(ctx, "acme", window, indexes)
+			return stats, err
 		}
 	}
 	equalRuns := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
@@ -1298,7 +1300,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme"))
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
 }
 
@@ -1324,7 +1326,7 @@ func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsIsNoWork(t *testin
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(3*time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme"))
 	require.Empty(t, replacer.snapshot(), "sections from one physical object are already converged")
 	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
 	require.Zero(t, testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
@@ -1344,13 +1346,13 @@ func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	stats, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
+	stats, backlog, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
 
 	require.NoError(t, err)
 	require.Equal(t, compactionStats{}, stats)
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
-	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+	require.Zero(t, backlog.runs)
 }
 
 func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
@@ -1375,7 +1377,7 @@ func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
+	_, backlog, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{
 		{Path: "indexes/a", Start: window, End: window.Add(time.Hour)},
 		{Path: "indexes/b", Start: window, End: window.Add(time.Hour)},
 	})
@@ -1383,7 +1385,7 @@ func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, runner.snapshot(), 1)
 	require.Len(t, replacer.snapshot(), 1)
-	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+	require.Equal(t, 1, backlog.runs)
 }
 
 func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
@@ -1396,7 +1398,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	_, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
+	_, _, err := c.compactTenantIndexes(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
 
 	require.ErrorContains(t, err, "discover index section bounds")
 	require.Empty(t, runner.snapshot())
@@ -1409,7 +1411,7 @@ func TestRunIndexMergePhase_MissingToCIsNoWork(t *testing.T) {
 	bucket := objstore.NewInMemBucket() // no ToC written
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme"))
 }
 
 func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
@@ -1429,7 +1431,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
+	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme"))
 	require.Len(t, replacer.snapshot(), 1)
 }
 
@@ -1561,8 +1563,8 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
 		require.Len(t, runner.snapshot(), 2)
 		require.Len(t, replacer.snapshot(), 1)
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")))
-		require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("log_merge", "compacted", "acme")))
+		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("log_merge", "failed", "acme")))
 		require.Equal(t, 200.0, pendingBytes(c), "the failed index keeps its bytes")
 	})
 
@@ -1581,7 +1583,7 @@ func TestRunLogMergePhase(t *testing.T) {
 
 		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
 		require.Zero(t, pendingBytes(c))
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("converged", "acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("log_merge", "converged", "acme")))
 	})
 
 	t.Run("sets zero pending bytes when no window needs compaction", func(t *testing.T) {
@@ -1661,14 +1663,22 @@ func TestRunLogMergePhase(t *testing.T) {
 	})
 }
 
-// totalCycles returns the number of phase cycles that c recorded, over all
-// outcomes.
-func totalCycles(c *coordinator) float64 {
+// tenantCycles returns the number of acme phase cycles that c recorded with
+// one of the given outcomes, over both phases.
+func tenantCycles(c *coordinator, outcomes ...string) float64 {
 	var total float64
-	for _, outcome := range []string{"compacted", "converged", "failed"} {
-		total += testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues(outcome))
+	for _, p := range []phase{phaseIndexMerge, phaseLogMerge} {
+		for _, outcome := range outcomes {
+			total += testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues(p.String(), outcome, "acme"))
+		}
 	}
 	return total
+}
+
+// totalCycles returns the number of acme phase cycles that c recorded, over
+// all phases and outcomes.
+func totalCycles(c *coordinator) float64 {
+	return tenantCycles(c, cycleCompacted, cycleConverged, cycleFailed)
 }
 
 func TestRunPhase(t *testing.T) {
@@ -1679,11 +1689,11 @@ func TestRunPhase(t *testing.T) {
 		require.Equal(t, 1.0, totalCycles(c))
 	})
 
-	t.Run("records one cycle per window for an IndexMerge phase", func(t *testing.T) {
+	t.Run("records one cycle for an IndexMerge phase across all windows", func(t *testing.T) {
 		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
 
 		c.runPhase(t.Context(), "acme", phaseIndexMerge)
-		require.Equal(t, 2.0, totalCycles(c))
+		require.Equal(t, 1.0, totalCycles(c))
 	})
 }
 
@@ -1692,7 +1702,7 @@ func TestRunMultiplePhases(t *testing.T) {
 		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
 
 		c.runMultiplePhases(t.Context(), "acme", phaseIndexMerge, 3)
-		require.Equal(t, 6.0, totalCycles(c), "two windows per iteration")
+		require.Equal(t, 3.0, totalCycles(c))
 	})
 
 	t.Run("returns swapped when any iteration swaps", func(t *testing.T) {
@@ -1976,7 +1986,7 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		// Repeated failed cycles prove the loop keeps retrying the same phase
 		// rather than giving up or flipping.
 		require.Eventually(t, func() bool {
-			return testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("failed")) >= 3
+			return tenantCycles(c, cycleFailed) >= 3
 		}, 2*time.Second, 5*time.Millisecond, "a failing phase must retry")
 		cancel()
 		<-done
