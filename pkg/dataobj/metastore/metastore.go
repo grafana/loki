@@ -32,11 +32,13 @@ type SectionsRequest struct {
 	Matchers   []*labels.Matcher
 	Predicates []*labels.Matcher
 
-	// ShardBucketRange, when set, asks the metastore to leave out streams outside the range.
+	// ShardBucketRange, when set, asks the metastore to leave the streams outside the range out
+	// of the section descriptors it returns.
 	//
-	// The response holds every matching stream inside the range. It can also hold streams outside
-	// it, because the metastore prunes whole index rows by their bucket ranges, not single
-	// streams. The caller must drop the streams outside the range.
+	// The index stores one bucket range for each label name and value in a section, not for
+	// each stream. The metastore skips a label name and value only when its whole bucket range
+	// lies outside the range. A kept one can still list streams outside the range, so the
+	// caller must drop them.
 	//
 	// Sections can fail when From exceeds To, or when an index object lacks the bucket
 	// information to prune by. It can also fail when two index objects list different streams

@@ -141,14 +141,12 @@ func shardBucketPredicate(sec *Section, r *ShardBucketRange) (Predicate, error) 
 		return nil, fmt.Errorf("invalid shard bucket range [%d, %d]", r.From, r.To)
 	}
 
-	// Both bucket columns must hold a value for every label row. A NULL max sorts below every
-	// value, so the predicate would drop that row, and the query would lose its streams
-	// without an error. A NULL min would keep the row, but it shows a writer bug, so it is an
-	// error too.
+	// Only label rows have a label value, so the label value count is the label row count. A
+	// section with only bloom rows has none, and nothing to prune.
 	//
-	// The writer sets the label value of every label row and leaves it NULL for every bloom
-	// row. So the number of label values must match the number of label rows, and here we double
-	// check it.
+	// To guarantee consistency, we ensure that every postings row has both the min and max shard
+	// bucket. If any of these values is null, then max would sort below every value, so the
+	// predicate would silently drop that row.
 	var labelRows uint64
 	if col := sectionColumn(sec, ColumnTypeLabelValue); col != nil {
 		labelRows = col.inner.Metadata().ValuesCount
