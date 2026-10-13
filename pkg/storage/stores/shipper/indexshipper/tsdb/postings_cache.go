@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -20,13 +22,30 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-const postingsCodecVersion = "v1"
+const (
+	postingsCodecVersion = "v1"
+	// Keep the queue small because jobs retain uncompressed postings.
+	postingsWriteBuffer  = 16
+	postingsWriteTimeout = 5 * time.Second
+)
 
 type postingsCache struct {
 	cache.Cache
 	logger  log.Logger
 	metrics *postingsCacheMetrics
 	lookups singleflight.Group // Cache key to in-flight fetch/decode; completed results are not retained.
+
+	// make writes purely async so we don't pay the network penalty on a miss
+	writes       chan postingsWrite
+	writeCtx     context.Context
+	cancelWrites context.CancelFunc
+	writeWG      sync.WaitGroup
+	writeMu      sync.Mutex // Serializes enqueueing with shutdown.
+}
+
+type postingsWrite struct {
+	key  string
+	refs []storage.SeriesRef // Immutable and shared with the returned iterator.
 }
 
 type postingsLookup struct {
@@ -42,7 +61,19 @@ type postingsCacheMetrics struct {
 }
 
 func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
-	return &postingsCache{Cache: c, logger: logger, metrics: newPostingsCacheMetrics(name, reg)}
+	// Cancel context intentionally separate from the originating query.
+	ctx, cancel := context.WithCancel(context.Background())
+	pc := &postingsCache{
+		Cache:        c,
+		logger:       logger,
+		metrics:      newPostingsCacheMetrics(name, reg),
+		writes:       make(chan postingsWrite, postingsWriteBuffer),
+		writeCtx:     ctx,
+		cancelWrites: cancel,
+	}
+	pc.writeWG.Add(1)
+	go pc.writeBackLoop()
+	return pc
 }
 
 func newPostingsCacheMetrics(name string, reg prometheus.Registerer) *postingsCacheMetrics {
@@ -189,17 +220,19 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 		return nil, err
 	}
 	slices.Sort(refs)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if writeCache {
-		encoded, err := encodePostings(key, refs)
-		if err != nil {
-			c.metrics.encodeFailures.Inc()
-			level.Warn(c.logger).Log("msg", "failed to encode postings for cache", "err", err)
-			return index.NewListPostings(refs), nil
+		c.writeMu.Lock()
+		if c.writeCtx.Err() == nil && ctx.Err() == nil {
+			select {
+			case c.writes <- postingsWrite{key: key, refs: refs}:
+			default:
+				// Cache write is best effort; never block queries on a full queue.
+			}
 		}
-		if err := c.Store(ctx, []string{cache.HashKey(key)}, [][]byte{encoded}); err != nil {
-			c.metrics.storeFailures.Inc()
-			level.Warn(c.logger).Log("msg", "failed to store postings in cache", "err", err)
-		}
+		c.writeMu.Unlock()
 	}
 	return index.NewListPostings(refs), nil
 }
@@ -238,4 +271,55 @@ func (c *postingsCache) fetchPostingsRefs(ctx context.Context, key string) (refs
 		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
 	}
 	return nil, false, true
+}
+
+// Stop cancels pending population and waits for the worker before stopping the cache.
+func (c *postingsCache) Stop() {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if c.writeCtx.Err() != nil {
+		return
+	}
+	c.cancelWrites()
+	close(c.writes)
+	// Keep the lock until shutdown completes so concurrent Stop calls wait too.
+	// The worker does not acquire writeMu.
+	c.writeWG.Wait()
+	// Release references retained by abandoned jobs.
+	for range c.writes {
+	}
+	c.Cache.Stop()
+}
+
+func (c *postingsCache) writeBackLoop() {
+	defer c.writeWG.Done()
+	for {
+		select {
+		case <-c.writeCtx.Done():
+			return
+		case job, ok := <-c.writes:
+			if !ok || c.writeCtx.Err() != nil {
+				return
+			}
+			c.writePostings(job)
+		}
+	}
+}
+
+func (c *postingsCache) writePostings(job postingsWrite) {
+	ctx, cancel := context.WithTimeout(c.writeCtx, postingsWriteTimeout)
+	defer cancel()
+	encoded, err := encodePostings(job.key, job.refs)
+	if err != nil {
+		c.metrics.encodeFailures.Inc()
+		level.Warn(c.logger).Log("msg", "failed to encode postings for cache", "err", err)
+		return
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	if err := c.Store(ctx, []string{cache.HashKey(job.key)}, [][]byte{encoded}); err != nil {
+		c.metrics.storeFailures.Inc()
+		level.Warn(c.logger).Log("msg", "failed to store postings in cache", "err", err)
+	}
 }

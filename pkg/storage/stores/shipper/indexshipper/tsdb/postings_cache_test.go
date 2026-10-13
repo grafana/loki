@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -26,6 +29,7 @@ import (
 )
 
 type postingsTestCache struct {
+	mu       sync.Mutex
 	entries  map[string][]byte
 	fetchErr error
 	storeErr error
@@ -35,6 +39,8 @@ type postingsTestCache struct {
 }
 
 func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.stores++
 	if c.storeErr != nil {
 		return c.storeErr
@@ -47,6 +53,8 @@ func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byt
 }
 
 func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.fetches++
 	if c.fetchErr != nil {
 		return nil, nil, nil, c.fetchErr
@@ -57,6 +65,21 @@ func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [
 	}
 	c.hits++
 	return keys, [][]byte{buf}, nil, nil
+}
+
+func (c *postingsTestCache) snapshot() *postingsTestCache {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entries := make(map[string][]byte, len(c.entries))
+	for key, value := range c.entries {
+		entries[key] = value
+	}
+	return &postingsTestCache{entries: entries, stores: c.stores, fetches: c.fetches, hits: c.hits}
+}
+
+func waitForPostingsStores(t *testing.T, c *postingsTestCache, n int) {
+	t.Helper()
+	require.Eventually(t, func() bool { return c.snapshot().stores == n }, time.Second*5, time.Millisecond)
 }
 
 func (*postingsTestCache) Stop() {}
@@ -91,6 +114,7 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	}, filepath.Join(root, "table"), time.Unix(1, 0))
 	backend := &postingsTestCache{}
 	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
 	file, err := openShippableTSDBWithPostingsCache(path, index.MmapOptions{}, c, "prefix", root)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
@@ -98,22 +122,25 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	first, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
+	waitForPostingsStores(t, backend, 1)
 	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
 
 	require.Equal(t, first, second)
-	require.Equal(t, 2, backend.fetches, "queries must fetch postings through the cache attached by the opener")
-	require.Equal(t, 1, backend.stores, "only the first query for each tenant should store postings")
-	require.Equal(t, 1, backend.hits, "the repeated query must hit cached postings")
+	require.Equal(t, 2, backend.snapshot().fetches, "queries must fetch postings through the cache attached by the opener")
+	require.Equal(t, 1, backend.snapshot().stores, "only the first query for each tenant should store postings")
+	require.Equal(t, 1, backend.snapshot().hits, "the repeated query must hit cached postings")
 
 	_, err = idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	require.Len(t, backend.entries, 2, "tenant matchers must produce separate cache entries")
+	waitForPostingsStores(t, backend, 2)
+	require.Len(t, backend.snapshot().entries, 2, "tenant matchers must produce separate cache entries")
 }
 
 func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
 	backend := &postingsTestCache{fetchErr: errors.New("fetch")}
 	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
@@ -122,7 +149,7 @@ func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
 	_, err := c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
-	require.Empty(t, backend.entries)
+	require.Empty(t, backend.snapshot().entries)
 }
 
 func TestPostingsCodec(t *testing.T) {
@@ -201,7 +228,9 @@ func newPostingsReaderSpy(t *testing.T) *postingsReaderSpy {
 
 func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	reader := newPostingsReaderSpy(t)
-	postingsCache := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	backend := &postingsTestCache{}
+	postingsCache := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(postingsCache.Stop)
 	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	low := index.NewShard(0, 2)
@@ -230,6 +259,7 @@ func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	require.NotEqual(t, lowRefs, highRefs)
 
 	require.Equal(t, lowRefs, query(low, 0, 10))
+	waitForPostingsStores(t, backend, 1)
 	require.Equal(t, lowRefs, query(low, 100, 200))
 	require.Equal(t, highRefs, query(high, 0, 10))
 	require.Equal(t, highRefs, query(high, 100, 200))
@@ -252,7 +282,9 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
-	c := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	backend := &postingsTestCache{}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
@@ -263,6 +295,7 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1, called)
+	waitForPostingsStores(t, backend, 1)
 
 	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 		called++
@@ -296,12 +329,14 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 			baseline := NewTSDBIndex(reader)
 			backend := &postingsTestCache{}
 			candidate := NewTSDBIndex(reader)
-			candidate.setPostingsCache(newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger()), "file")
+			pc := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+			t.Cleanup(pc.Stop)
+			candidate.setPostingsCache(pc, "file")
 			for _, selector := range []string{`{app="api"}`, `{group="1"}`, `{group!="1"}`, `{group=~"1|2"}`, `{group!~"1|2"}`, `{group=""}`, `{app="missing"}`} {
 				t.Run(selector, func(t *testing.T) {
 					matchers, err := syntax.ParseMatchers(selector, false)
 					require.NoError(t, err)
-					before := backend.stores
+					before := backend.snapshot().stores
 					filters := []index.FingerprintFilter{nil}
 					for _, count := range []uint32{2, 4, 16} {
 						for shard := uint32(0); shard < count; shard++ {
@@ -315,6 +350,7 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						gotRefs, err := candidate.GetChunkRefs(ctx, "tenant", 0, 10, nil, filter, matchers...)
 						require.NoError(t, err)
 						require.Equal(t, wantRefs, gotRefs)
+						waitForPostingsStores(t, backend, before+1)
 						wantSeries, err := baseline.Series(ctx, "tenant", 0, 10, nil, filter, matchers...)
 						require.NoError(t, err)
 						gotSeries, err := candidate.Series(ctx, "tenant", 0, 10, nil, filter, matchers...)
@@ -329,9 +365,154 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						require.NoError(t, candidate.Volume(ctx, "tenant", 0, 10, gotVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.Equal(t, wantVolume.Volumes(), gotVolume.Volumes())
 					}
-					require.Equal(t, before+1, backend.stores, "all shards and query operations must share one entry")
+					require.Equal(t, before+1, backend.snapshot().stores, "all shards and query operations must share one entry")
 				})
 			}
 		})
 	}
+}
+
+type blockingPostingsCache struct {
+	postingsTestCache
+	started chan context.Context
+	release chan struct{}
+	stopped chan struct{}
+}
+
+func (c *blockingPostingsCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+	c.started <- ctx
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.release:
+		return c.postingsTestCache.Store(ctx, keys, bufs)
+	}
+}
+
+func (c *blockingPostingsCache) Stop() { close(c.stopped) }
+
+func TestPostingsCacheAsyncWrite(t *testing.T) {
+	backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan index.Postings, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
+			return index.NewListPostings([]storage.SeriesRef{8, 2, 4}), nil
+		})
+		result <- p
+		errCh <- err
+	}()
+	select {
+	case p := <-result:
+		require.NoError(t, <-errCh)
+		refs, err := index.ExpandPostings(p)
+		require.NoError(t, err)
+		require.Equal(t, []storage.SeriesRef{2, 4, 8}, refs)
+	case <-time.After(5 * time.Second):
+		t.Fatal("query blocked on cache population")
+	}
+	var writeCtx context.Context
+	select {
+	case writeCtx = <-backend.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cache write did not start")
+	}
+	cancel()
+	require.NoError(t, writeCtx.Err(), "accepted population must survive request cancellation")
+	_, hasDeadline := writeCtx.Deadline()
+	require.True(t, hasDeadline)
+	close(backend.release)
+	waitForPostingsStores(t, &backend.postingsTestCache, 1)
+	refs, err := decodePostings("key", backend.snapshot().entries[cache.HashKey("key")])
+	require.NoError(t, err)
+	require.Equal(t, []storage.SeriesRef{2, 4, 8}, refs)
+}
+
+func TestPostingsCacheShutdownAndFullQueue(t *testing.T) {
+	backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
+	compute := func() (index.Postings, error) { return index.EmptyPostings(), nil }
+	_, err := c.cachedPostings(context.Background(), "first", compute)
+	require.NoError(t, err)
+	select {
+	case <-backend.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cache write did not start")
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < postingsWriteBuffer+1; i++ {
+			_, _ = c.cachedPostings(context.Background(), fmt.Sprint(i), compute)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("full queue blocked queries")
+	}
+	require.Len(t, c.writes, postingsWriteBuffer)
+	stopDone := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(c.Stop)
+		}
+		wg.Wait()
+		close(stopDone)
+	}()
+	select {
+	case <-stopDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown did not cancel active cache write")
+	}
+	select {
+	case <-backend.stopped:
+	default:
+		t.Fatal("Stop returned before stopping the backend")
+	}
+	require.Empty(t, c.writes)
+	require.Zero(t, backend.snapshot().stores)
+	_, err = c.cachedPostings(context.Background(), "after-stop", compute)
+	require.NoError(t, err)
+	require.Empty(t, c.writes)
+}
+
+func TestPostingsCacheCancellationBeforeEnqueue(t *testing.T) {
+	backend := &postingsTestCache{}
+	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	t.Cleanup(c.Stop)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
+		cancel()
+		return index.EmptyPostings(), nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, p)
+	c.Stop()
+	require.Zero(t, backend.snapshot().stores)
+}
+
+func TestPostingsCacheWriteTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
+		c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+		defer c.Stop()
+		_, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+			return index.EmptyPostings(), nil
+		})
+		require.NoError(t, err)
+		writeCtx := <-backend.started
+		time.Sleep(postingsWriteTimeout)
+		synctest.Wait()
+		require.ErrorIs(t, writeCtx.Err(), context.DeadlineExceeded)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
+		require.Zero(t, backend.snapshot().stores)
+	})
 }
