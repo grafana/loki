@@ -130,6 +130,13 @@ message SampleQueryRequest {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "hintRanges,omitempty"
   ];
+  DataObjOptions dataObjOptions = 13;
+}
+
+// DataObjOptions carries the decisions of the query-frontend about reading a request from data objects.
+message DataObjOptions {
+  // If true, the query-frontend allows the querier to read this request from data objects.
+  bool eligible = 1;
 }
 
 // SampleOrder identifies how a set of samples is ordered.

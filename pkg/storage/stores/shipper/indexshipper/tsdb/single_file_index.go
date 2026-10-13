@@ -298,9 +298,6 @@ func (i *TSDBIndex) forPostings(
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	compute := func() (index.Postings, error) {
-		return PostingsForMatchers(i.reader, fpFilter, matchers...)
-	}
 	var p index.Postings
 	var err error
 	postingsCache, postingsID := i.postingsCache, i.postingsID
@@ -312,7 +309,7 @@ func (i *TSDBIndex) forPostings(
 			p = i.reader.ShardPostings(p, fpFilter)
 		}
 	} else {
-		p, err = compute()
+		p, err = PostingsForMatchers(i.reader, fpFilter, matchers...)
 	}
 	if err != nil {
 		return err

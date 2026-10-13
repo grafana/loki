@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -191,6 +193,28 @@ func TestDataObjStore_SelectSamples(t *testing.T) {
 			{Labels: `{app="a"}`, TimestampSec: 2, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 			{Labels: `{app="a"}`, TimestampSec: 3, Value: 1, StreamHash: streamHashOf(appStream.Labels)},
 		}, got)
+	})
+
+	t.Run("it counts the object-store requests and bytes of the query for the metastore and the streams reader, and no failed request", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withRegisterer(reg))
+
+		store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(10))
+
+		families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		seriesValue := func(name string, labelNamesAndValues ...string) float64 {
+			series := metrics.FindMetricsInFamilyMatchingLabels(families[name], labelNamesAndValues...)
+			require.Len(t, series, 1, "series of %s with labels %v", name, labelNamesAndValues)
+			return series[0].GetCounter().GetValue()
+		}
+
+		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get"))
+		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "metastore", "operation", "get_range"))
+		require.Positive(t, seriesValue("loki_querier_dataobj_object_store_requests_total", "component", "streams-reader", "operation", "get_range"))
+		require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "metastore"))
+		require.Positive(t, seriesValue("loki_querier_dataobj_fetched_compressed_bytes_total", "component", "streams-reader"))
+		require.Zero(t, families.SumCounters("loki_querier_dataobj_object_store_requests_failed_total"))
 	})
 
 	t.Run("the window includes a line at the start bound and excludes one at the end bound", func(t *testing.T) {
@@ -575,6 +599,7 @@ type testStoreOptions struct {
 	filterer         chunk.RequestChunkFilterer
 	maxConcurrency   int
 	metadataCache    dataobj.MetadataCache
+	registerer       prometheus.Registerer
 }
 
 type testStoreOption func(*testStoreOptions)
@@ -591,6 +616,11 @@ func withObjectPerStream() testStoreOption {
 
 func withMaxConcurrency(n int) testStoreOption {
 	return func(o *testStoreOptions) { o.maxConcurrency = n }
+}
+
+// withRegisterer registers the store's metrics on reg.
+func withRegisterer(reg prometheus.Registerer) testStoreOption {
+	return func(o *testStoreOptions) { o.registerer = reg }
 }
 
 func withStreamFilterer(filterer chunk.RequestChunkFilterer) testStoreOption {
@@ -640,7 +670,7 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 
 	location := builder.Location()
 	chunkStore := &chunkStoreSpy{}
-	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), nil, storeOpts...)
+	store, err := NewDataObjStore(chunkStore, location.Bucket, builder.Metastore(), options.registerer, storeOpts...)
 	require.NoError(t, err)
 
 	return &testDataObjStore{t: t, store: store, chunkStore: chunkStore}

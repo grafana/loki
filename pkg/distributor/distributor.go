@@ -665,6 +665,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	var ingestionBlockedError error
 
+	// rejectPartialWritesPolicy is the first policy in the push configured with
+	// reject_partial_writes, if any. Such pushes are rejected as a whole on a 429 instead of being
+	// partially written, see the check before the streams are sent.
+	var (
+		rejectPartialWrites       bool
+		rejectPartialWritesPolicy string
+	)
+
 	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
 	// resolved policy has a per-policy ingestion rate override are metered against their own
 	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
@@ -689,6 +697,10 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			var lbs labels.Labels
 			var retentionHours, policy string
 			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+			if !rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, policy) {
+				rejectPartialWrites = true
+				rejectPartialWritesPolicy = policy
+			}
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -875,6 +887,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	if len(streams) == 0 && validationErr != nil {
 		return nil, validationErr
+	}
+
+	// Reject the whole push with a 429 when a policy asks for it, instead of partially writing and sending a 429.
+	if rejectPartialWrites && validationErr != nil {
+		// Partially accepted data still consumes the ratelimit/stream tokens.
+		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
+			return nil, validationErr
+		}
 	}
 
 	tracker := PushTracker{

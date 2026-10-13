@@ -45,6 +45,7 @@ message LokiRequest {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "hintRanges,omitempty"
   ];
+  logproto.DataObjOptions dataObjOptions = 14;
 }
 
 message LokiInstantRequest {
@@ -62,6 +63,7 @@ message LokiInstantRequest {
   // use to fetch the data, plus any other chunks reported by ingesters.
   logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
   resultscache.CachingOptions cachingOptions = 9 [(gogoproto.nullable) = false];
+  logproto.DataObjOptions dataObjOptions = 10;
 }
 
 message Plan {

@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -249,6 +253,34 @@ func TestLogReader(t *testing.T) {
 		require.Empty(t, drainReader(reader))
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
+	})
+
+	t.Run("Close reports the slowest metastore section resolution of the capture in the query stats", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		statsCtx, ctx := stats.NewContext(t.Context())
+		ctx, _ = xcap.NewCapture(ctx, nil)
+		for _, d := range []time.Duration{7 * time.Millisecond, 3 * time.Millisecond} {
+			_, region := xcap.StartRegion(ctx, metastore.RegionSections)
+			region.Record(metastore.StatMetastoreSectionsDuration.Observe(int64(d)))
+		}
+
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		drainReader(reader)
+		require.NoError(t, reader.Close())
+
+		require.Equal(t, 7*time.Millisecond, statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime())
+	})
+
+	t.Run("Close reports no section resolution time when the capture holds no metastore region", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		statsCtx, ctx := stats.NewContext(t.Context())
+		ctx, _ = xcap.NewCapture(ctx, nil)
+
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		drainReader(reader)
+		require.NoError(t, reader.Close())
+
+		require.Zero(t, statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime())
 	})
 }
 

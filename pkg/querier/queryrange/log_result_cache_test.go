@@ -205,6 +205,21 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		Limit:   entriesLimit,
 	}
 
+	startReq := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
+		Limit:   entriesLimit,
+	}
+	startResp := emptyResponse(startReq)
+	startResp.Statistics.Querier.Store.TotalChunksRef = 3
+	endReq := &LokiRequest{
+		StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+	}
+	endResp := emptyResponse(endReq)
+	endResp.Statistics.Querier.Store.TotalChunksRef = 4
+
 	fake := newFakeResponse([]mockResponse{
 		{
 			RequestResponse: queryrangebase.RequestResponse{
@@ -214,30 +229,14 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		},
 		{
 			RequestResponse: queryrangebase.RequestResponse{
-				Request: &LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
-					Limit:   entriesLimit,
-				},
-				Response: emptyResponse(&LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
-					Limit:   entriesLimit,
-				}),
+				Request:  startReq,
+				Response: startResp,
 			},
 		},
 		{
 			RequestResponse: queryrangebase.RequestResponse{
-				Request: &LokiRequest{
-					StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-					Limit:   entriesLimit,
-				},
-				Response: emptyResponse(&LokiRequest{
-					StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-					Limit:   entriesLimit,
-				}),
+				Request:  endReq,
+				Response: endResp,
 			},
 		},
 	})
@@ -249,7 +248,11 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 	require.Equal(t, emptyResponse(req1), resp)
 	resp, err = h.Do(ctx, req2)
 	require.NoError(t, err)
-	require.Equal(t, emptyResponse(req2), resp)
+	// The empty start and end responses are merged, so their statistics are kept.
+	expected := emptyResponse(req2)
+	expected.Statistics.Querier.Store.TotalChunksRef = 7
+	expected.Statistics.Summary.Splits = 2
+	require.Equal(t, expected, resp)
 
 	fake.AssertExpectations(t)
 }

@@ -186,9 +186,10 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 		filterer = s.filterer.ForRequest(ctx)
 	}
 
-	// One capture spans the query, but only observations recorded into the logs.RegionRead
-	// region below reach the query stats: ValueFromRegion rolls up that one name. The planner's
-	// object opens and streams reads run outside any region and go unreported.
+	// One capture spans the query. When the reader closes, it reads the query stats from the
+	// logs.RegionRead and metastore.Sections regions. It also folds every region into the
+	// per-component object-store metrics. The planner's object opens and streams reads record
+	// into a region of their own, so only the metrics see them.
 	ctx, _ = xcap.NewCapture(ctx, nil)
 	ctx = rangeio.WithConfig(ctx, &s.rangeConfig)
 

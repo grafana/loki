@@ -316,34 +316,30 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 			return nil, err
 		}
 
-		// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
-		// If it's not empty only merge the response.
+		// Merge the response for the missing start into the result, even when it's
+		// empty so that its statistics are kept. If it's empty, also widen the
+		// cached range.
 		if startResp != nil {
 			if isEmpty(startResp) {
 				cachedRequest = cachedRequest.WithStartEnd(startRequest.GetStartTs(), cachedRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 				genNumberMatches = genNumberMatches && l.cacheGenNumberMatches(ctx, startRequest, startResp)
-			} else {
-				if startResp.Status != loghttp.QueryStatusSuccess {
-					return startResp, nil
-				}
-				result = mergeLokiResponse(startResp, result)
+			} else if startResp.Status != loghttp.QueryStatusSuccess {
+				return startResp, nil
 			}
+			result = mergeLokiResponse(startResp, result)
 		}
 
-		// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
-		// If it's not empty only merge the response.
+		// Same for the missing end.
 		if endResp != nil {
 			if isEmpty(endResp) {
 				cachedRequest = cachedRequest.WithStartEnd(cachedRequest.GetStartTs(), endRequest.GetEndTs()).(*LokiRequest)
 				updateCache = true
 				genNumberMatches = genNumberMatches && l.cacheGenNumberMatches(ctx, endRequest, endResp)
-			} else {
-				if endResp.Status != loghttp.QueryStatusSuccess {
-					return endResp, nil
-				}
-				result = mergeLokiResponse(endResp, result)
+			} else if endResp.Status != loghttp.QueryStatusSuccess {
+				return endResp, nil
 			}
+			result = mergeLokiResponse(endResp, result)
 		}
 	}
 
