@@ -68,6 +68,10 @@ type coordinatorMetrics struct {
 	// phase of a tenant has not rewritten yet, by the age of their oldest data.
 	pendingLogBytes *prometheus.GaugeVec // tenant, age
 
+	// logMergeFailedIndexesTotal counts indexes that failed to plan or
+	// execute in a LogMerge phase.
+	logMergeFailedIndexesTotal *prometheus.CounterVec // tenant
+
 	// lastPlanTimestampSeconds is when a LogMerge phase of a tenant last
 	// planned every index in every window without an error.
 	lastPlanTimestampSeconds *prometheus.GaugeVec // tenant
@@ -138,6 +142,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_pending_log_bytes",
 			Help: "Uncompressed log bytes that the current LogMerge phase of the tenant has not rewritten yet, summed over all compacted windows. The age label is the upper bound of the age of the oldest data in each task, measured when the phase plans. The buckets do not overlap: sum over age for the total. Set when the phase plans, and reduced after each index swap attempt that returns no error. Failed indexes stay counted until the next phase. Indexes that fail to plan are not counted. Data that the planner treats as converged counts as zero.",
 		}, []string{labelTenant, labelAge}),
+		logMergeFailedIndexesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_failed_indexes_total",
+			Help: "Indexes that failed to plan or execute in a LogMerge phase.",
+		}, []string{labelTenant}),
 		lastPlanTimestampSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_last_plan_timestamp_seconds",
 			Help: "Unix time when a LogMerge phase of the tenant last planned every index in every compacted window without an error. When it is old, loki_dataobj_compaction_pending_log_bytes is stale or incomplete.",
@@ -239,6 +247,7 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
 	m.pendingLogBytes.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.lastPlanTimestampSeconds.DeleteLabelValues(tenant)
+	m.logMergeFailedIndexesTotal.DeleteLabelValues(tenant)
 	m.indexesRemovedTotal.DeleteLabelValues(tenant)
 	m.indexesAddedTotal.DeleteLabelValues(tenant)
 	m.tasksTotal.DeleteLabelValues(tenant)
