@@ -274,7 +274,7 @@ func TestSplitByInterval_PartialStatsOnError(t *testing.T) {
 	})
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
-	split := SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(next)
+	split := SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(l, nil), nilMetrics).Wrap(next)
 
 	_, err := split.Do(ctx, &LokiRequest{
 		StartTs:   time.Unix(0, 0),
@@ -323,7 +323,7 @@ func TestSplitByInterval_PartialStatsOnCancellation(t *testing.T) {
 	})
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
-	split := SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(next)
+	split := SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(l, nil), nilMetrics).Wrap(next)
 
 	_, err := split.Do(ctx, &LokiRequest{
 		StartTs:   time.Unix(0, 0),
@@ -417,7 +417,7 @@ func TestStatsCollectorMiddleware_ConcurrentFanOutPartialStats(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: parallelism}, time.Hour)
 	handler := queryrangebase.MergeMiddlewares(
 		StatsCollectorMiddleware(),
-		SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(fakeLimits{}, nil), nilMetrics),
+		SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(l, nil), nilMetrics),
 	).Wrap(next)
 
 	_, err := handler.Do(ctx, &LokiRequest{
