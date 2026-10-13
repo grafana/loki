@@ -10,6 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -18,6 +20,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 func TestCreateOrRotateCertificates_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
@@ -385,6 +388,27 @@ func TestCreateOrRotateCertificates_WhenGetReturnsNoError_UpdateObjects(t *testi
 
 	// Create looks up the CR first, so we need to return our fake stack
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if secret.Name == name.Name && secret.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&secret)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
@@ -540,6 +564,27 @@ func TestCreateOrRotateCertificates_WhenUpdateReturnsError_ContinueWithOtherObje
 	// GetStub looks up the CR first, so we need to return our fake stack
 	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		// Ownership check uses unstructured - handle that case
+		if u, ok := object.(*unstructured.Unstructured); ok {
+			if secret.Name == name.Name && secret.Namespace == name.Namespace {
+				data, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(&secret)
+				u.Object = data
+				return nil
+			}
+			// Other resources: set owner to indicate they're owned by this stack
+			u.SetOwnerReferences([]metav1.OwnerReference{
+				{
+					APIVersion:         "loki.grafana.com/v1",
+					Kind:               "LokiStack",
+					Name:               "my-stack",
+					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			})
+			return nil
+		}
+
 		if r.Name == name.Name && r.Namespace == name.Namespace {
 			k.SetClientObject(object, &stack)
 		}
@@ -563,4 +608,108 @@ func TestCreateOrRotateCertificates_WhenUpdateReturnsError_ContinueWithOtherObje
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
+}
+
+func TestCreateOrRotateCertificates_WhenResourceNotOwnedByLokiStack_ReturnsError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+	}
+
+	// Return existing resources that are owned by a different controller
+	foreignOwnerRefs := []metav1.OwnerReference{
+		{
+			APIVersion:         "apps/v1",
+			Kind:               "Deployment",
+			Name:               "some-other-owner",
+			UID:                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			Controller:         ptr.To(true),
+			BlockOwnerDeletion: ptr.To(true),
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+			return nil
+		}
+		// All other namespaced resources exist but are owned by a different controller
+		object.SetOwnerReferences(foreignOwnerRefs)
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+
+	require.Error(t, err)
+
+	var degradedErr *status.DegradedError
+	require.True(t, errors.As(err, &degradedErr), "Expected DegradedError")
+	require.Equal(t, lokiv1.ReasonResourceOwnershipConflict, degradedErr.Reason)
+	require.Contains(t, degradedErr.Message, "Resource ownership conflict detected")
+	require.Contains(t, degradedErr.Message, "certificate rotation")
+	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
+}
+
+func TestCreateOrRotateCertificates_WhenResourceExistsWithoutOwner_ReturnsError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+			return nil
+		}
+		// All other namespaced resources exist but have no owner
+		object.SetOwnerReferences(nil)
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+
+	require.Error(t, err)
+
+	var degradedErr *status.DegradedError
+	require.True(t, errors.As(err, &degradedErr), "Expected DegradedError")
+	require.Equal(t, lokiv1.ReasonResourceOwnershipConflict, degradedErr.Reason)
+	require.Contains(t, degradedErr.Message, "Resource ownership conflict detected")
+	require.Contains(t, degradedErr.Message, "(unowned)", "Error message should indicate unowned resources")
+	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
 }

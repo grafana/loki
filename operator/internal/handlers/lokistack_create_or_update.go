@@ -167,7 +167,7 @@ func CreateOrUpdateLokiStack(
 	ll.Info("manifests built", "count", len(objects))
 
 	// Check for ownership conflicts before creating or updating resources
-	conflicts, err := checkResourceOwnership(ctx, ll, k, req, &stack, objects)
+	conflicts, err := CheckResourceOwnership(ctx, ll, k, s, req, &stack, objects)
 	if err != nil {
 		return nil, err
 	}
@@ -251,11 +251,13 @@ func CreateOrUpdateLokiStack(
 	}, nil
 }
 
-// checkResourceOwnership checks if any resources exist and are not owned by this LokiStack instance
-func checkResourceOwnership(
+// CheckResourceOwnership checks if any resources exist and are not owned by this LokiStack instance.
+// It returns a list of conflicting resource names.
+func CheckResourceOwnership(
 	ctx context.Context,
 	ll logr.Logger,
 	k k8s.Client,
+	s *runtime.Scheme,
 	req ctrl.Request,
 	stack *lokiv1.LokiStack,
 	objects []client.Object,
@@ -268,17 +270,20 @@ func checkResourceOwnership(
 			continue
 		}
 
-		// Create minimal unstructured object to avoid copying all fields
-		gvk := obj.GetObjectKind().GroupVersionKind()
-		if gvk.Empty() {
-			// Skip ownership check for objects without GVK
-			continue
+		// Get GVK from scheme based on Go type (works even without TypeMeta)
+		gvks, _, err := s.ObjectKinds(obj)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine GVK for object %s: %w", obj.GetName(), err)
 		}
+		if len(gvks) == 0 {
+			return nil, fmt.Errorf("no GVK registered for type %T", obj)
+		}
+		gvk := gvks[0]
 
 		existing := &unstructured.Unstructured{}
 		existing.SetGroupVersionKind(gvk)
 
-		err := k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existing)
+		err = k.Get(ctx, client.ObjectKey{Name: obj.GetName(), Namespace: req.Namespace}, existing)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
