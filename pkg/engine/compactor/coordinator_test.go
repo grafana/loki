@@ -23,6 +23,7 @@ import (
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -1431,6 +1432,62 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 
 	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
 	require.Len(t, replacer.snapshot(), 1)
+}
+
+func TestRunIndexMergePhase(t *testing.T) {
+	t.Run("returns an error, records a failed cycle and leaves the ToC without the merged index when another writer removed one of the source indexes first", func(t *testing.T) {
+		ctx := context.Background()
+		window := imWindow()
+		bucket := objstore.NewInMemBucket()
+		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
+		buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/b")
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+			"acme": {
+				{path: "indexes/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+				{path: "indexes/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			},
+		})
+		runner := &fakeRunner{}
+		defer runner.assertUniqueObjects(t)
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		writer := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+		c.publisher = &tocPublisher{writer: &concurrentRemovalReplacer{t: t, writer: writer, removed: "indexes/a"}, timeout: 30 * time.Second}
+
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
+		require.Len(t, runner.snapshot(), 1)
+		entries, err := loadTenantIndexes(ctx, bucket, window, "acme")
+		require.NoError(t, err)
+		requireIndexPaths(t, entries, "indexes/b", "indexes/concurrent")
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
+		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
+	})
+}
+
+// concurrentRemovalReplacer acts as another writer that wins the race for one
+// source index. Before it forwards a call to writer, it replaces the removed
+// path with indexes/concurrent.
+type concurrentRemovalReplacer struct {
+	t       *testing.T
+	writer  *metastore.TableOfContentsWriter
+	removed string
+}
+
+func (r *concurrentRemovalReplacer) ReplaceIndexPointers(
+	ctx context.Context,
+	window time.Time,
+	tenant string,
+	oldPaths []string,
+	newEntries []metastore.TableOfContentsEntry,
+) (bool, error) {
+	require.Contains(r.t, oldPaths, r.removed)
+	swapped, err := r.writer.ReplaceIndexPointers(ctx, window, tenant, []string{r.removed}, []metastore.TableOfContentsEntry{{
+		Path:      "indexes/concurrent",
+		StartTime: newEntries[0].StartTime,
+		EndTime:   newEntries[0].EndTime,
+	}})
+	require.NoError(r.t, err)
+	require.True(r.t, swapped)
+	return r.writer.ReplaceIndexPointers(ctx, window, tenant, oldPaths, newEntries)
 }
 
 func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant string, paths []string) objstore.Bucket {
