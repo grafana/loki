@@ -71,11 +71,11 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding a streams and a pointers section for the tenant.
+		// holding a streams section and no pointers section for the tenant.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
 		require.Equal(t, 1, idxObj.Sections().Count(streams.CheckSection))
-		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 1)
+		require.Zero(t, idxObj.Sections().Count(pointers.CheckSection))
 
 		// Every stream of the data object is recorded.
 		require.ElementsMatch(t, []string{
@@ -84,7 +84,7 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		}, indexedStreams(t, idxObj, "tenant-0"))
 
 		// The index points back at the data object it was built from.
-		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
 	})
 
 	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
@@ -233,7 +233,7 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 		require.NotEmpty(t, res.Path)
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedObjectPaths(t, idxObj))
 		paths[res.Path] = struct{}{}
 	}
 	require.Len(t, paths, objects)
@@ -333,32 +333,13 @@ func indexedStreams(t *testing.T, obj *dataobj.Object, tenant string) []string {
 	return got
 }
 
-// indexedPointerPaths returns the distinct data object paths the index points at.
-func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
+// indexedObjectPaths returns the distinct data object paths the stats sections point at.
+func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
 	seen := make(map[string]struct{})
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		sec, err := pointers.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := pointers.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]pointers.SectionPointer, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				seen[pointer.Path] = struct{}{}
-			}
-		}
+	for _, row := range readAllStatsRows(t, obj) {
+		seen[row["object_path.utf8"].(string)] = struct{}{}
 	}
 
 	paths := make([]string, 0, len(seen))

@@ -58,7 +58,6 @@ type logsCalculationContext struct {
 // These steps are applied to all logs and are unique to a section
 func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 	return []logsIndexCalculation{
-		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
 		&statsCalculation{schema: sortSchema},
 		&labelPostingsCalculation{},

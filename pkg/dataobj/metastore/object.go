@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -815,52 +814,21 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	tenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
-	}
-
-	var reader ArrowRecordBatchReader
-	flow := flowStreams
-	// Index objects without a postings section for the tenant use the legacy
-	// streams-section reader.
-	if hasPostingsSection(idxObj, tenant) {
-		flow = flowPostings
-		reader = newPostingsIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	} else {
-		reader = newIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	}
+	flow := flowPostings
+	var reader ArrowRecordBatchReader = newPostingsIndexSectionsReader(
+		m.logger,
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.BatchSize,
+	)
 
 	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
 	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
-}
-
-// hasPostingsSection reports whether obj has a postings section owned by tenant.
-func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
-	for _, sec := range obj.Sections() {
-		if sec.Tenant == tenant && postings.CheckSection(sec) {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
