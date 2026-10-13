@@ -599,6 +599,71 @@ func TestCreateOrUpdateLokiStack_WhenResourceNotOwnedByLokiStack_ReturnsError(t 
 	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
 }
 
+func TestCreateOrUpdateLokiStack_WhenResourceExistsWithoutOwner_ReturnsError(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	stack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV13,
+						EffectiveDate: "2024-01-01",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		_, isLokiStack := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
+			k.SetClientObject(object, &stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		// All other namespaced resources exist but have no owner
+		object.SetOwnerReferences(nil)
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+	require.Error(t, err)
+
+	var degradedErr *status.DegradedError
+	require.True(t, errors.As(err, &degradedErr), "Expected DegradedError")
+	require.Equal(t, lokiv1.ReasonResourceOwnershipConflict, degradedErr.Reason)
+	require.Contains(t, degradedErr.Message, "Resource ownership conflict detected")
+	require.Contains(t, degradedErr.Message, "(unowned)", "Error message should indicate unowned resources")
+	require.True(t, degradedErr.Requeue, "Should requeue to allow user to fix the conflict")
+}
+
 func TestCreateOrUpdateLokiStack_WhenObjectHasEmptyGVK_SkipsOwnershipCheck(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
