@@ -15,8 +15,8 @@ var (
 // parseDeletionQuery parses a deletion query and validates its pipeline.
 // Semantic validation is enabled for new requests but skipped during processing
 // to accept legacy requests with empty-compatible matchers.
-func parseDeletionQuery(query string, validate bool) (syntax.LogSelectorExpr, error) {
-	logSelectorExpr, err := syntax.ParseLogSelector(query, validate)
+func parseDeletionQuery(query string, requireNonEmptyMatcher bool) (syntax.LogSelectorExpr, error) {
+	logSelectorExpr, err := syntax.ParseLogSelector(query, requireNonEmptyMatcher)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errInvalidQuery, err)
 	}
