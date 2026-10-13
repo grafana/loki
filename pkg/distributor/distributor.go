@@ -548,6 +548,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 	}
 
 	if push.ExtractBackfillShardContext(ctx) != "" {
+		level.Debug(d.logger).Log("msg", "push backfill shard, stripping unused labels")
 		// Drop labels other than service_name, __backfill__ and __backfill_shard__
 		for i, stream := range req.Streams {
 			ls, err := syntax.ParseLabels(stream.Labels)
