@@ -413,6 +413,15 @@ func TestCompactTenantLogs_DispatchesSortObjectPlans(t *testing.T) {
 	requireEntriesMatchCalls(t, calls, swaps[0].newEntries)
 }
 
+// totalLogInputBytes returns the sum of the log input bytes of plan.
+func totalLogInputBytes(plan logCompactionPlan) uint64 {
+	var total uint64
+	for stats := range plan.logTaskStats() {
+		total += stats.inputBytes
+	}
+	return total
+}
+
 func TestPlanLogCompaction(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -449,12 +458,12 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.Len(t, plan.tasks, 1)
 		require.IsType(t, logMergeTask{}, plan.tasks[0])
 		require.Empty(t, plan.tasks[0].tocEntry().Path, "paths are assigned at execution")
-		require.Equal(t, uint64(200), plan.rewriteBytes())
+		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
 	})
 
-	t.Run("excludes unmerged runs from rewrite bytes because the IndexFilter does not rewrite them", func(t *testing.T) {
+	t.Run("excludes unmerged runs from log input bytes because the IndexFilter does not read their log data", func(t *testing.T) {
 		c, _, _ := newPlanner(t, []stats.Stat{
 			stat("logs/log-0", "label:service_name", auth, 10, 20),
 			stat("logs/log-1", "label:service_name", auth, 15, 30),
@@ -470,7 +479,7 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, indexPath, filter.sourceIndexPath)
 		require.Len(t, filter.objectPaths, 1)
-		require.Equal(t, uint64(200), plan.rewriteBytes())
+		require.Equal(t, uint64(200), totalLogInputBytes(plan))
 	})
 
 	t.Run("plans one SortObject task per object when the sort schema differs from the target", func(t *testing.T) {
@@ -493,10 +502,10 @@ func TestPlanLogCompaction(t *testing.T) {
 			sort, ok := task.(sortObjectTask)
 			require.True(t, ok)
 			require.Equal(t, []string{"label:service_name"}, sort.sortSchema)
-			bytesByObject[sort.objectPath] = sort.rewriteBytes()
+			bytesByObject[sort.objectPath] = sort.logStats().inputBytes
 		}
 		require.Equal(t, map[string]uint64{"logs/log-0": 150, "logs/log-1": 100}, bytesByObject)
-		require.Equal(t, uint64(250), plan.rewriteBytes())
+		require.Equal(t, uint64(250), totalLogInputBytes(plan))
 	})
 
 	t.Run("returns no work when the index has no sections for the tenant", func(t *testing.T) {
@@ -1436,6 +1445,14 @@ func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant 
 // pending log bytes.
 func seedLogMergeIndexes(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time, tenant string, paths []string) {
 	t.Helper()
+	seedLogMergeIndexesAt(ctx, t, bucket, window, tenant, paths, time.Unix(0, 10))
+}
+
+// seedLogMergeIndexesAt is seedLogMergeIndexes with the oldest log timestamp
+// of each index at oldest.
+func seedLogMergeIndexesAt(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time, tenant string, paths []string, oldest time.Time) {
+	t.Helper()
+	ts := func(offset int64) int64 { return oldest.UnixNano() + offset }
 	entries := make([]testIndex, 0, len(paths))
 	for _, p := range paths {
 		buildIndex(ctx, t, bucket, testIndexObject{
@@ -1444,13 +1461,13 @@ func seedLogMergeIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 			sectionSize: 1 << 20,
 			stats: []stats.Stat{
 				{ObjectPath: p + ".log-0", SectionIndex: 0, SortSchema: "label:service_name",
-					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: ts(0), MaxTimestamp: ts(20), RowCount: 1, UncompressedSize: 100},
 				{ObjectPath: p + ".log-1", SectionIndex: 0, SortSchema: "label:service_name",
-					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: ts(10), MaxTimestamp: ts(30), RowCount: 1, UncompressedSize: 100},
 			},
 			postings: []postings.Row{
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20, ShardBuckets: streams.ShardFactor},
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40, ShardBuckets: streams.ShardFactor},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: ts(0), MaxTimestamp: ts(10), ShardBuckets: streams.ShardFactor},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: ts(20), MaxTimestamp: ts(30), ShardBuckets: streams.ShardFactor},
 			},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})
@@ -1463,19 +1480,39 @@ func seedLogMergeIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 // plans one LogMerge task.
 func newTwoWindowCoordinator(t *testing.T, runner *fakeRunner, replacer *fakeReplacer) *coordinator {
 	t.Helper()
+	return newTwoWindowCoordinatorAt(t, runner, replacer, time.Unix(0, 10), time.Unix(0, 10))
+}
+
+// newTwoWindowCoordinatorAt is newTwoWindowCoordinator with the oldest log
+// timestamp of each window's index at currentOldest and previousOldest.
+func newTwoWindowCoordinatorAt(t *testing.T, runner *fakeRunner, replacer *fakeReplacer, currentOldest, previousOldest time.Time) *coordinator {
+	t.Helper()
 	current := imWindow()
 	bucket := objstore.NewInMemBucket()
-	seedLogMergeIndexes(t.Context(), t, bucket, current, "acme", []string{"indexes/current/a"})
-	seedLogMergeIndexes(t.Context(), t, bucket, current.Add(-metastore.MetastoreWindowSize), "acme", []string{"indexes/previous/a"})
+	seedLogMergeIndexesAt(t.Context(), t, bucket, current, "acme", []string{"indexes/current/a"}, currentOldest)
+	seedLogMergeIndexesAt(t.Context(), t, bucket, current.Add(-metastore.MetastoreWindowSize), "acme", []string{"indexes/previous/a"}, previousOldest)
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(current.Add(time.Hour)), newFakeLimits("acme"))
 	c.cfg.WindowLookback = 1
 	return c
 }
 
+// bytesByAge returns the pending log bytes of acme for every age label.
+func bytesByAge(c *coordinator) map[string]float64 {
+	bytes := map[string]float64{}
+	for _, age := range newLogAgeBuckets(c.cfg.WindowLookback).labels() {
+		bytes[age] = testutil.ToFloat64(c.metrics.pendingLogBytes.WithLabelValues("acme", age))
+	}
+	return bytes
+}
+
 func TestRunLogMergePhase(t *testing.T) {
 	now := imWindow().Add(time.Hour)
 	pendingBytes := func(c *coordinator) float64 {
-		return testutil.ToFloat64(c.metrics.pendingLogBytes.WithLabelValues("acme"))
+		var total float64
+		for _, bytes := range bytesByAge(c) {
+			total += bytes
+		}
+		return total
 	}
 	lastPlan := func(c *coordinator) float64 {
 		return testutil.ToFloat64(c.metrics.lastPlanTimestampSeconds.WithLabelValues("acme"))
@@ -1565,6 +1602,52 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Len(t, runner.snapshot(), 1)
 		require.Zero(t, pendingBytes(c), "the index that failed to plan is not counted")
 		require.Zero(t, lastPlan(c))
+	})
+
+	t.Run("puts the bytes of each window under the age of its oldest data", func(t *testing.T) {
+		runner := &fakeRunner{}
+		c := newTwoWindowCoordinatorAt(t, runner, &fakeReplacer{swapped: true}, now.Add(-30*time.Minute), now.Add(-12*time.Hour))
+		var atFirstTask map[string]float64
+		var once sync.Once
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			once.Do(func() { atFirstTask = bytesByAge(c) })
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}
+
+		require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, map[string]float64{"1h": 200, "2h": 0, "4h": 0, "8h": 0, "16h": 200, "24h": 0, "+Inf": 0}, atFirstTask)
+	})
+
+	t.Run("removes a completed plan from the bucket it joined when the clock moves during the phase", func(t *testing.T) {
+		runner := &fakeRunner{}
+		c := newTwoWindowCoordinatorAt(t, runner, &fakeReplacer{swapped: true}, now.Add(-30*time.Minute), now.Add(-12*time.Hour))
+		var clock atomic.Time
+		clock.Store(now)
+		c.clock = clock.Load
+		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
+			clock.Store(clock.Load().Add(3 * time.Hour))
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}
+
+		require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(t.Context(), "acme"))
+		for age, bytes := range bytesByAge(c) {
+			require.Zero(t, bytes, "age %s", age)
+		}
+	})
+
+	t.Run("sets a bucket to zero in the next phase when its bytes move to an older bucket", func(t *testing.T) {
+		c := newTwoWindowCoordinatorAt(t, &fakeRunner{err: errors.New("dispatch failed")}, &fakeReplacer{swapped: true}, now.Add(-30*time.Minute), now.Add(-12*time.Hour))
+		var clock atomic.Time
+		clock.Store(now)
+		c.clock = clock.Load
+
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Equal(t, 200.0, bytesByAge(c)["1h"])
+
+		clock.Store(now.Add(3 * time.Hour))
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Zero(t, bytesByAge(c)["1h"])
+		require.Equal(t, 200.0, bytesByAge(c)["4h"])
 	})
 
 	t.Run("swaps nothing when the context is cancelled", func(t *testing.T) {
@@ -1812,6 +1895,34 @@ func TestRunTenant(t *testing.T) {
 		c.runTenant(ctx, "acme")
 
 		require.Zero(t, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog))
+	})
+
+	t.Run("deletes the pending log bytes of the tenant when its worker stops", func(t *testing.T) {
+		runner := &fakeRunner{respond: func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			if slices.Equal(opts.Actor, []string{"compaction", "log-merge"}) {
+				return nil, errors.New("log merge failed")
+			}
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}}
+		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{swapped: true})
+		c.limits.(*fakeLimits).setLog("acme", true)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		var pendingBeforeStop float64
+		c.sleep = func(context.Context, time.Duration) {
+			for _, bytes := range bytesByAge(c) {
+				pendingBeforeStop += bytes
+			}
+			if pendingBeforeStop > 0 {
+				cancel()
+			}
+		}
+
+		c.runTenant(ctx, "acme")
+
+		require.Equal(t, 400.0, pendingBeforeStop, "the failed LogMerge phase leaves its bytes pending")
+		require.Zero(t, testutil.CollectAndCount(c.metrics.pendingLogBytes))
+		require.Zero(t, testutil.CollectAndCount(c.metrics.lastPlanTimestampSeconds))
 	})
 }
 

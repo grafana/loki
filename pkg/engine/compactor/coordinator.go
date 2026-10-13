@@ -710,13 +710,10 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 		return phaseOutcomeError
 	}
 
-	var pendingBytes uint64
-	for _, plan := range plans {
-		pendingBytes += plan.rewriteBytes()
-	}
-	c.metrics.pendingLogBytes.WithLabelValues(tenant).Set(float64(pendingBytes))
+	planTime := c.clock()
+	pending, pendingBytes := startPendingLogBytes(c.metrics.pendingLogBytes, tenant, newLogAgeBuckets(c.cfg.WindowLookback), planTime, plans)
 	if !anyError {
-		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(c.clock().UnixNano()) / 1e9)
+		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(planTime.UnixNano()) / 1e9)
 	}
 
 	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "plans", len(plans), "pending_bytes", pendingBytes)
@@ -743,7 +740,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 		// A no-op swap also removes the plan's bytes. It happens in dry-run
 		// mode or when another writer replaced the source index first. In both
 		// cases this phase does not rewrite those bytes again.
-		c.metrics.pendingLogBytes.WithLabelValues(tenant).Sub(float64(plan.rewriteBytes()))
+		pending.complete(plan)
 		if stats.added > 0 {
 			anySwapped = true
 			agg = agg.Merge(stats)
