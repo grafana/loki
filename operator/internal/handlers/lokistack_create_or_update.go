@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -252,9 +251,7 @@ func CreateOrUpdateLokiStack(
 	}, nil
 }
 
-var errConflictingOwner = errors.New("resource exists and is owned by a different controller")
-
-// checkResourceOwnership checks if any resources exist and are owned by other controllers
+// checkResourceOwnership checks if any resources exist and are not owned by this LokiStack instance
 func checkResourceOwnership(
 	ctx context.Context,
 	ll logr.Logger,
@@ -286,17 +283,18 @@ func checkResourceOwnership(
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return conflicts, err
+			return nil, err
 		}
 
-		// Resource exists - check if it's owned by a different controller
+		// Resource exists - check if it's owned by this LokiStack instance
 		existingOwner := metav1.GetControllerOf(existing)
-		if existingOwner != nil && existingOwner.UID != stack.UID {
-			resourceName := fmt.Sprintf("%s/%s (owned by %s/%s)", gvk.Kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
-			ll.Error(errConflictingOwner, "ownership conflict detected",
-				"resource", resourceName,
-				"namespace", req.Namespace,
-				"owner", existingOwner.Name)
+		if existingOwner == nil || existingOwner.UID != stack.UID {
+			var resourceName string
+			if existingOwner != nil {
+				resourceName = fmt.Sprintf("%s/%s (owned by %s/%s)", gvk.Kind, obj.GetName(), existingOwner.Kind, existingOwner.Name)
+			} else {
+				resourceName = fmt.Sprintf("%s/%s (unowned)", gvk.Kind, obj.GetName())
+			}
 			conflicts = append(conflicts, resourceName)
 		}
 	}
