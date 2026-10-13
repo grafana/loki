@@ -44,8 +44,7 @@ var DefaultTocWriterBackoffConfig = backoff.Config{
 var errUnrecoverable = errors.New("unrecoverable ToC error")
 
 // rebuildToc returns these errors to cancel the conditional write of a ToC
-// that needs no write from this call. applyChange returns them to its caller,
-// which treats both as a change that wrote nothing.
+// that gets no write from this call. applyChange returns them to its caller.
 var (
 	// errChangeAlreadyApplied means the ToC already holds the change.
 	errChangeAlreadyApplied = errors.New("ToC already holds the change")
@@ -168,18 +167,15 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 // ReplaceIndexPointers returns true if it wrote the swap. It returns false
 // and no error if it wrote nothing:
 //   - oldPaths and newEntries are both empty.
-//   - The ToC does not exist.
-//   - The ToC holds no path in oldPaths. This includes a ToC that already
-//     holds the swap, for example because an earlier attempt of this call
-//     wrote it and lost the response.
-//   - The ToC holds some but not all paths in oldPaths. Another writer
-//     removed the others first. The call does not retry, because a retry
-//     cannot bring the removed paths back.
+//   - The ToC already holds the swap: it holds no path in oldPaths and every
+//     entry in newEntries. For example, an earlier attempt of this call wrote
+//     it and lost the response.
 //
 // It returns an error if exactly one of oldPaths and newEntries is empty, if
 // an entry in newEntries has no valid time range or lies in another window,
-// after the last attempt, or once ctx is done. If the ToC holds a
-// section of another tenant, it returns an error without retrying.
+// after the last attempt, or once ctx is done. It returns an error without
+// retrying if the ToC holds a section of another tenant, if the ToC does not
+// exist, or if another writer removed a path in oldPaths first.
 //
 // Concurrent calls for the same ToC are safe on a bucket whose GetAndReplace
 // is a conditional write: a call that loses the race retries on the new ToC.
@@ -229,7 +225,7 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, errChangeAlreadyApplied), errors.Is(err, errChangeSuperseded):
+	case errors.Is(err, errChangeAlreadyApplied):
 		return false, nil
 	default:
 		return false, err

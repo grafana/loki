@@ -32,15 +32,10 @@ type tocPublisher struct {
 // The swap applies only if the ToC holds every path in oldPaths. Otherwise it
 // writes nothing.
 //
-// Replace returns false without an error in these cases:
-//   - Replace runs in dry-run mode.
-//   - The ToC holds none of oldPaths. A concurrent writer replaced oldPaths
-//     first, or the ToC already holds the swap, for example because an
-//     earlier attempt wrote it and lost the response.
-//   - The ToC holds some but not all of oldPaths. A concurrent writer removed
-//     the others first.
-//
-// Callers treat every false as no progress.
+// Replace returns false without an error in dry-run mode, and when the ToC
+// already holds the swap, for example because an earlier attempt wrote it and
+// lost the response. Callers treat every false as no progress. Replace returns
+// an error if a concurrent writer removed a path in oldPaths first.
 //
 // The timeout applies to the swap only. A DeadlineExceeded error from it does
 // not mean the parent ctx is done.

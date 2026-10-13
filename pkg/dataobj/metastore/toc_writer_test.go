@@ -498,7 +498,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, otherRowsBefore, filterRows(after, "tenantB", "tenantC"))
 	})
 
-	t.Run("returns false, leaves the ToC unchanged byte for byte without retrying and reports superseded when the ToC lacks one of the old paths", func(t *testing.T) {
+	t.Run("returns an error, leaves the ToC unchanged byte for byte without retrying and reports superseded when the ToC lacks one of the old paths", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		inner := objstore.NewInMemBucket()
@@ -524,7 +524,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]string{"idx/a-0", "idx/a-gone-1", "idx/a-1", "idx/a-gone-0"},
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}},
 		)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 		require.Equal(t, 1, bucket.Calls())
 		require.Equal(t, before, readRawToC(ctx, t, inner, tocPath))
@@ -535,7 +535,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, want, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("returns false, leaves the ToC unchanged and reports superseded when the ToC holds one old path twice and lacks the other", func(t *testing.T) {
+	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds one old path twice and lacks the other", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -552,7 +552,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]string{"idx/a-0", "idx/a-gone"},
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
 		)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 		require.Equal(t, before, readRawToC(ctx, t, bucket, tocPath))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
@@ -644,7 +644,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, []tocRow{{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20}}, readWindowToCs(ctx, t, bucket, window))
 	})
 
-	t.Run("returns false, leaves the ToC unchanged and reports superseded when the ToC holds none of the old paths", func(t *testing.T) {
+	t.Run("returns an error, leaves the ToC unchanged and reports superseded when the ToC holds none of the old paths", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -659,7 +659,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]string{"idx/a-0", "idx/a-1"},
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)}},
 		)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
@@ -687,7 +687,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("returns false and reports superseded when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
+	t.Run("returns an error and reports superseded when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -702,13 +702,13 @@ func TestReplaceIndexPointers(t *testing.T) {
 				{Path: "idx/a-other", StartTime: unixTime(10), EndTime: unixTime(20)},
 			},
 		)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("returns false, creates no ToC and reports superseded when the ToC does not exist", func(t *testing.T) {
+	t.Run("returns an error, creates no ToC and reports superseded when the ToC does not exist", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -718,7 +718,7 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]string{"idx/a-0"},
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
 		)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, errChangeSuperseded)
 		require.False(t, swapped)
 
 		exists, err := bucket.Exists(ctx, TableOfContentsPath("tenantA", window))

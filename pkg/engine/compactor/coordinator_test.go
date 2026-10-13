@@ -1435,7 +1435,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 }
 
 func TestRunIndexMergePhase(t *testing.T) {
-	t.Run("returns no work and leaves the ToC without the merged index when another writer removed one of the source indexes first", func(t *testing.T) {
+	t.Run("returns an error, records a failed cycle and leaves the ToC without the merged index when another writer removed one of the source indexes first", func(t *testing.T) {
 		ctx := context.Background()
 		window := imWindow()
 		bucket := objstore.NewInMemBucket()
@@ -1453,12 +1453,12 @@ func TestRunIndexMergePhase(t *testing.T) {
 		writer := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 		c.publisher = &tocPublisher{writer: &concurrentRemovalReplacer{t: t, writer: writer, removed: "indexes/a"}, timeout: 30 * time.Second}
 
-		require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+		require.Equal(t, phaseOutcomeError, c.runIndexMergePhase(ctx, "acme", window))
 		require.Len(t, runner.snapshot(), 1)
 		entries, err := loadTenantIndexes(ctx, bucket, window, "acme")
 		require.NoError(t, err)
 		requireIndexPaths(t, entries, "indexes/b", "indexes/concurrent")
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("converged", "acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("failed", "acme")))
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")))
 	})
 }

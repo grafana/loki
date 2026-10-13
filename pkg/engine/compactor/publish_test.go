@@ -36,7 +36,7 @@ func TestPublisherReplace(t *testing.T) {
 		require.Equal(t, []replaceCall{{window, "acme", oldPaths, newEntries}}, writer.snapshot())
 	})
 
-	t.Run("reports not swapped when the writer loses the race", func(t *testing.T) {
+	t.Run("reports not swapped when the writer writes nothing", func(t *testing.T) {
 		p := &tocPublisher{writer: &fakeReplacer{swapped: false}, timeout: time.Second}
 
 		swapped, err := p.Replace(context.Background(), "acme", window, oldPaths, newEntries)

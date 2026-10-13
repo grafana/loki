@@ -501,7 +501,7 @@ func (c *coordinator) compactTenantIndexesGroup(ctx context.Context, tenant stri
 		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace race-loss")
+		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace wrote nothing")
 		return compactionStats{}, nil
 	}
 
@@ -701,8 +701,8 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 // The phase holds every plan in memory to avoid a second read of each index.
 // Its memory grows with the number of windows and indexes. A held plan stays
 // safe to execute because index objects are written once. If another writer
-// replaced the source index first, the swap is a no-op and the plan's tasks
-// do work that is not used. A limits change takes effect at the next phase.
+// replaced the source index first, the swap fails and the plan's tasks do
+// work that is not used. A limits change takes effect at the next phase.
 func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phaseOutcome {
 	start := c.clock()
 	plans, anyError := c.planLogCompactions(ctx, tenant)
@@ -738,8 +738,8 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			continue
 		}
 		// A no-op swap also removes the plan's bytes. It happens in dry-run
-		// mode or when another writer replaced the source index first. In both
-		// cases this phase does not rewrite those bytes again.
+		// mode or when the ToC already holds the swap. In both cases this
+		// phase does not rewrite those bytes again.
 		pending.complete(plan)
 		if stats.added > 0 {
 			anySwapped = true
