@@ -498,14 +498,54 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.Equal(t, otherRowsBefore, filterRows(after, "tenantB", "tenantC"))
 	})
 
-	t.Run("removes the old paths it finds and applies the swap when the ToC holds only some of them", func(t *testing.T) {
+	t.Run("returns false, leaves the ToC unchanged byte for byte without retrying and reports superseded when the ToC lacks one of the old paths", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		inner := objstore.NewInMemBucket()
+		seedToC(t, inner, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60},
+		})
+		tocPath := TableOfContentsPath("tenantA", window)
+		before := readRawToC(ctx, t, inner, tocPath)
+
+		var logs bytes.Buffer
+		bucket := &countingBucket{Bucket: inner}
+		writer := NewTableOfContentsWriter(
+			bucket,
+			DefaultTocWriterBackoffConfig,
+			DefaultTocBuilderConfig,
+			log.NewLogfmtLogger(&logs),
+			NewTocWriterMetrics(prometheus.NewPedanticRegistry()),
+			indexobj.NewBuilderMetrics(nil),
+		)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-gone-1", "idx/a-1", "idx/a-gone-0"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, 1, bucket.Calls())
+		require.Equal(t, before, readRawToC(ctx, t, inner, tocPath))
+		require.Contains(t, logs.String(), "idx/a-gone-0, idx/a-gone-1")
+
+		want := map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}
+		require.Equal(t, want, sampleCounts(t, writer.metrics.writeAttemptSeconds, opReplace))
+		require.Equal(t, want, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
+	})
+
+	t.Run("returns false, leaves the ToC unchanged and reports superseded when the ToC holds one old path twice and lacks the other", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
 		seedToC(t, bucket, window, []tocRow{
 			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
 			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
 		})
+		tocPath := TableOfContentsPath("tenantA", window)
+		before := readRawToC(ctx, t, bucket, tocPath)
 
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
@@ -513,14 +553,12 @@ func TestReplaceIndexPointers(t *testing.T) {
 			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
 		)
 		require.NoError(t, err)
-		require.True(t, swapped)
-		require.Equal(t, []tocRow{
-			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
-		}, readWindowToCs(ctx, t, bucket, window))
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, tocPath))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
-	t.Run("removes every pointer of an old path that the ToC holds more than once", func(t *testing.T) {
+	t.Run("removes every pointer of an old path that the ToC holds more than once and applies the swap when the ToC holds every old path", func(t *testing.T) {
 		ctx := context.Background()
 		window := unixTime(0)
 		bucket := objstore.NewInMemBucket()
@@ -528,19 +566,21 @@ func TestReplaceIndexPointers(t *testing.T) {
 			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
 			{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20},
 			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60},
 		})
 
 		writer := newTableOfContentsWriter(t, bucket)
 		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-			[]string{"idx/a-0"},
-			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+			[]string{"idx/a-0", "idx/a-1"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(40)}},
 		)
 		require.NoError(t, err)
 		require.True(t, swapped)
 		require.Equal(t, []tocRow{
-			{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40},
-			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+			{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 40},
 		}, readWindowToCs(ctx, t, bucket, window))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 1, changeAlreadyApplied: 0, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
 	t.Run("drops the repeated pointers of a kept path when it rewrites the ToC", func(t *testing.T) {
@@ -623,6 +663,28 @@ func TestReplaceIndexPointers(t *testing.T) {
 		require.False(t, swapped)
 		require.Equal(t, before, readWindowToCs(ctx, t, bucket, window))
 		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 0, changeSuperseded: 1, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
+	})
+
+	t.Run("returns false, leaves the ToC unchanged and reports already_applied when the ToC holds every new entry and none of the old paths", func(t *testing.T) {
+		ctx := context.Background()
+		window := unixTime(0)
+		bucket := objstore.NewInMemBucket()
+		seedToC(t, bucket, window, []tocRow{
+			{Tenant: "tenantA", Path: "idx/a-kept", StartUnix: 30, EndUnix: 40},
+			{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 10, EndUnix: 20},
+		})
+		tocPath := TableOfContentsPath("tenantA", window)
+		before := readRawToC(ctx, t, bucket, tocPath)
+
+		writer := newTableOfContentsWriter(t, bucket)
+		swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+			[]string{"idx/a-0", "idx/a-1"},
+			[]TableOfContentsEntry{{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)}},
+		)
+		require.NoError(t, err)
+		require.False(t, swapped)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, tocPath))
+		require.Equal(t, map[changeResult]uint64{changeWritten: 0, changeAlreadyApplied: 1, changeSuperseded: 0, changeFailed: 0, changeConflict: 0}, sampleCounts(t, writer.metrics.writeSeconds, opReplace))
 	})
 
 	t.Run("returns false and reports superseded when the ToC holds some new entries and none of the old paths", func(t *testing.T) {
@@ -1027,15 +1089,22 @@ type tocRow struct {
 	EndUnix   int64
 }
 
-// readToC reads all index pointers from a ToC at the given path, flattened by
-// tenant and sorted by tenant and path.
-func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocRow {
+// readRawToC returns the bytes of the ToC object at path.
+func readRawToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []byte {
 	t.Helper()
 	rc, err := bucket.Get(ctx, path)
 	require.NoError(t, err)
 	defer rc.Close()
 	raw, err := io.ReadAll(rc)
 	require.NoError(t, err)
+	return raw
+}
+
+// readToC reads all index pointers from a ToC at the given path, flattened by
+// tenant and sorted by tenant and path.
+func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocRow {
+	t.Helper()
+	raw := readRawToC(ctx, t, bucket, path)
 	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
 	require.NoError(t, err)
 
