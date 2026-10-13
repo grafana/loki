@@ -1896,6 +1896,34 @@ func TestRunTenant(t *testing.T) {
 
 		require.Zero(t, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog))
 	})
+
+	t.Run("deletes the pending log bytes of the tenant when its worker stops", func(t *testing.T) {
+		runner := &fakeRunner{respond: func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			if slices.Equal(opts.Actor, []string{"compaction", "log-merge"}) {
+				return nil, errors.New("log merge failed")
+			}
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}}
+		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{swapped: true})
+		c.limits.(*fakeLimits).setLog("acme", true)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		var pendingBeforeStop float64
+		c.sleep = func(context.Context, time.Duration) {
+			for _, bytes := range bytesByAge(c) {
+				pendingBeforeStop += bytes
+			}
+			if pendingBeforeStop > 0 {
+				cancel()
+			}
+		}
+
+		c.runTenant(ctx, "acme")
+
+		require.Equal(t, 400.0, pendingBeforeStop, "the failed LogMerge phase leaves its bytes pending")
+		require.Zero(t, testutil.CollectAndCount(c.metrics.pendingLogBytes))
+		require.Zero(t, testutil.CollectAndCount(c.metrics.lastPlanTimestampSeconds))
+	})
 }
 
 func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
