@@ -44,7 +44,6 @@ Introducing the query-scheduler is proactive forward-compatibility. It positions
 
 ### Non-Goals
 
-- Providing a migration path from V1 to V2 for existing LokiStack instances (this can be addressed in a follow-up enhancement once resource profiles are established).
 - Separate ruler query pool: Loki docs recommend a dedicated query-frontend and querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query traffic. The operator currently shares a single pool for both. Introducing a separate ruler pool is a distinct enhancement.
 - Benchmarking the interaction between ruler and ad-hoc query load under shared scheduler capacity.
 
@@ -56,7 +55,7 @@ Introducing the query-scheduler is proactive forward-compatibility. It positions
 
 ```
 Client → Gateway → QueryFrontend
-                       ↑ Pull queries from QueryFrontend(gRPC, frontend_worker.frontend_address)
+                       ↑ Pull queries (JSON over gRPC)
                     Querier
 ```
 
@@ -64,8 +63,9 @@ Client → Gateway → QueryFrontend
 
 ```
 Client → Gateway → QueryFrontend → QueryScheduler
-                                        ↑ Pulls queries from QueryScheduler (gRPC, frontend_worker.scheduler_address)
-                                     Querier
+                                        ↑ Pulls queries from QueryScheduler (Protobuf over gRPC)
+                        ↑ Return results directly (Protobuf over gRPC)
+                    Querier
 ```
 As per the Loki documentation, the read path from the query-frontend to the queriers goes as follows:
 1. The query frontend receives an HTTP GET request with a LogQL query.
@@ -187,11 +187,11 @@ For clusters still on V1 (no scheduler deployed), the equivalent metrics for est
 
    **Investigation plan**: run the PoC branch against a realistic load profile (matching each supported t-shirt size) and record peak CPU and memory consumption of the scheduler pod. Use those measurements to set `Requests` values and derive sensible `Limits`.
 2. `max_outstanding_requests_per_tenant` default: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
-3. Does a separate ruler pool require a separate query-scheduler, or is one scheduler with prioritisation sufficient? With the current proposed design, all queries (ad-hoc or ruler) share the same scheduler queue. The scheduler's round-robin prevents contention between tenant queries but it doesn't differentiate between query classes within the same tenant. There are two possible solutions to isolate based on class:
+3. **V1→V2 rollout impact**: a rolling reconciliation is expected to be sufficient, but the upgrade path was not validated in this PoC. During the rollout, pending queries on pods being terminated will fail and require client-side retries. In case there's a large rules file, multiple rule evaluations may be disrupted simultaneously, causing gaps in alert evaluations and recording rule metrics.
+4. Does a separate ruler pool require a separate query-scheduler, or is one scheduler with prioritisation sufficient? With the current proposed design, all queries (ad-hoc or ruler) share the same scheduler queue. The scheduler's round-robin prevents contention between tenant queries but it doesn't differentiate between query classes within the same tenant. There are two possible solutions to isolate based on class:
     - A second scheduler dedicated to the ruler pool.
     - Priority queuing within the scheduler so ruler queries are dispatched ahead of non-ruler queries. Loki's scheduler already has a hierarchical queue (`max_queue_hierarchy_levels`, default 3) that places different query classes at different levels and round-robins across them, this is the Loki-native path toward per-class prioritisation without needing a second scheduler.
 
 ## Drawbacks
 - The PoC removes support for V1-style `frontend_address`; existing clusters would need to drain in-flight queries before the scheduler is ready. A proper migration strategy is deferred.
-- `tls_insecure_skip_verify: true` on querier outbound connections: when `GRPCEncryption` is enabled, the querier's `frontend_worker.grpc_client_config` is shared between two outbound connections, querier→scheduler (to pull jobs) and querier→frontend (to deliver results). These connections need different TLS server names, but only one config exists. Since pod IPs have no cert SANs and the result-delivery connection dials a pod IP, server cert verification is disabled on both. Server-side mTLS is still enforced (servers verify the querier's client cert), so unauthenticated clients cannot connect. Loki's own reference deployment does not enable TLS on these internal connections at all and relies on network-level isolation instead. The proper fix? per-pod certificates, which requires changes to the built-in cert manager and is deferred to a follow-up.
-
+- **PoC only, this will be fixed in the real implementation.** `tls_insecure_skip_verify: true` on querier outbound connections: when `GRPCEncryption` is enabled, the querier's `frontend_worker.grpc_client_config` is shared between two outbound connections, querier→scheduler and querier→frontend (result delivery). Both connections ultimately fail TLS because headless services return pod IPs directly, and the scheduler's cert has no IP SAN. Server-side mTLS is still enforced. The two fixes: make the scheduler gRPC service non-headless, and issue per-pod certificates for the query-frontend (requires cert manager changes).
