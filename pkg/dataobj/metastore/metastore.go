@@ -6,10 +6,13 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
 type Metastore interface {
-	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end]
+	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end].
+	// A request with a ShardBucketRange can leave out the streams outside that range.
 	Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error)
 
 	GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error)
@@ -28,6 +31,17 @@ type SectionsRequest struct {
 	End        time.Time
 	Matchers   []*labels.Matcher
 	Predicates []*labels.Matcher
+
+	// ShardBucketRange, when set, asks the metastore to leave out streams outside the range.
+	//
+	// The response holds every matching stream inside the range. It can also hold streams outside
+	// it, because the metastore prunes whole index rows by their bucket ranges, not single
+	// streams. The caller must drop the streams outside the range.
+	//
+	// Sections can fail when From exceeds To, or when an index object lacks the bucket
+	// information to prune by. It can also fail when two index objects list different streams
+	// for one section, as when only one of them can prune by the range.
+	ShardBucketRange *postings.ShardBucketRange
 }
 
 type SectionsResponse struct {

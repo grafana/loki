@@ -3,6 +3,7 @@ package metastore
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -35,7 +37,7 @@ func openAndSelectStreams(ctx context.Context, t *testing.T, selector *streamSel
 }
 
 func TestStreamSelector_ZeroMatchers(t *testing.T) {
-	r := newStreamSelector(nil, nil, time.Unix(0, 0), time.Unix(0, 100))
+	r := newStreamSelector(nil, nil, time.Unix(0, 0), time.Unix(0, 100), nil)
 	res, err := openAndSelectStreams(context.Background(), t, r, nil)
 	require.NoError(t, err)
 	require.Empty(t, res)
@@ -50,7 +52,7 @@ func TestStreamSelector_SingleSectionLabelMatch(t *testing.T) {
 	defer closer()
 
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")
-	r := newStreamSelector([]*labels.Matcher{m}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	r := newStreamSelector([]*labels.Matcher{m}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -75,7 +77,7 @@ func TestStreamSelector_MatcherANDViaBitmap(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "job", "distributor"),
 		labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -102,7 +104,7 @@ func TestStreamSelector_ANDAcrossPhysicalSections(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -126,7 +128,7 @@ func TestStreamSelector_CrossStreamNoFalsePositive(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "job", "worker"),
 		labels.MustNewMatcher(labels.MatchEqual, "namespace", "dev"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -142,6 +144,7 @@ func TestStreamSelector_TimePruning(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")},
 		nil, time.Unix(0, 100), time.Unix(0, 200), // no overlap with [10,20]
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -162,6 +165,7 @@ func TestStreamSelector_MissingLabelSemantics(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchNotEqual, "team", "bar"),
 		},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -183,7 +187,7 @@ func TestStreamSelector_MissingLabelViaAndNot(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
 		labels.MustNewMatcher(labels.MatchEqual, "job", ""),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -203,6 +207,7 @@ func TestStreamSelector_SectionWideTimestampEnvelope(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "loki")},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -223,10 +228,10 @@ func TestStreamSelector_OrderIndependent(t *testing.T) {
 	defer closeB()
 	m := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
 
-	r1 := newStreamSelector(m, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	r1 := newStreamSelector(m, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res1, err := openAndSelectStreams(ctx, t, r1, append(append([]*postings.Section{}, secsA...), secsB...))
 	require.NoError(t, err)
-	r2 := newStreamSelector(m, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	r2 := newStreamSelector(m, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res2, err := openAndSelectStreams(ctx, t, r2, append(append([]*postings.Section{}, secsB...), secsA...))
 	require.NoError(t, err)
 
@@ -303,7 +308,7 @@ func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000))
+			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000), nil)
 			res, err := openAndSelectStreams(context.Background(), t, r, secs)
 			require.NoError(t, err)
 			require.Len(t, res, 1)
@@ -349,7 +354,7 @@ func TestStreamSelector_NonEqualityPredicatesAndAdmission(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000))
+			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000), nil)
 			res, err := openAndSelectStreams(context.Background(), t, r, secs)
 			require.NoError(t, err)
 			require.Len(t, res, tt.want)
@@ -373,7 +378,7 @@ func TestStreamSelector_BloomFilters(t *testing.T) {
 	// Predicate present in bloom -> section kept.
 	rHit := newStreamSelector(ms,
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc")},
-		time.Unix(0, 0), time.Unix(0, 1000))
+		time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res, err := openAndSelectStreams(ctx, t, rHit, secs)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -381,7 +386,7 @@ func TestStreamSelector_BloomFilters(t *testing.T) {
 	// Predicate absent from bloom -> section dropped.
 	rMiss := newStreamSelector(ms,
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "zzz")},
-		time.Unix(0, 0), time.Unix(0, 1000))
+		time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res, err = openAndSelectStreams(ctx, t, rMiss, secs)
 	require.NoError(t, err)
 	require.Empty(t, res)
@@ -401,7 +406,7 @@ func TestStreamSelector_StreamLabelPredicateDropped(t *testing.T) {
 	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
 	r := newStreamSelector(ms,
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")},
-		time.Unix(0, 0), time.Unix(0, 1000))
+		time.Unix(0, 0), time.Unix(0, 1000), nil)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -423,6 +428,7 @@ func TestStreamSelector_PerObjectStreamIDReuse(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "loki")},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, append(append([]*postings.Section{}, secsA...), secsB...))
 	require.NoError(t, err)
@@ -449,6 +455,7 @@ func TestStreamSelector_InterleavedLogicalSections(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "loki")},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -478,7 +485,7 @@ func TestStreamSelector_SecondMatcherOnlyKeyDropped(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
 		labels.MustNewMatcher(labels.MatchEqual, "team", "x"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -502,6 +509,7 @@ func TestStreamSelector_MatchAllRegexpDoesNotPanic(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "app", ".*")},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -522,6 +530,7 @@ func TestStreamSelector_OnlyFiltersErrors(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "team", "bar")},
 		nil, time.Unix(0, 0), time.Unix(0, 1000),
+		nil,
 	)
 	_, err := openAndSelectStreams(ctx, t, r, secs)
 	require.Error(t, err)
@@ -542,6 +551,7 @@ func TestStreamSelector_TimePruningConservativeEnvelope(t *testing.T) {
 	r := newStreamSelector(
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "loki")},
 		nil, time.Unix(0, 900), time.Unix(0, 1100),
+		nil,
 	)
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -567,7 +577,7 @@ func TestStreamSelector_MatchNotRegexp(t *testing.T) {
 	r := newStreamSelector([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "web"),
 		labels.MustNewMatcher(labels.MatchNotRegexp, "env", "prod.*"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -603,7 +613,7 @@ func TestStreamSelector_LogicalSectionAcrossPhysicalSections(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "web"),
 		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 		labels.MustNewMatcher(labels.MatchEqual, "region", "us"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -644,7 +654,7 @@ func TestStreamSelector_MixedMatcherTypes(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchRegexp, "job", "api.*"),
 		labels.MustNewMatcher(labels.MatchNotEqual, "team", "sre"),
 		labels.MustNewMatcher(labels.MatchNotRegexp, "region", "eu.*"),
-	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000), nil)
 
 	res, err := openAndSelectStreams(ctx, t, r, secs)
 	require.NoError(t, err)
@@ -691,7 +701,7 @@ func BenchmarkStreamSelector_SelectStreams(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r := newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 2000))
+		r := newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 2000), nil)
 		if err := r.open(ctx, secs, maxConcurrentSectionOpens); err != nil {
 			b.Fatal(err)
 		}
@@ -710,6 +720,7 @@ type labelPosting struct {
 	obj          string
 	section      int64
 	minTs, maxTs int64 // unix nanos
+	shardBucket  uint32
 }
 
 type bloomPosting struct {
@@ -736,12 +747,12 @@ func buildLabelBloomSection(t testing.TB, labelsIn []labelPosting, bloomsIn []bl
 	for _, lp := range labelsIn {
 		b.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0,
+			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
 		})
 		if lp.maxTs > lp.minTs {
 			b.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0,
+				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.maxTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
 			})
 		}
 	}
@@ -795,10 +806,292 @@ func buildSplitPostingsSections(t testing.TB, perSection ...[]labelPosting) ([]*
 		for _, lp := range lps {
 			b.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
-				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0,
+				StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0, ShardBucket: lp.shardBucket,
 			})
 		}
 		builders = append(builders, b)
 	}
 	return openPostingsSections(context.Background(), t, builders...)
+}
+
+func TestStreamSelector_ShardBucketRange(t *testing.T) {
+	ctx := t.Context()
+
+	// bucketedStream is one stream of the fixture, with the shard bucket that the index records for it.
+	type bucketedStream struct {
+		id      int64
+		section int64
+		bucket  uint32
+		labels  [][2]string
+
+		// outsideWindow is true when every line of the stream lies outside the query window.
+		outsideWindow bool
+	}
+
+	// bucketedStreams spreads ten streams over two logs sections and the buckets 0 to 31. Section 0
+	// holds the buckets 0 to 15 and section 1 holds the buckets 18 to 31. Streams 4 and 8 have no
+	// line inside the query window.
+	bucketedStreams := []bucketedStream{
+		{id: 1, section: 0, bucket: 0, labels: [][2]string{{"app", "a"}, {"env", "prod"}}},
+		{id: 2, section: 0, bucket: 3, labels: [][2]string{{"app", "a"}, {"env", "dev"}, {"team", "x"}}},
+		{id: 3, section: 0, bucket: 7, labels: [][2]string{{"app", "b"}, {"env", "prod"}}},
+		{id: 4, section: 0, bucket: 12, labels: [][2]string{{"app", "b"}, {"env", "dev"}}, outsideWindow: true},
+		{id: 5, section: 0, bucket: 15, labels: [][2]string{{"app", "c"}, {"env", "prod"}, {"team", "y"}}},
+		{id: 6, section: 1, bucket: 18, labels: [][2]string{{"app", "c"}, {"env", "dev"}}},
+		{id: 7, section: 1, bucket: 21, labels: [][2]string{{"app", "a"}, {"env", "prod"}, {"team", "x"}}},
+		{id: 8, section: 1, bucket: 24, labels: [][2]string{{"app", "b"}, {"env", "dev"}, {"team", "y"}}, outsideWindow: true},
+		{id: 9, section: 1, bucket: 27, labels: [][2]string{{"app", "c"}, {"env", "prod"}}},
+		{id: 10, section: 1, bucket: 31, labels: [][2]string{{"app", "a"}, {"env", "dev"}}},
+	}
+
+	bucketedPostings := func() []labelPosting {
+		var out []labelPosting
+		for _, stream := range bucketedStreams {
+			minTs, maxTs := int64(10), int64(20)
+			if stream.outsideWindow {
+				minTs, maxTs = 5000, 6000
+			}
+			for _, label := range stream.labels {
+				out = append(out, labelPosting{
+					name: label[0], value: label[1], streamID: stream.id,
+					obj: "obj-a", section: stream.section, minTs: minTs, maxTs: maxTs, shardBucket: stream.bucket,
+				})
+			}
+		}
+		return out
+	}
+
+	bucketOf := make(map[int64]uint32, len(bucketedStreams))
+	for _, stream := range bucketedStreams {
+		bucketOf[stream.id] = stream.bucket
+	}
+
+	// selected returns the streams the selector resolves, by logs section. A section with no
+	// stream is absent.
+	selected := func(t *testing.T, matchers []*labels.Matcher, bucketRange *postings.ShardBucketRange) map[int64][]int64 {
+		t.Helper()
+
+		secs, closer := buildLabelBloomSection(t, bucketedPostings(), nil)
+		defer closer()
+
+		selector := newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 1000), bucketRange)
+		results, err := openAndSelectStreams(ctx, t, selector, secs)
+		require.NoError(t, err)
+
+		out := map[int64][]int64{}
+		for _, result := range results {
+			out[result.Section.SectionIndex] = streamIDs(result)
+		}
+		return out
+	}
+
+	// inRange returns the IDs of the streams inside the range. Stream IDs are unique in the fixture.
+	inRange := func(sections map[int64][]int64, bucketRange postings.ShardBucketRange) map[int64]struct{} {
+		out := map[int64]struct{}{}
+		for _, ids := range sections {
+			for _, id := range ids {
+				if bucket := bucketOf[id]; bucket >= bucketRange.From && bucket <= bucketRange.To {
+					out[id] = struct{}{}
+				}
+			}
+		}
+		return out
+	}
+
+	// expected returns the IDs of the streams that pass three tests. Their labels match every
+	// matcher. They have a line inside the query window. They lie inside the range. It reads the
+	// fixture, not a selector, so it is independent of the code under test.
+	expected := func(matchers []*labels.Matcher, bucketRange postings.ShardBucketRange) map[int64]struct{} {
+		out := map[int64]struct{}{}
+		for _, stream := range bucketedStreams {
+			if stream.outsideWindow || stream.bucket < bucketRange.From || stream.bucket > bucketRange.To {
+				continue
+			}
+			var pairs []string
+			for _, label := range stream.labels {
+				pairs = append(pairs, label[0], label[1])
+			}
+			streamLabels := labels.FromStrings(pairs...)
+
+			matches := true
+			for _, matcher := range matchers {
+				matches = matches && matcher.Matches(streamLabels.Get(matcher.Name))
+			}
+			if matches {
+				out[stream.id] = struct{}{}
+			}
+		}
+		return out
+	}
+
+	ranges := []postings.ShardBucketRange{
+		{From: 0, To: 0},
+		{From: 3, To: 3},
+		{From: 13, To: 14},
+		{From: 7, To: 12},
+		{From: 0, To: 15},
+		{From: 16, To: 31},
+		{From: 5, To: 20},
+		{From: 31, To: 31},
+		{From: 0, To: 31},
+	}
+
+	matcherSets := []struct {
+		name     string
+		matchers []*labels.Matcher
+	}{
+		{
+			name:     "an equality matcher",
+			matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "prod")},
+		},
+		{
+			name:     "a regular expression matcher",
+			matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "app", "a|b")},
+		},
+		{
+			name: "two equality matchers",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "a"),
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			},
+		},
+		{
+			name: "a not-equal matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+			},
+		},
+		{
+			name: "a not-regular-expression matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
+				labels.MustNewMatcher(labels.MatchNotRegexp, "env", "pr.*"),
+			},
+		},
+		{
+			name: "a matcher for a missing label",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
+				labels.MustNewMatcher(labels.MatchEqual, "team", ""),
+			},
+		},
+		{
+			name: "a matcher for a present label",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "team", ""),
+			},
+		},
+		{
+			name: "a mix of positive and negative matchers",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "team", "x|y"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "dev"),
+			},
+		},
+	}
+
+	for _, test := range matcherSets {
+		t.Run(fmt.Sprintf("%s resolves every matching stream inside every bucket range, and no stream inside it that the unpruned selection lacks", test.name), func(t *testing.T) {
+			everything := postings.ShardBucketRange{From: 0, To: streams.ShardFactor - 1}
+			require.NotEmpty(t, expected(test.matchers, everything), "the matchers must select a stream, or the comparison proves nothing")
+
+			unpruned := selected(t, test.matchers, nil)
+			for _, bucketRange := range ranges {
+				pruned := inRange(selected(t, test.matchers, &bucketRange), bucketRange)
+
+				require.Subset(t, pruned, expected(test.matchers, bucketRange), "a matching stream is missing for buckets %d to %d", bucketRange.From, bucketRange.To)
+				require.Subset(t, inRange(unpruned, bucketRange), pruned, "a stream the unpruned selection lacks appears for buckets %d to %d", bucketRange.From, bucketRange.To)
+			}
+		})
+	}
+
+	t.Run("a range of bucket 0 resolves section 0 with every env=prod stream of its row, and not section 1", func(t *testing.T) {
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "prod")}
+
+		got := selected(t, matchers, &postings.ShardBucketRange{From: 0, To: 0})
+
+		require.Equal(t, map[int64][]int64{0: {1, 3, 5}}, got)
+	})
+
+	t.Run("a range that keeps only the row of a stream with no line in the window resolves no stream", func(t *testing.T) {
+		secs, closer := buildLabelBloomSection(t, []labelPosting{
+			{name: "app", value: "a", streamID: 1, obj: "obj-a", section: 0, minTs: 5000, maxTs: 6000, shardBucket: 0},
+			{name: "app", value: "b", streamID: 2, obj: "obj-a", section: 0, minTs: 10, maxTs: 20, shardBucket: 20},
+		}, nil)
+		defer closer()
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "app", "a|b")}
+
+		unpruned, err := openAndSelectStreams(ctx, t, newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 1000), nil), secs)
+		require.NoError(t, err)
+		require.Len(t, unpruned, 1)
+		require.Equal(t, []int64{1, 2}, streamIDs(unpruned[0]), "the unpruned selection keeps the stream, because the envelope of the matcher overlaps the window")
+
+		pruned, err := openAndSelectStreams(ctx, t, newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 1000), &postings.ShardBucketRange{From: 0, To: 0}), secs)
+		require.NoError(t, err)
+		require.Empty(t, pruned)
+	})
+
+	t.Run("a range prunes every physical postings section of an index object", func(t *testing.T) {
+		build := func() ([]*postings.Section, func()) {
+			return buildSplitPostingsSections(t,
+				[]labelPosting{{name: "app", value: "foo", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20, shardBucket: 3}},
+				[]labelPosting{{name: "app", value: "foo", streamID: 1, obj: "obj-a", section: 1, minTs: 10, maxTs: 20, shardBucket: 20}},
+			)
+		}
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+
+		sectionsFor := func(bucketRange *postings.ShardBucketRange) []int64 {
+			secs, closer := build()
+			defer closer()
+			results, err := openAndSelectStreams(ctx, t, newStreamSelector(matchers, nil, time.Unix(0, 0), time.Unix(0, 1000), bucketRange), secs)
+			require.NoError(t, err)
+
+			var out []int64
+			for _, result := range results {
+				out = append(out, result.Section.SectionIndex)
+			}
+			slices.Sort(out)
+			return out
+		}
+
+		require.Equal(t, []int64{0, 1}, sectionsFor(nil))
+		require.Equal(t, []int64{0}, sectionsFor(&postings.ShardBucketRange{From: 3, To: 3}))
+		require.Equal(t, []int64{1}, sectionsFor(&postings.ShardBucketRange{From: 20, To: 20}))
+	})
+
+	t.Run("a metadata predicate keeps working with a range", func(t *testing.T) {
+		const bucket = 3
+		secs, closer := buildLabelBloomSection(t,
+			[]labelPosting{
+				{name: "app", value: "nginx", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20, shardBucket: bucket},
+				{name: "env", value: "prod", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20, shardBucket: bucket},
+			},
+			[]bloomPosting{{columnName: "trace_id", values: []string{"abc"}, streamID: 1, obj: "obj-a", section: 0}},
+		)
+		defer closer()
+
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
+		bucketRange := &postings.ShardBucketRange{From: bucket, To: bucket}
+		sectionsFor := func(predicate *labels.Matcher) []SectionStreams {
+			selector := newStreamSelector(matchers, []*labels.Matcher{predicate}, time.Unix(0, 0), time.Unix(0, 1000), bucketRange)
+			results, err := openAndSelectStreams(ctx, t, selector, secs)
+			require.NoError(t, err)
+			return results
+		}
+
+		require.Len(t, sectionsFor(labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc")), 1, "a bloom hit keeps the section")
+		require.Empty(t, sectionsFor(labels.MustNewMatcher(labels.MatchEqual, "trace_id", "zzz")), "a bloom miss drops the section")
+		require.Len(t, sectionsFor(labels.MustNewMatcher(labels.MatchEqual, "env", "prod")), 1, "a predicate on a stream label keeps the section")
+	})
+
+	t.Run("a range outside every row resolves no section", func(t *testing.T) {
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "env", "prod")}
+
+		got := selected(t, matchers, &postings.ShardBucketRange{From: 16, To: 17})
+
+		require.Empty(t, got)
+	})
 }

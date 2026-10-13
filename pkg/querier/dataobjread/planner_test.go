@@ -10,6 +10,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -79,6 +81,50 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Len(t, ms.gotRequest.Predicates, 1)
 		require.Equal(t, `level="error"`, ms.gotRequest.Predicates[0].String())
 	})
+
+	for _, test := range []struct {
+		name  string
+		shard *QueryShard
+		want  *postings.ShardBucketRange
+	}{
+		{
+			name:  "an unsharded query asks the metastore for no bucket range",
+			shard: nil,
+			want:  nil,
+		},
+		{
+			name:  "a shard count of one restricts no stream, so the planner asks the metastore for no bucket range",
+			shard: NewQueryShard(powerOfTwoShard(0, 1)),
+			want:  nil,
+		},
+		{
+			name:  "the first of two shards asks the metastore for the lower half of the buckets",
+			shard: NewQueryShard(powerOfTwoShard(0, 2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/2 - 1},
+		},
+		{
+			name:  "a shard count above the bucket count asks the metastore for the one bucket it falls in",
+			shard: NewQueryShard(powerOfTwoShard(5, streams.ShardFactor*4)),
+			want:  &postings.ShardBucketRange{From: 1, To: 1},
+		},
+		{
+			name:  "a bounded shard asks the metastore for the buckets it spans",
+			shard: NewQueryShard(boundedShard(0, ^uint64(0)/2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/2 - 1},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ms := &fixedMetastore{}
+			readPlanner, _ := newTestPlanner(t, ms)
+
+			query := plainQuery(t)
+			query.Shard = test.shard
+			_, err := drainTasks(readPlanner.Plan(t.Context(), query))
+			require.NoError(t, err)
+
+			require.Equal(t, test.want, ms.gotRequest.ShardBucketRange)
+		})
+	}
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)

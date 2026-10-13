@@ -71,10 +71,11 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 		}()
 
 		resolved, err := p.metastore.Sections(ctx, metastore.SectionsRequest{
-			Start:      query.Start,
-			End:        query.End,
-			Matchers:   query.Matchers,
-			Predicates: query.Projection.sectionPredicates(),
+			Start:            query.Start,
+			End:              query.End,
+			Matchers:         query.Matchers,
+			Predicates:       query.Projection.sectionPredicates(),
+			ShardBucketRange: query.Shard.metastoreBucketRange(),
 		})
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))

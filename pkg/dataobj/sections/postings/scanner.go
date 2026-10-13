@@ -37,12 +37,32 @@ type ScannerReaders struct {
 	LabelNames   *Reader
 }
 
+// ShardBucketRange is an inclusive range of shard buckets. From must not
+// exceed To.
+type ShardBucketRange struct {
+	From, To uint32
+}
+
 // NewScannerReaders creates the readers needed to scan sec. The returned
 // readers must be opened before they are passed to [NewScanner].
 //
 // predicates may be of any matcher type. Bloom lookups use only the equality
 // predicates, and their names must be distinct. The stream label lookup uses
 // every predicate name.
+//
+// A non-nil bucketRange limits the matcher and filter readers to the label
+// rows whose bucket range overlaps it.
+//
+// A scan with these readers keeps every matching stream inside the range. It
+// can also return streams outside the range, for two reasons:
+//
+//  1. A row whose bucket range overlaps the range can hold streams outside it.
+//  2. A filter such as env!="dev" also matches a stream that lacks the label.
+//     If the range skips the row env="dev", the streams of that row look like
+//     they lack env. They pass the filter, and they lie outside the range.
+//
+// NewScannerReaders returns an error when From exceeds To, or when a label row
+// of sec has no bucket range.
 func NewScannerReaders(
 	sec *Section,
 	matchers []CompiledMatcher,
@@ -50,6 +70,7 @@ func NewScannerReaders(
 	predicates []*labels.Matcher,
 	labelStats dataset.RowReaderStatsTracker,
 	bloomStats dataset.RowReaderStatsTracker,
+	bucketRange *ShardBucketRange,
 ) (*ScannerReaders, error) {
 	readers := &ScannerReaders{}
 
@@ -58,11 +79,25 @@ func NewScannerReaders(
 	valueCol := sectionColumn(sec, ColumnTypeLabelValue)
 	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
 
+	bucketPredicate, err := shardBucketPredicate(sec, bucketRange)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only the MatchLabels and LabelStreams readers prune, because they select streams. Bloom
+	// rows have no bucket range, and the label-name reader only feeds section admission.
+	withBucketRange := func(p Predicate) Predicate {
+		if bucketPredicate == nil {
+			return p
+		}
+		return AndPredicate{Left: p, Right: bucketPredicate}
+	}
+
 	if len(matchers) > 0 && kindCol != nil && nameCol != nil && valueCol != nil {
-		readers.MatchLabels = newScannerReader(sec, matchLabelsPredicate(kindCol, nameCol, valueCol, matchers), labelStats)
+		readers.MatchLabels = newScannerReader(sec, withBucketRange(matchLabelsPredicate(kindCol, nameCol, valueCol, matchers)), labelStats)
 	}
 	if len(filters) > 0 && kindCol != nil && nameCol != nil {
-		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
+		readers.LabelStreams = newScannerReader(sec, withBucketRange(labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters))), labelStats)
 	}
 
 	equal := equalPredicates(predicates)
@@ -85,6 +120,56 @@ func newScannerReader(sec *Section, pred Predicate, statsTracker dataset.RowRead
 		Predicates:   []Predicate{pred},
 		StatsTracker: statsTracker,
 	})
+}
+
+// shardBucketPredicate keeps the label rows whose [min, max] bucket range
+// overlaps r. The package has only strict comparisons, and buckets are
+// integers. So the predicate writes min <= r.To as min < r.To+1 and
+// max >= r.From as max > r.From-1. The sums use int64, so r.To+1 cannot
+// overflow and r.From-1 cannot wrap below zero.
+//
+// It returns a nil predicate when r is nil. It also returns one when sec holds
+// no label row, because there is nothing to prune.
+//
+// It returns an error when From exceeds To, or when a label row has no
+// bucket range.
+func shardBucketPredicate(sec *Section, r *ShardBucketRange) (Predicate, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if r.From > r.To {
+		return nil, fmt.Errorf("invalid shard bucket range [%d, %d]", r.From, r.To)
+	}
+
+	// Both bucket columns must hold a value for every label row. A NULL max sorts below every
+	// value, so the predicate would drop that row, and the query would lose its streams
+	// without an error. A NULL min would keep the row, but it shows a writer bug, so it is an
+	// error too.
+	//
+	// The writer sets the label value of every label row and leaves it NULL for every bloom
+	// row. So the number of label values must match the number of label rows, and here we double
+	// check it.
+	var labelRows uint64
+	if col := sectionColumn(sec, ColumnTypeLabelValue); col != nil {
+		labelRows = col.inner.Metadata().ValuesCount
+	}
+	if labelRows == 0 {
+		return nil, nil
+	}
+
+	minCol, err := sectionColumnWithRowsCheck(sec, ColumnTypeMinShardBucket, labelRows)
+	if err != nil {
+		return nil, fmt.Errorf("prune by shard bucket range: %w", err)
+	}
+	maxCol, err := sectionColumnWithRowsCheck(sec, ColumnTypeMaxShardBucket, labelRows)
+	if err != nil {
+		return nil, fmt.Errorf("prune by shard bucket range: %w", err)
+	}
+
+	return AndPredicate{
+		Left:  LessThanPredicate{Column: minCol, Value: scalar.NewInt64Scalar(int64(r.To) + 1)},
+		Right: GreaterThanPredicate{Column: maxCol, Value: scalar.NewInt64Scalar(int64(r.From) - 1)},
+	}, nil
 }
 
 func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
@@ -522,4 +607,19 @@ func sectionColumn(sec *Section, ct ColumnType) *Column {
 		}
 	}
 	return nil
+}
+
+// sectionColumnWithRowsCheck returns the section's column of the given type. It
+// returns an error when the section lacks the column. It also returns an error
+// when the column does not hold a value for exactly the given number of rows. A
+// NULL is not a value.
+func sectionColumnWithRowsCheck(sec *Section, ct ColumnType, rows uint64) (*Column, error) {
+	col := sectionColumn(sec, ct)
+	if col == nil {
+		return nil, fmt.Errorf("postings section has no %s column", ct)
+	}
+	if values := col.inner.Metadata().ValuesCount; values != rows {
+		return nil, fmt.Errorf("postings section %s column holds %d values for %d rows", ct, values, rows)
+	}
+	return col, nil
 }
