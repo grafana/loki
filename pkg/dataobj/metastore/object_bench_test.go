@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -98,8 +97,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				})
 				require.NoError(b, err)
 
-				err = builder.ObserveLogLine("test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
-				require.NoError(b, err)
+				observeLabelPostings(builder, "test-path", int64(fileIdx+1), newIdx, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 
 				globalStreamID++
 			}
@@ -164,7 +162,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			name: "multiple predicate hit",
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
-				labels.MustNewMatcher(labels.MatchEqual, "traceID", "1234"),
+				labels.MustNewMatcher(labels.MatchEqual, "spanID", "wxyz"),
 			},
 			wantCount: 1,
 		},
@@ -201,19 +199,10 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			})
 			require.NoError(b, err)
 
-			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
-			require.NoError(b, err)
-			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
-			require.NoError(b, err)
-
-			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
-			traceIDBloom.AddString("abcd")
-			traceIDBloom.AddString("1234")
-			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
-			require.NoError(b, err)
-
-			err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
-			require.NoError(b, err)
+			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-3*time.Hour), 5)
+			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-2*time.Hour), 0)
+			observeBloomPostings(b, builder, "test-path", 0, 1, now.Add(-3*time.Hour), "traceID", "abcd", "1234")
+			observeBloomPostings(b, builder, "test-path", 0, 1, now.Add(-3*time.Hour), "spanID", "wxyz")
 
 			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			require.Len(b, timeRanges, 1)

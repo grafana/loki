@@ -1192,7 +1192,7 @@ func observeLabelPostings(builder *indexobj.Builder, path string, section, strea
 
 // observeBloomPostings records the values of a structured metadata column of a
 // stream in a bloom posting.
-func observeBloomPostings(t *testing.T, builder *indexobj.Builder, path string, section, streamID int64, ts time.Time, column string, values ...string) {
+func observeBloomPostings(t testing.TB, builder *indexobj.Builder, path string, section, streamID int64, ts time.Time, column string, values ...string) {
 	t.Helper()
 
 	builder.PrepareBloomColumn(path, section, column, uint(len(values)), int64(streams.ShardFactor))
