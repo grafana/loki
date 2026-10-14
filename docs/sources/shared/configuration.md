@@ -1380,6 +1380,12 @@ dataobj:
     # CLI flag: -dataobj.builder.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
+    # The maximum number of data objects to build, upload and index at the same
+    # time during a flush. Each concurrent object adds the memory to sort and
+    # index it. The offset is committed once every object succeeds.
+    # CLI flag: -dataobj.builder.flush-concurrency
+    [flush_concurrency: <int> | default = 1]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]

@@ -146,6 +146,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		indexer,
 		tocWriter,
 		partitionID,
+		cfg.FlushConcurrency,
 		logger,
 		reg,
 	)

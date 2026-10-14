@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
@@ -51,6 +52,11 @@ type flushCommitterImpl struct {
 	partition int32
 	logger    log.Logger
 
+	// concurrency is the maximum number of builders that one flush processes
+	// at the same time. Each in-flight builder holds its sorted object until
+	// the ToC records its index, so this also bounds the extra flush memory.
+	concurrency int
+
 	duration      *prometheus.HistogramVec
 	e2eLagSeconds prometheus.Gauge
 }
@@ -67,6 +73,7 @@ func newFlushCommitter(
 	indexer indexer,
 	tocWriter tocWriter,
 	partition int32,
+	concurrency int,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) *flushCommitterImpl {
@@ -86,13 +93,14 @@ func newFlushCommitter(
 	d.WithLabelValues(resultCancelled)
 
 	return &flushCommitterImpl{
-		flusher:   flusher,
-		committer: committer,
-		indexer:   indexer,
-		tocWriter: tocWriter,
-		partition: partition,
-		logger:    logger,
-		duration:  d,
+		flusher:     flusher,
+		committer:   committer,
+		indexer:     indexer,
+		tocWriter:   tocWriter,
+		partition:   partition,
+		logger:      logger,
+		duration:    d,
+		concurrency: concurrency,
 		e2eLagSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_e2e_lag_seconds",
 			Help: "Time between a log line being written to Kafka by the distributors and it becoming available for querying in seconds.",
@@ -109,10 +117,8 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	// earliest record times.
 	earliest := earliestRecordTime(builders)
 
-	for _, b := range builders {
-		if err := c.flushOne(ctx, b, reason); err != nil {
-			return err
-		}
+	if err := c.flushAll(ctx, builders, reason); err != nil {
+		return err
 	}
 
 	// Everything above is queryable once its index is in the metastore, so the
@@ -126,6 +132,35 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 		return fmt.Errorf("failed to commit data object offset %d: %w", offset, err)
 	}
 	return nil
+}
+
+// flushAll flushes, indexes and records each builder in the ToC, with at most
+// c.concurrency builders in progress. It returns once every started builder
+// is done and has released its object.
+//
+// The first failure cancels the builders in progress and skips the builders
+// not yet started. flushAll returns that first failure, not the cancellation
+// errors that it causes in the other builders.
+//
+// Builders start in the order given but can finish in any order. This is safe
+// because each builder holds one tenant and window, so it writes to its own
+// ToC. The caller commits the offset only after flushAll returns.
+func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(c.concurrency)
+	for _, b := range builders {
+		g.Go(func() error {
+			// Skip the builder if the flush was canceled or another builder
+			// failed while this one waited for a slot. The builder flush does
+			// not check the context, so it would build an object only to
+			// discard it.
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			return c.flushOne(gctx, b, reason)
+		})
+	}
+	return g.Wait()
 }
 
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {

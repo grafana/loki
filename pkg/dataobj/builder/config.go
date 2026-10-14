@@ -20,6 +20,10 @@ type Config struct {
 	IdleFlushTimeout time.Duration `yaml:"idle_flush_timeout"`
 	MaxBuilderAge    time.Duration `yaml:"max_builder_age"`
 
+	// FlushConcurrency is the maximum number of data objects that one flush
+	// builds, uploads and indexes at the same time.
+	FlushConcurrency int `yaml:"flush_concurrency"`
+
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`
 
@@ -37,6 +41,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.Topic == "" {
 		return errors.New("topic is required")
+	}
+	if cfg.FlushConcurrency < 1 {
+		return errors.New("flush concurrency must be at least 1")
 	}
 	return nil
 }
@@ -80,6 +87,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+"max-builder-age",
 		time.Hour,
 		"The maximum amount of time to accumulate data in a builder before flushing it. Defaults to 1 hour.",
+	)
+	f.IntVar(
+		&cfg.FlushConcurrency,
+		prefix+"flush-concurrency",
+		1,
+		"The maximum number of data objects to build, upload and index at the same time during a flush. Each concurrent object adds the memory to sort and index it. The offset is committed once every object succeeds.",
 	)
 	f.IntVar(
 		&cfg.PartitionID,

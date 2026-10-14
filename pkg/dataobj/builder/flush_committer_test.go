@@ -46,7 +46,7 @@ func TestFlushCommitter(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		require.NoError(t, flushCommitter.Flush(t.Context(), []builder{b}, "test", 1))
@@ -77,7 +77,7 @@ func TestFlushCommitter(t *testing.T) {
 				indexer        = &mockIndexer{errs: []error{fmt.Errorf("calculate object: %w", tc.err)}}
 				tocWriter      = &mockTOCWriter{}
 				committer      = &mockCommitter{}
-				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 			)
 			b := newTestFlushBuilder(t, reg)
 			err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
@@ -97,7 +97,7 @@ func TestFlushCommitter(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
@@ -116,7 +116,7 @@ func TestFlushCommitter(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		// Build a slice of builders, mimicking a partition split across tenants and windows.
 		var builders []builder
@@ -147,7 +147,7 @@ func TestFlushCommitter(t *testing.T) {
 				indexer        = &mockIndexer{errs: []error{errors.New("boom"), errors.New("boom")}}
 				tocWriter      = &mockTOCWriter{}
 				committer      = &mockCommitter{}
-				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 			)
 			b := newTestFlushBuilder(t, reg)
 			require.NoError(t, flushCommitter.Flush(t.Context(), []builder{b}, "test", 1))
@@ -168,7 +168,7 @@ func TestFlushCommitter(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		require.NoError(t, flushCommitter.Flush(t.Context(), []builder{b}, "test", 1))
@@ -177,17 +177,38 @@ func TestFlushCommitter(t *testing.T) {
 		require.Equal(t, 1, flusher.closer.closed)
 	})
 
-	t.Run("should not commit when indexing is canceled", func(t *testing.T) {
+	t.Run("should flush nothing when the context is canceled before the flush", func(t *testing.T) {
 		var (
 			reg            = prometheus.NewRegistry()
 			flusher        = &mockFlusher{obj: &dataobj.Object{}}
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		cancelCtx, cancel := context.WithCancel(t.Context())
 		cancel()
+
+		b := newTestFlushBuilder(t, reg)
+		err := flushCommitter.Flush(cancelCtx, []builder{b}, "test", 1)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, flusher.flushes)
+		require.Empty(t, committer.offsets)
+		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 0, resultCancelled: 1})
+	})
+
+	t.Run("should not commit when indexing is canceled", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		var (
+			reg            = prometheus.NewRegistry()
+			flusher        = &mockFlusher{obj: &dataobj.Object{}, onFlush: cancel}
+			indexer        = &mockIndexer{}
+			tocWriter      = &mockTOCWriter{}
+			committer      = &mockCommitter{}
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
+		)
 
 		b := newTestFlushBuilder(t, reg)
 		err := flushCommitter.Flush(cancelCtx, []builder{b}, "test", 1)
@@ -209,7 +230,7 @@ func TestFlushCommitter(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{err: context.Canceled}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		err := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
@@ -235,7 +256,7 @@ func TestFlushCommitter(t *testing.T) {
 			// chance to run.
 			tocWriter      = &mockTOCWriter{afterWrite: cancel}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilder(t, reg)
 		err := flushCommitter.Flush(ctx, []builder{b}, "test", 1)
@@ -249,6 +270,126 @@ func TestFlushCommitter(t *testing.T) {
 	})
 }
 
+func TestFlushCommitter_Concurrency(t *testing.T) {
+	newBuilders := func(t *testing.T, n int) []builder {
+		builders := make([]builder, n)
+		for i := range builders {
+			builders[i] = newTestFlushBuilder(t, prometheus.NewRegistry())
+		}
+		return builders
+	}
+
+	t.Run("should flush up to the concurrency limit at the same time", func(t *testing.T) {
+		// The flushes sleep on the fake clock of the bubble, so elapsed time
+		// shows how many of them overlapped.
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				reg            = prometheus.NewRegistry()
+				flusher        = &mockFlusher{obj: &dataobj.Object{}, delay: time.Second}
+				indexer        = &mockIndexer{}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 4, log.NewNopLogger(), reg)
+			)
+			start := time.Now()
+			require.NoError(t, flushCommitter.Flush(t.Context(), newBuilders(t, 8), "test", 7))
+
+			require.Equal(t, 2*time.Second, time.Since(start))
+			require.Equal(t, 4, flusher.maxInFlight)
+			require.Equal(t, 8, flusher.flushes)
+			require.ElementsMatch(t, []string{
+				"object_001", "object_002", "object_003", "object_004",
+				"object_005", "object_006", "object_007", "object_008",
+			}, indexer.paths)
+			require.Len(t, tocWriter.paths, 8)
+			require.Equal(t, 8, flusher.closer.closed)
+			require.Equal(t, []int64{7}, committer.offsets)
+			requireFlushResults(t, reg, map[string]uint64{resultOK: 1, resultError: 0, resultCancelled: 0})
+		})
+	})
+
+	t.Run("should commit once after every builder is in the ToC and released", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				reg       = prometheus.NewRegistry()
+				flusher   = &mockFlusher{obj: &dataobj.Object{}, delay: time.Second}
+				indexer   = &mockIndexer{}
+				tocWriter = &mockTOCWriter{}
+				committer = &mockCommitter{}
+
+				tocPathsAtCommit, closedAtCommit int
+			)
+			committer.onCommit = func() {
+				tocPathsAtCommit = len(tocWriter.paths)
+				closedAtCommit = flusher.closer.closed
+			}
+			flushCommitter := newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 3, log.NewNopLogger(), reg)
+
+			require.NoError(t, flushCommitter.Flush(t.Context(), newBuilders(t, 10), "test", 7))
+			require.Equal(t, 10, tocPathsAtCommit)
+			require.Equal(t, 10, closedAtCommit)
+			require.Equal(t, []int64{7}, committer.offsets)
+		})
+	})
+
+	t.Run("should cancel the other builders and not commit when one fails", func(t *testing.T) {
+		// The bubble fails the test if a flush goroutine is still blocked when
+		// Flush returns.
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				reg     = prometheus.NewRegistry()
+				flusher = &mockFlusher{obj: &dataobj.Object{}}
+				// The second object fails once the other two in flight are
+				// blocked in indexing, so the failure must cancel them.
+				indexer = &blockingIndexer{
+					failPath: "object_002",
+					err:      fmt.Errorf("%w: test", index.ErrUnprocessableObject),
+					blocked:  make(chan struct{}),
+					others:   2,
+				}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 3, log.NewNopLogger(), reg)
+			)
+
+			err := flushCommitter.Flush(t.Context(), newBuilders(t, 5), "test", 7)
+			// The first failure is returned, not the cancellation it caused in
+			// the other builders. The processor treats a cancellation as a
+			// shutdown rather than an unrecoverable flush.
+			require.ErrorIs(t, err, index.ErrUnprocessableObject)
+			require.NotErrorIs(t, err, context.Canceled)
+			// The last two builders never started.
+			require.Equal(t, 3, flusher.flushes)
+			require.Equal(t, 3, flusher.closer.closed)
+			require.Empty(t, tocWriter.paths)
+			require.Empty(t, committer.offsets)
+			requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
+		})
+	})
+}
+
+// blockingIndexer fails to index the object at failPath. Every other call
+// blocks until its context is done. The failing call waits for others calls
+// to block first, so the failure always happens while they are in progress.
+type blockingIndexer struct {
+	failPath string
+	err      error
+	blocked  chan struct{}
+	others   int
+}
+
+func (m *blockingIndexer) Index(ctx context.Context, _ *dataobj.Object, objPath string) (index.Result, error) {
+	if objPath == m.failPath {
+		for range m.others {
+			<-m.blocked
+		}
+		return index.Result{}, m.err
+	}
+	m.blocked <- struct{}{}
+	<-ctx.Done()
+	return index.Result{}, ctx.Err()
+}
+
 func TestFlushCommitter_E2ELag(t *testing.T) {
 	t.Run("should report the lag of the oldest record across builders", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
@@ -258,7 +399,7 @@ func TestFlushCommitter_E2ELag(t *testing.T) {
 				indexer        = &mockIndexer{}
 				tocWriter      = &mockTOCWriter{}
 				committer      = &mockCommitter{}
-				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 				now            = time.Now()
 			)
 			builders := []builder{
@@ -287,7 +428,7 @@ func TestFlushCommitter_E2ELag(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilderAt(t, reg, time.Now().Add(-10*time.Minute))
 
@@ -304,7 +445,7 @@ func TestFlushCommitter_E2ELag(t *testing.T) {
 			indexer        = &mockIndexer{}
 			tocWriter      = &mockTOCWriter{}
 			committer      = &mockCommitter{}
-			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, log.NewNopLogger(), reg)
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
 		)
 		b := newTestFlushBuilderAt(t, reg, time.Now().Add(-10*time.Minute))
 
