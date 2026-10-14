@@ -2206,6 +2206,33 @@ The frontend scheduler worker detected that the scheduler is in shutdown mode an
 - HTTP status: 503 Service Unavailable
 - Configurable per tenant: No
 
+### Error: Connection to query-scheduler ended before the query completed
+
+**Error message:**
+
+```text
+connection to query-scheduler <address> ended before the query completed
+```
+
+**Cause:**
+
+The query-scheduler that had accepted the query stopped, restarted, left the scheduler ring, or lost its connection to the query frontend before a querier sent back the result. The scheduler drops the queries it holds when this happens, so the query frontend fails them instead of waiting for a result that will not arrive. This is common during rolling updates that restart query-schedulers, or backend pods in simple scalable mode.
+
+The query frontend retries the query automatically, up to `-querier.max-retries-per-request` times (default 5). You see this error only if every retry failed. Whenever a connection ends with queries still waiting, the query frontend logs one warning with the scheduler's address (`addr`) and the number of queries (`requests`): `connection to scheduler ended while requests were waiting for a response, failing them so they can be retried`.
+
+**Resolution:**
+
+- **Retry the query** once the query-schedulers are running again.
+- **Check whether query-schedulers are restarting repeatedly**, for example crash loops or OOM kills.
+- **Run more than one query-scheduler replica**, so that retries can go to another scheduler during a rolling update.
+
+**Properties:**
+
+- Enforced by: Query frontend
+- Retryable: Yes
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
+
 ## Index gateway errors
 
 Index gateway errors occur when queriers cannot communicate with index gateways for index lookups.
