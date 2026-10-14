@@ -37,6 +37,7 @@ type teeMetrics struct {
 	ingesterMetricAppends *prometheus.CounterVec
 	teedStreams           *prometheus.CounterVec
 	teedRequests          *prometheus.CounterVec
+	pushFallbacks         prometheus.Counter
 	sendDuration          *instrument.HistogramCollector
 }
 
@@ -65,6 +66,10 @@ func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 			Name: "pattern_ingester_teed_requests_total",
 			Help: "The total number of batch appends sent to fallback pattern ingesters, for not owned streams.",
 		}, []string{"status"}),
+		pushFallbacks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "pattern_ingester_tee_push_fallbacks_total",
+			Help: "The total number of batches sent with Push to pattern ingesters that do not support PushInternal.",
+		}),
 		sendDuration: instrument.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(
 				prometheus.HistogramOpts{
@@ -333,6 +338,7 @@ func (ts *TeeService) push(ctx context.Context, client logproto.PatternClient, r
 		return err
 	}
 
+	ts.metrics.pushFallbacks.Inc()
 	_, err = client.Push(ctx, req.FlatView())
 	return err
 }

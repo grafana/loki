@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -507,6 +508,12 @@ func TestPatternTee_PushFallback(t *testing.T) {
 				client.AssertNotCalled(t, "Push", mock.Anything, mock.Anything)
 			}
 			require.Equal(t, []push.Stream{stream}, client.req.Streams)
+
+			wantFallbacks := 0.0
+			if tc.wantFlatPush {
+				wantFallbacks = 1
+			}
+			require.Equal(t, wantFallbacks, testutil.ToFloat64(tee.metrics.pushFallbacks))
 		})
 	}
 }
