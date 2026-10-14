@@ -633,3 +633,51 @@ func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
 	}
 	return math.Float64frombits(uint64(r2))
 }
+
+// largeInteger is LARGE_INTEGER exactly as ccgo translates it for
+// windows/amd64 and windows/arm64, so that XSetFilePointerEx, which takes one
+// by value, has the caller's parameter type. The shape matters: under the Go
+// register ABI this struct occupies two integer registers (LowPart and
+// HighPart; zero-length arrays occupy none) where an int64 would occupy one
+// and shift every later argument.
+type largeInteger = struct {
+	Fu [0]struct {
+		FLowPart  uint32
+		FHighPart int32
+	}
+	FQuadPart  [0]int64
+	F__ccgo0_0 struct {
+		FLowPart  uint32
+		FHighPart int32
+	}
+}
+
+// BOOL SetFilePointerEx(
+//
+//	HANDLE         hFile,
+//	LARGE_INTEGER  liDistanceToMove,
+//	PLARGE_INTEGER lpNewFilePointer,
+//	DWORD          dwMoveMethod
+//
+// );
+func XSetFilePointerEx(t *TLS, hFile uintptr, liDistanceToMove largeInteger, lpNewFilePointer uintptr, dwMoveMethod uint32) int32 {
+	d := int64(liDistanceToMove.F__ccgo0_0.FHighPart)<<32 | int64(liDistanceToMove.F__ccgo0_0.FLowPart)
+	if __ccgo_strace {
+		trc("t=%v hFile=%v liDistanceToMove=%v lpNewFilePointer=%v dwMoveMethod=%v, (%v:)", t, hFile, d, lpNewFilePointer, dwMoveMethod, origin(2))
+	}
+	// The 8-byte LARGE_INTEGER travels in a single register.
+	r0, _, e1 := procSetFilePointerEx.Call(hFile, uintptr(d), lpNewFilePointer, uintptr(dwMoveMethod))
+	if r0 == 0 {
+		t.setErrno(e1)
+	}
+	return int32(r0)
+}
+
+// ULONGLONG GetTickCount64();
+func XGetTickCount64(t *TLS) uint64 {
+	if __ccgo_strace {
+		trc("t=%v, (%v:)", t, origin(2))
+	}
+	r0, _, _ := procGetTickCount64.Call()
+	return uint64(r0)
+}
