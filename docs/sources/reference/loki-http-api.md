@@ -1271,11 +1271,9 @@ In microservices mode, the `/config` endpoint is exposed by all components.
 GET /loki/api/v1/config/public
 ```
 
-`/loki/api/v1/config/public` exposes the fields listed in `-config.public-fields`
- , returning a fixed, operator-configured subset of `/config`,
-with no caller-selectable `q` parameter. It's meant for cases where `/config` itself isn't safe to
-expose directly, such as through a datasource proxy. Empty by default, meaning the endpoint
-returns `{}`.
+`/loki/api/v1/config/public` returns a fixed, operator-configured subset of `/config`, set with
+`-config.public-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
+such as through a datasource proxy. Empty by default, meaning the endpoint returns `{}`.
 
 In microservices mode, the `/loki/api/v1/config/public` endpoint is exposed by all components.
 

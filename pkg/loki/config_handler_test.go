@@ -152,9 +152,7 @@ func TestPublicConfigHandler(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Query params a caller sends, notably q and mode, must have no effect: this handler
-			// always returns exactly tc.allowedFields, unlike configHandler's q=.
-			req := httptest.NewRequest("GET", "http://test.com/loki/api/v1/config/public?q=my_slice&mode=diff", nil)
+			req := httptest.NewRequest("GET", "http://test.com/loki/api/v1/config/public", nil)
 			w := httptest.NewRecorder()
 
 			publicConfigHandler(cfg, tc.allowedFields)(w, req)

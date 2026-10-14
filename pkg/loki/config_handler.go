@@ -123,12 +123,14 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	}
 }
 
-// publicConfigHandler always returns exactly allowedFields, regardless of any query parameters —
-// there's no caller-selectable subset here, unlike configHandler's q=. A field missing from the
-// actual config is an operator misconfiguration (a typo in allowedFields), not a client error, so
-// it's a 500, not configHandler's 400.
+// publicConfigHandler always returns exactly allowedFields. A field missing from the actual config
+// is an operator misconfiguration (a typo in allowedFields), not a client error, so it's a 500.
 func publicConfigHandler(actualCfg any, allowedFields []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		if len(allowedFields) == 0 {
+			writeYAMLResponse(w, map[string]any{})
+			return
+		}
 		result, err := extractConfigPaths(actualCfg, allowedFields)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

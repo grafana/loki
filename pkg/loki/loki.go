@@ -145,9 +145,7 @@ type Config struct {
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
 	// PublicConfigFields specifies which /config fields /loki/api/v1/config/public exposes, addressed
-	// by dot-separated path. Empty by default, meaning nothing is exposed — unlike
-	// TenantLimitsAllowPublish, empty here must not mean "everything": /config can hold far more
-	// sensitive data than tenant limits.
+	// by dot-separated path. Empty means nothing is exposed, since /config can hold sensitive data.
 	PublicConfigFields []string `yaml:"public_config_fields"`
 
 	Common common.Config `yaml:"common,omitempty"`
