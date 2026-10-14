@@ -414,6 +414,7 @@ func TestLimitsValidation(t *testing.T) {
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
 			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
+			tc.limits.DataObjMaxBytesPerShard = DefaultDataObjMaxBytesPerShard
 			if tc.limits.EngineResultsCacheTimeBucketInterval == 0 {
 				_ = tc.limits.EngineResultsCacheTimeBucketInterval.Set("24h")
 			}
@@ -1194,6 +1195,46 @@ otlp_config:
 			require.Equal(t, tc.exp, out)
 		})
 	}
+}
+
+func TestOverrides_DataObjMaxBytesPerShard(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	t.Run("defaults to 10 times the default of the TSDB setting", func(t *testing.T) {
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(10*DefaultTSDBMaxBytesPerShard), ov.DataObjMaxBytesPerShard("tenant-1"))
+	})
+
+	t.Run("returns a setting that does not fit in an int that has 32 bits", func(t *testing.T) {
+		tenantLimits := map[string]*Limits{
+			"tenant-1": {DataObjMaxBytesPerShard: 6 << 30},
+		}
+		ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(6<<30), ov.DataObjMaxBytesPerShard("tenant-1"))
+	})
+
+	t.Run("returns the setting of the tenant and the default for other tenants", func(t *testing.T) {
+		tenantLimits := map[string]*Limits{
+			"tenant-1": {DataObjMaxBytesPerShard: 1 << 20},
+		}
+		ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(1<<20), ov.DataObjMaxBytesPerShard("tenant-1"))
+		require.Equal(t, uint64(DefaultDataObjMaxBytesPerShard), ov.DataObjMaxBytesPerShard("tenant-2"))
+	})
+
+	t.Run("fails validation when the setting is 0", func(t *testing.T) {
+		limits := defaults
+		limits.DataObjMaxBytesPerShard = 0
+
+		require.ErrorContains(t, limits.Validate(), "querier.dataobj-max-bytes-per-shard must be greater than 0")
+	})
 }
 
 func TestDataObjCompaction_DefaultsFalse(t *testing.T) {
