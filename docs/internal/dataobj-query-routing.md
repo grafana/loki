@@ -68,9 +68,14 @@ applies this rule to the piece it is working on:
 
 When splitting is on, a query that prefers data objects gets a split interval of at least one
 metastore window, which is 12 hours. One Table of Contents file of the metastore covers that
-window. A longer interval is rounded up to a multiple of the window. The cut points stay aligned to
-UTC. The step alignment and the ingester window work as for any other query. The same rule applies
-to the split of the range vector of an instant query.
+window. A longer interval is rounded up to a multiple of the window. The step alignment and the
+ingester window work as for any other query. An instant query uses the same interval for the split
+of its range vector.
+
+A range query cuts its time range at UTC multiples of the interval. An instant query cuts its range
+vector back from its evaluation time. Its cut points align to UTC only when
+`-querier.instant-metric-query-split-align` is on, and only if the query has no `offset`, or an
+`offset` that is a multiple of the interval. Otherwise, a sub-query can span two metastore windows.
 
 Time splitting runs before sharding, so the query-frontend cannot yet see the sub-queries that the
 queriers will receive. It predicts from the whole query. It treats the query as data-object shaped
