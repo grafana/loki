@@ -6,8 +6,10 @@ package objstore
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 )
 
 var errNotFound = errors.New("inmem: object not found")
+var errConditionNotMet = errors.New("inmem: condition not met")
 
 // InMemBucket implements the objstore.Bucket interfaces against local memory.
 // Methods from Bucket interface are thread-safe. Objects are assumed to be immutable.
@@ -34,6 +37,24 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
+// ChangeLastModified changes the last modified timestamp of the object at the given path.
+// If the object does not exist, it returns an error.
+// This method is useful for testing purposes to simulate updates to objects.
+func (b *InMemBucket) ChangeLastModified(path string, lastModified time.Time) error {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if _, ok := b.objects[path]; !ok {
+		return errNotFound
+	}
+
+	attrs := b.attrs[path]
+	attrs.LastModified = lastModified
+	b.attrs[path] = attrs
+
+	return nil
+}
+
 func (b *InMemBucket) Provider() ObjProvider { return MEMORY }
 
 // Objects returns a copy of the internally stored objects.
@@ -50,10 +71,9 @@ func (b *InMemBucket) Objects() map[string][]byte {
 	return objs
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *InMemBucket) Iter(_ context.Context, dir string, f func(string) error, options ...IterOption) error {
+func (b *InMemBucket) genericIter(_ context.Context, dir string, f func(string, time.Time) error, options ...IterOption) error {
 	unique := map[string]struct{}{}
+	lastModified := map[string]time.Time{}
 	params := ApplyIterOptions(options...)
 
 	var dirPartsCount int
@@ -74,11 +94,18 @@ func (b *InMemBucket) Iter(_ context.Context, dir string, f func(string) error, 
 		if params.Recursive {
 			// Any object matching the prefix should be included.
 			unique[filename] = struct{}{}
+			lastModified[filename] = b.attrs[filename].LastModified
 			continue
 		}
 
 		parts := strings.SplitAfter(filename, DirDelim)
-		unique[strings.Join(parts[:dirPartsCount+1], "")] = struct{}{}
+
+		name := strings.Join(parts[:dirPartsCount+1], "")
+		unique[name] = struct{}{}
+
+		if params.LastModified {
+			lastModified[name] = b.attrs[filename].LastModified
+		}
 	}
 	b.mtx.RUnlock()
 
@@ -101,15 +128,31 @@ func (b *InMemBucket) Iter(_ context.Context, dir string, f func(string) error, 
 	})
 
 	for _, k := range keys {
-		if err := f(k); err != nil {
+		var modifiedTS time.Time
+		if params.LastModified {
+			modifiedTS = lastModified[k]
+		}
+		if err := f(k, modifiedTS); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *InMemBucket) Iter(_ context.Context, dir string, f func(string) error, options ...IterOption) error {
+	return b.genericIter(context.Background(), dir, func(s string, t time.Time) error {
+		return f(s)
+	}, options...)
+}
+
 func (i *InMemBucket) SupportedIterOptions() []IterOptionType {
-	return []IterOptionType{Recursive}
+	return []IterOptionType{Recursive, UpdatedAt}
+}
+
+func (b *InMemBucket) SupportedObjectUploadOptions() []ObjectUploadOptionType {
+	return []ObjectUploadOptionType{IfNotExists, IfMatch, IfNotMatch}
 }
 
 func (b *InMemBucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs IterObjectAttributes) error, options ...IterOption) error {
@@ -117,8 +160,11 @@ func (b *InMemBucket) IterWithAttributes(ctx context.Context, dir string, f func
 		return err
 	}
 
-	return b.Iter(ctx, dir, func(name string) error {
-		return f(IterObjectAttributes{Name: name})
+	return b.genericIter(context.Background(), dir, func(s string, t time.Time) error {
+		attrs := IterObjectAttributes{Name: s}
+		attrs.SetLastModified(t)
+
+		return f(attrs)
 	}, options...)
 }
 
@@ -237,9 +283,40 @@ func (b *InMemBucket) Attributes(_ context.Context, name string) (ObjectAttribut
 }
 
 // Upload writes the file specified in src to into the memory.
-func (b *InMemBucket) Upload(_ context.Context, name string, r io.Reader) error {
+func (b *InMemBucket) Upload(_ context.Context, name string, r io.Reader, opts ...ObjectUploadOption) error {
+	if err := ValidateUploadOptions(b.SupportedObjectUploadOptions(), opts...); err != nil {
+		return err
+	}
+
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
+
+	params := ApplyObjectUploadOptions(opts...)
+	generation := 0
+
+	if prev, ok := b.attrs[name]; ok {
+		if prev.Version == nil || prev.Version.Type != Generation {
+			return fmt.Errorf("inmem object should always have a generational version")
+		}
+		if params.IfNotExists {
+			return errConditionNotMet
+		}
+		var err error
+		if generation, err = strconv.Atoi(prev.Version.Value); err != nil {
+			return err
+		}
+		if params.Condition != nil {
+			if params.Condition.Value != prev.Version.Value && !params.IfNotMatch {
+				return errConditionNotMet
+			} else if params.Condition.Value == prev.Version.Value && params.IfNotMatch {
+				return errConditionNotMet
+			}
+		}
+	} else if params.Condition != nil && !params.IfNotMatch {
+		return errConditionNotMet
+	}
+	generation++
+
 	body, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -248,6 +325,7 @@ func (b *InMemBucket) Upload(_ context.Context, name string, r io.Reader) error 
 	b.attrs[name] = ObjectAttributes{
 		Size:         int64(len(body)),
 		LastModified: time.Now(),
+		Version:      &ObjectVersion{Type: Generation, Value: strconv.Itoa(generation)},
 	}
 	return nil
 }
@@ -273,6 +351,8 @@ func (b *InMemBucket) IsObjNotFoundErr(err error) bool {
 func (b *InMemBucket) IsAccessDeniedErr(err error) bool {
 	return false
 }
+
+func (b *InMemBucket) IsConditionNotMetErr(err error) bool { return errors.Is(err, errConditionNotMet) }
 
 func (b *InMemBucket) Close() error { return nil }
 

@@ -308,6 +308,7 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
+	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
@@ -419,7 +420,7 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 
-replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
+replace github.com/thanos-io/objstore => github.com/bboreham/thanos-objstore v0.0.0-20261013175046-6b8f77bdab28
 
 //  Latest Kafka protocols are not supported in Warpstream at this time.
 replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
