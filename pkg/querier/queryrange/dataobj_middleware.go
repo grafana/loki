@@ -76,8 +76,8 @@ func newDataObjEligibilityMiddleware(cfg Config, limits Limits, metrics *DataObj
 }
 
 func (m *dataObjEligibilityMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	// A request without a valid tenant ID has no tenants, so it is never eligible. The middleware
-	// then clears the options that the request carried.
+	// This error should not happen: other middlewares read the tenant IDs first. Without tenants,
+	// the request is not eligible.
 	tenantIDs, _ := tenant.TenantIDs(ctx)
 
 	// The request may be in use elsewhere, so the middleware sets the options on a copy.
