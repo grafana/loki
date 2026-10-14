@@ -22,7 +22,7 @@ func (l *logger) Level() kgo.LogLevel {
 	// The Kafka client calls Level() to check whether debug level is enabled or not.
 	// To keep it simple, we always return Info, so the Kafka client will never try
 	// to log expensive debug messages.
-	return kgo.LogLevelInfo
+	return kgo.LogLevelDebug
 }
 
 func (l *logger) Log(lev kgo.LogLevel, msg string, keyvals ...any) {
