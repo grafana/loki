@@ -268,7 +268,7 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 
 	var observations []postings.LabelObservation
 	for object := range objects {
-		firstBucket := uint32(object % (streams.ShardFactor - 1))
+		firstBucket := uint32(object) % (streams.DefaultShardLayout().Buckets() - 1)
 		for section := range sectionsPerObject {
 			for stream := range streamsPerSection {
 				streamLabels := []labels.Label{
@@ -298,7 +298,7 @@ func BenchmarkSections_ShardBucketRange(b *testing.B) {
 	}{
 		{name: "no range", bucketRange: nil},
 		{name: "a range of one bucket", bucketRange: &postings.ShardBucketRange{From: 5, To: 5}},
-		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/4 - 1}},
+		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/4 - 1}},
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			request := SectionsRequest{

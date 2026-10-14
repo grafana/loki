@@ -123,7 +123,7 @@ func TestShardBucketRangeFor_CoversEveryMatchingStream(t *testing.T) {
 						continue
 					}
 					require.True(t, ok, "bounded shard [%d, %d] matches streamHash %d but pushes no range down", min, max, streamHash)
-					bucket := streams.ShardBucketFromHash(streamHash)
+					bucket := streams.DefaultShardLayout().BucketFromHash(streamHash)
 					require.GreaterOrEqual(t, bucket, buckets.from, "bounded shard [%d, %d]: streamHash %d is below the range", min, max, streamHash)
 					require.LessOrEqual(t, bucket, buckets.to, "bounded shard [%d, %d]: streamHash %d is above the range", min, max, streamHash)
 				}
