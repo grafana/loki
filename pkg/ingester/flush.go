@@ -152,10 +152,7 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 // the streams matching a LogQL stream selector passed via the "streams" param.
 // An empty/absent selector flushes all of the tenant's in-memory streams.
 //
-// After the matched chunks are flushed, it forces the in-memory index (the TSDB
-// head) to be built and shipped to object storage so the flushed chunks are
-// immediately referenceable. The flush is synchronous, so
-// callers should set a generous client timeout.
+// The flush is synchronous, so callers should set a generous client timeout.
 func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID, err := tenant.TenantID(ctx)
@@ -195,14 +192,6 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := i.flushMatchedStreamsChunks(tenantID, fps); err != nil {
 		level.Error(i.logger).Log("msg", "failed flushing tenant streams", "tenant", tenantID, "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Force the in-memory index to be built and shipped so the just-flushed
-	// chunks are referenceable from object storage.
-	if err := i.store.FlushIndexes(ctx); err != nil {
-		level.Error(i.logger).Log("msg", "failed flushing index", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

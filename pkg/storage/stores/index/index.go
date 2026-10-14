@@ -66,14 +66,6 @@ type ReaderWriter interface {
 	Writer
 }
 
-// Flusher is implemented by index stores that can force their in-memory indexes
-// (e.g. the TSDB head) to be built and shipped to object storage on demand,
-// rather than waiting for the periodic rotation/upload.
-type Flusher interface {
-	// FlushIndexes forces any in-memory index data to be persisted to object storage.
-	FlushIndexes(ctx context.Context) error
-}
-
 // SyncTriggerNever is the LastTrigger value the HTTP API reports for an index
 // that has not synced yet (neither a periodic nor a manual sync has run). It is
 // emitted in place of an empty trigger so the "never synced" state is explicit

@@ -277,8 +277,7 @@ func (c *Client) Flush() error {
 }
 
 // FlushTenant triggers a synchronous flush of the calling tenant's in-memory
-// chunks (the tenant is taken from the client's X-Scope-OrgID) and then forces
-// the ingester's in-memory index to be shipped to the backing store. An empty
+// chunks (the tenant is taken from the client's X-Scope-OrgID). An empty
 // selector flushes all of the tenant's in-memory streams; a non-empty selector
 // is a LogQL stream selector restricting which streams are flushed.
 func (c *Client) FlushTenant(selector string) error {

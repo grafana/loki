@@ -6,7 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -380,4 +383,34 @@ func countLines(lines []string, want string) int {
 		}
 	}
 	return n
+}
+
+// linesFromResponse flattens the log lines out of a streams query response.
+func linesFromResponse(resp *client.Response) []string {
+	var lines []string
+	for _, stream := range resp.Data.Stream {
+		for _, val := range stream.Values {
+			lines = append(lines, val[1])
+		}
+	}
+	return lines
+}
+
+// countShippedTSDBs counts TSDB index files under the shared object-storage
+// directory. The ingester's local active index and the read-side download cache
+// live under per-component data dirs (not the shared path), so anything found
+// here was uploaded to object storage.
+func countShippedTSDBs(t *testing.T, sharedPath string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, filepath.WalkDir(sharedPath, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.Contains(d.Name(), ".tsdb") {
+			count++
+		}
+		return nil
+	}))
+	return count
 }
