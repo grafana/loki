@@ -1049,21 +1049,29 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req)
 	}
 
-	overlapping := rangesOverlapping(result.ranges, intervalStart, intervalEnd)
-	if len(overlapping) == 0 {
-		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq), nil
+	// A metric split reads before its start. Overlap and clipping use that window
+	// so a lookback match is not treated as a miss. Log queries widen by zero.
+	expr, _ := syntax.ParseExpr(lokiReq.Query)
+	readStart, readEnd := intervalStart, intervalEnd
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
 	}
 
-	hints := clipHintRangesForInterval(overlapping, intervalStart, intervalEnd)
+	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
+	if len(overlapping) == 0 {
+		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
+		return skippedResponse(lokiReq, expr), nil
+	}
+
+	hints := clipHintRangesForInterval(overlapping, readStart, readEnd)
 	if len(hints) == 0 {
 		h.metrics.hintSubRequests.WithLabelValues("skipped").Inc()
-		return skippedLokiResponse(lokiReq), nil
+		return skippedResponse(lokiReq, expr), nil
 	}
 
 	// A pre-min-date-only interval has no indexed coverage. Leave hints off so
 	// the querier scans the interval normally.
-	if passthroughCoversInterval(overlapping, hints, intervalStart, intervalEnd) {
+	if passthroughCoversInterval(overlapping, hints, readStart, readEnd) {
 		h.metrics.passthroughSubRequests.WithLabelValues("pre_min_date").Inc()
 		return h.next.Do(ctx, req)
 	}
@@ -1073,14 +1081,32 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	// The count travels on the sub-request's response, so the split and shard
 	// merges add it up and discarded responses (retries, canceled provisional
 	// queries) drop it.
-	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok && err == nil {
-		lokiResp.Statistics.Index.LoglineNarrowedRequests++
+	if err == nil {
+		switch r := resp.(type) {
+		case *queryrange.LokiResponse:
+			r.Statistics.Index.LoglineNarrowedRequests++
+		case *queryrange.LokiPromResponse:
+			r.Statistics.Index.LoglineNarrowedRequests++
+		}
 	}
 	return resp, err
 }
 
+func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangebase.Response {
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return skippedMetricResponse()
+	}
+	return skippedLokiResponse(req)
+}
+
 func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 	resp := emptyLokiResponse(req)
+	resp.Statistics.Index.LoglineSkippedRequests = 1
+	return resp
+}
+
+func skippedMetricResponse() *queryrange.LokiPromResponse {
+	resp := emptyMetricResponse()
 	resp.Statistics.Index.LoglineSkippedRequests = 1
 	return resp
 }
@@ -1206,6 +1232,18 @@ func emptyLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 		Data: queryrange.LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     []logproto.Stream{},
+		},
+	}
+}
+
+func emptyMetricResponse() *queryrange.LokiPromResponse {
+	return &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     []queryrangebase.SampleStream{},
+			},
 		},
 	}
 }
