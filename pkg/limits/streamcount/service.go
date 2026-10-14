@@ -46,7 +46,9 @@ type Service struct {
 	cfg    Config
 	client kafkaConsumer
 	closer func()
-	logger log.Logger
+	// kafkaWriter is created but not used: the service only consumes.
+	kafkaWriter *kgo.Client
+	logger      log.Logger
 
 	mtx     sync.Mutex
 	streams map[string]map[uint64]struct{}
@@ -77,8 +79,14 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Service, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
+	w, err := client.NewWriterClient("stream-count-writer", kCfg, logger, reg)
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to create kafka writer client: %w", err)
+	}
 	s := newService(cfg, c, logger, reg, quartz.NewReal())
 	s.closer = c.Close
+	s.kafkaWriter = w
 	return s, nil
 }
 
@@ -213,6 +221,9 @@ func (s *Service) processRecord(r *kgo.Record) error {
 func (s *Service) stopping(_ error) error {
 	if s.closer != nil {
 		s.closer()
+	}
+	if s.kafkaWriter != nil {
+		s.kafkaWriter.Close()
 	}
 	return nil
 }
