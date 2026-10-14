@@ -1,5 +1,4 @@
 //go:build gc && !noasm
-// +build gc,!noasm
 
 #include "textflag.h"
 
