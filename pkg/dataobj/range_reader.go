@@ -62,7 +62,7 @@ func (rr *readerAtRangeReader) Read(ctx context.Context) (io.ReadCloser, error) 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return sectionReadCloser{io.NewSectionReader(rr.r, 0, rr.size)}, nil
+	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, 0, rr.size)}, nil
 }
 
 func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
@@ -71,27 +71,34 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 	} else if length > math.MaxInt {
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
-	return sectionReadCloser{io.NewSectionReader(rr.r, offset, length)}, nil
+	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, offset, length)}, nil
 }
 
-// sectionReadCloser is an [io.SectionReader] whose Close does nothing.
+// nopCloserWithObjectSize reads a section of an object and reports how many
+// bytes are left to read. Its Close does nothing.
 //
 // It implements [objstore.ObjectSizer], so an upload of the reader knows its
 // size. Without the size, the S3 client starts a multipart upload, even for a
 // small object, and allocates a part buffer of about 528MiB for each upload.
-type sectionReadCloser struct {
-	*io.SectionReader
+//
+// nopCloserWithObjectSize does not expose [io.ReaderAt] or [io.Seeker]. If the
+// reader has them, minio-go reads the upload through ReadAt, and the objstore
+// upload metrics miss those bytes, because they count only what Read returns.
+type nopCloserWithObjectSize struct {
+	r *io.SectionReader
 }
 
-var _ objstore.ObjectSizer = sectionReadCloser{}
+var _ objstore.ObjectSizer = nopCloserWithObjectSize{}
 
-func (r sectionReadCloser) Close() error { return nil }
+func (r nopCloserWithObjectSize) Read(p []byte) (int, error) { return r.r.Read(p) }
+
+func (r nopCloserWithObjectSize) Close() error { return nil }
 
 // ObjectSize returns the number of bytes left to read.
-func (r sectionReadCloser) ObjectSize() (int64, error) {
-	offset, err := r.Seek(0, io.SeekCurrent)
+func (r nopCloserWithObjectSize) ObjectSize() (int64, error) {
+	offset, err := r.r.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return 0, err
 	}
-	return r.Size() - offset, nil
+	return r.r.Size() - offset, nil
 }
