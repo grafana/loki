@@ -1,10 +1,4 @@
-//go:build (amd64 || arm64) && !appengine && gc && !noasm && !nounsafe && !purego
-// +build amd64 arm64
-// +build !appengine
-// +build gc
-// +build !noasm
-// +build !nounsafe
-// +build !purego
+//go:build (amd64 || arm64) && gc && !noasm && !nounsafe && !purego
 
 package lz4block
 
