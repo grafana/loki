@@ -66,7 +66,7 @@ type Service struct {
 func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	kCfg := cfg.KafkaConfig
 	kCfg.Topic = cfg.Topic
-	kCfg.AutoCreateTopicEnabled = false
+	kCfg.ConsumerGroup = cfg.ConsumerGroup
 	c, err := client.NewReaderClient("stream-count-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(cfg.ConsumerGroup),
 		kgo.ConsumeTopics(cfg.Topic),
