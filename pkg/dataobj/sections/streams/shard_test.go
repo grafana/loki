@@ -10,12 +10,12 @@ import (
 
 func TestShardLayout(t *testing.T) {
 	t.Run("default layout has 32 buckets from the top 5 hash bits", func(t *testing.T) {
-		require.Equal(t, 5, DefaultShardLayout.Bits())
-		require.Equal(t, uint32(32), DefaultShardLayout.Buckets())
-		require.Equal(t, uint32(0), DefaultShardLayout.BucketFromHash(0))
-		require.Equal(t, uint32(0), DefaultShardLayout.BucketFromHash(1<<59-1))
-		require.Equal(t, uint32(1), DefaultShardLayout.BucketFromHash(1<<59))
-		require.Equal(t, uint32(31), DefaultShardLayout.BucketFromHash(math.MaxUint64))
+		require.Equal(t, 5, DefaultShardLayout().Bits())
+		require.Equal(t, uint32(32), DefaultShardLayout().Buckets())
+		require.Equal(t, uint32(0), DefaultShardLayout().BucketFromHash(0))
+		require.Equal(t, uint32(0), DefaultShardLayout().BucketFromHash(1<<59-1))
+		require.Equal(t, uint32(1), DefaultShardLayout().BucketFromHash(1<<59))
+		require.Equal(t, uint32(31), DefaultShardLayout().BucketFromHash(math.MaxUint64))
 	})
 
 	t.Run("zero layout maps every hash to bucket 0", func(t *testing.T) {
@@ -28,7 +28,7 @@ func TestShardLayout(t *testing.T) {
 
 	t.Run("labels bucket equals the bucket of the stable hash", func(t *testing.T) {
 		ls := labels.FromStrings("app", "auth")
-		require.Equal(t, DefaultShardLayout.BucketFromHash(labels.StableHash(ls)), DefaultShardLayout.BucketFromLabels(ls))
+		require.Equal(t, DefaultShardLayout().BucketFromHash(labels.StableHash(ls)), DefaultShardLayout().BucketFromLabels(ls))
 	})
 
 	t.Run("sort key takes its bucket from the layout", func(t *testing.T) {

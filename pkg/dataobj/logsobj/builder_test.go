@@ -102,9 +102,9 @@ func TestBuilder(t *testing.T) {
 			for res := range streams.IterSection(t.Context(), streamSec) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				require.Equal(t, int64(streams.DefaultShardLayout.BucketFromLabels(stream.Labels)), stream.ShardBucket)
+				require.Equal(t, int64(streams.DefaultShardLayout().BucketFromLabels(stream.Labels)), stream.ShardBucket)
 				require.GreaterOrEqual(t, stream.ShardBucket, int64(0))
-				require.Less(t, stream.ShardBucket, int64(streams.DefaultShardLayout.Buckets()))
+				require.Less(t, stream.ShardBucket, int64(streams.DefaultShardLayout().Buckets()))
 			}
 		}
 	})
@@ -445,7 +445,7 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 }
 
 func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
-	target := TargetSortLayout([]string{"label:app"}, streams.DefaultShardLayout)
+	target := TargetSortLayout([]string{"label:app"}, streams.DefaultShardLayout())
 	tests := []struct {
 		name    string
 		layouts []logs.SortLayout
@@ -840,7 +840,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Equal(t, logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout.Buckets(),
+				ShardCount:   streams.DefaultShardLayout().Buckets(),
 			}, logsSection.SortLayout())
 		}
 
@@ -879,7 +879,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Equal(t, logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.DefaultShardLayout.Buckets(),
+				ShardCount:   streams.DefaultShardLayout().Buckets(),
 			}, logsSection.SortLayout())
 
 			var (
@@ -1100,11 +1100,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			if i > 0 {
 				prevSchemaKey, err := ComputeSchemaKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				prevKey := streams.DefaultShardLayout.NewSortKey(streamsAfter[i-1].labels, prevSchemaKey)
+				prevKey := streams.DefaultShardLayout().NewSortKey(streamsAfter[i-1].labels, prevSchemaKey)
 
 				currSchemaKey, err := ComputeSchemaKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
-				currKey := streams.DefaultShardLayout.NewSortKey(stream.labels, currSchemaKey)
+				currKey := streams.DefaultShardLayout().NewSortKey(stream.labels, currSchemaKey)
 				require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0)
 			}
 		}
@@ -1145,11 +1145,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			prev := logsAfter[i-1]
 			prevSchemaKey, err := ComputeSchemaKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			prevKey := streams.DefaultShardLayout.NewSortKey(prev.labels, prevSchemaKey)
+			prevKey := streams.DefaultShardLayout().NewSortKey(prev.labels, prevSchemaKey)
 
 			currSchemaKey, err := ComputeSchemaKey(record.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey := streams.DefaultShardLayout.NewSortKey(record.labels, currSchemaKey)
+			currKey := streams.DefaultShardLayout().NewSortKey(record.labels, currSchemaKey)
 
 			switch {
 			case streams.CompareSortKey(prevKey, currKey) != 0:
@@ -1170,7 +1170,7 @@ func expectedLabelOrder(t *testing.T, values []string, labelName string, schemaL
 	for _, v := range values {
 		schemaKey, err := ComputeSchemaKey(labels.FromStrings(labelName, v), schemaLabels)
 		require.NoError(t, err)
-		k := streams.DefaultShardLayout.NewSortKey(labels.FromStrings(labelName, v), schemaKey)
+		k := streams.DefaultShardLayout().NewSortKey(labels.FromStrings(labelName, v), schemaKey)
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, streams.CompareSortKey)
@@ -1187,7 +1187,7 @@ func expectedPairsOrder(t *testing.T, values [][2]string, schemaLabels []string)
 	for _, v := range values {
 		schemaKey, err := ComputeSchemaKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaLabels)
 		require.NoError(t, err)
-		k := streams.DefaultShardLayout.NewSortKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaKey)
+		k := streams.DefaultShardLayout().NewSortKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaKey)
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, streams.CompareSortKey)

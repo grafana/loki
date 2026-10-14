@@ -344,13 +344,13 @@ func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 			postings: []postings.Row{{
 				Kind: postings.KindLabel, ObjectPath: "logs/current",
 				ColumnName: "service_name", LabelValue: "api",
-				ShardBuckets: int64(streams.DefaultShardLayout.Buckets()),
+				ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
 			}},
 		})
 
 		_, _, shardCount, err := logSectionRefsFor(ctx, bucket, tenant, path)
 		require.NoError(t, err)
-		require.Equal(t, int64(streams.DefaultShardLayout.Buckets()), shardCount)
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), shardCount)
 	})
 
 	t.Run("legacy index has no shard count", func(t *testing.T) {
@@ -376,7 +376,7 @@ func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 				ObjectPath: "logs/mixed", SortSchema: "label:service_name",
 			}},
 			postings: []postings.Row{
-				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "api", ShardBuckets: int64(streams.DefaultShardLayout.Buckets())},
+				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "api", ShardBuckets: int64(streams.DefaultShardLayout().Buckets())},
 				{Kind: postings.KindLabel, ObjectPath: "logs/mixed", ColumnName: "service_name", LabelValue: "worker"},
 			},
 		})
@@ -466,7 +466,7 @@ func TestCompareLogSortPrefix(t *testing.T) {
 	planKey := func(t *testing.T, ls labels.Labels) logSortPrefix {
 		t.Helper()
 		return newLogSortPrefix(
-			streams.DefaultShardLayout.BucketFromHash(labels.StableHash(ls)),
+			streams.DefaultShardLayout().BucketFromHash(labels.StableHash(ls)),
 			[]string{ls.Get("service_name"), ls.Get("namespace")},
 		)
 	}
@@ -474,7 +474,7 @@ func TestCompareLogSortPrefix(t *testing.T) {
 		t.Helper()
 		schemaKey, err := logsobj.ComputeSchemaKey(ls, schema)
 		require.NoError(t, err)
-		return streams.DefaultShardLayout.NewSortKey(ls, schemaKey)
+		return streams.DefaultShardLayout().NewSortKey(ls, schemaKey)
 	}
 
 	t.Run("planner order is nondecreasing over streams in stream ID order", func(t *testing.T) {

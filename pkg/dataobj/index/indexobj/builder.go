@@ -204,7 +204,7 @@ func (b *Builder) AppendIndexPointer(pointer indexpointers.IndexPointer) error {
 
 func (b *Builder) getStreamsBuilder() *streams.Builder {
 	if b.streams == nil {
-		b.streams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout)
+		b.streams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout())
 		b.streams.SetTenant(b.tenant)
 	}
 	return b.streams

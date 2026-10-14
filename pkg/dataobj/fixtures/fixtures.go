@@ -31,7 +31,7 @@ var defaultLogSectionConfig = logSectionConfig{
 		SortOrder:                 logs.SortStreamASC,
 		SchemaLabels:              []string{"label:service_name"},
 		StreamOrder:               logs.StreamOrderStableHashV1,
-		ShardCount:                streams.DefaultShardLayout.Buckets(),
+		ShardCount:                streams.DefaultShardLayout().Buckets(),
 		DropDuplicates:            false, // never modify the requested input
 	},
 }
@@ -123,7 +123,7 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 		b.streamIndexes[key] = index
 		b.streams = append(b.streams, streams.Stream{
 			ID: int64(index + 1), Labels: stream,
-			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.DefaultShardLayout.BucketFromHash(streamHash)),
+			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.DefaultShardLayout().BucketFromHash(streamHash)),
 		})
 	}
 	s := &b.streams[index]
@@ -194,7 +194,7 @@ var defaultStreamSectionConfig = streamSectionConfig{
 func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream) dataobj.SectionBuilder {
 	t.Helper()
 
-	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), defaultStreamSectionConfig.pageSize, defaultStreamSectionConfig.pageRowCount, streams.DefaultShardLayout)
+	sectionBuilder := streams.NewBuilder(streams.NewMetrics(), defaultStreamSectionConfig.pageSize, defaultStreamSectionConfig.pageRowCount, streams.DefaultShardLayout())
 	sectionBuilder.SetTenant(tenant)
 
 	for _, stream := range labelSets {

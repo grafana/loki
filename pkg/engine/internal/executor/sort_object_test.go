@@ -131,7 +131,7 @@ func TestDoSortObject(t *testing.T) {
 				require.Equal(t, logs.SortLayout{
 					SchemaLabels: targetSchema,
 					StreamOrder:  logs.StreamOrderStableHashV1,
-					ShardCount:   streams.DefaultShardLayout.Buckets(),
+					ShardCount:   streams.DefaultShardLayout().Buckets(),
 				}, opened.SortLayout())
 
 				for result := range logs.IterSection(ctx, opened) {
@@ -145,7 +145,7 @@ func TestDoSortObject(t *testing.T) {
 
 					schemaKey, err := logsobj.ComputeSchemaKey(streamLabels[record.StreamID], targetSchema)
 					require.NoError(t, err)
-					key := streams.DefaultShardLayout.NewSortKey(streamLabels[record.StreamID], schemaKey)
+					key := streams.DefaultShardLayout().NewSortKey(streamLabels[record.StreamID], schemaKey)
 					if havePrevious {
 						comparison := streams.CompareSortKey(previous, key)
 						require.LessOrEqual(t, comparison, 0)
@@ -231,7 +231,7 @@ func buildUnorderedObject(
 			sourceStreams = append(sourceStreams, sourceStream{
 				app:    app,
 				labels: parsed.String(),
-				key:    streams.DefaultShardLayout.NewSortKey(parsed, schemaKey),
+				key:    streams.DefaultShardLayout().NewSortKey(parsed, schemaKey),
 			})
 		}
 		// Explicitly sort in reverse order to force an "unsorted" object

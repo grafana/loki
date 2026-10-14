@@ -3,10 +3,19 @@ package streams
 import "github.com/prometheus/prometheus/model/labels"
 
 // DefaultShardBits is the shard bit count of [DefaultShardLayout].
+//
+// Do not change it. Readers assume that every object uses the default
+// layout, so a new value makes them mis-read every existing object.
 const DefaultShardBits = 5
 
-// DefaultShardLayout is the shard layout of every object that Loki writes.
-var DefaultShardLayout = ShardLayout{bits: DefaultShardBits}
+// DefaultShardBuckets is the bucket count of [DefaultShardLayout].
+const DefaultShardBuckets = 1 << DefaultShardBits
+
+// DefaultShardLayout returns the shard layout of every object that Loki
+// writes. Readers assume this layout when they map query shards to buckets.
+func DefaultShardLayout() ShardLayout {
+	return ShardLayout{bits: DefaultShardBits}
+}
 
 // ShardLayout maps streams to shard buckets. A stream's bucket is the top
 // bits of labels.StableHash of its labels.
@@ -38,7 +47,8 @@ func (l ShardLayout) BucketFromLabels(streamLabels labels.Labels) uint32 {
 	return l.BucketFromHash(labels.StableHash(streamLabels))
 }
 
-// NewSortKey returns the sort key for a stream in this layout.
+// NewSortKey returns the sort key of streamLabels. Keys are stable across
+// objects that use the same layout and schemaKey.
 func (l ShardLayout) NewSortKey(streamLabels labels.Labels, schemaKey string) SortKey {
 	hash := labels.StableHash(streamLabels)
 	return SortKey{

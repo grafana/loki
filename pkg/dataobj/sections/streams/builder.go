@@ -38,8 +38,8 @@ type Stream struct {
 	// Total number of log records in the stream.
 	Rows int
 
-	// ShardBucket is the bucket of Labels in the [ShardLayout] of the
-	// section.
+	// ShardBucket is the bucket that the builder's [ShardLayout] assigned
+	// to Labels, in [0, Buckets()).
 	ShardBucket int64
 }
 
@@ -85,9 +85,9 @@ type Builder struct {
 	ordered []*Stream
 }
 
-// NewBuilder creates a new streams section builder. The pageSize argument
-// specifies how large pages should be. shardLayout sets the shard bucket of
-// each recorded stream.
+// NewBuilder creates a new streams section builder. pageSize is the target
+// page size in bytes. shardLayout selects the shard bucket of each stream
+// that the builder adds.
 func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()

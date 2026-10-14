@@ -264,7 +264,7 @@ func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *Q
 	}
 
 	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
-	// the bucket count. Any other shard maps to a range that covers streams outside it, so
+	// streams.DefaultShardBuckets. Any other shard maps to a range that covers streams outside it, so
 	// the stream hash still has to be checked.
 	if shard != nil && !shard.resolvesExactly() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {

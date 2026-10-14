@@ -49,7 +49,7 @@ func (chunkShardingPolicy) boundedShards(shards []logproto.Shard, chunks []logpr
 // dataObjMaxOverReadFactor is the largest ratio of shards to shard buckets that a query that reads
 // data objects may have.
 //
-// A data object has 2^dataobjstreams.DefaultShardBits shard buckets. When a query has more shards than
+// A data object has dataobjstreams.DefaultShardBuckets shard buckets. When a query has more shards than
 // buckets, several shards read the same bucket. The query then over-reads data by up to that
 // ratio. We accept the over-read, to get more shards and run the query faster.
 const dataObjMaxOverReadFactor = 8
@@ -71,7 +71,7 @@ func (p *dataObjShardingPolicy) shouldUse(tenantIDs []string, expr syntax.Expr, 
 }
 
 func (p *dataObjShardingPolicy) powerOfTwoShards(tenantIDs []string, indexStats stats.Stats, maxShards int) int {
-	const maxShardsCap = dataObjMaxOverReadFactor * (1 << dataobjstreams.DefaultShardBits)
+	const maxShardsCap = dataObjMaxOverReadFactor * dataobjstreams.DefaultShardBuckets
 	if maxShards <= 0 || maxShards > maxShardsCap {
 		maxShards = maxShardsCap
 	}
@@ -83,7 +83,7 @@ func (p *dataObjShardingPolicy) powerOfTwoShards(tenantIDs []string, indexStats 
 // boundedShards merges the shards that the index returns into at most dataObjMaxOverReadFactor
 // times as many shards as a data object has shard buckets. It returns no chunk refs.
 func (*dataObjShardingPolicy) boundedShards(shards []logproto.Shard, _ []logproto.ChunkRefGroup) ([]logproto.Shard, []logproto.ChunkRefGroup) {
-	const maxShards = dataObjMaxOverReadFactor * (1 << dataobjstreams.DefaultShardBits)
+	const maxShards = dataObjMaxOverReadFactor * dataobjstreams.DefaultShardBuckets
 
 	// The query reads most of its range from data objects, which have no chunks. The chunk refs of
 	// the index would only add weight to each request. The querier resolves the chunks of the part

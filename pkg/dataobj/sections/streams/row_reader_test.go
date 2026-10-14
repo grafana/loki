@@ -31,7 +31,7 @@ var streamsTestdata = []struct {
 }
 
 func shardForApp(app string) int64 {
-	return int64(streams.DefaultShardLayout.BucketFromLabels(labels.FromStrings("cluster", "test", "app", app)))
+	return int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", app)))
 }
 
 func TestRowReader(t *testing.T) {
@@ -248,7 +248,7 @@ func unixTime(sec int64) time.Time { return time.Unix(sec, 0).UTC() }
 func buildTestStreamsSection(t *testing.T, pageSize, pageRows int) *streams.Section {
 	t.Helper()
 
-	s := streams.NewBuilder(nil, pageSize, pageRows, streams.DefaultShardLayout)
+	s := streams.NewBuilder(nil, pageSize, pageRows, streams.DefaultShardLayout())
 	for _, d := range streamsTestdata {
 		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}

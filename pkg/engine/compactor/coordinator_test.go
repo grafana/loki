@@ -301,7 +301,7 @@ func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objsto
 			SectionIndex: row.SectionIndex,
 			ColumnName:   "layout",
 			LabelValue:   "current",
-			ShardBuckets: int64(streams.DefaultShardLayout.Buckets()),
+			ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
 		})
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{
@@ -728,9 +728,9 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 						LabelValue:     "a",
 						MinTimestamp:   10,
 						MaxTimestamp:   20,
-						ShardBuckets:   int64(streams.DefaultShardLayout.Buckets()),
+						ShardBuckets:   int64(streams.DefaultShardLayout().Buckets()),
 						MinShardBucket: 0,
-						MaxShardBucket: streams.DefaultShardLayout.Buckets() - 1,
+						MaxShardBucket: streams.DefaultShardLayout().Buckets() - 1,
 					},
 					{
 						Kind:           postings.KindLabel,
@@ -740,9 +740,9 @@ func TestCompactTenant_DoesNotMergeIndexesAcrossSortSchemas(t *testing.T) {
 						LabelValue:     "z",
 						MinTimestamp:   30,
 						MaxTimestamp:   40,
-						ShardBuckets:   int64(streams.DefaultShardLayout.Buckets()),
+						ShardBuckets:   int64(streams.DefaultShardLayout().Buckets()),
 						MinShardBucket: 0,
-						MaxShardBucket: streams.DefaultShardLayout.Buckets() - 1,
+						MaxShardBucket: streams.DefaultShardLayout().Buckets() - 1,
 					},
 				},
 			})
@@ -1574,8 +1574,8 @@ func seedLogMergeIndexesAt(ctx context.Context, t *testing.T, bucket objstore.Bu
 					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: ts(10), MaxTimestamp: ts(30), RowCount: 1, UncompressedSize: 100},
 			},
 			postings: []postings.Row{
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: ts(0), MaxTimestamp: ts(10), ShardBuckets: int64(streams.DefaultShardLayout.Buckets())},
-				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: ts(20), MaxTimestamp: ts(30), ShardBuckets: int64(streams.DefaultShardLayout.Buckets())},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: ts(0), MaxTimestamp: ts(10), ShardBuckets: int64(streams.DefaultShardLayout().Buckets())},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: ts(20), MaxTimestamp: ts(30), ShardBuckets: int64(streams.DefaultShardLayout().Buckets())},
 			},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})

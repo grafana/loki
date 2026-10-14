@@ -78,7 +78,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 				require.NoError(t, err)
 				schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
-				key := streams.DefaultShardLayout.NewSortKey(stream.Labels, schemaKey)
+				key := streams.DefaultShardLayout().NewSortKey(stream.Labels, schemaKey)
 
 				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, key: key})
 			}

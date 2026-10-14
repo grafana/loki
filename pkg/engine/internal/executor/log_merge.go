@@ -286,7 +286,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 // sourcesMatchSortLayout checks whether every logs section in sources has the
 // target layout. mismatch is the first object path that does not match.
 func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (string, error) {
-	want := logsobj.TargetSortLayout(sortSchema, streams.DefaultShardLayout)
+	want := logsobj.TargetSortLayout(sortSchema, streams.DefaultShardLayout())
 	for _, src := range sources {
 		for _, sec := range src.logSectionsByIndex {
 			if sec == nil {
@@ -334,7 +334,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj
 	for _, src := range sources {
 		maps = append(maps, src.streams)
 	}
-	return logsobj.RankMixedStreams(sortSchema, streams.DefaultShardLayout, maps...)
+	return logsobj.RankMixedStreams(sortSchema, streams.DefaultShardLayout(), maps...)
 }
 
 // logMergeInputs owns source identity, run order, and the global stream namespace.

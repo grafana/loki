@@ -251,9 +251,10 @@ func (b *Builder) schemaLabelsFor(tenant string) []string {
 	return b.overrides.SortSchemaLabels(tenant)
 }
 
-// shardLayoutFor returns the shard layout of objects written for tenant.
+// shardLayoutFor returns the shard layout of objects written for a tenant.
+// All tenants use [streams.DefaultShardLayout].
 func (b *Builder) shardLayoutFor(string) streams.ShardLayout {
-	return streams.DefaultShardLayout
+	return streams.DefaultShardLayout()
 }
 
 // Append buffers a stream to be written to a data object.
@@ -468,9 +469,9 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		return nil, nil, err
 	}
 
-	// sb only receives copied streams through AppendValue, which keeps each
-	// stream's shard bucket, so its own layout is never used.
-	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout)
+	// The layout of sb is unused. sb receives streams only through
+	// AppendValue, which keeps each stream's shard bucket.
+	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout())
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
