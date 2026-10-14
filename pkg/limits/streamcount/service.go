@@ -73,6 +73,8 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Service, er
 		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(startOfDay(time.Now()).UnixMilli())),
 		kgo.DisableAutoCommit(),
+		kgo.FetchMaxBytes(10_000_000),         // 10MB
+		kgo.FetchMaxPartitionBytes(1_500_000), // 1.5MB
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
