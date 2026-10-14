@@ -15,11 +15,11 @@ const (
 )
 
 var (
-	blockPool64K  = sync.Pool{New: func() interface{} { return &[Block64Kb]byte{} }}
-	blockPool256K = sync.Pool{New: func() interface{} { return &[Block256Kb]byte{} }}
-	blockPool1M   = sync.Pool{New: func() interface{} { return &[Block1Mb]byte{} }}
-	blockPool4M   = sync.Pool{New: func() interface{} { return &[Block4Mb]byte{} }}
-	blockPool8M   = sync.Pool{New: func() interface{} { return &[Block8Mb]byte{} }}
+	blockPool64K  = sync.Pool{New: func() any { return &[Block64Kb]byte{} }}
+	blockPool256K = sync.Pool{New: func() any { return &[Block256Kb]byte{} }}
+	blockPool1M   = sync.Pool{New: func() any { return &[Block1Mb]byte{} }}
+	blockPool4M   = sync.Pool{New: func() any { return &[Block4Mb]byte{} }}
+	blockPool8M   = sync.Pool{New: func() any { return &[Block8Mb]byte{} }}
 )
 
 func Index(b uint32) BlockSizeIndex {
@@ -91,4 +91,9 @@ func Put(buf []byte) {
 
 type CompressionLevel uint32
 
-const Fast CompressionLevel = 0
+const (
+	Fast CompressionLevel = 0
+	// CCompatFast selects CompressorCCompat. The HC levels are powers of two from
+	// 1<<9, so it cannot be mistaken for one.
+	CCompatFast CompressionLevel = 1
+)

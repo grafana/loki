@@ -269,9 +269,10 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 	})
 }
 
-func TestPartitionProcessor_FlushSplitsAcrossWindows(t *testing.T) {
-	// A single record whose entries span multiple TOC windows must be flushed
-	// as one builder per window, while still committing a single Kafka offset.
+func TestPartitionProcessor_FlushSplitsAcrossTenantsAndWindows(t *testing.T) {
+	// Records whose entries span multiple tenants and TOC windows must be
+	// flushed as one builder per tenant and window, while still committing a
+	// single Kafka offset.
 	synctest.Test(t, func(t *testing.T) {
 		var (
 			ctx            = t.Context()
@@ -284,15 +285,17 @@ func TestPartitionProcessor_FlushSplitsAcrossWindows(t *testing.T) {
 		w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 		w2 := w1.Add(metastore.MetastoreWindowSize)
 		w3 := w2.Add(metastore.MetastoreWindowSize)
-		rec := newTestMultiWindowRecord(t, "tenant", []time.Time{w1, w2, w3})
+		require.NoError(t, proc.processRecord(ctx, newTestMultiWindowRecord(t, "tenant-a", []time.Time{w1, w2, w3})))
+		rec := newTestMultiWindowRecord(t, "tenant-b", []time.Time{w1, w2})
+		rec.Offset = 1
 		require.NoError(t, proc.processRecord(ctx, rec))
 
-		// Three windows means three per-window builders.
-		require.Len(t, m.GetBuilders(), 3)
+		// Three windows for tenant-a and two for tenant-b.
+		require.Len(t, m.GetBuilders(), 5)
 
 		require.NoError(t, proc.flush(ctx, "forced"))
 		require.Equal(t, 1, flushCommitter.flushes)
-		require.Equal(t, 3, flushCommitter.lastBuilderCount)
+		require.Equal(t, 5, flushCommitter.lastBuilderCount)
 		require.Equal(t, rec.Offset, flushCommitter.lastOffset)
 
 		// The multi-builder is reset after a successful flush.

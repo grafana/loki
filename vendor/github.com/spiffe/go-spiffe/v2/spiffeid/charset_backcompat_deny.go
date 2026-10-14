@@ -1,5 +1,4 @@
 //go:build !spiffeid_charset_backcompat
-// +build !spiffeid_charset_backcompat
 
 package spiffeid
 

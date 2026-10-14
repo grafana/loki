@@ -5,3 +5,5 @@
 package sqlite3
 
 const __STDC_VERSION__ = 201710
+
+const wsdStat = "sqlite3Stat"

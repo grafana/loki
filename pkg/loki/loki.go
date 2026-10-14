@@ -70,6 +70,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
@@ -329,8 +330,8 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
 		}
 	}
-	if c.Ingester.DelegateStreamLimits && !c.IngestLimits.Enabled {
-		errs = append(errs, errors.New("CONFIG ERROR: ingester.delegate-stream-limits requires ingest-limits service to be enabled (ingest_limits.enabled)"))
+	if (c.LimitsConfig.DelegateStreamLimits || c.Ingester.DelegateStreamLimits) && !c.IngestLimits.Enabled {
+		errs = append(errs, errors.New("CONFIG ERROR: delegate_stream_limits_enabled requires ingest-limits service to be enabled (ingest_limits.enabled)"))
 	}
 	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))
@@ -494,6 +495,9 @@ type Loki struct {
 	UsageTracker push.UsageTracker
 
 	metastoreMetrics *metastore.ObjectMetastoreMetrics
+
+	// lbacChunkFilterer is nil when label access is disabled.
+	lbacChunkFilterer chunk.RequestChunkFilterer
 }
 
 // New makes a new Loki.

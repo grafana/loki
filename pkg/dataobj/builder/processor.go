@@ -14,7 +14,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -33,7 +32,7 @@ type builder interface {
 	GetEstimatedSize() int
 	IsFull() bool
 	Flush() (*dataobj.Object, io.Closer, error)
-	TimeRanges() []multitenancy.TimeRange
+	TimeRanges() []dataobj.TimeRange
 	GetEarliestRecordTime() time.Time
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
@@ -105,7 +104,7 @@ func newProcessor(
 		metrics:          newMetrics(reg),
 		logger:           logger,
 	}
-	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
+	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping).WithName("dataobj-builder-processor")
 	return p
 }
 
@@ -250,9 +249,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.sizeEstimate.Set(0)
 	}()
 
-	timeWindowedBuilders := p.builder.GetBuilders()
-	p.metrics.timePartitionEstimate.Add(float64(len(timeWindowedBuilders)))
-	err := p.flushCommitter.Flush(ctx, timeWindowedBuilders, reason, p.lastOffset)
+	err := p.flushCommitter.Flush(ctx, p.builder.GetBuilders(), reason, p.lastOffset)
 	if err == nil {
 		return nil
 	}

@@ -12,6 +12,16 @@ you need, extend it.
 The versioned packages live under `internal/` so the compiler enforces this rather than
 review.
 
+## Versions
+
+| Version | Status | On-disk format | Extractor |
+| --- | --- | --- | --- |
+| v3 | Current (`CurrentVersion`) | footer 4 | v3 |
+| v4 | Supported | v3 bytes | packed numeric terms |
+| v5 | In development. Do not set `-logline-index.version=v5` | v3 bytes, for now | v4's extractor, forked into `internal/v5` |
+
+v5 will change. It is registered so the fork can be tested, and `CurrentVersion` stays `"v3"` so a binary upgrade does not write it.
+
 ## Extraction is coupled to index version
 
 The n-gram extraction algorithm is part of the index format contract. Each

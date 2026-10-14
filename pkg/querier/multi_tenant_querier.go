@@ -239,6 +239,10 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	return logproto.MergeSeriesResponses(responses)
 }
 
+func (q *MultiTenantQuerier) LoglineIndex(ctx context.Context, req *logproto.LoglineIndexRequest) (*logproto.LoglineIndexResponse, error) {
+	return q.Querier.LoglineIndex(ctx, req)
+}
+
 func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {

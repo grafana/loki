@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -15,14 +16,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// A Result describes the index object built and uploaded for a single data object.
+var (
+	// ErrUnprocessableObject marks an error that the shape of a data object
+	// causes. Retrying can't fix it.
+	ErrUnprocessableObject = errors.New("unprocessable data object")
+)
+
+// A Result describes the index object built and uploaded for a single-tenant data object.
 type Result struct {
-	Path       string
-	TimeRanges []multitenancy.TimeRange
+	Path      string
+	TimeRange dataobj.TimeRange
 }
 
 // A SimpleIndexer builds an index for a data object and uploads it.
@@ -63,6 +69,7 @@ func NewSimpleIndexer(
 }
 
 // Index builds and uploads the index for obj, which is stored at objPath.
+// obj must hold exactly one tenant.
 func (s *SimpleIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath string) (res Result, err error) {
 	objLogger := log.With(s.logger, "object_path", objPath)
 
@@ -81,7 +88,12 @@ func (s *SimpleIndexer) release(closer io.Closer, logger log.Logger, what string
 }
 
 func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath string, objLogger log.Logger) (Result, error) {
-	builder, err := indexobj.NewBuilder(s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
+	tenant, err := obj.Tenant()
+	if err != nil {
+		return Result{}, fmt.Errorf("%w: %w", ErrUnprocessableObject, err)
+	}
+
+	builder, err := indexobj.NewBuilder(tenant, s.cfg, s.scratchStore, s.indexObjBuilderMetrics)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}
@@ -94,7 +106,7 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("calculate object: %w", err)
 	}
 
-	idxObj, closer, tenantTimeRanges, err := calc.Flush()
+	idxObj, closer, timeRange, err := calc.Flush()
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to flush calculator: %w", err)
 	}
@@ -115,15 +127,10 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("failed to upload index object: %w", err)
 	}
 
-	fileSize := uint64(idxObj.Size())
-	for i := range tenantTimeRanges {
-		tenantTimeRanges[i].FileSize = fileSize
-	}
-
 	level.Debug(objLogger).Log("msg", "uploaded index object",
-		"idxPath", idxObjKey, "idxSize", fileSize, "tenants", len(tenantTimeRanges))
+		"idxPath", idxObjKey, "idxSize", uint64(idxObj.Size()), "tenant", timeRange.Tenant)
 
-	return Result{Path: idxObjKey, TimeRanges: tenantTimeRanges}, nil
+	return Result{Path: idxObjKey, TimeRange: timeRange}, nil
 }
 
 // ObjectKey generates the object key for storing an index object in object storage.

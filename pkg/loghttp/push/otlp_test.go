@@ -629,9 +629,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				log.NewNopLogger(),
 				streamResolver,
 				constants.OTLP,
+				false,
 			)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedPushRequest, *pushReq)
+			require.Equal(t, tc.expectedPushRequest, flatOTLPRequest(pushReq))
 
 			// TotalExpandedEntriesSize is the size of each entry after resource/scope attributes have been
 			// merged into its structured metadata, which is exactly what expectedPushRequest's entries already
@@ -723,11 +724,281 @@ func TestOTLPToLokiPushRequestAttributeExpansionReport(t *testing.T) {
 				log.NewNopLogger(),
 				streamResolver,
 				constants.OTLP,
+				false,
 			)
 			require.NoError(t, err)
 
 			require.NotNil(t, stats.OTLPAttributes)
 			require.Equal(t, *tc.expectedReport, stats.OTLPAttributes.Report(0))
+		})
+	}
+}
+
+type otlpStreamLoggingConfig struct{}
+
+func (otlpStreamLoggingConfig) TenantConfig(string) *runtime.Config {
+	return &runtime.Config{LogPushRequestStreams: true, LogOTLPAttributeExpansion: true}
+}
+
+func TestOTLPAttributeExpansion(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(*OTLPConfig)
+		backfill  bool
+	}{
+		{name: "shared resources and scopes"},
+		{name: "log attributes split scopes", configure: func(c *OTLPConfig) {
+			c.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{"route"}}}
+		}},
+		{name: "severity splits scopes", configure: func(c *OTLPConfig) { c.SeverityTextAsLabel = true }},
+		{name: "dropped attributes", configure: func(c *OTLPConfig) {
+			c.ResourceAttributes.AttributesConfig = append(c.ResourceAttributes.AttributesConfig, AttributesConfig{Action: Drop, Attributes: []string{"resource.id"}})
+			c.ScopeAttributes = []AttributesConfig{{Action: Drop, Attributes: []string{"scope.id"}}}
+			c.LogAttributes = []AttributesConfig{{Action: Drop, Attributes: []string{"route"}}}
+		}},
+		{name: "backfill labels", backfill: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+			if tc.configure != nil {
+				tc.configure(&cfg)
+			}
+			logs := plog.NewLogs()
+			at := pcommon.Timestamp(time.Unix(123456, 0).UnixNano())
+			// prepare the otlp push request
+			for r := range 3 {
+				resource := logs.ResourceLogs().AppendEmpty()
+				// The first two resources share labels but have different metadata.
+				resource.Resource().Attributes().PutStr("service.name", fmt.Sprintf("service-%d", r/2))
+				resource.Resource().Attributes().PutStr("resource.id", fmt.Sprint(r))
+				for s := range 3 {
+					scope := resource.ScopeLogs().AppendEmpty()
+					scope.Scope().Attributes().PutStr("scope.id", fmt.Sprint(s))
+					// Empty scope between two populated scopes.
+					if s == 1 {
+						continue
+					}
+					for e := range 4 {
+						record := scope.LogRecords().AppendEmpty()
+						record.SetTimestamp(at + pcommon.Timestamp(e))
+						record.Body().SetStr(fmt.Sprintf("resource-%d/scope-%d/entry-%d", r, s, e))
+						record.Attributes().PutStr("route", fmt.Sprint(e%2))
+						record.SetSeverityText([]string{"INFO", "ERROR"}[e%2])
+					}
+				}
+			}
+
+			// prepare the config
+			ctx := context.Background()
+			if tc.backfill {
+				ctx = InjectBackfillShardContext(ctx, testBackfillShard)
+			}
+			configs, err := runtime.NewTenantConfigs(otlpStreamLoggingConfig{})
+			require.NoError(t, err)
+			resolver := newMockStreamResolver("test", &fakeLimits{})
+			resolver.policyForOverride = func(_ context.Context, lbs labels.Labels) string {
+				return lbs.Get("service_name") + "/" + lbs.Get("route")
+			}
+			parse := func(deferExpansion bool) (*logproto.InternalPushRequest, *Stats, float64) {
+				stats, tracker := NewPushStats(), NewMockTracker()
+				req, err := otlpToLokiPushRequest(ctx, logs, "test", cfg, configs, nil, tracker, stats, log.NewNopLogger(), resolver, constants.OTLP, deferExpansion)
+				require.NoError(t, err)
+				return req, stats, tracker.Total()
+			}
+
+			// parse the push request with and without expansion
+			expanded, expandedStats, expandedTracked := parse(false)
+			nested, nestedStats, nestedTracked := parse(true)
+
+			// ensure both of them have same logical data and statistics
+			require.Equal(t, expandedStats, nestedStats, "representation must not change parser statistics")
+			require.Equal(t, expandedTracked, nestedTracked)
+			require.Len(t, nested.Streams, len(expanded.Streams))
+			want := map[string]logproto.Stream{}
+			for _, stream := range expanded.Streams {
+				want[stream.Labels] = stream.FlatView()
+			}
+			for _, stream := range nested.Streams {
+				flat := stream.FlatView()
+				expected, ok := want[flat.Labels]
+				require.True(t, ok)
+				require.Len(t, flat.Entries, len(expected.Entries))
+				for i, entry := range flat.Entries {
+					require.Equal(t, expected.Entries[i].Timestamp, entry.Timestamp)
+					require.Equal(t, expected.Entries[i].Line, entry.Line)
+					require.ElementsMatch(t, expected.Entries[i].StructuredMetadata, entry.StructuredMetadata)
+				}
+				if tc.backfill {
+					requireBackfillLabels(t, stream.Labels)
+				}
+				require.Positive(t, stream.EntryCount())
+				resources := 1
+				if strings.Contains(stream.Labels, `service_name="service-0"`) {
+					resources = 2
+				}
+				require.Len(t, stream.ResourceLogs, resources)
+				for _, resource := range stream.ResourceLogs {
+					require.Len(t, resource.ScopeLogs, 2, "empty scopes must not allocate entry groups")
+					for _, scope := range resource.ScopeLogs {
+						for _, entry := range scope.Entries {
+							for _, attr := range entry.StructuredMetadata {
+								require.NotContains(t, []string{"resource_id", "scope_id"}, attr.Name)
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestOTLPStreamCreation(t *testing.T) {
+	const (
+		resourceAttributeAsLabels       = `{service_name="test-service"}`
+		resourceAndLogAttributeAsLabels = `{route="indexed", service_name="test-service"}`
+		invalidUTF8Route                = "\xff"
+	)
+	for _, tc := range []struct {
+		name        string
+		routes      []string // An empty string means the record has no route attribute.
+		wantStreams map[string][]string
+		wantErrors  int
+	}{
+		{
+			name:        "all log attributes indexed",
+			routes:      []string{"indexed", "indexed"},
+			wantStreams: map[string][]string{resourceAndLogAttributeAsLabels: {"entry-0", "entry-1"}},
+		},
+		{
+			name:   "mixed indexed and unindexed log attributes",
+			routes: []string{"indexed", "", "indexed", ""},
+			wantStreams: map[string][]string{
+				resourceAndLogAttributeAsLabels: {"entry-0", "entry-2"},
+				resourceAttributeAsLabels:       {"entry-1", "entry-3"},
+			},
+		},
+		{
+			name:        "no log attributes indexed",
+			routes:      []string{"", ""},
+			wantStreams: map[string][]string{resourceAttributeAsLabels: {"entry-0", "entry-1"}},
+		},
+		{
+			name:        "all log label values invalid UTF-8",
+			routes:      []string{invalidUTF8Route, invalidUTF8Route},
+			wantStreams: map[string][]string{},
+			wantErrors:  2,
+		},
+		{
+			name:   "mixed UTF-8 and non UTF-8 label values",
+			routes: []string{invalidUTF8Route, "indexed", "", invalidUTF8Route},
+			wantStreams: map[string][]string{
+				resourceAndLogAttributeAsLabels: {"entry-1"},
+				resourceAttributeAsLabels:       {"entry-2"},
+			},
+			wantErrors: 2,
+		},
+		{
+			name:        "empty scope",
+			wantStreams: map[string][]string{},
+		},
+	} {
+		for _, deferExpansion := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/deferExpansion=%t", tc.name, deferExpansion), func(t *testing.T) {
+				cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+				cfg.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{"route"}}}
+				logs := plog.NewLogs()
+				// An empty resource must not create an extra stream in a populated request.
+				logs.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "empty-resource")
+				resource := logs.ResourceLogs().AppendEmpty()
+				resource.Resource().Attributes().PutStr("service.name", "test-service")
+				scope := resource.ScopeLogs().AppendEmpty()
+				for i, route := range tc.routes {
+					record := scope.LogRecords().AppendEmpty()
+					record.SetTimestamp(123456)
+					record.Body().SetStr(fmt.Sprintf("entry-%d", i))
+					if route != "" {
+						record.Attributes().PutStr("route", route)
+					}
+				}
+
+				stats := NewPushStats()
+				req, err := otlpToLokiPushRequest(t.Context(), logs, "test", cfg, nil, nil, nil, stats, log.NewNopLogger(), newMockStreamResolver("test", &fakeLimits{}), constants.OTLP, deferExpansion)
+				require.NoError(t, err)
+				require.Len(t, stats.Errs, tc.wantErrors)
+				for _, err := range stats.Errs {
+					require.ErrorContains(t, err, "invalid labels with log attributes")
+				}
+				require.Len(t, req.Streams, len(tc.wantStreams))
+				got := make(map[string][]string, len(req.Streams))
+				for _, stream := range req.Streams {
+					require.Positive(t, stream.EntryCount())
+					for _, entry := range stream.FlatView().Entries {
+						got[stream.Labels] = append(got[stream.Labels], entry.Line)
+					}
+				}
+				require.Equal(t, tc.wantStreams, got)
+				if len(tc.wantStreams) == 0 {
+					require.Zero(t, stats.StreamLabelsSize)
+				}
+			})
+		}
+	}
+}
+
+func TestOTLPUnexpandedAttributePrecedence(t *testing.T) {
+	logs := plog.NewLogs()
+	resource := logs.ResourceLogs().AppendEmpty()
+	resource.Resource().Attributes().PutStr("service.name", "test")
+	resource.Resource().Attributes().PutStr("key", "resource")
+	scope := resource.ScopeLogs().AppendEmpty()
+	scope.Scope().Attributes().PutStr("key", "scope")
+	for i := range 2 {
+		record := scope.LogRecords().AppendEmpty()
+		record.SetTimestamp(123456)
+		record.Body().SetStr(fmt.Sprint(i))
+		if i == 0 {
+			record.Attributes().PutStr("key", "entry")
+		}
+	}
+	req, err := otlpToLokiPushRequest(context.Background(), logs, "test", DefaultOTLPConfig(defaultGlobalOTLPConfig), nil, nil, nil, NewPushStats(), log.NewNopLogger(), newMockStreamResolver("test", &fakeLimits{}), constants.OTLP, true)
+	require.NoError(t, err)
+	require.Len(t, req.Streams, 1)
+	res := req.Streams[0].ResourceLogs[0]
+	require.Equal(t, []logproto.LabelAdapter{{Name: "key", Value: "resource"}}, res.Attrs)
+	require.Equal(t, []logproto.LabelAdapter{{Name: "key", Value: "scope"}}, res.ScopeLogs[0].Attrs)
+	flat := req.Streams[0].FlatView()
+	require.Equal(t, []logproto.LabelAdapter{{Name: "key", Value: "entry"}}, []logproto.LabelAdapter(flat.Entries[0].StructuredMetadata))
+	require.Equal(t, []logproto.LabelAdapter{{Name: "key", Value: "scope"}}, []logproto.LabelAdapter(flat.Entries[1].StructuredMetadata))
+}
+
+func BenchmarkOTLPAttributeExpansion(b *testing.B) {
+	logs := plog.NewLogs()
+	resource := logs.ResourceLogs().AppendEmpty()
+	resource.Resource().Attributes().PutStr("service.name", "test")
+	scope := resource.ScopeLogs().AppendEmpty()
+	for i := range 20 {
+		resource.Resource().Attributes().PutStr(fmt.Sprintf("resource_%d", i), "a shared resource attribute value")
+	}
+	for i := range 10 {
+		scope.Scope().Attributes().PutStr(fmt.Sprintf("scope_%d", i), "a shared scope attribute value")
+	}
+	for range 1000 {
+		record := scope.LogRecords().AppendEmpty()
+		record.SetTimestamp(123456)
+		record.Body().SetStr("a log line with shared resource and scope attributes")
+		record.Attributes().PutStr("entry", "value")
+	}
+	cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+	resolver := newMockStreamResolver("test", &fakeLimits{})
+	for _, deferExpansion := range []bool{false, true} {
+		b.Run(fmt.Sprintf("deferExpansion=%t", deferExpansion), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, err := otlpToLokiPushRequest(context.Background(), logs, "test", cfg, nil, nil, nil, NewPushStats(), log.NewNopLogger(), resolver, constants.OTLP, deferExpansion)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
 		})
 	}
 }
@@ -985,30 +1256,23 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		log.NewNopLogger(),
 		streamResolver,
 		constants.OTLP,
+		false,
 	)
 	require.NoError(t, err)
 
 	// Debug: Print the actual streams we got
 	t.Logf("Number of streams: %d", len(pushReq.Streams))
 	for i, stream := range pushReq.Streams {
-		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, stream.EntryCount())
 	}
 
-	// Filter out empty streams
-	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
-	for _, stream := range pushReq.Streams {
-		if len(stream.Entries) > 0 {
-			nonEmptyStreams = append(nonEmptyStreams, stream)
-		}
-	}
-
-	// Verify the streams were created with the correct labels
-	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each log level)")
+	require.Len(t, pushReq.Streams, 3)
 
 	// Create a map of streams by labels for easier verification
 	streamsByLabels := make(map[string]logproto.Stream)
-	for _, stream := range nonEmptyStreams {
-		streamsByLabels[stream.Labels] = stream
+	for _, stream := range pushReq.Streams {
+		require.Positive(t, stream.EntryCount())
+		streamsByLabels[stream.Labels] = stream.FlatView()
 	}
 
 	// Check for each expected log level in the streams
@@ -1088,6 +1352,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		log.NewNopLogger(),
 		streamResolver,
 		constants.OTLP,
+		false,
 	)
 	require.NoError(t, err)
 
@@ -1095,7 +1360,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	require.Equal(t, 1, len(pushReq.Streams))
 
 	// Verify we have a single entry with all the expected metadata
-	stream := pushReq.Streams[0]
+	stream := pushReq.Streams[0].FlatView()
 	require.Equal(t, 1, len(stream.Entries))
 
 	// Verify the structured metadata bytes are positive
@@ -1274,30 +1539,23 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		log.NewNopLogger(),
 		streamResolver,
 		constants.OTLP,
+		false,
 	)
 	require.NoError(t, err)
 
 	// Debug: Print the actual streams we got
 	t.Logf("Number of streams: %d", len(pushReq.Streams))
 	for i, stream := range pushReq.Streams {
-		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, stream.EntryCount())
 	}
 
-	// Filter out empty streams
-	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
-	for _, stream := range pushReq.Streams {
-		if len(stream.Entries) > 0 {
-			nonEmptyStreams = append(nonEmptyStreams, stream)
-		}
-	}
-
-	// Verify the streams were created with the correct labels
-	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each severity level)")
+	require.Len(t, pushReq.Streams, 3)
 
 	// Create a map of streams by labels for easier verification
 	streamsByLabels := make(map[string]logproto.Stream)
-	for _, stream := range nonEmptyStreams {
-		streamsByLabels[stream.Labels] = stream
+	for _, stream := range pushReq.Streams {
+		require.Positive(t, stream.EntryCount())
+		streamsByLabels[stream.Labels] = stream.FlatView()
 	}
 
 	// Check for each expected severity level in the streams
@@ -1876,4 +2134,15 @@ func TestExtractLogsDecompressorDoesNotLeakGoroutines(t *testing.T) {
 			goleak.VerifyNone(t, ignore)
 		})
 	}
+}
+
+func flatOTLPRequest(req *logproto.InternalPushRequest) logproto.PushRequest {
+	flat := logproto.PushRequest{Format: req.Format}
+	if req.Streams != nil {
+		flat.Streams = make([]logproto.Stream, 0, len(req.Streams))
+	}
+	for _, stream := range req.Streams {
+		flat.Streams = append(flat.Streams, stream.FlatView())
+	}
+	return flat
 }

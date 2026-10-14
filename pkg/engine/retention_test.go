@@ -36,17 +36,18 @@ type fakeParams struct {
 	end   time.Time
 }
 
-func (f fakeParams) QueryString() string                     { return "" }
-func (f fakeParams) Start() time.Time                        { return f.start }
-func (f fakeParams) End() time.Time                          { return f.end }
-func (f fakeParams) Step() time.Duration                     { return 0 }
-func (f fakeParams) Interval() time.Duration                 { return 0 }
-func (f fakeParams) Limit() uint32                           { return 0 }
-func (f fakeParams) Direction() logproto.Direction           { return logproto.BACKWARD }
-func (f fakeParams) Shards() []string                        { return nil }
-func (f fakeParams) GetExpression() syntax.Expr              { return nil }
-func (f fakeParams) GetStoreChunks() *logproto.ChunkRefGroup { return nil }
-func (f fakeParams) GetHintRanges() []logproto.HintTimeRange { return nil }
+func (f fakeParams) QueryString() string                         { return "" }
+func (f fakeParams) Start() time.Time                            { return f.start }
+func (f fakeParams) End() time.Time                              { return f.end }
+func (f fakeParams) Step() time.Duration                         { return 0 }
+func (f fakeParams) Interval() time.Duration                     { return 0 }
+func (f fakeParams) Limit() uint32                               { return 0 }
+func (f fakeParams) Direction() logproto.Direction               { return logproto.BACKWARD }
+func (f fakeParams) Shards() []string                            { return nil }
+func (f fakeParams) GetExpression() syntax.Expr                  { return nil }
+func (f fakeParams) GetStoreChunks() *logproto.ChunkRefGroup     { return nil }
+func (f fakeParams) GetHintRanges() []logproto.HintTimeRange     { return nil }
+func (f fakeParams) GetDataObjOptions() *logproto.DataObjOptions { return nil }
 func (f fakeParams) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }

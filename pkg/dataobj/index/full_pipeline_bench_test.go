@@ -46,12 +46,11 @@ func BenchmarkFullPostingsPipeline(b *testing.B) {
 			stats := makePipelineBenchStats(metaCols, tc.metaCardinality)
 
 			for b.Loop() {
-				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+				builder, err := indexobj.NewBuilder("bench-tenant", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 				if err != nil {
 					b.Fatal(err)
 				}
 				calcCtx := &logsCalculationContext{
-					tenantID:     "bench-tenant",
 					objectPath:   "bench/path",
 					sectionIdx:   0,
 					streamLabels: streamLabelsMap,

@@ -8,6 +8,9 @@ import (
 	"unicode/utf8"
 )
 
+// noRune marks a missing pattern rune without colliding with a valid Unicode rune.
+const noRune rune = -1
+
 type runeRangeMap struct {
 	FromLo rune // Lower bound of range map.
 	FromHi rune // An inclusive higher bound of range map.
@@ -58,7 +61,7 @@ func NewTranslator(from, to string) *Translator {
 	// Update the to rune range.
 	updateRange := func() {
 		// No more rune to read in the to rune pattern.
-		if toEnd == utf8.RuneError {
+		if toEnd == noRune {
 			return
 		}
 
@@ -75,17 +78,17 @@ func NewTranslator(from, to string) *Translator {
 
 		// No more rune. Repeat the last rune.
 		if to == "" {
-			toEnd = utf8.RuneError
+			toEnd = noRune
 			return
 		}
 
 		// Both start and end are used. Read two more runes from the to pattern.
-		to, toStart, toEnd, toRangeStep = nextRuneRange(to, utf8.RuneError)
+		to, toStart, toEnd, toRangeStep = nextRuneRange(to, noRune)
 	}
 
 	if deletion {
 		toStart = utf8.RuneError
-		toEnd = utf8.RuneError
+		toEnd = noRune
 	} else {
 		// If from pattern is reverted, only the last rune in the to pattern will be used.
 		if reverted {
@@ -96,13 +99,13 @@ func NewTranslator(from, to string) *Translator {
 				to = to[size:]
 			}
 
-			toEnd = utf8.RuneError
+			toEnd = noRune
 		} else {
-			to, toStart, toEnd, toRangeStep = nextRuneRange(to, utf8.RuneError)
+			to, toStart, toEnd, toRangeStep = nextRuneRange(to, noRune)
 		}
 	}
 
-	fromEnd = utf8.RuneError
+	fromEnd = noRune
 
 	for len(from) > 0 {
 		from, fromStart, fromEnd, fromRangeStep = nextRuneRange(from, fromEnd)
@@ -114,13 +117,18 @@ func NewTranslator(from, to string) *Translator {
 			continue
 		}
 
-		for toEnd != utf8.RuneError && fromStart != fromEnd {
+		for toEnd != noRune && fromStart != fromEnd {
 			// If mapped rune is a single character instead of a range, simply shift first
 			// rune in the range.
 			if toRangeStep == 0 {
 				singleRunes = tr.addRune(fromStart, toStart, singleRunes)
 				updateRange()
 				fromStart += fromRangeStep
+				// The last source rune still needs its own mapping.
+				if fromStart == fromEnd {
+					singleRunes = tr.addRune(fromStart, toStart, singleRunes)
+					updateRange()
+				}
 				continue
 			}
 
@@ -149,15 +157,15 @@ func NewTranslator(from, to string) *Translator {
 		}
 
 		if fromStart == fromEnd {
-			fromEnd = utf8.RuneError
+			fromEnd = noRune
 			continue
 		}
 
 		_, toStart = tr.addRuneRange(fromStart, fromEnd, toStart, toStart, singleRunes)
-		fromEnd = utf8.RuneError
+		fromEnd = noRune
 	}
 
-	if fromEnd != utf8.RuneError {
+	if fromEnd != noRune {
 		tr.addRune(fromEnd, toStart, singleRunes)
 	}
 
@@ -251,7 +259,7 @@ func nextRuneRange(str string, last rune) (remaining string, start, end rune, ra
 
 			if r == '-' {
 				// Ignore slash at beginning of string.
-				if last == utf8.RuneError {
+				if last == noRune {
 					continue
 				}
 
@@ -263,7 +271,7 @@ func nextRuneRange(str string, last rune) (remaining string, start, end rune, ra
 
 		escaping = false
 
-		if last != utf8.RuneError {
+		if last != noRune {
 			// This is a range which start and end are the same.
 			// Considier it as a normal character.
 			if isRange && last == r {
@@ -289,7 +297,11 @@ func nextRuneRange(str string, last rune) (remaining string, start, end rune, ra
 	}
 
 	start = last
-	end = utf8.RuneError
+	if start == noRune {
+		// Keep the existing fallback for patterns containing only ignored characters.
+		start = utf8.RuneError
+	}
+	end = noRune
 	return
 }
 

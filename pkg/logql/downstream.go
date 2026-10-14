@@ -522,7 +522,7 @@ func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer:     downstreamer,
-		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0, 0),
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0, 0, NoLimits),
 	}
 }
 
@@ -532,6 +532,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
+	isRootExpr bool,
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
@@ -753,7 +754,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		inner := NewCountDistinctSketchMatrixStepEvaluator(matrix, params)
 		return NewCountDistinctSketchVectorStepEvaluator(inner), nil
 	default:
-		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params, isRootExpr)
 	}
 }
 

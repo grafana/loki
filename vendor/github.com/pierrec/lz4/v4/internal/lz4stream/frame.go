@@ -24,12 +24,22 @@ func NewFrame() *Frame {
 }
 
 type Frame struct {
-	buf        [15]byte // frame descriptor needs at most 4(magic)+4+8+1=11 bytes
+	buf        [15]byte // frame descriptor needs at most 2(flags)+8(size)+4(dict id)+1(checksum)=15 bytes
 	Magic      uint32
 	Descriptor FrameDescriptor
 	Blocks     Blocks
 	Checksum   uint32
 	checksum   xxh32.XXHZero
+	size       uint64 // uncompressed bytes read or written so far, checked against Descriptor.ContentSize
+}
+
+// unexpectedEOF is for reads that must not hit the end of the source,
+// because the frame is not complete yet.
+func unexpectedEOF(err error) error {
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
 
 // Reset allows reusing the Frame.
@@ -51,6 +61,7 @@ func (f *Frame) InitW(dst io.Writer, num int, legacy bool) {
 	}
 	f.Blocks.initW(f, dst, num)
 	f.checksum.Reset()
+	f.size = 0
 }
 
 func (f *Frame) CloseW(dst io.Writer, num int) error {
@@ -59,6 +70,10 @@ func (f *Frame) CloseW(dst io.Writer, num int) error {
 	}
 	if f.isLegacy() {
 		return nil
+	}
+	if f.Descriptor.Flags.Size() && f.size != f.Descriptor.ContentSize {
+		// Leave the frame without its end mark: it is invalid anyway.
+		return fmt.Errorf("%w: wrote %d; expected %d", lz4errors.ErrInvalidContentSize, f.size, f.Descriptor.ContentSize)
 	}
 	buf := f.buf[:0]
 	// End mark (data block size of uint32(0)).
@@ -100,19 +115,20 @@ newFrame:
 	case m>>8 == frameSkipMagic>>8:
 		skip, err := f.readUint32(src)
 		if err != nil {
-			return err
+			return unexpectedEOF(err)
 		}
 		if _, err := io.CopyN(io.Discard, src, int64(skip)); err != nil {
-			return err
+			return unexpectedEOF(err)
 		}
 		goto newFrame
 	default:
 		return lz4errors.ErrInvalidFrame
 	}
 	if err := f.Descriptor.initR(f, src); err != nil {
-		return err
+		return unexpectedEOF(err)
 	}
 	f.checksum.Reset()
+	f.size = 0
 	return nil
 }
 
@@ -124,21 +140,23 @@ func (f *Frame) CloseR(src io.Reader) (err error) {
 	if f.isLegacy() {
 		return nil
 	}
-	if !f.Descriptor.Flags.ContentChecksum() {
-		return nil
-	}
-	if f.Checksum, err = f.readUint32(src); err != nil {
-		return err
-	}
-	sum := &f.checksum
+	read := f
 	if r := f.Blocks.reader; r != nil {
-		// The async reader checksums on its own copy of the frame. Its
-		// goroutines are done by the time its channel closes, which is
-		// before the caller sees end of stream and gets here.
-		sum = &r.frame.checksum
+		// The async reader checksums and counts on its own copy of the
+		// frame. Its goroutines are done by the time its channel closes,
+		// which is before the caller sees end of stream and gets here.
+		read = &r.frame
 	}
-	if c := sum.Sum32(); c != f.Checksum {
-		return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidFrameChecksum, c, f.Checksum)
+	if f.Descriptor.Flags.ContentChecksum() {
+		if f.Checksum, err = f.readUint32(src); err != nil {
+			return unexpectedEOF(err)
+		}
+		if c := read.checksum.Sum32(); c != f.Checksum {
+			return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidFrameChecksum, c, f.Checksum)
+		}
+	}
+	if f.Descriptor.Flags.Size() && read.size != f.Descriptor.ContentSize {
+		return fmt.Errorf("%w: got %d; expected %d", lz4errors.ErrInvalidContentSize, read.size, f.Descriptor.ContentSize)
 	}
 	return nil
 }
@@ -191,12 +209,21 @@ func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	}
 	descr := binary.LittleEndian.Uint16(buf)
 	fd.Flags = DescriptorFlags(descr)
+	// The optional fields follow the flags, before the checksum.
+	extra := 0
 	if fd.Flags.Size() {
-		// Append the 8 missing bytes.
-		buf = buf[:3+8]
+		extra += 8
+	}
+	if fd.Flags.dictID() {
+		extra += 4
+	}
+	if extra > 0 {
+		buf = buf[:3+extra]
 		if _, err := io.ReadFull(src, buf[3:]); err != nil {
 			return err
 		}
+	}
+	if fd.Flags.Size() {
 		fd.ContentSize = binary.LittleEndian.Uint64(buf[2:])
 	}
 	fd.Checksum = buf[len(buf)-1] // the checksum is the last byte
@@ -205,11 +232,32 @@ func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 		return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidHeaderChecksum, c, fd.Checksum)
 	}
 	// Validate the elements that can be.
+	if v := fd.Flags.Version(); v != 1 {
+		return fmt.Errorf("%w: version %d", lz4errors.ErrInvalidFrameDescriptor, v)
+	}
+	if fd.Flags&descriptorReserved != 0 {
+		return fmt.Errorf("%w: reserved bits %#04x set", lz4errors.ErrInvalidFrameDescriptor, uint16(fd.Flags&descriptorReserved))
+	}
+	if fd.Flags.dictID() {
+		// Frame dictionaries are not supported: decoding without one would
+		// produce garbage.
+		return fmt.Errorf("%w: dictionary ID %#x", lz4errors.ErrInvalidFrameDescriptor, binary.LittleEndian.Uint32(buf[len(buf)-4:]))
+	}
 	if idx := fd.Flags.BlockSizeIndex(); !idx.IsValid() {
 		return lz4errors.ErrOptionInvalidBlockSize
 	}
 	return nil
 }
+
+// Bits of the FLG (low) and BD (high) descriptor bytes that the format
+// reserves, and the dictionary ID flag, which the generated DescriptorFlags
+// accessors leave out.
+const (
+	descriptorReserved DescriptorFlags = 1<<1 | 0xF<<8 | 1<<15
+	descriptorDictID   DescriptorFlags = 1 << 0
+)
+
+func (x DescriptorFlags) dictID() bool { return x&descriptorDictID != 0 }
 
 func descriptorChecksum(buf []byte) byte {
 	return byte(xxh32.ChecksumZero(buf) >> 8)

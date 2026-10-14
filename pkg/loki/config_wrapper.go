@@ -121,8 +121,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
+		applyIngesterDelegateStreamLimits(r, &defaults)
 		applyLoglineKafkaConfig(r)
 		applyLoglineIndexConfig(r)
+		applyQuerierDataObjConfig(r)
+		applyQueryRangeDataObjConfig(r)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -760,6 +763,17 @@ func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
+// applyIngesterDelegateStreamLimits turns the deprecated ingester-wide setting into the default
+// of the per-tenant limit. DynamicUnmarshal re-applies the config file and the command line
+// after this step, so an explicitly configured per-tenant limit keeps precedence over the
+// deprecated setting, and per-tenant runtime overrides keep precedence over both.
+func applyIngesterDelegateStreamLimits(r, defaults *ConfigWrapper) {
+	if r.LimitsConfig.DelegateStreamLimits != defaults.LimitsConfig.DelegateStreamLimits {
+		return
+	}
+	r.LimitsConfig.DelegateStreamLimits = r.Ingester.DelegateStreamLimits
+}
+
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
 	usingNewFrontendCfg := !reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig)
 	usingNewSchedulerCfg := !reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig)
@@ -786,4 +800,18 @@ func applyLoglineIndexConfig(r *ConfigWrapper) {
 // from the root kafka_config.
 func applyLoglineKafkaConfig(r *ConfigWrapper) {
 	r.Logline.Builder.Kafka.ApplyDefaultsFrom(r.KafkaConfig)
+}
+
+// applyQuerierDataObjConfig copies the data-object settings the querier reads, which have no
+// flag or YAML key of their own in the querier config.
+func applyQuerierDataObjConfig(r *ConfigWrapper) {
+	r.Querier.DataObjEnabled = r.DataObj.Enabled
+	r.Querier.DataObjStorageLag = r.DataObj.StorageLag
+}
+
+// applyQueryRangeDataObjConfig copies the data-object settings the query-frontend reads. The query
+// range config has no flag or YAML key for them.
+func applyQueryRangeDataObjConfig(r *ConfigWrapper) {
+	r.QueryRange.DataObjEnabled = r.DataObj.Enabled
+	r.QueryRange.DataObjStorageLag = r.DataObj.StorageLag
 }

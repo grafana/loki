@@ -6,8 +6,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+// RegionSections names the xcap region of [ObjectMetastore.Sections].
+const RegionSections = "metastore.Sections"
+
 // Metastore statistics.
 var (
+	// StatMetastoreSectionsDuration is the longest time one successful Sections call took, in
+	// nanoseconds. A capture that holds several Sections calls reports the slowest one, not their sum.
+	StatMetastoreSectionsDuration = xcap.NewStatisticInt64("metastore.sections.duration", xcap.AggregationTypeMax)
+
 	// StatMetastoreTocTables is the number of TOC tables read.
 	StatMetastoreTocTables = xcap.NewStatisticInt64("metastore.toc.tables", xcap.AggregationTypeSum)
 

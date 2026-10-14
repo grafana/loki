@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -28,40 +27,47 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
+// A partitionConsumer allows mocking of [kafkav2.SinglePartitionConsumer] in tests.
+type partitionConsumer interface {
+	services.Service
+	SetInitialOffset(offset int64) error
+}
+
+// A resumeOffsetReader allows mocking of [kafkav2.OffsetReader] in tests.
+type resumeOffsetReader interface {
+	ResumeOffset(ctx context.Context, partition int32) (int64, error)
+}
+
 type Service struct {
 	services.Service
-	cfg                Config
-	consumer           *kafkav2.SinglePartitionConsumer
-	offsetReader       *kafkav2.OffsetReader
+	consumer           partitionConsumer
+	offsetReader       resumeOffsetReader
 	partition          int32
-	processor          *processor
-	flusher            *flusherImpl
+	processor          services.Service
 	downscalePermitted downscalePermittedFunc
 	logger             log.Logger
-	reg                prometheus.Registerer
+	subservicesWatcher *services.FailureWatcher
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
-	logger = log.With(logger, "component", "dataobj-builder")
-
-	s := &Service{
-		cfg:    cfg,
-		logger: logger,
-		reg:    reg,
-	}
+	const componentName = "dataobj-builder"
+	logger = log.With(logger, "component", componentName)
 
 	// Each instance consumes exactly one partition, taken from the ordinal
-	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3).
-	// The hostname is also used as the Kafka consumer group.
+	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3),
+	// unless cfg.PartitionID overrides it. The hostname is also used as the
+	// Kafka consumer group.
 	instanceID, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
-	partitionID, err := partitionring.ExtractPartitionID(instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
+	partitionID := int32(cfg.PartitionID)
+	if cfg.PartitionID < 0 {
+		partitionID, err = partitionring.ExtractPartitionID(instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
+		}
 	}
-	s.partition = partitionID
 
 	// Set up the Kafka client that receives log entries. These entries are used to build
 	// data objects.
@@ -72,10 +78,10 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	s.offsetReader = kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
+	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
 	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, instanceID)
 	records := make(chan *kgo.Record)
-	s.consumer = kafkav2.NewSinglePartitionConsumer(
+	consumer := kafkav2.NewSinglePartitionConsumer(
 		readerClient,
 		cfg.Topic,
 		partitionID,
@@ -84,31 +90,32 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_builder_", reg),
 	)
+	// The name identifies the consumer in the failure that the builder returns.
+	// It is set here because other services can share the kafkav2 package.
+	consumer.WithName("dataobj-builder-consumer")
 	uploader := dataobj_uploader.New(uploaderCfg, bucket, logger)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
 	builderMetrics := logsobj.NewBuilderMetrics()
-	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
-		"partition": strconv.Itoa(int(partitionID)),
-	}, reg)
-	// The logs and index builders share the same section and encoding
-	// collectors, so both must carry a component label. Registering only one of
-	// them with it makes the label names differ for the same metric name, which
-	// the Prometheus registry rejects.
-	logsReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "logs"}, wrapped)
-	indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index"}, wrapped)
+
+	logsReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.logs", componentName)}, reg)
+	indexReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.index", componentName)}, reg)
+	tocReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": fmt.Sprintf("%s.toc", componentName)}, reg)
 	err = builderMetrics.Register(logsReg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
+
+	// The dataobj-builder always drops duplicates for new objects
+	cfg.LogsobjBuilder.DropDuplicates = true
 	builderFactory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, builderMetrics, logger, overrides)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
 	}
 	sorter := logsobj.NewSorter(builderFactory, reg)
-	s.flusher = newFlusher(sorter, uploader, logger, reg)
+	flusher := newFlusher(sorter, uploader, logger, reg)
 
 	idxBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
 	indexer, err := index.NewSimpleIndexer(
@@ -124,33 +131,64 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create indexer: %w", err)
 	}
 
-	tocWriter := metastore.NewTableOfContentsWriter(idxBucket, logger)
-	if err := tocWriter.RegisterMetrics(indexReg); err != nil {
-		return nil, fmt.Errorf("failed to register Table of Contents writer metrics: %w", err)
-	}
+	tocWriter := metastore.NewTableOfContentsWriter(
+		idxBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(tocReg),
+		indexobj.NewBuilderMetrics(tocReg),
+	)
 
 	flushCommitter := newFlushCommitter(
-		s.flusher,
+		flusher,
 		committer,
 		indexer,
 		tocWriter,
 		partitionID,
 		logger,
-		wrapped,
+		reg,
 	)
-	s.processor = newProcessor(
-		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
+	processor := newProcessor(
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
 		logger,
-		wrapped,
+		reg,
 	)
-	s.downscalePermitted = newOffsetCommittedDownscaleFunc(s.offsetReader, partitionID, logger)
 
+	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
+	return newService(consumer, offsetReader, processor, downscalePermitted, partitionID, logger), nil
+}
+
+// newService returns a Service that runs consumer and processor for the
+// partition. It fails if either of them fails.
+func newService(
+	consumer partitionConsumer,
+	offsetReader resumeOffsetReader,
+	processor services.Service,
+	downscalePermitted downscalePermittedFunc,
+	partition int32,
+	logger log.Logger,
+) *Service {
+	s := &Service{
+		consumer:           consumer,
+		offsetReader:       offsetReader,
+		partition:          partition,
+		processor:          processor,
+		downscalePermitted: downscalePermitted,
+		logger:             logger,
+		subservicesWatcher: services.NewFailureWatcher(),
+	}
+	// Watch the services before starting runs them. A failure that happens
+	// before the watch starts is lost. The watcher keeps a failure until
+	// running reads it.
+	s.subservicesWatcher.WatchService(processor)
+	s.subservicesWatcher.WatchService(consumer)
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
-	return s, nil
+	return s
 }
 
 // starting implements the Service interface's starting method.
@@ -170,8 +208,12 @@ func (s *Service) starting(ctx context.Context) error {
 
 // running implements the Service interface's running method.
 func (s *Service) running(ctx context.Context) error {
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-s.subservicesWatcher.Chan():
+		return err
+	}
 }
 
 // stopping implements the Service interface's stopping method.

@@ -44,15 +44,20 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
-	stats := NewPushStats()
-	otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
-	if err != nil {
-		return nil, nil, err
-	}
+// NewOTLPRequestParser returns a parser that converts OTLP HTTP requests into Loki
+// internal push requests and collects ingestion statistics. If deferAttributeExpansion
+// is true, resource and scope attributes remain on their groups.
+func NewOTLPRequestParser(deferAttributeExpansion bool) RequestParser {
+	return func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error) {
+		stats := NewPushStats()
+		otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
+		if err != nil {
+			return nil, nil, err
+		}
 
-	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
-	return req, stats, err
+		req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP, deferAttributeExpansion)
+		return req, stats, err
+	}
 }
 
 func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (plog.Logs, error) {
@@ -143,13 +148,35 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) (*logproto.PushRequest, error) {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string, deferAttributeExpansion bool) (*logproto.InternalPushRequest, error) {
 	if ld.LogRecordCount() == 0 {
-		return &logproto.PushRequest{}, nil
+		return &logproto.InternalPushRequest{}, nil
 	}
 
 	rls := ld.ResourceLogs()
-	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
+	pushRequestsByStream := make(map[string]*otlpStream, rls.Len())
+	streamFor := func(labelsStr string, lbs labels.Labels) *otlpStream {
+		stream := pushRequestsByStream[labelsStr]
+		if stream == nil {
+			stream = &otlpStream{
+				stream:        logproto.InternalStreamAdapter{Labels: labelsStr},
+				resourceIndex: -1, scopeIndex: -1,
+			}
+			pushRequestsByStream[labelsStr] = stream
+			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
+		}
+		return stream
+	}
+
+	indexingLogAttributes := otlpConfig.SeverityTextAsLabel
+	if !indexingLogAttributes {
+		for _, cfg := range otlpConfig.LogAttributes {
+			indexingLogAttributes = cfg.Action == IndexLabel
+			if indexingLogAttributes {
+				break
+			}
+		}
+	}
 
 	// Track if request used the Loki OTLP exporter label
 	var usingLokiExporter bool
@@ -239,16 +266,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		lbs := modelLabelsSetToLabelsList(streamLabels)
 		totalBytesReceived := int64(0)
 
-		// Create a stream with the resource labels if there are any
-		if len(streamLabels) > 0 {
-			if _, ok := pushRequestsByStream[labelsStr]; !ok {
-				pushRequestsByStream[labelsStr] = logproto.Stream{
-					Labels: labelsStr,
-				}
-				stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
-			}
-		}
-
 		// Calculate resource attributes metadata size for stats
 		resourceAttributesAsStructuredMetadataSize := int64(loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata))
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
@@ -273,11 +290,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 			scopeRecords := 0
 
-			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
-			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
-				stream := pushRequestsByStream[labelsStr]
-				stream.Entries = make([]push.Entry, 0, logs.Len())
-				pushRequestsByStream[labelsStr] = stream
+			requiredEntryCapacity := logs.Len()
+			if indexingLogAttributes {
+				// When indexing log attributes, a scope may split across many streams; do not reserve the whole scope in each.
+				requiredEntryCapacity = 0
 			}
 
 			scopeResult, err := otlplabels.ScopeAttrsToStructuredMetadata(sls, j, otlpConfig)
@@ -332,13 +348,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 						return nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(entryLabelsStr))), humanize.Bytes(maxStreamLabelsSize))
 					}
 					entryLbs = modelLabelsSetToLabelsList(combinedLabels)
-
-					if _, ok := pushRequestsByStream[entryLabelsStr]; !ok {
-						pushRequestsByStream[entryLabelsStr] = logproto.Stream{
-							Labels: entryLabelsStr,
-						}
-						stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(entryLbs)))
-					}
 				} else {
 					entryLabelsStr = labelsStr
 					entryLbs = lbs
@@ -348,20 +357,22 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				// This preserves the intent of tracking entry-specific metadata separately without requiring subtraction
 				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
 
-				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
-				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
-				if cap(entry.StructuredMetadata) < len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen {
-					structuredMetadata := make(push.LabelsAdapter, 0, len(entry.StructuredMetadata)+len(scopeAttributesAsStructuredMetadata)+len(resourceAttributesAsStructuredMetadata))
-					structuredMetadata = append(structuredMetadata, entry.StructuredMetadata...)
-					entry.StructuredMetadata = structuredMetadata
+				stream := streamFor(entryLabelsStr, entryLbs)
+				var scope *logproto.ScopeLogs
+				if !deferAttributeExpansion {
+					size := len(entry.StructuredMetadata) + len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
+					if cap(entry.StructuredMetadata) < size {
+						structuredMetadata := make(push.LabelsAdapter, 0, size)
+						structuredMetadata = append(structuredMetadata, entry.StructuredMetadata...)
+						entry.StructuredMetadata = structuredMetadata
+					}
+					entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
+					entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
+					scope = stream.scope(0, 0, nil, nil, requiredEntryCapacity)
+				} else {
+					scope = stream.scope(i, j, resourceAttributesAsStructuredMetadata, scopeAttributesAsStructuredMetadata, requiredEntryCapacity)
 				}
-
-				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
-				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
-
-				stream := pushRequestsByStream[entryLabelsStr]
-				stream.Entries = append(stream.Entries, entry)
-				pushRequestsByStream[entryLabelsStr] = stream
+				scope.Entries = append(scope.Entries, entry)
 				scopeRecords++
 
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
@@ -415,26 +426,28 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 	stats.MostRecentEntryTimestamp = mostRecentEntryTimestamp
 
-	pr := &push.PushRequest{
-		Streams: make([]push.Stream, 0, len(pushRequestsByStream)),
+	pr := &logproto.InternalPushRequest{
+		Streams: make([]logproto.InternalStreamAdapter, 0, len(pushRequestsByStream)),
 	}
 
-	// Include all streams that have entries or have labels
-	for _, stream := range pushRequestsByStream {
-		if len(stream.Entries) > 0 || len(stream.Labels) > 0 {
-			pr.Streams = append(pr.Streams, stream)
-		}
+	for _, built := range pushRequestsByStream {
+		stream := built.stream
+		pr.Streams = append(pr.Streams, stream)
 		if logPushRequestStreams {
 			mostRecentEntryTimestamp := time.Time{}
 			streamSizeBytes := int64(0)
 			// It's difficult to calculate these values inline when we process the payload because promotion of resource attributes or log attributes to labels can change the stream with each entry.
 			// So for simplicity and because this logging is typically disabled, we iterate on the entries to calculate these values here.
-			for _, entry := range stream.Entries {
-				streamSizeBytes += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
-				if entry.Timestamp.After(mostRecentEntryTimestamp) {
-					mostRecentEntryTimestamp = entry.Timestamp
+			stream.EachGroup(func(resourceAttrs, scopeAttrs []push.LabelAdapter, entries []push.Entry) {
+				sharedSize := int64(loki_util.StructuredMetadataSize(resourceAttrs) + loki_util.StructuredMetadataSize(scopeAttrs))
+				streamSizeBytes += int64(len(entries)) * sharedSize
+				for _, entry := range entries {
+					streamSizeBytes += int64(loki_util.EntryTotalSize(&entry))
+					if entry.Timestamp.After(mostRecentEntryTimestamp) {
+						mostRecentEntryTimestamp = entry.Timestamp
+					}
 				}
-			}
+			})
 			stats.MostRecentEntryTimestampPerStream[stream.Labels] = mostRecentEntryTimestamp
 			stats.StreamSizeBytes[stream.Labels] = streamSizeBytes
 		}
@@ -446,6 +459,30 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	}
 
 	return pr, nil
+}
+
+// otlpStream tracks the last source resource and scope added to one Loki stream.
+// Log attributes as index labels can route records from the same scope to different streams.
+type otlpStream struct {
+	stream        logproto.InternalStreamAdapter
+	resourceIndex int
+	scopeIndex    int
+}
+
+func (s *otlpStream) scope(resourceIndex, scopeIndex int, resourceAttrs, scopeAttrs push.LabelsAdapter, entryCapacity int) *logproto.ScopeLogs {
+	if s.resourceIndex != resourceIndex {
+		s.stream.ResourceLogs = append(s.stream.ResourceLogs, logproto.ResourceLogs{Attrs: resourceAttrs})
+		s.resourceIndex = resourceIndex
+		s.scopeIndex = -1
+	}
+	resource := &s.stream.ResourceLogs[len(s.stream.ResourceLogs)-1]
+	if s.scopeIndex != scopeIndex {
+		resource.ScopeLogs = append(resource.ScopeLogs, logproto.ScopeLogs{
+			Attrs: scopeAttrs, Entries: make([]push.Entry, 0, entryCapacity),
+		})
+		s.scopeIndex = scopeIndex
+	}
+	return &resource.ScopeLogs[len(resource.ScopeLogs)-1]
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.

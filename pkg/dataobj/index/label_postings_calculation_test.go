@@ -188,7 +188,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	// All should be label-kind.
 	for _, row := range tbl.rows {
 		require.Equal(t, int64(postings.KindLabel), row["kind.int64"])
-		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
 		require.NotNil(t, row["label_value.utf8"])
 	}
 
@@ -344,7 +344,7 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 
 	// Shard factor should be constant on all rows
 	for _, row := range tbl.rows {
-		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
 	}
 
 	// Check min & max shard buckets are calculated correctly
@@ -567,12 +567,11 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 			b.ReportAllocs()
 
 			for range b.N {
-				builder, err := indexobj.NewBuilder(testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+				builder, err := indexobj.NewBuilder("bench-tenant", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 				if err != nil {
 					b.Fatal(err)
 				}
 				calcCtx := &logsCalculationContext{
-					tenantID:           "bench-tenant",
 					objectPath:         "bench/path",
 					sectionIdx:         0,
 					streamLabels:       streamLabels,

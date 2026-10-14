@@ -2,7 +2,6 @@ package index
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -14,7 +13,7 @@ import (
 
 // created for and scoped to each logs section
 type columnValuesCalculation struct {
-	columnIndexes map[string]int64
+	metadataColumns map[string]struct{}
 }
 
 func (c *columnValuesCalculation) Name() string { return "column_values" }
@@ -26,17 +25,17 @@ func (c *columnValuesCalculation) Name() string { return "column_values" }
 func (c *columnValuesCalculation) ProcessBatchNeedsBuilderLock() bool { return true }
 
 func (c *columnValuesCalculation) Prepare(_ context.Context, calcCtx *logsCalculationContext, _ *dataobj.Section, stats logs.Stats) error {
-	c.columnIndexes = make(map[string]int64)
+	c.metadataColumns = make(map[string]struct{})
 
 	for _, column := range stats.Columns {
 		logsType, _ := logs.ParseColumnType(column.Type)
 		if logsType != logs.ColumnTypeMetadata {
 			continue
 		}
-		c.columnIndexes[column.Name] = column.ColumnIndex
+		c.metadataColumns[column.Name] = struct{}{}
 		calcCtx.builder.PrepareBloomColumn(
-			calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
-			column.Name, uint(column.Cardinality), int64(streams.ShardFactor),
+			calcCtx.objectPath, calcCtx.sectionIdx,
+			column.Name, uint(column.Cardinality), int64(streams.DefaultShardLayout().Buckets()),
 		)
 	}
 	return nil
@@ -52,12 +51,12 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			if batchErr != nil {
 				return
 			}
-			if _, ok := c.columnIndexes[md.Name]; !ok {
+			if _, ok := c.metadataColumns[md.Name]; !ok {
 				return
 			}
-			batchErr = calcCtx.builder.ObserveBloomPosting(calcCtx.tenantID, postings.BloomObservation{
+			batchErr = calcCtx.builder.ObserveBloomPosting(postings.BloomObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       md.Name,
 				Value:            md.Value,
@@ -70,21 +69,6 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 	return batchErr
 }
 
-func (c *columnValuesCalculation) Flush(_ context.Context, calcCtx *logsCalculationContext) error {
-	for columnName := range c.columnIndexes {
-		bloomBytes, err := calcCtx.builder.BloomBytes(
-			calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx, columnName,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to get bloom bytes for %s: %w", columnName, err)
-		}
-		err = calcCtx.builder.AppendColumnIndex(
-			calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
-			columnName, c.columnIndexes[columnName], bloomBytes,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to append column index: %w", err)
-		}
-	}
+func (c *columnValuesCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
 	return nil
 }

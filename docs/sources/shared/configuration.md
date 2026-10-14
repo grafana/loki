@@ -1384,6 +1384,11 @@ dataobj:
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
 
+    # The Kafka partition to consume. A negative value derives it from the
+    # instance hostname instead.
+    # CLI flag: -dataobj.builder.partition-id
+    [partition_id: <int> | default = -1]
+
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
     # data objects.
@@ -1396,10 +1401,12 @@ dataobj:
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
 
-    # Experimental: When enabled, reads from new-format postings sections in
-    # index objects instead of the streams sections. Defaults to false.
-    # CLI flag: -dataobj-metastore.read-postings-sections
-    [read_postings_sections: <boolean> | default = false]
+  # Caches the metadata of the data objects the querier reads. The cache is
+  # enabled when a backend is configured. Entries are keyed by object path, so
+  # the cache cannot differentiate entries between different buckets and
+  # clusters. Multiple installations must not share the same cache backend.
+  # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
+  [metadata_cache: <cache_config>]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
@@ -1434,25 +1441,27 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
-    # Experimental: Number of older metastore windows to compact in addition to
-    # the current window. 0 compacts only the current window; 1 also compacts
-    # the previous window.
+    # Experimental: Number of prior metastore windows to compact in addition to
+    # the current window. Must be at least 1, which compacts the current and
+    # immediately prior window.
     # CLI flag: -dataobj.compaction.window-lookback
-    [window_lookback: <int> | default = 0]
+    [window_lookback: <int> | default = 1]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Maximum runs per LogMerge task (K for log compaction).
-    # Separate from max-runs-per-task to scale independently
+    # Experimental: Maximum runs per LogMerge task (K for log compaction). Log
+    # compaction starts only when a size level holds K runs, so a larger K
+    # leaves more overlapping runs per window. Separate from max-runs-per-task
+    # to scale independently. Must be at least 2.
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
-    [logs_max_runs_per_task: <int> | default = 3]
+    [logs_max_runs_per_task: <int> | default = 8]
 
     # Experimental: Minimum total compactable data (sum of all runs'
-    # uncompressed size) that justifies log compaction. Converged windows below
-    # this floor are skipped.
+    # uncompressed size) that justifies log compaction. Windows below this floor
+    # are skipped.
     # CLI flag: -dataobj.compaction.logs.min-compaction-size
     [logs_min_compaction_size: <int> | default = 4MiB]
 
@@ -1594,6 +1603,10 @@ dataobj:
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
 
+  # Delay after which data objects hold all the data.
+  # CLI flag: -dataobj.storage-lag
+  [storage_lag: <duration> | default = 3h]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
@@ -1618,6 +1631,13 @@ ingest_limits:
   # The interval at which old streams are evicted.
   # CLI flag: -ingest-limits.eviction-interval
   [eviction_interval: <duration> | default = 10m]
+
+  # Enable durability for stream sharding. Rate buckets are written to the
+  # stream metadata topic and restored from it, which removes the warm-up period
+  # after a restart or a partition rebalance during which streams are not
+  # sharded. It adds one record per stream per bucket size.
+  # CLI flag: -ingest-limits.stream-sharding-durability-enabled
+  [stream_sharding_durability_enabled: <boolean> | default = false]
 
   # The number of partitions for the Kafka topic used to read and write stream
   # metadata. It is fixed, not a maximum.
@@ -2397,6 +2417,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.instant-metric-results-cache`
@@ -3331,6 +3352,11 @@ otlp_attribute_logging:
   [max_attributes: <int> | default = 20]
 
 otlp_config:
+  # Controls when OTLP resource and scope attributes are expanded: during
+  # parsing when false, or when needed by downstream components when true.
+  # CLI flag: -distributor.otlp.defer-attribute-expansion
+  [defer_attribute_expansion: <boolean> | default = false]
+
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
@@ -4153,9 +4179,11 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
-# When enabled, the ingester skips stream count limit checks, delegating them
-# entirely to the ingest-limits service (Thor). Requires ingest-limits service
-# to be enabled.
+# Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead.
+# It provides the default for that limit, so the ingester skips stream count
+# limit checks for all tenants that do not set the per-tenant limit, delegating
+# them entirely to the ingest-limits service. Requires ingest-limits service to
+# be enabled.
 # CLI flag: -ingester.delegate-stream-limits-enabled
 [delegate_stream_limits_enabled: <boolean> | default = false]
 
@@ -4390,6 +4418,14 @@ discover_generic_fields:
 # CLI flag: -ingester.use-owned-stream-count
 [use_owned_stream_count: <boolean> | default = false]
 
+# When enabled, the ingester skips stream count limit checks for the tenant,
+# delegating them entirely to the ingest-limits service. Requires ingest-limits
+# service to be enabled. When this limit is not set, the deprecated
+# ingester-wide setting -ingester.delegate-stream-limits-enabled provides its
+# default.
+# CLI flag: -limits.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
@@ -4447,10 +4483,11 @@ discover_generic_fields:
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Target maximum number of bytes assigned to a single sharded query. Also
-# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
-# not an absolute limit. The actual limit can be higher, but the query planner
-# will try to build shards up to this limit.
+# Target maximum number of bytes assigned to a single sharded query that reads
+# chunks. Also expressible in human readable forms (1GB, etc). Note: This is a
+# _target_ and not an absolute limit. The actual limit can be higher, but the
+# query planner will try to build shards up to this limit. The bounded sharding
+# strategy also uses this setting for queries that read data objects.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
@@ -4532,6 +4569,25 @@ discover_generic_fields:
 # timeout is ignored.
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
+
+# When enabled, Loki evaluates eligible metric queries in stream-first order,
+# which reads samples one stream at a time instead of in timestamp order. The
+# query-frontend and the querier read this setting.
+# CLI flag: -querier.stream-first-execution-enabled
+[stream_first_execution_enabled: <boolean> | default = false]
+
+# Time, inclusive, from which stream-first metric queries read data objects. The
+# query-frontend and the querier read this setting. 0 disables it.
+# CLI flag: -querier.dataobj-query-start-time
+[dataobj_query_start_time: <time> | default = 0]
+
+# Target maximum number of bytes assigned to a single sharded query that reads
+# data objects. Also expressible in human readable forms (1GB, etc). Note: This
+# is a _target_ and not an absolute limit. The query-frontend reads this
+# setting. The query-frontend uses it only with the power-of-two sharding
+# strategy. The bounded strategy uses -querier.tsdb-max-bytes-per-shard.
+# CLI flag: -querier.dataobj-max-bytes-per-shard
+[dataobj_max_bytes_per_shard: <int> | default = 6000MB]
 
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
@@ -4701,10 +4757,19 @@ shard_streams:
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
 
+  # Maximum number of shards that my be produced by rateStore. The default of 0
+  # means unlimited.
+  # CLI flag: -shard-streams.max-shard-count
+  [max_shard_count: <int> | default = 0]
+
   # Experimental. Whether the ingest-limits service is asked for a shard count
-  # for this tenant. One of 'disabled' (default, unchanged behavior) or 'shadow'
-  # (ask the limits service and compare its answer against the local rate
-  # store's; the local rate store still decides how streams are sharded).
+  # for this tenant, and whether its answer is used. One of 'disabled' (default,
+  # unchanged behavior), 'shadow' (ask the limits service and compare its answer
+  # against the local rate store's; the local rate store still decides how
+  # streams are sharded) or 'live' (shard streams with the count the limits
+  # service returns, falling back to the local rate store for streams it does
+  # not answer for). Both 'shadow' and 'live' require the ingest-limits service
+  # to be enabled.
   # CLI flag: -shard-streams.limits-service-stream-sharding-mode
   [limits_service_stream_sharding_mode: <string> | default = "disabled"]
 
@@ -6756,10 +6821,9 @@ tsdb_shipper:
     # rejected immediately with an HTTP 503 status instead of waiting, which
     # bounds the resources this process commits to an index gateway that is
     # slow, saturated, or unreachable. The limit applies per client: one client
-    # is built per schema period config, doubled when the shadow index gateway
-    # client is enabled, so the process-wide number of in-flight requests can
-    # reach this value multiplied by the number of clients. 0 disables the
-    # limit.
+    # is built per schema period config, so the process-wide number of in-flight
+    # requests can reach this value multiplied by the number of clients. 0
+    # disables the limit.
     # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
     [max_in_flight_requests: <int> | default = 0]
 
@@ -7449,6 +7513,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`

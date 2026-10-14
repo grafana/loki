@@ -39,7 +39,7 @@ var (
 		reflect.Func:          decodeUnsupported,
 		reflect.Interface:     decodeUnsupported,
 		reflect.Map:           decodeUnsupported,
-		reflect.Ptr:           decodeUnsupported,
+		reflect.Pointer:       decodeUnsupported,
 		reflect.Slice:         decodeSlice,
 		reflect.String:        decodeString,
 		reflect.Struct:        decodeUnsupported,
@@ -56,7 +56,7 @@ func Struct(dst interface{}) (StructValue, error) {
 	v := reflect.ValueOf(dst)
 
 	// The destination to scan into should be a struct pointer.
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return StructValue{}, fmt.Errorf("redis.Scan(non-pointer %T)", dst)
 	}
 

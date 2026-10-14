@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -1942,6 +1943,24 @@ func TestStore_StartPolling_CancelStopsGoroutine(t *testing.T) {
 	cancel()
 	time.Sleep(20 * time.Millisecond)
 	// No assertion needed — just verify it doesn't block/panic
+}
+
+func TestNewPollingService_StartsAndStops(t *testing.T) {
+	s := newTestStore(t, objstore.NewInMemBucket())
+	stopped := make(chan struct{})
+	svc := NewPollingService(s, "test-poll", func(_ error) error {
+		close(stopped)
+		return nil
+	})
+
+	require.NoError(t, services.StartAndAwaitRunning(t.Context(), svc))
+	require.NotNil(t, s.Snapshot())
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), svc))
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("expected stopping callback")
+	}
 }
 
 // ---- Delta poll tests ----

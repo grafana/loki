@@ -155,6 +155,21 @@ func streamResponseWithEntries(entries ...logproto.Entry) *queryrange.LokiRespon
 	}
 }
 
+// prefetchMiddlewareForTest injects a QueryHintProvider directly. Production
+// NewLoglinePrefetchMiddleware wraps the concrete provider with the remote
+// adapter and the hint cache, which these tests replace with a mock.
+func prefetchMiddlewareForTest(
+	hp hintprovider.QueryHintProvider,
+	cfg Config,
+	limits logline_query_limits.Limits,
+	metrics *Metrics,
+	logger log.Logger,
+) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return newLoglinePrefetchHandler(next, hp, cfg, limits, metrics, logger)
+	})
+}
+
 // buildStack wires prefetch + filter middleware the same way integration.go does,
 // except the "Loki tripperware" is replaced by a transparent pass-through.
 // This lets us test the two-layer interaction in isolation.
@@ -174,7 +189,7 @@ func buildStack(
 	if len(limits) > 0 {
 		settings = limits[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, settings, metrics, nil)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -195,7 +210,7 @@ func buildStackWithLogger(
 	if len(limits) > 0 {
 		settings = limits[0]
 	}
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, settings, metrics, logger)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, settings, metrics, logger)
 	return prefetchMW.Wrap(filterMW.Wrap(querier))
 }
 
@@ -1321,10 +1336,11 @@ func TestPrefetchFilter_HintPrefetchCompletedLogIncludesQueryBytes(t *testing.T)
 
 	logLine := findLogLine(logs.String(), "hint prefetch completed")
 	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "level=debug")
 	require.Contains(t, logLine, "query_bytes=700")
-	require.Contains(t, logLine, "hint_total_seconds=900.0")
 	require.Contains(t, logLine, "hint_ranges_detail=")
 	require.Contains(t, logLine, " +15m0s]")
+	require.NotContains(t, logLine, "hint_total_seconds=", "the range duration moved to the metrics.go line")
 }
 
 func TestPrefetchFilter_SkipCacheHeaderSetsHintContext(t *testing.T) {
@@ -1478,7 +1494,7 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	handler := buildStack(hp, Config{RequireOptInHeader: true}, newTestMetrics(), next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, reqStart, reqEnd)
-	_, err := handler.Do(ctx, req)
+	resp, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, prefetchResult)
 
@@ -1486,10 +1502,11 @@ func TestPrefetchFilter_PreMinDateHintSource_RecordsPassthrough(t *testing.T) {
 	require.Equal(t, reqEnd, gotEnd, "pre-min-date hint should pass through original end")
 	require.Empty(t, gotHints)
 
-	impact := prefetchResult.impactSnapshot()
-	require.Equal(t, int64(1), impact.totalIntervals)
-	require.Equal(t, int64(0), impact.narrowedIntervals)
-	require.Equal(t, int64(1), impact.passthroughIntervals)
+	idx := resp.(*queryrange.LokiResponse).Statistics.Index
+	require.Zero(t, idx.LoglineSkippedRequests)
+	require.Zero(t, idx.LoglineNarrowedRequests)
+	require.Equal(t, int64(1), idx.LoglineHintRanges)
+	require.Zero(t, idx.LoglineHintRangesDuration, "the pre-min-date range has no index coverage")
 }
 
 func TestPrefetchFilter_QueryStatsAttached(t *testing.T) {
@@ -1530,7 +1547,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	}
 
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, Config{RequireOptInHeader: true}, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, Config{RequireOptInHeader: true}, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Millisecond, metrics, nil)
 	var prefetchResult *hintPrefetchResult
 	next := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
@@ -1541,7 +1558,7 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
-	_, err := handler.Do(ctx, req)
+	resp, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, prefetchResult)
 	stats := prefetchResult.stats
@@ -1549,6 +1566,11 @@ func TestPrefetchFilter_QueryStatsCountsTimeout(t *testing.T) {
 	snap := stats.Snapshot()
 	require.Equal(t, int32(1), snap.PrefetchCalls)
 	require.Equal(t, int32(1), snap.PrefetchTimeouts)
+
+	idx := resp.(*queryrange.LokiResponse).Statistics.Index
+	require.Equal(t, hintStatusIncomplete, idx.LoglineHintStatus, "the lookup was still running when the query returned")
+	require.Zero(t, idx.LoglineSkippedRequests)
+	require.Zero(t, idx.LoglineNarrowedRequests)
 }
 
 func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
@@ -1577,7 +1599,7 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	metrics := newTestMetrics()
 	handler := buildStack(hp, Config{RequireOptInHeader: true}, metrics, next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, intervalStart, intervalEnd)
-	_, err := handler.Do(testTenantContextWithLive(), req)
+	resp, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Equal(t, intervalStart, got.StartTs)
@@ -1591,11 +1613,9 @@ func TestPrefetchFilter_MultipleHintRanges(t *testing.T) {
 	}, got.HintRanges)
 
 	require.NotNil(t, prefetchResult)
-	impact := prefetchResult.impactSnapshot()
-	require.Equal(t, int64(1), impact.totalIntervals)
-	require.Equal(t, int64(1), impact.narrowedIntervals)
-	require.Equal(t, 59*time.Minute, impact.originalDuration)
-	require.Equal(t, 5*time.Minute, impact.queryDuration, "queried duration must be the sum of raw hint ranges")
+	idx := resp.(*queryrange.LokiResponse).Statistics.Index
+	require.Equal(t, int64(1), idx.LoglineNarrowedRequests)
+	require.Equal(t, (5 * time.Minute).Nanoseconds(), idx.LoglineHintRangesDuration, "range duration is the sum of raw hint ranges")
 	require.Equal(t, 1.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("narrowed")))
 	require.Equal(t, 0.0, testutil.ToFloat64(metrics.hintSubRequests.WithLabelValues("skipped")))
 }
@@ -1778,7 +1798,7 @@ func TestPrefetchFilter_IngesterWindowPassthrough(t *testing.T) {
 	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 
 	var mu sync.Mutex
 	type subReqInfo struct {
@@ -1864,7 +1884,7 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	cfg := Config{QueryIngestersWithin: 3 * time.Hour}
 	metrics := newTestMetrics()
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var mu sync.Mutex
@@ -1923,7 +1943,7 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	require.True(t, hasIngester, "should have ingester passthrough")
 }
 
-func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) {
+func TestPrefetchFilter_LoglineStatsAcrossSkipNarrowPassthrough(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hintRange := hintprovider.HintTimeRange{
 		Start: now.Add(-6 * time.Hour),
@@ -1936,7 +1956,7 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 
 	cfg := Config{QueryIngestersWithin: 2 * time.Hour}
 	metrics := newTestMetrics()
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, metrics, nil)
 	filterMW := NewLoglineFilterMiddleware(10*time.Second, metrics, nil)
 
 	var prefetchResult *hintPrefetchResult
@@ -1965,21 +1985,19 @@ func TestPrefetchFilter_ImpactCountersAcrossSkipNarrowPassthrough(t *testing.T) 
 	handler := prefetchMW.Wrap(splitSim)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-8*time.Hour), now)
-	_, err := handler.Do(ctx, req)
+	resp, err := handler.Do(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, prefetchResult)
 
-	impact := prefetchResult.impactSnapshot()
-	require.Equal(t, int64(3), impact.totalIntervals)
-	require.Equal(t, int64(1), impact.skippedIntervals)
-	require.Equal(t, int64(1), impact.narrowedIntervals)
-	require.Equal(t, int64(1), impact.passthroughIntervals)
-	require.Equal(t, 5*time.Hour, impact.originalDuration)
-	require.Equal(t, 2*time.Hour, impact.queryDuration)
-	require.InDelta(t, 0.6, impact.timeReductionRatio, 0.0001)
+	idx := resp.(*queryrange.LokiResponse).Statistics.Index
+	require.Equal(t, hintStatusOK, idx.LoglineHintStatus)
+	require.Equal(t, int64(1), idx.LoglineHintRanges)
+	require.Equal(t, time.Hour.Nanoseconds(), idx.LoglineHintRangesDuration)
+	require.Equal(t, int64(1), idx.LoglineSkippedRequests)
+	require.Equal(t, int64(1), idx.LoglineNarrowedRequests, "the ingester-window passthrough is neither skipped nor narrowed")
 }
 
-func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
+func TestPrefetchFilter_AttachesLoglineStatsInsteadOfImpactLine(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hp := &mockHintProvider{
 		hints: &hintprovider.Hints{
@@ -1993,17 +2011,7 @@ func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
 	}
 
 	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		resp := emptyStreamResponse()
-		resp.Statistics.Querier.Store.TotalChunksRef = 10
-		resp.Statistics.Querier.Store.TotalChunksDownloaded = 4
-		resp.Statistics.Querier.Store.Chunk.DecompressedBytes = 1024
-		resp.Statistics.Querier.Store.Chunk.DecompressedLines = 100
-		resp.Statistics.Ingester.Store.TotalChunksRef = 2
-		resp.Statistics.Ingester.Store.TotalChunksDownloaded = 1
-		resp.Statistics.Ingester.Store.Chunk.DecompressedBytes = 128
-		resp.Statistics.Ingester.Store.Chunk.DecompressedLines = 10
-		resp.Statistics.Summary.TotalEntriesReturned = 9
-		return resp, nil
+		return emptyStreamResponse(), nil
 	})
 
 	var logs bytes.Buffer
@@ -2011,21 +2019,51 @@ func TestPrefetchFilter_LogsHintImpactSummary(t *testing.T) {
 	handler := buildStackWithLogger(hp, Config{RequireOptInHeader: true}, newTestMetrics(), logger, next)
 	ctx := testTenantContextWithLive()
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
-	_, err := handler.Do(ctx, req)
+	resp, err := handler.Do(ctx, req)
 	require.NoError(t, err)
+	require.Empty(t, findLogLine(logs.String(), "query hint impact"))
 
-	logLine := findLogLine(logs.String(), "query hint impact")
-	require.NotEmpty(t, logLine)
-	require.Contains(t, logLine, "total_intervals=1")
-	require.Contains(t, logLine, "skipped_intervals=0")
-	require.Contains(t, logLine, "narrowed_intervals=1")
-	require.Contains(t, logLine, "passthrough_intervals=0")
-	require.Contains(t, logLine, "time_reduction_ratio=0.5")
-	require.Contains(t, logLine, "total_chunks_ref=12")
-	require.Contains(t, logLine, "total_chunks_downloaded=5")
-	require.Contains(t, logLine, "decompressed_bytes=1152")
-	require.Contains(t, logLine, "decompressed_lines=110")
-	require.Contains(t, logLine, "total_entries_returned=9")
+	idx := resp.(*queryrange.LokiResponse).Statistics.Index
+	require.Equal(t, hintStatusOK, idx.LoglineHintStatus)
+	require.Equal(t, int64(1), idx.LoglineHintRanges)
+	require.Equal(t, (30 * time.Minute).Nanoseconds(), idx.LoglineHintRangesDuration)
+	require.Zero(t, idx.LoglineSkippedRequests)
+	require.Equal(t, int64(1), idx.LoglineNarrowedRequests)
+}
+
+func TestPrefetchFilter_LoglineHintStatus(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hints := &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{
+		{Start: now.Add(-45 * time.Minute), End: now.Add(-15 * time.Minute)},
+	}}
+
+	for _, tc := range []struct {
+		name                 string
+		err                  error
+		queryIngestersWithin time.Duration
+		want                 string
+	}{
+		{name: "ok", want: hintStatusOK},
+		{name: "unsupported", err: hintprovider.ErrUnsupported, want: hintStatusUnsupported},
+		{name: "error", err: errors.New("index unavailable"), want: hintStatusError},
+		{name: "canceled", err: context.Canceled, want: hintStatusCanceled},
+		{name: "whole query in ingester window", queryIngestersWithin: 2 * time.Hour, want: hintStatusIngesterWindow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: hints, err: tc.err}
+			next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				return emptyStreamResponse(), nil
+			})
+			cfg := Config{RequireOptInHeader: true, QueryIngestersWithin: tc.queryIngestersWithin}
+			handler := buildStack(hp, cfg, newTestMetrics(), next)
+			req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+			resp, err := handler.Do(testTenantContextWithLive(), req)
+			require.NoError(t, err)
+			idx := resp.(*queryrange.LokiResponse).Statistics.Index
+			require.Equal(t, tc.want, idx.LoglineHintStatus)
+		})
+	}
 }
 
 // --- rangesOverlapping tests ---

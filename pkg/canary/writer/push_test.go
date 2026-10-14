@@ -459,6 +459,7 @@ func newPushWithPathPrefix(testCfg testConfig, pathPrefix string, logBatchSize i
 		"",
 		&testCfg.backoff,
 		logBatchSize,
+		PushProtocolLoki,
 		log.NewNopLogger(),
 	)
 }
@@ -484,6 +485,7 @@ func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, pass
 		password,
 		&testCfg.backoff,
 		logBatchSize,
+		PushProtocolLoki,
 		log.NewNopLogger(),
 	)
 }

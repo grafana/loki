@@ -58,6 +58,10 @@ Group 0 is embedded in the Match.  Group 0 is an automatically-assigned group th
 
 The __last__ capture is embedded in each group, so `g.String()` will return the same thing as `g.Capture.String()` and  `g.Captures[len(g.Captures)-1].String()`.
 
+In `ECMAScript` mode, duplicate group names are allowed in separate alternatives and keep distinct group numbers. `GroupByName(name)` selects the participating group (or the first if none participated); `GroupNumberFromName(name)` always returns the first declaration's number, which may differ from the selected group.
+
+In `ECMAScript` mode, captures inside a quantified group are cleared before each repetition. Only the final successful repetition's captures remain; a group that does not participate in that repetition has no captures, and its backreference matches the empty string. Other modes retain capture history across repetitions.
+
 If you want to find multiple matches from a single input string you should use the `FindNextMatch` method.  For example, to implement a function similar to `regexp.FindAllString`:
 
 ```go
@@ -80,7 +84,7 @@ The internals of `regexp2` always operate on `[]rune` so `RuneIndex` and `RuneLe
 
 `regexp2` supports Unicode character classes with `\p{...}` and negated classes with `\P{...}`. Outside ECMAScript Unicode mode, it also accepts the RE2/PCRE-style one-letter form, such as `\pL`.
 
-The class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
+Outside `ECMAScript|Unicode` mode, the class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
 
 ```go
 letter := regexp2.MustCompile(`\p{L}+`)
@@ -88,7 +92,7 @@ katakana := regexp2.MustCompile(`\p{Katakana}+`)
 notEmoji := regexp2.MustCompile(`\P{Emoji}+`)
 ```
 
-`regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
+Outside `ECMAScript|Unicode` mode, `regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
 
 Valid property names and aliases come from Unicode 17.0.0 [`PropertyAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyAliases.txt). Valid property values and aliases come from Unicode 17.0.0 [`PropertyValueAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt). The generated tables use Unicode 17.0.0 data from [`DerivedCoreProperties.txt`](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt), [`emoji/emoji-data.txt`](https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt), [`auxiliary/GraphemeBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt), [`auxiliary/WordBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt), and [`auxiliary/SentenceBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/SentenceBreakProperty.txt) for the package-local properties whose data changes more frequently than the Go standard library tables.
 
@@ -311,6 +315,19 @@ In this mode the engine attempts to match the [regex engine](https://tc39.es/ecm
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
 
 Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
+
+With `ECMAScript|Unicode`, property escapes use the exact names and aliases allowed by [ECMA-262](https://tc39.es/ecma262/multipage/text-processing.html#sec-runtime-semantics-unicodematchproperty-p):
+
+* General categories: `\p{Letter}`, `\p{Lu}`, `\p{General_Category=Lowercase_Letter}`, or `\p{gc=Ll}`.
+* Scripts: `\p{Script=Greek}` or `\p{sc=Grek}`.
+* Script extensions: `\p{Script_Extensions=Hiragana}` or `\p{scx=Hira}`. These include shared characters such as U+30FC, which has `Script=Common`.
+* Supported binary properties and aliases: for example, `\p{Alphabetic}`, `\p{Alpha}`, `\p{Emoji}`, `\p{ASCII}`, `\p{Any}`, and `\p{Assigned}`.
+
+These forms also work with `\P` and inside character classes. Names are case-sensitive; spaces and hyphens are not ignored. Bare script names, unsupported properties such as `GCB`, and binary properties with explicit values such as `ASCII=Yes` are rejected. Without `Unicode`, ECMAScript property escapes retain identity-escape behavior. The `/v` Unicode sets flag and properties of strings such as `RGI_Emoji` are not supported.
+
+Categories, scripts, and binary properties provided by Go follow the consumer's standard-library `unicode.Version`: Unicode 15.0.0 in Go 1.25–1.26, and Unicode 17.0.0 in Go 1.27. New scripts therefore require a Go toolchain that includes them. `Assigned` and the special script value `Unknown` also follow Go's assignments.
+
+Properties Go doesn't expose use supplemental Unicode 17.0.0 data, reusing this package's existing tables where available. Script extensions combine Go's script tables with explicit Unicode 17.0.0 extension overrides. The package doesn't embed replacements for Go's categories, scripts, or built-in binary properties. Regenerate only the supplemental data and exact alias mappings with `go run ./internal/unicodegen -ucd /path/to/UCD.zip`, using the pinned [Unicode 17.0.0 archive](https://www.unicode.org/Public/17.0.0/ucd/UCD.zip). Consumers don't need to run the generator.
 
 Perl/PCRE extensions `\Q...\E`, `\R`, `\X`, and possessive quantifiers are intentionally not enabled in this mode. The letter escapes retain the engine's existing ECMAScript identity-escape behavior.
 

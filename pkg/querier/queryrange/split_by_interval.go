@@ -225,20 +225,12 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	var interval time.Duration
-	switch r.(type) {
-	case *LokiSeriesRequest, *LabelRequest:
-		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
-	default:
-		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, h.limits.QuerySplitDuration)
-	}
+	intervals, enabled := h.splitter.split(time.Now().UTC(), tenantIDs, r)
 
 	// skip split by if unset
-	if interval == 0 {
+	if !enabled {
 		return h.next.Do(ctx, r)
 	}
-
-	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -282,8 +274,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		})
 	}
 
-	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, h.limits.MaxQuerySeries)
 	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {

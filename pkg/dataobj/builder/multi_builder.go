@@ -1,8 +1,11 @@
 package builder
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -14,30 +17,41 @@ type builderFactory interface {
 	NewBuilder() (*logsobj.Builder, error)
 }
 
-// TOCAlignedMultiBuilder manages a set of [logsobj.Builder] instances, one per
-// 12-hour UTC window (see [metastore.MetastoreWindowSize]). Each builder in the
-// group only contains entries whose timestamps fall into that window, which
-// keeps per-object time ranges aligned with the metastore TOC and bounds the
-// number of windows a single object can cover.
-type TOCAlignedMultiBuilder struct {
-	builders         map[time.Time]builder
+// MultiObjectBuilder keeps one [logsobj.Builder] per tenant and ToC window.
+type MultiObjectBuilder struct {
+	builders         map[builderScope]builder
 	builderFactory   builderFactory
 	maxBufferedBytes int
 }
 
-// NewTOCAlignedMultiBuilder creates a new TOC aligned builder group.
-// maxBufferedBytes is the combined upper bound across all window builders;
-func NewTOCAlignedMultiBuilder(builderFactory builderFactory, maxBufferedBytes int) *TOCAlignedMultiBuilder {
-	return &TOCAlignedMultiBuilder{
-		builders:         make(map[time.Time]builder),
+// builderScope identifies the entries a single builder in a
+// [MultiObjectBuilder] accepts.
+type builderScope struct {
+	tenant string
+	window time.Time
+}
+
+func (s builderScope) String() string {
+	return fmt.Sprintf("{tenant=%s, window=%s}", s.tenant, s.window.Format(time.RFC3339))
+}
+
+func compareScopes(a, b builderScope) int {
+	return cmp.Or(strings.Compare(a.tenant, b.tenant), a.window.Compare(b.window))
+}
+
+// NewMultiObjectBuilder creates a new builder group scoped by tenant and ToC
+// window. maxBufferedBytes is the combined upper bound across all builders.
+func NewMultiObjectBuilder(builderFactory builderFactory, maxBufferedBytes int) *MultiObjectBuilder {
+	return &MultiObjectBuilder{
+		builders:         make(map[builderScope]builder),
 		builderFactory:   builderFactory,
 		maxBufferedBytes: maxBufferedBytes,
 	}
 }
 
-var _ multiBuilder = (*TOCAlignedMultiBuilder)(nil)
+var _ multiBuilder = (*MultiObjectBuilder)(nil)
 
-func (m *TOCAlignedMultiBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+func (m *MultiObjectBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	// [stream] might contain entries for multiple time windows => we need to split them to multiple streams, where
 	// each one only contains the entries for a single time window
 	streamsByTimeWindows := make(map[time.Time]logproto.Stream, 1)
@@ -54,40 +68,41 @@ func (m *TOCAlignedMultiBuilder) Append(tenant string, stream logproto.Stream, r
 	}
 
 	for w, stream := range streamsByTimeWindows {
-		b, exists := m.builders[w]
+		scope := builderScope{tenant: tenant, window: w}
+		b, exists := m.builders[scope]
 		if !exists {
 			var err error
 			b, err = m.builderFactory.NewBuilder()
 			if err != nil {
-				return fmt.Errorf("error creating logsobj builder for window %s: %w", w.Format(time.RFC3339), err)
+				return fmt.Errorf("error creating logsobj builder for scope %s: %w", scope, err)
 			}
 		}
 		if err := b.Append(tenant, stream, recTime); err != nil {
-			return fmt.Errorf("append for window %s: %w", w.Format(time.RFC3339), err)
+			return fmt.Errorf("append for scope %s: %w", scope, err)
 		}
 
 		if !exists {
 			// Only store a new builder into the map if append succeeded to avoid empty builders added to the map
 			// on Append errors.
-			m.builders[w] = b
+			m.builders[scope] = b
 		}
 	}
 
 	return nil
 }
 
-// IsFull reports whether the combined buffered size across all window
-// builders has exceeded the configured target object size.
+// IsFull reports whether the combined buffered size across all builders has
+// exceeded the configured target object size.
 //
 // We intentionally compare the *sum* (rather than each individual builder's
-// IsFull) so that a partition that receives records spanning many windows is
-// still bounded to roughly MaxBufferedBytes of buffered memory, rather
-// than K*MaxBufferedBytes.
-func (m *TOCAlignedMultiBuilder) IsFull() bool {
+// IsFull) so that a partition that receives records spanning many tenants and
+// windows is still bounded to roughly MaxBufferedBytes of buffered memory,
+// rather than K*MaxBufferedBytes.
+func (m *MultiObjectBuilder) IsFull() bool {
 	return m.GetEstimatedSize() > m.maxBufferedBytes
 }
 
-func (m *TOCAlignedMultiBuilder) GetEstimatedSize() int {
+func (m *MultiObjectBuilder) GetEstimatedSize() int {
 	size := 0
 	for _, b := range m.builders {
 		size += b.GetEstimatedSize()
@@ -95,27 +110,23 @@ func (m *TOCAlignedMultiBuilder) GetEstimatedSize() int {
 	return size
 }
 
-func (m *TOCAlignedMultiBuilder) Reset() {
+func (m *MultiObjectBuilder) Reset() {
 	clear(m.builders)
 }
 
-// GetBuilders returns all per-window builders, sorted in ascending order of
+// GetBuilders returns all builders, sorted by tenant and then by ascending
 // window start time.
 //
 // A deterministic order keeps flush-time side effects (metastore event
-// writes, offset commits, and any future per-window metrics) predictable
+// writes, offset commits, and any future per-scope metrics) predictable
 // regardless of Go's map iteration randomization, which simplifies both
 // tests and operational reasoning.
-func (m *TOCAlignedMultiBuilder) GetBuilders() []builder {
-	windows := make([]time.Time, 0, len(m.builders))
-	for w := range m.builders {
-		windows = append(windows, w)
-	}
-	sort.Slice(windows, func(i, j int) bool { return windows[i].Before(windows[j]) })
+func (m *MultiObjectBuilder) GetBuilders() []builder {
+	scopes := slices.SortedFunc(maps.Keys(m.builders), compareScopes)
 
-	result := make([]builder, 0, len(m.builders))
-	for _, w := range windows {
-		result = append(result, m.builders[w])
+	result := make([]builder, 0, len(scopes))
+	for _, s := range scopes {
+		result = append(result, m.builders[s])
 	}
 	return result
 }

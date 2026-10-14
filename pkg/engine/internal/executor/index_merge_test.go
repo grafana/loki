@@ -591,12 +591,12 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		SectionStripeMergeLimit: 2,
 	}
 
-	builder, err := indexobj.NewBuilder(cfg, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err, "failed to create indexobj.Builder")
 
 	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
-	_, err = builder.AppendStream(tenant, streams.Stream{
+	_, err = builder.AppendStream(streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "service", Value: "api"}),
 		MinTimestamp:     ts,
@@ -607,17 +607,17 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to append stream")
 
 	// Observe a log line to get a pointers section.
-	err = builder.ObserveLogLine(tenant, "log-A", 0, 1, 1, ts, 100)
+	err = builder.ObserveLogLine("log-A", 0, 1, 1, ts, 100)
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, 16, "label:service",
+	err = builder.AppendStat("log-A", 0, 16, "label:service",
 		map[string]string{"service": "api"},
 		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
 
 	// Observe a label posting to get a postings section.
-	builder.ObserveLabelPosting(tenant, postings.LabelObservation{
+	builder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
 		ColumnName:       "service",
@@ -735,7 +735,8 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
 		builderMetrics: logsobj.NewBuilderMetrics(),
 
-		logger: log.NewNopLogger(),
+		logMergeObserver: nopLogMergeObserver{},
+		logger:           log.NewNopLogger(),
 	}
 }
 
@@ -1629,4 +1630,40 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	}
 	require.True(t, sawPostings, "output must contain a postings section")
 	require.True(t, sawStats, "output must contain a stats section")
+}
+
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+type recordingIndexMergeObserver struct {
+	tenants                            []string
+	compressedSizes, uncompressedSizes []int64
+}
+
+func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.tenants = append(o.tenants, tenant)
+	o.compressedSizes = append(o.compressedSizes, compressedBytes)
+	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
+	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		attrs, err := bucket.Attributes(ctx, artifact.Path)
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-1"}, observer.tenants)
+		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+		require.Positive(t, observer.uncompressedSizes[0])
+	})
 }
