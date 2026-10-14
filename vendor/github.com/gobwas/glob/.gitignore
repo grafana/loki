@@ -6,3 +6,5 @@ glob.iml
 *.dot
 *.png
 *.svg
+patterns.txt
+*.bench
