@@ -62,7 +62,7 @@ func (rr *readerAtRangeReader) Read(ctx context.Context) (io.ReadCloser, error) 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return io.NopCloser(io.NewSectionReader(rr.r, 0, rr.size)), nil
+	return sectionReadCloser{io.NewSectionReader(rr.r, 0, rr.size)}, nil
 }
 
 func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
@@ -71,5 +71,27 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 	} else if length > math.MaxInt {
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
-	return io.NopCloser(io.NewSectionReader(rr.r, offset, length)), nil
+	return sectionReadCloser{io.NewSectionReader(rr.r, offset, length)}, nil
+}
+
+// sectionReadCloser is an [io.SectionReader] whose Close does nothing.
+//
+// It implements [objstore.ObjectSizer], so an upload of the reader knows its
+// size. Without the size, the S3 client starts a multipart upload, even for a
+// small object, and allocates a part buffer of about 528MiB for each upload.
+type sectionReadCloser struct {
+	*io.SectionReader
+}
+
+var _ objstore.ObjectSizer = sectionReadCloser{}
+
+func (r sectionReadCloser) Close() error { return nil }
+
+// ObjectSize returns the number of bytes left to read.
+func (r sectionReadCloser) ObjectSize() (int64, error) {
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, err
+	}
+	return r.Size() - offset, nil
 }
