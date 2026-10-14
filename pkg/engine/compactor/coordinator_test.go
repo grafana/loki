@@ -173,21 +173,6 @@ func (errBucket) Iter(context.Context, string, func(string) error, ...objstore.I
 }
 func (errBucket) IsObjNotFoundErr(error) bool { return false }
 
-// existsBucket wraps a Bucket and answers Exists from missing and err. Reads
-// still reach the wrapped Bucket, so planning sees every index.
-type existsBucket struct {
-	objstore.Bucket
-	missing map[string]bool
-	err     error
-}
-
-func (b existsBucket) Exists(_ context.Context, name string) (bool, error) {
-	if b.err != nil {
-		return false, b.err
-	}
-	return !b.missing[name], nil
-}
-
 // newTestCoordinator builds a Coordinator wired to the supplied fakes plus a
 // default-configured Config (loop-friendly TTLs, K=2 so two indexes split
 // into two single-pile tasks).
@@ -298,6 +283,8 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 	})
 }
 
+// buildCurrentIndexWithStats writes an index at path and adds path to the ToC
+// for imWindow.
 func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
 	seen := make(map[string]bool)
@@ -324,6 +311,7 @@ func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objsto
 		stats:       rows,
 		postings:    postingRows,
 	})
+	writeToCReferencing(ctx, t, bucket, tenant, imWindow(), path)
 }
 
 func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
@@ -569,7 +557,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		bucket := objstore.NewInMemBucket()
-		require.NoError(t, bucket.Upload(t.Context(), plan.sourceIndex.Path, strings.NewReader("index")))
+		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.Path)
 		return newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
 	}
 
@@ -583,23 +571,35 @@ func TestExecuteLogCompaction(t *testing.T) {
 		require.Empty(t, replacer.snapshot())
 	})
 
-	t.Run("dispatches nothing and returns an error when the source index no longer exists", func(t *testing.T) {
+	t.Run("dispatches nothing and returns an error when the ToC no longer references the source index", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
-		require.NoError(t, c.bucket.Delete(t.Context(), plan.sourceIndex.Path))
+		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
+		writeToCReferencing(t.Context(), t, c.bucket, "acme", window, "indexes/replacement")
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
-		require.ErrorContains(t, err, "no longer exists")
+		require.ErrorContains(t, err, "no longer exists in ToC")
 		require.Zero(t, stats)
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
 	})
 
-	t.Run("dispatches nothing and returns an error when the existence check fails", func(t *testing.T) {
+	t.Run("dispatches nothing and returns an error when the window has no ToC", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
-		c.bucket = existsBucket{Bucket: c.bucket, err: errors.New("exists boom")}
+		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
-		require.ErrorContains(t, err, "check source index")
+		require.ErrorContains(t, err, "exists in ToC:")
+		require.Zero(t, stats)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("dispatches nothing and returns an error when the ToC cannot be read", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		c.bucket = errBucket{c.bucket}
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorContains(t, err, "exists in ToC:")
 		require.Zero(t, stats)
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
@@ -885,6 +885,18 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	require.Zero(t, stats.added)
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
+}
+
+// writeToCReferencing adds an entry for each path to the tenant's ToC for
+// window. It keeps the entries that exist, so delete the ToC first to replace
+// its contents.
+func writeToCReferencing(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, paths ...string) {
+	t.Helper()
+	entries := make([]testIndex, len(paths))
+	for i, path := range paths {
+		entries[i] = testIndex{path: path, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: entries})
 }
 
 func twoRunConvergedBucket(ctx context.Context, t *testing.T, tenant, path string) objstore.Bucket {
@@ -1649,7 +1661,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 400.0, pendingAtFirstTask)
 	})
 
-	t.Run("retries the phase and records it as compacted when one index fails and another swaps", func(t *testing.T) {
+	t.Run("returns an error and records the phase as compacted when one index fails and another swaps", func(t *testing.T) {
 		runner := &fakeRunner{failOnCall: 1}
 		replacer := &fakeReplacer{swapped: true}
 		c := newTwoWindowCoordinator(t, runner, replacer)
@@ -1660,6 +1672,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")))
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 		require.Equal(t, 200.0, pendingBytes(c), "the failed index keeps its bytes")
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme")))
 	})
 
 	t.Run("resets pending bytes to the new plan total on the next phase", func(t *testing.T) {
@@ -1689,21 +1702,27 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, float64(now.Unix()), lastPlan(c))
 	})
 
-	t.Run("returns an error, counts the failure, and keeps only the pending bytes of an index deleted after planning", func(t *testing.T) {
+	t.Run("returns an error, counts the failure, and keeps only the pending bytes of an index replaced after planning", func(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		c := newTwoWindowCoordinator(t, runner, replacer)
-		c.bucket = existsBucket{Bucket: c.bucket, missing: map[string]bool{"indexes/previous/a": true}}
+		previous := imWindow().Add(-metastore.MetastoreWindowSize)
 		var pendingAtFirstTask float64
 		var once sync.Once
-		runner.respond = func(context.Context, workflow.Options, *physical.Plan) (*v2.ResultArtifact, error) {
-			once.Do(func() { pendingAtFirstTask = pendingBytes(c) })
+		runner.respond = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			once.Do(func() {
+				pendingAtFirstTask = pendingBytes(c)
+				require.NoError(t, c.bucket.Delete(ctx, metastore.TableOfContentsPath("acme", previous)))
+				writeToCReferencing(ctx, t, c.bucket, "acme", previous, "indexes/previous/replacement")
+			})
 			return &v2.ResultArtifact{Path: "artifact"}, nil
 		}
 
 		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
 		require.Len(t, runner.snapshot(), 1)
-		require.Len(t, replacer.snapshot(), 1)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.Equal(t, []string{"indexes/current/a"}, swaps[0].oldPaths, "the newest window runs first, so its index swaps and the previous one is stale")
 		bytesPerIndex := pendingAtFirstTask / 2
 		require.Equal(t, bytesPerIndex, pendingBytes(c))
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme")))
