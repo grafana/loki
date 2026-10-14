@@ -477,9 +477,12 @@ eval select from 0 to 30s forward {app="a"} | name_extracted="meta-extracted"
 eval select from 0 to 30s forward {app="a"} | name_extracted="meta"
   {app="a", name="stream"} "y" @ 20s [metadata name_extracted="meta"]
 
-# BUG: a json() expression whose path does not match adds an empty-value label, but it skips that
-# label when the name clashes with a stream label. The parser asks whether the name already has a
-# value, and the stream label answers for it, so the parser writes nothing under either name.
+# BUG: an expression parser whose path or key does not match adds an empty-value label, but it
+# skips that label when the name clashes with a stream label. Each parser asks whether the name
+# already has a value, and the stream label answers for it, so the parser writes nothing under
+# either name. This hits both json() and logfmt() expression form, by different code: json's
+# fallback checks the name across every category instead of just what this parse wrote; logfmt's
+# fallback skips a clashing name up front and never revisits it.
 #
 # Correct: the empty value goes to name_extracted, the same way a matching path would.
 clear
@@ -498,6 +501,19 @@ eval select from 0 to 30s forward {app="s"} | json name="missing" | name_extract
 # A path that matches does write name_extracted, so the two paths disagree.
 eval select from 0 to 30s forward {app="s"} | json name="x"
   {app="s", name="stream"} `{"x":"1"}` @ 10s [parsed name_extracted="1"]
+
+# The same bug, for logfmt()'s expression form.
+clear
+load
+  {app="plain2"}            "x=1" @ 10s
+  {app="s2", name="stream"} "x=1" @ 10s
+
+# Without a clash the missing key gives an empty-value label, same as json().
+eval select from 0 to 30s forward {app="plain2"} | logfmt name="missing"
+  {app="plain2"} "x=1" @ 10s [parsed name=""]
+# With a clash neither name nor name_extracted is written.
+eval select from 0 to 30s forward {app="s2"} | logfmt name="missing"
+  {app="s2", name="stream"} "x=1" @ 10s
 
 # BUG: a matcher on __error_details__ always reads an empty value. Only __error__ is mapped back
 # to the pipeline error, so __error_details__ is present in the result but no matcher can read it.
