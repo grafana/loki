@@ -32,7 +32,7 @@ import (
 // real sorter, indexer and ToC writer. The bucket adds a latency per request,
 // so uploads and ToC writes take time without using CPU.
 //
-// Run it with -cpu=2 to match the CPU limit of a builder on loki-dev-002.
+// Run it with -cpu=2 to match a builder with a CPU limit of 2 cores.
 //
 // Each case reports peak-heap-MiB: the peak heap during the flush above the
 // heap before it. This includes garbage, so it depends on when the GC runs.
@@ -43,14 +43,14 @@ import (
 // report base-live-MiB: the live heap before the flush, which holds the data
 // of every builder.
 func BenchmarkFlushCommitter_Concurrency(b *testing.B) {
-	// The dev002 profiles scale the request times so that each I/O stage has
-	// the share of the flush time that it has on loki-dev-002. The flush there
-	// sorts much more data than this benchmark, so real request times would
-	// make I/O most of the flush.
+	// The scaled profiles shorten the request times so that I/O takes about
+	// 28% of the flush, as in a measured 100 s flush of a real partition. That
+	// flush sorts much more data than this benchmark, so real request times
+	// would make I/O most of the flush.
 	var (
 		none        = benchBucketLatency{}
-		dev002Slow  = benchBucketLatency{dataPut: 10 * time.Millisecond, put: 4 * time.Millisecond, get: time.Millisecond}
-		dev002Fast  = benchBucketLatency{dataPut: 4 * time.Millisecond, put: 4 * time.Millisecond, get: time.Millisecond}
+		scaledSlow  = benchBucketLatency{dataPut: 10 * time.Millisecond, put: 4 * time.Millisecond, get: time.Millisecond}
+		scaledFast  = benchBucketLatency{dataPut: 4 * time.Millisecond, put: 4 * time.Millisecond, get: time.Millisecond}
 		realRequest = benchBucketLatency{dataPut: 50 * time.Millisecond, put: 50 * time.Millisecond, get: 20 * time.Millisecond, bytesPerSecond: 100 << 20}
 	)
 	profiles := []struct {
@@ -61,9 +61,9 @@ func BenchmarkFlushCommitter_Concurrency(b *testing.B) {
 		// Requests take no time, so the flush is CPU work only.
 		{name: "upload=none", latency: none},
 		// Data object uploads are slow, as before the upload size fix.
-		{name: "upload=dev002-slow", latency: dev002Slow, live: true},
+		{name: "upload=scaled-slow", latency: scaledSlow, live: true},
 		// Data object uploads take as long as other uploads.
-		{name: "upload=dev002-fast", latency: dev002Fast},
+		{name: "upload=scaled-fast", latency: scaledFast},
 		// Requests take as long as typical object storage requests.
 		{name: "upload=real", latency: realRequest},
 	}
@@ -216,8 +216,8 @@ func (t benchTenant) fill(b *testing.B, factory *logsobj.BuilderFactory) builder
 	return lb
 }
 
-// newBenchTenants returns the builders of one flush. The sizes follow
-// loki-dev-002, where 80% of the objects in a flush are below 100 KB:
+// newBenchTenants returns the builders of one flush. The sizes follow a real
+// partition, where 80% of the objects in a flush are below 100 KB:
 //   - 40 small builders of about 400 KB of log lines each,
 //   - 8 medium builders of about 8 MB each,
 //   - 2 large builders of about 60 MB each.
