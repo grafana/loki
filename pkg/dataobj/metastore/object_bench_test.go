@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -145,7 +147,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 	})
 }
 
-func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
+func BenchmarkSections_PredicateMatchers(b *testing.B) {
 	cases := []struct {
 		name       string
 		predicates []*labels.Matcher
@@ -247,6 +249,76 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			}
 
 			b.StopTimer()
+		})
+	}
+}
+
+// BenchmarkSections_ShardBucketRange resolves sections with and without a shard bucket range. Each
+// log object holds two adjacent buckets.
+func BenchmarkSections_ShardBucketRange(b *testing.B) {
+	const (
+		objects           = 256
+		sectionsPerObject = 4
+		streamsPerSection = 8
+	)
+
+	ctx := user.InjectOrgID(b.Context(), tenantID)
+	bucket := objstore.NewInMemBucket()
+	b.Cleanup(func() { require.NoError(b, bucket.Close()) })
+
+	var observations []postings.LabelObservation
+	for object := range objects {
+		firstBucket := uint32(object % (streams.ShardFactor - 1))
+		for section := range sectionsPerObject {
+			for stream := range streamsPerSection {
+				streamLabels := []labels.Label{
+					{Name: "app", Value: "foo"},
+					{Name: "pod", Value: fmt.Sprintf("pod-%d-%d-%d", object, section, stream)},
+				}
+				for _, label := range streamLabels {
+					observations = append(observations, postings.LabelObservation{
+						ObjectPath:   fmt.Sprintf("object-%d", object),
+						SectionIndex: int64(section),
+						ColumnName:   label.Name,
+						LabelValue:   label.Value,
+						StreamID:     int64(stream + 1),
+						Timestamp:    now,
+						ShardBucket:  firstBucket + uint32(stream%2),
+					})
+				}
+			}
+		}
+	}
+	createIndexObjectWithPostings(ctx, b, bucket, observations)
+	m := newTestObjectMetastore(bucket)
+
+	for _, test := range []struct {
+		name        string
+		bucketRange *postings.ShardBucketRange
+	}{
+		{name: "no range", bucketRange: nil},
+		{name: "a range of one bucket", bucketRange: &postings.ShardBucketRange{From: 5, To: 5}},
+		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/4 - 1}},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			request := SectionsRequest{
+				Start:            now.Add(-time.Hour),
+				End:              now.Add(time.Hour),
+				Matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				ShardBucketRange: test.bucketRange,
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			var sections int
+			for range b.N {
+				resp, err := m.Sections(ctx, request)
+				require.NoError(b, err)
+				require.NotEmpty(b, resp.Sections)
+				sections = len(resp.Sections)
+			}
+			b.ReportMetric(float64(sections), "sections")
 		})
 	}
 }
