@@ -283,6 +283,8 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 	})
 }
 
+// buildCurrentIndexWithStats writes an index at path and adds path to the ToC
+// for imWindow.
 func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
 	seen := make(map[string]bool)
@@ -309,6 +311,7 @@ func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objsto
 		stats:       rows,
 		postings:    postingRows,
 	})
+	writeToCReferencing(ctx, t, bucket, tenant, imWindow(), path)
 }
 
 func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
@@ -553,7 +556,9 @@ func TestExecuteLogCompaction(t *testing.T) {
 		t.Helper()
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
-		return newTestCoordinator(t, objstore.NewInMemBucket(), runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
+		bucket := objstore.NewInMemBucket()
+		writeToCReferencing(t.Context(), t, bucket, "acme", window, plan.sourceIndex.Path)
+		return newTestCoordinator(t, bucket, runner, replacer, fixedClock(window), newFakeLimits("acme")), runner, replacer
 	}
 
 	t.Run("dispatches nothing and returns zero stats for a plan with no work", func(t *testing.T) {
@@ -561,6 +566,40 @@ func TestExecuteLogCompaction(t *testing.T) {
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", logCompactionPlan{})
 		require.NoError(t, err)
+		require.Zero(t, stats)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("dispatches nothing and returns an error when the ToC no longer references the source index", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
+		writeToCReferencing(t.Context(), t, c.bucket, "acme", window, "indexes/replacement")
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorIs(t, err, errStalePlan)
+		require.Zero(t, stats)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("dispatches nothing and returns an error when the window has no ToC", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorContains(t, err, "exists in ToC:")
+		require.Zero(t, stats)
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+	})
+
+	t.Run("dispatches nothing and returns an error when the ToC cannot be read", func(t *testing.T) {
+		c, runner, replacer := newExecutor(t)
+		c.bucket = errBucket{c.bucket}
+
+		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
+		require.ErrorContains(t, err, "exists in ToC:")
 		require.Zero(t, stats)
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
@@ -846,6 +885,18 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	require.Zero(t, stats.added)
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
+}
+
+// writeToCReferencing adds an entry for each path to the tenant's ToC for
+// window. It keeps the entries that exist, so delete the ToC first to replace
+// its contents.
+func writeToCReferencing(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, paths ...string) {
+	t.Helper()
+	entries := make([]testIndex, len(paths))
+	for i, path := range paths {
+		entries[i] = testIndex{path: path, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: entries})
 }
 
 func twoRunConvergedBucket(ctx context.Context, t *testing.T, tenant, path string) objstore.Bucket {
@@ -1610,7 +1661,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 400.0, pendingAtFirstTask)
 	})
 
-	t.Run("retries the phase and records it as compacted when one index fails and another swaps", func(t *testing.T) {
+	t.Run("returns an error and records the phase as compacted when one index fails and another swaps", func(t *testing.T) {
 		runner := &fakeRunner{failOnCall: 1}
 		replacer := &fakeReplacer{swapped: true}
 		c := newTwoWindowCoordinator(t, runner, replacer)
@@ -1621,6 +1672,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")))
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 		require.Equal(t, 200.0, pendingBytes(c), "the failed index keeps its bytes")
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
 	})
 
 	t.Run("resets pending bytes to the new plan total on the next phase", func(t *testing.T) {
@@ -1650,6 +1702,33 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, float64(now.Unix()), lastPlan(c))
 	})
 
+	t.Run("returns an error, counts the failure, and keeps only the pending bytes of an index replaced after planning", func(t *testing.T) {
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newTwoWindowCoordinator(t, runner, replacer)
+		previous := imWindow().Add(-metastore.MetastoreWindowSize)
+		var pendingAtFirstTask float64
+		var once sync.Once
+		runner.respond = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			once.Do(func() {
+				pendingAtFirstTask = pendingBytes(c)
+				require.NoError(t, c.bucket.Delete(ctx, metastore.TableOfContentsPath("acme", previous)))
+				writeToCReferencing(ctx, t, c.bucket, "acme", previous, "indexes/previous/replacement")
+			})
+			return &v2.ResultArtifact{Path: "artifact"}, nil
+		}
+
+		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
+		require.Len(t, runner.snapshot(), 1)
+		swaps := replacer.snapshot()
+		require.Len(t, swaps, 1)
+		require.Equal(t, []string{"indexes/current/a"}, swaps[0].oldPaths, "the newest window runs first, so its index swaps and the previous one is stale")
+		bytesPerIndex := pendingAtFirstTask / 2
+		require.Equal(t, bytesPerIndex, pendingBytes(c))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonStalePlan)))
+		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
+	})
+
 	t.Run("runs the remaining indexes and does not set the plan timestamp when one index fails to load", func(t *testing.T) {
 		runner := &fakeRunner{}
 		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{swapped: true})
@@ -1659,6 +1738,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Len(t, runner.snapshot(), 1)
 		require.Zero(t, pendingBytes(c), "the index that failed to plan is not counted")
 		require.Zero(t, lastPlan(c))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonPlan)))
 	})
 
 	t.Run("puts the bytes of each window under the age of its oldest data", func(t *testing.T) {
@@ -2003,13 +2083,13 @@ func TestWorseOutcome(t *testing.T) {
 	require.Equal(t, phaseOutcomeNoWork, worstOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
 }
 
-// TestRunTenantLoop_ErrorRetries pins the flip-flop state machine: a failing
-// phase re-arms the same phase (it must never flip), while a successful phase
-// flips to the other one. The loop starts on IndexMerge.
+// TestRunTenantLoop_ErrorRetries pins the phase transitions. A failing
+// IndexMerge phase runs again. A failing LogMerge phase flips to IndexMerge.
+// A successful phase flips. The loop starts on IndexMerge.
 func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 	window := imWindow()
 
-	t.Run("a failing phase retries and never flips", func(t *testing.T) {
+	t.Run("a failing index-merge phase retries and never flips", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -2042,9 +2122,49 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		defer mu.Unlock()
 		require.NotEmpty(t, phases)
 		for _, p := range phases {
-			require.Equal(t, "index-merge", p, "a failing phase must re-arm itself, never flip to log-merge")
+			require.Equal(t, "index-merge", p, "a failing index-merge phase must run again, never flip to log-merge")
 		}
 		require.Empty(t, replacer.snapshot(), "a failing phase never swaps the ToC")
+	})
+
+	t.Run("a failing log-merge phase flips to index-merge", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		limits := newFakeLimits("acme")
+		limits.setLog("acme", true)
+		runner := &fakeRunner{}
+		c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), limits)
+
+		var mu sync.Mutex
+		var phases []string
+		runner.respond = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (*v2.ResultArtifact, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
+				phases = append(phases, opts.Actor[1])
+			}
+			if opts.Actor[1] == "log-merge" {
+				return nil, errors.New("dispatch boom")
+			}
+			return &v2.ResultArtifact{Path: "indexes/tenants/acme/aa/x"}, nil
+		}
+
+		done := make(chan struct{})
+		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(phases) >= 4
+		}, 2*time.Second, 5*time.Millisecond)
+		cancel()
+		<-done
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Equal(t, []string{"index-merge", "log-merge", "index-merge", "log-merge"}, phases[:4])
 	})
 
 	t.Run("a successful phase flips index-merge <-> log-merge", func(t *testing.T) {

@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -21,6 +22,10 @@ import (
 )
 
 const indexMergeIterations = 3
+
+// errStalePlan marks a log compaction plan whose source index the ToC no
+// longer lists.
+var errStalePlan = errors.New("source index no longer exists in ToC")
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
@@ -292,6 +297,9 @@ func (c *coordinator) planLogMerge(
 // executeLogCompaction dispatches the tasks of plan and swaps its source index
 // for the results. Stats are zero-valued if plan has no work or the swap is a
 // no-op.
+//
+// It reads the latest ToC of the window first. It returns an error that wraps
+// errStalePlan if the ToC no longer lists the source index.
 func (c *coordinator) executeLogCompaction(
 	ctx context.Context,
 	tenant string,
@@ -299,6 +307,17 @@ func (c *coordinator) executeLogCompaction(
 ) (compactionStats, error) {
 	if !plan.hasWork() {
 		return compactionStats{}, nil
+	}
+
+	// A swap leaves the old index object in storage, so only the ToC shows
+	// that the plan is stale. A swap by another writer while the tasks run is
+	// still safe, because our swap then fails and writes nothing.
+	exists, err := c.existsInToC(ctx, tenant, plan.window, plan.sourceIndex.Path)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndex.Path, err)
+	}
+	if !exists {
+		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
@@ -320,6 +339,21 @@ func (c *coordinator) executeLogCompaction(
 		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndex.Path, "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	}
 	return stats, nil
+}
+
+// existsInToC reports whether the latest ToC of the tenant's window lists
+// the index at path. A missing ToC is an error, because planning read it.
+func (c *coordinator) existsInToC(ctx context.Context, tenant string, window time.Time, path string) (bool, error) {
+	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.Path == path {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // indexFilterForUnmerged returns an IndexFilter task that keeps only the
@@ -631,7 +665,7 @@ func (p phase) flip() phase {
 type phaseOutcome int
 
 const (
-	phaseOutcomeError   phaseOutcome = iota // re-arm same phase
+	phaseOutcomeError   phaseOutcome = iota // a window or index failed
 	phaseOutcomeNoWork                      // success, nothing to do
 	phaseOutcomeSwapped                     // ToC swap applied/observed
 )
@@ -691,8 +725,9 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 }
 
 // runLogMergePhase plans the log compaction of every index in every window for
-// the tenant, then executes the plans. Any error retries. Retries are safe
-// because swapping an index that already swapped is a no-op.
+// the tenant, then executes the plans. An error does not lose work, because
+// the next LogMerge phase plans again. Running a plan again is safe, because
+// swapping an index that already swapped is a no-op.
 //
 // All planning finishes before any task runs, so the pending log bytes gauge
 // shows the whole phase. The last plan timestamp moves only when every index
@@ -700,9 +735,10 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 //
 // The phase holds every plan in memory to avoid a second read of each index.
 // Its memory grows with the number of windows and indexes. A held plan stays
-// safe to execute because index objects are written once. If another writer
-// replaced the source index first, the swap fails and the plan's tasks do
-// work that is not used. A limits change takes effect at the next phase.
+// safe to execute because index objects are written once. A plan fails before
+// its tasks run if the ToC no longer lists its source index. If another writer
+// replaces the source index while the tasks run, the swap fails and the work
+// is not used. A limits change takes effect at the next phase.
 func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phaseOutcome {
 	start := c.clock()
 	plans, anyError := c.planLogCompactions(ctx, tenant)
@@ -734,12 +770,17 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			}
 			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
 				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "err", err)
+			reason := failReasonExecute
+			if errors.Is(err, errStalePlan) {
+				reason = failReasonStalePlan
+			}
+			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, reason).Inc()
 			anyError = true
 			continue
 		}
 		// A no-op swap also removes the plan's bytes. It happens in dry-run
-		// mode or when the ToC already holds the swap. In both cases this
-		// phase does not rewrite those bytes again.
+		// mode, or when an earlier attempt wrote the swap and lost the
+		// response. In both cases this phase does not rewrite those bytes.
 		pending.complete(plan)
 		if stats.added > 0 {
 			anySwapped = true
@@ -788,6 +829,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 				}
 				level.Warn(c.logger).Log("msg", "log-merge phase: planning index failed",
 					"tenant", tenant, "window", window, "index", entry.Path, "err", err)
+				c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, failReasonPlan).Inc()
 				anyError = true
 				continue
 			}
@@ -802,8 +844,8 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 // runTenantLoop alternates IndexMerge and LogMerge for tenant until ctx is
 // cancelled or both phases are disabled.
 //
-// Each phase runs against every window in c.windows(). A phase with an error
-// in any window runs again. Otherwise the loop flips to the other phase.
+// Each phase runs against every window in c.windows(). An IndexMerge phase
+// with an error runs again. A LogMerge phase always flips to IndexMerge.
 //
 // The loop reads the phase limits of the tenant on each iteration. It skips
 // LogMerge when log compaction is disabled, so an index-only tenant runs only
@@ -837,7 +879,9 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			return
 		}
 
-		if outcome != phaseOutcomeError {
+		// A LogMerge error can repeat for a long time. Retrying it at once
+		// would block IndexMerge, so unmerged indexes would pile up.
+		if p == phaseLogMerge || outcome != phaseOutcomeError {
 			p = p.flip()
 		}
 
@@ -863,8 +907,7 @@ func nextBackoff(outcome phaseOutcome, current, minWait, maxWait time.Duration) 
 }
 
 // runMultiplePhases runs phase p for the tenant iterations times and returns
-// the worst outcome. Error dominates, so the caller re-arms the same phase.
-// Otherwise swapped (progress) outranks no-work.
+// the worst outcome. Error outranks swapped, and swapped outranks no-work.
 func (c *coordinator) runMultiplePhases(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
 	worst := phaseOutcomeNoWork
 	for range iterations {
@@ -905,8 +948,8 @@ func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phas
 	}
 }
 
-// worstOutcome ranks phase outcomes so the tenant loop retries on any error and
-// otherwise reports progress: error > swapped > no-work.
+// worstOutcome returns the more severe of a and b, in the order
+// error > swapped > no-work.
 func worstOutcome(a, b phaseOutcome) phaseOutcome {
 	switch {
 	case a == phaseOutcomeError || b == phaseOutcomeError:
