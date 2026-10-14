@@ -13,9 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	chunkcache "github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -24,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type IndexWriter interface {
@@ -93,15 +90,8 @@ func NewStore(
 }
 
 func (s *store) init(params storeInitParams) error {
-	var err error
-	if (params.indexShipperCfg.Mode == indexshipper.ModeReadOnly || params.indexShipperCfg.Mode == indexshipper.ModeReadWrite) && chunkcache.IsCacheConfigured(params.indexShipperCfg.PostingsCache) {
-		postingsCfg := params.indexShipperCfg.PostingsCache
-		postingsCfg.Prefix = "tsdb-postings-" + params.name
-		cache, err := chunkcache.New(postingsCfg, params.cacheReg, s.logger, stats.IndexCache, constants.Loki)
-		if err != nil {
-			return err
-		}
-		s.postingsCache = newPostingsCache(cache, postingsCfg.Prefix, params.cacheReg, s.logger)
+	if params.indexShipperCfg.Mode == indexshipper.ModeReadOnly || params.indexShipperCfg.Mode == indexshipper.ModeReadWrite {
+		s.postingsCache = newPostingsCache(params.indexShipperCfg.PostingsCache, "tsdb-postings-"+params.name+"embedded-cache", params.cacheReg, s.logger)
 	}
 
 	readerOpts, err := params.indexShipperCfg.IndexReaderOptions()

@@ -1,99 +1,94 @@
 package tsdb
 
 import (
+	"container/list"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-const (
-	postingsCodecVersion = "v1"
-	// Keep the queue small because jobs retain uncompressed postings.
-	postingsWriteBuffer  = 16
-	postingsWriteTimeout = 5 * time.Second
-)
-
+// postingsCache stores immutable, decoded references in process. Iterators share
+// their backing arrays but maintain independent positions.
 type postingsCache struct {
-	cache.Cache
-	logger  log.Logger
-	metrics *postingsCacheMetrics
-	lookups singleflight.Group // Cache key to in-flight fetch/decode; completed results are not retained.
+	cache         *cache.EmbeddedCache[string, []storage.SeriesRef]
+	mu            sync.Mutex // Held by at most one async insertion, or by Stop.
+	stopped       bool
+	maxEntryBytes uint64
 
-	// make writes purely async so we don't pay the network penalty on a miss
-	writes       chan postingsWrite
-	writeCtx     context.Context
-	cancelWrites context.CancelFunc
-	writeWG      sync.WaitGroup
-	writeMu      sync.Mutex // Serializes enqueueing with shutdown.
+	fetchedKeys, hits prometheus.Counter
+	// Fetch samples are observed on each hit; store samples on each insertion.
+	fetchedSize, storedSize      prometheus.Observer
+	fetchDuration, storeDuration prometheus.Observer
 }
 
-type postingsWrite struct {
-	key  string
-	refs []storage.SeriesRef // Immutable and shared with the returned iterator.
-}
-
-type postingsLookup struct {
-	refs     []storage.SeriesRef // Immutable; each caller creates its own iterator.
-	hit      bool                // An empty postings list is still a hit.
-	populate bool
-}
-
-type postingsCacheMetrics struct {
-	storeFailures  prometheus.Counter
-	decodeFailures prometheus.Counter
-	encodeFailures prometheus.Counter
-}
-
-func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
-	// Cancel context intentionally separate from the originating query.
-	ctx, cancel := context.WithCancel(context.Background())
-	pc := &postingsCache{
-		Cache:        c,
-		logger:       logger,
-		metrics:      newPostingsCacheMetrics(name, reg),
-		writes:       make(chan postingsWrite, postingsWriteBuffer),
-		writeCtx:     ctx,
-		cancelWrites: cancel,
+func newPostingsCache(cfg cache.EmbeddedCacheConfig, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
+	if !cfg.Enabled {
+		return nil
 	}
-	pc.writeWG.Add(1)
-	go pc.writeBackLoop()
-	return pc
+	embedded := cache.NewTypedEmbeddedCache[string, []storage.SeriesRef](
+		name, cfg, reg, logger, stats.IndexCache, postingsEntrySize, nil,
+	)
+	if embedded == nil {
+		return nil
+	}
+	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: constants.Loki, Name: "cache_value_size_bytes",
+		Help:                            "Size of values in the cache.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+		ConstLabels:                     prometheus.Labels{"name": name},
+	}, []string{"method"})
+	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: constants.Loki, Name: "cache_request_duration_seconds",
+		Help:                            "Total time spent in seconds doing cache requests.",
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+		ConstLabels:                     prometheus.Labels{"name": name},
+	}, []string{"method", "status_code"})
+	return &postingsCache{
+		cache:         embedded,
+		maxEntryBytes: uint64(cfg.MaxSizeMB) * 1e6,
+		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki, Name: "cache_fetched_keys",
+			Help: "Total count of keys requested from cache.", ConstLabels: prometheus.Labels{"name": name},
+		}),
+		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki, Name: "cache_hits",
+			Help: "Total count of keys found in cache.", ConstLabels: prometheus.Labels{"name": name},
+		}),
+		fetchedSize:   valueSize.WithLabelValues("fetch"),
+		storedSize:    valueSize.WithLabelValues("store"),
+		fetchDuration: duration.WithLabelValues(name+".fetch", "200"),
+		storeDuration: duration.WithLabelValues(name+".store", "200"),
+	}
 }
 
-func newPostingsCacheMetrics(name string, reg prometheus.Registerer) *postingsCacheMetrics {
-	return &postingsCacheMetrics{
-		storeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_store_failures_total",
-			Help:        "Total number of failed postings cache Store calls.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
-		decodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_decode_failures_total",
-			Help:        "Total number of cached postings payloads that failed to decode.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
-		encodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_encode_failures_total",
-			Help:        "Total number of postings payloads that failed to encode for the cache.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
-	}
+// postingsEntrySize accounts for the retained backing array, not just its used
+// length, plus the entry, key bytes, list element and map slot. This estimates
+// per-entry memory, not Go allocator overhead.
+func postingsEntrySize(entry *cache.Entry[string, []storage.SeriesRef]) uint64 {
+	return uint64(unsafe.Sizeof(*entry)) +
+		uint64(len(entry.Key)) +
+		uint64(cap(entry.Value))*uint64(unsafe.Sizeof(storage.SeriesRef(0))) +
+		uint64(unsafe.Sizeof(list.Element{})) +
+		uint64(unsafe.Sizeof(entry.Key)) + uint64(unsafe.Sizeof((*list.Element)(nil)))
 }
 
 func objectIdentity(prefix, table, tenant, filename string) string {
@@ -148,69 +143,14 @@ func postingsKey(identity string, matchers []*labels.Matcher) string {
 	return encodeKeyParts("unsharded-v1", identity, string(canonicalMatchers))
 }
 
-func encodePostings(key string, refs []storage.SeriesRef) ([]byte, error) {
-	// Most deltas encode near one byte, so reserve 1.25 bytes per reference.
-	estimatedPostingsBytes := 5 * len(refs) / 4
-	payload := make([]byte, 0, estimatedPostingsBytes)
-	var previous storage.SeriesRef
-	for _, ref := range refs {
-		if ref < previous {
-			return nil, fmt.Errorf("postings references are not sorted: %d follows %d", ref, previous)
-		}
-		payload = binary.AppendUvarint(payload, uint64(ref-previous))
-		previous = ref
-	}
-	// Reserve the full output so Snappy can compress directly after the key.
-	capacity := len(postingsCodecVersion) + binary.MaxVarintLen64 + len(key) + snappy.MaxEncodedLen(len(payload))
-	encoded := make([]byte, capacity)
-	offset := copy(encoded, postingsCodecVersion)
-	offset += binary.PutUvarint(encoded[offset:], uint64(len(key)))
-	offset += copy(encoded[offset:], key)
-
-	compressed := snappy.Encode(encoded[offset:], payload)
-	return encoded[:offset+len(compressed)], nil
-}
-
-func decodePostings(key string, encoded []byte) ([]storage.SeriesRef, error) {
-	if !strings.HasPrefix(string(encoded), postingsCodecVersion) {
-		return nil, fmt.Errorf("unsupported postings codec version")
-	}
-	encoded = encoded[len(postingsCodecVersion):]
-	keyLen, n := binary.Uvarint(encoded)
-	if n <= 0 || keyLen > uint64(len(encoded)-n) {
-		return nil, fmt.Errorf("invalid postings cache key length")
-	}
-	encoded = encoded[n:]
-	if string(encoded[:keyLen]) != key {
-		return nil, fmt.Errorf("postings cache key mismatch")
-	}
-	payload, err := snappy.Decode(nil, encoded[keyLen:])
-	if err != nil {
-		return nil, fmt.Errorf("decompress postings: %w", err)
-	}
-	var refs []storage.SeriesRef
-	var previous storage.SeriesRef
-	for len(payload) > 0 {
-		delta, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("invalid postings delta varint")
-		}
-		previous += storage.SeriesRef(delta)
-		refs = append(refs, previous)
-		payload = payload[n:]
-	}
-	return refs, nil
-}
-
 func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute func() (index.Postings, error)) (index.Postings, error) {
-	p, writeCache := c.fetchPostings(ctx, key)
+	p := c.fetchPostings(ctx, key)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if p != nil {
 		return p, nil
 	}
-
 	postings, err := compute()
 	if err != nil {
 		return nil, err
@@ -223,103 +163,84 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if writeCache {
-		c.writeMu.Lock()
-		if c.writeCtx.Err() == nil && ctx.Err() == nil {
-			select {
-			case c.writes <- postingsWrite{key: key, refs: refs}:
-			default:
-				// Cache write is best effort; never block queries on a full queue.
-			}
-		}
-		c.writeMu.Unlock()
-	}
+	// ExpandPostings owns this array. The cache and iterators only read it.
+	c.store(ctx, key, refs)
 	return index.NewListPostings(refs), nil
 }
 
-func (c *postingsCache) fetchPostings(ctx context.Context, key string) (p index.Postings, populate bool) {
+func (c *postingsCache) fetchPostings(ctx context.Context, key string) index.Postings {
 	if ctx.Err() != nil {
-		return nil, false
+		return nil
 	}
-	result := c.lookups.DoChan(key, func() (any, error) {
-		refs, hit, populate := c.fetchPostingsRefs(ctx, key)
-		return postingsLookup{refs: refs, hit: hit, populate: populate}, nil
-	})
-	select {
-	case <-ctx.Done():
-		return nil, false
-	case result := <-result:
-		lookup := result.Val.(postingsLookup)
-		if lookup.hit {
-			return index.NewListPostings(lookup.refs), false
-		}
-		return nil, lookup.populate
+	refs, hit := c.fetch(ctx, key)
+	if !hit {
+		return nil
 	}
+	// A nil refs slice is a cached empty result, not a miss.
+	return index.NewListPostings(refs)
 }
 
-func (c *postingsCache) fetchPostingsRefs(ctx context.Context, key string) (refs []storage.SeriesRef, hit, populate bool) {
-	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
-	if err != nil {
-		return nil, false, false
-	}
-	if len(found) == 1 && len(bufs) == 1 {
-		refs, err := decodePostings(key, bufs[0])
-		if err == nil {
-			return refs, true, false
-		}
-		c.metrics.decodeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
-	}
-	return nil, false, true
-}
-
-// Stop cancels pending population and waits for the worker before stopping the cache.
+// Stop waits for the active insertion, releases cached references, and prevents subsequent stores.
 func (c *postingsCache) Stop() {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	if c.writeCtx.Err() != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopped {
 		return
 	}
-	c.cancelWrites()
-	close(c.writes)
-	// Keep the lock until shutdown completes so concurrent Stop calls wait too.
-	// The worker does not acquire writeMu.
-	c.writeWG.Wait()
-	// Release references retained by abandoned jobs.
-	for range c.writes {
-	}
-	c.Cache.Stop()
+	c.stopped = true
+	c.cache.Stop()
 }
 
-func (c *postingsCache) writeBackLoop() {
-	defer c.writeWG.Done()
-	for {
-		select {
-		case <-c.writeCtx.Done():
-			return
-		case job, ok := <-c.writes:
-			if !ok || c.writeCtx.Err() != nil {
-				return
-			}
-			c.writePostings(job)
-		}
+func (c *postingsCache) fetch(ctx context.Context, key string) ([]storage.SeriesRef, bool) {
+	start := time.Now()
+	refs, hit := c.cache.Get(ctx, key)
+	elapsed := time.Since(start)
+	c.fetchDuration.Observe(elapsed.Seconds())
+	c.fetchedKeys.Inc()
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesRequested(stats.IndexCache, 1)
+	st.AddCacheDownloadTime(stats.IndexCache, elapsed)
+	if hit {
+		size := len(refs) * int(unsafe.Sizeof(storage.SeriesRef(0)))
+		c.hits.Inc()
+		c.fetchedSize.Observe(float64(size))
+		st.AddCacheEntriesFound(stats.IndexCache, 1)
+		st.AddCacheBytesRetrieved(stats.IndexCache, size)
 	}
+	return refs, hit
 }
 
-func (c *postingsCache) writePostings(job postingsWrite) {
-	ctx, cancel := context.WithTimeout(c.writeCtx, postingsWriteTimeout)
-	defer cancel()
-	encoded, err := encodePostings(job.key, job.refs)
-	if err != nil {
-		c.metrics.encodeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to encode postings for cache", "err", err)
-		return
-	}
+// store starts at most one insertion at a time, without queuing or waiting for
+// either the lifecycle lock or the embedded cache's insertion lock.
+func (c *postingsCache) store(ctx context.Context, key string, refs []storage.SeriesRef) {
 	if ctx.Err() != nil {
 		return
 	}
-	if err := c.Store(ctx, []string{cache.HashKey(job.key)}, [][]byte{encoded}); err != nil {
-		c.metrics.storeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to store postings in cache", "err", err)
+	if c.maxEntryBytes > 0 && postingsEntrySize(&cache.Entry[string, []storage.SeriesRef]{Key: key, Value: refs}) > c.maxEntryBytes {
+		return
 	}
+	if !c.mu.TryLock() {
+		return // Cache population is best effort when another insertion is active.
+	}
+	if c.stopped {
+		c.mu.Unlock()
+		return
+	}
+	// Record request statistics before returning, rather than retaining the
+	// request context in the worker after the query has finished.
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesStored(stats.IndexCache, 1)
+	go func() {
+		// Go mutexes are not goroutine-owned: the worker releases the lock
+		// acquired above. Stop waits for this insertion before clearing the cache.
+		defer c.mu.Unlock()
+		c.storedSize.Observe(float64(len(refs) * int(unsafe.Sizeof(storage.SeriesRef(0)))))
+		start := time.Now()
+		defer func() { c.storeDuration.Observe(time.Since(start).Seconds()) }()
+		if err := c.cache.Store(context.Background(), []string{key}, [][]storage.SeriesRef{refs}); err != nil {
+			return // Best effort; the embedded implementation currently cannot fail.
+		}
+	}()
 }

@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
-	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -27,64 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
-
-type postingsTestCache struct {
-	mu       sync.Mutex
-	entries  map[string][]byte
-	fetchErr error
-	storeErr error
-	fetches  int
-	stores   int
-	hits     int
-}
-
-func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.stores++
-	if c.storeErr != nil {
-		return c.storeErr
-	}
-	if c.entries == nil {
-		c.entries = map[string][]byte{}
-	}
-	c.entries[keys[0]] = bufs[0]
-	return nil
-}
-
-func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.fetches++
-	if c.fetchErr != nil {
-		return nil, nil, nil, c.fetchErr
-	}
-	buf, ok := c.entries[keys[0]]
-	if !ok {
-		return nil, nil, keys, nil
-	}
-	c.hits++
-	return keys, [][]byte{buf}, nil, nil
-}
-
-func (c *postingsTestCache) snapshot() *postingsTestCache {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	entries := make(map[string][]byte, len(c.entries))
-	for key, value := range c.entries {
-		entries[key] = value
-	}
-	return &postingsTestCache{entries: entries, stores: c.stores, fetches: c.fetches, hits: c.hits}
-}
-
-func waitForPostingsStores(t *testing.T, c *postingsTestCache, n int) {
-	t.Helper()
-	require.Eventually(t, func() bool { return c.snapshot().stores == n }, time.Second*5, time.Millisecond)
-}
-
-func (*postingsTestCache) Stop() {}
-
-func (*postingsTestCache) GetCacheType() stats.CacheType { return stats.IndexCache }
 
 func TestPostingsCacheCanonicalKey(t *testing.T) {
 	m1 := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
@@ -112,9 +52,7 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 		"tenant-a": {{labels: labels.FromStrings("app", "api"), fp: 1, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 11}}}},
 		"tenant-b": {{labels: labels.FromStrings("app", "api"), fp: 2, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 22}}}},
 	}, filepath.Join(root, "table"), time.Unix(1, 0))
-	backend := &postingsTestCache{}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(c.Stop)
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	file, err := openShippableTSDBWithPostingsCache(path, index.MmapOptions{}, c, "prefix", root)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
@@ -122,80 +60,17 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	first, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	waitForPostingsStores(t, backend, 1)
+	waitForPostingsStore(c)
 	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
 
 	require.Equal(t, first, second)
-	require.Equal(t, 2, backend.snapshot().fetches, "queries must fetch postings through the cache attached by the opener")
-	require.Equal(t, 1, backend.snapshot().stores, "only the first query for each tenant should store postings")
-	require.Equal(t, 1, backend.snapshot().hits, "the repeated query must hit cached postings")
+	require.Equal(t, float64(2), testutil.ToFloat64(c.fetchedKeys))
+	require.Equal(t, float64(1), testutil.ToFloat64(c.hits))
 
 	_, err = idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	waitForPostingsStores(t, backend, 2)
-	require.Len(t, backend.snapshot().entries, 2, "tenant matchers must produce separate cache entries")
-}
-
-func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
-	backend := &postingsTestCache{fetchErr: errors.New("fetch")}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(c.Stop)
-	called := 0
-	compute := func() (index.Postings, error) {
-		called++
-		return index.EmptyPostings(), nil
-	}
-	_, err := c.cachedPostings(context.Background(), "key", compute)
-	require.NoError(t, err)
-	require.Equal(t, 1, called)
-	require.Empty(t, backend.snapshot().entries)
-}
-
-func TestPostingsCodec(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		refs      []storage.SeriesRef
-		encoded   []byte
-		decodeKey string
-		encodeErr string
-		decodeErr string
-	}{
-		{name: "roundtrip", refs: []storage.SeriesRef{2, 7, 19}},
-		{name: "empty roundtrip"},
-		{name: "unsorted references", refs: []storage.SeriesRef{2, 1}, encodeErr: "not sorted"},
-		{name: "mismatched key", refs: []storage.SeriesRef{2, 7, 19}, decodeKey: "other", decodeErr: "key mismatch"},
-		{name: "invalid header", encoded: []byte{1, 2, 3}, decodeErr: "unsupported postings codec version"},
-		{name: "missing key length", encoded: []byte("v1"), decodeErr: "invalid postings cache key length"},
-		{name: "truncated key length", encoded: []byte("v1\x80"), decodeErr: "invalid postings cache key length"},
-		{name: "truncated key", encoded: []byte("v1\x04key"), decodeErr: "invalid postings cache key length"},
-		{name: "invalid compressed data", encoded: append([]byte("v1\x03key"), 0xff), decodeErr: "decompress postings"},
-		{name: "truncated delta", encoded: append([]byte("v1\x03key"), snappy.Encode(nil, []byte{0x80})...), decodeErr: "invalid postings delta varint"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			encoded := tc.encoded
-			if encoded == nil {
-				var err error
-				encoded, err = encodePostings("key", tc.refs)
-				if tc.encodeErr != "" {
-					require.ErrorContains(t, err, tc.encodeErr)
-					return
-				}
-				require.NoError(t, err)
-			}
-			key := tc.decodeKey
-			if key == "" {
-				key = "key"
-			}
-			decoded, err := decodePostings(key, encoded)
-			if tc.decodeErr != "" {
-				require.ErrorContains(t, err, tc.decodeErr)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tc.refs, decoded)
-		})
-	}
+	waitForPostingsStore(c)
 }
 
 type postingsReaderSpy struct {
@@ -228,9 +103,7 @@ func newPostingsReaderSpy(t *testing.T) *postingsReaderSpy {
 
 func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	reader := newPostingsReaderSpy(t)
-	backend := &postingsTestCache{}
-	postingsCache := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(postingsCache.Stop)
+	postingsCache := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	low := index.NewShard(0, 2)
@@ -259,7 +132,7 @@ func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	require.NotEqual(t, lowRefs, highRefs)
 
 	require.Equal(t, lowRefs, query(low, 0, 10))
-	waitForPostingsStores(t, backend, 1)
+	waitForPostingsStore(postingsCache)
 	require.Equal(t, lowRefs, query(low, 100, 200))
 	require.Equal(t, highRefs, query(high, 0, 10))
 	require.Equal(t, highRefs, query(high, 100, 200))
@@ -282,9 +155,7 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
-	backend := &postingsTestCache{}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(c.Stop)
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
@@ -295,7 +166,7 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1, called)
-	waitForPostingsStores(t, backend, 1)
+	waitForPostingsStore(c)
 
 	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 		called++
@@ -306,8 +177,6 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 }
-
-var _ cache.Cache = (*postingsTestCache)(nil)
 
 // Compare full query results, not just approximate candidate postings, because
 // the sampled offset boundaries intentionally include neighboring fingerprints.
@@ -327,16 +196,14 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, reader.Close()) })
 			baseline := NewTSDBIndex(reader)
-			backend := &postingsTestCache{}
 			candidate := NewTSDBIndex(reader)
-			pc := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-			t.Cleanup(pc.Stop)
+			pc := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
 			candidate.setPostingsCache(pc, "file")
 			for _, selector := range []string{`{app="api"}`, `{group="1"}`, `{group!="1"}`, `{group=~"1|2"}`, `{group!~"1|2"}`, `{group=""}`, `{app="missing"}`} {
 				t.Run(selector, func(t *testing.T) {
 					matchers, err := syntax.ParseMatchers(selector, false)
 					require.NoError(t, err)
-					before := backend.snapshot().stores
+					before := testutil.ToFloat64(pc.hits)
 					filters := []index.FingerprintFilter{nil}
 					for _, count := range []uint32{2, 4, 16} {
 						for shard := uint32(0); shard < count; shard++ {
@@ -350,7 +217,7 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						gotRefs, err := candidate.GetChunkRefs(ctx, "tenant", 0, 10, nil, filter, matchers...)
 						require.NoError(t, err)
 						require.Equal(t, wantRefs, gotRefs)
-						waitForPostingsStores(t, backend, before+1)
+						waitForPostingsStore(pc)
 						wantSeries, err := baseline.Series(ctx, "tenant", 0, 10, nil, filter, matchers...)
 						require.NoError(t, err)
 						gotSeries, err := candidate.Series(ctx, "tenant", 0, 10, nil, filter, matchers...)
@@ -365,128 +232,138 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						require.NoError(t, candidate.Volume(ctx, "tenant", 0, 10, gotVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.Equal(t, wantVolume.Volumes(), gotVolume.Volumes())
 					}
-					require.Equal(t, before+1, backend.snapshot().stores, "all shards and query operations must share one entry")
+					require.Greater(t, testutil.ToFloat64(pc.hits), before)
 				})
 			}
 		})
 	}
 }
 
-type blockingPostingsCache struct {
-	postingsTestCache
-	started chan context.Context
-	release chan struct{}
-	stopped chan struct{}
-}
-
-func (c *blockingPostingsCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
-	c.started <- ctx
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.release:
-		return c.postingsTestCache.Store(ctx, keys, bufs)
-	}
-}
-
-func (c *blockingPostingsCache) Stop() { close(c.stopped) }
-
-func TestPostingsCacheAsyncWrite(t *testing.T) {
-	backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+func newTestPostingsCache(t testing.TB, cfg cache.EmbeddedCacheConfig) *postingsCache {
+	t.Helper()
+	cfg.Enabled = true
+	c := newPostingsCache(cfg, "test-embedded-cache", nil, log.NewNopLogger())
+	require.NotNil(t, c)
 	t.Cleanup(c.Stop)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	result := make(chan index.Postings, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
-			return index.NewListPostings([]storage.SeriesRef{8, 2, 4}), nil
-		})
-		result <- p
-		errCh <- err
-	}()
-	select {
-	case p := <-result:
-		require.NoError(t, <-errCh)
-		refs, err := index.ExpandPostings(p)
+	return c
+}
+
+func waitForPostingsStore(c *postingsCache) {
+	c.mu.Lock()
+	c.mu.Unlock()
+}
+
+func storePostingsAndWait(t testing.TB, c *postingsCache, ctx context.Context, key string, refs []storage.SeriesRef) {
+	t.Helper()
+	c.store(ctx, key, refs)
+	waitForPostingsStore(c)
+}
+
+func TestPostingsCacheIteratorsAdvanceIndependently(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	ctx := context.Background()
+	want := []storage.SeriesRef{3, 6, 9}
+	storePostingsAndWait(t, c, ctx, "key", want)
+
+	// Two queries hit the same entry but have separate iterator positions.
+	first := c.fetchPostings(ctx, "key")
+	second := c.fetchPostings(ctx, "key")
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	require.True(t, first.Seek(6))
+	require.Equal(t, storage.SeriesRef(6), first.At())
+
+	// Seeking the first iterator must not skip values in the second.
+	all, err := index.ExpandPostings(second)
+	require.NoError(t, err)
+	require.Equal(t, want, all)
+
+	// Exhausting the second iterator must not exhaust the first.
+	require.True(t, first.Next())
+	require.Equal(t, storage.SeriesRef(9), first.At())
+	require.False(t, first.Next())
+
+	// Neither iterator may change the cached references.
+	stored, hit := c.cache.Get(ctx, "key")
+	require.True(t, hit)
+	require.Equal(t, []storage.SeriesRef{3, 6, 9}, stored)
+}
+
+func TestPostingsCacheEmptyResultIsAHit(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	computations := 0
+	compute := func() (index.Postings, error) {
+		computations++
+		return index.EmptyPostings(), nil
+	}
+	for range 3 {
+		p, err := c.cachedPostings(context.Background(), "no-matching-series", compute)
 		require.NoError(t, err)
-		require.Equal(t, []storage.SeriesRef{2, 4, 8}, refs)
-	case <-time.After(5 * time.Second):
-		t.Fatal("query blocked on cache population")
+		require.NotNil(t, p)
+		require.False(t, p.Next(), "every query returns an empty iterator")
+		require.NoError(t, p.Err())
+		waitForPostingsStore(c)
 	}
-	var writeCtx context.Context
-	select {
-	case writeCtx = <-backend.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("cache write did not start")
-	}
-	cancel()
-	require.NoError(t, writeCtx.Err(), "accepted population must survive request cancellation")
-	_, hasDeadline := writeCtx.Deadline()
-	require.True(t, hasDeadline)
-	close(backend.release)
-	waitForPostingsStores(t, &backend.postingsTestCache, 1)
-	refs, err := decodePostings("key", backend.snapshot().entries[cache.HashKey("key")])
-	require.NoError(t, err)
-	require.Equal(t, []storage.SeriesRef{2, 4, 8}, refs)
+	require.Equal(t, 1, computations, "only the first query should compute the empty result")
+	require.Equal(t, float64(2), testutil.ToFloat64(c.hits), "the next two queries should hit the cache")
 }
 
-func TestPostingsCacheShutdownAndFullQueue(t *testing.T) {
-	backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(c.Stop)
-	compute := func() (index.Postings, error) { return index.EmptyPostings(), nil }
-	_, err := c.cachedPostings(context.Background(), "first", compute)
+func TestPostingsCacheItemLimitAndRetainedIterator(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	ctx := context.Background()
+	compute := func() (index.Postings, error) { return index.NewListPostings([]storage.SeriesRef{1, 2}), nil }
+	p, err := c.cachedPostings(ctx, "first", compute)
 	require.NoError(t, err)
-	select {
-	case <-backend.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("cache write did not start")
-	}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for i := 0; i < postingsWriteBuffer+1; i++ {
-			_, _ = c.cachedPostings(context.Background(), fmt.Sprint(i), compute)
-		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("full queue blocked queries")
-	}
-	require.Len(t, c.writes, postingsWriteBuffer)
-	stopDone := make(chan struct{})
-	go func() {
-		var wg sync.WaitGroup
-		for range 4 {
-			wg.Go(c.Stop)
-		}
-		wg.Wait()
-		close(stopDone)
-	}()
-	select {
-	case <-stopDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("shutdown did not cancel active cache write")
-	}
-	select {
-	case <-backend.stopped:
-	default:
-		t.Fatal("Stop returned before stopping the backend")
-	}
-	require.Empty(t, c.writes)
-	require.Zero(t, backend.snapshot().stores)
-	_, err = c.cachedPostings(context.Background(), "after-stop", compute)
+	waitForPostingsStore(c)
+	_, err = c.cachedPostings(ctx, "second", compute)
 	require.NoError(t, err)
-	require.Empty(t, c.writes)
+	waitForPostingsStore(c)
+	_, hit := c.cache.Get(ctx, "first")
+	require.False(t, hit, "first should have been evicted due to max size of 1")
+	c.Stop()
+	refs, err := index.ExpandPostings(p)
+	require.NoError(t, err)
+	require.Equal(t, []storage.SeriesRef{1, 2}, refs, "eviction/shutdown must not mutate an outstanding iterator")
 }
 
-func TestPostingsCacheCancellationBeforeEnqueue(t *testing.T) {
-	backend := &postingsTestCache{}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	t.Cleanup(c.Stop)
+func TestPostingsCacheTTL(t *testing.T) {
+	for _, ttl := range []time.Duration{0, time.Second} {
+		t.Run(fmt.Sprint(ttl), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				c := newPostingsCache(cache.EmbeddedCacheConfig{
+					Enabled: true, MaxSizeItems: 1, TTL: ttl, PurgeInterval: time.Second,
+				}, "ttl", prometheus.NewRegistry(), log.NewNopLogger())
+				defer c.Stop()
+				_, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+					return index.EmptyPostings(), nil
+				})
+				require.NoError(t, err)
+				time.Sleep(2 * time.Second)
+				synctest.Wait()
+				p := c.fetchPostings(context.Background(), "key")
+				if ttl == 0 {
+					require.NotNil(t, p, "zero TTL disables expiration")
+				} else {
+					require.Nil(t, p)
+				}
+			})
+		})
+	}
+}
+
+func TestConfiguredPostingsCacheDisabled(t *testing.T) {
+	for _, cfg := range []cache.EmbeddedCacheConfig{
+		{},
+		{MaxSizeMB: 1},
+		{Enabled: true},
+	} {
+		c := newPostingsCache(cfg, "disabled", prometheus.NewRegistry(), log.NewNopLogger())
+		require.Nil(t, c)
+	}
+}
+
+func TestPostingsCacheCancellation(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
@@ -495,24 +372,57 @@ func TestPostingsCacheCancellationBeforeEnqueue(t *testing.T) {
 	})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Nil(t, p)
-	c.Stop()
-	require.Zero(t, backend.snapshot().stores)
+	_, hit := c.cache.Get(context.Background(), "key")
+	require.False(t, hit)
 }
 
-func TestPostingsCacheWriteTimeout(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		backend := &blockingPostingsCache{started: make(chan context.Context, 1), release: make(chan struct{}), stopped: make(chan struct{})}
-		c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-		defer c.Stop()
-		_, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
-			return index.EmptyPostings(), nil
+func BenchmarkPostingsCacheHit(b *testing.B) {
+	for _, n := range []int{1024, 100000} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			refs := make([]storage.SeriesRef, n)
+			for i := range refs {
+				refs[i] = storage.SeriesRef(i * 3)
+			}
+			_, ctx := stats.NewContext(context.Background())
+			c := newTestPostingsCache(b, cache.EmbeddedCacheConfig{MaxSizeMB: 16})
+			storePostingsAndWait(b, c, ctx, "key", refs)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if c.fetchPostings(ctx, "key") == nil {
+					b.Fatal("expected cache hit")
+				}
+			}
 		})
-		require.NoError(t, err)
-		writeCtx := <-backend.started
-		time.Sleep(postingsWriteTimeout)
-		synctest.Wait()
-		require.ErrorIs(t, writeCtx.Err(), context.DeadlineExceeded)
-		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.storeFailures))
-		require.Zero(t, backend.snapshot().stores)
+	}
+}
+
+func TestPostingsCacheCanceledQueryDoesNotCompute(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	reader := &postingsReaderSpy{}
+	idx := NewTSDBIndex(reader)
+	idx.setPostingsCache(c, "file")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := idx.forPostings(ctx, nil, 0, 10, nil, func(index.Postings) error {
+		t.Error("canceled query must not invoke the callback")
+		return nil
 	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, reader.calls)
+	require.Zero(t, testutil.ToFloat64(c.fetchedKeys))
+}
+
+func TestPostingsCacheFailedComputationIsNotCached(t *testing.T) {
+	failure := errors.New("read failed")
+	for _, compute := range []func() (index.Postings, error){
+		func() (index.Postings, error) { return nil, failure },
+		func() (index.Postings, error) { return index.ErrPostings(failure), nil },
+	} {
+		c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 2})
+		p, err := c.cachedPostings(context.Background(), "key", compute)
+		require.ErrorIs(t, err, failure)
+		require.Nil(t, p)
+		require.Nil(t, c.fetchPostings(context.Background(), "key"))
+	}
 }
