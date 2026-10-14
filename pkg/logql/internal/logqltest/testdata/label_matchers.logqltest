@@ -418,20 +418,22 @@ eval instant at 60s sum by (app) (count_over_time({app="a"} | name!="parsed" | l
 eval instant at 60s sum by (name) (count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
   {name="parsed"} 1
 
-# BUG: `drop` does not remove a name from the clash test. The parser tests the raw stream labels,
-# which `drop` does not change, so the parsed field still takes the _extracted name.
+# Fixed (#25091): `drop` now removes a name from the clash test. The parser used to test the raw
+# stream labels, which `drop` did not change, so the parsed field used to take the _extracted name
+# regardless.
 #
-# Correct: `name` is gone when the parser runs, so the parsed field must take the base name.
+# Correct: `name` is gone when the parser runs, so the parsed field takes the base name.
 clear
 load
   {app="a", name="stream"} "name=parsed" @ 10s
 
 eval select from 0 to 30s forward {app="a"} | drop name | logfmt
-  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+# The base name now holds "parsed", which is not "", so the matcher drops the line.
 eval select from 0 to 30s forward {app="a"} | drop name | logfmt | name=""
-  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
-# A `drop` after the parser gives the same label set for the correct reason: the parser renames,
-# then `drop` removes the stream label.
+  expect empty
+# A `drop` after the parser gives a different label set, for the correct reason: the parser runs
+# first and renames against the still-present stream label, then `drop` removes it.
 eval select from 0 to 30s forward {app="a"} | logfmt | drop name
   {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
 
