@@ -59,6 +59,25 @@ func TestObject_Reader_S3Upload(t *testing.T) {
 		require.NoError(t, bkt.Upload(t.Context(), "tenant/objects/test", reader))
 		require.Equal(t, float64(obj.Size()), uploadedBytesMetric(t)-before)
 	})
+
+	t.Run("retries a small upload after a server error", func(t *testing.T) {
+		srv, bkt := newFakeS3Bucket(t)
+		srv.failNext(1)
+		obj := buildSmallObject(t)
+
+		reader, err := obj.Reader(t.Context())
+		require.NoError(t, err)
+		defer reader.Close()
+
+		require.NoError(t, bkt.Upload(t.Context(), "tenant/objects/test", reader))
+
+		put := fakeS3Request{
+			Method:   http.MethodPut,
+			Path:     "/test-bucket/tenant/objects/test",
+			DataSize: obj.Size(),
+		}
+		require.Equal(t, []fakeS3Request{put, put}, srv.requests())
+	})
 }
 
 func newFakeS3Bucket(t *testing.T) (*fakeS3, objstore.Bucket) {
@@ -130,8 +149,16 @@ type fakeS3Request struct {
 type fakeS3 struct {
 	addr string
 
-	mu   sync.Mutex
-	reqs []fakeS3Request
+	mu       sync.Mutex
+	reqs     []fakeS3Request
+	failures int
+}
+
+// failNext makes the server answer the next n requests with an internal error.
+func (f *fakeS3) failNext(n int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failures = n
 }
 
 func newFakeS3(t *testing.T) *fakeS3 {
@@ -155,7 +182,17 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 
 	f.mu.Lock()
 	f.reqs = append(f.reqs, fakeS3Request{Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery, DataSize: n})
+	fail := f.failures > 0
+	if fail {
+		f.failures--
+	}
 	f.mu.Unlock()
+
+	if fail {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "<Error><Code>InternalError</Code><Message>injected failure</Message></Error>")
+		return
+	}
 
 	query := r.URL.Query()
 	switch {

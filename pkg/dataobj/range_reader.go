@@ -74,16 +74,23 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, offset, length)}, nil
 }
 
-// nopCloserWithObjectSize reads a section of an object and reports how many
-// bytes are left to read. Its Close does nothing.
+// nopCloserWithObjectSize reads a section of an object and reports the size
+// of the section. Its Close does nothing.
 //
 // It implements [objstore.ObjectSizer], so an upload of the reader knows its
 // size. Without the size, the S3 client starts a multipart upload, even for a
 // small object, and allocates a part buffer of about 528MiB for each upload.
 //
-// nopCloserWithObjectSize does not expose [io.ReaderAt] or [io.Seeker]. If the
-// reader has them, minio-go reads the upload through ReadAt, and the objstore
-// upload metrics miss those bytes, because they count only what Read returns.
+// It implements [io.Seeker], so the S3 client can rewind the reader and retry
+// a failed request. The S3 client seeks to the start of the section before
+// each attempt. So ObjectSize returns the size of the whole section, not the
+// number of unread bytes.
+//
+// It does not implement [io.ReaderAt]. If the reader has it, the S3 client
+// reads the upload through ReadAt, and the objstore upload metrics miss those
+// bytes, because they count only what Read returns.
+//
+// It is not safe for concurrent use.
 type nopCloserWithObjectSize struct {
 	r *io.SectionReader
 }
@@ -92,13 +99,11 @@ var _ objstore.ObjectSizer = nopCloserWithObjectSize{}
 
 func (r nopCloserWithObjectSize) Read(p []byte) (int, error) { return r.r.Read(p) }
 
+func (r nopCloserWithObjectSize) Seek(offset int64, whence int) (int64, error) {
+	return r.r.Seek(offset, whence)
+}
+
 func (r nopCloserWithObjectSize) Close() error { return nil }
 
-// ObjectSize returns the number of bytes left to read.
-func (r nopCloserWithObjectSize) ObjectSize() (int64, error) {
-	offset, err := r.r.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0, err
-	}
-	return r.r.Size() - offset, nil
-}
+// ObjectSize returns the size of the whole section, whatever the read offset.
+func (r nopCloserWithObjectSize) ObjectSize() (int64, error) { return r.r.Size(), nil }

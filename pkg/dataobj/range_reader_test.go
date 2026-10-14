@@ -28,7 +28,7 @@ func Test_readerAtRangeReader_ObjectSize(t *testing.T) {
 		require.Equal(t, source, string(readAllAndClose(t, rc)))
 	})
 
-	t.Run("Read reports only the unread bytes after a partial read", func(t *testing.T) {
+	t.Run("Read reports the whole object size after a partial read", func(t *testing.T) {
 		rc, err := rr.Read(context.Background())
 		require.NoError(t, err)
 
@@ -37,7 +37,7 @@ func Test_readerAtRangeReader_ObjectSize(t *testing.T) {
 
 		size, err := objstore.TryToGetSize(rc)
 		require.NoError(t, err)
-		require.Equal(t, int64(len(source)-10), size)
+		require.Equal(t, int64(len(source)), size)
 		require.Equal(t, source[10:], string(readAllAndClose(t, rc)))
 	})
 
