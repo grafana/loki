@@ -577,7 +577,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		writeToCReferencing(t.Context(), t, c.bucket, "acme", window, "indexes/replacement")
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
-		require.ErrorContains(t, err, "no longer exists in ToC")
+		require.ErrorIs(t, err, errStalePlan)
 		require.Zero(t, stats)
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
@@ -1672,7 +1672,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("compacted", "acme")))
 		require.Zero(t, testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 		require.Equal(t, 200.0, pendingBytes(c), "the failed index keeps its bytes")
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
 	})
 
 	t.Run("resets pending bytes to the new plan total on the next phase", func(t *testing.T) {
@@ -1725,7 +1725,8 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, []string{"indexes/current/a"}, swaps[0].oldPaths, "the newest window runs first, so its index swaps and the previous one is stale")
 		bytesPerIndex := pendingAtFirstTask / 2
 		require.Equal(t, bytesPerIndex, pendingBytes(c))
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonStalePlan)))
+		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonExecute)))
 	})
 
 	t.Run("runs the remaining indexes and does not set the plan timestamp when one index fails to load", func(t *testing.T) {
@@ -1737,7 +1738,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Len(t, runner.snapshot(), 1)
 		require.Zero(t, pendingBytes(c), "the index that failed to plan is not counted")
 		require.Zero(t, lastPlan(c))
-		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme")))
+		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonPlan)))
 	})
 
 	t.Run("puts the bytes of each window under the age of its oldest data", func(t *testing.T) {

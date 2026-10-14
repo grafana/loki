@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -21,6 +22,10 @@ import (
 )
 
 const indexMergeIterations = 3
+
+// errStalePlan marks a log compaction plan whose source index the ToC no
+// longer lists.
+var errStalePlan = errors.New("source index no longer exists in ToC")
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
@@ -309,7 +314,7 @@ func (c *coordinator) executeLogCompaction(
 		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndex.Path, err)
 	}
 	if !exists {
-		return compactionStats{}, fmt.Errorf("source index %s no longer exists in ToC", plan.sourceIndex.Path)
+		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndex.Path)
 	}
 
 	artifacts, err := c.logDispatcher.Run(ctx, tenant, plan.physicalPlans(tenant))
@@ -762,7 +767,11 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 			}
 			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
 				"tenant", tenant, "window", plan.window, "index", plan.sourceIndex.Path, "err", err)
-			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant).Inc()
+			reason := failReasonExecute
+			if errors.Is(err, errStalePlan) {
+				reason = failReasonStalePlan
+			}
+			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, reason).Inc()
 			anyError = true
 			continue
 		}
@@ -817,7 +826,7 @@ func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (pl
 				}
 				level.Warn(c.logger).Log("msg", "log-merge phase: planning index failed",
 					"tenant", tenant, "window", window, "index", entry.Path, "err", err)
-				c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant).Inc()
+				c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, failReasonPlan).Inc()
 				anyError = true
 				continue
 			}

@@ -27,7 +27,7 @@ func TestCoordinatorMetrics_DeleteTenant(t *testing.T) {
 	m.pendingLogBytes.WithLabelValues("acme", "1h").Set(100)
 	m.pendingLogBytes.WithLabelValues("acme", "+Inf").Set(50)
 	m.lastPlanTimestampSeconds.WithLabelValues("acme").Set(10)
-	m.logMergeFailedIndexesTotal.WithLabelValues("acme").Inc()
+	m.logMergeFailedIndexesTotal.WithLabelValues("acme", failReasonPlan).Inc()
 
 	// A second tenant that must survive.
 	m.unconsolidatedBacklog.WithLabelValues("other").Set(7)
