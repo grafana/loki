@@ -101,30 +101,40 @@ type TeeService struct {
 	bufferedBytes    int64
 	bufferedBytesMtx sync.Mutex
 
+	// pushInternal sends batches with PushInternal. When false, batches are
+	// sent flat with Push.
+	pushInternal bool
+
 	metrics *teeMetrics
 }
 
+// NewTeeService returns a TeeService that sends teed streams to pattern
+// ingesters. pushInternal enables sending them in the internal format with
+// PushInternal; it follows deferred OTLP attribute expansion, as the internal
+// format only saves anything when attributes are not expanded.
 func NewTeeService(
 	cfg Config,
 	limits Limits,
 	ringClient RingClient,
 	tenantCfgs *runtime.TenantConfigs,
+	pushInternal bool,
 	metricsNamespace string,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*TeeService, error) {
 	reg = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg)
 	t := &TeeService{
-		logger:     log.With(logger, "component", "pattern-tee"),
-		cfg:        cfg,
-		limits:     limits,
-		tenantCfgs: tenantCfgs,
-		ringClient: ringClient,
-		wg:         &sync.WaitGroup{},
-		bufMtx:     &sync.Mutex{},
-		buf:        make(map[string][]teedStream),
-		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
-		metrics:    newTeeMetrics(reg),
+		logger:       log.With(logger, "component", "pattern-tee"),
+		cfg:          cfg,
+		limits:       limits,
+		tenantCfgs:   tenantCfgs,
+		ringClient:   ringClient,
+		wg:           &sync.WaitGroup{},
+		bufMtx:       &sync.Mutex{},
+		buf:          make(map[string][]teedStream),
+		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
+		pushInternal: pushInternal,
+		metrics:      newTeeMetrics(reg),
 	}
 	return t, nil
 }
@@ -328,11 +338,17 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 	}
 }
 
-// push sends req to a pattern ingester in the internal format. A pattern
-// ingester that predates PushInternal rejects it as Unimplemented without
-// processing it, so only then is req flattened and sent again with Push.
-// Once every pattern ingester supports PushInternal, the fallback can go.
+// push sends req to a pattern ingester in the internal format, or flat with
+// Push when ts.pushInternal is disabled. A pattern ingester that predates
+// PushInternal rejects it as Unimplemented without processing it, so only then
+// is req flattened and sent again with Push. Once every pattern ingester
+// supports PushInternal, the fallback can go.
 func (ts *TeeService) push(ctx context.Context, client logproto.PatternClient, req *logproto.InternalPushRequest) error {
+	if !ts.pushInternal {
+		_, err := client.Push(ctx, req.FlatView())
+		return err
+	}
+
 	_, err := client.PushInternal(ctx, req)
 	if status.Code(err) != codes.Unimplemented {
 		return err

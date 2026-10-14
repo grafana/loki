@@ -58,6 +58,7 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 		},
 		ringClient,
 		runtime.DefaultTenantConfigs(),
+		true,
 		"test",
 		nil,
 		log.NewNopLogger(),
@@ -481,18 +482,23 @@ func TestPatternTee_PushFallback(t *testing.T) {
 	stream := push.Stream{Labels: `{foo="bar"}`, Entries: []push.Entry{{Timestamp: time.Now(), Line: "line"}}}
 
 	for _, tc := range []struct {
-		name         string
-		internalErr  error
-		wantFlatPush bool
+		name           string
+		noPushInternal bool
+		internalErr    error
+		wantInternal   bool
+		wantFlatPush   bool
+		wantFallback   bool
 	}{
-		{name: "pattern ingester supports PushInternal"},
-		{name: "pattern ingester predates PushInternal", internalErr: status.Error(codes.Unimplemented, "unknown method"), wantFlatPush: true},
+		{name: "pattern ingester supports PushInternal", wantInternal: true},
+		{name: "pattern ingester predates PushInternal", internalErr: status.Error(codes.Unimplemented, "unknown method"), wantInternal: true, wantFlatPush: true, wantFallback: true},
 		// Only Unimplemented means the request was not processed.
-		{name: "other errors are not resent", internalErr: status.Error(codes.Unavailable, "unavailable")},
+		{name: "other errors are not resent", internalErr: status.Error(codes.Unavailable, "unavailable"), wantInternal: true},
+		{name: "PushInternal disabled", noPushInternal: true, wantFlatPush: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tee, client := getTestTee(t)
 			tee.limits = &fakeLimits{} // keep the metrics fallback out of the way
+			tee.pushInternal = !tc.noPushInternal
 			client.ExpectedCalls = nil
 			client.On("PushInternal", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, tc.internalErr)
 			client.On("Push", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, nil)
@@ -501,7 +507,11 @@ func TestPatternTee_PushFallback(t *testing.T) {
 			tee.flush()
 			tee.sendBatch(t.Context(), <-tee.flushQueue)
 
-			client.AssertCalled(t, "PushInternal", mock.Anything, mock.Anything)
+			if tc.wantInternal {
+				client.AssertCalled(t, "PushInternal", mock.Anything, mock.Anything)
+			} else {
+				client.AssertNotCalled(t, "PushInternal", mock.Anything, mock.Anything)
+			}
 			if tc.wantFlatPush {
 				client.AssertCalled(t, "Push", mock.Anything, mock.Anything)
 			} else {
@@ -510,7 +520,7 @@ func TestPatternTee_PushFallback(t *testing.T) {
 			require.Equal(t, []push.Stream{stream}, client.req.Streams)
 
 			wantFallbacks := 0.0
-			if tc.wantFlatPush {
+			if tc.wantFallback {
 				wantFallbacks = 1
 			}
 			require.Equal(t, wantFallbacks, testutil.ToFloat64(tee.metrics.pushFallbacks))
