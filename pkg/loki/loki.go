@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	"github.com/grafana/loki/v3/pkg/limits/streamcount"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
 	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
@@ -133,6 +134,7 @@ type Config struct {
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
 	IngestLimitsFrontendClient limits_frontend_client.Config `yaml:"ingest_limits_frontend_client,omitempty" category:"experimental"`
+	StreamCount                streamcount.Config            `yaml:"stream_count,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -244,6 +246,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimits.RegisterFlags(f)
 	c.IngestLimitsFrontend.RegisterFlags(f)
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
+	c.StreamCount.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
@@ -366,6 +369,11 @@ func (c *Config) Validate() error {
 		}
 		if err := c.DataObj.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
+		}
+	}
+	if c.isTarget(StreamCount) {
+		if err := c.StreamCount.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid stream_count config"))
 		}
 	}
 	// Only validated for the selected target. The builder's config has required
@@ -801,6 +809,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(IngestLimits, t.initIngestLimits)
 	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend)
+	mm.RegisterModule(StreamCount, t.initStreamCount)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -862,6 +871,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UIRing},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, Overrides, Server},
+		StreamCount:              {Server},
 		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
@@ -904,7 +914,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.IngestLimits.Enabled {
-		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
+		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend, StreamCount)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

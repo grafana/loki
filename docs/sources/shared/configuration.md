@@ -2003,6 +2003,11 @@ ingest_limits_frontend_client:
   # CLI flag: -ingest-limits-frontend-client.shuffle-shard-size
   [shuffle_shard_size: <int> | default = 1]
 
+stream_count:
+  # The topic containing stream metadata records.
+  # CLI flag: -stream-count.topic
+  [topic: <string> | default = ""]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]

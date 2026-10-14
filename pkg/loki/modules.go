@@ -57,6 +57,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
+	"github.com/grafana/loki/v3/pkg/limits/streamcount"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
 	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
@@ -115,6 +116,7 @@ const (
 	IngestLimitsRing                = "ingest-limits-ring"
 	IngestLimitsFrontend            = "ingest-limits-frontend"
 	IngestLimitsFrontendRing        = "ingest-limits-frontend-ring"
+	StreamCount                     = "stream-count"
 	Ingester                        = "ingester"
 	PatternIngester                 = "pattern-ingester"
 	PatternRingClient               = "pattern-ring-client"
@@ -469,6 +471,11 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Server.HTTP.Path("/ingest-limits/usage/{tenant}").Methods("GET").Handler(ingestLimits)
 
 	return ingestLimits, nil
+}
+
+func (t *Loki) initStreamCount() (services.Service, error) {
+	t.Cfg.StreamCount.KafkaConfig = t.Cfg.KafkaConfig
+	return streamcount.New(t.Cfg.StreamCount, util_log.Logger, prometheus.DefaultRegisterer)
 }
 
 func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
