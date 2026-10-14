@@ -443,8 +443,8 @@ github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 h1:sQ4hElLT1o+Y
 github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34/go.mod h1:796sq+UcONnSlzA3RtlBZ+b/hrerkZXiEmO8oMjyRwY=
 github.com/grafana/memberlist v0.3.1-0.20260921102813-8c522db348af h1:lrJdCKFFudfYdIQaOoYunORS8LGplY4QgK1iF9uj9b4=
 github.com/grafana/memberlist v0.3.1-0.20260921102813-8c522db348af/go.mod h1:hBsKPfoN6LPaWuxns4g43DDXMoktHb1q9R7aR+C7mPg=
-github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff h1:dwXSTDKfJ3qlTx6/gSIN3cSDtgDp9S5ELUoCWhXQipk=
-github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff/go.mod h1:Quz9HUDjGidU0RQpoytzK4KqJ7kwzP+DMAm4K57/usM=
+github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4 h1:8s8HXi9ycYFC4VRtPePDQw+Ex6HgjpcON91p7Q0CpbQ=
+github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4/go.mod h1:JdY7SzGzV+WN+K7FK5C8Gj35F5LNZ2zJISFORMs8LNE=
 github.com/grafana/otel-profiling-go v0.7.0 h1:Q6CBLSgAnYmNQNNrj4ipG0S/K/K8iazA9E4kYRzZf0I=
 github.com/grafana/otel-profiling-go v0.7.0/go.mod h1:Gt7LHg3HEfBoU8ZVArhqYaiA65EjcBe3nd3+arX6eMY=
 github.com/grafana/pyroscope-go/godeltaprof v0.1.12 h1:X6OemT2WcLtxdmNukEQuIp0c+efWVI/tBTd0oeWeDHI=
