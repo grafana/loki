@@ -113,7 +113,7 @@ func TestAbandonCurrentJob_NoJob(t *testing.T) {
 	svc := newTestService(t)
 
 	var called bool
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -130,7 +130,7 @@ func TestAbandonCurrentJob_RetriesOnFailure(t *testing.T) {
 	svc := newTestService(t)
 
 	var attempts int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		if attempts < 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -152,7 +152,7 @@ func TestAbandonCurrentJob_DoesNotRetryOn4xx(t *testing.T) {
 	svc := newTestService(t)
 
 	var attempts int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusConflict) // 409 — permanent
 	}))

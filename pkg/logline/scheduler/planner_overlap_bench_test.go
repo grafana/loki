@@ -39,11 +39,15 @@ func BenchmarkOverlapPlanner(b *testing.B) {
 		metas := benchMetas(n, 42)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
+			jobs := 0
 			for b.Loop() {
 				p := newOverlapPlanner(metas, 512*mib)
+				jobs = 0
 				for p.Plan() != nil {
+					jobs++
 				}
 			}
+			b.ReportMetric(float64(jobs), "jobs")
 		})
 	}
 }
@@ -53,11 +57,15 @@ func BenchmarkDateGroupPlanner(b *testing.B) {
 		metas := benchMetas(n, 42)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
+			jobs := 0
 			for b.Loop() {
 				p := newDateGroupPlanner(metas, 512*mib)
+				jobs = 0
 				for p.Plan() != nil {
+					jobs++
 				}
 			}
+			b.ReportMetric(float64(jobs), "jobs")
 		})
 	}
 }
