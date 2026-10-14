@@ -6,7 +6,6 @@
       "name": "partial_both",
       "start_ns": "30000000000",
       "end_ns": "210000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "-59999999999",
@@ -109,18 +108,71 @@
         "warn": 5,
         "error": 3
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 7,
-        "warn": 3,
-        "error": 2
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "180s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "179999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_3",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "210s",
+          "end": "210s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "209999ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "aligned_both",
       "start_ns": "60000000000",
       "end_ns": "240000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "1",
@@ -208,18 +260,45 @@
         "warn": 4,
         "error": 2
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 6,
-        "warn": 4,
-        "error": 3
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "240s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            },
+            {
+              "time": "179999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "239999ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "aligned_start",
       "start_ns": "60000000000",
       "end_ns": "210000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "1",
@@ -307,18 +386,54 @@
         "warn": 4,
         "error": 2
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 6,
-        "warn": 2,
-        "error": 1
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "180s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            },
+            {
+              "time": "179999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "210s",
+          "end": "210s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "209999ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "aligned_end",
       "start_ns": "30000000000",
       "end_ns": "240000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "-59999999999",
@@ -421,18 +536,62 @@
         "warn": 5,
         "error": 3
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 7,
-        "warn": 5,
-        "error": 4
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "240s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "179999ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "239999ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "within_one_bucket",
       "start_ns": "31000000000",
       "end_ns": "39000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "-59999999999",
@@ -489,15 +648,29 @@
         "info": 3,
         "warn": 2
       },
-      "expected_current": {
-        "debug": 1
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[8s] offset 1ns))",
+          "start": "39s",
+          "end": "39s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "38999ms",
+              "counts": {
+                "info": 3,
+                "warn": 2
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "crosses_one_boundary",
       "start_ns": "59000000000",
       "end_ns": "61000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "-59999999999",
@@ -570,17 +743,46 @@
         "warn": 3,
         "error": 1
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 5,
-        "warn": 1
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[1s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[1s] offset 1ns))",
+          "start": "61s",
+          "end": "61s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "60999ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "one_full_bucket",
       "start_ns": "60000000000",
       "end_ns": "120000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "1",
@@ -637,18 +839,29 @@
         "info": 3,
         "warn": 2
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 4,
-        "warn": 2,
-        "error": 1
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "120s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {
+                "info": 3,
+                "warn": 2
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "subsecond_866ms",
       "start_ns": "123000000",
       "end_ns": "989000000",
-      "step_ns": "100000000",
       "entries": [
         {
           "offset_ns": "1",
@@ -826,18 +1039,111 @@
         "warn": 10,
         "error": 8
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 12,
-        "warn": 8,
-        "error": 7
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[77ms] offset 1ns))",
+          "start": "200ms",
+          "end": "200ms",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "199ms",
+              "counts": {
+                "info": 3,
+                "warn": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[100ms] offset 1ns))",
+          "start": "300ms",
+          "end": "900ms",
+          "step": "100ms",
+          "expected": [
+            {
+              "time": "299ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "399ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "499ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "599ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "699ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "799ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            },
+            {
+              "time": "899ms",
+              "counts": {
+                "info": 1,
+                "warn": 1,
+                "error": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_3",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[89ms] offset 1ns))",
+          "start": "989ms",
+          "end": "989ms",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "988ms",
+              "counts": {
+                "info": 1,
+                "warn": 2,
+                "error": 1
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "one_millisecond",
       "start_ns": "60000000000",
       "end_ns": "60001000000",
-      "step_ns": "1000000000",
       "entries": [
         {
           "offset_ns": "59000000001",
@@ -894,16 +1200,29 @@
         "info": 3,
         "warn": 2
       },
-      "expected_current": {
-        "debug": 1,
-        "info": 3
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[1ms] offset 1ns))",
+          "start": "60001ms",
+          "end": "60001ms",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "60s",
+              "counts": {
+                "info": 3,
+                "warn": 2
+              }
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "start_only",
       "start_ns": "30000000000",
       "end_ns": "210000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "30000000000",
@@ -924,15 +1243,58 @@
       "expected_logs": {
         "info": 2
       },
-      "expected_current": {
-        "info": 2
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {
+                "info": 2
+              }
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "180s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {}
+            },
+            {
+              "time": "179999ms",
+              "counts": {}
+            }
+          ]
+        },
+        {
+          "name": "part_3",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "210s",
+          "end": "210s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "209999ms",
+              "counts": {}
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "end_only",
       "start_ns": "30000000000",
       "end_ns": "210000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "120000000000",
@@ -946,13 +1308,56 @@
         }
       ],
       "expected_logs": {},
-      "expected_current": {}
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {}
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "180s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {}
+            },
+            {
+              "time": "179999ms",
+              "counts": {}
+            }
+          ]
+        },
+        {
+          "name": "part_3",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "210s",
+          "end": "210s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "209999ms",
+              "counts": {}
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "empty_range",
       "start_ns": "30000000000",
       "end_ns": "210000000000",
-      "step_ns": "60000000000",
       "entries": [
         {
           "offset_ns": "29999999999",
@@ -971,9 +1376,51 @@
         }
       ],
       "expected_logs": {},
-      "expected_current": {
-        "info": 1
-      }
+      "parts": [
+        {
+          "name": "part_1",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "60s",
+          "end": "60s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "59999ms",
+              "counts": {}
+            }
+          ]
+        },
+        {
+          "name": "part_2",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[60s] offset 1ns))",
+          "start": "120s",
+          "end": "180s",
+          "step": "60s",
+          "expected": [
+            {
+              "time": "119999ms",
+              "counts": {}
+            },
+            {
+              "time": "179999ms",
+              "counts": {}
+            }
+          ]
+        },
+        {
+          "name": "part_3",
+          "query": "sum by (level) (count_over_time({app=\"volume-boundary\"} |= \"keep\"[30s] offset 1ns))",
+          "start": "210s",
+          "end": "210s",
+          "step": "0s",
+          "expected": [
+            {
+              "time": "209999ms",
+              "counts": {}
+            }
+          ]
+        }
+      ]
     }
   ]
 }
