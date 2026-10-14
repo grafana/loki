@@ -42,7 +42,7 @@ type SectionsRequest struct {
 	//
 	// Sections can fail when From exceeds To, or when an index object lacks the bucket
 	// information to prune by. It can also fail when two index objects list different streams
-	// for one section, as when only one of them can prune by the range.
+	// for one section.
 	ShardBucketRange *postings.ShardBucketRange
 }
 
