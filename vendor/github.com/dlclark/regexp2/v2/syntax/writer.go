@@ -51,23 +51,23 @@ func newWriter(quickCaptureSlots []bool) writer {
 type writer struct {
 	emitted []int
 
-	intStack           []int
-	curpos             int
-	stringhash         map[string]int
-	stringtable        [][]rune
-	sethash            map[string]int
-	settable           []*CharSet
-	dispatchtable      []DispatchTable
-	preconsumed        map[*RegexNode]bool
-	dispatchInfo       map[*RegexNode]dispatchInfo
-	dispatchCodes      map[*RegexNode]int
-	dispatchGotos      map[*RegexNode][]int
-	counting           bool
-	count              int
-	trackcount         int
-	caps               map[int]int
-	quickCaptureSlots  []bool
-	ecmaDuplicateNames bool
+	intStack          []int
+	curpos            int
+	stringhash        map[string]int
+	stringtable       [][]rune
+	sethash           map[string]int
+	settable          []*CharSet
+	dispatchtable     []DispatchTable
+	preconsumed       map[*RegexNode]bool
+	dispatchInfo      map[*RegexNode]dispatchInfo
+	dispatchCodes     map[*RegexNode]int
+	dispatchGotos     map[*RegexNode][]int
+	counting          bool
+	count             int
+	trackcount        int
+	caps              map[int]int
+	quickCaptureSlots []bool
+	ecma              bool
 }
 
 type dispatchInfo struct {
@@ -116,18 +116,7 @@ func (w *writer) codeFromTree(tree *RegexTree) (*Code, error) {
 		curChild int
 		capsize  int
 	)
-	if tree.Options&ECMAScript != 0 {
-		for slot, name := range tree.Caplist {
-			number := slot
-			if tree.Capnumlist != nil {
-				number = tree.Capnumlist[slot]
-			}
-			if name != "" && tree.Capnames[name] != number {
-				w.ecmaDuplicateNames = true
-				break
-			}
-		}
-	}
+	w.ecma = tree.Options&ECMAScript != 0
 	// construct sparse capnum mapping if some numbers are unused
 
 	if tree.Capnumlist == nil || tree.Captop == len(tree.Capnumlist) {
@@ -292,20 +281,7 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 		if w.quickCaptureSlots != nil && !w.quickCaptureSlots[slot] {
 			break
 		}
-		// Lower to a guarded balancing capture using existing instructions.
-		// Keeping the reset distinct until here avoids making its slot live.
-		w.emit(Setjump)
-		branch := w.curPos()
-		w.emit1(Lazybranch, 0)
-		w.emit1(Testref, slot)
-		w.emit(Forejump)
-		w.emit(Setmark)
-		w.emit2(Capturemark, -1, slot)
-		end := w.curPos()
-		w.emit1(Goto, 0)
-		w.patchJump(branch, w.curPos())
-		w.emit(Forejump)
-		w.patchJump(end, w.curPos())
+		w.emit1(ResetCapture, slot)
 
 	case NtAlternate | BeforeChild:
 		if sets, leaders, _, ok := w.getDispatchCandidates(node); ok {
@@ -405,7 +381,7 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 		// Counted loops distinguish required iterations from optional ones
 		// for RepeatMatcher's empty-iteration rejection (ECMAScript 2025
 		// §22.2.2.3.1, step 2.2), even when the upper bound is unbounded.
-		if node.N < math.MaxInt32 || node.M > 1 || w.ecmaDuplicateNames {
+		if node.N < math.MaxInt32 || node.M > 1 || w.ecma {
 			if node.M == 0 {
 				w.emit1(Nullcount, 0)
 			} else {
@@ -428,7 +404,7 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 		startJumpPos := w.curPos()
 		lazy := InstOp(nodetype - (NtLoop | AfterChild))
 
-		if node.N < math.MaxInt32 || node.M > 1 || w.ecmaDuplicateNames {
+		if node.N < math.MaxInt32 || node.M > 1 || w.ecma {
 			if node.N == math.MaxInt32 {
 				w.emit2(Branchcount+lazy, w.popInt(), math.MaxInt32)
 			} else {

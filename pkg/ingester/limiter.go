@@ -28,6 +28,7 @@ type RingCount interface {
 
 type Limits interface {
 	UseOwnedStreamCount(userID string) bool
+	DelegateStreamLimits(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
@@ -219,28 +220,26 @@ type streamCountLimiter struct {
 	defaultStreamCountSupplier supplier[int]
 	// memoryPolicyStreams counts all in-memory streams per policy. Together with
 	// defaultStreamCountSupplier it is used when owned stream counting is disabled.
-	memoryPolicyStreams  *policyStreamCounts
-	ownedStreamSvc       *ownedStreamService
-	delegateStreamLimits bool
+	memoryPolicyStreams *policyStreamCounts
+	ownedStreamSvc      *ownedStreamService
 }
 
 var noopFixedLimitSupplier = func() int {
 	return 0
 }
 
-func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], memoryPolicyStreams *policyStreamCounts, limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
+func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], memoryPolicyStreams *policyStreamCounts, limiter *Limiter, service *ownedStreamService) *streamCountLimiter {
 	return &streamCountLimiter{
 		tenantID:                   tenantID,
 		limiter:                    limiter,
 		defaultStreamCountSupplier: defaultStreamCountSupplier,
 		memoryPolicyStreams:        memoryPolicyStreams,
 		ownedStreamSvc:             service,
-		delegateStreamLimits:       delegateStreamLimits,
 	}
 }
 
 func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
-	if l.delegateStreamLimits {
+	if l.limiter.limits.DelegateStreamLimits(tenantID) {
 		return nil
 	}
 	bucket := l.limiter.policyBucket(tenantID, policy)

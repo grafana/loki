@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -26,8 +27,8 @@ type QueryParams struct {
 type QueryShard struct {
 	assignment *logql.Shard
 
-	// buckets is the bucket range the assignment maps to, or nil when the shard restricts no
-	// stream.
+	// buckets is the bucket range the assignment maps to, or nil when the shard has no range
+	// to push down.
 	buckets *shardBucketRange
 }
 
@@ -45,12 +46,21 @@ func NewQueryShard(assignment *logql.Shard) *QueryShard {
 }
 
 // bucketRange returns the bucket range to push into a streams read. It is nil for a nil shard,
-// and for a shard that restricts no stream.
+// and for a shard that has no range to push down.
 func (q *QueryShard) bucketRange() *shardBucketRange {
 	if q == nil {
 		return nil
 	}
 	return q.buckets
+}
+
+// metastoreBucketRange returns the bucket range to push into metastore sections resolution.
+func (q *QueryShard) metastoreBucketRange() *postings.ShardBucketRange {
+	bucketRange := q.bucketRange()
+	if bucketRange == nil {
+		return nil
+	}
+	return &postings.ShardBucketRange{From: bucketRange.from, To: bucketRange.to}
 }
 
 // prunes reports whether the shard narrows a streams read to a bucket range.

@@ -951,3 +951,48 @@ func TestShardedPostings(t *testing.T) {
 	}
 	require.Equal(t, false, shardedPostings.Next())
 }
+
+func newShardBoundaryPostings(refs []storage.SeriesRef) Postings {
+	return NewShardedPostings(NewListPostings(refs), NewShard(1, 4), FingerprintOffsets{
+		{0, 0}, {5, 1 << 62}, {10, 1 << 63}, {15, 3 << 62},
+	})
+}
+
+func TestShardedPostingsSeekDoesNotEscapeShard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		refs []storage.SeriesRef
+	}{
+		{name: "past upper bound", refs: []storage.SeriesRef{20}},
+		{name: "gap across upper bound", refs: []storage.SeriesRef{1, 20}},
+		{name: "at exclusive upper bound", refs: []storage.SeriesRef{10}},
+		{name: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newShardBoundaryPostings(tc.refs)
+			// Seeking inside the candidate range must fail if the next ref is outside it.
+			require.False(t, p.Seek(5))
+			require.NoError(t, p.Err())
+		})
+	}
+}
+
+func TestShardedPostingsNextDoesNotEscapeShard(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		refs []storage.SeriesRef
+		want []storage.SeriesRef
+	}{
+		{name: "starts past upper bound", refs: []storage.SeriesRef{20}},
+		{name: "stops at gap", refs: []storage.SeriesRef{1, 20}, want: []storage.SeriesRef{1}},
+		{name: "starts at exclusive upper bound", refs: []storage.SeriesRef{10}},
+		{name: "empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Next uses Seek during initialization, so even its first result must be bounded.
+			got, err := ExpandPostings(newShardBoundaryPostings(tc.refs))
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}

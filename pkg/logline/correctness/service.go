@@ -812,12 +812,6 @@ func (s *Service) shuffleStrings(values []string) {
 	})
 }
 
-// usableLabelName reports whether a label name is usable for correctness
-// selectors / label-filter hints (non-empty, not Loki-reserved __*).
-func usableLabelName(name string) bool {
-	return name != "" && !strings.HasPrefix(name, "__")
-}
-
 // usableHintValue reports whether a value is long enough for n-gram lookup.
 func usableHintValue(value string, ngramLength int) bool {
 	return len(value) >= ngramLength
@@ -831,7 +825,7 @@ func filterQueryableLabels(labels []string) []string {
 	seen := make(map[string]struct{}, len(labels))
 	for _, label := range labels {
 		label = strings.TrimSpace(label)
-		if !usableLabelName(label) {
+		if !hintprovider.UsableLabelName(label) {
 			continue
 		}
 		if _, ok := seen[label]; ok {
@@ -1084,7 +1078,7 @@ func decodeObjectEntry(dec *json.Decoder) (string, any, bool) {
 // Empty, `__*`, and hyphenated names are skipped; names that already exist as
 // stream/SM labels are skipped (`| json` would extract those as name_extracted).
 func validJSONKey(key string, reserved map[string]struct{}) bool {
-	if !usableLabelName(key) || !jsonLabelNameRE.MatchString(key) {
+	if !hintprovider.UsableLabelName(key) || !jsonLabelNameRE.MatchString(key) {
 		return false
 	}
 	_, taken := reserved[key]
@@ -1109,7 +1103,7 @@ func validJSONValue(value, line string, ngramLength int) bool {
 func pickStructuredMetadata(entries []logproto.Entry, ngramLength int) (string, string, bool) {
 	for _, entry := range entries {
 		for _, m := range entry.StructuredMetadata {
-			if !usableLabelName(m.Name) || !usableHintValue(m.Value, ngramLength) {
+			if !hintprovider.UsableLabelName(m.Name) || !usableHintValue(m.Value, ngramLength) {
 				continue
 			}
 			return m.Name, m.Value, true

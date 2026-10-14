@@ -33,6 +33,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -528,7 +530,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	return ingestLimitsFrontend, nil
 }
 
-func (t *Loki) initQuerier() (services.Service, error) {
+func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
@@ -575,12 +577,33 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
 	// data-object store.
-	var dataObjStore querier.Store
+	var (
+		dataObjStore         querier.Store
+		dataObjMetadataCache *metadatacache.Cache
+	)
+
+	// A failed init returns no service, so nothing else stops the cache.
+	defer func() {
+		if returnErr != nil && dataObjMetadataCache != nil {
+			dataObjMetadataCache.Stop()
+		}
+	}()
+
 	if t.Cfg.DataObj.Enabled {
 		var storeOpts []querier.DataObjStoreOption
+
 		if t.lbacChunkFilterer != nil {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
+
+		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+			}
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(dataObjMetadataCache))
+		}
+
 		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
 		if err != nil {
 			return nil, err
@@ -776,7 +799,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	if svc != nil {
-		svc.AddListener(deleteRequestsStoreListener(deleteStore))
+		svc.AddListener(newStopListener(deleteStore.Stop))
+		if dataObjMetadataCache != nil {
+			svc.AddListener(newStopListener(dataObjMetadataCache.Stop))
+		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
 }
@@ -1702,7 +1728,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	t.ruler.AddListener(deleteRequestsStoreListener(deleteStore))
+	t.ruler.AddListener(newStopListener(deleteStore.Stop))
 
 	return t.ruler, nil
 }
@@ -2339,6 +2365,7 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
+	const componentName = "dataobj-compaction-planner"
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
 	}
@@ -2347,9 +2374,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
+	logger := log.With(util_log.Logger, "component", componentName)
 
-	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
@@ -2360,7 +2387,19 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": componentName},
+		prometheus.DefaultRegisterer,
+	)
+	tocWriter := metastore.NewTableOfContentsWriter(
+		indexBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(reg),
+		indexobj.NewBuilderMetrics(reg),
+	)
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,

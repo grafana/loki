@@ -97,7 +97,7 @@ const (
 	// HOOKS.GO - Notification processing hooks
 	// ========================================
 	ProcessingNotificationMessage          = "processing notification started"
-	ProcessingNotificationFailedMessage    = "proccessing notification failed"
+	ProcessingNotificationFailedMessage    = "processing notification failed"
 	ProcessingNotificationSucceededMessage = "processing notification succeeded"
 
 	// ========================================

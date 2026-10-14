@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -76,7 +77,7 @@ func (s *compactionScenario) compactUntilIdle(tenant string) {
 	for cycle := range 10 {
 		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
-		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant, s.stored.Window)
+		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)
 		if indexOutcome == phaseOutcomeNoWork && logOutcome == phaseOutcomeNoWork {
 			return
@@ -261,7 +262,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
-			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
+			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant))
 
 			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
@@ -332,10 +333,10 @@ func TestE2ECompactionConvergence(t *testing.T) {
 			levelBase:   100_000,
 			levelRatio:  2,
 			wantRunsEnd: 2,
-			// Five level 0 runs give two merges and a one-run task. The two
-			// level 1 outputs then merge into level 2, and the lone level 0
-			// run is rewritten alone again.
-			wantTasks: map[string]int{"log-merge": 5},
+			// Five level 0 runs give two merges and a filter. The two level 1
+			// outputs then merge into level 2, and the lone level 0 run is
+			// filtered again.
+			wantTasks: map[string]int{"log-merge": 3, "index-filter": 2},
 		})
 	})
 }
@@ -539,7 +540,7 @@ func scenarioStreamSortKey(t *testing.T, stream streams.Stream, schema []string)
 		require.NotEmpty(t, name, "schema key %q must name a label", label)
 		values[i] = stream.Labels.Get(name)
 	}
-	return logSortPrefix{shard: uint32(stream.ShardBucket), labels: values}
+	return newLogSortPrefix(uint32(stream.ShardBucket), values)
 }
 
 // newIntegrationCoordinator owns an in-process scheduler and worker sharing the
@@ -609,7 +610,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
 		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
 		publisher: &tocPublisher{
-			writer:  metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
+			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,
 			dryRun:  compactionCfg.DryRun,
 		},

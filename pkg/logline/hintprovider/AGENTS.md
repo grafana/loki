@@ -35,6 +35,8 @@ Query-shape support and hint lookup for logline index lookups.
      an unrecognized stage. keep/drop do not invent values; the cutoff is
      fail-closed. When in doubt, skip.
    - Needles are matcher values only (never field names); prefixes are not stripped.
+   - `UsableLabelName` skips reserved `__*` names such as `__error__`, before
+     or after the parser. Loki sets those, so their values are not in the line.
    - `IsVerbatimLineLiteral` skips values containing `"`, `\`, or control
      characters so JSON/logfmt unescape cannot produce false negatives. The
      check runs per regex literal, so one non-verbatim run does not drop the

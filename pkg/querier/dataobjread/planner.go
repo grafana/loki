@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -70,17 +71,22 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 		}()
 
 		resolved, err := p.metastore.Sections(ctx, metastore.SectionsRequest{
-			Start:      query.Start,
-			End:        query.End,
-			Matchers:   query.Matchers,
-			Predicates: query.Projection.sectionPredicates(),
+			Start:            query.Start,
+			End:              query.End,
+			Matchers:         query.Matchers,
+			Predicates:       query.Projection.sectionPredicates(),
+			ShardBucketRange: query.Shard.metastoreBucketRange(),
 		})
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
 			return
 		}
 
-		if err := p.planObjects(ctx, resolved.Sections, query, tasks); err != nil {
+		// The object opens and streams reads below get a root region of their own. Without one their
+		// requests and bytes run outside any region and go uncounted. The metastore opened its own
+		// root region in Sections above.
+		planCtx, _ := xcap.StartRegion(ctx, regionStreamsReader)
+		if err := p.planObjects(planCtx, resolved.Sections, query, tasks); err != nil {
 			it.setErr(err)
 		}
 	}()

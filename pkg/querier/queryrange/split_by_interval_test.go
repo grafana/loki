@@ -161,7 +161,8 @@ func Test_splitQuery(t *testing.T) {
 				expected                         []interval
 				expectedWithoutIngesterSplits    []interval
 				splitInterval                    time.Duration
-				splitter                         splitter
+				limits                           fakeLimits
+				queryOptions                     util.IngesterQueryOptions
 				recentMetadataQueryWindowEnabled bool
 			}{
 				"no change": {
@@ -266,10 +267,8 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-					),
+					limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+					queryOptions:  ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 				},
 				"partially within ingester query window": {
 					input: interval{
@@ -332,10 +331,8 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-					),
+					limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+					queryOptions:  ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 				},
 				"not within ingester query window": {
 					input: interval{
@@ -355,10 +352,8 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-					),
+					limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+					queryOptions:  ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 				},
 				"ingester query split by disabled": {
 					input: interval{
@@ -390,10 +385,8 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
-						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-					),
+					limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
+					queryOptions:  ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 				},
 				"ingester query split enabled but query_store_only enabled too": {
 					input: interval{
@@ -425,10 +418,8 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour, queryStoreOnly: true},
-					),
+					limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+					queryOptions:  ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour, queryStoreOnly: true},
 				},
 				"metadata recent query window should not affect other query types": {
 					input: interval{
@@ -458,12 +449,10 @@ func Test_splitQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 3 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 3 * time.Hour},
+					},
 					recentMetadataQueryWindowEnabled: true,
 				},
 			} {
@@ -494,11 +483,12 @@ func Test_splitQuery(t *testing.T) {
 						intervals.splitInterval = time.Hour
 					}
 
-					if intervals.splitter == nil {
-						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
-					}
+					limits := intervals.limits
+					limits.splitDuration = map[string]time.Duration{tenantID: intervals.splitInterval}
+					limits.metadataSplitDuration = map[string]time.Duration{tenantID: intervals.splitInterval}
 
-					splits := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					splits, enabled := newDefaultSplitter(limits, intervals.queryOptions).split(refTime, []string{tenantID}, req)
+					require.True(t, enabled)
 					assertSplits(t, want, splits)
 				})
 			}
@@ -543,7 +533,8 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 				input         interval
 				expected      []interval
 				splitInterval time.Duration
-				splitter      splitter
+				limits        fakeLimits
+				iqo           util.IngesterQueryOptions
 			}{
 				"wholly within recent metadata query window": {
 					input: interval{
@@ -565,12 +556,10 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 2 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 2 * time.Hour},
+					},
 				},
 				"start aligns with recent metadata query window": {
 					input: interval{
@@ -592,12 +581,10 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+					},
 				},
 				"partially within recent metadata query window": {
 					input: interval{
@@ -632,12 +619,10 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+					},
 				},
 				"outside recent metadata query window": {
 					input: interval{
@@ -659,12 +644,10 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+					},
 				},
 				"end aligns with recent metadata query window": {
 					input: interval{
@@ -686,12 +669,10 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						},
 					},
 					splitInterval: time.Hour,
-					splitter: newDefaultSplitter(
-						fakeLimits{
-							recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
-							recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
-						}, nil,
-					),
+					limits: fakeLimits{
+						recentMetadataSplitDuration: map[string]time.Duration{tenantID: 30 * time.Minute},
+						recentMetadataQueryWindow:   map[string]time.Duration{tenantID: 1 * time.Hour},
+					},
 				},
 				"recent metadata window not configured": {
 					input: interval{
@@ -731,11 +712,12 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						intervals.splitInterval = time.Hour
 					}
 
-					if intervals.splitter == nil {
-						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
-					}
+					limits := intervals.limits
+					limits.splitDuration = map[string]time.Duration{tenantID: intervals.splitInterval}
+					limits.metadataSplitDuration = map[string]time.Duration{tenantID: intervals.splitInterval}
 
-					splits := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					splits, enabled := newDefaultSplitter(limits, intervals.iqo).split(refTime, []string{tenantID}, req)
+					require.True(t, enabled)
 					assertSplits(t, want, splits)
 				})
 			}
@@ -753,7 +735,8 @@ func Test_splitMetricQuery(t *testing.T) {
 		input         *LokiRequest
 		expected      []queryrangebase.Request
 		splitInterval time.Duration
-		splitter      splitter
+		limits        fakeLimits
+		iqo           util.IngesterQueryOptions
 	}{
 		// the step is lower than the interval therefore we should split only once.
 		{
@@ -1145,10 +1128,8 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 			},
 			splitInterval: time.Hour,
-			splitter: newMetricQuerySplitter(
-				fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-				ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-			),
+			limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 		},
 		// query is partially within ingester query window
 		{
@@ -1199,10 +1180,8 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 			},
 			splitInterval: time.Hour,
-			splitter: newMetricQuerySplitter(
-				fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-				ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-			),
+			limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 		},
 		// not within ingester query window
 		{
@@ -1228,10 +1207,8 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 			},
 			splitInterval: time.Hour,
-			splitter: newMetricQuerySplitter(
-				fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-				ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-			),
+			limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 		},
 		// ingester query split by disabled
 		{
@@ -1275,10 +1252,8 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 			},
 			splitInterval: time.Hour,
-			splitter: newMetricQuerySplitter(
-				fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
-				ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-			),
+			limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
 		},
 		// ingester query split by enabled, but query_store_only is enabled too
 		{
@@ -1322,10 +1297,8 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 			},
 			splitInterval: time.Hour,
-			splitter: newMetricQuerySplitter(
-				fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-				ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour, queryStoreOnly: true},
-			),
+			limits:        fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+			iqo:           ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour, queryStoreOnly: true},
 		},
 	} {
 		// Set query plans
@@ -1338,12 +1311,11 @@ func Test_splitMetricQuery(t *testing.T) {
 		}
 
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			ms := newMetricQuerySplitter(fakeLimits{}, nil)
-			if tc.splitter != nil {
-				ms = tc.splitter.(*metricQuerySplitter)
-			}
+			limits := tc.limits
+			limits.splitDuration = map[string]time.Duration{tenantID: tc.splitInterval}
 
-			splits := ms.split(refTime, []string{tenantID}, tc.input, tc.splitInterval)
+			splits, enabled := newMetricQuerySplitter(Config{}, limits, tc.iqo).split(refTime, []string{tenantID}, tc.input)
+			require.True(t, enabled)
 			if !assert.Equal(t, tc.expected, splits) {
 				t.Logf("expected and actual do not match\n")
 				defer t.Fail()
@@ -1387,8 +1359,8 @@ func Test_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	defSplitter := newDefaultSplitter(l, nil)
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
@@ -1576,7 +1548,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 			"1": time.Hour,
 		},
 	}
-	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
+	defSplitter := newDefaultSplitter(l, nil)
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
@@ -1631,13 +1603,12 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 
 func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
 	setup := func(next queryrangebase.Handler, l Limits) queryrangebase.Handler {
 		return SplitByIntervalMiddleware(
 			testSchemas,
 			l,
 			DefaultCodec,
-			defSplitter,
+			newDefaultSplitter(l, nil),
 			nilMetrics,
 		).Wrap(next)
 	}
@@ -1797,7 +1768,7 @@ func Test_ExitEarly(t *testing.T) {
 	})
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
-	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
+	defSplitter := newDefaultSplitter(l, nil)
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
@@ -1884,7 +1855,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 	})
 
 	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: n}, time.Hour)
-	defSplitter := newDefaultSplitter(fakeLimits{}, nil)
+	defSplitter := newDefaultSplitter(l, nil)
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
@@ -1986,11 +1957,12 @@ func Test_splitByInterval_Process_compactsOverLimit(t *testing.T) {
 	for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
 		t.Run(direction.String()+"/Do", func(t *testing.T) {
 			var calls atomic.Int32
+			l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 			split := SplitByIntervalMiddleware(
 				testSchemas,
-				WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour),
+				l,
 				DefaultCodec,
-				newDefaultSplitter(fakeLimits{}, nil),
+				newDefaultSplitter(l, nil),
 				nilMetrics,
 			).Wrap(next(&calls))
 
@@ -2078,11 +2050,12 @@ func Test_splitByInterval_firstIntervalFillsLimit(t *testing.T) {
 
 	for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
 		t.Run(direction.String(), func(t *testing.T) {
+			l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
 			split := SplitByIntervalMiddleware(
 				testSchemas,
-				WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour),
+				l,
 				DefaultCodec,
-				newDefaultSplitter(fakeLimits{}, nil),
+				newDefaultSplitter(l, nil),
 				nilMetrics,
 			).Wrap(next)
 

@@ -533,3 +533,18 @@ func (n *SortObject) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		SortSchema:       slices.Clone(n.SortSchema),
 	}, nil
 }
+
+// MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
+func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.IndexFilter.MarshalPhysical(nodeID)
+}
+
+// MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
+func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.IndexFilter{
+		NodeID:          nodeID,
+		Tenant:          n.Tenant,
+		SourceIndexPath: n.SourceIndexPath,
+		ObjectPaths:     slices.Clone(n.ObjectPaths),
+	}, nil
+}

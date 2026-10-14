@@ -330,8 +330,8 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
 		}
 	}
-	if c.Ingester.DelegateStreamLimits && !c.IngestLimits.Enabled {
-		errs = append(errs, errors.New("CONFIG ERROR: ingester.delegate-stream-limits requires ingest-limits service to be enabled (ingest_limits.enabled)"))
+	if (c.LimitsConfig.DelegateStreamLimits || c.Ingester.DelegateStreamLimits) && !c.IngestLimits.Enabled {
+		errs = append(errs, errors.New("CONFIG ERROR: delegate_stream_limits_enabled requires ingest-limits service to be enabled (ingest_limits.enabled)"))
 	}
 	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))

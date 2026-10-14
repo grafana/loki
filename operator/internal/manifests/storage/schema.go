@@ -26,6 +26,13 @@ func BuildSchemaConfig(
 		return nil, kverrors.New("spec does not contain any schemas")
 	}
 
+	// Reject any v11/v12 schemas - only v13 is supported
+	for _, schema := range spec.Schemas {
+		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 { //nolint:staticcheck
+			return nil, kverrors.New("spec contains deprecated schema versions")
+		}
+	}
+
 	errors := validation.ValidateSchemas(&spec, utcTime, status, limits)
 	if len(errors) != 0 {
 		return nil, kverrors.Wrap(errors[0], "spec contains invalid schema entry")

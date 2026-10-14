@@ -160,6 +160,10 @@ func WithLogger(logger log.Logger) OpenOption {
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
+//
+// Every object-store request the Object makes records its statistics in the
+// [xcap.Region] of the context passed to the call that makes it. See
+// [NewInstrumentedBucketReader].
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64, opts ...OpenOption) (*Object, error) {
 	var o openOptions
 	for _, opt := range opts {
@@ -169,7 +173,7 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, 
 		o.logger = log.NewNopLogger()
 	}
 
-	rr := &bucketRangeReader{bucket: bucket, path: path}
+	rr := &bucketRangeReader{bucket: NewInstrumentedBucketReader(bucket), path: path}
 
 	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path, logger: o.logger}
 	obj := &Object{rr: rr, dec: dec}

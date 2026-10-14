@@ -521,6 +521,12 @@ func TestSupportedQuery(t *testing.T) {
 			expected:    nil,
 		},
 		{
+			name:        "rejects post-parser filter on internal label",
+			query:       `{app="foo"} | json | __error__="JSONParserErr"`,
+			ngramLength: 6,
+			expected:    nil,
+		},
+		{
 			name:        "rejects post-parser value containing a backslash",
 			query:       `{app="foo"} | json | path="hello\\worldxx"`,
 			ngramLength: 6,

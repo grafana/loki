@@ -11,7 +11,9 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // keyPrefix namespaces entries and versions the on-wire format. Bump the version to invalidate old
@@ -82,6 +84,23 @@ func New(c cache.Cache, maxItemBytes int64, reg prometheus.Registerer, logger lo
 	cc.errors.WithLabelValues("store")
 
 	return cc
+}
+
+// NewFromConfig builds the cache backend that cfg describes and wraps it as a Cache.
+//
+// The limit on a cached region is the memcached max item size. Other backends, and a zero value, use
+// DefaultMaxItemBytes.
+func NewFromConfig(cfg cache.Config, reg prometheus.Registerer, logger log.Logger) (*Cache, error) {
+	c, err := cache.New(cfg, reg, logger, stats.DataObjMetadataCache, constants.Loki)
+	if err != nil {
+		return nil, err
+	}
+
+	var maxItemBytes int64
+	if cache.IsMemcacheSet(cfg) {
+		maxItemBytes = int64(cfg.MemcacheClient.MaxItemSize)
+	}
+	return New(c, maxItemBytes, reg, logger), nil
 }
 
 // GetOrLoadMetadataRegion returns the metadata region for key, loading and caching it via load on a miss.

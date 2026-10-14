@@ -11,6 +11,14 @@ type Client struct {
 	r *bufio.Reader
 }
 
+// NewClient wraps an existing connection, such as one from Miniredis.Dial().
+func NewClient(c net.Conn) *Client {
+	return &Client{
+		c: c,
+		r: bufio.NewReader(c),
+	}
+}
+
 func Dial(addr string) (*Client, error) {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {

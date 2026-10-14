@@ -278,9 +278,8 @@ func (p *parser) namedReference(name string) *RegexNode {
 
 // ECMAScript 2025 §22.2.2.3.1 RepeatMatcher, step 4, clears the quantified
 // atom's captures before each iteration. Resets stay distinct from references
-// so boolean compilation can omit unobserved slots; full compilation lowers
-// them to guarded balancing captures. For v2 compatibility, this is applied
-// only to newly supported duplicate-name patterns.
+// so boolean compilation can omit unobserved slots; full compilation emits
+// a dedicated reset instruction with backtracking restore.
 // https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-repeatmatcher
 func (p *parser) resetQuantifiedCaptures(atom *RegexNode) *RegexNode {
 	var slots []int
@@ -2571,7 +2570,7 @@ func (p *parser) addConcatenate() {
 
 // Finish the current quantifiable (when a quantifier is found)
 func (p *parser) addConcatenate3(lazy, possessive bool, min, max int) {
-	if p.duplicateNames && p.useOptionE() {
+	if p.useOptionE() {
 		p.unit = p.resetQuantifiedCaptures(p.unit)
 	}
 	node := p.unit.makeQuantifier(lazy, min, max)

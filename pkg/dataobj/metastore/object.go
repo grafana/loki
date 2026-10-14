@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -66,7 +65,7 @@ var (
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	bucket      objstore.Bucket
+	bucket      objstore.BucketReader
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
@@ -281,7 +280,7 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	}
 
 	store := &ObjectMetastore{
-		bucket:      b,
+		bucket:      dataobj.NewInstrumentedBucketReader(b),
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
@@ -654,9 +653,17 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	return entries
 }
 
-func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
-	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.Sections")
+func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ SectionsResponse, returnErr error) {
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionSections)
 	defer span.End()
+
+	start := time.Now()
+	// This runs before span.End, which stops the region from recording.
+	defer func() {
+		if returnErr == nil {
+			span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		}
+	}()
 
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
@@ -698,7 +705,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 
 			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
 			if err != nil {
-				return fmt.Errorf("collect sections: %w", err)
+				return fmt.Errorf("collect sections of index object %q: %w", indexEntry.Path, err)
 			}
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
@@ -726,10 +733,17 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		return SectionsResponse{}, err
 	}
 
-	ratio := float64(len(uniqueSections)) / float64(totalSections.Load())
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(uniqueSections)))
-	m.metrics.resolvedSectionsRatio.Observe(ratio)
+
+	// The stream filters can resolve no section, and then the ratio is undefined. Observing 0/0
+	// would turn the histogram sum into NaN. Observing 0 would claim that deduplication dropped
+	// every section.
+	var ratio float64
+	if totalSections.Load() > 0 {
+		ratio = float64(len(uniqueSections)) / float64(totalSections.Load())
+		m.metrics.resolvedSectionsRatio.Observe(ratio)
+	}
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
@@ -807,37 +821,17 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	tenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
-	}
-
-	var reader ArrowRecordBatchReader
-	flow := flowStreams
-	// Index objects without a postings section for the tenant use the legacy
-	// streams-section reader.
-	if hasPostingsSection(idxObj, tenant) {
-		flow = flowPostings
-		reader = newPostingsIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	} else {
-		reader = newIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	}
+	flow := flowPostings
+	var reader ArrowRecordBatchReader = newPostingsIndexSectionsReader(
+		m.logger,
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.BatchSize,
+		req.SectionsRequest.ShardBucketRange,
+	)
 
 	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
 	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
@@ -845,19 +839,13 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
-// hasPostingsSection reports whether obj has a postings section owned by tenant.
-func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
-	for _, sec := range obj.Sections() {
-		if sec.Tenant == tenant && postings.CheckSection(sec) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
+func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
+	start := time.Now()
+	defer func() {
+		m.metrics.getIndexesTotalDuration.WithLabelValues(getIndexesResult(returnErr)).Observe(time.Since(start).Seconds())
+	}()
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
