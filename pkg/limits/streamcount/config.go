@@ -9,18 +9,22 @@ import (
 
 // Config is the configuration for the [Service].
 type Config struct {
-	// Topic is the topic containing stream metadata records.
-	Topic       string       `yaml:"topic"`
-	KafkaConfig kafka.Config `yaml:"-"`
+	ConsumerGroup string       `yaml:"consumer_group"`
+	Topic         string       `yaml:"topic"`
+	KafkaConfig   kafka.Config `yaml:"-"`
 }
 
 // RegisterFlags registers the flags with the prefix.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Topic, "stream-count.topic", "", "The topic containing stream metadata records.")
+	f.StringVar(&cfg.ConsumerGroup, "stream-count.consumer-group", "", "The consumer group.")
+	f.StringVar(&cfg.Topic, "stream-count.topic", "", "The topic.")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
+	if cfg.ConsumerGroup == "" {
+		return errors.New("consumer group must be set")
+	}
 	if cfg.Topic == "" {
 		return errors.New("topic must be set")
 	}
