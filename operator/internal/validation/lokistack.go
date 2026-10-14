@@ -54,8 +54,9 @@ func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStac
 	var warnings admission.Warnings
 
 	storageStatus := lokiv1.LokiStackStorageStatus{}
-	if newStack != nil {
-		storageStatus = newStack.Status.Storage
+	if currentStack != nil {
+		// Use existing cluster state, newStack is empty on create
+		storageStatus = currentStack.Status.Storage
 	}
 
 	errors := ValidateSchemas(&newStack.Spec.Storage, time.Now().UTC(), storageStatus, newStack.Spec.Limits)
