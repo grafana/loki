@@ -2609,6 +2609,13 @@ type MatcherRange struct {
 	Interval, Offset time.Duration
 }
 
+// Widen shifts the bounds back by this group's range and offset. The start
+// moves by interval+offset and the end moves by offset. A log selector has
+// both durations zero, so its bounds stay put.
+func (m MatcherRange) Widen(from, through time.Time) (time.Time, time.Time) {
+	return from.Add(-(m.Interval + m.Offset)), through.Add(-m.Offset)
+}
+
 func MatcherGroups(expr Expr) ([]MatcherRange, error) {
 	switch e := expr.(type) {
 	case SampleExpr:

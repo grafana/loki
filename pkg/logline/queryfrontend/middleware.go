@@ -359,19 +359,15 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 		matcherGroups = append(matcherGroups, syntax.MatcherRange{})
 	}
 
-	start := model.Time(from.UnixMilli())
-	end := model.Time(through.UnixMilli())
 	ctx = queryrange.WithInternalRequest(ctx)
 
 	var totalBytes uint64
 	for _, group := range matcherGroups {
-		diff := group.Interval + group.Offset
-		adjustedFrom := start.Add(-diff)
-		adjustedThrough := end.Add(-group.Offset)
+		adjustedFrom, adjustedThrough := group.Widen(from, through)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
-			From:     adjustedFrom,
-			Through:  adjustedThrough,
+			From:     model.Time(adjustedFrom.UnixMilli()),
+			Through:  model.Time(adjustedThrough.UnixMilli()),
 			Matchers: syntax.MatchersString(group.Matchers),
 		})
 		if err != nil {
@@ -606,12 +602,18 @@ func (h *loglinePrefetchHandler) doDryRun(
 	go func() {
 		defer close(lookup.done)
 		start := time.Now()
+		// A supported metric query has one log selector, so it has one matcher group.
+		// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
+		lookupFrom, lookupThrough := from, eligibleEnd
+		if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+			lookupFrom, lookupThrough = groups[0].Widen(from, eligibleEnd)
+		}
 		hints, stats, hintErr := h.hintProvider.ProvideHints(
 			prefetchCtx,
 			tenant,
 			expr,
-			model.TimeFromUnixNano(from.UnixNano()),
-			model.TimeFromUnixNano(eligibleEnd.UnixNano()),
+			model.TimeFromUnixNano(lookupFrom.UnixNano()),
+			model.TimeFromUnixNano(lookupThrough.UnixNano()),
 		)
 		lookup.duration = time.Since(start)
 		if h.metrics != nil && h.metrics.hintProviderDuration != nil {
