@@ -48,6 +48,7 @@ type Service struct {
 
 func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr string, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	httpClient := &http.Client{
+		//nolint:staticcheck // SA1019: http2.Transport is deprecated in favor of http.Transport with Protocols; migrate on main.
 		Transport: &http2.Transport{
 			AllowHTTP: true,
 			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
