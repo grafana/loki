@@ -1117,6 +1117,202 @@ func TestFilterReordering(t *testing.T) {
 	})
 }
 
+func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
+	tests := map[string]struct {
+		query string
+
+		// wantNil is true when no line filter qualifies.
+		wantNil bool
+
+		wantKeep, wantDrop []string
+	}{
+		"a leading filter keeps the lines that match and drops the rest": {
+			query:    `{app="x"} |= "a"`,
+			wantKeep: []string{"a", "xay"},
+			wantDrop: []string{"", "b"},
+		},
+		"chained filters apply as an and": {
+			query:    `{app="x"} |= "a" |= "b"`,
+			wantKeep: []string{"ab", "xbxa"},
+			wantDrop: []string{"a", "b", ""},
+		},
+		"a not-equal filter drops the lines that match": {
+			query:    `{app="x"} != "a"`,
+			wantKeep: []string{"b", ""},
+			wantDrop: []string{"a", "xay"},
+		},
+		"an or chain of equal filters keeps a line that matches any operand": {
+			query:    `{app="x"} |= "a" or "b"`,
+			wantKeep: []string{"a", "b", "xay"},
+			wantDrop: []string{"c", ""},
+		},
+		"an or chain of not-equal filters drops a line that matches any operand": {
+			query:    `{app="x"} != "a" or "b"`,
+			wantKeep: []string{"c", ""},
+			wantDrop: []string{"a", "b"},
+		},
+		"a regexp filter keeps the lines that match": {
+			query:    `{app="x"} |~ "a.c"`,
+			wantKeep: []string{"abc", "xaxcx"},
+			wantDrop: []string{"ac", ""},
+		},
+		"a case-insensitive regexp filter ignores the case": {
+			query:    `{app="x"} |~ "(?i)abc"`,
+			wantKeep: []string{"abc", "xABCx"},
+			wantDrop: []string{"ab", ""},
+		},
+		"a negated regexp filter drops the lines that match": {
+			query:    `{app="x"} !~ "a.c"`,
+			wantKeep: []string{"ac", ""},
+			wantDrop: []string{"abc"},
+		},
+		"a pattern filter keeps the lines that match": {
+			query:    `{app="x"} |> "<_> e"`,
+			wantKeep: []string{"x e", "abc e"},
+			wantDrop: []string{"e", ""},
+		},
+		"a negated pattern filter drops the lines that match": {
+			query:    `{app="x"} !> "<_> e"`,
+			wantKeep: []string{"e", ""},
+			wantDrop: []string{"x e"},
+		},
+		"an ip filter keeps the lines that hold an address in the range": {
+			query:    `{app="x"} |= ip("10.0.0.0/8")`,
+			wantKeep: []string{"from 10.1.2.3", "10.255.255.255"},
+			wantDrop: []string{"from 192.168.0.1", ""},
+		},
+		"a negated ip filter drops the lines that hold an address in the range": {
+			query:    `{app="x"} != ip("10.0.0.0/8")`,
+			wantKeep: []string{"from 192.168.0.1", ""},
+			wantDrop: []string{"from 10.1.2.3"},
+		},
+		"a filter after a parser is included": {
+			query:    `{app="x"} | json |= "a"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"a filter after a label filter is included": {
+			query:    `{app="x"} | level="x" |= "a"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"a filter after label_format is included": {
+			query:    `{app="x"} | label_format k=level |= "a"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"filters on both sides of a parser apply as an and": {
+			query:    `{app="x"} |= "a" | json |= "b"`,
+			wantKeep: []string{"ab"},
+			wantDrop: []string{"a", "b"},
+		},
+		"chained filters on both sides of a parser apply as an and": {
+			query:    `{app="x"} |= "a" |= "b" | json |= "c"`,
+			wantKeep: []string{"abc", "cba"},
+			wantDrop: []string{"ab", "ac", "bc", ""},
+		},
+		"filters on both sides of a label filter apply as an and": {
+			query:    `{app="x"} |= "a" | level="x" |= "b"`,
+			wantKeep: []string{"ab"},
+			wantDrop: []string{"a", "b"},
+		},
+		"an or chain before a parser and a filter after it apply as an and": {
+			query:    `{app="x"} |= "a" or "b" | json != "c"`,
+			wantKeep: []string{"a", "b", "xay"},
+			wantDrop: []string{"ac", "bc", "c", ""},
+		},
+		"a filter before a line_format is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | line_format "{{.app}}" |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter before a decolorize is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | decolorize |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter before an unpack is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | unpack |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter directly after a line_format is not included": {
+			query:   `{app="x"} | line_format "{{.app}}" |= "b"`,
+			wantNil: true,
+		},
+		"a filter directly after a decolorize is not included": {
+			query:   `{app="x"} | decolorize != "b"`,
+			wantNil: true,
+		},
+		"a filter directly after an unpack is not included": {
+			query:   `{app="x"} | unpack |= "b"`,
+			wantNil: true,
+		},
+		"a pipeline with no line filter has none": {
+			query:   `{app="x"} | json | level="x"`,
+			wantNil: true,
+		},
+		"an empty-string filter keeps every line, so it is not returned": {
+			query:   `{app="x"} |= ""`,
+			wantNil: true,
+		},
+		"an empty-string filter next to a real one adds nothing": {
+			query:    `{app="x"} |= "" |= "a"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			for _, rewritten := range []bool{false, true} {
+				expr, err := ParseLogSelector(test.query, true)
+				require.NoError(t, err)
+				stages := expr.(*PipelineExpr).MultiStages
+
+				if rewritten {
+					_, err = stages.Pipeline()
+					require.NoError(t, err)
+				}
+
+				filter, err := stages.UnprocessedLineFilter()
+				require.NoError(t, err)
+
+				if test.wantNil {
+					require.Nil(t, filter, "AST rewritten by Pipeline: %v", rewritten)
+					continue
+				}
+				require.NotNil(t, filter, "AST rewritten by Pipeline: %v", rewritten)
+				for _, line := range test.wantKeep {
+					require.True(t, filter.Filter([]byte(line)), "line %q should pass, AST rewritten by Pipeline: %v", line, rewritten)
+				}
+				for _, line := range test.wantDrop {
+					require.False(t, filter.Filter([]byte(line)), "line %q should not pass, AST rewritten by Pipeline: %v", line, rewritten)
+				}
+			}
+		})
+	}
+
+	t.Run("returns an error for a filter that cannot be built", func(t *testing.T) {
+		stages := MultiStageExpr{&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a", Op: "unknown"}}}
+
+		filter, err := stages.UnprocessedLineFilter()
+		require.Error(t, err)
+		require.Nil(t, filter)
+	})
+
+	t.Run("returns an error for a stage that cannot be built", func(t *testing.T) {
+		stages := MultiStageExpr{
+			&LineFmtExpr{Value: "{{"},
+			&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a"}},
+		}
+
+		filter, err := stages.UnprocessedLineFilter()
+		require.Error(t, err)
+		require.Nil(t, filter)
+	})
+}
+
 var result bool
 
 func BenchmarkReorderedPipeline(b *testing.B) {

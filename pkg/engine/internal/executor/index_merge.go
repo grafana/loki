@@ -9,7 +9,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -104,15 +103,9 @@ func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *index
 	}
 
 	compressedBytes = obj.Size()
-	objectReader, err := obj.Reader(ctx)
+	uploadReader, err := obj.Reader(ctx)
 	if err != nil {
 		return nil, 0, 0, errors.Join(err, closer.Close())
-	}
-	// Report the size up front. Without it, the S3 client logs a warning and
-	// falls back to a multipart upload of unknown length.
-	uploadReader := objstore.ObjectSizerReadCloser{
-		ReadCloser: objectReader,
-		Size:       func() (int64, error) { return compressedBytes, nil },
 	}
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
 		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())

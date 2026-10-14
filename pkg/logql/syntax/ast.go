@@ -312,6 +312,72 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	return current
 }
 
+// UnprocessedLineFilter returns a line filter made of the subset of line filters that can safely
+// run on the stored line, before any stage that can modify the line. A line that passes can still
+// be dropped later, so the caller must keep running the pipeline.
+//
+// It returns nil when no line filter comes before a stage that can modify the line. It returns an
+// error when a stage cannot be built.
+func (m MultiStageExpr) UnprocessedLineFilter() (log.Filterer, error) {
+	stages, err := m.unprocessedLineFilterStages()
+	if err != nil {
+		return nil, err
+	}
+
+	filters := make([]log.Filterer, 0, len(stages))
+	for _, s := range stages {
+		f, err := s.Filter()
+		if err != nil {
+			return nil, logqlmodel.NewStageError(s.String(), err)
+		}
+		filters = append(filters, f)
+	}
+
+	if f := log.NewAndFilters(filters); f != log.TrueFilter {
+		return f, nil
+	}
+	return nil, nil
+}
+
+// unprocessedLineFilterStages returns the line filter stages that run on the stored line. It stops
+// at the first stage that can modify the line.
+func (m MultiStageExpr) unprocessedLineFilterStages() ([]*LineFilterExpr, error) {
+	var (
+		filters []*LineFilterExpr
+		chained = map[*LineFilterExpr]struct{}{}
+	)
+
+	for _, e := range m {
+		if f, ok := e.(*LineFilterExpr); ok {
+			filters = append(filters, f)
+
+			// Mark every filter that f reaches through Left. Filter on f already covers them.
+			for l := f.Left; l != nil; l = l.Left {
+				chained[l] = struct{}{}
+			}
+			continue
+		}
+
+		s, err := e.Stage()
+		if err != nil {
+			return nil, logqlmodel.NewStageError(e.String(), err)
+		}
+		if s.Hints().CanModifyLine {
+			break
+		}
+	}
+
+	// Drop every filter that another filter reaches through Left. Filter on the last link of a chain
+	// already covers the filters before it, so keeping both would run those filters twice.
+	heads := filters[:0]
+	for _, f := range filters {
+		if _, ok := chained[f]; !ok {
+			heads = append(heads, f)
+		}
+	}
+	return heads, nil
+}
+
 func (m MultiStageExpr) String() string {
 	var sb strings.Builder
 	for i, e := range m {

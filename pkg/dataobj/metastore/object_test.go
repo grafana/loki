@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	dskitmetrics "github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -335,7 +338,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 	})
 }
 
-func TestSectionsForStreamMatchers(t *testing.T) {
+func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
@@ -458,7 +461,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, capture := xcap.NewCapture(ctx, nil)
 
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: tt.start, End: tt.end, Matchers: tt.matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 
@@ -476,7 +479,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	}
 }
 
-func TestSectionsForPredicateMatchers(t *testing.T) {
+func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
@@ -578,11 +581,118 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{now.Add(-3 * time.Hour), now.Add(time.Hour), matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: now.Add(-3 * time.Hour), End: now.Add(time.Hour), Matchers: matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 		})
 	}
+}
+
+func TestObjectMetastore_Sections_ShardBucketRange(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+
+	observation := func(objectPath string, streamID int64, bucket uint32) postings.LabelObservation {
+		return postings.LabelObservation{
+			ObjectPath: objectPath, SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
+			StreamID: streamID, Timestamp: now, ShardBucket: bucket,
+		}
+	}
+
+	bucketClient := objstore.NewInMemBucket()
+	t.Cleanup(func() { require.NoError(t, bucketClient.Close()) })
+
+	// The two index objects cover disjoint bands of buckets, so a range selects one.
+	lowIndex := createIndexObjectWithPostings(ctx, t, bucketClient, []postings.LabelObservation{observation("obj-low", 1, 0), observation("obj-low", 2, 3)})
+	highIndex := createIndexObjectWithPostings(ctx, t, bucketClient, []postings.LabelObservation{observation("obj-high", 1, 20), observation("obj-high", 2, 31)})
+
+	m := newTestObjectMetastore(bucketClient)
+
+	requestWithBucketRange := func(bucketRange *postings.ShardBucketRange) SectionsRequest {
+		return SectionsRequest{
+			Start:            now.Add(-time.Hour),
+			End:              now.Add(time.Hour),
+			Matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+			ShardBucketRange: bucketRange,
+		}
+	}
+
+	requestWithBucketRangeAndReturnStreamsByObject := func(t *testing.T, bucketRange *postings.ShardBucketRange) map[string][]int64 {
+		t.Helper()
+
+		resp, err := m.Sections(ctx, requestWithBucketRange(bucketRange))
+		require.NoError(t, err)
+
+		out := map[string][]int64{}
+		for _, section := range resp.Sections {
+			ids := slices.Clone(section.StreamIDs)
+			slices.Sort(ids)
+			out[section.ObjectPath] = ids
+		}
+		return out
+	}
+
+	t.Run("no range resolves the sections of every index object", func(t *testing.T) {
+		require.Equal(t, map[string][]int64{"obj-low": {1, 2}, "obj-high": {1, 2}}, requestWithBucketRangeAndReturnStreamsByObject(t, nil))
+	})
+
+	t.Run("a range resolves only the sections whose buckets overlap it, with every stream of their rows", func(t *testing.T) {
+		require.Equal(t, map[string][]int64{"obj-low": {1, 2}}, requestWithBucketRangeAndReturnStreamsByObject(t, &postings.ShardBucketRange{From: 0, To: 3}))
+		require.Equal(t, map[string][]int64{"obj-high": {1, 2}}, requestWithBucketRangeAndReturnStreamsByObject(t, &postings.ShardBucketRange{From: 31, To: 31}))
+	})
+
+	t.Run("a range between the buckets of every section resolves no section", func(t *testing.T) {
+		require.Empty(t, requestWithBucketRangeAndReturnStreamsByObject(t, &postings.ShardBucketRange{From: 4, To: 19}))
+	})
+
+	t.Run("a range that resolves no section leaves the resolved-sections ratio sum finite", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		recording := NewObjectMetastore(bucketClient, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(reg))
+
+		resp, err := recording.Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 4, To: 19}))
+		require.NoError(t, err)
+		require.Empty(t, resp.Sections)
+
+		families, err := dskitmetrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		ratio, err := dskitmetrics.FindHistogramWithNameAndLabels(families, "loki_metastore_resolved_sections_ratio")
+		require.NoError(t, err)
+		require.False(t, math.IsNaN(ratio.GetSampleSum()), "the ratio of no section to no resolved section is not a number")
+	})
+
+	t.Run("a section that two postings index objects list with the same streams resolves once", func(t *testing.T) {
+		bucketClient := objstore.NewInMemBucket()
+		t.Cleanup(func() { require.NoError(t, bucketClient.Close()) })
+
+		shared := []postings.LabelObservation{observation("test-path", 1, 0), observation("test-path", 2, 3)}
+		createIndexObjectWithPostings(ctx, t, bucketClient, shared)
+		createIndexObjectWithPostings(ctx, t, bucketClient, append(slices.Clone(shared), observation("other-path", 1, 0)))
+
+		resp, err := newTestObjectMetastore(bucketClient).Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 0, To: 3}))
+		require.NoError(t, err)
+
+		var paths []string
+		for _, section := range resp.Sections {
+			paths = append(paths, section.ObjectPath)
+		}
+		require.ElementsMatch(t, []string{"test-path", "other-path"}, paths)
+	})
+
+	t.Run("two index objects that list disjoint streams for a section still fail under a range", func(t *testing.T) {
+		bucketClient := objstore.NewInMemBucket()
+		t.Cleanup(func() { require.NoError(t, bucketClient.Close()) })
+
+		createIndexObjectWithPostings(ctx, t, bucketClient, []postings.LabelObservation{observation("test-path", 1, 0)})
+		createIndexObjectWithPostings(ctx, t, bucketClient, []postings.LabelObservation{observation("test-path", 2, 0)})
+
+		_, err := newTestObjectMetastore(bucketClient).Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 0, To: 0}))
+		require.ErrorIs(t, err, errDifferentSectionStatistics)
+	})
+
+	t.Run("a range that starts after it ends fails and names an index object", func(t *testing.T) {
+		_, err := m.Sections(ctx, requestWithBucketRange(&postings.ShardBucketRange{From: 5, To: 1}))
+		require.ErrorContains(t, err, "invalid shard bucket range [5, 1]")
+		require.Regexp(t, regexp.QuoteMeta(lowIndex)+"|"+regexp.QuoteMeta(highIndex), err.Error())
+	})
 }
 
 func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
@@ -817,7 +927,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 	})
 }
 
-func TestSectionsForLabelsByStreamID(t *testing.T) {
+func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
@@ -951,7 +1061,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{Start: tt.start, End: tt.end, Matchers: tt.matchers, Predicates: tt.predicates})
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 
@@ -1174,11 +1284,11 @@ func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 // observeLabelPostings records a label posting for each label of a stream, as
 // the index Calculator does for each log line.
 func observeLabelPostings(builder *indexobj.Builder, path string, section, streamID int64, lbls labels.Labels, ts time.Time, size int64) {
-	shardBucket := streams.ShardBucket(lbls)
+	shardBucket := streams.DefaultShardLayout().BucketFromLabels(lbls)
 	lbls.Range(func(l labels.Label) {
 		builder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       path,
-			ShardBuckets:     int64(streams.ShardFactor),
+			ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
 			SectionIndex:     section,
 			ColumnName:       l.Name,
 			LabelValue:       l.Value,
@@ -1195,11 +1305,11 @@ func observeLabelPostings(builder *indexobj.Builder, path string, section, strea
 func observeBloomPostings(t testing.TB, builder *indexobj.Builder, path string, section, streamID int64, ts time.Time, column string, values ...string) {
 	t.Helper()
 
-	builder.PrepareBloomColumn(path, section, column, uint(len(values)), int64(streams.ShardFactor))
+	builder.PrepareBloomColumn(path, section, column, uint(len(values)), int64(streams.DefaultShardLayout().Buckets()))
 	for _, value := range values {
 		require.NoError(t, builder.ObserveBloomPosting(postings.BloomObservation{
 			ObjectPath:   path,
-			ShardBuckets: int64(streams.ShardFactor),
+			ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
 			SectionIndex: section,
 			ColumnName:   column,
 			Value:        value,
@@ -1374,4 +1484,26 @@ func TestListTableOfContentsTenants(t *testing.T) {
 			require.Empty(t, tenants)
 		})
 	}
+}
+
+// createIndexObjectWithPostings uploads an index object with one postings section, adds it to the ToC,
+// and returns its path.
+func createIndexObjectWithPostings(ctx context.Context, t testing.TB, bucket objstore.Bucket, observations []postings.LabelObservation) string {
+	t.Helper()
+
+	obj, closer := buildPostingsIndexObject(t, tenantID, observations)
+	t.Cleanup(closer)
+
+	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	path, err := up.Upload(ctx, obj)
+	require.NoError(t, err)
+
+	toc := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, toc.WriteEntry(ctx, tenantID, TableOfContentsEntry{
+		Path:      path,
+		StartTime: now.Add(-time.Minute),
+		EndTime:   now.Add(time.Minute),
+	}))
+	return path
 }

@@ -26,6 +26,7 @@ import (
 
 func newDynamicShardResolver(
 	ctx context.Context,
+	cfg Config,
 	defaultLookback time.Duration,
 	logger log.Logger,
 	maxParallelism int,
@@ -42,10 +43,13 @@ func newDynamicShardResolver(
 		next:             next,
 		from:             model.Time(r.GetStart().UnixMilli()),
 		through:          model.Time(r.GetEnd().UnixMilli()),
+		start:            r.GetStart(),
+		end:              r.GetEnd(),
 		maxParallelism:   maxParallelism,
 		maxShards:        maxShards,
 		defaultLookback:  defaultLookback,
 		chunkPolicy:      newChunkShardingPolicy(limits),
+		dataObjPolicy:    newDataObjShardingPolicy(cfg, limits),
 	}, true
 }
 
@@ -58,7 +62,10 @@ type dynamicShardResolver struct {
 	next             queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
 	logger           log.Logger
 
+	// from and through are in milliseconds. start and end keep the precision of the request, which
+	// the data-object decision needs at the edge of the held range.
 	from, through   model.Time
+	start, end      time.Time
 	maxParallelism  int
 	maxShards       int
 	defaultLookback time.Duration
@@ -67,7 +74,16 @@ type dynamicShardResolver struct {
 	// resolver looked up, as an estimate of the chunks the request scans.
 	plannedChunks atomic.Int64
 
-	chunkPolicy chunkShardingPolicy
+	chunkPolicy   chunkShardingPolicy
+	dataObjPolicy *dataObjShardingPolicy
+}
+
+// policy returns the sharding policy of the queries that run expr.
+func (r *dynamicShardResolver) policy(tenantIDs []string, expr syntax.Expr) shardingPolicy {
+	if r.dataObjPolicy.shouldUse(tenantIDs, expr, r.start, r.end) {
+		return r.dataObjPolicy
+	}
+	return r.chunkPolicy
 }
 
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
@@ -193,7 +209,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		return 0, 0, err
 	}
 
-	factor := r.chunkPolicy.powerOfTwoShards(tenantIDs, combined, r.maxShards)
+	factor := r.policy(tenantIDs, e).powerOfTwoShards(tenantIDs, combined, r.maxShards)
 
 	bytesPerShard := combined.Bytes
 	if factor > 0 {
@@ -301,6 +317,11 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"precomputed_refs", refs,
 	)
 
-	shards, chunkGroups := r.chunkPolicy.boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
+	tenantIDs, err := tenant.TenantIDs(r.ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	shards, chunkGroups := r.policy(tenantIDs, expr).boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
 	return shards, chunkGroups, nil
 }

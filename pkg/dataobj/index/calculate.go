@@ -186,7 +186,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			streamIDLookup[stream.ID] = newStreamID
 			if _, ok := streamLabels[stream.ID]; !ok {
 				streamLabels[stream.ID] = stream.Labels
-				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
+				shardBuckets[stream.ID] = streams.DefaultShardLayout().BucketFromLabels(stream.Labels)
 			}
 		}
 	}

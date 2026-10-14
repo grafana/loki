@@ -144029,7 +144029,7 @@ func _wrapper_cmp(tls *TLS, v1 uintptr, v2 uintptr, cmp uintptr) (r int32) {
 
 type t__ccgo_fp__Xqsort_3 = func(*TLS, uintptr, uintptr) int32
 
-func Xqsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun) {
+func ___musl_qsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun) {
 	if __ccgo_strace {
 		trc("tls=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v, (%v:)", tls, base, nel, width, __ccgo_fp_cmp, origin(2))
 	}

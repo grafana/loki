@@ -705,7 +705,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 
 			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
 			if err != nil {
-				return fmt.Errorf("collect sections: %w", err)
+				return fmt.Errorf("collect sections of index object %q: %w", indexEntry.Path, err)
 			}
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
@@ -733,10 +733,17 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, err
 	}
 
-	ratio := float64(len(uniqueSections)) / float64(totalSections.Load())
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(uniqueSections)))
-	m.metrics.resolvedSectionsRatio.Observe(ratio)
+
+	// The stream filters can resolve no section, and then the ratio is undefined. Observing 0/0
+	// would turn the histogram sum into NaN. Observing 0 would claim that deduplication dropped
+	// every section.
+	var ratio float64
+	if totalSections.Load() > 0 {
+		ratio = float64(len(uniqueSections)) / float64(totalSections.Load())
+		m.metrics.resolvedSectionsRatio.Observe(ratio)
+	}
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
@@ -823,6 +830,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
+		req.SectionsRequest.ShardBucketRange,
 	)
 
 	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()

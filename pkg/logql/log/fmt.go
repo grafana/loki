@@ -272,9 +272,12 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 
 // Hints implements Stage.
 func (lf *LineFormatter) Hints() StageHints {
-	// line_format rewrites the line, but it sets __error__ when the template fails, which changes the
-	// output labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It sets __error__ when the template fails, which changes the output labels.
+		CanModifyLabels: true,
+		// It replaces the line with the formatted template.
+		CanModifyLine: true,
+	}
 }
 
 func (lf *LineFormatter) RequiredLabelNames() []string {
@@ -454,8 +457,11 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 
 // Hints implements Stage.
 func (lf *LabelsFormatter) Hints() StageHints {
-	// label_format renames or sets labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It renames or sets labels.
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+	}
 }
 
 func (lf *LabelsFormatter) RequiredLabelNames() []string {
@@ -525,8 +531,12 @@ func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool
 
 // Hints implements Stage.
 func (Decolorizer) Hints() StageHints {
-	// It strips ANSI colors from the line, never touching labels.
-	return StageHints{CanModifyLabels: false}
+	return StageHints{
+		// It never touches labels.
+		CanModifyLabels: false,
+		// It strips ANSI colors from the line.
+		CanModifyLine: true,
+	}
 }
 
 func (Decolorizer) RequiredLabelNames() []string { return []string{} }

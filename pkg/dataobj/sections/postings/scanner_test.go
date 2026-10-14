@@ -228,7 +228,7 @@ func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledM
 func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.CompiledMatcher, filters []postings.CompiledMatcher, predicates []*labels.Matcher) func(*postings.Section) *postings.Scanner {
 	t.Helper()
 	return func(sec *postings.Section) *postings.Scanner {
-		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil)
+		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil, nil)
 		require.NoError(t, err)
 		require.NoError(t, readers.Open(ctx))
 		t.Cleanup(func() { require.NoError(t, readers.Close()) })
@@ -360,7 +360,7 @@ func TestScanner_MatcherHits_DuplicateNameRejected(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 	}
 	for _, sec := range secs {
-		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil)
+		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "duplicate equal-predicate name")
 	}
@@ -450,7 +450,7 @@ func TestScanner_MatcherHits_PredicateTypes(t *testing.T) {
 			_, err := postings.NewScannerReaders(sec, nil, nil, []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc"),
 				labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*"),
-			}, nil, nil)
+			}, nil, nil, nil)
 			require.NoError(t, err)
 		}
 	})
@@ -460,7 +460,7 @@ func TestScanner_MatcherHits_PredicateTypes(t *testing.T) {
 			_, err := postings.NewScannerReaders(sec, nil, nil, []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "provider", "a.*"),
 				labels.MustNewMatcher(labels.MatchNotEqual, "provider", "b"),
-			}, nil, nil)
+			}, nil, nil, nil)
 			require.NoError(t, err)
 		}
 	})

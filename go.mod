@@ -95,7 +95,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_golang/exp v0.0.0-20261008142031-a4329cfb379b
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.72.0
+	github.com/prometheus/common v0.72.1
 	github.com/prometheus/otlptranslator v1.0.0
 	github.com/prometheus/prometheus v0.314.0-rc.0.0.20260923171314-5f325dd18c88
 	github.com/prometheus/sigv4 v0.5.0
@@ -387,7 +387,7 @@ require (
 	k8s.io/client-go v0.37.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20261007072838-e2e80c32a35f // indirect
-	modernc.org/libc v1.77.1 // indirect
+	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.60.1 // indirect
@@ -419,7 +419,7 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 
-replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
 
 //  Latest Kafka protocols are not supported in Warpstream at this time.
 replace github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
