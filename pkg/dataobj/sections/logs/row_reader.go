@@ -439,7 +439,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				// A nil value reads as an empty line. Binary panics on it.
+				// A nil value reads as an empty line.
 				if value.IsNil() {
 					return p.Keep(nil)
 				}
