@@ -540,6 +540,34 @@ func TestMergedPostingsSeek(t *testing.T) {
 	}
 }
 
+// failingPostings returns the values of list and then fails with err.
+type failingPostings struct {
+	*ListPostings
+	err    error
+	failed bool
+}
+
+func newFailingPostings(err error, list ...storage.SeriesRef) *failingPostings {
+	return &failingPostings{ListPostings: newListPostings(list...), err: err}
+}
+
+func (p *failingPostings) Next() bool {
+	p.failed = !p.ListPostings.Next()
+	return !p.failed
+}
+
+func (p *failingPostings) Seek(v storage.SeriesRef) bool {
+	p.failed = !p.ListPostings.Seek(v)
+	return !p.failed
+}
+
+func (p *failingPostings) Err() error {
+	if p.failed {
+		return p.err
+	}
+	return nil
+}
+
 func TestRemovedPostings(t *testing.T) {
 	cases := []struct {
 		a, b []storage.SeriesRef
