@@ -788,10 +788,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	// Metric queries (SampleExpr) return numeric series, not log entries,
-	// so there is nothing to narrow or verify.
 	if _, ok := expr.(syntax.SampleExpr); ok {
-		return h.next.Do(ctx, req)
+		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
+			return h.next.Do(ctx, req)
+		}
 	}
 
 	// Shared eligibility: supported query shape.
