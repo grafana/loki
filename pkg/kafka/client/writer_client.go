@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -181,7 +182,7 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		kgo.MetadataMinAge(10 * time.Second),
 		kgo.MetadataMaxAge(10 * time.Second),
 
-		kgo.WithLogger(newLogger(logger)),
+		kgo.WithLogger(kgo.BasicLogger(os.Stderr, kgo.LogLevelDebug, nil)),
 
 		kgo.RetryTimeoutFn(func(key int16) time.Duration {
 			switch key {
