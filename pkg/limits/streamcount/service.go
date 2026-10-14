@@ -70,7 +70,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Service, er
 	c, err := client.NewReaderClient("stream-count-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(cfg.ConsumerGroup),
 		kgo.ConsumeTopics(cfg.Topic),
-		// kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(startOfDay(time.Now()).UnixMilli())),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(startOfDay(time.Now()).UnixMilli())),
 		kgo.DisableAutoCommit(),
 	)
 	if err != nil {
