@@ -20,9 +20,9 @@ import (
 )
 
 // ApplyGatewayDefaultOptions applies defaults on the LokiStackSpec depending on selected
-// tenant mode. Currently nothing is applied for modes static and dynamic.
-// For modes openshift-logging and openshift-network
-// the tenant spec is filled with defaults for authentication and authorization.
+// tenant mode. For modes static, dynamic, and passthrough, ExternalAccessEnabled is set to control Route creation.
+// For modes openshift-logging and openshift-network, the tenant spec is filled with defaults
+// for authentication and authorization.
 func ApplyGatewayDefaultOptions(opts *Options) error {
 	if opts.Stack.Tenants == nil {
 		return nil
@@ -44,8 +44,9 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	)
 
 	switch opts.Stack.Tenants.Mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		// Do nothing as per tenants provided by LokiStack CR
+	case lokiv1.Static, lokiv1.Dynamic, lokiv1.Passthrough:
+		// Set ExternalAccessEnabled to control Route creation on OpenShift
+		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
