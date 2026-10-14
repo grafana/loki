@@ -48,7 +48,7 @@ func makeTestStreamLabels() map[int64]labels.Labels {
 func makeTestShardBuckets(testLabels map[int64]labels.Labels) map[int64]uint32 {
 	buckets := make(map[int64]uint32, len(testLabels))
 	for id, lbls := range testLabels {
-		buckets[id] = streams.ShardBucket(lbls)
+		buckets[id] = streams.DefaultShardLayout.BucketFromLabels(lbls)
 	}
 	return buckets
 }
@@ -131,7 +131,7 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 			1: testLabels,
 		},
 		streamShardBuckets: map[int64]uint32{
-			1: streams.ShardBucket(testLabels),
+			1: streams.DefaultShardLayout.BucketFromLabels(testLabels),
 		},
 		builder: builder,
 	}
@@ -152,17 +152,17 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 		"label columns must stay keyed by the bare Prometheus name")
 	require.Equal(t, "c1", actual[0]["cluster.label.utf8"],
 		"label columns must stay keyed by the bare Prometheus name")
-	require.Equal(t, int64(streams.ShardBucket(ctx.streamLabels[1])), actual[0]["__shard_bucket__.int64"])
+	require.Equal(t, int64(streams.DefaultShardLayout.BucketFromLabels(ctx.streamLabels[1])), actual[0]["__shard_bucket__.int64"])
 }
 
 func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := streams.ShardBucket(first)
+	firstShard := streams.DefaultShardLayout.BucketFromLabels(first)
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if streams.ShardBucket(candidate) != firstShard {
+		if streams.DefaultShardLayout.BucketFromLabels(candidate) != firstShard {
 			second = candidate
 			break
 		}
@@ -176,8 +176,8 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 			2: second,
 		},
 		streamShardBuckets: map[int64]uint32{
-			1: streams.ShardBucket(first),
-			2: streams.ShardBucket(second),
+			1: streams.DefaultShardLayout.BucketFromLabels(first),
+			2: streams.DefaultShardLayout.BucketFromLabels(second),
 		},
 		builder: builder,
 	}
@@ -199,7 +199,7 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
 	}
 	require.Contains(t, gotShards, int64(firstShard))
-	require.Contains(t, gotShards, int64(streams.ShardBucket(second)))
+	require.Contains(t, gotShards, int64(streams.DefaultShardLayout.BucketFromLabels(second)))
 }
 
 func TestStatsCalculation_MissingShardBucket(t *testing.T) {
@@ -263,7 +263,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[3])),
+		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout.BucketFromLabels(ctx.streamLabels[3])),
 		"service_name.label.utf8": "",
 		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
 		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
@@ -275,7 +275,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[1])),
+		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout.BucketFromLabels(ctx.streamLabels[1])),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts1,
 		"max_timestamp.timestamp": ts2,
@@ -287,7 +287,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[2])),
+		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout.BucketFromLabels(ctx.streamLabels[2])),
 		"service_name.label.utf8": "svcB",
 		"min_timestamp.timestamp": ts3,
 		"max_timestamp.timestamp": ts3,
@@ -318,7 +318,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[1])),
+		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout.BucketFromLabels(ctx.streamLabels[1])),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts,
 		"max_timestamp.timestamp": ts,

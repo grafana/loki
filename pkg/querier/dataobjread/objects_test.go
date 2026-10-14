@@ -107,7 +107,7 @@ func TestOpenObject_StreamLabels(t *testing.T) {
 	t.Run("a bucket range covering every bucket keeps every stream", func(t *testing.T) {
 		object, ids := createAndOpenTestStoredObject(t, fixtureTenant, fixtureStreams...)
 
-		decoded, err := object.streamLabels(t.Context(), ids, &shardBucketRange{from: 0, to: streams.ShardFactor - 1})
+		decoded, err := object.streamLabels(t.Context(), ids, &shardBucketRange{from: 0, to: streams.DefaultShardLayout.Buckets() - 1})
 		require.NoError(t, err)
 		require.Len(t, decoded, len(ids))
 	})
@@ -119,7 +119,7 @@ func TestOpenObject_StreamLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		bucketOf := func(id int64) uint32 {
-			return streams.ShardBucketFromHash(labels.StableHash(all[id]))
+			return streams.DefaultShardLayout.BucketFromHash(labels.StableHash(all[id]))
 		}
 
 		// Prune to the bucket of one stream, then assert nothing outside that bucket survives.
@@ -136,7 +136,7 @@ func TestOpenObject_StreamLabels(t *testing.T) {
 		require.Contains(t, decoded, target)
 		require.Less(t, len(decoded), len(all), "the pruned read must drop the streams outside the bucket")
 		for id, streamLabels := range decoded {
-			require.Equal(t, bucket, streams.ShardBucketFromHash(labels.StableHash(streamLabels)), "stream %d is outside the pruned bucket", id)
+			require.Equal(t, bucket, streams.DefaultShardLayout.BucketFromHash(labels.StableHash(streamLabels)), "stream %d is outside the pruned bucket", id)
 		}
 	})
 }

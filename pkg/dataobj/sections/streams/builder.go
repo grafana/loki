@@ -18,16 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-const (
-	// ShardBits is the number of high labels.StableHash(labels) bits that select a stream's shard bucket.
-	// Changing it is a storage-format break, not a tunable: the query side reads it to map shards to
-	// buckets, and the exact fast path trusts stored bucket values without re-verifying them, so a change
-	// would mis-read every object written with the old value.
-	ShardBits = 5
-	// ShardFactor is the number of physical shard buckets, 2^ShardBits.
-	ShardFactor = 1 << ShardBits
-)
-
 // A Stream is an individual stream within a data object.
 type Stream struct {
 	// ID to uniquely represent a stream in a data object. Valid IDs start at 1.
@@ -48,8 +38,8 @@ type Stream struct {
 	// Total number of log records in the stream.
 	Rows int
 
-	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
-	// Valid buckets are in [0, ShardFactor).
+	// ShardBucket is the bucket of Labels in the [ShardLayout] of the
+	// section.
 	ShardBucket int64
 }
 
@@ -75,6 +65,7 @@ type Builder struct {
 	metrics      *Metrics
 	pageSize     int
 	pageRowCount int
+	shardLayout  ShardLayout
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
 
@@ -94,9 +85,10 @@ type Builder struct {
 	ordered []*Stream
 }
 
-// NewBuilder creates a new sterams section builder. The pageSize argument
-// specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
+// NewBuilder creates a new streams section builder. The pageSize argument
+// specifies how large pages should be. shardLayout sets the shard bucket of
+// each recorded stream.
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
@@ -104,6 +96,7 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 		metrics:      metrics,
 		pageSize:     pageSize,
 		pageRowCount: pageRowCount,
+		shardLayout:  shardLayout,
 		lookup:       make(map[uint64][]*Stream, 1024),
 		ordered:      make([]*Stream, 0, 1024),
 	}
@@ -229,19 +222,6 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-// ShardBucketFromHash returns the physical shard bucket for a stream fingerprint.
-// Buckets are 0-based in [0, ShardFactor).
-func ShardBucketFromHash(hash uint64) uint32 {
-	return uint32(hash >> (64 - ShardBits))
-}
-
-// ShardBucket returns the physical shard bucket for streamLabels.
-// Buckets are 0-based in [0, ShardFactor).
-func ShardBucket(streamLabels labels.Labels) uint32 {
-	fp := labels.StableHash(streamLabels)
-	return ShardBucketFromHash(fp)
-}
-
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	streamLabels.Range(func(l labels.Label) {
 		b.currentLabelsSize += len(l.Value)
@@ -251,7 +231,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.ShardBucket = int64(ShardBucketFromHash(hash))
+	newStream.ShardBucket = int64(b.shardLayout.BucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)

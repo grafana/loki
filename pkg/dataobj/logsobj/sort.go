@@ -24,23 +24,24 @@ type rankedSortKey struct {
 
 // emptyRankedSortKey returns an unranked sort key (rank set to 0) for a label set.
 // SortKey fields are calculated from input labels ls.
-func emptyRankedSortKey(ls labels.Labels, schemaLabels []string) (rankedSortKey, error) {
+func emptyRankedSortKey(ls labels.Labels, schemaLabels []string, shardLayout streams.ShardLayout) (rankedSortKey, error) {
 	schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
 	if err != nil {
 		return rankedSortKey{}, err
 	}
 
 	return rankedSortKey{
-		SortKey: streams.NewSortKey(ls, schemaKey),
+		SortKey: shardLayout.NewSortKey(ls, schemaKey),
 	}, nil
 }
 
-// TargetSortLayout returns the physical logs layout produced for schemaLabels.
-func TargetSortLayout(schemaLabels []string) logs.SortLayout {
+// TargetSortLayout returns the physical logs layout produced for schemaLabels
+// and shardLayout.
+func TargetSortLayout(schemaLabels []string, shardLayout streams.ShardLayout) logs.SortLayout {
 	return logs.SortLayout{
 		SchemaLabels: slices.Clone(schemaLabels),
 		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   streams.ShardFactor,
+		ShardCount:   shardLayout.Buckets(),
 	}
 }
 

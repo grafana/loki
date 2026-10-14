@@ -35,7 +35,7 @@ func (c *columnValuesCalculation) Prepare(_ context.Context, calcCtx *logsCalcul
 		c.metadataColumns[column.Name] = struct{}{}
 		calcCtx.builder.PrepareBloomColumn(
 			calcCtx.objectPath, calcCtx.sectionIdx,
-			column.Name, uint(column.Cardinality), int64(streams.ShardFactor),
+			column.Name, uint(column.Cardinality), int64(streams.DefaultShardLayout.Buckets()),
 		)
 	}
 	return nil
@@ -56,7 +56,7 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			}
 			batchErr = calcCtx.builder.ObserveBloomPosting(postings.BloomObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBuckets:     int64(streams.DefaultShardLayout.Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       md.Name,
 				Value:            md.Value,

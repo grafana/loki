@@ -249,7 +249,7 @@ func (c *coordinator) planLogCompaction(
 	}
 
 	targetSortSchema := c.limits.SortSchemaLabels(tenant)
-	if !slices.Equal(sortSchema, targetSortSchema) || shardCount != int64(streams.ShardFactor) {
+	if !slices.Equal(sortSchema, targetSortSchema) || shardCount != int64(streams.DefaultShardLayout.Buckets()) {
 		return planSortObjects(window, sourceIndex, sections, targetSortSchema), nil
 	}
 	return c.planLogMerge(tenant, window, sourceIndex, sections, sortSchema)

@@ -427,14 +427,14 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 		{
 			path: "a",
 			streams: map[int64]streams.Stream{
-				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.ShardBucket(ls))},
-				7: {ID: 7, Labels: other, ShardBucket: int64(streams.ShardBucket(other))},
+				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.DefaultShardLayout.BucketFromLabels(ls))},
+				7: {ID: 7, Labels: other, ShardBucket: int64(streams.DefaultShardLayout.BucketFromLabels(other))},
 			},
 		},
 		{
 			path: "b",
 			streams: map[int64]streams.Stream{
-				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
+				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.DefaultShardLayout.BucketFromLabels(ls))},
 			},
 		},
 	}
@@ -528,11 +528,11 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 			prev, curr := o.records[i-1], o.records[i]
 			prevSchemaKey, err := logsobj.ComputeSchemaKey(o.streamLabels[prev.streamID], sortSchema)
 			require.NoError(t, err)
-			prevKey := streams.NewSortKey(o.streamLabels[prev.streamID], prevSchemaKey)
+			prevKey := streams.DefaultShardLayout.NewSortKey(o.streamLabels[prev.streamID], prevSchemaKey)
 
 			currSchemaKey, err := logsobj.ComputeSchemaKey(o.streamLabels[curr.streamID], sortSchema)
 			require.NoError(t, err)
-			currKey := streams.NewSortKey(o.streamLabels[curr.streamID], currSchemaKey)
+			currKey := streams.DefaultShardLayout.NewSortKey(o.streamLabels[curr.streamID], currSchemaKey)
 
 			require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0, "stream order must be non-decreasing within object %d", objIdx)
 			if streams.CompareSortKey(prevKey, currKey) == 0 {
@@ -724,7 +724,7 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 	want := logs.SortLayout{
 		SchemaLabels: []string{"label:app"},
 		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   streams.ShardFactor,
+		ShardCount:   streams.DefaultShardLayout.Buckets(),
 	}
 
 	tests := []struct {
@@ -736,7 +736,7 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 			got: logs.SortLayout{
 				SchemaLabels: []string{"label:cluster"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.ShardFactor,
+				ShardCount:   streams.DefaultShardLayout.Buckets(),
 			},
 		},
 		{
@@ -744,7 +744,7 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 			got: logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderUnspecified,
-				ShardCount:   streams.ShardFactor,
+				ShardCount:   streams.DefaultShardLayout.Buckets(),
 			},
 		},
 		{
@@ -752,7 +752,7 @@ func TestSortLayoutEqual_DetectsMismatchedComponents(t *testing.T) {
 			got: logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.ShardFactor / 2,
+				ShardCount:   streams.DefaultShardLayout.Buckets() / 2,
 			},
 		},
 	}
@@ -1364,7 +1364,7 @@ func TestDoLogObjectMerge_PlannedRuns(t *testing.T) {
 		})
 		key, err := logsobj.ComputeSchemaKey(lbls, schema)
 		require.NoError(t, err)
-		sortKey := streams.NewSortKey(lbls, key)
+		sortKey := streams.DefaultShardLayout.NewSortKey(lbls, key)
 		for _, ref := range sourceLogRuns(t, bucket, tenant, path)[0].Sections {
 			sections = append(sections, v2.Section[streams.SortKey]{Ref: ref, Min: sortKey, Max: sortKey})
 		}

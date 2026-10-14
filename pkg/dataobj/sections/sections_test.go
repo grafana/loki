@@ -19,7 +19,7 @@ func TestForTenant(t *testing.T) {
 	logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{StripeMergeLimit: 2, SortOrder: logs.SortStreamASC})
 	logsBuilder.Append(logs.Record{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("line")})
 
-	streamsBuilder := streams.NewBuilder(nil, 1, 0)
+	streamsBuilder := streams.NewBuilder(nil, 1, 0, streams.DefaultShardLayout)
 	streamsBuilder.Record(labels.FromStrings("app", "foo"), time.Unix(1, 0), 4)
 
 	builder := dataobj.NewBuilder(nil)

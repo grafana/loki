@@ -283,7 +283,7 @@ func TestDoIndexFilter(t *testing.T) {
 		pointersBuilder.ObserveStream("logs/a", 0, 1, 1, time.Unix(0, 1_000), 100)
 		require.NoError(t, objBuilder.Append(pointersBuilder))
 
-		streamsBuilder := streams.NewBuilder(nil, 8192, 0)
+		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout)
 		streamsBuilder.SetTenant("acme")
 		streamsBuilder.Record(labels.FromStrings("service_name", "logs/a"), time.Unix(0, 1_000), 100)
 		require.NoError(t, objBuilder.Append(streamsBuilder))

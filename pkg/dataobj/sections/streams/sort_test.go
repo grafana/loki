@@ -7,18 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewSortKey(t *testing.T) {
-	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
-	hash := labels.StableHash(streamLabels)
-
-	key := NewSortKey(streamLabels, "fake-schema-key")
-
-	require.Equal(t, ShardBucketFromHash(hash), key.ShardBucket)
-	require.Equal(t, "fake-schema-key", key.SchemaKey)
-	require.Equal(t, hash, key.Hash)
-	require.Equal(t, streamLabels, key.Labels)
-}
-
 func TestSortKeyCompare(t *testing.T) {
 	tests := []struct {
 		name string
