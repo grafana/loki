@@ -613,8 +613,6 @@ func TestFlushTenantHandler(t *testing.T) {
 		expectedFlushStatusCode int
 		// expectedStreams are the label sets expected to have been flushed to the store.
 		expectedStreams []string
-		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
-		expectedFlushes int32
 	}{
 		{
 			name:                    "matcher scopes flush to matching streams",
@@ -623,7 +621,6 @@ func TestFlushTenantHandler(t *testing.T) {
 			flushStreamsSelector:    `{app="a"}`,
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`},
-			expectedFlushes:         1,
 		},
 		{
 			name:                    "empty selector flushes the whole tenant",
@@ -631,7 +628,6 @@ func TestFlushTenantHandler(t *testing.T) {
 			orgID:                   userID,
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
-			expectedFlushes:         1,
 		},
 		{
 			name:                    "missing tenant is a bad request",
@@ -677,8 +673,6 @@ func TestFlushTenantHandler(t *testing.T) {
 				flushedStreams = append(flushedStreams, c.Metric.String())
 			}
 			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
-
-			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
 		})
 	}
 }
@@ -698,15 +692,6 @@ type testStore struct {
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
-
-	// flushIndexCalls counts how many times FlushIndexes was invoked, so tests can
-	// assert the handler forces the index ship after flushing chunks.
-	flushIndexCalls atomic.Int32
-}
-
-func (s *testStore) FlushIndexes(_ context.Context) error {
-	s.flushIndexCalls.Add(1)
-	return nil
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.

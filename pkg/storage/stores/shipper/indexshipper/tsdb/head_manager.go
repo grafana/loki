@@ -120,9 +120,6 @@ type HeadManager struct {
 
 	wg     sync.WaitGroup
 	cancel chan struct{}
-	// flush receives requests to force a rotate+build outside the periodic tick.
-	// It is handled on the loop goroutine so a forced flush never races a tick.
-	flush chan chan error
 }
 
 func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
@@ -138,7 +135,6 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 		shards: shards,
 
 		cancel: make(chan struct{}),
-		flush:  make(chan chan error),
 	}
 
 	m.Index = LazyIndex(func() (Index, error) {
@@ -184,41 +180,40 @@ func (m *HeadManager) buildPrev() error {
 	return nil
 }
 
-// rotateAndBuild runs one rotation cycle, shared by the periodic tick() and the
-// on-demand Flush(): it drains any pending previous-period build, rotates the
-// active head when either forced or a new period has started, then builds the
-// rotated-out head. The only difference between the periodic and forced paths is
-// whether rotation is gated on the period boundary. Must only be called from the
-// loop goroutine.
-func (m *HeadManager) rotateAndBuild(now time.Time, force bool) error {
-	// Retry tsdb build failures from a previous run before rotating; rotating
-	// without building prev would lose that period's index until restart.
+// tick handles one iteration for `loop()`. It builds new heads,
+// cleans up previous heads, and performs rotations.
+func (m *HeadManager) tick(now time.Time) {
+	// retry tsdb build failures from previous run
 	if err := m.buildPrev(); err != nil {
-		return errors.Wrap(err, "building pending prev tsdb head")
+		level.Error(m.log).Log(
+			"msg", "failed building tsdb head",
+			"period", m.period.PeriodFor(m.prev.initialized),
+			"err", err,
+		)
+		// rotating head without building prev would result in loss of index for that period (until restart)
+		return
 	}
 
-	if force || m.period.PeriodFor(now) > m.period.PeriodFor(m.activeHeads.start) {
+	if activePeriod := m.period.PeriodFor(m.activeHeads.start); m.period.PeriodFor(now) > activePeriod {
 		if err := m.Rotate(now); err != nil {
 			m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
-			return errors.Wrap(err, "rotating tsdb head")
+			level.Error(m.log).Log(
+				"msg", "failed rotating tsdb head",
+				"period", activePeriod,
+				"err", err,
+			)
+			return
 		}
 		m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
 	}
 
-	// Build tsdb from the rotated-out (now frozen) period.
+	// build tsdb from rotated-out period
 	if err := m.buildPrev(); err != nil {
-		return errors.Wrap(err, "building rotated-out tsdb head")
-	}
-
-	return nil
-}
-
-// tick handles one iteration for `loop()`. It builds new heads, cleans up
-// previous heads, and rotates when a new period has started. Errors are logged
-// and the loop continues.
-func (m *HeadManager) tick(now time.Time) {
-	if err := m.rotateAndBuild(now, false); err != nil {
-		level.Error(m.log).Log("msg", "failed to rotate/build tsdb head", "err", err)
+		level.Error(m.log).Log(
+			"msg", "failed building tsdb head",
+			"period", m.period.PeriodFor(m.prev.initialized),
+			"err", err,
+		)
 	}
 }
 
@@ -233,32 +228,9 @@ func (m *HeadManager) loop() {
 		case <-ticker.C:
 			now := time.Now()
 			m.tick(now)
-		case resp := <-m.flush:
-			resp <- m.rotateAndBuild(time.Now(), true)
 		case <-m.cancel:
 			return
 		}
-	}
-}
-
-// errHeadManagerStopped is returned by Flush when the loop has already stopped.
-var errHeadManagerStopped = errors.New("head manager is stopping")
-
-// Flush forces the active head to be rotated out and built into TSDB files
-// immediately, instead of waiting for the next periodic rotation. The work runs
-// on the manager's loop goroutine (serialized with the periodic tick), so it
-// never races a concurrent rotation.
-//
-// The freshly built TSDBs are handed to the index shipper but are not yet
-// uploaded to object storage; callers wanting them durable in object storage
-// must also force an upload (see (*store).FlushIndexes).
-func (m *HeadManager) Flush() error {
-	resp := make(chan error, 1)
-	select {
-	case m.flush <- resp:
-		return <-resp
-	case <-m.cancel:
-		return errHeadManagerStopped
 	}
 }
 
@@ -465,24 +437,16 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 }
 
 func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
+	period := m.period.PeriodFor(head.start)
 	if err := m.tsdbManager.BuildFromHead(head); err != nil {
 		return errors.Wrap(err, "building tsdb from head")
 	}
 
-	// Now that a TSDB has been created from this head, it's safe to remove
-	// its WAL. We remove only the exact WAL this head was rotated out of
-	// (identified by its own rotation timestamp), rather than every WAL
-	// directory that happens to fall in the same rotation-period bucket:
-	// a forced flush (e.g. via the /flush/tenant endpoint) can rotate more
-	// than once within a single period, and a bucket-based sweep would
-	// delete the newly-active WAL out from under the ingester before
-	// anything is ever written to it, breaking every tenant sharing that
-	// WAL until the next rotation (which can immediately repeat the race).
-	if err := m.truncateWAL(head.start); err != nil {
+	// Now that a TSDB has been created from this group, it's safe to remove them
+	if err := m.truncateWALForPeriod(period); err != nil {
 		level.Error(m.log).Log(
-			"msg", "failed truncating wal file",
-			"head_start", head.start,
-			"period", m.period.PeriodFor(head.start),
+			"msg", "failed truncating wal files",
+			"period", period,
 			"err", err,
 		)
 	}
@@ -490,7 +454,7 @@ func (m *HeadManager) buildTSDBFromHead(head *tenantHeads) error {
 	return nil
 }
 
-func (m *HeadManager) truncateWAL(ts time.Time) (err error) {
+func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 	defer func() {
 		status := statusSuccess
 		if err != nil {
@@ -500,11 +464,16 @@ func (m *HeadManager) truncateWAL(ts time.Time) (err error) {
 		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
-	path := walPath(m.name, m.dir, ts)
-	if err := os.RemoveAll(path); err != nil {
-		return errors.Wrapf(err, "removing tsdb wal: %s", path)
+	grp, _, err := walsForPeriod(managerWalDir(m.name, m.dir), m.period, period)
+	if err != nil {
+		return errors.Wrap(err, "listing wals")
 	}
-	level.Debug(m.log).Log("msg", "removed wal", "ts", ts, "path", path)
+	level.Debug(m.log).Log("msg", "listed WALs", "pd", grp.period, "n", len(grp.wals))
+
+	if err := m.removeWALGroup(grp); err != nil {
+		return errors.Wrapf(err, "removing TSDB WALs for period %d", grp.period)
+	}
+	level.Debug(m.log).Log("msg", "removing wals", "pd", grp.period, "n", len(grp.wals))
 
 	return nil
 }
@@ -573,6 +542,15 @@ func walsForPeriod(dir string, period period, offset int) (WalGroup, bool, error
 	}
 
 	return *grp, true, nil
+}
+
+func (m *HeadManager) removeWALGroup(grp WalGroup) error {
+	for _, wal := range grp.wals {
+		if err := os.RemoveAll(walPath(m.name, m.dir, wal.ts)); err != nil {
+			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.name, m.dir, wal.ts))
+		}
+	}
+	return nil
 }
 
 func (m *HeadManager) removeLegacyWALGroup(grp WalGroup) error {
