@@ -34,25 +34,25 @@ func TestShardBucketRangeFor(t *testing.T) {
 			shard:     powerOfTwoShard(0, 2),
 			wantOK:    true,
 			wantFrom:  0,
-			wantTo:    streams.ShardFactor/2 - 1,
+			wantTo:    streams.DefaultShardLayout().Buckets()/2 - 1,
 			wantExact: true,
 		},
 		"the second of two shards covers the upper half of the buckets exactly": {
 			shard:     powerOfTwoShard(1, 2),
 			wantOK:    true,
-			wantFrom:  streams.ShardFactor / 2,
-			wantTo:    streams.ShardFactor - 1,
+			wantFrom:  streams.DefaultShardLayout().Buckets() / 2,
+			wantTo:    streams.DefaultShardLayout().Buckets() - 1,
 			wantExact: true,
 		},
 		"a shard count equal to the bucket count maps each shard to one exact bucket": {
-			shard:     powerOfTwoShard(3, streams.ShardFactor),
+			shard:     powerOfTwoShard(3, streams.DefaultShardLayout().Buckets()),
 			wantOK:    true,
 			wantFrom:  3,
 			wantTo:    3,
 			wantExact: true,
 		},
 		"a shard count above the bucket count is inexact because several shards share a bucket": {
-			shard:     powerOfTwoShard(3, streams.ShardFactor*2),
+			shard:     powerOfTwoShard(3, streams.DefaultShardLayout().Buckets()*2),
 			wantOK:    true,
 			wantFrom:  1,
 			wantTo:    1,
@@ -62,14 +62,14 @@ func TestShardBucketRangeFor(t *testing.T) {
 			shard:     powerOfTwoShard(2, 3),
 			wantOK:    true,
 			wantFrom:  0,
-			wantTo:    streams.ShardFactor - 1,
+			wantTo:    streams.DefaultShardLayout().Buckets() - 1,
 			wantExact: false,
 		},
 		"a bounded shard is never exact, so its stream hashes stay checked": {
 			shard:     boundedShard(0, ^uint64(0)/2),
 			wantOK:    true,
 			wantFrom:  0,
-			wantTo:    streams.ShardFactor/2 - 1,
+			wantTo:    streams.DefaultShardLayout().Buckets()/2 - 1,
 			wantExact: false,
 		},
 	}
@@ -92,7 +92,7 @@ func TestShardBucketRangeFor(t *testing.T) {
 // every stream hash a shard matches falls inside the bucket range that shard maps to. A
 // matching hash outside the range would be a stream the pruned read dropped without saying so.
 func TestShardBucketRangeFor_CoversEveryMatchingStream(t *testing.T) {
-	for _, of := range []uint32{2, 3, 4, 6, streams.ShardFactor, streams.ShardFactor * 2} {
+	for _, of := range []uint32{2, 3, 4, 6, streams.DefaultShardLayout().Buckets(), streams.DefaultShardLayout().Buckets() * 2} {
 		t.Run(fmt.Sprintf("a shard count of %d keeps every matching streamHash inside its bucket range", of), func(t *testing.T) {
 			for shard := uint32(0); shard < of; shard++ {
 				assignment := powerOfTwoShard(shard, of)
@@ -103,7 +103,7 @@ func TestShardBucketRangeFor_CoversEveryMatchingStream(t *testing.T) {
 					if !assignment.Match(model.Fingerprint(streamHash)) {
 						continue
 					}
-					bucket := streams.ShardBucketFromHash(streamHash)
+					bucket := streams.DefaultShardLayout().BucketFromHash(streamHash)
 					require.GreaterOrEqual(t, bucket, buckets.from, "shard %d of %d: streamHash %d is in bucket %d, below the range", shard, of, streamHash, bucket)
 					require.LessOrEqual(t, bucket, buckets.to, "shard %d of %d: streamHash %d is in bucket %d, above the range", shard, of, streamHash, bucket)
 				}
@@ -123,7 +123,7 @@ func TestShardBucketRangeFor_CoversEveryMatchingStream(t *testing.T) {
 						continue
 					}
 					require.True(t, ok, "bounded shard [%d, %d] matches streamHash %d but pushes no range down", min, max, streamHash)
-					bucket := streams.ShardBucketFromHash(streamHash)
+					bucket := streams.DefaultShardLayout().BucketFromHash(streamHash)
 					require.GreaterOrEqual(t, bucket, buckets.from, "bounded shard [%d, %d]: streamHash %d is below the range", min, max, streamHash)
 					require.LessOrEqual(t, bucket, buckets.to, "bounded shard [%d, %d]: streamHash %d is above the range", min, max, streamHash)
 				}
@@ -146,10 +146,10 @@ func boundedShard(from, through uint64) *logql.Shard {
 // spreadStreamHashes returns stream hashes spread across the whole uint64 space, including
 // every bucket boundary, where an off-by-one in the mapping would show.
 func spreadStreamHashes() []uint64 {
-	const bucketWidth = uint64(1) << (64 - streams.ShardBits)
+	const bucketWidth = uint64(1) << (64 - streams.DefaultShardBits)
 
 	out := []uint64{0, ^uint64(0)}
-	for bucket := uint64(0); bucket < streams.ShardFactor; bucket++ {
+	for bucket := uint64(0); bucket < uint64(streams.DefaultShardLayout().Buckets()); bucket++ {
 		base := bucket * bucketWidth
 		out = append(out, base, base+1, base+bucketWidth/2, base+bucketWidth-1)
 	}

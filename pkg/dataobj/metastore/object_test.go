@@ -1284,11 +1284,11 @@ func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 // observeLabelPostings records a label posting for each label of a stream, as
 // the index Calculator does for each log line.
 func observeLabelPostings(builder *indexobj.Builder, path string, section, streamID int64, lbls labels.Labels, ts time.Time, size int64) {
-	shardBucket := streams.ShardBucket(lbls)
+	shardBucket := streams.DefaultShardLayout().BucketFromLabels(lbls)
 	lbls.Range(func(l labels.Label) {
 		builder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       path,
-			ShardBuckets:     int64(streams.ShardFactor),
+			ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
 			SectionIndex:     section,
 			ColumnName:       l.Name,
 			LabelValue:       l.Value,
@@ -1305,11 +1305,11 @@ func observeLabelPostings(builder *indexobj.Builder, path string, section, strea
 func observeBloomPostings(t testing.TB, builder *indexobj.Builder, path string, section, streamID int64, ts time.Time, column string, values ...string) {
 	t.Helper()
 
-	builder.PrepareBloomColumn(path, section, column, uint(len(values)), int64(streams.ShardFactor))
+	builder.PrepareBloomColumn(path, section, column, uint(len(values)), int64(streams.DefaultShardLayout().Buckets()))
 	for _, value := range values {
 		require.NoError(t, builder.ObserveBloomPosting(postings.BloomObservation{
 			ObjectPath:   path,
-			ShardBuckets: int64(streams.ShardFactor),
+			ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
 			SectionIndex: section,
 			ColumnName:   column,
 			Value:        value,

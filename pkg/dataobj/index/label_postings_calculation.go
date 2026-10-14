@@ -40,7 +40,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 		streamLbls.Range(func(lbl labels.Label) {
 			calcCtx.builder.ObserveLabelPosting(postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBuckets:     int64(streams.DefaultShardLayout().Buckets()),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,

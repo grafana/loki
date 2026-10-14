@@ -96,11 +96,11 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	// streamShardBuckets from labels; a missing or zeroed map would either
 	// error or collapse these into one row.
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := streams.ShardBucket(first)
+	firstShard := streams.DefaultShardLayout().BucketFromLabels(first)
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if streams.ShardBucket(candidate) != firstShard {
+		if streams.DefaultShardLayout().BucketFromLabels(candidate) != firstShard {
 			second = candidate
 			break
 		}
@@ -148,8 +148,8 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
 	}
 	require.Equal(t, map[int64]struct{}{
-		int64(firstShard):                  {},
-		int64(streams.ShardBucket(second)): {},
+		int64(firstShard): {},
+		int64(streams.DefaultShardLayout().BucketFromLabels(second)): {},
 	}, gotShards)
 }
 
@@ -315,7 +315,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	)
 	sourceBuilder := dataobj.NewBuilder(nil)
 	ts := time.Unix(10, 0).UTC()
-	streamBuilder := streams.NewBuilder(nil, 2048, 10000)
+	streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
 	streamBuilder.SetTenant(tenant)
 	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
 	appendLogsSection := func() {

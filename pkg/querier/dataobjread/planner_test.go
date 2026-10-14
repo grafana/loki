@@ -100,17 +100,17 @@ func TestPlanner_Plan(t *testing.T) {
 		{
 			name:  "the first of two shards asks the metastore for the lower half of the buckets",
 			shard: NewQueryShard(powerOfTwoShard(0, 2)),
-			want:  &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/2 - 1},
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
 		},
 		{
 			name:  "a shard count above the bucket count asks the metastore for the one bucket it falls in",
-			shard: NewQueryShard(powerOfTwoShard(5, streams.ShardFactor*4)),
+			shard: NewQueryShard(powerOfTwoShard(5, streams.DefaultShardLayout().Buckets()*4)),
 			want:  &postings.ShardBucketRange{From: 1, To: 1},
 		},
 		{
 			name:  "a bounded shard asks the metastore for the buckets it spans",
 			shard: NewQueryShard(boundedShard(0, ^uint64(0)/2)),
-			want:  &postings.ShardBucketRange{From: 0, To: streams.ShardFactor/2 - 1},
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
