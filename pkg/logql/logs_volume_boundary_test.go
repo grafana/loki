@@ -72,7 +72,7 @@ func TestLogsVolumeBoundaryScenarios(t *testing.T) {
 
 			for _, direction := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
 				t.Run(direction.String(), func(t *testing.T) {
-					counts := volumeLogCounts(t, ctx, engine, fixture.Selector, start, end, direction)
+					counts := volumeLogCounts(ctx, t, engine, fixture.Selector, start, end, direction)
 					require.Equal(t, scenario.ExpectedLogs, counts, "log query covers [start,end)")
 				})
 			}
@@ -81,7 +81,7 @@ func TestLogsVolumeBoundaryScenarios(t *testing.T) {
 			require.NotEmpty(t, scenario.Parts)
 			for _, part := range scenario.Parts {
 				t.Run(part.Name, func(t *testing.T) {
-					buckets := volumeRunPart(t, ctx, engine, base, part)
+					buckets := volumeRunPart(ctx, t, engine, base, part)
 					require.Equal(t, part.expectedBuckets(t, base), buckets, "bucket timestamps and counts")
 					buckets.addTo(totals)
 				})
@@ -125,7 +125,7 @@ func newVolumeBoundaryEngine(t *testing.T, base time.Time, scenario volumeBounda
 }
 
 // volumeLogCounts counts the actual log query results by level.
-func volumeLogCounts(t *testing.T, ctx context.Context, engine *logql.QueryEngine, selector string, start, end time.Time, direction logproto.Direction) map[string]int {
+func volumeLogCounts(ctx context.Context, t *testing.T, engine *logql.QueryEngine, selector string, start, end time.Time, direction logproto.Direction) map[string]int {
 	t.Helper()
 	params, err := logql.NewLiteralParams(selector, start, end, 0, 0, direction, 10000, nil, nil)
 	require.NoError(t, err)
@@ -166,7 +166,7 @@ func (buckets volumeBuckets) addTo(totals map[string]int) {
 	}
 }
 
-func volumeRunPart(t *testing.T, ctx context.Context, engine *logql.QueryEngine, base time.Time, part volumeBoundaryPart) volumeBuckets {
+func volumeRunPart(ctx context.Context, t *testing.T, engine *logql.QueryEngine, base time.Time, part volumeBoundaryPart) volumeBuckets {
 	t.Helper()
 	start := base.Add(volumeDuration(t, part.Start))
 	end := base.Add(volumeDuration(t, part.End))
