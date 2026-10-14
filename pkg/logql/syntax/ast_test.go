@@ -1157,6 +1157,18 @@ func TestLogSelectorExprHasFilter(t *testing.T) {
 		`{foo="bar"} != ""`:                  true,
 		`{foo="bar"} | lbl="notempty"`:       true,
 		`{foo="bar"} |= "" | lbl="notempty"`: true,
+
+		`{foo="bar"} |= "notempty" |= ""`:            true,
+		`{foo="bar"} |~ "notempty" |= "" |= ""`:      true,
+		`{foo="bar"} |= "notempty" |= "" | json`:     true,
+		`{foo="bar"} |= "" or ""`:                    false,
+		`{foo="bar"} |= "" or "" |= ""`:              false,
+		`{foo="bar"} |= "" or "notempty"`:            true,
+		`{foo="bar"} |= "notempty" or ""`:            true,
+		`{foo="bar"} |= "" or "" or "notempty"`:      true,
+		`{foo="bar"} |= "" or "notempty" |= ""`:      true,
+		`{foo="bar"} |= "" |= "" or "notempty"`:      true,
+		`{foo="bar"} |= "" or ip("127.0.0.1") |= ""`: true,
 	} {
 		expr, err := ParseExpr(query)
 		require.NoError(t, err)

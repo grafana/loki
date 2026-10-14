@@ -426,8 +426,7 @@ func (e *PipelineExpr) HasFilter() bool {
 		case *LabelFilterExpr:
 			return true
 		case *LineFilterExpr:
-			// ignore empty matchers as they match everything
-			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
+			if v.hasFilter() {
 				return true
 			}
 		default:
@@ -562,6 +561,20 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 		Or:         right.Or,
 		IsOrChild:  right.IsOrChild,
 	}
+}
+
+// hasFilter returns true if any filter in the chain, including or branches,
+// can filter out lines.
+func (e *LineFilterExpr) hasFilter() bool {
+	if e == nil {
+		return false
+	}
+	// Empty matchers match everything. An empty or branch does not make its
+	// group match everything, because building the or filter drops it.
+	if (e.Ty != log.LineMatchEqual && e.Ty != log.LineMatchRegexp) || e.Match != "" {
+		return true
+	}
+	return e.Left.hasFilter() || e.Or.hasFilter()
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
