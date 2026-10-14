@@ -244,7 +244,7 @@ func TestOTLPValidationTailAndQuery(t *testing.T) {
 	received := make(chan time.Time, 3)
 	before := testutil.ToFloat64(otlpValidationErrors)
 	r, err := NewReader(io.Discard, received, false, nil, "", "", "", strings.TrimPrefix(server.URL, "http://"), "",
-		"user", "password", "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true)
+		"user", "password", "", "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true)
 	require.NoError(t, err)
 	defer r.Stop()
 	want := start.Add(2 * time.Nanosecond)
@@ -293,6 +293,7 @@ func TestNewReaderRejectsMultipleAuthenticationMethods(t *testing.T) {
 		time.Second,
 		"",
 		"",
+		false,
 	)
 	require.EqualError(t, err, "at most one of basic authentication and bearer token authentication may be configured")
 }

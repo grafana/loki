@@ -57,7 +57,7 @@ func TestOTLPPush(t *testing.T) {
 			wantPath := strings.TrimSuffix(tc.prefix, "/") + "/otlp/v1/logs"
 			p, err := NewPush(addr, tc.prefix, "write-tenant", time.Second, httpCfg,
 				"canary_instance", "replica-1", "canary_protocol", "otlp", tc.tls, nil, "", "", "",
-				"canary-user", "canary-token", &backoff.Config{MaxRetries: 1}, tc.batch, PushProtocolOTLP, log.NewNopLogger())
+				"canary-user", "canary-token", "", &backoff.Config{MaxRetries: 1}, tc.batch, PushProtocolOTLP, log.NewNopLogger())
 			require.NoError(t, err)
 			defer p.Stop()
 			start := time.Unix(1700000000, 123456789)
@@ -155,7 +155,7 @@ func TestOTLPRetry(t *testing.T) {
 			}))
 			defer server.Close()
 			p, err := NewPush(strings.TrimPrefix(server.URL, "http://"), "", "", time.Second, config.DefaultHTTPClientConfig,
-				"name", "replica", "stream", "otlp", false, nil, "", "", "", "", "",
+				"name", "replica", "stream", "otlp", false, nil, "", "", "", "", "", "",
 				&backoff.Config{MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond, MaxRetries: 2},
 				batchSize, PushProtocolOTLP, log.NewNopLogger())
 			require.NoError(t, err)
