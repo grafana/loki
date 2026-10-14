@@ -107,7 +107,7 @@ type ReadTask struct {
 }
 
 // rowPredicates returns the predicates the reader applies: the half-open window [start, end)
-// first, then the pushed-down metadata predicates.
+// first, then the pushed-down metadata predicates and the message predicate.
 //
 // The window is half-open to match the chunk path, which drops a record whose timestamp is
 // below start or at or above end. The engine compensates for that by adding a nanosecond to

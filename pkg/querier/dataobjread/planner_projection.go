@@ -14,7 +14,7 @@ import (
 )
 
 // ProjectionPlan says which columns of a logs section a query reads and which of its metadata
-// filters can be pushed into the read.
+// filters and line filters can be pushed into the read.
 //
 // It is derived once per query and then applied per section, because whether a filter can be
 // pushed depends on the labels of the streams that section holds.
@@ -31,6 +31,10 @@ type ProjectionPlan struct {
 	// pushdownCandidates are the query's label-filter matchers a read may push down. A name one
 	// of them carries can turn out to be a stream label rather than metadata.
 	pushdownCandidates []*labels.Matcher
+
+	// lineFilter is the push-down line filter, which runs on the stored line. It never comes from a
+	// delete request, and it must be safe for concurrent use.
+	lineFilter logqllog.Filterer
 }
 
 // NewProjectionPlan derives the projection for expr, widened by the selectors of the query's
@@ -150,8 +154,18 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		walkStages(del, false, &deleteDerivesLabels)
 	}
 
+	// Push down the line filter that is safe to run directly on the stored line.
+	var lineFilter logqllog.Filterer
+	if pipeline, ok := selector.(*syntax.PipelineExpr); ok {
+		lineFilter, err = pipeline.MultiStages.UnprocessedLineFilter()
+		if err != nil {
+			return ProjectionPlan{}, err
+		}
+	}
+
 	derivesLabels := queryDerivesLabels || deleteDerivesLabels
 	plan := ProjectionPlan{
+		lineFilter:  lineFilter,
 		needMessage: needMessage || derivesLabels,
 		// The output carries names that cannot be listed ahead of time unless the top-level
 		// aggregation reduces it to a known label set.
@@ -171,7 +185,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 }
 
 // forStreams returns the columns to read and the predicates to push for a section whose streams
-// carry the given label names.
+// carry the given label names. The message predicate of a line filter is the last predicate.
 func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (columns []logs.ColumnType, metadataNames []string, predicates []logs.RowPredicate) {
 	columns = make([]logs.ColumnType, 0, 4)
 	columns = append(columns, logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp)
@@ -203,6 +217,12 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 		}
 
 		predicates = append(predicates, metadataPredicate(matcher))
+	}
+
+	// The message predicate goes last because it is the most expensive. It then runs only on the
+	// rows that the previous predicates did not filter out.
+	if p.lineFilter != nil {
+		predicates = append(predicates, logs.LogMessageFilterRowPredicate{Keep: p.lineFilter.Filter})
 	}
 
 	return columns, metadataNames, predicates
