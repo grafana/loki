@@ -22,7 +22,6 @@ package thrift
 import (
 	"log"
 	"os"
-	"testing"
 )
 
 // Logger is a simple wrapper of a logging function.
@@ -65,9 +64,15 @@ func StdLogger(logger *log.Logger) Logger {
 //
 // It fails the test when being called.
 //
+// The argument is declared as the one method the implementation calls rather
+// than as testing.TB, so that the library itself does not import testing.
+// A *testing.T, a *testing.B, or a testing.TB still satisfies it.
+//
 // Deprecated: This is no longer used by any thrift go library code,
 // will be removed in the future version.
-func TestLogger(tb testing.TB) Logger {
+func TestLogger(tb interface {
+	Errorf(format string, args ...any)
+}) Logger {
 	return func(msg string) {
 		tb.Errorf("logger called with msg: %q", msg)
 	}

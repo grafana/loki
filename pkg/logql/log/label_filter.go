@@ -194,8 +194,7 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	if err != nil {
 		// Don't overwrite what might be a more useful error
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
-			lbs.SetErrorDetails(err.Error())
+			lbs.SetErr(errLabelFilter, err)
 		}
 		return line, true
 	}
@@ -214,7 +213,7 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 		return line, value <= d.Value
 	default:
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
+			lbs.SetErr(errLabelFilter, nil)
 		}
 		return line, true
 	}
@@ -268,8 +267,7 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	if err != nil {
 		// Don't overwrite what might be a more useful error
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
-			lbs.SetErrorDetails(err.Error())
+			lbs.SetErr(errLabelFilter, err)
 		}
 		return line, true
 	}
@@ -288,7 +286,7 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 		return line, value <= d.Value
 	default:
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
+			lbs.SetErr(errLabelFilter, nil)
 		}
 		return line, true
 	}
@@ -336,8 +334,7 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 	if err != nil {
 		// Don't overwrite what might be a more useful error
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
-			lbs.SetErrorDetails(err.Error())
+			lbs.SetErr(errLabelFilter, err)
 		}
 		return line, true
 	}
@@ -356,7 +353,7 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 		return line, value <= n.Value
 	default:
 		if !lbs.HasErr() {
-			lbs.SetErr(errLabelFilter)
+			lbs.SetErr(errLabelFilter, nil)
 		}
 		return line, true
 	}
@@ -392,7 +389,10 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 		return &StringLabelFilter{Matcher: m}
 	}
 
-	if f == TrueFilter {
+	// An always-true comparison reduces to a no-op, which reports no required label name. A
+	// comparison against a reserved error label must stay a real filter: the pipeline reads its
+	// required name and its matcher to learn that the query asks for the errored lines.
+	if f == TrueFilter && m.Name != logqlmodel.ErrorLabel && m.Name != logqlmodel.ErrorDetailsLabel {
 		return &NoopLabelFilter{m}
 	}
 
@@ -408,8 +408,13 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 
 // Hints implements Stage.
 func (s *StringLabelFilter) Hints() StageHints {
-	// It only reads a label value to decide the match, never writing a label.
-	return StageHints{CanModifyLabels: false}
+	readsError, keepsError := errorLabelHints(s.Matcher, s.Matches)
+	return StageHints{
+		// It only reads a label value to decide the match, never writing a label.
+		CanModifyLabels:   false,
+		ReadsErrorLabel:   readsError,
+		KeepsErroredLines: keepsError,
+	}
 }
 
 func (s *StringLabelFilter) isLabelFilterer() {}
@@ -446,8 +451,15 @@ func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder
 
 // Hints implements Stage.
 func (s *LineFilterLabelFilter) Hints() StageHints {
-	// It only reads a label value to decide the match, never writing a label.
-	return StageHints{CanModifyLabels: false}
+	readsError, keepsError := errorLabelHints(s.Matcher, func(v string) bool {
+		return s.Filter.Filter(unsafeGetBytes(v))
+	})
+	return StageHints{
+		// It only reads a label value to decide the match, never writing a label.
+		CanModifyLabels:   false,
+		ReadsErrorLabel:   readsError,
+		KeepsErroredLines: keepsError,
+	}
 }
 
 func (s *LineFilterLabelFilter) isLabelFilterer() {}

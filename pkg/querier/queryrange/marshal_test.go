@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
@@ -120,6 +121,62 @@ func TestQueryRequestWrapUnwrap_EncodingFlags(t *testing.T) {
 		_, unwrappedCtx, err := codec.QueryRequestUnwrap(context.Background(), wrapped)
 		require.NoError(t, err)
 		require.Nil(t, httpreq.ExtractEncodingFlagsFromCtx(unwrappedCtx))
+	})
+}
+
+func TestQueryRequestWrapUnwrap_HintRanges(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	req := &LokiRequest{
+		Query:   `{app="a"} |= "error"`,
+		StartTs: start,
+		EndTs:   start.Add(time.Hour),
+		HintRanges: []logproto.HintTimeRange{
+			{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
+			{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute)},
+		},
+	}
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	wrapped, err := (Codec{}).QueryRequestWrap(ctx, req)
+	require.NoError(t, err)
+	data, err := wrapped.Marshal()
+	require.NoError(t, err)
+
+	var decoded QueryRequest
+	require.NoError(t, decoded.Unmarshal(data))
+	unwrapped, _, err := (Codec{}).QueryRequestUnwrap(context.Background(), &decoded)
+	require.NoError(t, err)
+	require.Equal(t, req.HintRanges, unwrapped.(*LokiRequest).HintRanges)
+}
+
+func TestQueryRequestWrapUnwrap_DataObjOptions(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), "fake")
+
+	unwrap := func(t *testing.T, req queryrangebase.Request) queryrangebase.Request {
+		t.Helper()
+		wrapped, err := (Codec{}).QueryRequestWrap(ctx, req)
+		require.NoError(t, err)
+		data, err := wrapped.Marshal()
+		require.NoError(t, err)
+
+		var decoded QueryRequest
+		require.NoError(t, decoded.Unmarshal(data))
+		unwrapped, _, err := (Codec{}).QueryRequestUnwrap(t.Context(), &decoded)
+		require.NoError(t, err)
+		return unwrapped
+	}
+
+	t.Run("keeps the options of a range request", func(t *testing.T) {
+		require.True(t, unwrap(t, dataObjRangeRequest(true)).(*LokiRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options of an instant request", func(t *testing.T) {
+		require.True(t, unwrap(t, dataObjInstantRequest(true)).(*LokiInstantRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options unset for a request that is not eligible", func(t *testing.T) {
+		require.Nil(t, unwrap(t, dataObjRangeRequest(false)).(*LokiRequest).DataObjOptions)
+		require.Nil(t, unwrap(t, dataObjInstantRequest(false)).(*LokiInstantRequest).DataObjOptions)
 	})
 }
 

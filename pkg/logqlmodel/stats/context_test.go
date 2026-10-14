@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -362,6 +363,110 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 		EstimatedQueryBytes: 2048,
 	})
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
+}
+
+func TestContext_RecordDataobjSectionsResolutionTime(t *testing.T) {
+	resolutionTime := func(statsCtx *Context) time.Duration {
+		return statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime()
+	}
+
+	t.Run("it keeps the largest time it has seen", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+
+		statsCtx.RecordDataobjSectionsResolutionTime(5 * time.Millisecond)
+		statsCtx.RecordDataobjSectionsResolutionTime(9 * time.Millisecond)
+		statsCtx.RecordDataobjSectionsResolutionTime(2 * time.Millisecond)
+
+		require.Equal(t, 9*time.Millisecond, resolutionTime(statsCtx))
+	})
+
+	t.Run("it keeps the largest time when many goroutines record at once", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+
+		var wg sync.WaitGroup
+		for i := 1; i <= 100; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(i) * time.Millisecond)
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, 100*time.Millisecond, resolutionTime(statsCtx))
+	})
+
+	t.Run("it reports zero when no section was resolved", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+		require.Zero(t, resolutionTime(statsCtx))
+	})
+}
+
+func TestResultMerge_DataobjSectionsResolutionMaxTime(t *testing.T) {
+	resultWith := func(d time.Duration) Result {
+		return Result{Querier: Querier{Store: Store{Dataobj: Dataobj{SectionsResolutionMaxTime: int64(d)}}}}
+	}
+
+	t.Run("it keeps the larger of the two times instead of adding them", func(t *testing.T) {
+		merged := resultWith(5 * time.Millisecond)
+		merged.Merge(resultWith(8 * time.Millisecond))
+
+		require.Equal(t, 8*time.Millisecond, merged.DataobjSectionsResolutionMaxTime())
+	})
+
+	t.Run("a smaller merged time does not lower the larger one", func(t *testing.T) {
+		merged := resultWith(8 * time.Millisecond)
+		merged.Merge(resultWith(2 * time.Millisecond))
+
+		require.Equal(t, 8*time.Millisecond, merged.DataobjSectionsResolutionMaxTime())
+	})
+}
+
+func TestResult_Merge_LoglineStats(t *testing.T) {
+	lookup := Index{
+		LoglineHintStatus:         "ok",
+		LoglineHintLookupTime:     int64(100 * time.Millisecond),
+		LoglineHintRanges:         2,
+		LoglineHintRangesDuration: int64(30 * time.Minute),
+	}
+	skipped := Result{Index: Index{
+		LoglineSkippedRequests: 1,
+		ShardPlannedChunks:     10,
+	}}
+	narrowed := Result{
+		Index: Index{
+			LoglineNarrowedRequests:   1,
+			ShardPlannedChunks:        8,
+			ShardPlannedChunksScanned: 2,
+		},
+		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
+		Ingester: Ingester{TotalChunksMatched: 3, Store: Store{TotalChunksScanned: 1}},
+	}
+
+	var res Result
+	res.Merge(skipped)
+	res.Merge(narrowed)
+	res.Merge(narrowed)
+	res.Merge(Result{Index: lookup})
+	// A second lookup-level value must not overwrite the first.
+	res.Merge(Result{Index: Index{LoglineHintStatus: "error", LoglineHintRanges: 5}})
+
+	require.Equal(t, "ok", res.Index.LoglineHintStatus)
+	require.Equal(t, int64(100*time.Millisecond), res.Index.LoglineHintLookupTime)
+	require.Equal(t, int64(2), res.Index.LoglineHintRanges)
+	require.Equal(t, int64(30*time.Minute), res.Index.LoglineHintRangesDuration)
+	require.Equal(t, int64(1), res.Index.LoglineSkippedRequests)
+	require.Equal(t, int64(2), res.Index.LoglineNarrowedRequests)
+	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
+	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
+	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
+}
+
+func TestContext_ChunksScanned(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+	statsCtx.AddChunksScanned(10)
+	statsCtx.AddChunksScanned(7)
+	require.Equal(t, int64(17), statsCtx.Result(0, 0, 0).TotalChunksScanned())
 }
 
 func TestReset(t *testing.T) {

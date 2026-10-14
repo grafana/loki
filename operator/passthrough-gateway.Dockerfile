@@ -1,5 +1,5 @@
 # Build the passthrough-gateway binary
-FROM golang:1.26.7@sha256:dc2521c2a906db43073b8b4d99f491b6341cf15610b6ebbab187c45153f9959e as builder
+FROM docker.io/library/golang:1.27.2@sha256:5bc7f572bbaa98885a3a1fd9c0aa76b59e3e14e8628bfc316bbfd0c701e4818c as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -19,8 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -mod=readonly -o passthroug
 # Use distroless as minimal base image to package the passthrough-gateway binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
-WORKDIR /
-COPY --from=builder /workspace/passthrough-gateway .
+WORKDIR /tmp
+COPY --from=builder /workspace/passthrough-gateway /bin/passthrough-gateway
 USER 65532:65532
 
-ENTRYPOINT ["/passthrough-gateway"]
+ENTRYPOINT ["/bin/passthrough-gateway"]

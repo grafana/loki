@@ -295,33 +295,57 @@ load
 
 # by()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7
 # without()
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3 3
   {pod="2"} 15 15
 eval range from 60s to 70s step 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {app="a"} 7 7
 eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 2
   {pod="2"} 10
 eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 4
   {pod="2"} 20
 eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
@@ -337,7 +361,10 @@ load
   {app="a", pod="2"} "v=NaN" @ 30s
 
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
-  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
   {pod="1"} 3
   {pod="2"} NaN
 
@@ -353,6 +380,64 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2
 eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | unwrap v [1m])
   {app="a"} 2 2
+
+# quantile_over_time() over a malformed line: quantile computed from structured metadata.
+clear
+load
+  {app="a", pod="p1"}     `{` @ 20s [metadata v="7"] # malformed
+  {app="a", pod="p1"}     `{` @ 30s [metadata v="9"] # malformed
+  {app="noise", pod="p2"} `{` @ 20s [metadata v="1"]
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 8
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod) # non-overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p1"} 7 8
+# Dropping the errored lines leaves no sample to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect empty
+
+# quantile_over_time() over a malformed line: quantile computed from line field.
+clear
+load
+  {app="a", pod="p1"}     `{"v":4}` @ 10s
+  {app="a", pod="p1"}     `{"v":6}` @ 20s
+  {app="a", pod="p1"}     `{"v":8}` @ 30s
+  {app="a", pod="p1"}     `{`       @ 40s # malformed
+  {app="noise", pod="p2"} `{"v":1}` @ 20s
+
+# The malformed line carries no `v` to unwrap, so it becomes no sample and never reaches the query,
+# reason why the query doesn't fail.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 6
+eval range from 20s to 60s step 40s quantile_over_time(0.5, {app="a"} | json | unwrap v [1m]) by (pod) # overlapping
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 5 6   # (-40s,20s]={4,6}, (0s,60s]={4,6,8}
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__="" | unwrap v [1m]) by (pod)
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, timestamp-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj)"
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, dataobj and chunk)"
+  {pod="p1"} 6
+# Keeping the malformed line adds no sample either, so no group is left to take a quantile of.
+eval instant at 60s quantile_over_time(0.5, {app="a"} | json | __error__!="" | unwrap v [1m]) by (pod)
+  expect empty
 
 # approx_count_distinct()
 #
@@ -484,6 +569,8 @@ eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict [1m])
   expect fail msg: LogfmtParserErr
 eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__="" [1m])
   {app="a"} 1
+eval instant at 60s approx_count_distinct(id, {app="a"} | logfmt --strict | __error__!="" [1m])
+  {__error__="LogfmtParserErr", __error_details__="logfmt syntax error at pos 23 : unterminated quoted value", app="a"} 1
 
 # approx_count_distinct() with a large set.
 #
@@ -724,6 +811,31 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt [1m]) #
   {app="a", env="prod", env_extracted="staging", detected_level="info", lvl="", code="200"} 2 _
   {app="a", env="prod", env_extracted="staging", detected_level="error", lvl="", code="200"} 1 _
 
+# sum() of count_over_time() over a long time span:
+# - The samples span 10s to 180s, so a stack that splits its sources by time reads both sides.
+# - p3 starts at 100s, so the early steps have no p3 series.
+clear
+load
+  {app="a", pod="p1"} "x" @ 10s  [repeat every 10s for 18]
+  {app="a", pod="p2"} "x" @ 15s  [repeat every 15s for 12]
+  {app="a", pod="p3"} "x" @ 100s [repeat every 20s for 5]
+  {app="noise"}       "x" @ 10s  [repeat every 10s for 18]
+
+eval instant at 180s sum(count_over_time({app="a"}[1m]))
+  {} 13
+eval range from 60s to 180s step 30s sum(count_over_time({app="a"}[1m]))                # overlapping
+  {} 10 10 12 13 13
+eval instant at 180s sum by (pod) (count_over_time({app="a"}[1m]))
+  {pod="p1"} 6
+  {pod="p2"} 4
+  {pod="p3"} 3
+eval range from 60s to 180s step 30s sum by (pod) (count_over_time({app="a"}[1m]))      # overlapping
+  {pod="p1"} 6 6 6 6 6
+  {pod="p2"} 4 4 4 4 4
+  {pod="p3"} _ _ 2 3 3
+eval range from 60s to 180s step 120s sum without (pod) (count_over_time({app="a"}[1m])) # non-overlapping
+  {app="a"} 10 13
+
 # bytes_over_time()
 clear
 load
@@ -824,6 +936,8 @@ eval instant at 60s rate({app="err"} | unwrap v [1m])
   expect fail
 eval instant at 60s rate({app="err"} | unwrap v | __error__="" [1m])
   {app="err"} 0.1
+eval instant at 60s rate({app="err"} | unwrap v | __error__!="" [1m])
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="err"} 0
 
 # rate() with unwrap: window shapes, offset, and grouping.
 clear
@@ -1129,6 +1243,28 @@ eval range from 60s to 180s step 60s avg_over_time({app="a"} | unwrap v | v > 3 
   {pod="1"} 4 4 _
   {pod="2"} 9 9 _
 
+# avg_over_time() with an __error__ post filter on the unwrap: avg_over_time() decomposes into a
+# sum and a count when sharded, and the count leg cannot reproduce the post filter, so the shard
+# mapper leaves the query alone. Every spelling of the filter has to reach that guard, or the
+# sharded stack reports a different label set.
+clear
+load
+  {app="a", pod="p1"}     `{"ok":1}` @ 20s [metadata v="5"]
+  {app="a", pod="p2"}     `{`        @ 40s [metadata v="7"] # malformed
+  {app="a", pod="p2"}     `{`        @ 50s [metadata v="9"] # malformed
+  {app="noise", pod="p3"} `{`        @ 40s [metadata v="1"]
+
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__=~".*" [1m]) by (pod)
+  {pod="p1"} 5
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__="" [1m]) by (pod)
+  {pod="p1"} 5
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error__!="" [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 8
+# A post-unwrap filter on __error_details__ doesn't keep errors.
+eval instant at 60s avg_over_time({app="a"} | json | unwrap v | __error_details__="" [1m]) by (pod)
+  expect fail msg: JSONParserErr
+
 # min_over_time() / max_over_time()
 # - a leading NaN is ignored
 # - all NaN -> NaN
@@ -1273,6 +1409,25 @@ eval range from 60s to 70s step 10s max_over_time({app="a"} | unwrap v [1m]) by 
   {pod="1"} 4 4
   {pod="2"} 20 20
 
+# max_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)
+  {app="m"} 7
+eval range from 20s to 60s step 20s max_over_time({app="m"} | unwrap n_extracted [1m]) by (app)            # overlapping
+  {app="m"} 5 7 7
+eval instant at 60s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)
+  {app="p"} 6
+eval range from 20s to 60s step 20s max_over_time({app="p"} | logfmt | unwrap v_extracted [1m]) by (app)   # overlapping
+  {app="p"} 4 6 6
+
 # sum_over_time()
 #
 # - any NaN -> NaN
@@ -1327,6 +1482,25 @@ eval instant at 60s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12
 eval range from 40s to 60s step 20s sum_over_time({app="a"} | unwrap v [1m])
   {app="a"} 12 12
+
+# sum_over_time() unwraps a `<name>_extracted` label.
+clear
+load
+  {app="m", n="s"} "x"     @ 20s [metadata n="5"]
+  {app="m", n="s"} "x"     @ 40s [metadata n="7"]
+  {app="m", n="s"} "noise" @ 30s
+  {app="p", v="s"} "v=4"   @ 20s
+  {app="p", v="s"} "v=6"   @ 40s
+  {app="p", v="s"} "noise" @ 30s
+
+eval instant at 60s sum_over_time({app="m"} | unwrap n_extracted [1m])
+  {app="m", n="s"} 12
+eval range from 20s to 60s step 20s sum_over_time({app="m"} | unwrap n_extracted [1m])            # overlapping
+  {app="m", n="s"} 5 12 12
+eval instant at 60s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])
+  {app="p", v="s"} 10
+eval range from 20s to 60s step 20s sum_over_time({app="p"} | logfmt | unwrap v_extracted [1m])   # overlapping
+  {app="p", v="s"} 4 10 10
 
 # sum_over_time() keeps every label except the unwrapped one.
 #
@@ -1529,3 +1703,51 @@ eval range from 60s to 120s step 60s absent_over_time({app="a"} | logfmt | unwra
   {app="a"} 1 1
 eval range from 60s to 180s step 120s absent_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
   {app="a"} 1 1
+
+# absent_over_time() over a malformed line.
+clear
+load
+  {app="a"}     `{`        @ 40s # malformed
+  {app="noise"} `{"ok":1}` @ 40s
+
+# Without an __error__ filter the query does not fail, although the malformed line reaches it.
+# absent_over_time() groups to no labels, so the parser hints name no label to extract. json() then
+# skips the line, so it never parses it and never fails. The line still counts as present.
+eval instant at 60s absent_over_time({app="a"} | json [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | json | __error__!="" [1m])
+  expect empty
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__!="" [1m]) # overlapping
+  {app="a"} _ 1
+eval instant at 60s absent_over_time({app="a"} | json | __error__="" [1m])
+  {app="a"} 1
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | json | __error__="" [1m]) # overlapping
+  {app="a"} 1 1
+
+# absent_over_time() over a failed unwrap conversion.
+clear
+load
+  {app="a"}     "v=oops" @ 40s # `v` is present but not a number
+  {app="a"}     "v=5"    @ 50s # the same field converts on this line
+  {app="noise"} "v=1"    @ 40s
+
+# The __error__ filter keeps the errored sample, whose default value is 0, so it's a present.
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])
+  expect fail msg: SampleExtractionErr
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__!="" [1m])
+  expect empty
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m])
+  expect empty
+# A query that reads both lines reports the failed conversion as a 0.
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m])
+  {app="a"} 5
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"oops\": invalid syntax", app="a"} 0
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 0
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__=~".*" [1m]))
+  {} 5
+# Dropping the errored line leaves the conversion that worked.
+eval instant at 60s min (min_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
+eval instant at 60s max (max_over_time({app="a"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5

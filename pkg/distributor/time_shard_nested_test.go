@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
-	"sort"
 	"testing"
 	"time"
 
@@ -44,38 +43,6 @@ func timeSpreadStream(resources, scopesPer int, offsets []time.Duration) logprot
 	return stream
 }
 
-func flatten(stream logproto.InternalStreamAdapter) logproto.Stream {
-	flat := logproto.Stream{Labels: stream.Labels, Hash: stream.Hash}
-	for i := range stream.ResourceLogs {
-		for j := range stream.ResourceLogs[i].ScopeLogs {
-			flat.Entries = append(flat.Entries, stream.ResourceLogs[i].ScopeLogs[j].Entries...)
-		}
-	}
-	return flat
-}
-
-func linesOf(stream logproto.InternalStreamAdapter) []string {
-	var out []string
-	for i := range stream.ResourceLogs {
-		for j := range stream.ResourceLogs[i].ScopeLogs {
-			for _, e := range stream.ResourceLogs[i].ScopeLogs[j].Entries {
-				out = append(out, e.Line)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func flatLinesOf(stream logproto.Stream) []string {
-	out := make([]string, 0, len(stream.Entries))
-	for _, e := range stream.Entries {
-		out = append(out, e.Line)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // requireTimeShardsAreWellFormed asserts what has to hold whatever the entries look like: a shard
 // names the stream, holds no empty group, opens no more resources or scopes than the source has
 // with those attributes, holds only entries the matching source group holds, keeps a bucketed
@@ -87,7 +54,7 @@ func flatLinesOf(stream logproto.Stream) []string {
 // carry the same line more than once. Two source groups carrying identical attributes are
 // indistinguishable in the output, so the checks below bound how many of each a shard may open
 // rather than pretending to tell them apart.
-func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStreamAdapter, shards []nestedTimeShard, ignoreLogsFrom time.Time) {
+func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStreamAdapter, shards []nestedTimeShard, shardLen time.Duration, ignoreLogsFrom time.Time) {
 	t.Helper()
 
 	entryKey := func(e push.Entry) string {
@@ -117,8 +84,17 @@ func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStream
 	}
 
 	seen := map[string]int{}
+	windows := map[int64]int{}
 	for s := range shards {
 		shard := &shards[s]
+		expandedSize := 0
+
+		if !shard.recent() {
+			require.Equal(t, shard.start.Truncate(shardLen), shard.start, "shard %d opens on a bucket boundary", s)
+			require.Equal(t, shard.start.Add(shardLen), shard.end, "shard %d spans one bucket", s)
+			windows[shard.start.UnixNano()]++
+			require.Equal(t, 1, windows[shard.start.UnixNano()], "shard %d repeats a window", s)
+		}
 		require.NotEmpty(t, shard.stream.ResourceLogs, "shard %d holds no resources", s)
 		if shard.recent() {
 			require.Equal(t, len(shards)-1, s, "the trailing shard comes last")
@@ -158,6 +134,12 @@ func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStream
 					require.NotZero(t, sourceEntries[gk][entryKey(entry)],
 						"shard %d holds %q under attributes the source never had it under", s, entry.Line)
 					seen[entryKey(entry)]++
+					expandedSize += len(entry.Line)
+					for _, attrs := range [][]logproto.LabelAdapter{res.Attrs, scope.Attrs, entry.StructuredMetadata} {
+						for _, attr := range attrs {
+							expandedSize += len(attr.Name) + len(attr.Value)
+						}
+					}
 
 					if shard.recent() {
 						require.False(t, entry.Timestamp.Before(ignoreLogsFrom),
@@ -176,18 +158,18 @@ func requireTimeShardsAreWellFormed(t *testing.T, source logproto.InternalStream
 				}
 			}
 		}
+
+		require.Equal(t, expandedSize, shard.expandedSize,
+			"shard %d reports the expanded size of its entries", s)
 	}
 
 	require.Equal(t, want, seen, "every entry appears as often as the source holds it")
 }
 
-// The buckets, and what lands in them, have to be what the flat path produces. Only the shape of
-// each shard differs.
-//
 // The stream is built by the case rather than described by it, so a case can hold timestamps no
 // offset from a base can express. It is a func because the assertions need a copy of the source the
 // code under test never had a pointer into.
-func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
+func TestTimeShardNestedBucketsByTimestamp(t *testing.T) {
 	spread := func(resources, scopes int, offsets ...time.Duration) func() logproto.InternalStreamAdapter {
 		return func() logproto.InternalStreamAdapter { return timeSpreadStream(resources, scopes, offsets) }
 	}
@@ -358,17 +340,12 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 
 			nested := tc.stream()
 			source := tc.stream()
-			got, ok := timeShardNested(&nested, lbls, tc.shardLen, tc.ignoreLogsFrom)
-			requireTimeShardsAreWellFormed(t, source, got, tc.ignoreLogsFrom)
+			got, ok := timeShardNested(nested, lbls, tc.shardLen, tc.ignoreLogsFrom)
+			requireTimeShardsAreWellFormed(t, source, got, tc.shardLen, tc.ignoreLogsFrom)
 
-			want, wantOK := shardStreamByTime(flatten(tc.stream()), lbls, tc.shardLen, tc.ignoreLogsFrom)
+			require.True(t, ok, "there was something to bucket")
 
-			require.Equal(t, wantOK, ok, "whether there was anything to shard")
-			require.Len(t, got, len(want), "number of time shards")
-
-			// Oldest bucket first with the trailing shard last, as the flat path returns them.
-			// Asserted here rather than left to the comparison below, which only notices a
-			// misordering when the map iteration happens to produce one.
+			// Buckets are chronological; the recent shard comes last.
 			for i := range got {
 				if got[i].recent() {
 					require.Equal(t, len(got)-1, i, "the trailing shard comes last")
@@ -395,15 +372,6 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 				require.Equal(t, lines, held, "shard %d hands its entries over in this order", i)
 			}
 
-			for i := range want {
-				require.Equal(t, flatLinesOf(want[i].Stream), linesOf(got[i].stream),
-					"shard %d carries the same entries", i)
-				require.Equal(t, want[i].linesTotalLen, got[i].linesTotalLen,
-					"shard %d line length", i)
-
-				require.Equal(t, want[i].Labels, got[i].stream.Labels, "shard %d name", i)
-				require.Equal(t, want[i].Hash, got[i].stream.Hash, "shard %d hash", i)
-			}
 		})
 	}
 }
@@ -412,22 +380,30 @@ func TestTimeShardNestedMatchesTheFlatPath(t *testing.T) {
 // the only thing it must not do is let one bucket's entries be written through to another's.
 func TestTimeShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 	lbls := labels.FromStrings("app", "a")
-	// Four buckets' worth in one group, so a bucket holds part of it and another follows.
+	// Two buckets and a recent shard share one group's entries.
 	offsets := []time.Duration{0, 30 * time.Minute, 90 * time.Minute, 2 * time.Hour}
 	source := timeSpreadStream(1, 1, offsets)
 
-	shards, ok := timeShardNested(&source, lbls, timeShardLen, shardBase().Add(6*time.Hour))
+	shards, ok := timeShardNested(source, lbls, timeShardLen, shardBase().Add(2*time.Hour))
 	require.True(t, ok)
-	require.Greater(t, len(shards), 1, "more than one bucket, or an append runs off the end")
+	require.Len(t, shards, 3)
+	require.True(t, shards[2].recent())
 
 	// Entries are the stream's, so rewriting one through a shard rewrites it there.
 	shards[0].stream.ResourceLogs[0].ScopeLogs[0].Entries[0].Line = "rewritten"
 	require.Equal(t, "rewritten", source.ResourceLogs[0].ScopeLogs[0].Entries[0].Line,
 		"a shard holds a copy of the entries rather than the stream's own")
 
-	// The name is the shard's own, though.
+	// Each shard owns its labels and hash.
+	nextLabels, nextHash := shards[1].stream.Labels, shards[1].stream.Hash
 	shards[0].stream.Labels = "mangled"
+	shards[0].stream.Hash = 0
 	require.Equal(t, `{app="a"}`, source.Labels, "a shard rewrote the stream's name")
+	require.Equal(t, uint64(7), source.Hash, "a shard rewrote the stream's hash")
+	require.Equal(t, nextLabels, shards[1].stream.Labels)
+	require.Equal(t, nextHash, shards[1].stream.Hash)
+	require.Equal(t, source.Labels, shards[2].stream.Labels)
+	require.Equal(t, source.Hash, shards[2].stream.Hash)
 
 	before := slices.Clone(source.ResourceLogs[0].ScopeLogs[0].Entries)
 	next := shards[1].stream.ResourceLogs[0].ScopeLogs[0].Entries[0].Line
@@ -441,16 +417,24 @@ func TestTimeShardNestedSharesOnlyItsEntriesWithTheCaller(t *testing.T) {
 		"appending to a shard overwrote what the next one holds")
 }
 
-func TestTimeShardNestedLeavesRecentStreamsAlone(t *testing.T) {
+func TestTimeShardNestedDoesNotShardRecentStreams(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		stream logproto.InternalStreamAdapter
-		ignore time.Duration
+		name      string
+		stream    logproto.InternalStreamAdapter
+		ignore    time.Duration
+		wantOrder []int
 	}{
 		{
-			name:   "every entry newer than the cutoff",
-			stream: timeSpreadStream(2, 2, []time.Duration{3 * time.Hour, 4 * time.Hour}),
-			ignore: 2 * time.Hour,
+			name:      "every entry newer than the cutoff",
+			stream:    timeSpreadStream(2, 2, []time.Duration{3 * time.Hour, 4 * time.Hour}),
+			ignore:    2 * time.Hour,
+			wantOrder: []int{0, 1},
+		},
+		{
+			name:      "unsorted recent entries with equal timestamps",
+			stream:    timeSpreadStream(2, 2, []time.Duration{4 * time.Hour, 3 * time.Hour, 3 * time.Hour}),
+			ignore:    2 * time.Hour,
+			wantOrder: []int{1, 2, 0},
 		},
 		{
 			name:   "no entries at all",
@@ -465,9 +449,29 @@ func TestTimeShardNestedLeavesRecentStreamsAlone(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := tc.stream
-			shards, ok := timeShardNested(&source, labels.FromStrings("app", "a"), timeShardLen, shardBase().Add(tc.ignore))
+			var wantGroups [][]logproto.Entry
+			source.EachGroup(func(_, _ []logproto.LabelAdapter, entries []logproto.Entry) {
+				// Distinguish entries with equal timestamps to verify that sorting is stable.
+				for i := range entries {
+					entries[i].Line += fmt.Sprintf(" entry-%d", i)
+				}
+				var want []logproto.Entry
+				for _, i := range tc.wantOrder {
+					want = append(want, entries[i])
+				}
+				wantGroups = append(wantGroups, want)
+			})
+
+			shards, ok := timeShardNested(source, labels.FromStrings("app", "a"), timeShardLen, shardBase().Add(tc.ignore))
 			require.False(t, ok, "nothing old enough to bucket")
 			require.Nil(t, shards)
+
+			group := 0
+			source.EachGroup(func(_, _ []logproto.LabelAdapter, entries []logproto.Entry) {
+				require.Equal(t, wantGroups[group], entries, "unexpected entry order in group %d", group)
+				group++
+			})
+			require.Equal(t, len(wantGroups), group)
 		})
 	}
 }
@@ -478,20 +482,20 @@ func TestTimeShardsCanThemselvesBeRateSharded(t *testing.T) {
 	offsets := []time.Duration{0, 30 * time.Minute, 90 * time.Minute, 2 * time.Hour}
 	nested := timeSpreadStream(3, 2, offsets)
 
-	timeShards, ok := timeShardNested(&nested, labels.FromStrings("app", "a"), timeShardLen, ignoreLogsFrom)
+	timeShards, ok := timeShardNested(nested, labels.FromStrings("app", "a"), timeShardLen, ignoreLogsFrom)
 	require.True(t, ok)
 	require.NotEmpty(t, timeShards)
 
 	lines := map[string]int{}
 	for i := range timeShards {
 		for _, shards := range [][]logproto.InternalStreamAdapter{
-			shardNested(&timeShards[i].stream, shardLabels, 1, 0),
-			shardNested(&timeShards[i].stream, shardLabels, 3, 0),
+			shardNested(timeShards[i].stream, shardLabels, 1, 0),
+			shardNested(timeShards[i].stream, shardLabels, 3, 0),
 		} {
 			require.NotEmpty(t, shards)
 			requireShardsCarryTheStream(t, timeShards[i].stream, shards)
 		}
-		for _, shard := range shardNested(&timeShards[i].stream, shardLabels, 3, 0) {
+		for _, shard := range shardNested(timeShards[i].stream, shardLabels, 3, 0) {
 			for j := range shard.ResourceLogs {
 				for k := range shard.ResourceLogs[j].ScopeLogs {
 					for _, entry := range shard.ResourceLogs[j].ScopeLogs[k].Entries {
@@ -514,9 +518,7 @@ func BenchmarkTimeSharding(b *testing.B) {
 
 	lbls := labels.FromStrings("app", "checkout", "env", "prod")
 
-	// Both implementations sort the entries they are given, in place, so each run has to be handed
-	// the order it started with. Without that, every run after the first measures re-sorting sorted
-	// data, which is the cheap case and not the one worth reporting on its own.
+	// Restore the original order between runs because time sharding sorts entries in place.
 	restore := func(b *testing.B, into [][]logproto.Entry, from [][]logproto.Entry) {
 		b.StopTimer()
 		for i := range into {
@@ -530,7 +532,7 @@ func BenchmarkTimeSharding(b *testing.B) {
 			name    string
 			shuffle bool
 		}{{"in order", false}, {"out of order", true}} {
-			nested, flat := benchStreams(4, 2, 1000, shape.sharedAttrs)
+			nested := benchNestedStream(4, 2, 1000, shape.sharedAttrs)
 
 			var groups [][]logproto.Entry
 			for ri := range nested.ResourceLogs {
@@ -543,33 +545,18 @@ func BenchmarkTimeSharding(b *testing.B) {
 				for _, entries := range groups {
 					rng.Shuffle(len(entries), func(i, j int) { entries[i], entries[j] = entries[j], entries[i] })
 				}
-				rng.Shuffle(len(flat.Entries), func(i, j int) {
-					flat.Entries[i], flat.Entries[j] = flat.Entries[j], flat.Entries[i]
-				})
 			}
 
 			nestedStart := make([][]logproto.Entry, len(groups))
 			for i := range groups {
 				nestedStart[i] = slices.Clone(groups[i])
 			}
-			flatGroups := [][]logproto.Entry{flat.Entries}
-			flatStart := [][]logproto.Entry{slices.Clone(flat.Entries)}
 
 			b.Run(shape.name+"/"+order.name+"/nested", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					restore(b, groups, nestedStart)
-					if _, ok := timeShardNested(&nested, lbls, shardLen, ignoreLogsFrom); !ok {
-						b.Fatal("nothing sharded")
-					}
-				}
-			})
-
-			b.Run(shape.name+"/"+order.name+"/flat", func(b *testing.B) {
-				b.ReportAllocs()
-				for i := 0; i < b.N; i++ {
-					restore(b, flatGroups, flatStart)
-					if _, ok := shardStreamByTime(flat, lbls, shardLen, ignoreLogsFrom); !ok {
+					if _, ok := timeShardNested(nested, lbls, shardLen, ignoreLogsFrom); !ok {
 						b.Fatal("nothing sharded")
 					}
 				}

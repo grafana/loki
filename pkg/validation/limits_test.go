@@ -1358,3 +1358,72 @@ func TestSortSchema_RegisterFlags(t *testing.T) {
 		require.Error(t, l.Validate())
 	})
 }
+
+func Test_LoglineQueryLimits(t *testing.T) {
+	var defaults Limits
+	dskit_flagext.DefaultValues(&defaults)
+	require.Equal(t, "", defaults.LoglineQueryMode, "unset leaves the mode to logline.query and the request header")
+	require.Equal(t, int64(defaultLoglineQueryMinQueryBytesForIndex), defaults.LoglineQueryMinQueryBytesForIndex)
+
+	// A tenant overrides both in the runtime config, like any other limit.
+	tenant := defaults
+	require.NoError(t, yaml.Unmarshal([]byte(`
+logline_query_mode: live
+logline_query_min_query_bytes_for_index: 0
+`), &tenant))
+	overrides, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"live-tenant": &tenant}))
+	require.NoError(t, err)
+
+	require.Equal(t, "live", overrides.LoglineQueryMode("live-tenant"))
+	require.Equal(t, int64(0), overrides.LoglineQueryMinQueryBytesForIndex("live-tenant"), "an explicit 0 disables the check for that tenant")
+
+	// A tenant without an entry, including a multi-tenant query, gets the defaults.
+	for _, other := range []string{"other", "live-tenant|other"} {
+		require.Equal(t, "", overrides.LoglineQueryMode(other))
+		require.Equal(t, int64(defaultLoglineQueryMinQueryBytesForIndex), overrides.LoglineQueryMinQueryBytesForIndex(other))
+	}
+
+	t.Run("validation", func(t *testing.T) {
+		for _, mode := range []string{"", "off", "dry_run", "live"} {
+			l := defaults
+			l.LoglineQueryMode = mode
+			require.NoError(t, l.Validate(), "mode %q", mode)
+		}
+
+		bad := defaults
+		bad.LoglineQueryMode = "on"
+		require.ErrorContains(t, bad.Validate(), "logline_query_mode")
+
+		negative := defaults
+		negative.LoglineQueryMinQueryBytesForIndex = -1
+		require.ErrorContains(t, negative.Validate(), "logline_query_min_query_bytes_for_index")
+	})
+}
+
+func TestOverrides_DataObjQueryStartTime(t *testing.T) {
+	t.Run("returns the zero time when no start time is set", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+
+		require.True(t, ov.DataObjQueryStartTime("tenant").IsZero())
+	})
+
+	t.Run("returns the start time a tenant override sets in YAML instead of the CLI flag value", func(t *testing.T) {
+		var defaults Limits
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		defaults.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-querier.dataobj-query-start-time=2025-06-07T08:09:10Z"}))
+
+		var tenantLimits Limits
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_query_start_time: "2026-01-02T03:04:05Z"`), &tenantLimits))
+
+		ov, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"tenant": &tenantLimits}))
+		require.NoError(t, err)
+
+		require.Equal(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), ov.DataObjQueryStartTime("tenant").UTC())
+		require.Equal(t, time.Date(2025, 6, 7, 8, 9, 10, 0, time.UTC), ov.DataObjQueryStartTime("other-tenant").UTC())
+	})
+}

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -332,14 +332,12 @@ NULL,namespace-1`
 func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	t.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		BuilderBaseConfig: logsobj.BuilderBaseConfig{
-			TargetPageSize:          8_000,
-			TargetObjectSize:        math.MaxInt,
-			TargetSectionSize:       32_000,
-			BufferSize:              8_000,
-			SectionStripeMergeLimit: 2,
-		},
+	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          8_000,
+		TargetObjectSize:        math.MaxInt,
+		TargetSectionSize:       32_000,
+		BufferSize:              8_000,
+		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 

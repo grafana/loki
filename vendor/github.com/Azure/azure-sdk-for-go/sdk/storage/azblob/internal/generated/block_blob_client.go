@@ -10,7 +10,7 @@ import (
 )
 
 func (client *BlockBlobClient) Endpoint() string {
-	return client.url
+	return client.endpoint
 }
 
 func (client *BlockBlobClient) Internal() *azcore.Client {
@@ -23,7 +23,8 @@ func (client *BlockBlobClient) Internal() *azcore.Client {
 func NewBlockBlobClient(endpoint string, azClient *azcore.Client) *BlockBlobClient {
 	client := &BlockBlobClient{
 		internal: azClient,
-		url:      endpoint,
+		endpoint: endpoint,
+		version:  ServiceVersion,
 	}
 	return client
 }

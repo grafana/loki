@@ -1,4 +1,4 @@
-// Code generated for linux/386 by 'gcc --package-name=libc --prefix-enumerator=_ --prefix-external=x_ --prefix-field=F --prefix-static-internal=_ --prefix-static-none=_ --prefix-tagged-enum=_ --prefix-tagged-struct=T --prefix-tagged-union=T --prefix-typename=T --prefix-undefined=_ -emit-func-aliases -eval-all-macros -extended-errors -ignore-asm-errors -ignore-unsupported-alignment -isystem  -hide strlen -mlong-double-64 -std=c99 -nostdinc -ffreestanding -D_XOPEN_SOURCE=700 -I./arch/i386 -I./arch/generic -Iobj/src/internal -I./src/include -I./src/internal -Iobj/include -I./include -march=i486 -mtune=generic -DNDEBUG -nostdlib -shared -o lib/libc.so.go obj/src/complex/__cexp.lo.go obj/src/complex/__cexpf.lo.go obj/src/complex/cabs.lo.go obj/src/complex/cabsf.lo.go obj/src/complex/cabsl.lo.go obj/src/complex/cacos.lo.go obj/src/complex/cacosf.lo.go obj/src/complex/cacosh.lo.go obj/src/complex/cacoshf.lo.go obj/src/complex/cacoshl.lo.go obj/src/complex/cacosl.lo.go obj/src/complex/carg.lo.go obj/src/complex/cargf.lo.go obj/src/complex/cargl.lo.go obj/src/complex/casin.lo.go obj/src/complex/casinf.lo.go obj/src/complex/casinh.lo.go obj/src/complex/casinhf.lo.go obj/src/complex/casinhl.lo.go obj/src/complex/casinl.lo.go obj/src/complex/catan.lo.go obj/src/complex/catanf.lo.go obj/src/complex/catanh.lo.go obj/src/complex/catanhf.lo.go obj/src/complex/catanhl.lo.go obj/src/complex/catanl.lo.go obj/src/complex/ccos.lo.go obj/src/complex/ccosf.lo.go obj/src/complex/ccosh.lo.go obj/src/complex/ccoshf.lo.go obj/src/complex/ccoshl.lo.go obj/src/complex/ccosl.lo.go obj/src/complex/cexp.lo.go obj/src/complex/cexpf.lo.go obj/src/complex/cexpl.lo.go obj/src/complex/cimag.lo.go obj/src/complex/cimagf.lo.go obj/src/complex/cimagl.lo.go obj/src/complex/clog.lo.go obj/src/complex/clogf.lo.go obj/src/complex/clogl.lo.go obj/src/complex/conj.lo.go obj/src/complex/conjf.lo.go obj/src/complex/conjl.lo.go obj/src/complex/cpow.lo.go obj/src/complex/cpowf.lo.go obj/src/complex/cpowl.lo.go obj/src/complex/cproj.lo.go obj/src/complex/cprojf.lo.go obj/src/complex/cprojl.lo.go obj/src/complex/creal.lo.go obj/src/complex/crealf.lo.go obj/src/complex/creall.lo.go obj/src/complex/csin.lo.go obj/src/complex/csinf.lo.go obj/src/complex/csinh.lo.go obj/src/complex/csinhf.lo.go obj/src/complex/csinhl.lo.go obj/src/complex/csinl.lo.go obj/src/complex/csqrt.lo.go obj/src/complex/csqrtf.lo.go obj/src/complex/csqrtl.lo.go obj/src/complex/ctan.lo.go obj/src/complex/ctanf.lo.go obj/src/complex/ctanh.lo.go obj/src/complex/ctanhf.lo.go obj/src/complex/ctanhl.lo.go obj/src/complex/ctanl.lo.go obj/src/conf/confstr.lo.go obj/src/conf/fpathconf.lo.go obj/src/conf/legacy.lo.go obj/src/conf/pathconf.lo.go obj/src/conf/sysconf.lo.go obj/src/crypt/crypt.lo.go obj/src/crypt/crypt_blowfish.lo.go obj/src/crypt/crypt_des.lo.go obj/src/crypt/crypt_md5.lo.go obj/src/crypt/crypt_r.lo.go obj/src/crypt/crypt_sha256.lo.go obj/src/crypt/crypt_sha512.lo.go obj/src/crypt/encrypt.lo.go obj/src/ctype/__ctype_b_loc.lo.go obj/src/ctype/__ctype_get_mb_cur_max.lo.go obj/src/ctype/__ctype_tolower_loc.lo.go obj/src/ctype/__ctype_toupper_loc.lo.go obj/src/ctype/isalnum.lo.go obj/src/ctype/isalpha.lo.go obj/src/ctype/isascii.lo.go obj/src/ctype/isblank.lo.go obj/src/ctype/iscntrl.lo.go obj/src/ctype/isdigit.lo.go obj/src/ctype/isgraph.lo.go obj/src/ctype/islower.lo.go obj/src/ctype/isprint.lo.go obj/src/ctype/ispunct.lo.go obj/src/ctype/isspace.lo.go obj/src/ctype/isupper.lo.go obj/src/ctype/iswalnum.lo.go obj/src/ctype/iswalpha.lo.go obj/src/ctype/iswblank.lo.go obj/src/ctype/iswcntrl.lo.go obj/src/ctype/iswctype.lo.go obj/src/ctype/iswdigit.lo.go obj/src/ctype/iswgraph.lo.go obj/src/ctype/iswlower.lo.go obj/src/ctype/iswprint.lo.go obj/src/ctype/iswpunct.lo.go obj/src/ctype/iswspace.lo.go obj/src/ctype/iswupper.lo.go obj/src/ctype/iswxdigit.lo.go obj/src/ctype/isxdigit.lo.go obj/src/ctype/toascii.lo.go obj/src/ctype/tolower.lo.go obj/src/ctype/toupper.lo.go obj/src/ctype/towctrans.lo.go obj/src/ctype/wcswidth.lo.go obj/src/ctype/wctrans.lo.go obj/src/ctype/wcwidth.lo.go obj/src/dirent/alphasort.lo.go obj/src/dirent/closedir.lo.go obj/src/dirent/dirfd.lo.go obj/src/dirent/fdopendir.lo.go obj/src/dirent/opendir.lo.go obj/src/dirent/readdir.lo.go obj/src/dirent/readdir_r.lo.go obj/src/dirent/rewinddir.lo.go obj/src/dirent/scandir.lo.go obj/src/dirent/seekdir.lo.go obj/src/dirent/telldir.lo.go obj/src/dirent/versionsort.lo.go obj/src/env/__environ.lo.go obj/src/env/__reset_tls.lo.go obj/src/env/__stack_chk_fail.lo.go obj/src/env/clearenv.lo.go obj/src/env/getenv.lo.go obj/src/env/putenv.lo.go obj/src/env/secure_getenv.lo.go obj/src/env/setenv.lo.go obj/src/env/unsetenv.lo.go obj/src/errno/strerror.lo.go obj/src/exit/_Exit.lo.go obj/src/exit/abort_lock.lo.go obj/src/exit/assert.lo.go obj/src/exit/at_quick_exit.lo.go obj/src/exit/quick_exit.lo.go obj/src/fcntl/creat.lo.go obj/src/fcntl/fcntl.lo.go obj/src/fcntl/open.lo.go obj/src/fcntl/openat.lo.go obj/src/fcntl/posix_fadvise.lo.go obj/src/fcntl/posix_fallocate.lo.go obj/src/fenv/fenv.lo.go obj/src/internal/defsysinfo.lo.go obj/src/internal/emulate_wait4.lo.go obj/src/internal/floatscan.lo.go obj/src/internal/intscan.lo.go obj/src/internal/libc.lo.go obj/src/internal/procfdname.lo.go obj/src/internal/shgetc.lo.go obj/src/internal/syscall_ret.lo.go obj/src/internal/vdso.lo.go obj/src/internal/version.lo.go obj/src/ipc/ftok.lo.go obj/src/ipc/msgctl.lo.go obj/src/ipc/msgget.lo.go obj/src/ipc/msgrcv.lo.go obj/src/ipc/msgsnd.lo.go obj/src/ipc/semctl.lo.go obj/src/ipc/semget.lo.go obj/src/ipc/semop.lo.go obj/src/ipc/semtimedop.lo.go obj/src/ipc/shmat.lo.go obj/src/ipc/shmctl.lo.go obj/src/ipc/shmdt.lo.go obj/src/ipc/shmget.lo.go obj/src/legacy/cuserid.lo.go obj/src/legacy/err.lo.go obj/src/legacy/euidaccess.lo.go obj/src/legacy/ftw.lo.go obj/src/legacy/futimes.lo.go obj/src/legacy/getdtablesize.lo.go obj/src/legacy/getloadavg.lo.go obj/src/legacy/getpagesize.lo.go obj/src/legacy/getpass.lo.go obj/src/legacy/getusershell.lo.go obj/src/legacy/isastream.lo.go obj/src/legacy/lutimes.lo.go obj/src/legacy/ulimit.lo.go obj/src/legacy/utmpx.lo.go obj/src/linux/adjtime.lo.go obj/src/linux/adjtimex.lo.go obj/src/linux/arch_prctl.lo.go obj/src/linux/brk.lo.go obj/src/linux/cache.lo.go obj/src/linux/cap.lo.go obj/src/linux/chroot.lo.go obj/src/linux/clock_adjtime.lo.go obj/src/linux/copy_file_range.lo.go obj/src/linux/epoll.lo.go obj/src/linux/eventfd.lo.go obj/src/linux/fallocate.lo.go obj/src/linux/fanotify.lo.go obj/src/linux/flock.lo.go obj/src/linux/getdents.lo.go obj/src/linux/getrandom.lo.go obj/src/linux/inotify.lo.go obj/src/linux/ioperm.lo.go obj/src/linux/iopl.lo.go obj/src/linux/klogctl.lo.go obj/src/linux/memfd_create.lo.go obj/src/linux/mlock2.lo.go obj/src/linux/module.lo.go obj/src/linux/mount.lo.go obj/src/linux/name_to_handle_at.lo.go obj/src/linux/open_by_handle_at.lo.go obj/src/linux/personality.lo.go obj/src/linux/pivot_root.lo.go obj/src/linux/prctl.lo.go obj/src/linux/preadv2.lo.go obj/src/linux/prlimit.lo.go obj/src/linux/process_vm.lo.go obj/src/linux/ptrace.lo.go obj/src/linux/pwritev2.lo.go obj/src/linux/quotactl.lo.go obj/src/linux/readahead.lo.go obj/src/linux/reboot.lo.go obj/src/linux/remap_file_pages.lo.go obj/src/linux/sbrk.lo.go obj/src/linux/sendfile.lo.go obj/src/linux/setfsgid.lo.go obj/src/linux/setfsuid.lo.go obj/src/linux/sethostname.lo.go obj/src/linux/setns.lo.go obj/src/linux/settimeofday.lo.go obj/src/linux/signalfd.lo.go obj/src/linux/splice.lo.go obj/src/linux/statx.lo.go obj/src/linux/stime.lo.go obj/src/linux/swap.lo.go obj/src/linux/sync_file_range.lo.go obj/src/linux/syncfs.lo.go obj/src/linux/sysinfo.lo.go obj/src/linux/tee.lo.go obj/src/linux/timerfd.lo.go obj/src/linux/unshare.lo.go obj/src/linux/utimes.lo.go obj/src/linux/vhangup.lo.go obj/src/linux/vmsplice.lo.go obj/src/linux/wait3.lo.go obj/src/linux/wait4.lo.go obj/src/linux/xattr.lo.go obj/src/locale/__lctrans.lo.go obj/src/locale/__mo_lookup.lo.go obj/src/locale/bind_textdomain_codeset.lo.go obj/src/locale/c_locale.lo.go obj/src/locale/catclose.lo.go obj/src/locale/catgets.lo.go obj/src/locale/catopen.lo.go obj/src/locale/dcngettext.lo.go obj/src/locale/duplocale.lo.go obj/src/locale/freelocale.lo.go obj/src/locale/iconv.lo.go obj/src/locale/iconv_close.lo.go obj/src/locale/langinfo.lo.go obj/src/locale/locale_map.lo.go obj/src/locale/localeconv.lo.go obj/src/locale/newlocale.lo.go obj/src/locale/pleval.lo.go obj/src/locale/setlocale.lo.go obj/src/locale/strcoll.lo.go obj/src/locale/strfmon.lo.go obj/src/locale/strtod_l.lo.go obj/src/locale/strxfrm.lo.go obj/src/locale/textdomain.lo.go obj/src/locale/uselocale.lo.go obj/src/locale/wcscoll.lo.go obj/src/locale/wcsxfrm.lo.go obj/src/malloc/reallocarray.lo.go obj/src/math/__cos.lo.go obj/src/math/__cosdf.lo.go obj/src/math/__cosl.lo.go obj/src/math/__expo2.lo.go obj/src/math/__expo2f.lo.go obj/src/math/__fpclassify.lo.go obj/src/math/__fpclassifyf.lo.go obj/src/math/__fpclassifyl.lo.go obj/src/math/__invtrigl.lo.go obj/src/math/__math_divzero.lo.go obj/src/math/__math_divzerof.lo.go obj/src/math/__math_invalid.lo.go obj/src/math/__math_invalidf.lo.go obj/src/math/__math_invalidl.lo.go obj/src/math/__math_oflow.lo.go obj/src/math/__math_oflowf.lo.go obj/src/math/__math_uflow.lo.go obj/src/math/__math_uflowf.lo.go obj/src/math/__math_xflow.lo.go obj/src/math/__math_xflowf.lo.go obj/src/math/__polevll.lo.go obj/src/math/__rem_pio2.lo.go obj/src/math/__rem_pio2_large.lo.go obj/src/math/__rem_pio2f.lo.go obj/src/math/__rem_pio2l.lo.go obj/src/math/__signbit.lo.go obj/src/math/__signbitf.lo.go obj/src/math/__signbitl.lo.go obj/src/math/__sin.lo.go obj/src/math/__sindf.lo.go obj/src/math/__sinl.lo.go obj/src/math/__tan.lo.go obj/src/math/__tandf.lo.go obj/src/math/__tanl.lo.go obj/src/math/acos.lo.go obj/src/math/acosf.lo.go obj/src/math/acosh.lo.go obj/src/math/acoshf.lo.go obj/src/math/acoshl.lo.go obj/src/math/acosl.lo.go obj/src/math/asin.lo.go obj/src/math/asinf.lo.go obj/src/math/asinh.lo.go obj/src/math/asinhf.lo.go obj/src/math/asinhl.lo.go obj/src/math/asinl.lo.go obj/src/math/atan.lo.go obj/src/math/atan2.lo.go obj/src/math/atan2f.lo.go obj/src/math/atan2l.lo.go obj/src/math/atanf.lo.go obj/src/math/atanh.lo.go obj/src/math/atanhf.lo.go obj/src/math/atanhl.lo.go obj/src/math/atanl.lo.go obj/src/math/cbrt.lo.go obj/src/math/cbrtf.lo.go obj/src/math/cbrtl.lo.go obj/src/math/ceil.lo.go obj/src/math/ceilf.lo.go obj/src/math/ceill.lo.go obj/src/math/copysign.lo.go obj/src/math/copysignf.lo.go obj/src/math/copysignl.lo.go obj/src/math/cos.lo.go obj/src/math/cosf.lo.go obj/src/math/cosh.lo.go obj/src/math/coshf.lo.go obj/src/math/coshl.lo.go obj/src/math/cosl.lo.go obj/src/math/erf.lo.go obj/src/math/erff.lo.go obj/src/math/erfl.lo.go obj/src/math/exp.lo.go obj/src/math/exp10.lo.go obj/src/math/exp10f.lo.go obj/src/math/exp10l.lo.go obj/src/math/exp2.lo.go obj/src/math/exp2f.lo.go obj/src/math/exp2f_data.lo.go obj/src/math/exp2l.lo.go obj/src/math/exp_data.lo.go obj/src/math/expf.lo.go obj/src/math/expl.lo.go obj/src/math/expm1.lo.go obj/src/math/expm1f.lo.go obj/src/math/expm1l.lo.go obj/src/math/fabs.lo.go obj/src/math/fabsf.lo.go obj/src/math/fabsl.lo.go obj/src/math/fdim.lo.go obj/src/math/fdimf.lo.go obj/src/math/fdiml.lo.go obj/src/math/finite.lo.go obj/src/math/finitef.lo.go obj/src/math/floor.lo.go obj/src/math/floorf.lo.go obj/src/math/floorl.lo.go obj/src/math/fma.lo.go obj/src/math/fmal.lo.go obj/src/math/fmax.lo.go obj/src/math/fmaxf.lo.go obj/src/math/fmaxl.lo.go obj/src/math/fmin.lo.go obj/src/math/fminf.lo.go obj/src/math/fminl.lo.go obj/src/math/fmod.lo.go obj/src/math/fmodf.lo.go obj/src/math/fmodl.lo.go obj/src/math/frexp.lo.go obj/src/math/frexpf.lo.go obj/src/math/frexpl.lo.go obj/src/math/hypot.lo.go obj/src/math/hypotf.lo.go obj/src/math/hypotl.lo.go obj/src/math/ilogb.lo.go obj/src/math/ilogbf.lo.go obj/src/math/ilogbl.lo.go obj/src/math/j0.lo.go obj/src/math/j0f.lo.go obj/src/math/j1.lo.go obj/src/math/j1f.lo.go obj/src/math/jn.lo.go obj/src/math/jnf.lo.go obj/src/math/ldexp.lo.go obj/src/math/ldexpf.lo.go obj/src/math/ldexpl.lo.go obj/src/math/lgamma.lo.go obj/src/math/lgamma_r.lo.go obj/src/math/lgammaf.lo.go obj/src/math/lgammaf_r.lo.go obj/src/math/lgammal.lo.go obj/src/math/llrint.lo.go obj/src/math/llrintf.lo.go obj/src/math/llrintl.lo.go obj/src/math/llround.lo.go obj/src/math/llroundf.lo.go obj/src/math/llroundl.lo.go obj/src/math/log.lo.go obj/src/math/log10.lo.go obj/src/math/log10f.lo.go obj/src/math/log10l.lo.go obj/src/math/log1p.lo.go obj/src/math/log1pf.lo.go obj/src/math/log1pl.lo.go obj/src/math/log2.lo.go obj/src/math/log2_data.lo.go obj/src/math/log2f.lo.go obj/src/math/log2f_data.lo.go obj/src/math/log2l.lo.go obj/src/math/log_data.lo.go obj/src/math/logb.lo.go obj/src/math/logbf.lo.go obj/src/math/logbl.lo.go obj/src/math/logf.lo.go obj/src/math/logf_data.lo.go obj/src/math/logl.lo.go obj/src/math/lrint.lo.go obj/src/math/lrintf.lo.go obj/src/math/lrintl.lo.go obj/src/math/lround.lo.go obj/src/math/lroundf.lo.go obj/src/math/lroundl.lo.go obj/src/math/modf.lo.go obj/src/math/modff.lo.go obj/src/math/modfl.lo.go obj/src/math/nan.lo.go obj/src/math/nanf.lo.go obj/src/math/nanl.lo.go obj/src/math/nextafter.lo.go obj/src/math/nextafterf.lo.go obj/src/math/nextafterl.lo.go obj/src/math/nexttoward.lo.go obj/src/math/nexttowardf.lo.go obj/src/math/nexttowardl.lo.go obj/src/math/pow.lo.go obj/src/math/pow_data.lo.go obj/src/math/powf.lo.go obj/src/math/powf_data.lo.go obj/src/math/powl.lo.go obj/src/math/remainder.lo.go obj/src/math/remainderf.lo.go obj/src/math/remainderl.lo.go obj/src/math/remquo.lo.go obj/src/math/remquof.lo.go obj/src/math/remquol.lo.go obj/src/math/rint.lo.go obj/src/math/rintf.lo.go obj/src/math/rintl.lo.go obj/src/math/round.lo.go obj/src/math/roundf.lo.go obj/src/math/roundl.lo.go obj/src/math/scalb.lo.go obj/src/math/scalbf.lo.go obj/src/math/scalbln.lo.go obj/src/math/scalblnf.lo.go obj/src/math/scalblnl.lo.go obj/src/math/scalbn.lo.go obj/src/math/scalbnf.lo.go obj/src/math/scalbnl.lo.go obj/src/math/signgam.lo.go obj/src/math/significand.lo.go obj/src/math/significandf.lo.go obj/src/math/sin.lo.go obj/src/math/sincos.lo.go obj/src/math/sincosf.lo.go obj/src/math/sincosl.lo.go obj/src/math/sinf.lo.go obj/src/math/sinh.lo.go obj/src/math/sinhf.lo.go obj/src/math/sinhl.lo.go obj/src/math/sinl.lo.go obj/src/math/sqrt.lo.go obj/src/math/sqrt_data.lo.go obj/src/math/sqrtf.lo.go obj/src/math/sqrtl.lo.go obj/src/math/tan.lo.go obj/src/math/tanf.lo.go obj/src/math/tanh.lo.go obj/src/math/tanhf.lo.go obj/src/math/tanhl.lo.go obj/src/math/tanl.lo.go obj/src/math/tgamma.lo.go obj/src/math/tgammaf.lo.go obj/src/math/tgammal.lo.go obj/src/math/trunc.lo.go obj/src/math/truncf.lo.go obj/src/math/truncl.lo.go obj/src/misc/a64l.lo.go obj/src/misc/basename.lo.go obj/src/misc/dirname.lo.go obj/src/misc/ffs.lo.go obj/src/misc/ffsl.lo.go obj/src/misc/ffsll.lo.go obj/src/misc/fmtmsg.lo.go obj/src/misc/get_current_dir_name.lo.go obj/src/misc/getauxval.lo.go obj/src/misc/getdomainname.lo.go obj/src/misc/getentropy.lo.go obj/src/misc/gethostid.lo.go obj/src/misc/getopt.lo.go obj/src/misc/getopt_long.lo.go obj/src/misc/getpriority.lo.go obj/src/misc/getresgid.lo.go obj/src/misc/getresuid.lo.go obj/src/misc/getrlimit.lo.go obj/src/misc/getrusage.lo.go obj/src/misc/getsubopt.lo.go obj/src/misc/ioctl.lo.go obj/src/misc/issetugid.lo.go obj/src/misc/lockf.lo.go obj/src/misc/login_tty.lo.go obj/src/misc/mntent.lo.go obj/src/misc/nftw.lo.go obj/src/misc/openpty.lo.go obj/src/misc/ptsname.lo.go obj/src/misc/pty.lo.go obj/src/misc/realpath.lo.go obj/src/misc/setdomainname.lo.go obj/src/misc/setpriority.lo.go obj/src/misc/setrlimit.lo.go obj/src/misc/syscall.lo.go obj/src/misc/syslog.lo.go obj/src/misc/uname.lo.go obj/src/mman/madvise.lo.go obj/src/mman/mincore.lo.go obj/src/mman/mlock.lo.go obj/src/mman/mlockall.lo.go obj/src/mman/mmap.lo.go obj/src/mman/mprotect.lo.go obj/src/mman/mremap.lo.go obj/src/mman/msync.lo.go obj/src/mman/munlock.lo.go obj/src/mman/munlockall.lo.go obj/src/mman/munmap.lo.go obj/src/mman/posix_madvise.lo.go obj/src/mman/shm_open.lo.go obj/src/multibyte/btowc.lo.go obj/src/multibyte/c16rtomb.lo.go obj/src/multibyte/c32rtomb.lo.go obj/src/multibyte/internal.lo.go obj/src/multibyte/mblen.lo.go obj/src/multibyte/mbrlen.lo.go obj/src/multibyte/mbrtoc16.lo.go obj/src/multibyte/mbrtoc32.lo.go obj/src/multibyte/mbrtowc.lo.go obj/src/multibyte/mbsinit.lo.go obj/src/multibyte/mbsnrtowcs.lo.go obj/src/multibyte/mbsrtowcs.lo.go obj/src/multibyte/mbstowcs.lo.go obj/src/multibyte/mbtowc.lo.go obj/src/multibyte/wcrtomb.lo.go obj/src/multibyte/wcsnrtombs.lo.go obj/src/multibyte/wcsrtombs.lo.go obj/src/multibyte/wcstombs.lo.go obj/src/multibyte/wctob.lo.go obj/src/multibyte/wctomb.lo.go obj/src/network/accept.lo.go obj/src/network/accept4.lo.go obj/src/network/bind.lo.go obj/src/network/connect.lo.go obj/src/network/dn_comp.lo.go obj/src/network/dn_expand.lo.go obj/src/network/dn_skipname.lo.go obj/src/network/dns_parse.lo.go obj/src/network/ent.lo.go obj/src/network/ether.lo.go obj/src/network/freeaddrinfo.lo.go obj/src/network/gai_strerror.lo.go obj/src/network/getaddrinfo.lo.go obj/src/network/gethostbyaddr.lo.go obj/src/network/gethostbyaddr_r.lo.go obj/src/network/gethostbyname.lo.go obj/src/network/gethostbyname2.lo.go obj/src/network/gethostbyname2_r.lo.go obj/src/network/gethostbyname_r.lo.go obj/src/network/getifaddrs.lo.go obj/src/network/getnameinfo.lo.go obj/src/network/getpeername.lo.go obj/src/network/getservbyname.lo.go obj/src/network/getservbyname_r.lo.go obj/src/network/getsockname.lo.go obj/src/network/getsockopt.lo.go obj/src/network/h_errno.lo.go obj/src/network/herror.lo.go obj/src/network/hstrerror.lo.go obj/src/network/htonl.lo.go obj/src/network/htons.lo.go obj/src/network/if_freenameindex.lo.go obj/src/network/if_indextoname.lo.go obj/src/network/if_nameindex.lo.go obj/src/network/if_nametoindex.lo.go obj/src/network/in6addr_any.lo.go obj/src/network/in6addr_loopback.lo.go obj/src/network/inet_addr.lo.go obj/src/network/inet_aton.lo.go obj/src/network/inet_legacy.lo.go obj/src/network/inet_ntoa.lo.go obj/src/network/inet_ntop.lo.go obj/src/network/inet_pton.lo.go obj/src/network/listen.lo.go obj/src/network/lookup_ipliteral.lo.go obj/src/network/lookup_name.lo.go obj/src/network/lookup_serv.lo.go obj/src/network/netlink.lo.go obj/src/network/netname.lo.go obj/src/network/ns_parse.lo.go obj/src/network/ntohl.lo.go obj/src/network/ntohs.lo.go obj/src/network/proto.lo.go obj/src/network/recv.lo.go obj/src/network/recvfrom.lo.go obj/src/network/recvmmsg.lo.go obj/src/network/recvmsg.lo.go obj/src/network/res_init.lo.go obj/src/network/res_mkquery.lo.go obj/src/network/res_msend.lo.go obj/src/network/res_send.lo.go obj/src/network/res_state.lo.go obj/src/network/resolvconf.lo.go obj/src/network/send.lo.go obj/src/network/sendmmsg.lo.go obj/src/network/sendmsg.lo.go obj/src/network/sendto.lo.go obj/src/network/serv.lo.go obj/src/network/setsockopt.lo.go obj/src/network/shutdown.lo.go obj/src/network/sockatmark.lo.go obj/src/network/socket.lo.go obj/src/network/socketpair.lo.go obj/src/passwd/fgetgrent.lo.go obj/src/passwd/fgetpwent.lo.go obj/src/passwd/getgr_a.lo.go obj/src/passwd/getgr_r.lo.go obj/src/passwd/getgrent.lo.go obj/src/passwd/getgrent_a.lo.go obj/src/passwd/getgrouplist.lo.go obj/src/passwd/getpw_a.lo.go obj/src/passwd/getpw_r.lo.go obj/src/passwd/getpwent.lo.go obj/src/passwd/getpwent_a.lo.go obj/src/passwd/getspent.lo.go obj/src/passwd/lckpwdf.lo.go obj/src/passwd/nscd_query.lo.go obj/src/passwd/putgrent.lo.go obj/src/passwd/putpwent.lo.go obj/src/passwd/putspent.lo.go obj/src/prng/__rand48_step.lo.go obj/src/prng/__seed48.lo.go obj/src/prng/drand48.lo.go obj/src/prng/lcong48.lo.go obj/src/prng/lrand48.lo.go obj/src/prng/mrand48.lo.go obj/src/prng/rand.lo.go obj/src/prng/rand_r.lo.go obj/src/prng/random.lo.go obj/src/prng/seed48.lo.go obj/src/prng/srand48.lo.go obj/src/process/execl.lo.go obj/src/process/execle.lo.go obj/src/process/execlp.lo.go obj/src/process/execv.lo.go obj/src/process/execve.lo.go obj/src/process/execvp.lo.go obj/src/process/fexecve.lo.go obj/src/process/fork.lo.go obj/src/process/posix_spawn_file_actions_addchdir.lo.go obj/src/process/posix_spawn_file_actions_addclose.lo.go obj/src/process/posix_spawn_file_actions_adddup2.lo.go obj/src/process/posix_spawn_file_actions_addfchdir.lo.go obj/src/process/posix_spawn_file_actions_addopen.lo.go obj/src/process/posix_spawn_file_actions_destroy.lo.go obj/src/process/posix_spawn_file_actions_init.lo.go obj/src/process/posix_spawnattr_destroy.lo.go obj/src/process/posix_spawnattr_getflags.lo.go obj/src/process/posix_spawnattr_getpgroup.lo.go obj/src/process/posix_spawnattr_getsigdefault.lo.go obj/src/process/posix_spawnattr_getsigmask.lo.go obj/src/process/posix_spawnattr_init.lo.go obj/src/process/posix_spawnattr_sched.lo.go obj/src/process/posix_spawnattr_setflags.lo.go obj/src/process/posix_spawnattr_setpgroup.lo.go obj/src/process/posix_spawnattr_setsigdefault.lo.go obj/src/process/posix_spawnattr_setsigmask.lo.go obj/src/process/vfork.lo.go obj/src/process/wait.lo.go obj/src/process/waitid.lo.go obj/src/process/waitpid.lo.go obj/src/regex/fnmatch.lo.go obj/src/regex/glob.lo.go obj/src/regex/regcomp.lo.go obj/src/regex/regerror.lo.go obj/src/regex/regexec.lo.go obj/src/regex/tre-mem.lo.go obj/src/search/hsearch.lo.go obj/src/search/insque.lo.go obj/src/search/lsearch.lo.go obj/src/search/tdelete.lo.go obj/src/search/tdestroy.lo.go obj/src/search/tfind.lo.go obj/src/search/tsearch.lo.go obj/src/search/twalk.lo.go obj/src/select/poll.lo.go obj/src/select/ppoll.lo.go obj/src/select/pselect.lo.go obj/src/select/select.lo.go obj/src/setjmp/longjmp.lo.go obj/src/setjmp/setjmp.lo.go obj/src/signal/block.lo.go obj/src/signal/getitimer.lo.go obj/src/signal/kill.lo.go obj/src/signal/killpg.lo.go obj/src/signal/psiginfo.lo.go obj/src/signal/psignal.lo.go obj/src/signal/raise.lo.go obj/src/signal/restore.lo.go obj/src/signal/setitimer.lo.go obj/src/signal/sigaction.lo.go obj/src/signal/sigaddset.lo.go obj/src/signal/sigaltstack.lo.go obj/src/signal/sigandset.lo.go obj/src/signal/sigdelset.lo.go obj/src/signal/sigemptyset.lo.go obj/src/signal/sigfillset.lo.go obj/src/signal/sigisemptyset.lo.go obj/src/signal/sigismember.lo.go obj/src/signal/sigorset.lo.go obj/src/signal/sigpending.lo.go obj/src/signal/sigprocmask.lo.go obj/src/signal/sigqueue.lo.go obj/src/signal/sigrtmax.lo.go obj/src/signal/sigrtmin.lo.go obj/src/signal/sigsetjmp.lo.go obj/src/signal/sigsetjmp_tail.lo.go obj/src/signal/sigsuspend.lo.go obj/src/signal/sigtimedwait.lo.go obj/src/signal/sigwait.lo.go obj/src/signal/sigwaitinfo.lo.go obj/src/stat/__xstat.lo.go obj/src/stat/chmod.lo.go obj/src/stat/fchmod.lo.go obj/src/stat/fchmodat.lo.go obj/src/stat/fstat.lo.go obj/src/stat/fstatat.lo.go obj/src/stat/futimens.lo.go obj/src/stat/futimesat.lo.go obj/src/stat/lchmod.lo.go obj/src/stat/lstat.lo.go obj/src/stat/mkdir.lo.go obj/src/stat/mkdirat.lo.go obj/src/stat/mkfifo.lo.go obj/src/stat/mkfifoat.lo.go obj/src/stat/mknod.lo.go obj/src/stat/mknodat.lo.go obj/src/stat/stat.lo.go obj/src/stat/statvfs.lo.go obj/src/stat/umask.lo.go obj/src/stat/utimensat.lo.go obj/src/stdio/__fclose_ca.lo.go obj/src/stdio/__fdopen.lo.go obj/src/stdio/__fmodeflags.lo.go obj/src/stdio/__fopen_rb_ca.lo.go obj/src/stdio/__overflow.lo.go obj/src/stdio/__stdio_close.lo.go obj/src/stdio/__stdio_exit.lo.go obj/src/stdio/__stdio_read.lo.go obj/src/stdio/__stdio_seek.lo.go obj/src/stdio/__stdio_write.lo.go obj/src/stdio/__stdout_write.lo.go obj/src/stdio/__toread.lo.go obj/src/stdio/__towrite.lo.go obj/src/stdio/__uflow.lo.go obj/src/stdio/asprintf.lo.go obj/src/stdio/clearerr.lo.go obj/src/stdio/dprintf.lo.go obj/src/stdio/ext.lo.go obj/src/stdio/ext2.lo.go obj/src/stdio/fclose.lo.go obj/src/stdio/feof.lo.go obj/src/stdio/ferror.lo.go obj/src/stdio/fflush.lo.go obj/src/stdio/fgetc.lo.go obj/src/stdio/fgetln.lo.go obj/src/stdio/fgetpos.lo.go obj/src/stdio/fgets.lo.go obj/src/stdio/fgetwc.lo.go obj/src/stdio/fgetws.lo.go obj/src/stdio/fileno.lo.go obj/src/stdio/flockfile.lo.go obj/src/stdio/fmemopen.lo.go obj/src/stdio/fopen.lo.go obj/src/stdio/fopencookie.lo.go obj/src/stdio/fprintf.lo.go obj/src/stdio/fputc.lo.go obj/src/stdio/fputs.lo.go obj/src/stdio/fputwc.lo.go obj/src/stdio/fputws.lo.go obj/src/stdio/fread.lo.go obj/src/stdio/freopen.lo.go obj/src/stdio/fscanf.lo.go obj/src/stdio/fseek.lo.go obj/src/stdio/fsetpos.lo.go obj/src/stdio/ftell.lo.go obj/src/stdio/ftrylockfile.lo.go obj/src/stdio/funlockfile.lo.go obj/src/stdio/fwide.lo.go obj/src/stdio/fwprintf.lo.go obj/src/stdio/fwrite.lo.go obj/src/stdio/fwscanf.lo.go obj/src/stdio/getc.lo.go obj/src/stdio/getc_unlocked.lo.go obj/src/stdio/getchar.lo.go obj/src/stdio/getchar_unlocked.lo.go obj/src/stdio/getdelim.lo.go obj/src/stdio/getline.lo.go obj/src/stdio/gets.lo.go obj/src/stdio/getw.lo.go obj/src/stdio/getwc.lo.go obj/src/stdio/getwchar.lo.go obj/src/stdio/ofl.lo.go obj/src/stdio/ofl_add.lo.go obj/src/stdio/open_memstream.lo.go obj/src/stdio/open_wmemstream.lo.go obj/src/stdio/pclose.lo.go obj/src/stdio/perror.lo.go obj/src/stdio/printf.lo.go obj/src/stdio/putc.lo.go obj/src/stdio/putc_unlocked.lo.go obj/src/stdio/putchar.lo.go obj/src/stdio/putchar_unlocked.lo.go obj/src/stdio/puts.lo.go obj/src/stdio/putw.lo.go obj/src/stdio/putwc.lo.go obj/src/stdio/putwchar.lo.go obj/src/stdio/remove.lo.go obj/src/stdio/rename.lo.go obj/src/stdio/rewind.lo.go obj/src/stdio/scanf.lo.go obj/src/stdio/setbuf.lo.go obj/src/stdio/setbuffer.lo.go obj/src/stdio/setlinebuf.lo.go obj/src/stdio/setvbuf.lo.go obj/src/stdio/snprintf.lo.go obj/src/stdio/sprintf.lo.go obj/src/stdio/sscanf.lo.go obj/src/stdio/stderr.lo.go obj/src/stdio/stdin.lo.go obj/src/stdio/stdout.lo.go obj/src/stdio/swprintf.lo.go obj/src/stdio/swscanf.lo.go obj/src/stdio/tempnam.lo.go obj/src/stdio/tmpfile.lo.go obj/src/stdio/tmpnam.lo.go obj/src/stdio/ungetc.lo.go obj/src/stdio/ungetwc.lo.go obj/src/stdio/vasprintf.lo.go obj/src/stdio/vdprintf.lo.go obj/src/stdio/vfprintf.lo.go obj/src/stdio/vfscanf.lo.go obj/src/stdio/vfwprintf.lo.go obj/src/stdio/vfwscanf.lo.go obj/src/stdio/vprintf.lo.go obj/src/stdio/vscanf.lo.go obj/src/stdio/vsnprintf.lo.go obj/src/stdio/vsprintf.lo.go obj/src/stdio/vsscanf.lo.go obj/src/stdio/vswprintf.lo.go obj/src/stdio/vswscanf.lo.go obj/src/stdio/vwprintf.lo.go obj/src/stdio/vwscanf.lo.go obj/src/stdio/wprintf.lo.go obj/src/stdio/wscanf.lo.go obj/src/stdlib/abs.lo.go obj/src/stdlib/atof.lo.go obj/src/stdlib/atoi.lo.go obj/src/stdlib/atol.lo.go obj/src/stdlib/atoll.lo.go obj/src/stdlib/bsearch.lo.go obj/src/stdlib/div.lo.go obj/src/stdlib/ecvt.lo.go obj/src/stdlib/fcvt.lo.go obj/src/stdlib/gcvt.lo.go obj/src/stdlib/imaxabs.lo.go obj/src/stdlib/imaxdiv.lo.go obj/src/stdlib/labs.lo.go obj/src/stdlib/ldiv.lo.go obj/src/stdlib/llabs.lo.go obj/src/stdlib/lldiv.lo.go obj/src/stdlib/qsort.lo.go obj/src/stdlib/qsort_nr.lo.go obj/src/stdlib/strtod.lo.go obj/src/stdlib/strtol.lo.go obj/src/stdlib/wcstod.lo.go obj/src/stdlib/wcstol.lo.go obj/src/string/bcmp.lo.go obj/src/string/bcopy.lo.go obj/src/string/bzero.lo.go obj/src/string/explicit_bzero.lo.go obj/src/string/index.lo.go obj/src/string/memccpy.lo.go obj/src/string/memchr.lo.go obj/src/string/memcmp.lo.go obj/src/string/memcpy.lo.go obj/src/string/memmem.lo.go obj/src/string/memmove.lo.go obj/src/string/mempcpy.lo.go obj/src/string/memrchr.lo.go obj/src/string/memset.lo.go obj/src/string/rindex.lo.go obj/src/string/stpcpy.lo.go obj/src/string/stpncpy.lo.go obj/src/string/strcasecmp.lo.go obj/src/string/strcasestr.lo.go obj/src/string/strcat.lo.go obj/src/string/strchr.lo.go obj/src/string/strchrnul.lo.go obj/src/string/strcmp.lo.go obj/src/string/strcpy.lo.go obj/src/string/strcspn.lo.go obj/src/string/strdup.lo.go obj/src/string/strerror_r.lo.go obj/src/string/strlcat.lo.go obj/src/string/strlcpy.lo.go obj/src/string/strlen.lo.go obj/src/string/strncasecmp.lo.go obj/src/string/strncat.lo.go obj/src/string/strncmp.lo.go obj/src/string/strncpy.lo.go obj/src/string/strndup.lo.go obj/src/string/strnlen.lo.go obj/src/string/strpbrk.lo.go obj/src/string/strrchr.lo.go obj/src/string/strsep.lo.go obj/src/string/strsignal.lo.go obj/src/string/strspn.lo.go obj/src/string/strstr.lo.go obj/src/string/strtok.lo.go obj/src/string/strtok_r.lo.go obj/src/string/strverscmp.lo.go obj/src/string/swab.lo.go obj/src/string/wcpcpy.lo.go obj/src/string/wcpncpy.lo.go obj/src/string/wcscasecmp.lo.go obj/src/string/wcscasecmp_l.lo.go obj/src/string/wcscat.lo.go obj/src/string/wcschr.lo.go obj/src/string/wcscmp.lo.go obj/src/string/wcscpy.lo.go obj/src/string/wcscspn.lo.go obj/src/string/wcsdup.lo.go obj/src/string/wcslen.lo.go obj/src/string/wcsncasecmp.lo.go obj/src/string/wcsncasecmp_l.lo.go obj/src/string/wcsncat.lo.go obj/src/string/wcsncmp.lo.go obj/src/string/wcsncpy.lo.go obj/src/string/wcsnlen.lo.go obj/src/string/wcspbrk.lo.go obj/src/string/wcsrchr.lo.go obj/src/string/wcsspn.lo.go obj/src/string/wcsstr.lo.go obj/src/string/wcstok.lo.go obj/src/string/wcswcs.lo.go obj/src/string/wmemchr.lo.go obj/src/string/wmemcmp.lo.go obj/src/string/wmemcpy.lo.go obj/src/string/wmemmove.lo.go obj/src/string/wmemset.lo.go obj/src/temp/mkdtemp.lo.go obj/src/temp/mkostemp.lo.go obj/src/temp/mkostemps.lo.go obj/src/temp/mkstemp.lo.go obj/src/temp/mkstemps.lo.go obj/src/temp/mktemp.lo.go obj/src/termios/cfgetospeed.lo.go obj/src/termios/cfmakeraw.lo.go obj/src/termios/cfsetospeed.lo.go obj/src/termios/tcdrain.lo.go obj/src/termios/tcflow.lo.go obj/src/termios/tcflush.lo.go obj/src/termios/tcgetattr.lo.go obj/src/termios/tcgetsid.lo.go obj/src/termios/tcgetwinsize.lo.go obj/src/termios/tcsendbreak.lo.go obj/src/termios/tcsetattr.lo.go obj/src/termios/tcsetwinsize.lo.go obj/src/time/__map_file.lo.go obj/src/time/__month_to_secs.lo.go obj/src/time/__secs_to_tm.lo.go obj/src/time/__tm_to_secs.lo.go obj/src/time/__tz.lo.go obj/src/time/__year_to_secs.lo.go obj/src/time/asctime.lo.go obj/src/time/asctime_r.lo.go obj/src/time/clock.lo.go obj/src/time/clock_getcpuclockid.lo.go obj/src/time/clock_getres.lo.go obj/src/time/clock_gettime.lo.go obj/src/time/clock_nanosleep.lo.go obj/src/time/clock_settime.lo.go obj/src/time/ctime.lo.go obj/src/time/ctime_r.lo.go obj/src/time/difftime.lo.go obj/src/time/ftime.lo.go obj/src/time/getdate.lo.go obj/src/time/gettimeofday.lo.go obj/src/time/gmtime.lo.go obj/src/time/gmtime_r.lo.go obj/src/time/localtime.lo.go obj/src/time/localtime_r.lo.go obj/src/time/mktime.lo.go obj/src/time/nanosleep.lo.go obj/src/time/strftime.lo.go obj/src/time/strptime.lo.go obj/src/time/time.lo.go obj/src/time/timegm.lo.go obj/src/time/timer_delete.lo.go obj/src/time/timer_getoverrun.lo.go obj/src/time/timer_gettime.lo.go obj/src/time/timer_settime.lo.go obj/src/time/times.lo.go obj/src/time/timespec_get.lo.go obj/src/time/utime.lo.go obj/src/time/wcsftime.lo.go obj/src/unistd/_exit.lo.go obj/src/unistd/access.lo.go obj/src/unistd/acct.lo.go obj/src/unistd/alarm.lo.go obj/src/unistd/chdir.lo.go obj/src/unistd/chown.lo.go obj/src/unistd/close.lo.go obj/src/unistd/ctermid.lo.go obj/src/unistd/dup.lo.go obj/src/unistd/dup2.lo.go obj/src/unistd/dup3.lo.go obj/src/unistd/faccessat.lo.go obj/src/unistd/fchdir.lo.go obj/src/unistd/fchown.lo.go obj/src/unistd/fchownat.lo.go obj/src/unistd/fdatasync.lo.go obj/src/unistd/fsync.lo.go obj/src/unistd/ftruncate.lo.go obj/src/unistd/getcwd.lo.go obj/src/unistd/getegid.lo.go obj/src/unistd/geteuid.lo.go obj/src/unistd/getgid.lo.go obj/src/unistd/getgroups.lo.go obj/src/unistd/gethostname.lo.go obj/src/unistd/getlogin.lo.go obj/src/unistd/getlogin_r.lo.go obj/src/unistd/getpgid.lo.go obj/src/unistd/getpgrp.lo.go obj/src/unistd/getpid.lo.go obj/src/unistd/getppid.lo.go obj/src/unistd/getsid.lo.go obj/src/unistd/getuid.lo.go obj/src/unistd/isatty.lo.go obj/src/unistd/lchown.lo.go obj/src/unistd/link.lo.go obj/src/unistd/linkat.lo.go obj/src/unistd/lseek.lo.go obj/src/unistd/nice.lo.go obj/src/unistd/pause.lo.go obj/src/unistd/pipe.lo.go obj/src/unistd/pipe2.lo.go obj/src/unistd/posix_close.lo.go obj/src/unistd/pread.lo.go obj/src/unistd/preadv.lo.go obj/src/unistd/pwrite.lo.go obj/src/unistd/pwritev.lo.go obj/src/unistd/read.lo.go obj/src/unistd/readlink.lo.go obj/src/unistd/readlinkat.lo.go obj/src/unistd/readv.lo.go obj/src/unistd/renameat.lo.go obj/src/unistd/rmdir.lo.go obj/src/unistd/setgid.lo.go obj/src/unistd/setpgid.lo.go obj/src/unistd/setpgrp.lo.go obj/src/unistd/setsid.lo.go obj/src/unistd/setuid.lo.go obj/src/unistd/setxid.lo.go obj/src/unistd/sleep.lo.go obj/src/unistd/symlink.lo.go obj/src/unistd/symlinkat.lo.go obj/src/unistd/sync.lo.go obj/src/unistd/tcgetpgrp.lo.go obj/src/unistd/tcsetpgrp.lo.go obj/src/unistd/truncate.lo.go obj/src/unistd/ttyname.lo.go obj/src/unistd/ttyname_r.lo.go obj/src/unistd/ualarm.lo.go obj/src/unistd/unlink.lo.go obj/src/unistd/unlinkat.lo.go obj/src/unistd/usleep.lo.go obj/src/unistd/write.lo.go obj/src/unistd/writev.lo.go obj/compat/time32/__xstat.lo.go obj/compat/time32/adjtime32.lo.go obj/compat/time32/adjtimex_time32.lo.go obj/compat/time32/clock_adjtime32.lo.go obj/compat/time32/clock_getres_time32.lo.go obj/compat/time32/clock_gettime32.lo.go obj/compat/time32/clock_nanosleep_time32.lo.go obj/compat/time32/clock_settime32.lo.go obj/compat/time32/ctime32.lo.go obj/compat/time32/ctime32_r.lo.go obj/compat/time32/difftime32.lo.go obj/compat/time32/fstat_time32.lo.go obj/compat/time32/fstatat_time32.lo.go obj/compat/time32/ftime32.lo.go obj/compat/time32/futimens_time32.lo.go obj/compat/time32/futimes_time32.lo.go obj/compat/time32/futimesat_time32.lo.go obj/compat/time32/getitimer_time32.lo.go obj/compat/time32/getrusage_time32.lo.go obj/compat/time32/gettimeofday_time32.lo.go obj/compat/time32/gmtime32.lo.go obj/compat/time32/gmtime32_r.lo.go obj/compat/time32/localtime32.lo.go obj/compat/time32/localtime32_r.lo.go obj/compat/time32/lstat_time32.lo.go obj/compat/time32/lutimes_time32.lo.go obj/compat/time32/mktime32.lo.go obj/compat/time32/nanosleep_time32.lo.go obj/compat/time32/ppoll_time32.lo.go obj/compat/time32/pselect_time32.lo.go obj/compat/time32/recvmmsg_time32.lo.go obj/compat/time32/select_time32.lo.go obj/compat/time32/semtimedop_time32.lo.go obj/compat/time32/setitimer_time32.lo.go obj/compat/time32/settimeofday_time32.lo.go obj/compat/time32/sigtimedwait_time32.lo.go obj/compat/time32/stat_time32.lo.go obj/compat/time32/stime32.lo.go obj/compat/time32/time32.lo.go obj/compat/time32/time32gm.lo.go obj/compat/time32/timer_gettime32.lo.go obj/compat/time32/timer_settime32.lo.go obj/compat/time32/timerfd_gettime32.lo.go obj/compat/time32/timerfd_settime32.lo.go obj/compat/time32/timespec_get_time32.lo.go obj/compat/time32/utime_time32.lo.go obj/compat/time32/utimensat_time32.lo.go obj/compat/time32/utimes_time32.lo.go obj/compat/time32/wait3_time32.lo.go obj/compat/time32/wait4_time32.lo.go -lgcc -lgcc_eh', DO NOT EDIT.
+// Code generated for linux/386 by 'gcc --package-name=libc --prefix-enumerator=_ --prefix-external=x_ --prefix-field=F --prefix-static-internal=_ --prefix-static-none=_ --prefix-tagged-enum=_ --prefix-tagged-struct=T --prefix-tagged-union=T --prefix-typename=T --prefix-undefined=_ -emit-func-aliases -eval-all-macros -extended-errors -ignore-asm-errors -ignore-unsupported-alignment -isystem  -hide strlen -hide __libc_sigaction -mlong-double-64 -std=c99 -nostdinc -ffreestanding -D_XOPEN_SOURCE=700 -I./arch/i386 -I./arch/generic -Iobj/src/internal -I./src/include -I./src/internal -Iobj/include -I./include -march=i486 -mtune=generic -DNDEBUG -nostdlib -shared -o lib/libc.so.go obj/src/complex/__cexp.lo.go obj/src/complex/__cexpf.lo.go obj/src/complex/cabs.lo.go obj/src/complex/cabsf.lo.go obj/src/complex/cabsl.lo.go obj/src/complex/cacos.lo.go obj/src/complex/cacosf.lo.go obj/src/complex/cacosh.lo.go obj/src/complex/cacoshf.lo.go obj/src/complex/cacoshl.lo.go obj/src/complex/cacosl.lo.go obj/src/complex/carg.lo.go obj/src/complex/cargf.lo.go obj/src/complex/cargl.lo.go obj/src/complex/casin.lo.go obj/src/complex/casinf.lo.go obj/src/complex/casinh.lo.go obj/src/complex/casinhf.lo.go obj/src/complex/casinhl.lo.go obj/src/complex/casinl.lo.go obj/src/complex/catan.lo.go obj/src/complex/catanf.lo.go obj/src/complex/catanh.lo.go obj/src/complex/catanhf.lo.go obj/src/complex/catanhl.lo.go obj/src/complex/catanl.lo.go obj/src/complex/ccos.lo.go obj/src/complex/ccosf.lo.go obj/src/complex/ccosh.lo.go obj/src/complex/ccoshf.lo.go obj/src/complex/ccoshl.lo.go obj/src/complex/ccosl.lo.go obj/src/complex/cexp.lo.go obj/src/complex/cexpf.lo.go obj/src/complex/cexpl.lo.go obj/src/complex/cimag.lo.go obj/src/complex/cimagf.lo.go obj/src/complex/cimagl.lo.go obj/src/complex/clog.lo.go obj/src/complex/clogf.lo.go obj/src/complex/clogl.lo.go obj/src/complex/conj.lo.go obj/src/complex/conjf.lo.go obj/src/complex/conjl.lo.go obj/src/complex/cpow.lo.go obj/src/complex/cpowf.lo.go obj/src/complex/cpowl.lo.go obj/src/complex/cproj.lo.go obj/src/complex/cprojf.lo.go obj/src/complex/cprojl.lo.go obj/src/complex/creal.lo.go obj/src/complex/crealf.lo.go obj/src/complex/creall.lo.go obj/src/complex/csin.lo.go obj/src/complex/csinf.lo.go obj/src/complex/csinh.lo.go obj/src/complex/csinhf.lo.go obj/src/complex/csinhl.lo.go obj/src/complex/csinl.lo.go obj/src/complex/csqrt.lo.go obj/src/complex/csqrtf.lo.go obj/src/complex/csqrtl.lo.go obj/src/complex/ctan.lo.go obj/src/complex/ctanf.lo.go obj/src/complex/ctanh.lo.go obj/src/complex/ctanhf.lo.go obj/src/complex/ctanhl.lo.go obj/src/complex/ctanl.lo.go obj/src/conf/confstr.lo.go obj/src/conf/fpathconf.lo.go obj/src/conf/legacy.lo.go obj/src/conf/pathconf.lo.go obj/src/conf/sysconf.lo.go obj/src/crypt/crypt.lo.go obj/src/crypt/crypt_blowfish.lo.go obj/src/crypt/crypt_des.lo.go obj/src/crypt/crypt_md5.lo.go obj/src/crypt/crypt_r.lo.go obj/src/crypt/crypt_sha256.lo.go obj/src/crypt/crypt_sha512.lo.go obj/src/crypt/encrypt.lo.go obj/src/ctype/__ctype_b_loc.lo.go obj/src/ctype/__ctype_get_mb_cur_max.lo.go obj/src/ctype/__ctype_tolower_loc.lo.go obj/src/ctype/__ctype_toupper_loc.lo.go obj/src/ctype/isalnum.lo.go obj/src/ctype/isalpha.lo.go obj/src/ctype/isascii.lo.go obj/src/ctype/isblank.lo.go obj/src/ctype/iscntrl.lo.go obj/src/ctype/isdigit.lo.go obj/src/ctype/isgraph.lo.go obj/src/ctype/islower.lo.go obj/src/ctype/isprint.lo.go obj/src/ctype/ispunct.lo.go obj/src/ctype/isspace.lo.go obj/src/ctype/isupper.lo.go obj/src/ctype/iswalnum.lo.go obj/src/ctype/iswalpha.lo.go obj/src/ctype/iswblank.lo.go obj/src/ctype/iswcntrl.lo.go obj/src/ctype/iswctype.lo.go obj/src/ctype/iswdigit.lo.go obj/src/ctype/iswgraph.lo.go obj/src/ctype/iswlower.lo.go obj/src/ctype/iswprint.lo.go obj/src/ctype/iswpunct.lo.go obj/src/ctype/iswspace.lo.go obj/src/ctype/iswupper.lo.go obj/src/ctype/iswxdigit.lo.go obj/src/ctype/isxdigit.lo.go obj/src/ctype/toascii.lo.go obj/src/ctype/tolower.lo.go obj/src/ctype/toupper.lo.go obj/src/ctype/towctrans.lo.go obj/src/ctype/wcswidth.lo.go obj/src/ctype/wctrans.lo.go obj/src/ctype/wcwidth.lo.go obj/src/dirent/alphasort.lo.go obj/src/dirent/closedir.lo.go obj/src/dirent/dirfd.lo.go obj/src/dirent/fdopendir.lo.go obj/src/dirent/opendir.lo.go obj/src/dirent/readdir.lo.go obj/src/dirent/readdir_r.lo.go obj/src/dirent/rewinddir.lo.go obj/src/dirent/scandir.lo.go obj/src/dirent/seekdir.lo.go obj/src/dirent/telldir.lo.go obj/src/dirent/versionsort.lo.go obj/src/env/__environ.lo.go obj/src/env/__reset_tls.lo.go obj/src/env/__stack_chk_fail.lo.go obj/src/env/clearenv.lo.go obj/src/env/getenv.lo.go obj/src/env/putenv.lo.go obj/src/env/secure_getenv.lo.go obj/src/env/setenv.lo.go obj/src/env/unsetenv.lo.go obj/src/errno/strerror.lo.go obj/src/exit/_Exit.lo.go obj/src/exit/abort_lock.lo.go obj/src/exit/assert.lo.go obj/src/exit/at_quick_exit.lo.go obj/src/exit/quick_exit.lo.go obj/src/fcntl/creat.lo.go obj/src/fcntl/fcntl.lo.go obj/src/fcntl/open.lo.go obj/src/fcntl/openat.lo.go obj/src/fcntl/posix_fadvise.lo.go obj/src/fcntl/posix_fallocate.lo.go obj/src/fenv/fenv.lo.go obj/src/internal/defsysinfo.lo.go obj/src/internal/emulate_wait4.lo.go obj/src/internal/floatscan.lo.go obj/src/internal/intscan.lo.go obj/src/internal/libc.lo.go obj/src/internal/procfdname.lo.go obj/src/internal/shgetc.lo.go obj/src/internal/syscall_ret.lo.go obj/src/internal/vdso.lo.go obj/src/internal/version.lo.go obj/src/ipc/ftok.lo.go obj/src/ipc/msgctl.lo.go obj/src/ipc/msgget.lo.go obj/src/ipc/msgrcv.lo.go obj/src/ipc/msgsnd.lo.go obj/src/ipc/semctl.lo.go obj/src/ipc/semget.lo.go obj/src/ipc/semop.lo.go obj/src/ipc/semtimedop.lo.go obj/src/ipc/shmat.lo.go obj/src/ipc/shmctl.lo.go obj/src/ipc/shmdt.lo.go obj/src/ipc/shmget.lo.go obj/src/legacy/cuserid.lo.go obj/src/legacy/err.lo.go obj/src/legacy/euidaccess.lo.go obj/src/legacy/ftw.lo.go obj/src/legacy/futimes.lo.go obj/src/legacy/getdtablesize.lo.go obj/src/legacy/getloadavg.lo.go obj/src/legacy/getpagesize.lo.go obj/src/legacy/getpass.lo.go obj/src/legacy/getusershell.lo.go obj/src/legacy/isastream.lo.go obj/src/legacy/lutimes.lo.go obj/src/legacy/ulimit.lo.go obj/src/legacy/utmpx.lo.go obj/src/linux/adjtime.lo.go obj/src/linux/adjtimex.lo.go obj/src/linux/arch_prctl.lo.go obj/src/linux/brk.lo.go obj/src/linux/cache.lo.go obj/src/linux/cap.lo.go obj/src/linux/chroot.lo.go obj/src/linux/clock_adjtime.lo.go obj/src/linux/copy_file_range.lo.go obj/src/linux/epoll.lo.go obj/src/linux/eventfd.lo.go obj/src/linux/fallocate.lo.go obj/src/linux/fanotify.lo.go obj/src/linux/flock.lo.go obj/src/linux/getdents.lo.go obj/src/linux/getrandom.lo.go obj/src/linux/inotify.lo.go obj/src/linux/ioperm.lo.go obj/src/linux/iopl.lo.go obj/src/linux/klogctl.lo.go obj/src/linux/memfd_create.lo.go obj/src/linux/mlock2.lo.go obj/src/linux/module.lo.go obj/src/linux/mount.lo.go obj/src/linux/name_to_handle_at.lo.go obj/src/linux/open_by_handle_at.lo.go obj/src/linux/personality.lo.go obj/src/linux/pivot_root.lo.go obj/src/linux/prctl.lo.go obj/src/linux/preadv2.lo.go obj/src/linux/prlimit.lo.go obj/src/linux/process_vm.lo.go obj/src/linux/ptrace.lo.go obj/src/linux/pwritev2.lo.go obj/src/linux/quotactl.lo.go obj/src/linux/readahead.lo.go obj/src/linux/reboot.lo.go obj/src/linux/remap_file_pages.lo.go obj/src/linux/sbrk.lo.go obj/src/linux/sendfile.lo.go obj/src/linux/setfsgid.lo.go obj/src/linux/setfsuid.lo.go obj/src/linux/sethostname.lo.go obj/src/linux/setns.lo.go obj/src/linux/settimeofday.lo.go obj/src/linux/signalfd.lo.go obj/src/linux/splice.lo.go obj/src/linux/statx.lo.go obj/src/linux/stime.lo.go obj/src/linux/swap.lo.go obj/src/linux/sync_file_range.lo.go obj/src/linux/syncfs.lo.go obj/src/linux/sysinfo.lo.go obj/src/linux/tee.lo.go obj/src/linux/timerfd.lo.go obj/src/linux/unshare.lo.go obj/src/linux/utimes.lo.go obj/src/linux/vhangup.lo.go obj/src/linux/vmsplice.lo.go obj/src/linux/wait3.lo.go obj/src/linux/wait4.lo.go obj/src/linux/xattr.lo.go obj/src/locale/__lctrans.lo.go obj/src/locale/__mo_lookup.lo.go obj/src/locale/bind_textdomain_codeset.lo.go obj/src/locale/c_locale.lo.go obj/src/locale/catclose.lo.go obj/src/locale/catgets.lo.go obj/src/locale/catopen.lo.go obj/src/locale/dcngettext.lo.go obj/src/locale/duplocale.lo.go obj/src/locale/freelocale.lo.go obj/src/locale/iconv.lo.go obj/src/locale/iconv_close.lo.go obj/src/locale/langinfo.lo.go obj/src/locale/locale_map.lo.go obj/src/locale/localeconv.lo.go obj/src/locale/newlocale.lo.go obj/src/locale/pleval.lo.go obj/src/locale/setlocale.lo.go obj/src/locale/strcoll.lo.go obj/src/locale/strfmon.lo.go obj/src/locale/strtod_l.lo.go obj/src/locale/strxfrm.lo.go obj/src/locale/textdomain.lo.go obj/src/locale/uselocale.lo.go obj/src/locale/wcscoll.lo.go obj/src/locale/wcsxfrm.lo.go obj/src/malloc/reallocarray.lo.go obj/src/math/__cos.lo.go obj/src/math/__cosdf.lo.go obj/src/math/__cosl.lo.go obj/src/math/__expo2.lo.go obj/src/math/__expo2f.lo.go obj/src/math/__fpclassify.lo.go obj/src/math/__fpclassifyf.lo.go obj/src/math/__fpclassifyl.lo.go obj/src/math/__invtrigl.lo.go obj/src/math/__math_divzero.lo.go obj/src/math/__math_divzerof.lo.go obj/src/math/__math_invalid.lo.go obj/src/math/__math_invalidf.lo.go obj/src/math/__math_invalidl.lo.go obj/src/math/__math_oflow.lo.go obj/src/math/__math_oflowf.lo.go obj/src/math/__math_uflow.lo.go obj/src/math/__math_uflowf.lo.go obj/src/math/__math_xflow.lo.go obj/src/math/__math_xflowf.lo.go obj/src/math/__polevll.lo.go obj/src/math/__rem_pio2.lo.go obj/src/math/__rem_pio2_large.lo.go obj/src/math/__rem_pio2f.lo.go obj/src/math/__rem_pio2l.lo.go obj/src/math/__signbit.lo.go obj/src/math/__signbitf.lo.go obj/src/math/__signbitl.lo.go obj/src/math/__sin.lo.go obj/src/math/__sindf.lo.go obj/src/math/__sinl.lo.go obj/src/math/__tan.lo.go obj/src/math/__tandf.lo.go obj/src/math/__tanl.lo.go obj/src/math/acos.lo.go obj/src/math/acosf.lo.go obj/src/math/acosh.lo.go obj/src/math/acoshf.lo.go obj/src/math/acoshl.lo.go obj/src/math/acosl.lo.go obj/src/math/asin.lo.go obj/src/math/asinf.lo.go obj/src/math/asinh.lo.go obj/src/math/asinhf.lo.go obj/src/math/asinhl.lo.go obj/src/math/asinl.lo.go obj/src/math/atan.lo.go obj/src/math/atan2.lo.go obj/src/math/atan2f.lo.go obj/src/math/atan2l.lo.go obj/src/math/atanf.lo.go obj/src/math/atanh.lo.go obj/src/math/atanhf.lo.go obj/src/math/atanhl.lo.go obj/src/math/atanl.lo.go obj/src/math/cbrt.lo.go obj/src/math/cbrtf.lo.go obj/src/math/cbrtl.lo.go obj/src/math/ceil.lo.go obj/src/math/ceilf.lo.go obj/src/math/ceill.lo.go obj/src/math/copysign.lo.go obj/src/math/copysignf.lo.go obj/src/math/copysignl.lo.go obj/src/math/cos.lo.go obj/src/math/cosf.lo.go obj/src/math/cosh.lo.go obj/src/math/coshf.lo.go obj/src/math/coshl.lo.go obj/src/math/cosl.lo.go obj/src/math/erf.lo.go obj/src/math/erff.lo.go obj/src/math/erfl.lo.go obj/src/math/exp.lo.go obj/src/math/exp10.lo.go obj/src/math/exp10f.lo.go obj/src/math/exp10l.lo.go obj/src/math/exp2.lo.go obj/src/math/exp2f.lo.go obj/src/math/exp2f_data.lo.go obj/src/math/exp2l.lo.go obj/src/math/exp_data.lo.go obj/src/math/expf.lo.go obj/src/math/expl.lo.go obj/src/math/expm1.lo.go obj/src/math/expm1f.lo.go obj/src/math/expm1l.lo.go obj/src/math/fabs.lo.go obj/src/math/fabsf.lo.go obj/src/math/fabsl.lo.go obj/src/math/fdim.lo.go obj/src/math/fdimf.lo.go obj/src/math/fdiml.lo.go obj/src/math/finite.lo.go obj/src/math/finitef.lo.go obj/src/math/floor.lo.go obj/src/math/floorf.lo.go obj/src/math/floorl.lo.go obj/src/math/fma.lo.go obj/src/math/fmal.lo.go obj/src/math/fmax.lo.go obj/src/math/fmaxf.lo.go obj/src/math/fmaxl.lo.go obj/src/math/fmin.lo.go obj/src/math/fminf.lo.go obj/src/math/fminl.lo.go obj/src/math/fmod.lo.go obj/src/math/fmodf.lo.go obj/src/math/fmodl.lo.go obj/src/math/frexp.lo.go obj/src/math/frexpf.lo.go obj/src/math/frexpl.lo.go obj/src/math/hypot.lo.go obj/src/math/hypotf.lo.go obj/src/math/hypotl.lo.go obj/src/math/ilogb.lo.go obj/src/math/ilogbf.lo.go obj/src/math/ilogbl.lo.go obj/src/math/j0.lo.go obj/src/math/j0f.lo.go obj/src/math/j1.lo.go obj/src/math/j1f.lo.go obj/src/math/jn.lo.go obj/src/math/jnf.lo.go obj/src/math/ldexp.lo.go obj/src/math/ldexpf.lo.go obj/src/math/ldexpl.lo.go obj/src/math/lgamma.lo.go obj/src/math/lgamma_r.lo.go obj/src/math/lgammaf.lo.go obj/src/math/lgammaf_r.lo.go obj/src/math/lgammal.lo.go obj/src/math/llrint.lo.go obj/src/math/llrintf.lo.go obj/src/math/llrintl.lo.go obj/src/math/llround.lo.go obj/src/math/llroundf.lo.go obj/src/math/llroundl.lo.go obj/src/math/log.lo.go obj/src/math/log10.lo.go obj/src/math/log10f.lo.go obj/src/math/log10l.lo.go obj/src/math/log1p.lo.go obj/src/math/log1pf.lo.go obj/src/math/log1pl.lo.go obj/src/math/log2.lo.go obj/src/math/log2_data.lo.go obj/src/math/log2f.lo.go obj/src/math/log2f_data.lo.go obj/src/math/log2l.lo.go obj/src/math/log_data.lo.go obj/src/math/logb.lo.go obj/src/math/logbf.lo.go obj/src/math/logbl.lo.go obj/src/math/logf.lo.go obj/src/math/logf_data.lo.go obj/src/math/logl.lo.go obj/src/math/lrint.lo.go obj/src/math/lrintf.lo.go obj/src/math/lrintl.lo.go obj/src/math/lround.lo.go obj/src/math/lroundf.lo.go obj/src/math/lroundl.lo.go obj/src/math/modf.lo.go obj/src/math/modff.lo.go obj/src/math/modfl.lo.go obj/src/math/nan.lo.go obj/src/math/nanf.lo.go obj/src/math/nanl.lo.go obj/src/math/nextafter.lo.go obj/src/math/nextafterf.lo.go obj/src/math/nextafterl.lo.go obj/src/math/nexttoward.lo.go obj/src/math/nexttowardf.lo.go obj/src/math/nexttowardl.lo.go obj/src/math/pow.lo.go obj/src/math/pow_data.lo.go obj/src/math/powf.lo.go obj/src/math/powf_data.lo.go obj/src/math/powl.lo.go obj/src/math/remainder.lo.go obj/src/math/remainderf.lo.go obj/src/math/remainderl.lo.go obj/src/math/remquo.lo.go obj/src/math/remquof.lo.go obj/src/math/remquol.lo.go obj/src/math/rint.lo.go obj/src/math/rintf.lo.go obj/src/math/rintl.lo.go obj/src/math/round.lo.go obj/src/math/roundf.lo.go obj/src/math/roundl.lo.go obj/src/math/scalb.lo.go obj/src/math/scalbf.lo.go obj/src/math/scalbln.lo.go obj/src/math/scalblnf.lo.go obj/src/math/scalblnl.lo.go obj/src/math/scalbn.lo.go obj/src/math/scalbnf.lo.go obj/src/math/scalbnl.lo.go obj/src/math/signgam.lo.go obj/src/math/significand.lo.go obj/src/math/significandf.lo.go obj/src/math/sin.lo.go obj/src/math/sincos.lo.go obj/src/math/sincosf.lo.go obj/src/math/sincosl.lo.go obj/src/math/sinf.lo.go obj/src/math/sinh.lo.go obj/src/math/sinhf.lo.go obj/src/math/sinhl.lo.go obj/src/math/sinl.lo.go obj/src/math/sqrt.lo.go obj/src/math/sqrt_data.lo.go obj/src/math/sqrtf.lo.go obj/src/math/sqrtl.lo.go obj/src/math/tan.lo.go obj/src/math/tanf.lo.go obj/src/math/tanh.lo.go obj/src/math/tanhf.lo.go obj/src/math/tanhl.lo.go obj/src/math/tanl.lo.go obj/src/math/tgamma.lo.go obj/src/math/tgammaf.lo.go obj/src/math/tgammal.lo.go obj/src/math/trunc.lo.go obj/src/math/truncf.lo.go obj/src/math/truncl.lo.go obj/src/misc/a64l.lo.go obj/src/misc/basename.lo.go obj/src/misc/dirname.lo.go obj/src/misc/ffs.lo.go obj/src/misc/ffsl.lo.go obj/src/misc/ffsll.lo.go obj/src/misc/fmtmsg.lo.go obj/src/misc/get_current_dir_name.lo.go obj/src/misc/getauxval.lo.go obj/src/misc/getdomainname.lo.go obj/src/misc/getentropy.lo.go obj/src/misc/gethostid.lo.go obj/src/misc/getopt.lo.go obj/src/misc/getopt_long.lo.go obj/src/misc/getpriority.lo.go obj/src/misc/getresgid.lo.go obj/src/misc/getresuid.lo.go obj/src/misc/getrlimit.lo.go obj/src/misc/getrusage.lo.go obj/src/misc/getsubopt.lo.go obj/src/misc/ioctl.lo.go obj/src/misc/issetugid.lo.go obj/src/misc/lockf.lo.go obj/src/misc/login_tty.lo.go obj/src/misc/mntent.lo.go obj/src/misc/nftw.lo.go obj/src/misc/openpty.lo.go obj/src/misc/ptsname.lo.go obj/src/misc/pty.lo.go obj/src/misc/realpath.lo.go obj/src/misc/setdomainname.lo.go obj/src/misc/setpriority.lo.go obj/src/misc/setrlimit.lo.go obj/src/misc/syscall.lo.go obj/src/misc/syslog.lo.go obj/src/misc/uname.lo.go obj/src/mman/madvise.lo.go obj/src/mman/mincore.lo.go obj/src/mman/mlock.lo.go obj/src/mman/mlockall.lo.go obj/src/mman/mmap.lo.go obj/src/mman/mprotect.lo.go obj/src/mman/mremap.lo.go obj/src/mman/msync.lo.go obj/src/mman/munlock.lo.go obj/src/mman/munlockall.lo.go obj/src/mman/munmap.lo.go obj/src/mman/posix_madvise.lo.go obj/src/mman/shm_open.lo.go obj/src/multibyte/btowc.lo.go obj/src/multibyte/c16rtomb.lo.go obj/src/multibyte/c32rtomb.lo.go obj/src/multibyte/internal.lo.go obj/src/multibyte/mblen.lo.go obj/src/multibyte/mbrlen.lo.go obj/src/multibyte/mbrtoc16.lo.go obj/src/multibyte/mbrtoc32.lo.go obj/src/multibyte/mbrtowc.lo.go obj/src/multibyte/mbsinit.lo.go obj/src/multibyte/mbsnrtowcs.lo.go obj/src/multibyte/mbsrtowcs.lo.go obj/src/multibyte/mbstowcs.lo.go obj/src/multibyte/mbtowc.lo.go obj/src/multibyte/wcrtomb.lo.go obj/src/multibyte/wcsnrtombs.lo.go obj/src/multibyte/wcsrtombs.lo.go obj/src/multibyte/wcstombs.lo.go obj/src/multibyte/wctob.lo.go obj/src/multibyte/wctomb.lo.go obj/src/network/accept.lo.go obj/src/network/accept4.lo.go obj/src/network/bind.lo.go obj/src/network/connect.lo.go obj/src/network/dn_comp.lo.go obj/src/network/dn_expand.lo.go obj/src/network/dn_skipname.lo.go obj/src/network/dns_parse.lo.go obj/src/network/ent.lo.go obj/src/network/ether.lo.go obj/src/network/freeaddrinfo.lo.go obj/src/network/gai_strerror.lo.go obj/src/network/getaddrinfo.lo.go obj/src/network/gethostbyaddr.lo.go obj/src/network/gethostbyaddr_r.lo.go obj/src/network/gethostbyname.lo.go obj/src/network/gethostbyname2.lo.go obj/src/network/gethostbyname2_r.lo.go obj/src/network/gethostbyname_r.lo.go obj/src/network/getifaddrs.lo.go obj/src/network/getnameinfo.lo.go obj/src/network/getpeername.lo.go obj/src/network/getservbyname.lo.go obj/src/network/getservbyname_r.lo.go obj/src/network/getsockname.lo.go obj/src/network/getsockopt.lo.go obj/src/network/h_errno.lo.go obj/src/network/herror.lo.go obj/src/network/hstrerror.lo.go obj/src/network/htonl.lo.go obj/src/network/htons.lo.go obj/src/network/if_freenameindex.lo.go obj/src/network/if_indextoname.lo.go obj/src/network/if_nameindex.lo.go obj/src/network/if_nametoindex.lo.go obj/src/network/in6addr_any.lo.go obj/src/network/in6addr_loopback.lo.go obj/src/network/inet_addr.lo.go obj/src/network/inet_aton.lo.go obj/src/network/inet_legacy.lo.go obj/src/network/inet_ntoa.lo.go obj/src/network/inet_ntop.lo.go obj/src/network/inet_pton.lo.go obj/src/network/listen.lo.go obj/src/network/lookup_ipliteral.lo.go obj/src/network/lookup_name.lo.go obj/src/network/lookup_serv.lo.go obj/src/network/netlink.lo.go obj/src/network/netname.lo.go obj/src/network/ns_parse.lo.go obj/src/network/ntohl.lo.go obj/src/network/ntohs.lo.go obj/src/network/proto.lo.go obj/src/network/recv.lo.go obj/src/network/recvfrom.lo.go obj/src/network/recvmmsg.lo.go obj/src/network/recvmsg.lo.go obj/src/network/res_init.lo.go obj/src/network/res_mkquery.lo.go obj/src/network/res_msend.lo.go obj/src/network/res_send.lo.go obj/src/network/res_state.lo.go obj/src/network/resolvconf.lo.go obj/src/network/send.lo.go obj/src/network/sendmmsg.lo.go obj/src/network/sendmsg.lo.go obj/src/network/sendto.lo.go obj/src/network/serv.lo.go obj/src/network/setsockopt.lo.go obj/src/network/shutdown.lo.go obj/src/network/sockatmark.lo.go obj/src/network/socket.lo.go obj/src/network/socketpair.lo.go obj/src/passwd/fgetgrent.lo.go obj/src/passwd/fgetpwent.lo.go obj/src/passwd/getgr_a.lo.go obj/src/passwd/getgr_r.lo.go obj/src/passwd/getgrent.lo.go obj/src/passwd/getgrent_a.lo.go obj/src/passwd/getgrouplist.lo.go obj/src/passwd/getpw_a.lo.go obj/src/passwd/getpw_r.lo.go obj/src/passwd/getpwent.lo.go obj/src/passwd/getpwent_a.lo.go obj/src/passwd/getspent.lo.go obj/src/passwd/lckpwdf.lo.go obj/src/passwd/nscd_query.lo.go obj/src/passwd/putgrent.lo.go obj/src/passwd/putpwent.lo.go obj/src/passwd/putspent.lo.go obj/src/prng/__rand48_step.lo.go obj/src/prng/__seed48.lo.go obj/src/prng/drand48.lo.go obj/src/prng/lcong48.lo.go obj/src/prng/lrand48.lo.go obj/src/prng/mrand48.lo.go obj/src/prng/rand.lo.go obj/src/prng/rand_r.lo.go obj/src/prng/random.lo.go obj/src/prng/seed48.lo.go obj/src/prng/srand48.lo.go obj/src/process/execl.lo.go obj/src/process/execle.lo.go obj/src/process/execlp.lo.go obj/src/process/execv.lo.go obj/src/process/execve.lo.go obj/src/process/execvp.lo.go obj/src/process/fexecve.lo.go obj/src/process/fork.lo.go obj/src/process/posix_spawn_file_actions_addchdir.lo.go obj/src/process/posix_spawn_file_actions_addclose.lo.go obj/src/process/posix_spawn_file_actions_adddup2.lo.go obj/src/process/posix_spawn_file_actions_addfchdir.lo.go obj/src/process/posix_spawn_file_actions_addopen.lo.go obj/src/process/posix_spawn_file_actions_destroy.lo.go obj/src/process/posix_spawn_file_actions_init.lo.go obj/src/process/posix_spawnattr_destroy.lo.go obj/src/process/posix_spawnattr_getflags.lo.go obj/src/process/posix_spawnattr_getpgroup.lo.go obj/src/process/posix_spawnattr_getsigdefault.lo.go obj/src/process/posix_spawnattr_getsigmask.lo.go obj/src/process/posix_spawnattr_init.lo.go obj/src/process/posix_spawnattr_sched.lo.go obj/src/process/posix_spawnattr_setflags.lo.go obj/src/process/posix_spawnattr_setpgroup.lo.go obj/src/process/posix_spawnattr_setsigdefault.lo.go obj/src/process/posix_spawnattr_setsigmask.lo.go obj/src/process/vfork.lo.go obj/src/process/wait.lo.go obj/src/process/waitid.lo.go obj/src/process/waitpid.lo.go obj/src/regex/fnmatch.lo.go obj/src/regex/glob.lo.go obj/src/regex/regcomp.lo.go obj/src/regex/regerror.lo.go obj/src/regex/regexec.lo.go obj/src/regex/tre-mem.lo.go obj/src/sched/affinity.lo.go obj/src/sched/sched_cpucount.lo.go obj/src/sched/sched_get_priority_max.lo.go obj/src/sched/sched_getparam.lo.go obj/src/sched/sched_getscheduler.lo.go obj/src/sched/sched_rr_get_interval.lo.go obj/src/sched/sched_setparam.lo.go obj/src/sched/sched_setscheduler.lo.go obj/src/search/hsearch.lo.go obj/src/search/insque.lo.go obj/src/search/lsearch.lo.go obj/src/search/tdelete.lo.go obj/src/search/tdestroy.lo.go obj/src/search/tfind.lo.go obj/src/search/tsearch.lo.go obj/src/search/twalk.lo.go obj/src/select/poll.lo.go obj/src/select/ppoll.lo.go obj/src/select/pselect.lo.go obj/src/select/select.lo.go obj/src/setjmp/longjmp.lo.go obj/src/setjmp/setjmp.lo.go obj/src/signal/block.lo.go obj/src/signal/getitimer.lo.go obj/src/signal/kill.lo.go obj/src/signal/killpg.lo.go obj/src/signal/psiginfo.lo.go obj/src/signal/psignal.lo.go obj/src/signal/raise.lo.go obj/src/signal/restore.lo.go obj/src/signal/setitimer.lo.go obj/src/signal/sigaction.lo.go obj/src/signal/sigaddset.lo.go obj/src/signal/sigaltstack.lo.go obj/src/signal/sigandset.lo.go obj/src/signal/sigdelset.lo.go obj/src/signal/sigemptyset.lo.go obj/src/signal/sigfillset.lo.go obj/src/signal/sigisemptyset.lo.go obj/src/signal/sigismember.lo.go obj/src/signal/sigorset.lo.go obj/src/signal/sigpending.lo.go obj/src/signal/sigprocmask.lo.go obj/src/signal/sigqueue.lo.go obj/src/signal/sigrtmax.lo.go obj/src/signal/sigrtmin.lo.go obj/src/signal/sigsetjmp.lo.go obj/src/signal/sigsetjmp_tail.lo.go obj/src/signal/sigsuspend.lo.go obj/src/signal/sigtimedwait.lo.go obj/src/signal/sigwait.lo.go obj/src/signal/sigwaitinfo.lo.go obj/src/stat/__xstat.lo.go obj/src/stat/chmod.lo.go obj/src/stat/fchmod.lo.go obj/src/stat/fchmodat.lo.go obj/src/stat/fstat.lo.go obj/src/stat/fstatat.lo.go obj/src/stat/futimens.lo.go obj/src/stat/futimesat.lo.go obj/src/stat/lchmod.lo.go obj/src/stat/lstat.lo.go obj/src/stat/mkdir.lo.go obj/src/stat/mkdirat.lo.go obj/src/stat/mkfifo.lo.go obj/src/stat/mkfifoat.lo.go obj/src/stat/mknod.lo.go obj/src/stat/mknodat.lo.go obj/src/stat/stat.lo.go obj/src/stat/statvfs.lo.go obj/src/stat/umask.lo.go obj/src/stat/utimensat.lo.go obj/src/stdio/__fclose_ca.lo.go obj/src/stdio/__fdopen.lo.go obj/src/stdio/__fmodeflags.lo.go obj/src/stdio/__fopen_rb_ca.lo.go obj/src/stdio/__overflow.lo.go obj/src/stdio/__stdio_close.lo.go obj/src/stdio/__stdio_exit.lo.go obj/src/stdio/__stdio_read.lo.go obj/src/stdio/__stdio_seek.lo.go obj/src/stdio/__stdio_write.lo.go obj/src/stdio/__stdout_write.lo.go obj/src/stdio/__toread.lo.go obj/src/stdio/__towrite.lo.go obj/src/stdio/__uflow.lo.go obj/src/stdio/asprintf.lo.go obj/src/stdio/clearerr.lo.go obj/src/stdio/dprintf.lo.go obj/src/stdio/ext.lo.go obj/src/stdio/ext2.lo.go obj/src/stdio/fclose.lo.go obj/src/stdio/feof.lo.go obj/src/stdio/ferror.lo.go obj/src/stdio/fflush.lo.go obj/src/stdio/fgetc.lo.go obj/src/stdio/fgetln.lo.go obj/src/stdio/fgetpos.lo.go obj/src/stdio/fgets.lo.go obj/src/stdio/fgetwc.lo.go obj/src/stdio/fgetws.lo.go obj/src/stdio/fileno.lo.go obj/src/stdio/flockfile.lo.go obj/src/stdio/fmemopen.lo.go obj/src/stdio/fopen.lo.go obj/src/stdio/fopencookie.lo.go obj/src/stdio/fprintf.lo.go obj/src/stdio/fputc.lo.go obj/src/stdio/fputs.lo.go obj/src/stdio/fputwc.lo.go obj/src/stdio/fputws.lo.go obj/src/stdio/fread.lo.go obj/src/stdio/freopen.lo.go obj/src/stdio/fscanf.lo.go obj/src/stdio/fseek.lo.go obj/src/stdio/fsetpos.lo.go obj/src/stdio/ftell.lo.go obj/src/stdio/ftrylockfile.lo.go obj/src/stdio/funlockfile.lo.go obj/src/stdio/fwide.lo.go obj/src/stdio/fwprintf.lo.go obj/src/stdio/fwrite.lo.go obj/src/stdio/fwscanf.lo.go obj/src/stdio/getc.lo.go obj/src/stdio/getc_unlocked.lo.go obj/src/stdio/getchar.lo.go obj/src/stdio/getchar_unlocked.lo.go obj/src/stdio/getdelim.lo.go obj/src/stdio/getline.lo.go obj/src/stdio/gets.lo.go obj/src/stdio/getw.lo.go obj/src/stdio/getwc.lo.go obj/src/stdio/getwchar.lo.go obj/src/stdio/ofl.lo.go obj/src/stdio/ofl_add.lo.go obj/src/stdio/open_memstream.lo.go obj/src/stdio/open_wmemstream.lo.go obj/src/stdio/pclose.lo.go obj/src/stdio/perror.lo.go obj/src/stdio/printf.lo.go obj/src/stdio/putc.lo.go obj/src/stdio/putc_unlocked.lo.go obj/src/stdio/putchar.lo.go obj/src/stdio/putchar_unlocked.lo.go obj/src/stdio/puts.lo.go obj/src/stdio/putw.lo.go obj/src/stdio/putwc.lo.go obj/src/stdio/putwchar.lo.go obj/src/stdio/remove.lo.go obj/src/stdio/rename.lo.go obj/src/stdio/rewind.lo.go obj/src/stdio/scanf.lo.go obj/src/stdio/setbuf.lo.go obj/src/stdio/setbuffer.lo.go obj/src/stdio/setlinebuf.lo.go obj/src/stdio/setvbuf.lo.go obj/src/stdio/snprintf.lo.go obj/src/stdio/sprintf.lo.go obj/src/stdio/sscanf.lo.go obj/src/stdio/stderr.lo.go obj/src/stdio/stdin.lo.go obj/src/stdio/stdout.lo.go obj/src/stdio/swprintf.lo.go obj/src/stdio/swscanf.lo.go obj/src/stdio/tempnam.lo.go obj/src/stdio/tmpfile.lo.go obj/src/stdio/tmpnam.lo.go obj/src/stdio/ungetc.lo.go obj/src/stdio/ungetwc.lo.go obj/src/stdio/vasprintf.lo.go obj/src/stdio/vdprintf.lo.go obj/src/stdio/vfprintf.lo.go obj/src/stdio/vfscanf.lo.go obj/src/stdio/vfwprintf.lo.go obj/src/stdio/vfwscanf.lo.go obj/src/stdio/vprintf.lo.go obj/src/stdio/vscanf.lo.go obj/src/stdio/vsnprintf.lo.go obj/src/stdio/vsprintf.lo.go obj/src/stdio/vsscanf.lo.go obj/src/stdio/vswprintf.lo.go obj/src/stdio/vswscanf.lo.go obj/src/stdio/vwprintf.lo.go obj/src/stdio/vwscanf.lo.go obj/src/stdio/wprintf.lo.go obj/src/stdio/wscanf.lo.go obj/src/stdlib/abs.lo.go obj/src/stdlib/atof.lo.go obj/src/stdlib/atoi.lo.go obj/src/stdlib/atol.lo.go obj/src/stdlib/atoll.lo.go obj/src/stdlib/bsearch.lo.go obj/src/stdlib/div.lo.go obj/src/stdlib/ecvt.lo.go obj/src/stdlib/fcvt.lo.go obj/src/stdlib/gcvt.lo.go obj/src/stdlib/imaxabs.lo.go obj/src/stdlib/imaxdiv.lo.go obj/src/stdlib/labs.lo.go obj/src/stdlib/ldiv.lo.go obj/src/stdlib/llabs.lo.go obj/src/stdlib/lldiv.lo.go obj/src/stdlib/qsort.lo.go obj/src/stdlib/qsort_nr.lo.go obj/src/stdlib/strtod.lo.go obj/src/stdlib/strtol.lo.go obj/src/stdlib/wcstod.lo.go obj/src/stdlib/wcstol.lo.go obj/src/string/bcmp.lo.go obj/src/string/bcopy.lo.go obj/src/string/bzero.lo.go obj/src/string/explicit_bzero.lo.go obj/src/string/index.lo.go obj/src/string/memccpy.lo.go obj/src/string/memchr.lo.go obj/src/string/memcmp.lo.go obj/src/string/memcpy.lo.go obj/src/string/memmem.lo.go obj/src/string/memmove.lo.go obj/src/string/mempcpy.lo.go obj/src/string/memrchr.lo.go obj/src/string/memset.lo.go obj/src/string/rindex.lo.go obj/src/string/stpcpy.lo.go obj/src/string/stpncpy.lo.go obj/src/string/strcasecmp.lo.go obj/src/string/strcasestr.lo.go obj/src/string/strcat.lo.go obj/src/string/strchr.lo.go obj/src/string/strchrnul.lo.go obj/src/string/strcmp.lo.go obj/src/string/strcpy.lo.go obj/src/string/strcspn.lo.go obj/src/string/strdup.lo.go obj/src/string/strerror_r.lo.go obj/src/string/strlcat.lo.go obj/src/string/strlcpy.lo.go obj/src/string/strlen.lo.go obj/src/string/strncasecmp.lo.go obj/src/string/strncat.lo.go obj/src/string/strncmp.lo.go obj/src/string/strncpy.lo.go obj/src/string/strndup.lo.go obj/src/string/strnlen.lo.go obj/src/string/strpbrk.lo.go obj/src/string/strrchr.lo.go obj/src/string/strsep.lo.go obj/src/string/strsignal.lo.go obj/src/string/strspn.lo.go obj/src/string/strstr.lo.go obj/src/string/strtok.lo.go obj/src/string/strtok_r.lo.go obj/src/string/strverscmp.lo.go obj/src/string/swab.lo.go obj/src/string/wcpcpy.lo.go obj/src/string/wcpncpy.lo.go obj/src/string/wcscasecmp.lo.go obj/src/string/wcscasecmp_l.lo.go obj/src/string/wcscat.lo.go obj/src/string/wcschr.lo.go obj/src/string/wcscmp.lo.go obj/src/string/wcscpy.lo.go obj/src/string/wcscspn.lo.go obj/src/string/wcsdup.lo.go obj/src/string/wcslen.lo.go obj/src/string/wcsncasecmp.lo.go obj/src/string/wcsncasecmp_l.lo.go obj/src/string/wcsncat.lo.go obj/src/string/wcsncmp.lo.go obj/src/string/wcsncpy.lo.go obj/src/string/wcsnlen.lo.go obj/src/string/wcspbrk.lo.go obj/src/string/wcsrchr.lo.go obj/src/string/wcsspn.lo.go obj/src/string/wcsstr.lo.go obj/src/string/wcstok.lo.go obj/src/string/wcswcs.lo.go obj/src/string/wmemchr.lo.go obj/src/string/wmemcmp.lo.go obj/src/string/wmemcpy.lo.go obj/src/string/wmemmove.lo.go obj/src/string/wmemset.lo.go obj/src/temp/mkdtemp.lo.go obj/src/temp/mkostemp.lo.go obj/src/temp/mkostemps.lo.go obj/src/temp/mkstemp.lo.go obj/src/temp/mkstemps.lo.go obj/src/temp/mktemp.lo.go obj/src/termios/cfgetospeed.lo.go obj/src/termios/cfmakeraw.lo.go obj/src/termios/cfsetospeed.lo.go obj/src/termios/tcdrain.lo.go obj/src/termios/tcflow.lo.go obj/src/termios/tcflush.lo.go obj/src/termios/tcgetattr.lo.go obj/src/termios/tcgetsid.lo.go obj/src/termios/tcgetwinsize.lo.go obj/src/termios/tcsendbreak.lo.go obj/src/termios/tcsetattr.lo.go obj/src/termios/tcsetwinsize.lo.go obj/src/thread/pthread_kill.lo.go obj/src/thread/pthread_testcancel.lo.go obj/src/thread/sem_destroy.lo.go obj/src/thread/sem_getvalue.lo.go obj/src/thread/sem_init.lo.go obj/src/thread/sem_open.lo.go obj/src/thread/sem_post.lo.go obj/src/thread/sem_timedwait.lo.go obj/src/thread/sem_trywait.lo.go obj/src/thread/sem_unlink.lo.go obj/src/thread/sem_wait.lo.go obj/src/time/__map_file.lo.go obj/src/time/__month_to_secs.lo.go obj/src/time/__secs_to_tm.lo.go obj/src/time/__tm_to_secs.lo.go obj/src/time/__tz.lo.go obj/src/time/__year_to_secs.lo.go obj/src/time/asctime.lo.go obj/src/time/asctime_r.lo.go obj/src/time/clock.lo.go obj/src/time/clock_getcpuclockid.lo.go obj/src/time/clock_getres.lo.go obj/src/time/clock_gettime.lo.go obj/src/time/clock_nanosleep.lo.go obj/src/time/clock_settime.lo.go obj/src/time/ctime.lo.go obj/src/time/ctime_r.lo.go obj/src/time/difftime.lo.go obj/src/time/ftime.lo.go obj/src/time/getdate.lo.go obj/src/time/gettimeofday.lo.go obj/src/time/gmtime.lo.go obj/src/time/gmtime_r.lo.go obj/src/time/localtime.lo.go obj/src/time/localtime_r.lo.go obj/src/time/mktime.lo.go obj/src/time/nanosleep.lo.go obj/src/time/strftime.lo.go obj/src/time/strptime.lo.go obj/src/time/time.lo.go obj/src/time/timegm.lo.go obj/src/time/timer_delete.lo.go obj/src/time/timer_getoverrun.lo.go obj/src/time/timer_gettime.lo.go obj/src/time/timer_settime.lo.go obj/src/time/times.lo.go obj/src/time/timespec_get.lo.go obj/src/time/utime.lo.go obj/src/time/wcsftime.lo.go obj/src/unistd/_exit.lo.go obj/src/unistd/access.lo.go obj/src/unistd/acct.lo.go obj/src/unistd/alarm.lo.go obj/src/unistd/chdir.lo.go obj/src/unistd/chown.lo.go obj/src/unistd/close.lo.go obj/src/unistd/ctermid.lo.go obj/src/unistd/dup.lo.go obj/src/unistd/dup2.lo.go obj/src/unistd/dup3.lo.go obj/src/unistd/faccessat.lo.go obj/src/unistd/fchdir.lo.go obj/src/unistd/fchown.lo.go obj/src/unistd/fchownat.lo.go obj/src/unistd/fdatasync.lo.go obj/src/unistd/fsync.lo.go obj/src/unistd/ftruncate.lo.go obj/src/unistd/getcwd.lo.go obj/src/unistd/getegid.lo.go obj/src/unistd/geteuid.lo.go obj/src/unistd/getgid.lo.go obj/src/unistd/getgroups.lo.go obj/src/unistd/gethostname.lo.go obj/src/unistd/getlogin.lo.go obj/src/unistd/getlogin_r.lo.go obj/src/unistd/getpgid.lo.go obj/src/unistd/getpgrp.lo.go obj/src/unistd/getpid.lo.go obj/src/unistd/getppid.lo.go obj/src/unistd/getsid.lo.go obj/src/unistd/getuid.lo.go obj/src/unistd/isatty.lo.go obj/src/unistd/lchown.lo.go obj/src/unistd/link.lo.go obj/src/unistd/linkat.lo.go obj/src/unistd/lseek.lo.go obj/src/unistd/nice.lo.go obj/src/unistd/pause.lo.go obj/src/unistd/pipe.lo.go obj/src/unistd/pipe2.lo.go obj/src/unistd/posix_close.lo.go obj/src/unistd/pread.lo.go obj/src/unistd/preadv.lo.go obj/src/unistd/pwrite.lo.go obj/src/unistd/pwritev.lo.go obj/src/unistd/read.lo.go obj/src/unistd/readlink.lo.go obj/src/unistd/readlinkat.lo.go obj/src/unistd/readv.lo.go obj/src/unistd/renameat.lo.go obj/src/unistd/rmdir.lo.go obj/src/unistd/setgid.lo.go obj/src/unistd/setpgid.lo.go obj/src/unistd/setpgrp.lo.go obj/src/unistd/setsid.lo.go obj/src/unistd/setuid.lo.go obj/src/unistd/setxid.lo.go obj/src/unistd/sleep.lo.go obj/src/unistd/symlink.lo.go obj/src/unistd/symlinkat.lo.go obj/src/unistd/sync.lo.go obj/src/unistd/tcgetpgrp.lo.go obj/src/unistd/tcsetpgrp.lo.go obj/src/unistd/truncate.lo.go obj/src/unistd/ttyname.lo.go obj/src/unistd/ttyname_r.lo.go obj/src/unistd/ualarm.lo.go obj/src/unistd/unlink.lo.go obj/src/unistd/unlinkat.lo.go obj/src/unistd/usleep.lo.go obj/src/unistd/write.lo.go obj/src/unistd/writev.lo.go obj/compat/time32/__xstat.lo.go obj/compat/time32/adjtime32.lo.go obj/compat/time32/adjtimex_time32.lo.go obj/compat/time32/clock_adjtime32.lo.go obj/compat/time32/clock_getres_time32.lo.go obj/compat/time32/clock_gettime32.lo.go obj/compat/time32/clock_nanosleep_time32.lo.go obj/compat/time32/clock_settime32.lo.go obj/compat/time32/ctime32.lo.go obj/compat/time32/ctime32_r.lo.go obj/compat/time32/difftime32.lo.go obj/compat/time32/fstat_time32.lo.go obj/compat/time32/fstatat_time32.lo.go obj/compat/time32/ftime32.lo.go obj/compat/time32/futimens_time32.lo.go obj/compat/time32/futimes_time32.lo.go obj/compat/time32/futimesat_time32.lo.go obj/compat/time32/getitimer_time32.lo.go obj/compat/time32/getrusage_time32.lo.go obj/compat/time32/gettimeofday_time32.lo.go obj/compat/time32/gmtime32.lo.go obj/compat/time32/gmtime32_r.lo.go obj/compat/time32/localtime32.lo.go obj/compat/time32/localtime32_r.lo.go obj/compat/time32/lstat_time32.lo.go obj/compat/time32/lutimes_time32.lo.go obj/compat/time32/mktime32.lo.go obj/compat/time32/nanosleep_time32.lo.go obj/compat/time32/ppoll_time32.lo.go obj/compat/time32/pselect_time32.lo.go obj/compat/time32/recvmmsg_time32.lo.go obj/compat/time32/select_time32.lo.go obj/compat/time32/semtimedop_time32.lo.go obj/compat/time32/setitimer_time32.lo.go obj/compat/time32/settimeofday_time32.lo.go obj/compat/time32/sigtimedwait_time32.lo.go obj/compat/time32/stat_time32.lo.go obj/compat/time32/stime32.lo.go obj/compat/time32/time32.lo.go obj/compat/time32/time32gm.lo.go obj/compat/time32/timer_gettime32.lo.go obj/compat/time32/timer_settime32.lo.go obj/compat/time32/timerfd_gettime32.lo.go obj/compat/time32/timerfd_settime32.lo.go obj/compat/time32/timespec_get_time32.lo.go obj/compat/time32/utime_time32.lo.go obj/compat/time32/utimensat_time32.lo.go obj/compat/time32/utimes_time32.lo.go obj/compat/time32/wait3_time32.lo.go obj/compat/time32/wait4_time32.lo.go -lgcc -lgcc_eh', DO NOT EDIT.
 
 //go:build linux && 386
 
@@ -18,32 +18,31 @@ const BIG_ENDIAN = 4321
 const BYTE_ORDER = 1234
 const DBL_DECIMAL_DIG = 17
 const DBL_DIG = 15
-const DBL_EPSILON = 0
+const DBL_EPSILON = 2.220446049250313e-16
 const DBL_HAS_SUBNORM = 1
 const DBL_MANT_DIG = 53
-const DBL_MAX = 0
+const DBL_MAX = 1.7976931348623157e+308
 const DBL_MAX_10_EXP = 308
 const DBL_MAX_EXP = 1024
-const DBL_MIN = 0
+const DBL_MIN = 2.2250738585072014e-308
 const DBL_MIN_10_EXP = -307
 const DBL_MIN_EXP = -1021
-const DBL_TRUE_MIN = 0
+const DBL_TRUE_MIN = 5e-324
 const DECIMAL_DIG = 17
 const FLT_DECIMAL_DIG = 9
 const FLT_DIG = 6
-const FLT_EPSILON = 0
+const FLT_EPSILON = 1.1920928955078125e-07
 const FLT_EVAL_METHOD = 0
 const FLT_HAS_SUBNORM = 1
 const FLT_MANT_DIG = 24
-const FLT_MAX = 0
+const FLT_MAX = 3.4028234663852886e+38
 const FLT_MAX_10_EXP = 38
 const FLT_MAX_EXP = 128
-const FLT_MIN = 0
+const FLT_MIN = 1.1754943508222875e-38
 const FLT_MIN_10_EXP = -37
 const FLT_MIN_EXP = -125
 const FLT_RADIX = 2
-const FLT_ROUNDS = 0
-const FLT_TRUE_MIN = 0
+const FLT_TRUE_MIN = 1.401298464324817e-45
 const FP_ILOGB0 = -2147483648
 const FP_ILOGBNAN = -2147483648
 const FP_INFINITE = 1
@@ -51,9 +50,8 @@ const FP_NAN = 0
 const FP_NORMAL = 4
 const FP_SUBNORMAL = 3
 const FP_ZERO = 2
-const HUGE_VALF = 0
-const I = 0
-const INFINITY = 0
+const HUGE_VALF = "INFINITY"
+const I = "_Complex_I"
 const INT16_MAX = 32767
 const INT16_MIN = -32768
 const INT32_MAX = 2147483647
@@ -84,33 +82,32 @@ const INT_LEAST8_MAX = 127
 const INT_LEAST8_MIN = -128
 const LDBL_DECIMAL_DIG = 17
 const LDBL_DIG = 15
-const LDBL_EPSILON = 0
+const LDBL_EPSILON = 2.22044604925031308085e-16
 const LDBL_HAS_SUBNORM = 1
 const LDBL_MANT_DIG = 53
-const LDBL_MAX = 0
+const LDBL_MAX = 1.79769313486231570815e+308
 const LDBL_MAX_10_EXP = 308
 const LDBL_MAX_EXP = 1024
-const LDBL_MIN = 0
+const LDBL_MIN = 2.22507385850720138309e-308
 const LDBL_MIN_10_EXP = -307
 const LDBL_MIN_EXP = -1021
-const LDBL_TRUE_MIN = 0
+const LDBL_TRUE_MIN = 4.94065645841246544177e-324
 const LITTLE_ENDIAN = 1234
 const MATH_ERREXCEPT = 2
 const MATH_ERRNO = 1
-const M_1_PI = 0
-const M_2_PI = 0
-const M_2_SQRTPI = 0
-const M_E = 0
-const M_LN10 = 0
-const M_LN2 = 0
-const M_LOG10E = 0
-const M_LOG2E = 0
-const M_PI = 0
-const M_PI_2 = 0
-const M_PI_4 = 0
-const M_SQRT1_2 = 0
-const M_SQRT2 = 0
-const NAN = 0
+const M_1_PI = 0.3183098861837907
+const M_2_PI = 0.6366197723675814
+const M_2_SQRTPI = 1.1283791670955126
+const M_E = 2.718281828459045
+const M_LN10 = 2.302585092994046
+const M_LN2 = 0.6931471805599453
+const M_LOG10E = 0.4342944819032518
+const M_LOG2E = 1.4426950408889634
+const M_PI = 3.141592653589793
+const M_PI_2 = 1.5707963267948966
+const M_PI_4 = 0.7853981633974483
+const M_SQRT1_2 = 0.7071067811865476
+const M_SQRT2 = 1.4142135623730951
 const NDEBUG = 1
 const PDP_ENDIAN = 3412
 const PTRDIFF_MAX = 2147483647
@@ -139,7 +136,6 @@ const WCHAR_MAX = 2147483647
 const WCHAR_MIN = -2147483648
 const WINT_MAX = 4294967295
 const WINT_MIN = 0
-const _Complex_I = 0
 const _FILE_OFFSET_BITS = 64
 const _ILP32 = 1
 const _REDIR_TIME64 = 1
@@ -169,27 +165,27 @@ const __DBL_MAX_10_EXP__ = 308
 const __DBL_MAX_EXP__ = 1024
 const __DBL_MIN_10_EXP__ = -307
 const __DBL_MIN_EXP__ = -1021
-const __DEC128_EPSILON__ = 0
+const __DEC128_EPSILON__ = 1e-33
 const __DEC128_MANT_DIG__ = 34
 const __DEC128_MAX_EXP__ = 6145
-const __DEC128_MAX__ = 0
+const __DEC128_MAX__ = "9.999999999999999999999999999999999E6144"
 const __DEC128_MIN_EXP__ = -6142
-const __DEC128_MIN__ = 0
-const __DEC128_SUBNORMAL_MIN__ = 0
-const __DEC32_EPSILON__ = 0
+const __DEC128_MIN__ = 1e-6143
+const __DEC128_SUBNORMAL_MIN__ = 0.000000000000000000000000000000001e-6143
+const __DEC32_EPSILON__ = 1e-6
 const __DEC32_MANT_DIG__ = 7
 const __DEC32_MAX_EXP__ = 97
-const __DEC32_MAX__ = 0
+const __DEC32_MAX__ = 9.999999e96
 const __DEC32_MIN_EXP__ = -94
-const __DEC32_MIN__ = 0
-const __DEC32_SUBNORMAL_MIN__ = 0
-const __DEC64_EPSILON__ = 0
+const __DEC32_MIN__ = 1e-95
+const __DEC32_SUBNORMAL_MIN__ = 0.000001e-95
+const __DEC64_EPSILON__ = 1e-15
 const __DEC64_MANT_DIG__ = 16
 const __DEC64_MAX_EXP__ = 385
-const __DEC64_MAX__ = 0
+const __DEC64_MAX__ = "9.999999999999999E384"
 const __DEC64_MIN_EXP__ = -382
-const __DEC64_MIN__ = 0
-const __DEC64_SUBNORMAL_MIN__ = 0
+const __DEC64_MIN__ = 1e-383
+const __DEC64_SUBNORMAL_MIN__ = 0.000000000000001e-383
 const __DECIMAL_BID_FORMAT__ = 1
 const __DECIMAL_DIG__ = 17
 const __DEC_EVAL_METHOD__ = 2
@@ -197,9 +193,9 @@ const __ELF__ = 1
 const __FINITE_MATH_ONLY__ = 0
 const __FLOAT_WORD_ORDER__ = 1234
 const __FLT128_DECIMAL_DIG__ = 36
-const __FLT128_DENORM_MIN__ = 0
+const __FLT128_DENORM_MIN__ = 6.47517511943802511092443895822764655e-4966
 const __FLT128_DIG__ = 33
-const __FLT128_EPSILON__ = 0
+const __FLT128_EPSILON__ = 1.92592994438723585305597794258492732e-34
 const __FLT128_HAS_DENORM__ = 1
 const __FLT128_HAS_INFINITY__ = 1
 const __FLT128_HAS_QUIET_NAN__ = 1
@@ -207,15 +203,15 @@ const __FLT128_IS_IEC_60559__ = 2
 const __FLT128_MANT_DIG__ = 113
 const __FLT128_MAX_10_EXP__ = 4932
 const __FLT128_MAX_EXP__ = 16384
-const __FLT128_MAX__ = 0
+const __FLT128_MAX__ = "1.18973149535723176508575932662800702e+4932"
 const __FLT128_MIN_10_EXP__ = -4931
 const __FLT128_MIN_EXP__ = -16381
-const __FLT128_MIN__ = 0
-const __FLT128_NORM_MAX__ = 0
+const __FLT128_MIN__ = 3.36210314311209350626267781732175260e-4932
+const __FLT128_NORM_MAX__ = "1.18973149535723176508575932662800702e+4932"
 const __FLT32X_DECIMAL_DIG__ = 17
-const __FLT32X_DENORM_MIN__ = 0
+const __FLT32X_DENORM_MIN__ = 4.94065645841246544176568792868221372e-324
 const __FLT32X_DIG__ = 15
-const __FLT32X_EPSILON__ = 0
+const __FLT32X_EPSILON__ = 2.22044604925031308084726333618164062e-16
 const __FLT32X_HAS_DENORM__ = 1
 const __FLT32X_HAS_INFINITY__ = 1
 const __FLT32X_HAS_QUIET_NAN__ = 1
@@ -223,15 +219,15 @@ const __FLT32X_IS_IEC_60559__ = 2
 const __FLT32X_MANT_DIG__ = 53
 const __FLT32X_MAX_10_EXP__ = 308
 const __FLT32X_MAX_EXP__ = 1024
-const __FLT32X_MAX__ = 0
+const __FLT32X_MAX__ = 1.79769313486231570814527423731704357e+308
 const __FLT32X_MIN_10_EXP__ = -307
 const __FLT32X_MIN_EXP__ = -1021
-const __FLT32X_MIN__ = 0
-const __FLT32X_NORM_MAX__ = 0
+const __FLT32X_MIN__ = 2.22507385850720138309023271733240406e-308
+const __FLT32X_NORM_MAX__ = 1.79769313486231570814527423731704357e+308
 const __FLT32_DECIMAL_DIG__ = 9
-const __FLT32_DENORM_MIN__ = 0
+const __FLT32_DENORM_MIN__ = 1.40129846432481707092372958328991613e-45
 const __FLT32_DIG__ = 6
-const __FLT32_EPSILON__ = 0
+const __FLT32_EPSILON__ = 1.19209289550781250000000000000000000e-7
 const __FLT32_HAS_DENORM__ = 1
 const __FLT32_HAS_INFINITY__ = 1
 const __FLT32_HAS_QUIET_NAN__ = 1
@@ -239,15 +235,15 @@ const __FLT32_IS_IEC_60559__ = 2
 const __FLT32_MANT_DIG__ = 24
 const __FLT32_MAX_10_EXP__ = 38
 const __FLT32_MAX_EXP__ = 128
-const __FLT32_MAX__ = 0
+const __FLT32_MAX__ = 3.40282346638528859811704183484516925e+38
 const __FLT32_MIN_10_EXP__ = -37
 const __FLT32_MIN_EXP__ = -125
-const __FLT32_MIN__ = 0
-const __FLT32_NORM_MAX__ = 0
+const __FLT32_MIN__ = 1.17549435082228750796873653722224568e-38
+const __FLT32_NORM_MAX__ = 3.40282346638528859811704183484516925e+38
 const __FLT64X_DECIMAL_DIG__ = 36
-const __FLT64X_DENORM_MIN__ = 0
+const __FLT64X_DENORM_MIN__ = 6.47517511943802511092443895822764655e-4966
 const __FLT64X_DIG__ = 33
-const __FLT64X_EPSILON__ = 0
+const __FLT64X_EPSILON__ = 1.92592994438723585305597794258492732e-34
 const __FLT64X_HAS_DENORM__ = 1
 const __FLT64X_HAS_INFINITY__ = 1
 const __FLT64X_HAS_QUIET_NAN__ = 1
@@ -255,15 +251,15 @@ const __FLT64X_IS_IEC_60559__ = 2
 const __FLT64X_MANT_DIG__ = 113
 const __FLT64X_MAX_10_EXP__ = 4932
 const __FLT64X_MAX_EXP__ = 16384
-const __FLT64X_MAX__ = 0
+const __FLT64X_MAX__ = "1.18973149535723176508575932662800702e+4932"
 const __FLT64X_MIN_10_EXP__ = -4931
 const __FLT64X_MIN_EXP__ = -16381
-const __FLT64X_MIN__ = 0
-const __FLT64X_NORM_MAX__ = 0
+const __FLT64X_MIN__ = 3.36210314311209350626267781732175260e-4932
+const __FLT64X_NORM_MAX__ = "1.18973149535723176508575932662800702e+4932"
 const __FLT64_DECIMAL_DIG__ = 17
-const __FLT64_DENORM_MIN__ = 0
+const __FLT64_DENORM_MIN__ = 4.94065645841246544176568792868221372e-324
 const __FLT64_DIG__ = 15
-const __FLT64_EPSILON__ = 0
+const __FLT64_EPSILON__ = 2.22044604925031308084726333618164062e-16
 const __FLT64_HAS_DENORM__ = 1
 const __FLT64_HAS_INFINITY__ = 1
 const __FLT64_HAS_QUIET_NAN__ = 1
@@ -271,15 +267,15 @@ const __FLT64_IS_IEC_60559__ = 2
 const __FLT64_MANT_DIG__ = 53
 const __FLT64_MAX_10_EXP__ = 308
 const __FLT64_MAX_EXP__ = 1024
-const __FLT64_MAX__ = 0
+const __FLT64_MAX__ = 1.79769313486231570814527423731704357e+308
 const __FLT64_MIN_10_EXP__ = -307
 const __FLT64_MIN_EXP__ = -1021
-const __FLT64_MIN__ = 0
-const __FLT64_NORM_MAX__ = 0
+const __FLT64_MIN__ = 2.22507385850720138309023271733240406e-308
+const __FLT64_NORM_MAX__ = 1.79769313486231570814527423731704357e+308
 const __FLT_DECIMAL_DIG__ = 9
-const __FLT_DENORM_MIN__ = 0
+const __FLT_DENORM_MIN__ = 1.401298464324817e-45
 const __FLT_DIG__ = 6
-const __FLT_EPSILON__ = 0
+const __FLT_EPSILON__ = 1.1920928955078125e-07
 const __FLT_EVAL_METHOD_TS_18661_3__ = 2
 const __FLT_EVAL_METHOD__ = 2
 const __FLT_HAS_DENORM__ = 1
@@ -289,13 +285,13 @@ const __FLT_IS_IEC_60559__ = 2
 const __FLT_MANT_DIG__ = 24
 const __FLT_MAX_10_EXP__ = 38
 const __FLT_MAX_EXP__ = 128
-const __FLT_MAX__ = 0
+const __FLT_MAX__ = 3.4028234663852886e+38
 const __FLT_MIN_10_EXP__ = -37
 const __FLT_MIN_EXP__ = -125
-const __FLT_MIN__ = 0
-const __FLT_NORM_MAX__ = 0
+const __FLT_MIN__ = 1.1754943508222875e-38
+const __FLT_NORM_MAX__ = 3.4028234663852886e+38
 const __FLT_RADIX__ = 2
-const __FUNCTION__ = 0
+const __FUNCTION__ = "__func__"
 const __GCC_ASM_FLAG_OUTPUTS__ = 1
 const __GCC_ATOMIC_BOOL_LOCK_FREE = 2
 const __GCC_ATOMIC_CHAR16_T_LOCK_FREE = 2
@@ -328,19 +324,19 @@ const __HAVE_SPECULATION_SAFE_VALUE = 1
 const __ILP32__ = 1
 const __INT16_MAX__ = 32767
 const __INT32_MAX__ = 2147483647
-const __INT32_TYPE__ = 0
+const __INT32_TYPE__ = "int"
 const __INT64_MAX__ = 9223372036854775807
 const __INT8_MAX__ = 127
 const __INTMAX_MAX__ = 9223372036854775807
 const __INTMAX_WIDTH__ = 64
 const __INTPTR_MAX__ = 2147483647
-const __INTPTR_TYPE__ = 0
+const __INTPTR_TYPE__ = "int"
 const __INTPTR_WIDTH__ = 32
 const __INT_FAST16_MAX__ = 2147483647
-const __INT_FAST16_TYPE__ = 0
+const __INT_FAST16_TYPE__ = "int"
 const __INT_FAST16_WIDTH__ = 32
 const __INT_FAST32_MAX__ = 2147483647
-const __INT_FAST32_TYPE__ = 0
+const __INT_FAST32_TYPE__ = "int"
 const __INT_FAST32_WIDTH__ = 32
 const __INT_FAST64_MAX__ = 9223372036854775807
 const __INT_FAST64_WIDTH__ = 64
@@ -349,7 +345,7 @@ const __INT_FAST8_WIDTH__ = 8
 const __INT_LEAST16_MAX__ = 32767
 const __INT_LEAST16_WIDTH__ = 16
 const __INT_LEAST32_MAX__ = 2147483647
-const __INT_LEAST32_TYPE__ = 0
+const __INT_LEAST32_TYPE__ = "int"
 const __INT_LEAST32_WIDTH__ = 32
 const __INT_LEAST64_MAX__ = 9223372036854775807
 const __INT_LEAST64_WIDTH__ = 64
@@ -359,9 +355,9 @@ const __INT_MAX__ = 2147483647
 const __INT_WIDTH__ = 32
 const __LAHF_SAHF__ = 1
 const __LDBL_DECIMAL_DIG__ = 17
-const __LDBL_DENORM_MIN__ = 0
+const __LDBL_DENORM_MIN__ = 4.94065645841246544176568792868221372e-324
 const __LDBL_DIG__ = 15
-const __LDBL_EPSILON__ = 0
+const __LDBL_EPSILON__ = 2.22044604925031308084726333618164062e-16
 const __LDBL_HAS_DENORM__ = 1
 const __LDBL_HAS_INFINITY__ = 1
 const __LDBL_HAS_QUIET_NAN__ = 1
@@ -369,11 +365,11 @@ const __LDBL_IS_IEC_60559__ = 2
 const __LDBL_MANT_DIG__ = 53
 const __LDBL_MAX_10_EXP__ = 308
 const __LDBL_MAX_EXP__ = 1024
-const __LDBL_MAX__ = 0
+const __LDBL_MAX__ = 1.79769313486231570814527423731704357e+308
 const __LDBL_MIN_10_EXP__ = -307
 const __LDBL_MIN_EXP__ = -1021
-const __LDBL_MIN__ = 0
-const __LDBL_NORM_MAX__ = 0
+const __LDBL_MIN__ = 2.22507385850720138309023271733240406e-308
+const __LDBL_NORM_MAX__ = 1.79769313486231570814527423731704357e+308
 const __LITTLE_ENDIAN = 1234
 const __LONG_DOUBLE_64__ = 1
 const __LONG_LONG_MAX__ = 9223372036854775807
@@ -389,9 +385,9 @@ const __PDP_ENDIAN = 3412
 const __PIC__ = 2
 const __PIE__ = 2
 const __PRAGMA_REDEFINE_EXTNAME = 1
-const __PRETTY_FUNCTION__ = 0
+const __PRETTY_FUNCTION__ = "__func__"
 const __PTRDIFF_MAX__ = 2147483647
-const __PTRDIFF_TYPE__ = 0
+const __PTRDIFF_TYPE__ = "int"
 const __PTRDIFF_WIDTH__ = 32
 const __SCHAR_MAX__ = 127
 const __SCHAR_WIDTH__ = 8
@@ -401,7 +397,7 @@ const __SHRT_MAX__ = 32767
 const __SHRT_WIDTH__ = 16
 const __SIG_ATOMIC_MAX__ = 2147483647
 const __SIG_ATOMIC_MIN__ = -2147483648
-const __SIG_ATOMIC_TYPE__ = 0
+const __SIG_ATOMIC_TYPE__ = "int"
 const __SIG_ATOMIC_WIDTH__ = 32
 const __SIZEOF_DOUBLE__ = 8
 const __SIZEOF_FLOAT128__ = 16
@@ -451,18 +447,18 @@ const __i386 = 1
 const __i386__ = 1
 const __i686 = 1
 const __i686__ = 1
-const __inline = 0
+const __inline = "inline"
 const __linux = 1
 const __linux__ = 1
 const __pentiumpro = 1
 const __pentiumpro__ = 1
 const __pic__ = 2
 const __pie__ = 2
-const __restrict = 0
-const __restrict_arr = 0
+const __restrict = "restrict"
+const __restrict_arr = "restrict"
 const __unix = 1
 const __unix__ = 1
-const complex1 = 0
+const complex1 = "_Complex"
 const math_errhandling = 2
 
 type t__builtin_va_list = uintptr
@@ -686,8 +682,6 @@ func Xcabsl(tls *TLS, z complex128) (r float64) {
 	return Xcabs(tls, Complex128FromComplex128(z))
 }
 
-const M_PI_21 = 1.5707963267948966
-
 // FIXME: Hull et al. "Implementing the complex arcsine and arccosine functions using exception handling" 1997
 
 /* acos(z) = pi/2 - asin(z) */
@@ -725,8 +719,6 @@ func Xcacosf(tls *TLS, z complex64) (r complex64) {
 	}
 	return *(*complex64)(unsafe.Pointer(&v1))
 }
-
-const M_PI_22 = 0
 
 /* acosh(z) = i acos(z) */
 
@@ -962,8 +954,7 @@ func Xcasinl(tls *TLS, z complex128) (r complex128) {
 	return Complex128FromComplex128(Xcasin(tls, Complex128FromComplex128(z)))
 }
 
-const MAXNUM = 0
-const M_PI1 = 3.141592653589793
+const MAXNUM = 1e+308
 
 var _DP1 = float64(3.141592651605606)
 var _DP2 = float64(1.9841871479187034e-09)
@@ -1012,7 +1003,7 @@ func Xcatan(tls *TLS, z complex128) (r complex128) {
 	return w
 }
 
-const MAXNUMF = 0
+const MAXNUMF = 1e+38
 
 var _DP11 = float64(3.140625)
 var _DP21 = float64(0.0009675025939941406)
@@ -1063,8 +1054,6 @@ func Xcatanf(tls *TLS, z complex64) (r complex64) {
 	w = *(*complex64)(unsafe.Pointer(&v1))
 	return w
 }
-
-const M_PI2 = 0
 
 /* atanh = -i atan(i z) */
 
@@ -2859,6 +2848,7 @@ const F_TLOCK = 2
 const F_ULOCK = 0
 const L_ctermid = 20
 const L_tmpnam = 20
+const NULL = 0
 const POSIX_CLOSE_RESTART = 0
 const P_tmpdir = "/tmp"
 const R_OK = 4
@@ -3180,8 +3170,8 @@ const BC_SCALE_MAX = 99
 const BC_STRING_MAX = 1000
 const CHARCLASS_NAME_MAX = 14
 const CHAR_BIT = 8
-const CHAR_MAX = 255
-const CHAR_MIN = 0
+const CHAR_MAX = 127
+const CHAR_MIN = -128
 const COLL_WEIGHTS_MAX = 2
 const DELAYTIMER_MAX = 2147483647
 const EXPR_NEST_MAX = 32
@@ -3743,7 +3733,7 @@ const ELFDATA2LSB = 1
 const ELFDATA2MSB = 2
 const ELFDATANONE = 0
 const ELFDATANUM = 3
-const ELFMAG = "\\177ELF"
+const ELFMAG = "\x7fELF"
 const ELFMAG0 = 127
 const ELFMAG1 = 69
 const ELFMAG2 = 76
@@ -4019,7 +4009,6 @@ const LL_EXPORTS = 8
 const LL_IGNORE_INT_VER = 2
 const LL_NONE = 0
 const LL_REQUIRE_MINOR = 4
-const MB_CUR_MAX = 0
 const MINSIGSTKSZ = 2048
 const MIPS_AFL_ASE_DSP = 1
 const MIPS_AFL_ASE_DSPR2 = 2
@@ -5956,8 +5945,6 @@ const SIGPOLL = 29
 const SIGPROF = 27
 const SIGPWR = 30
 const SIGQUIT = 3
-const SIGRTMAX = 0
-const SIGRTMIN = 0
 const SIGSEGV = 11
 const SIGSTKFLT = 16
 const SIGSTKSZ = 8192
@@ -5977,6 +5964,10 @@ const SIGWINCH = 28
 const SIGXCPU = 24
 const SIGXFSZ = 25
 const SIG_BLOCK = 0
+const SIG_DFL = 0
+const SIG_ERR = 18446744073709551615
+const SIG_HOLD = 2
+const SIG_IGN = 1
 const SIG_SETMASK = 2
 const SIG_UNBLOCK = 1
 const SIOCGSTAMPNS_OLD = 35079
@@ -6958,7 +6949,7 @@ const __SC_setsockopt = 14
 const __SC_shutdown = 13
 const __SC_socket = 1
 const __SC_socketpair = 8
-const libc = 0
+const libc = "__libc"
 
 type Ttime_t = int64
 
@@ -12691,7 +12682,6 @@ const CLOCK_REALTIME_COARSE = 5
 const CLOCK_SGI_CYCLE = 10
 const CLOCK_TAI = 11
 const CLOCK_THREAD_CPUTIME_ID = 3
-const C_LOCALE = 0
 const DEFAULT_GUARD_MAX = 1048576
 const DEFAULT_GUARD_SIZE = 8192
 const DEFAULT_STACK_MAX = 8388608
@@ -12715,7 +12705,7 @@ const LC_COLLATE = 3
 const LC_COLLATE_MASK = 8
 const LC_CTYPE = 0
 const LC_CTYPE_MASK = 1
-const LC_GLOBAL_LOCALE = -1
+const LC_GLOBAL_LOCALE = 18446744073709551615
 const LC_MESSAGES = 5
 const LC_MESSAGES_MASK = 32
 const LC_MONETARY = 4
@@ -12725,12 +12715,13 @@ const LC_NUMERIC_MASK = 2
 const LC_TIME = 2
 const LC_TIME_MASK = 4
 const LOCALE_NAME_MAX = 23
+const LOC_MAP_FAILED = 18446744073709551615
 const MAP_32BIT = 64
 const MAP_ANON = 32
 const MAP_ANONYMOUS = 32
 const MAP_DENYWRITE = 2048
 const MAP_EXECUTABLE = 4096
-const MAP_FAILED = -1
+const MAP_FAILED = 18446744073709551615
 const MAP_FILE = 0
 const MAP_FIXED = 16
 const MAP_FIXED_NOREPLACE = 1048576
@@ -12779,7 +12770,7 @@ const PROT_NONE = 0
 const PROT_READ = 1
 const PROT_WRITE = 2
 const PTHREAD_BARRIER_SERIAL_THREAD = -1
-const PTHREAD_CANCELED = -1
+const PTHREAD_CANCELED = 18446744073709551615
 const PTHREAD_CANCEL_ASYNCHRONOUS = 1
 const PTHREAD_CANCEL_DEFERRED = 0
 const PTHREAD_CANCEL_DISABLE = 1
@@ -12795,6 +12786,7 @@ const PTHREAD_MUTEX_NORMAL = 0
 const PTHREAD_MUTEX_RECURSIVE = 1
 const PTHREAD_MUTEX_ROBUST = 1
 const PTHREAD_MUTEX_STALLED = 0
+const PTHREAD_NULL = 0
 const PTHREAD_ONCE_INIT = 0
 const PTHREAD_PRIO_INHERIT = 1
 const PTHREAD_PRIO_NONE = 0
@@ -12811,16 +12803,18 @@ const SCHED_OTHER = 0
 const SCHED_RESET_ON_FORK = 1073741824
 const SCHED_RR = 2
 const SIGCANCEL = 33
+const SIGPT_SET = 3
 const SIGSYNCCALL = 34
 const SIGTIMER = 32
+const SIGTIMER_SET = 2147483648
 const TIMER_ABSTIME = 1
 const TIME_UTC = 1
 const TP_OFFSET = 0
-const UTF8_LOCALE = 0
+const __ATTRP_C11_THREAD = 4294967295
 const __CCGO_SIZEOF_GO_MUTEX = 8
-const __SU = 0
-const pthread = 0
-const tls_mod_off_t = 0
+const __SU = 1
+const pthread = "__pthread"
+const tls_mod_off_t = "size_t"
 
 type Tlconv = struct {
 	Fdecimal_point      uintptr
@@ -23591,7 +23585,7 @@ func Xwcwidth(tls *TLS, wc Twchar_t) (r int32) {
 	return int32(1)
 }
 
-const d_fileno = 0
+const d_fileno = "d_ino"
 
 type Tino_t = uint64
 
@@ -23871,8 +23865,8 @@ const SPLICE_F_NONBLOCK = 2
 const SYNC_FILE_RANGE_WAIT_AFTER = 4
 const SYNC_FILE_RANGE_WAIT_BEFORE = 1
 const SYNC_FILE_RANGE_WRITE = 2
-const alloca = 0
-const loff_t = 0
+const alloca = "__builtin_alloca"
+const loff_t = "off_t"
 
 type Tiovec = struct {
 	Fiov_base uintptr
@@ -24150,7 +24144,7 @@ const L_XTND = 2
 func _dummy(tls *TLS, old uintptr, new1 uintptr) {
 }
 
-func Xclearenv(tls *TLS) (r int32) {
+func ___musl_clearenv(tls *TLS) (r int32) {
 	if __ccgo_strace {
 		trc("tls=%v, (%v:)", tls, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -24260,7 +24254,7 @@ oom:
 
 var _oldenv uintptr
 
-func Xputenv(tls *TLS, s uintptr) (r int32) {
+func ___musl_putenv(tls *TLS, s uintptr) (r int32) {
 	if __ccgo_strace {
 		trc("tls=%v s=%v, (%v:)", tls, s, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -24346,7 +24340,7 @@ var _env_alloced uintptr
 
 var _env_alloced_n Tsize_t
 
-func Xsetenv(tls *TLS, var1 uintptr, value uintptr, overwrite int32) (r int32) {
+func ___musl_setenv(tls *TLS, var1 uintptr, value uintptr, overwrite int32) (r int32) {
 	if __ccgo_strace {
 		trc("tls=%v var1=%v value=%v overwrite=%v, (%v:)", tls, var1, value, overwrite, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -24380,7 +24374,7 @@ func Xsetenv(tls *TLS, var1 uintptr, value uintptr, overwrite int32) (r int32) {
 func _dummy2(tls *TLS, old uintptr, new1 uintptr) {
 }
 
-func Xunsetenv(tls *TLS, name uintptr) (r int32) {
+func ___musl_unsetenv(tls *TLS, name uintptr) (r int32) {
 	if __ccgo_strace {
 		trc("tls=%v name=%v, (%v:)", tls, name, origin(2))
 		defer func() { trc("-> %v", r) }()
@@ -24967,6 +24961,7 @@ func Xposix_fallocate(tls *TLS, fd int32, base Toff_t, len1 Toff_t) (r int32) {
 }
 
 const FE_ALL_EXCEPT = 63
+const FE_DFL_ENV = 18446744073709551615
 const FE_DIVBYZERO = 4
 const FE_DOWNWARD = 1024
 const FE_INEXACT = 32
@@ -25076,11 +25071,7 @@ const F_NOWR = 8
 const F_PERM = 1
 const F_SVB = 64
 const KMAX = 128
-const LDBL_EPSILON1 = 2.22044604925031308085e-16
-const LDBL_MAX1 = 1.79769313486231570815e+308
-const LDBL_MIN1 = 2.22507385850720138309e-308
 const LD_B1B_DIG = 2
-const LD_B1B_MAX = 254740991
 const MASK = 127
 const MAYBE_WAITERS = 1073741824
 const UNGET = 8
@@ -26750,11 +26741,12 @@ const IPC_CREAT = 512
 const IPC_EXCL = 1024
 const IPC_INFO = 3
 const IPC_NOWAIT = 2048
+const IPC_PRIVATE = 0
 const IPC_RMID = 0
 const IPC_SET = 1
 const IPC_STAT = 258
-const __ipc_perm_key = 0
-const __ipc_perm_seq = 0
+const __ipc_perm_key = "__key"
+const __ipc_perm_seq = "__seq"
 
 type Tkey_t = int32
 
@@ -26803,7 +26795,7 @@ const MSG_INFO = 12
 const MSG_NOERROR = 4096
 const MSG_STAT = 267
 const MSG_STAT_ANY = 269
-const __msg_cbytes = 0
+const __msg_cbytes = "msg_cbytes"
 
 type Tmsgqnum_t = uint32
 
@@ -27024,8 +27016,8 @@ func Xsemop(tls *TLS, id int32, buf uintptr, n Tsize_t) (r int32) {
 }
 
 const NO_TIME32 = 0
-const __key = 0
-const __seq = 0
+const __key = "key"
+const __seq = "seq"
 
 type Tipc_perm1 = struct {
 	Fkey    Tkey_t
@@ -27424,6 +27416,7 @@ func Xftw(tls *TLS, path uintptr, __ccgo_fp_fn uintptr, fd_limit int32) (r int32
 	return Xnftw(tls, path, __ccgo_fp_fn, fd_limit, int32(FTW_PHYS))
 }
 
+const NFDBITS = 32
 const STATX_ALL = 4095
 const STATX_ATIME = 32
 const STATX_BASIC_STATS = 2047
@@ -27495,7 +27488,7 @@ func Xfutimes(tls *TLS, fd int32, tv uintptr) (r int32) {
 	return Xfutimens(tls, fd, bp)
 }
 
-const prlimit64 = 0
+const prlimit64 = "prlimit"
 
 func Xgetdtablesize(tls *TLS) (r int32) {
 	if __ccgo_strace {
@@ -28010,8 +28003,8 @@ const NEW_TIME = 3
 const OLD_TIME = 4
 const RUN_LVL = 1
 const USER_PROCESS = 7
-const e_exit = 0
-const e_termination = 0
+const e_exit = "__e_exit"
+const e_termination = "__e_termination"
 
 type Tutmpx = struct {
 	Fut_type   int16
@@ -28677,7 +28670,7 @@ const FAN_ENABLE_AUDIT = 64
 const FAN_EVENT_INFO_TYPE_DFID = 3
 const FAN_EVENT_INFO_TYPE_DFID_NAME = 2
 const FAN_EVENT_INFO_TYPE_FID = 1
-const FAN_EVENT_METADATA_LEN = 0
+const FAN_EVENT_METADATA_LEN = 24
 const FAN_EVENT_ON_CHILD = 134217728
 const FAN_MARK_ADD = 1
 const FAN_MARK_DONT_FOLLOW = 4
@@ -29001,13 +28994,10 @@ func Xdelete_module(tls *TLS, a uintptr, b uint32) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall2(tls, int32(SYS_delete_module), int32(a), Int32FromUint32(b))))
 }
 
-const BLKBSZGET = 2147488368
-const BLKBSZSET = 1073746545
 const BLKFLSBUF = 4705
 const BLKFRAGET = 4709
 const BLKFRASET = 4708
 const BLKGETSIZE = 4704
-const BLKGETSIZE64 = 2147488370
 const BLKRAGET = 4707
 const BLKRASET = 4706
 const BLKROGET = 4702
@@ -29121,8 +29111,8 @@ const SIOCGIFSLAVE = 35113
 const SIOCGIFTXQLEN = 35138
 const SIOCGPGRP = 35076
 const SIOCGRARP = 35169
-const SIOCGSTAMP = 2147518726
-const SIOCGSTAMPNS = 2147518727
+const SIOCGSTAMP = 2148567302
+const SIOCGSTAMPNS = 2148567303
 const SIOCPROTOPRIVATE = 35296
 const SIOCRTMSG = 35085
 const SIOCSARP = 35157
@@ -29430,7 +29420,7 @@ const PR_SET_NAME = 15
 const PR_SET_NO_NEW_PRIVS = 38
 const PR_SET_PDEATHSIG = 1
 const PR_SET_PTRACER = 1499557217
-const PR_SET_PTRACER_ANY = 18446744073709551615
+const PR_SET_PTRACER_ANY = 4294967295
 const PR_SET_SECCOMP = 22
 const PR_SET_SECUREBITS = 28
 const PR_SET_SPECULATION_CTRL = 53
@@ -29940,8 +29930,8 @@ func Xsetns(tls *TLS, fd int32, nstype int32) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall2(tls, int32(SYS_setns), fd, nstype)))
 }
 
-const __tm_gmtoff = 0
-const __tm_zone = 0
+const __tm_gmtoff = "tm_gmtoff"
+const __tm_zone = "tm_zone"
 
 type Ttm1 = struct {
 	Ftm_sec    int32
@@ -30276,7 +30266,7 @@ const SA_NOMASK = 1073741824
 const SA_ONESHOT = 2147483648
 const SYS_SECCOMP = 1
 const SYS_USER_DISPATCH = 2
-const __ucontext = 0
+const __ucontext = "ucontext"
 
 const _REG_GS = 0
 const _REG_FS = 1
@@ -30938,10 +30928,10 @@ func Xcatopen(tls *TLS, name uintptr, oflag int32) (r Tnl_catd) {
 	return uintptr(-Int32FromInt32(1))
 }
 
-const calloc = 0
-const free = 0
-const malloc = 0
-const realloc = 0
+const calloc = "__libc_calloc"
+const free = "undef"
+const malloc = "__libc_malloc"
+const realloc = "undef"
 
 type Tbinding = struct {
 	Fnext       uintptr
@@ -31335,6 +31325,8 @@ func Xdgettext(tls *TLS, domainname uintptr, msgid uintptr) (r uintptr) {
 	return Xdcngettext(tls, domainname, msgid, uintptr(0), uint32(1), int32(LC_MESSAGES))
 }
 
+const calloc1 = "undef"
+
 func X__duplocale(tls *TLS, old Tlocale_t) (r Tlocale_t) {
 	if __ccgo_strace {
 		trc("tls=%v old=%v, (%v:)", tls, old, origin(2))
@@ -31360,6 +31352,9 @@ func Xduplocale(tls *TLS, old Tlocale_t) (r Tlocale_t) {
 	}
 	return X__duplocale(tls, old)
 }
+
+const free1 = "__libc_free"
+const malloc1 = "undef"
 
 func Xfreelocale(tls *TLS, l Tlocale_t) {
 	if __ccgo_strace {
@@ -31397,8 +31392,8 @@ const UTF_32BE = 192
 const UTF_32LE = 195
 const UTF_8 = 200
 const WCHAR_T = 198
-const mbrtowc_utf8 = 0
-const wctomb_utf8 = 0
+const mbrtowc_utf8 = "mbrtowc"
+const wctomb_utf8 = "wctomb"
 
 type Ticonv_t = uintptr
 
@@ -98794,6 +98789,9 @@ func Xnl_langinfo_l(tls *TLS, item Tnl_item, loc Tlocale_t) (r uintptr) {
 	return X__nl_langinfo_l(tls, item, loc)
 }
 
+const free2 = "undef"
+const malloc2 = "__libc_malloc"
+
 func X__lctrans_impl(tls *TLS, msg uintptr, lm uintptr) (r uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v msg=%v lm=%v, (%v:)", tls, msg, lm, origin(2))
@@ -98974,20 +98972,20 @@ var _posix_lconv = Tlconv{
 	Fmon_grouping:       __ccgo_ts,
 	Fpositive_sign:      __ccgo_ts,
 	Fnegative_sign:      __ccgo_ts,
-	Fint_frac_digits:    Int8FromInt32(CHAR_MAX),
-	Ffrac_digits:        Int8FromInt32(CHAR_MAX),
-	Fp_cs_precedes:      Int8FromInt32(CHAR_MAX),
-	Fp_sep_by_space:     Int8FromInt32(CHAR_MAX),
-	Fn_cs_precedes:      Int8FromInt32(CHAR_MAX),
-	Fn_sep_by_space:     Int8FromInt32(CHAR_MAX),
-	Fp_sign_posn:        Int8FromInt32(CHAR_MAX),
-	Fn_sign_posn:        Int8FromInt32(CHAR_MAX),
-	Fint_p_cs_precedes:  Int8FromInt32(CHAR_MAX),
-	Fint_p_sep_by_space: Int8FromInt32(CHAR_MAX),
-	Fint_n_cs_precedes:  Int8FromInt32(CHAR_MAX),
-	Fint_n_sep_by_space: Int8FromInt32(CHAR_MAX),
-	Fint_p_sign_posn:    Int8FromInt32(CHAR_MAX),
-	Fint_n_sign_posn:    Int8FromInt32(CHAR_MAX),
+	Fint_frac_digits:    int8(CHAR_MAX),
+	Ffrac_digits:        int8(CHAR_MAX),
+	Fp_cs_precedes:      int8(CHAR_MAX),
+	Fp_sep_by_space:     int8(CHAR_MAX),
+	Fn_cs_precedes:      int8(CHAR_MAX),
+	Fn_sep_by_space:     int8(CHAR_MAX),
+	Fp_sign_posn:        int8(CHAR_MAX),
+	Fn_sign_posn:        int8(CHAR_MAX),
+	Fint_p_cs_precedes:  int8(CHAR_MAX),
+	Fint_p_sep_by_space: int8(CHAR_MAX),
+	Fint_n_cs_precedes:  int8(CHAR_MAX),
+	Fint_n_sep_by_space: int8(CHAR_MAX),
+	Fint_p_sign_posn:    int8(CHAR_MAX),
+	Fint_n_sign_posn:    int8(CHAR_MAX),
 }
 
 func Xlocaleconv(tls *TLS) (r uintptr) {
@@ -99933,10 +99931,6 @@ func Xreallocarray(tls *TLS, ptr uintptr, m Tsize_t, n Tsize_t) (r uintptr) {
 	return Xrealloc(tls, ptr, m*n)
 }
 
-const LDBL_EPSILON2 = 0
-const LDBL_MAX2 = 0
-const LDBL_MIN2 = 0
-
 var _C1 = float64(0.0416666666666666)                 /* 0x3FA55555, 0x5555554C */
 var _C2 = -Float64FromFloat64(0.001388888888887411)   /* 0xBF56C16C, 0x16C15177 */
 var _C3 = float64(2.480158728947673e-05)              /* 0x3EFA01A0, 0x19CB1590 */
@@ -100122,8 +100116,8 @@ func X__fpclassifyl(tls *TLS, x float64) (r int32) {
 	return X__fpclassify(tls, x)
 }
 
-const pio2_hi = 0
-const pio2_lo = 0
+const pio2_hi = "__pio2_hi"
+const pio2_lo = "__pio2_lo"
 
 func X__math_divzero(tls *TLS, sign Tuint32_t) (r float64) {
 	if __ccgo_strace {
@@ -100257,8 +100251,7 @@ _5:
 	return v4
 }
 
-const DBL_EPSILON1 = 2.220446049250313e-16
-const EPS = 0
+const EPS = 2.220446049250313e-16
 
 // C documentation
 //
@@ -100466,8 +100459,6 @@ _1:
 	**(**float64)(__ccgo_up(y + 1*8)) = (**(**[2]float64)(__ccgo_up(bp + 32)))[int32(1)]
 	return n
 }
-
-const DBL_EPSILON2 = 0
 
 var _init_jk = [4]int32{
 	0: int32(3),
@@ -100961,8 +100952,6 @@ _18:
 	return n & int32(7)
 }
 
-const DBL_EPSILON3 = 2.220446049250313e-16
-
 // C documentation
 //
 //	/*
@@ -101040,8 +101029,6 @@ func X__rem_pio2f(tls *TLS, x float32, y uintptr) (r int32) {
 	**(**float64)(__ccgo_up(y)) = (**(**[1]float64)(__ccgo_up(bp + 16)))[0]
 	return n
 }
-
-const DBL_EPSILON4 = 0
 
 // C documentation
 //
@@ -102552,8 +102539,6 @@ func Xcbrtl(tls *TLS, x float64) (r float64) {
 	return Xcbrt(tls, x)
 }
 
-const DBL_EPSILON5 = 2.220446049250313e-16
-
 var _toint2 = float64(Float64FromInt32(1) / Float64FromFloat64(2.220446049250313e-16))
 
 func Xceil(tls *TLS, x3 float64) (r float64) {
@@ -102613,8 +102598,6 @@ func Xceil(tls *TLS, x3 float64) (r float64) {
 	}
 	return x3 + y3
 }
-
-const DBL_EPSILON6 = 0
 
 func Xceilf(tls *TLS, x3 float32) (r float32) {
 	if __ccgo_strace {
@@ -102822,8 +102805,6 @@ func Xcos(tls *TLS, x3 float64) (r float64) {
 	return r
 }
 
-const M_PI_23 = 1.5707963267948966
-
 // C documentation
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
@@ -102915,8 +102896,6 @@ func Xcosf(tls *TLS, x3 float32) (r float32) {
 	}
 	return r
 }
-
-const M_PI_24 = 0
 
 // C documentation
 //
@@ -103579,7 +103558,7 @@ _7:
 	return v1
 }
 
-const HUGE = 0
+const HUGE = 3.4028234663852886e+38
 
 func Xexp10(tls *TLS, x float64) (r float64) {
 	if __ccgo_strace {
@@ -104520,8 +104499,6 @@ _2:
 	return BoolInt32(v1&uint32(0x7fffffff) < uint32(0x7f800000))
 }
 
-const DBL_EPSILON7 = 2.220446049250313e-16
-
 var _toint3 = float64(Float64FromInt32(1) / Float64FromFloat64(2.220446049250313e-16))
 
 func Xfloor(tls *TLS, x3 float64) (r float64) {
@@ -104581,8 +104558,6 @@ func Xfloor(tls *TLS, x3 float64) (r float64) {
 	}
 	return x3 + y3
 }
-
-const DBL_EPSILON8 = 0
 
 func Xfloorf(tls *TLS, x3 float32) (r float32) {
 	if __ccgo_strace {
@@ -104659,8 +104634,6 @@ func Xfloorl(tls *TLS, x float64) (r float64) {
 	return Xfloor(tls, x)
 }
 
-const DBL_MIN1 = 2.2250738585072014e-308
-const FLT_MIN1 = 1.1754943508222875e-38
 const ZEROINFNAN = 971
 
 type Tnum = struct {
@@ -104884,9 +104857,6 @@ func Xfma(tls *TLS, x1 float64, y float64, z float64) (r1 float64) {
 	}
 	return Xscalbn(tls, r, e)
 }
-
-const DBL_MIN2 = 0
-const FLT_MIN2 = 0
 
 func Xfmal(tls *TLS, x float64, y float64, z float64) (r float64) {
 	if __ccgo_strace {
@@ -105524,8 +105494,6 @@ func Xfrexpl(tls *TLS, x float64, e uintptr) (r float64) {
 	}
 	return Xfrexp(tls, x, e)
 }
-
-const SPLIT = 1
 
 func _sq(tls *TLS, hi uintptr, lo uintptr, x float64) {
 	var xc, xh, xl Tdouble_t
@@ -109323,8 +109291,6 @@ func Xlogl(tls *TLS, x float64) (r float64) {
 	return Xlog(tls, x)
 }
 
-const DBL_EPSILON9 = 2.220446049250313e-16
-
 /*
 If the result cannot be represented (overflow, nan), then
 lrint raises the invalid exception.
@@ -109395,8 +109361,6 @@ func Xlrintf(tls *TLS, x float32) (r int32) {
 	}
 	return int32(Xrintf(tls, x))
 }
-
-const DBL_EPSILON10 = 0
 
 func Xlrintl(tls *TLS, x float64) (r int32) {
 	if __ccgo_strace {
@@ -110929,8 +110893,6 @@ func Xremquol(tls *TLS, x float64, y float64, quo uintptr) (r float64) {
 	return Xremquo(tls, x, y, quo)
 }
 
-const DBL_EPSILON11 = 2.220446049250313e-16
-
 var _toint4 = float64(Float64FromInt32(1) / Float64FromFloat64(2.220446049250313e-16))
 
 func Xrint(tls *TLS, x float64) (r float64) {
@@ -110977,8 +110939,7 @@ func Xrint(tls *TLS, x float64) (r float64) {
 	return y
 }
 
-const DBL_EPSILON12 = 0
-const FLT_EPSILON1 = 1.1920928955078125e-07
+const EPS1 = 1.1920928955078125e-07
 
 var _toint5 = float64(Float32FromInt32(1) / Float32FromFloat32(1.1920928955078125e-07))
 
@@ -111026,8 +110987,6 @@ func Xrintf(tls *TLS, x float32) (r float32) {
 	return float32(y)
 }
 
-const FLT_EPSILON2 = 0
-
 func Xrintl(tls *TLS, x float64) (r float64) {
 	if __ccgo_strace {
 		trc("tls=%v x=%v, (%v:)", tls, x, origin(2))
@@ -111036,7 +110995,7 @@ func Xrintl(tls *TLS, x float64) (r float64) {
 	return Xrint(tls, x)
 }
 
-const DBL_EPSILON13 = 2.220446049250313e-16
+const EPS2 = 2.220446049250313e-16
 
 var _toint6 = float64(Float64FromInt32(1) / Float64FromFloat64(2.220446049250313e-16))
 
@@ -111100,8 +111059,7 @@ func Xround(tls *TLS, x3 float64) (r float64) {
 	return y3
 }
 
-const DBL_EPSILON14 = 0
-const FLT_EPSILON3 = 1.1920928955078125e-07
+const EPS3 = 1.1920928955078125e-07
 
 var _toint7 = float64(Float32FromInt32(1) / Float32FromFloat32(1.1920928955078125e-07))
 
@@ -111163,8 +111121,6 @@ func Xroundf(tls *TLS, x3 float32) (r float32) {
 	}
 	return float32(y3)
 }
-
-const FLT_EPSILON4 = 0
 
 func Xroundl(tls *TLS, x float64) (r float64) {
 	if __ccgo_strace {
@@ -111572,8 +111528,6 @@ func Xsincos(tls *TLS, x3 float64, sin uintptr, cos uintptr) {
 	}
 }
 
-const M_PI_25 = 1.5707963267948966
-
 // C documentation
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
@@ -111719,8 +111673,6 @@ func Xsincosf(tls *TLS, x3 float32, sin uintptr, cos uintptr) {
 	}
 }
 
-const M_PI_26 = 0
-
 func Xsincosl(tls *TLS, x float64, sin uintptr, cos uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v x=%v sin=%v cos=%v, (%v:)", tls, x, sin, cos, origin(2))
@@ -111733,8 +111685,6 @@ func Xsincosl(tls *TLS, x float64, sin uintptr, cos uintptr) {
 	**(**float64)(__ccgo_up(sin)) = float64(**(**float64)(__ccgo_up(bp)))
 	**(**float64)(__ccgo_up(cos)) = float64(**(**float64)(__ccgo_up(bp + 8)))
 }
-
-const M_PI_27 = 1.5707963267948966
 
 // C documentation
 //
@@ -111840,8 +111790,6 @@ func Xsinf(tls *TLS, x3 float32) (r float32) {
 	}
 	return r
 }
-
-const M_PI_28 = 0
 
 // C documentation
 //
@@ -112285,8 +112233,6 @@ func Xtan(tls *TLS, x3 float64) (r float64) {
 	return X__tan(tls, (**(**[2]float64)(__ccgo_up(bp)))[0], (**(**[2]float64)(__ccgo_up(bp)))[int32(1)], Int32FromUint32(n&uint32(1)))
 }
 
-const M_PI_29 = 1.5707963267948966
-
 // C documentation
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
@@ -112385,8 +112331,6 @@ func Xtanf(tls *TLS, x3 float32) (r float32) {
 	n = Uint32FromInt32(X__rem_pio2f(tls, x3, bp))
 	return X__tandf(tls, **(**float64)(__ccgo_up(bp)), Int32FromUint32(n&uint32(1)))
 }
-
-const M_PI_210 = 0
 
 // C documentation
 //
@@ -113126,8 +113070,12 @@ const MM_NOMSG = 1
 const MM_NOSEV = 0
 const MM_NOTOK = -1
 const MM_NRECOV = 128
+const MM_NULLACT = 0
+const MM_NULLLBL = 0
 const MM_NULLMC = 0
 const MM_NULLSEV = 0
+const MM_NULLTAG = 0
+const MM_NULLTXT = 0
 const MM_OK = 0
 const MM_OPSYS = 32
 const MM_PRINT = 256
@@ -113449,7 +113397,7 @@ func Xgethostid(tls *TLS) (r int32) {
 	return 0
 }
 
-const optpos = 0
+const optpos = "__optpos"
 
 type t__ucontext1 = Tucontext_t1
 
@@ -114351,17 +114299,17 @@ func Xlockf(tls *TLS, fd int32, op int32, size Toff_t) (r int32) {
 }
 
 const ACCOUNTING = 9
-const UTMP_FILE = "_PATH_UTMP"
-const UTMP_FILENAME = "_PATH_UTMP"
+const UTMP_FILE = "/dev/null/utmp"
+const UTMP_FILENAME = "/dev/null/utmp"
 const UT_HOSTSIZE = 256
 const UT_LINESIZE = 32
 const UT_NAMESIZE = 32
-const WTMP_FILE = "_PATH_WTMP"
-const WTMP_FILENAME = "_PATH_WTMP"
+const WTMP_FILE = "/dev/null/wtmp"
+const WTMP_FILENAME = "/dev/null/wtmp"
 const _PATH_UTMP = "/dev/null/utmp"
 const _PATH_WTMP = "/dev/null/wtmp"
-const ut_name = 0
-const utmp = 0
+const ut_name = "ut_user"
+const utmp = "utmpx"
 
 type Tlastlog = struct {
 	Fll_time Ttime_t
@@ -114399,7 +114347,6 @@ const MNTTYPE_IGNORE = "ignore"
 const MNTTYPE_NFS = "nfs"
 const MNTTYPE_SWAP = "swap"
 const MOUNTED = "/etc/mtab"
-const SENTINEL = 0
 
 type Tmntent = struct {
 	Fmnt_fsname uintptr
@@ -115790,7 +115737,7 @@ func Xmlockall(tls *TLS, flags int32) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall1(tls, int32(SYS_mlockall), flags)))
 }
 
-const OFF_MASK = 4095
+const OFF_MASK = 18446726481523511295
 const UNIT = 4096
 
 func _dummy5(tls *TLS) {
@@ -116004,9 +115951,10 @@ func Xshm_unlink(tls *TLS, name uintptr) (r int32) {
 	return Xunlink(tls, name)
 }
 
+const FAILSTATE = 3758096384
 const SA = 194
 const SB = 244
-const bittab = 0
+const bittab = "__fsmu8"
 
 func Xbtowc(tls *TLS, c int32) (r Twint_t) {
 	if __ccgo_strace {
@@ -117171,19 +117119,29 @@ _11:
 	return X__syscall_ret(tls, Uint32FromInt32(v10))
 }
 
-const ADD = 0
-const C_ANY = 0
-const C_CHAOS = 0
-const C_HS = 0
-const C_IN = 0
-const C_NONE = 0
+const ADD = 1
+const C_ANY = 255
+const C_CHAOS = 3
+const C_HS = 4
+const C_IN = 1
+const C_NONE = 254
 const DELETE = 0
-const FORMERR = 0
-const GETLONG = 0
-const GETSHORT = 0
+const FORMERR = 1
+const GETLONG = "NS_GET32"
+const GETSHORT = "NS_GET16"
 const HFIXEDSZ = 12
 const IN6ADDRSZ = 16
 const INADDRSZ = 4
+const INADDR_ALLHOSTS_GROUP = 3758096385
+const INADDR_ALLRTRS_GROUP = 3758096386
+const INADDR_ALLSNOOPERS_GROUP = 3758096490
+const INADDR_ANY = 0
+const INADDR_BROADCAST = 4294967295
+const INADDR_DUMMY = 3221225480
+const INADDR_LOOPBACK = 2130706433
+const INADDR_MAX_LOCAL_GROUP = 3758096639
+const INADDR_NONE = 4294967295
+const INADDR_UNSPEC_GROUP = 3758096384
 const INDIR_MASK = 192
 const INET6_ADDRSTRLEN = 46
 const INET_ADDRSTRLEN = 16
@@ -117361,7 +117319,7 @@ const IP_TTL = 2
 const IP_UNBLOCK_SOURCE = 37
 const IP_UNICAST_IF = 50
 const IP_XFRM_POLICY = 17
-const IQUERY = 0
+const IQUERY = 1
 const LOCALDOMAINPARTS = 2
 const MAXCDNAME = 255
 const MAXDFLSRCH = 3
@@ -117372,9 +117330,9 @@ const MAXNS = 3
 const MAXRESOLVSORT = 10
 const NAMESERVER_PORT = 53
 const NOERROR = 0
-const NOTAUTH = 0
-const NOTIMP = 0
-const NOTZONE = 0
+const NOTAUTH = 9
+const NOTIMP = 4
+const NOTZONE = 10
 const NS_ALG_DH = 2
 const NS_ALG_DSA = 3
 const NS_ALG_DSS = 3
@@ -117430,7 +117388,7 @@ const NS_MD5RSA_MAX_BYTES = 8195
 const NS_MD5RSA_MAX_SIZE = 512
 const NS_MD5RSA_MIN_BITS = 512
 const NS_MD5RSA_MIN_SIZE = 64
-const NS_NOTIFY_OP = 0
+const NS_NOTIFY_OP = 4
 const NS_NXT_BITS = 8
 const NS_NXT_MAX = 127
 const NS_OPT_DNSSEC_OK = 32768
@@ -117452,69 +117410,99 @@ const NS_TSIG_ERROR_NO_SPACE = -11
 const NS_TSIG_ERROR_NO_TSIG = -10
 const NS_TSIG_FUDGE = 300
 const NS_TSIG_TCP_COUNT = 100
-const NS_UPDATE_OP = 0
-const NXDOMAIN = 0
-const NXRRSET = 0
+const NS_UPDATE_OP = 5
+const NXDOMAIN = 3
+const NXRRSET = 8
 const PACKETSZ = 512
 const PRIX16 = "X"
 const PRIX32 = "X"
+const PRIX64 = "llX"
 const PRIX8 = "X"
 const PRIXFAST16 = "X"
 const PRIXFAST32 = "X"
+const PRIXFAST64 = "llX"
 const PRIXFAST8 = "X"
 const PRIXLEAST16 = "X"
 const PRIXLEAST32 = "X"
+const PRIXLEAST64 = "llX"
 const PRIXLEAST8 = "X"
+const PRIXMAX = "llX"
+const PRIXPTR = "X"
 const PRId16 = "d"
 const PRId32 = "d"
+const PRId64 = "lld"
 const PRId8 = "d"
 const PRIdFAST16 = "d"
 const PRIdFAST32 = "d"
+const PRIdFAST64 = "lld"
 const PRIdFAST8 = "d"
 const PRIdLEAST16 = "d"
 const PRIdLEAST32 = "d"
+const PRIdLEAST64 = "lld"
 const PRIdLEAST8 = "d"
+const PRIdMAX = "lld"
+const PRIdPTR = "d"
 const PRIi16 = "i"
 const PRIi32 = "i"
+const PRIi64 = "lli"
 const PRIi8 = "i"
 const PRIiFAST16 = "i"
 const PRIiFAST32 = "i"
+const PRIiFAST64 = "lli"
 const PRIiFAST8 = "i"
 const PRIiLEAST16 = "i"
 const PRIiLEAST32 = "i"
+const PRIiLEAST64 = "lli"
 const PRIiLEAST8 = "i"
+const PRIiMAX = "lli"
+const PRIiPTR = "i"
 const PRIo16 = "o"
 const PRIo32 = "o"
+const PRIo64 = "llo"
 const PRIo8 = "o"
 const PRIoFAST16 = "o"
 const PRIoFAST32 = "o"
+const PRIoFAST64 = "llo"
 const PRIoFAST8 = "o"
 const PRIoLEAST16 = "o"
 const PRIoLEAST32 = "o"
+const PRIoLEAST64 = "llo"
 const PRIoLEAST8 = "o"
+const PRIoMAX = "llo"
+const PRIoPTR = "o"
 const PRIu16 = "u"
 const PRIu32 = "u"
+const PRIu64 = "llu"
 const PRIu8 = "u"
 const PRIuFAST16 = "u"
 const PRIuFAST32 = "u"
+const PRIuFAST64 = "llu"
 const PRIuFAST8 = "u"
 const PRIuLEAST16 = "u"
 const PRIuLEAST32 = "u"
+const PRIuLEAST64 = "llu"
 const PRIuLEAST8 = "u"
+const PRIuMAX = "llu"
+const PRIuPTR = "u"
 const PRIx16 = "x"
 const PRIx32 = "x"
+const PRIx64 = "llx"
 const PRIx8 = "x"
 const PRIxFAST16 = "x"
 const PRIxFAST32 = "x"
+const PRIxFAST64 = "llx"
 const PRIxFAST8 = "x"
 const PRIxLEAST16 = "x"
 const PRIxLEAST32 = "x"
+const PRIxLEAST64 = "llx"
 const PRIxLEAST8 = "x"
-const PUTLONG = 0
-const PUTSHORT = 0
+const PRIxMAX = "llx"
+const PRIxPTR = "x"
+const PUTLONG = "NS_PUT32"
+const PUTSHORT = "NS_PUT16"
 const QFIXEDSZ = 4
 const QUERY = 0
-const REFUSED = 0
+const REFUSED = 5
 const RES_AAONLY = 4
 const RES_BLAST = 131072
 const RES_DEBUG = 2
@@ -117568,136 +117556,161 @@ const RES_USE_INET6 = 8192
 const RRFIXEDSZ = 10
 const SCNd16 = "hd"
 const SCNd32 = "d"
+const SCNd64 = "lld"
 const SCNd8 = "hhd"
 const SCNdFAST16 = "d"
 const SCNdFAST32 = "d"
+const SCNdFAST64 = "lld"
 const SCNdFAST8 = "hhd"
 const SCNdLEAST16 = "hd"
 const SCNdLEAST32 = "d"
+const SCNdLEAST64 = "lld"
 const SCNdLEAST8 = "hhd"
+const SCNdMAX = "lld"
+const SCNdPTR = "d"
 const SCNi16 = "hi"
 const SCNi32 = "i"
+const SCNi64 = "lli"
 const SCNi8 = "hhi"
 const SCNiFAST16 = "i"
 const SCNiFAST32 = "i"
+const SCNiFAST64 = "lli"
 const SCNiFAST8 = "hhi"
 const SCNiLEAST16 = "hi"
 const SCNiLEAST32 = "i"
+const SCNiLEAST64 = "lli"
 const SCNiLEAST8 = "hhi"
+const SCNiMAX = "lli"
+const SCNiPTR = "i"
 const SCNo16 = "ho"
 const SCNo32 = "o"
+const SCNo64 = "llo"
 const SCNo8 = "hho"
 const SCNoFAST16 = "o"
 const SCNoFAST32 = "o"
+const SCNoFAST64 = "llo"
 const SCNoFAST8 = "hho"
 const SCNoLEAST16 = "ho"
 const SCNoLEAST32 = "o"
+const SCNoLEAST64 = "llo"
 const SCNoLEAST8 = "hho"
+const SCNoMAX = "llo"
+const SCNoPTR = "o"
 const SCNu16 = "hu"
 const SCNu32 = "u"
+const SCNu64 = "llu"
 const SCNu8 = "hhu"
 const SCNuFAST16 = "u"
 const SCNuFAST32 = "u"
+const SCNuFAST64 = "llu"
 const SCNuFAST8 = "hhu"
 const SCNuLEAST16 = "hu"
 const SCNuLEAST32 = "u"
+const SCNuLEAST64 = "llu"
 const SCNuLEAST8 = "hhu"
+const SCNuMAX = "llu"
+const SCNuPTR = "u"
 const SCNx16 = "hx"
 const SCNx32 = "x"
+const SCNx64 = "llx"
 const SCNx8 = "hhx"
 const SCNxFAST16 = "x"
 const SCNxFAST32 = "x"
+const SCNxFAST64 = "llx"
 const SCNxFAST8 = "hhx"
 const SCNxLEAST16 = "hx"
 const SCNxLEAST32 = "x"
+const SCNxLEAST64 = "llx"
 const SCNxLEAST8 = "hhx"
-const SERVFAIL = 0
-const STATUS = 0
-const S_ADDT = 0
-const S_PREREQ = 0
-const S_UPDATE = 0
+const SCNxMAX = "llx"
+const SCNxPTR = "x"
+const SERVFAIL = 2
+const STATUS = 2
+const S_ADDT = 3
+const S_PREREQ = 1
+const S_UPDATE = 2
 const S_ZONE = 0
-const T_A = 0
-const T_A6 = 0
-const T_AAAA = 0
-const T_AFSDB = 0
-const T_ANY = 0
-const T_ATMA = 0
-const T_AVC = 0
-const T_AXFR = 0
-const T_CAA = 0
-const T_CDNSKEY = 0
-const T_CDS = 0
-const T_CNAME = 0
-const T_CSYNC = 0
-const T_DHCID = 0
-const T_DLV = 0
-const T_DNAME = 0
-const T_DNSKEY = 0
-const T_DS = 0
-const T_EID = 0
-const T_EUI48 = 0
-const T_EUI64 = 0
-const T_GID = 0
-const T_GPOS = 0
-const T_HINFO = 0
-const T_HIP = 0
-const T_IPSECKEY = 0
-const T_ISDN = 0
-const T_IXFR = 0
-const T_KEY = 0
-const T_L32 = 0
-const T_L64 = 0
-const T_LOC = 0
-const T_LP = 0
-const T_MAILA = 0
-const T_MAILB = 0
-const T_MB = 0
-const T_MD = 0
-const T_MF = 0
-const T_MG = 0
-const T_MINFO = 0
-const T_MR = 0
-const T_MX = 0
-const T_NAPTR = 0
-const T_NID = 0
-const T_NIMLOC = 0
-const T_NINFO = 0
-const T_NS = 0
-const T_NSAP = 0
-const T_NSAP_PTR = 0
-const T_NSEC = 0
-const T_NSEC3 = 0
-const T_NSEC3PARAM = 0
-const T_NULL = 0
-const T_NXT = 0
-const T_OPENPGPKEY = 0
-const T_PTR = 0
-const T_PX = 0
-const T_RKEY = 0
-const T_RP = 0
-const T_RRSIG = 0
-const T_RT = 0
-const T_SIG = 0
-const T_SMIMEA = 0
-const T_SOA = 0
-const T_SPF = 0
-const T_SRV = 0
-const T_SSHFP = 0
-const T_TA = 0
-const T_TALINK = 0
-const T_TKEY = 0
-const T_TLSA = 0
-const T_TSIG = 0
-const T_TXT = 0
-const T_UID = 0
-const T_UINFO = 0
-const T_UNSPEC = 0
-const T_URI = 0
-const T_WKS = 0
-const T_X25 = 0
-const YXDOMAIN = 0
-const YXRRSET = 0
+const T_A = 1
+const T_A6 = 38
+const T_AAAA = 28
+const T_AFSDB = 18
+const T_ANY = 255
+const T_ATMA = 34
+const T_AVC = 258
+const T_AXFR = 252
+const T_CAA = 257
+const T_CDNSKEY = 60
+const T_CDS = 59
+const T_CNAME = 5
+const T_CSYNC = 62
+const T_DHCID = 49
+const T_DLV = 32769
+const T_DNAME = 39
+const T_DNSKEY = 48
+const T_DS = 43
+const T_EID = 31
+const T_EUI48 = 108
+const T_EUI64 = 109
+const T_GID = 102
+const T_GPOS = 27
+const T_HINFO = 13
+const T_HIP = 55
+const T_IPSECKEY = 45
+const T_ISDN = 20
+const T_IXFR = 251
+const T_KEY = 25
+const T_L32 = 105
+const T_L64 = 106
+const T_LOC = 29
+const T_LP = 107
+const T_MAILA = 254
+const T_MAILB = 253
+const T_MB = 7
+const T_MD = 3
+const T_MF = 4
+const T_MG = 8
+const T_MINFO = 14
+const T_MR = 9
+const T_MX = 15
+const T_NAPTR = 35
+const T_NID = 104
+const T_NIMLOC = 32
+const T_NINFO = 56
+const T_NS = 2
+const T_NSAP = 22
+const T_NSAP_PTR = 23
+const T_NSEC = 47
+const T_NSEC3 = 50
+const T_NSEC3PARAM = 51
+const T_NULL = 10
+const T_NXT = 30
+const T_OPENPGPKEY = 61
+const T_PTR = 12
+const T_PX = 26
+const T_RKEY = 57
+const T_RP = 17
+const T_RRSIG = 46
+const T_RT = 21
+const T_SIG = 24
+const T_SMIMEA = 53
+const T_SOA = 6
+const T_SPF = 99
+const T_SRV = 33
+const T_SSHFP = 44
+const T_TA = 32768
+const T_TALINK = 58
+const T_TKEY = 249
+const T_TLSA = 52
+const T_TSIG = 250
+const T_TXT = 16
+const T_UID = 101
+const T_UINFO = 100
+const T_UNSPEC = 103
+const T_URI = 256
+const T_WKS = 11
+const T_X25 = 19
+const YXDOMAIN = 6
+const YXRRSET = 7
 const _PATH_RESCONF = "/etc/resolv.conf"
 const __BIND = 19950621
 const __NAMESER = 19991006
@@ -117718,7 +117731,6 @@ const __UAPI_DEF_IPV6_OPTIONS = 0
 const __UAPI_DEF_IP_MREQ = 0
 const __UAPI_DEF_SOCKADDR_IN = 0
 const __UAPI_DEF_SOCKADDR_IN6 = 0
-const _res = 0
 
 type Tns_sect = int32
 
@@ -119257,7 +119269,6 @@ const NO_ADDRESS = 4
 const NO_DATA = 4
 const NO_RECOVERY = 3
 const TRY_AGAIN = 2
-const h_errno = 0
 
 type Tip_mreq = struct {
 	Fimr_multiaddr Tin_addr
@@ -119988,6 +119999,7 @@ func Xgetifaddrs(tls *TLS, ifap uintptr) (r1 int32) {
 	return r
 }
 
+const PTR_MAX = 78
 const RR_PTR = 12
 
 func _itoa(tls *TLS, p uintptr, x uint32) (r uintptr) {
@@ -120394,7 +120406,7 @@ var _se Tservent
 
 var _buf3 [2]uintptr
 
-const ALIGN = 0
+const ALIGN = 4
 
 func Xgetservbyname_r(tls *TLS, name uintptr, prots uintptr, se uintptr, buf uintptr, buflen Tsize_t, res uintptr) (r int32) {
 	if __ccgo_strace {
@@ -124166,10 +124178,10 @@ func X__res_state(tls *TLS) (r uintptr) {
 		trc("tls=%v, (%v:)", tls, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return uintptr(unsafe.Pointer(&_res1))
+	return uintptr(unsafe.Pointer(&_res))
 }
 
-var _res1 t__res_state
+var _res t__res_state
 
 func X__get_resolv_conf(tls *TLS, conf uintptr, search uintptr, search_sz Tsize_t) (r int32) {
 	if __ccgo_strace {
@@ -127077,7 +127089,7 @@ var _atfork_locks = [10]uintptr{
 	2: uintptr(unsafe.Pointer(&X__gettext_lockptr)),
 	3: uintptr(unsafe.Pointer(&X__locale_lockptr)),
 	4: uintptr(unsafe.Pointer(&X__random_lockptr)),
-	5: uintptr(unsafe.Pointer(&_dummy_lockptr)),
+	5: uintptr(unsafe.Pointer(&X__sem_open_lockptr)),
 	6: uintptr(unsafe.Pointer(&X__stdio_ofl_lockptr)),
 	7: uintptr(unsafe.Pointer(&X__syslog_lockptr)),
 	8: uintptr(unsafe.Pointer(&X__timezone_lockptr)),
@@ -127103,6 +127115,8 @@ const POSIX_SPAWN_SETSID = 128
 const POSIX_SPAWN_SETSIGDEF = 4
 const POSIX_SPAWN_SETSIGMASK = 8
 const POSIX_SPAWN_USEVFORK = 64
+const calloc2 = "__libc_calloc"
+const free3 = "__libc_free"
 
 type Tposix_spawnattr_t = struct {
 	F__flags int32
@@ -128515,31 +128529,31 @@ const REG_OK = 0
 const TAG = -3
 const TRE_CHAR_MAX = 1114111
 const TRE_MEM_BLOCK_SIZE = 1024
-const TRE_REGEX_T_FIELD = 0
-const tre_ctype = 0
-const tre_isalnum = 0
-const tre_isalpha = 0
-const tre_isblank = 0
-const tre_iscntrl = 0
-const tre_isctype = 0
-const tre_isdigit = 0
-const tre_isgraph = 0
-const tre_islower = 0
-const tre_isprint = 0
-const tre_ispunct = 0
-const tre_isspace = 0
-const tre_isupper = 0
-const tre_isxdigit = 0
-const tre_mem_alloc_impl = 0
-const tre_mem_destroy = 0
-const tre_mem_new_impl = 0
-const tre_strlen = 0
-const tre_tolower = 0
-const tre_toupper = 0
-const xcalloc = 0
-const xfree = 0
-const xmalloc = 0
-const xrealloc = 0
+const TRE_REGEX_T_FIELD = "__opaque"
+const tre_ctype = "wctype"
+const tre_isalnum = "iswalnum"
+const tre_isalpha = "iswalpha"
+const tre_isblank = "iswblank"
+const tre_iscntrl = "iswcntrl"
+const tre_isctype = "iswctype"
+const tre_isdigit = "iswdigit"
+const tre_isgraph = "iswgraph"
+const tre_islower = "iswlower"
+const tre_isprint = "iswprint"
+const tre_ispunct = "iswpunct"
+const tre_isspace = "iswspace"
+const tre_isupper = "iswupper"
+const tre_isxdigit = "iswxdigit"
+const tre_mem_alloc_impl = "__tre_mem_alloc_impl"
+const tre_mem_destroy = "__tre_mem_destroy"
+const tre_mem_new_impl = "__tre_mem_new_impl"
+const tre_strlen = "wcslen"
+const tre_tolower = "towlower"
+const tre_toupper = "towupper"
+const xcalloc = "calloc"
+const xfree = "free"
+const xmalloc = "malloc"
+const xrealloc = "realloc"
 
 type Tregoff_t = int32
 
@@ -132131,9 +132145,9 @@ func Xregerror(tls *TLS, e int32, preg uintptr, buf uintptr, size Tsize_t) (r Ts
 	return Uint32FromInt32(int32(1) + Xsnprintf(tls, buf, size, __ccgo_ts+15, VaList(bp+8, s)))
 }
 
-const tre_bt_mem_alloc = 0
-const tre_bt_mem_destroy = 0
-const tre_bt_mem_new = 0
+const tre_bt_mem_alloc = "tre_mem_alloc"
+const tre_bt_mem_destroy = "tre_mem_destroy"
+const tre_bt_mem_new = "tre_mem_new"
 
 /***********************************************************************
  from tre-match-utils.h
@@ -133330,7 +133344,160 @@ func X__tre_mem_alloc_impl(tls *TLS, mem Ttre_mem_t, provided int32, provided_bl
 	return ptr
 }
 
-const MAXSIZE = 1
+func Xsched_setaffinity(tls *TLS, tid Tpid_t, size Tsize_t, set uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v tid=%v size=%v set=%v, (%v:)", tls, tid, size, set, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(X__syscall3(tls, int32(SYS_sched_setaffinity), tid, Int32FromUint32(size), int32(set))))
+}
+
+func Xpthread_setaffinity_np(tls *TLS, td Tpthread_t, size Tsize_t, set uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v td=%v size=%v set=%v, (%v:)", tls, td, size, set, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return int32(-X__syscall3(tls, int32(SYS_sched_setaffinity), (*t__pthread)(unsafe.Pointer(td)).Ftid, Int32FromUint32(size), int32(set)))
+}
+
+func _do_getaffinity(tls *TLS, tid Tpid_t, size Tsize_t, set uintptr) (r int32) {
+	var ret int32
+	_ = ret
+	ret = X__syscall3(tls, int32(SYS_sched_getaffinity), tid, Int32FromUint32(size), int32(set))
+	if ret < 0 {
+		return ret
+	}
+	if Uint32FromInt32(ret) < size {
+		Xmemset(tls, set+uintptr(ret), 0, uint32(size-Uint32FromInt32(ret)))
+	}
+	return 0
+}
+
+func Xsched_getaffinity(tls *TLS, tid Tpid_t, size Tsize_t, set uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v tid=%v size=%v set=%v, (%v:)", tls, tid, size, set, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(_do_getaffinity(tls, tid, size, set)))
+}
+
+func Xpthread_getaffinity_np(tls *TLS, td Tpthread_t, size Tsize_t, set uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v td=%v size=%v set=%v, (%v:)", tls, td, size, set, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return -_do_getaffinity(tls, (*t__pthread)(unsafe.Pointer(td)).Ftid, size, set)
+}
+
+func X__sched_cpucount(tls *TLS, size Tsize_t, set uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v size=%v set=%v, (%v:)", tls, size, set, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var cnt, i, j Tsize_t
+	var p uintptr
+	_, _, _, _ = cnt, i, j, p
+	cnt = uint32(0)
+	p = set
+	i = uint32(0)
+	for {
+		if !(i < size) {
+			break
+		}
+		j = uint32(0)
+		for {
+			if !(j < uint32(8)) {
+				break
+			}
+			if Int32FromUint8(**(**uint8)(__ccgo_up(p + uintptr(i))))&(int32(1)<<j) != 0 {
+				cnt = cnt + 1
+			}
+			goto _2
+		_2:
+			;
+			j = j + 1
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	return Int32FromUint32(cnt)
+}
+
+func Xsched_get_priority_max(tls *TLS, policy int32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v policy=%v, (%v:)", tls, policy, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(X__syscall1(tls, int32(SYS_sched_get_priority_max), policy)))
+}
+
+func Xsched_get_priority_min(tls *TLS, policy int32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v policy=%v, (%v:)", tls, policy, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(X__syscall1(tls, int32(SYS_sched_get_priority_min), policy)))
+}
+
+func Xsched_getparam(tls *TLS, pid Tpid_t, param uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v pid=%v param=%v, (%v:)", tls, pid, param, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(-Int32FromInt32(ENOSYS)))
+}
+
+func Xsched_getscheduler(tls *TLS, pid Tpid_t) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v pid=%v, (%v:)", tls, pid, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(-Int32FromInt32(ENOSYS)))
+}
+
+func Xsched_rr_get_interval(tls *TLS, pid Tpid_t, ts uintptr) (r1 int32) {
+	if __ccgo_strace {
+		trc("tls=%v pid=%v ts=%v, (%v:)", tls, pid, ts, origin(2))
+		defer func() { trc("-> %v", r1) }()
+	}
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var r int32
+	var _ /* ts32 at bp+0 */ [2]int32
+	_ = r
+	/* On a 32-bit arch, use the old syscall if it exists. */
+	if int32(SYS_sched_rr_get_interval) != int32(SYS_sched_rr_get_interval_time64) {
+		r = int32(X__syscall2(tls, int32(SYS_sched_rr_get_interval), pid, int32(bp)))
+		if !(r != 0) {
+			(*Ttimespec)(unsafe.Pointer(ts)).Ftv_sec = int64((**(**[2]int32)(__ccgo_up(bp)))[0])
+			(*Ttimespec)(unsafe.Pointer(ts)).Ftv_nsec = (**(**[2]int32)(__ccgo_up(bp)))[int32(1)]
+		}
+		return X__syscall_ret(tls, Uint32FromInt32(r))
+	}
+	/* If reaching this point, it's a 64-bit arch or time64-only
+	 * 32-bit arch and we can get result directly into timespec. */
+	return X__syscall_ret(tls, Uint32FromInt32(X__syscall2(tls, int32(SYS_sched_rr_get_interval), pid, int32(ts))))
+}
+
+func Xsched_setparam(tls *TLS, pid Tpid_t, param uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v pid=%v param=%v, (%v:)", tls, pid, param, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(-Int32FromInt32(ENOSYS)))
+}
+
+func Xsched_setscheduler(tls *TLS, pid Tpid_t, sched int32, param uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v pid=%v sched=%v param=%v, (%v:)", tls, pid, sched, param, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return X__syscall_ret(tls, Uint32FromInt32(-Int32FromInt32(ENOSYS)))
+}
+
+const MAXSIZE = 2147483648
 const MINSIZE = 8
 
 type TACTION = int32
@@ -133661,7 +133828,7 @@ func Xlfind(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, __
 	return uintptr(0)
 }
 
-const MAXH = 0
+const MAXH = 48
 
 type Tnode1 = struct {
 	Fkey uintptr
@@ -134368,94 +134535,6 @@ func X__get_handler_set(tls *TLS, set uintptr) {
 	Xmemcpy(tls, set, uintptr(unsafe.Pointer(&_handler_set)), uint32(8))
 }
 
-func X__libc_sigaction(tls *TLS, sig int32, sa uintptr, old uintptr) (r1 int32) {
-	if __ccgo_strace {
-		trc("tls=%v sig=%v sa=%v old=%v, (%v:)", tls, sig, sa, old, origin(2))
-		defer func() { trc("-> %v", r1) }()
-	}
-	bp := tls.Alloc(64)
-	defer tls.Free(64)
-	var r, v2 int32
-	var v1, v3 uintptr
-	var _ /* ksa at bp+16 */ Tk_sigaction
-	var _ /* ksa_old at bp+36 */ Tk_sigaction
-	var _ /* u at bp+8 */ struct {
-		Fr [0][2]Tuint32_t
-		Fv Tuint64_t
-	}
-	_, _, _, _ = r, v1, v2, v3
-	if sa != 0 {
-		if uint32(*(*uintptr)(unsafe.Pointer(sa))) > uint32(1) {
-			v1 = uintptr(unsafe.Pointer(&_handler_set)) + uintptr(Uint32FromInt32(sig-Int32FromInt32(1))/(Uint32FromInt32(8)*Uint32FromInt64(4)))*4
-			v2 = Int32FromUint32(uint32(1) << (Uint32FromInt32(sig-Int32FromInt32(1)) % (Uint32FromInt32(8) * Uint32FromInt64(4))))
-			if Uint32FromInt64(4) == Uint32FromInt64(4) {
-				_a_or(tls, v1, v2)
-			} else {
-				v3 = v1
-				*(*struct {
-					Fr [0][2]Tuint32_t
-					Fv Tuint64_t
-				})(unsafe.Pointer(bp + 8)) = struct {
-					Fr [0][2]Tuint32_t
-					Fv Tuint64_t
-				}{}
-				*(*uint64)(unsafe.Pointer(bp + 8)) = Uint64FromInt32(v2)
-				if **(**Tuint32_t)(__ccgo_up(bp + 8)) != 0 {
-					_a_or(tls, v3, Int32FromUint32(**(**Tuint32_t)(__ccgo_up(bp + 8))))
-				}
-				if **(**Tuint32_t)(__ccgo_up(bp + 8 + 1*4)) != 0 {
-					_a_or(tls, v3+uintptr(1)*4, Int32FromUint32(**(**Tuint32_t)(__ccgo_up(bp + 8 + 1*4))))
-				}
-			}
-			/* If pthread_create has not yet been called,
-			 * implementation-internal signals might not
-			 * yet have been unblocked. They must be
-			 * unblocked before any signal handler is
-			 * installed, so that an application cannot
-			 * receive an illegal sigset_t (with them
-			 * blocked) as part of the ucontext_t passed
-			 * to the signal handler. */
-			if !(X__libc.Fthreaded != 0) && !(_unmask_done != 0) {
-				*(*[2]uint32)(unsafe.Pointer(bp)) = [2]uint32{
-					1: Uint32FromUint32(3) << (Int32FromInt32(32) * BoolInt32(Uint32FromInt64(4) > Uint32FromInt32(4))),
-				}
-				X__syscall4(tls, int32(SYS_rt_sigprocmask), int32(Int32FromInt32(SIG_UNBLOCK)), int32(bp), int32(Int32FromInt32(0)), int32(Int32FromInt32(_NSIG)/Int32FromInt32(8)))
-				_unmask_done = int32(1)
-			}
-			if !((*Tsigaction)(unsafe.Pointer(sa)).Fsa_flags&Int32FromInt32(SA_RESTART) != 0) {
-				_a_store(tls, uintptr(unsafe.Pointer(&X__eintr_valid_flag)), int32(1))
-			}
-		}
-		(**(**Tk_sigaction)(__ccgo_up(bp + 16))).Fhandler = *(*uintptr)(unsafe.Pointer(sa))
-		(**(**Tk_sigaction)(__ccgo_up(bp + 16))).Fflags = Uint32FromInt32((*Tsigaction)(unsafe.Pointer(sa)).Fsa_flags)
-		(**(**Tk_sigaction)(__ccgo_up(bp + 16))).Fflags |= uint32(SA_RESTORER)
-		if (*Tsigaction)(unsafe.Pointer(sa)).Fsa_flags&int32(SA_SIGINFO) != 0 {
-			v1 = __ccgo_fp(X__restore_rt)
-		} else {
-			v1 = __ccgo_fp(X__restore)
-		}
-		(**(**Tk_sigaction)(__ccgo_up(bp + 16))).Frestorer = v1
-		Xmemcpy(tls, bp+16+12, sa+4, Uint32FromInt32(Int32FromInt32(_NSIG)/Int32FromInt32(8)))
-	}
-	if sa != 0 {
-		v1 = bp + 16
-	} else {
-		v1 = uintptr(0)
-	}
-	if old != 0 {
-		v3 = bp + 36
-	} else {
-		v3 = uintptr(0)
-	}
-	r = int32(X__syscall4(tls, int32(SYS_rt_sigaction), sig, int32(v1), int32(v3), int32(Int32FromInt32(_NSIG)/Int32FromInt32(8))))
-	if old != 0 && !(r != 0) {
-		*(*uintptr)(unsafe.Pointer(old)) = (**(**Tk_sigaction)(__ccgo_up(bp + 36))).Fhandler
-		(*Tsigaction)(unsafe.Pointer(old)).Fsa_flags = Int32FromUint32((**(**Tk_sigaction)(__ccgo_up(bp + 36))).Fflags)
-		Xmemcpy(tls, old+4, bp+36+12, Uint32FromInt32(Int32FromInt32(_NSIG)/Int32FromInt32(8)))
-	}
-	return X__syscall_ret(tls, Uint32FromInt32(r))
-}
-
 func X__sigaction(tls *TLS, sig int32, sa uintptr, old uintptr) (r1 int32) {
 	if __ccgo_strace {
 		trc("tls=%v sig=%v sa=%v old=%v, (%v:)", tls, sig, sa, old, origin(2))
@@ -134477,7 +134556,7 @@ func X__sigaction(tls *TLS, sig int32, sa uintptr, old uintptr) (r1 int32) {
 		X__block_all_sigs(tls, bp)
 		___lock(tls, uintptr(unsafe.Pointer(&X__abort_lock)))
 	}
-	r = X__libc_sigaction(tls, sig, sa, old)
+	r = ___libc_sigaction(tls, sig, sa, old)
 	if sig == int32(SIGABRT) {
 		___unlock(tls, uintptr(unsafe.Pointer(&X__abort_lock)))
 		X__restore_sigs(tls, bp)
@@ -134527,7 +134606,7 @@ func Xsigaltstack(tls *TLS, ss uintptr, old uintptr) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall2(tls, int32(SYS_sigaltstack), int32(ss), int32(old))))
 }
 
-const SST_SIZE = 8
+const SST_SIZE = 2
 
 func Xsigandset(tls *TLS, dest uintptr, left uintptr, right uintptr) (r1 int32) {
 	if __ccgo_strace {
@@ -136358,9 +136437,9 @@ func Xfflush_unlocked(tls *TLS, f uintptr) (r int32) {
 }
 
 func _locking_getc(tls *TLS, f uintptr) (r int32) {
-	var c, v1, v5, v6 int32
-	var v2, v3, v4 uintptr
-	_, _, _, _, _, _, _ = c, v1, v2, v3, v4, v5, v6
+	var c, v1 int32
+	var v2, v3 uintptr
+	_, _, _, _ = c, v1, v2, v3
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -136374,16 +136453,7 @@ func _locking_getc(tls *TLS, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v4 = f + 76
-		v5 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v5 < Int32FromInt32(0) {
-			v5 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)|v6), v5) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)), v5) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -137194,10 +137264,10 @@ func Xfprintf(tls *TLS, f uintptr, fmt uintptr, va uintptr) (r int32) {
 }
 
 func _locking_putc(tls *TLS, c int32, f uintptr) (r int32) {
-	var v1, v6 int32
+	var v1 int32
 	var v2 uint8
 	var v3, v4 uintptr
-	_, _, _, _, _ = v1, v2, v3, v4, v6
+	_, _, _, _ = v1, v2, v3, v4
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -137213,16 +137283,7 @@ func _locking_putc(tls *TLS, c int32, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v3 = f + 76
-		v1 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v1 < Int32FromInt32(0) {
-			v1 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)|v6), v1) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)), v1) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -138004,9 +138065,9 @@ func X__isoc99_fwscanf(tls *TLS, f uintptr, fmt uintptr, va uintptr) (r int32) {
 }
 
 func _locking_getc1(tls *TLS, f uintptr) (r int32) {
-	var c, v1, v5, v6 int32
-	var v2, v3, v4 uintptr
-	_, _, _, _, _, _, _ = c, v1, v2, v3, v4, v5, v6
+	var c, v1 int32
+	var v2, v3 uintptr
+	_, _, _, _ = c, v1, v2, v3
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -138020,16 +138081,7 @@ func _locking_getc1(tls *TLS, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v4 = f + 76
-		v5 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v5 < Int32FromInt32(0) {
-			v5 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)|v6), v5) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)), v5) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -138106,9 +138158,9 @@ func Xfgetc_unlocked(tls *TLS, f uintptr) (r int32) {
 }
 
 func _locking_getc2(tls *TLS, f uintptr) (r int32) {
-	var c, v1, v5, v6 int32
-	var v2, v3, v4 uintptr
-	_, _, _, _, _, _, _ = c, v1, v2, v3, v4, v5, v6
+	var c, v1 int32
+	var v2, v3 uintptr
+	_, _, _, _ = c, v1, v2, v3
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -138122,16 +138174,7 @@ func _locking_getc2(tls *TLS, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v4 = f + 76
-		v5 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v5 < Int32FromInt32(0) {
-			v5 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)|v6), v5) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v4), int32(Int32FromInt32(FUTEX_WAKE)), v5) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -138794,10 +138837,10 @@ func Xprintf(tls *TLS, fmt uintptr, va uintptr) (r int32) {
 }
 
 func _locking_putc1(tls *TLS, c int32, f uintptr) (r int32) {
-	var v1, v6 int32
+	var v1 int32
 	var v2 uint8
 	var v3, v4 uintptr
-	_, _, _, _, _ = v1, v2, v3, v4, v6
+	_, _, _, _ = v1, v2, v3, v4
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -138813,16 +138856,7 @@ func _locking_putc1(tls *TLS, c int32, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v3 = f + 76
-		v1 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v1 < Int32FromInt32(0) {
-			v1 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)|v6), v1) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)), v1) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -138906,10 +138940,10 @@ func Xfputc_unlocked(tls *TLS, c int32, f uintptr) (r int32) {
 }
 
 func _locking_putc2(tls *TLS, c int32, f uintptr) (r int32) {
-	var v1, v6 int32
+	var v1 int32
 	var v2 uint8
 	var v3, v4 uintptr
-	_, _, _, _, _ = v1, v2, v3, v4, v6
+	_, _, _, _ = v1, v2, v3, v4
 	if _a_cas(tls, f+76, 0, Int32FromInt32(MAYBE_WAITERS)-Int32FromInt32(1)) != 0 {
 		___lockfile(tls, f)
 	}
@@ -138925,16 +138959,7 @@ func _locking_putc2(tls *TLS, c int32, f uintptr) (r int32) {
 	}
 	c = v1
 	if _a_swap(tls, f+76, 0)&int32(MAYBE_WAITERS) != 0 {
-		v3 = f + 76
-		v1 = int32(1)
-		v6 = int32(1)
-		if v6 != 0 {
-			v6 = int32(FUTEX_PRIVATE)
-		}
-		if v1 < Int32FromInt32(0) {
-			v1 = int32(INT_MAX)
-		}
-		_ = X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)|v6), v1) != -int32(ENOSYS) || X__syscall3(tls, int32(SYS_futex), int32(v3), int32(Int32FromInt32(FUTEX_WAKE)), v1) != 0
+		___wake(tls, f+76, int32(1), int32(1))
 	}
 	return c
 }
@@ -139566,7 +139591,6 @@ func Xvdprintf(tls *TLS, fd int32, fmt uintptr, ap Tva_list) (r int32) {
 const ALT_FORM = 8
 const FLAGMASK = 75913
 const GROUPED = 128
-const LDBL_EPSILON3 = 2.22044604925031308085e-16
 const LEFT_ADJ = 8192
 const MARK_POS = 2048
 const PAD_POS = 1
@@ -144448,9 +144472,9 @@ func Xindex(tls *TLS, s uintptr, c int32) (r uintptr) {
 	return Xstrchr(tls, s, c)
 }
 
-const ALIGN1 = -1
-const HIGHS = 0
-const ONES = 0
+const ALIGN1 = 3
+const HIGHS = 2155905152
+const ONES = 16843009
 
 /* Support signed or unsigned plain-char */
 
@@ -144535,7 +144559,7 @@ tail:
 	return uintptr(0)
 }
 
-const SS = 0
+const SS = 4
 
 /* Support signed or unsigned plain-char */
 
@@ -144628,8 +144652,8 @@ func ___musl_memcmp(tls *TLS, vl uintptr, vr uintptr, n Tsize_t) (r1 int32) {
 	return v2
 }
 
-const LS = 0
-const RS = 0
+const LS = ">>"
+const RS = "<<"
 
 func ___musl_memcpy(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r uintptr) {
 	if __ccgo_strace {
@@ -145275,7 +145299,7 @@ func Xmemmem(tls *TLS, h0 uintptr, k Tsize_t, n0 uintptr, l Tsize_t) (r uintptr)
 	return _twoway_memmem(tls, h, h+uintptr(k), n, l)
 }
 
-const WS = 0
+const WS = 4
 
 type TWT = uint32
 
@@ -145501,7 +145525,7 @@ func Xrindex(tls *TLS, s uintptr, c int32) (r uintptr) {
 	return Xstrrchr(tls, s, c)
 }
 
-const ALIGN2 = 0
+const ALIGN2 = 4
 
 /* Support signed or unsigned plain-char */
 
@@ -145586,7 +145610,7 @@ func Xstpcpy(tls *TLS, d uintptr, s uintptr) (r uintptr) {
 	return X__stpcpy(tls, d, s)
 }
 
-const ALIGN3 = -1
+const ALIGN3 = 3
 
 /* Support signed or unsigned plain-char */
 
@@ -145767,7 +145791,7 @@ func Xstrchr(tls *TLS, s uintptr, c int32) (r1 uintptr) {
 	return v1
 }
 
-const ALIGN4 = 0
+const ALIGN4 = 4
 
 /* Support signed or unsigned plain-char */
 
@@ -145970,7 +145994,7 @@ func Xstrlcat(tls *TLS, d uintptr, s uintptr, n Tsize_t) (r Tsize_t) {
 	return l + Xstrlcpy(tls, d+uintptr(l), s, n-l)
 }
 
-const ALIGN5 = -1
+const ALIGN5 = 3
 
 /* Support signed or unsigned plain-char */
 
@@ -146055,7 +146079,7 @@ finish:
 	return r
 }
 
-const ALIGN6 = 0
+const ALIGN6 = 4
 
 func Xstrncasecmp(tls *TLS, _l uintptr, _r uintptr, n Tsize_t) (r1 int32) {
 	if __ccgo_strace {
@@ -147823,6 +147847,502 @@ func Xtcsetwinsize(tls *TLS, fd int32, wsz uintptr) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall3(tls, int32(SYS_ioctl), fd, int32(Int32FromInt32(TIOCSWINSZ)), int32(wsz))))
 }
 
+func Xpthread_kill(tls *TLS, t Tpthread_t, sig int32) (r1 int32) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v sig=%v, (%v:)", tls, t, sig, origin(2))
+		defer func() { trc("-> %v", r1) }()
+	}
+	bp := tls.Alloc(128)
+	defer tls.Free(128)
+	var r, v1, v2 int32
+	var _ /* set at bp+0 */ Tsigset_t
+	_, _, _ = r, v1, v2
+	/* Block not just app signals, but internal ones too, since
+	 * pthread_kill is used to implement pthread_cancel, which
+	 * must be async-cancel-safe. */
+	X__block_all_sigs(tls, bp)
+	___lock(tls, t+100)
+	if (*t__pthread)(unsafe.Pointer(t)).Ftid != 0 {
+		v1 = -X__syscall2(tls, int32(SYS_tkill), (*t__pthread)(unsafe.Pointer(t)).Ftid, sig)
+	} else {
+		if Uint32FromInt32(sig)+0 >= uint32(_NSIG) {
+			v2 = int32(EINVAL)
+		} else {
+			v2 = 0
+		}
+		v1 = v2
+	}
+	r = v1
+	___unlock(tls, t+100)
+	X__restore_sigs(tls, bp)
+	return r
+}
+
+func _dummy12(tls *TLS) {
+}
+
+func X__pthread_testcancel(tls *TLS) {
+	if __ccgo_strace {
+		trc("tls=%v, (%v:)", tls, origin(2))
+	}
+	_dummy12(tls)
+}
+
+func Xpthread_testcancel(tls *TLS) {
+	if __ccgo_strace {
+		trc("tls=%v, (%v:)", tls, origin(2))
+	}
+	X__pthread_testcancel(tls)
+}
+
+const SEM_FAILED = 0
+
+type Tsem_t = struct {
+	F__val [4]int32
+}
+
+func Xsem_destroy(tls *TLS, sem uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v, (%v:)", tls, sem, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return 0
+}
+
+/* Support signed or unsigned plain-char */
+
+/* Implementation choices... */
+
+/* Arbitrary numbers... */
+
+/* POSIX/SUS requirements follow. These numbers come directly
+ * from SUS and have nothing to do with the host system. */
+
+func Xsem_getvalue(tls *TLS, sem uintptr, valp uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v valp=%v, (%v:)", tls, sem, valp, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var val int32
+	_ = val
+	val = **(**int32)(__ccgo_up(sem))
+	**(**int32)(__ccgo_up(valp)) = val & int32(SEM_VALUE_MAX)
+	return 0
+}
+
+func Xsem_init(tls *TLS, sem uintptr, pshared int32, value uint32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v pshared=%v value=%v, (%v:)", tls, sem, pshared, value, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var v1 int32
+	_ = v1
+	if value > uint32(SEM_VALUE_MAX) {
+		**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EINVAL)
+		return -int32(1)
+	}
+	**(**int32)(__ccgo_up(sem)) = Int32FromUint32(value)
+	**(**int32)(__ccgo_up(sem + 1*4)) = 0
+	if pshared != 0 {
+		v1 = 0
+	} else {
+		v1 = int32(128)
+	}
+	**(**int32)(__ccgo_up(sem + 2*4)) = v1
+	return 0
+}
+
+const FLAGS = 657410
+const free4 = "undef"
+
+var _semtab uintptr
+var _lock4 [1]int32
+
+func Xsem_open(tls *TLS, name uintptr, flags int32, va uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v name=%v flags=%v va=%v, (%v:)", tls, name, flags, va, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	bp := tls.Alloc(528)
+	defer tls.Free(528)
+	var ap Tva_list
+	var cnt, e, fd, first, i, slot, v5 int32
+	var map1, v1 uintptr
+	var mode Tmode_t
+	var value uint32
+	var v3 bool
+	var _ /* buf at bp+244 */ [265]int8
+	var _ /* cs at bp+0 */ int32
+	var _ /* newsem at bp+4 */ Tsem_t
+	var _ /* st at bp+100 */ Tstat
+	var _ /* tmp at bp+20 */ [64]int8
+	var _ /* ts at bp+84 */ Ttimespec
+	_, _, _, _, _, _, _, _, _, _, _, _, _ = ap, cnt, e, fd, first, i, map1, mode, slot, value, v1, v3, v5
+	first = int32(1)
+	v1 = X__shm_mapname(tls, name, bp+244)
+	name = v1
+	if !(v1 != 0) {
+		return UintptrFromInt32(0)
+	}
+	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	/* Allocate table if we don't have one yet */
+	if v3 = !(_semtab != 0); v3 {
+		v1 = Xcalloc(tls, uint32(16), uint32(SEM_NSEMS_MAX))
+		_semtab = v1
+	}
+	if v3 && !(v1 != 0) {
+		___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+		return UintptrFromInt32(0)
+	}
+	/* Reserve a slot in case this semaphore is not mapped yet;
+	 * this is necessary because there is no way to handle
+	 * failures after creation of the file. */
+	slot = -int32(1)
+	v5 = Int32FromInt32(0)
+	i = v5
+	cnt = v5
+	for {
+		if !(i < int32(SEM_NSEMS_MAX)) {
+			break
+		}
+		cnt = cnt + (**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(i)*16))).Frefcnt
+		if !((**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(i)*16))).Fsem != 0) && slot < 0 {
+			slot = i
+		}
+		goto _4
+	_4:
+		;
+		i = i + 1
+	}
+	/* Avoid possibility of overflow later */
+	if cnt == int32(INT_MAX) || slot < 0 {
+		**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EMFILE)
+		___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+		return UintptrFromInt32(0)
+	}
+	/* Dummy pointer to make a reservation */
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Fsem = uintptr(-Int32FromInt32(1))
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	flags = flags & (Int32FromInt32(O_CREAT) | Int32FromInt32(O_EXCL))
+	_pthread_setcancelstate(tls, int32(PTHREAD_CANCEL_DISABLE), bp)
+	/* Early failure check for exclusive open; otherwise the case
+	 * where the semaphore already exists is expensive. */
+	if flags == Int32FromInt32(O_CREAT)|Int32FromInt32(O_EXCL) && Xaccess(tls, name, F_OK) == 0 {
+		**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EEXIST)
+		goto fail
+	}
+	for {
+		/* If exclusive mode is not requested, try opening an
+		 * existing file first and fall back to creation. */
+		if flags != Int32FromInt32(O_CREAT)|Int32FromInt32(O_EXCL) {
+			fd = Xopen(tls, name, Int32FromInt32(O_RDWR)|Int32FromInt32(O_NOFOLLOW)|Int32FromInt32(O_CLOEXEC)|Int32FromInt32(O_NONBLOCK), 0)
+			if fd >= 0 {
+				if v3 = Xfstat(tls, fd, bp+100) < 0; !v3 {
+					v1 = Xmmap(tls, uintptr(0), uint32(16), Int32FromInt32(PROT_READ)|Int32FromInt32(PROT_WRITE), int32(MAP_SHARED), fd, 0)
+					map1 = v1
+				}
+				if v3 || v1 == uintptr(-Int32FromInt32(1)) {
+					Xclose(tls, fd)
+					goto fail
+				}
+				Xclose(tls, fd)
+				break
+			}
+			if **(**int32)(__ccgo_up(X__errno_location(tls))) != int32(ENOENT) {
+				goto fail
+			}
+		}
+		if !(flags&Int32FromInt32(O_CREAT) != 0) {
+			goto fail
+		}
+		if first != 0 {
+			first = 0
+			ap = va
+			mode = VaUint32(&ap) & uint32(0666)
+			value = VaUint32(&ap)
+			_ = ap
+			if value > uint32(SEM_VALUE_MAX) {
+				**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EINVAL)
+				goto fail
+			}
+			Xsem_init(tls, bp+4, int32(1), value)
+		}
+		/* Create a temp file with the new semaphore contents
+		 * and attempt to atomically link it as the new name */
+		Xclock_gettime(tls, CLOCK_REALTIME, bp+84)
+		Xsnprintf(tls, bp+20, uint32(64), __ccgo_ts+1570, VaList(bp+520, int32((**(**Ttimespec)(__ccgo_up(bp + 84))).Ftv_nsec)))
+		fd = Xopen(tls, bp+20, Int32FromInt32(O_CREAT)|Int32FromInt32(O_EXCL)|(Int32FromInt32(O_RDWR)|Int32FromInt32(O_NOFOLLOW)|Int32FromInt32(O_CLOEXEC)|Int32FromInt32(O_NONBLOCK)), VaList(bp+520, mode))
+		if fd < 0 {
+			if **(**int32)(__ccgo_up(X__errno_location(tls))) == int32(EEXIST) {
+				goto _6
+			}
+			goto fail
+		}
+		if v3 = Uint32FromInt32(Xwrite(tls, fd, bp+4, uint32(16))) != uint32(16) || Xfstat(tls, fd, bp+100) < 0; !v3 {
+			v1 = Xmmap(tls, uintptr(0), uint32(16), Int32FromInt32(PROT_READ)|Int32FromInt32(PROT_WRITE), int32(MAP_SHARED), fd, 0)
+			map1 = v1
+		}
+		if v3 || v1 == uintptr(-Int32FromInt32(1)) {
+			Xclose(tls, fd)
+			Xunlink(tls, bp+20)
+			goto fail
+		}
+		Xclose(tls, fd)
+		if Xlink(tls, bp+20, name) != 0 {
+			v5 = **(**int32)(__ccgo_up(X__errno_location(tls)))
+		} else {
+			v5 = 0
+		}
+		e = v5
+		Xunlink(tls, bp+20)
+		if !(e != 0) {
+			break
+		}
+		Xmunmap(tls, map1, uint32(16))
+		/* Failure is only fatal when doing an exclusive open;
+		 * otherwise, next iteration will try to open the
+		 * existing file. */
+		if e != int32(EEXIST) || flags == Int32FromInt32(O_CREAT)|Int32FromInt32(O_EXCL) {
+			goto fail
+		}
+		goto _6
+	_6:
+	}
+	/* See if the newly mapped semaphore is already mapped. If
+	 * so, unmap the new mapping and use the existing one. Otherwise,
+	 * add it to the table of mapped semaphores. */
+	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	i = 0
+	for {
+		if !(i < int32(SEM_NSEMS_MAX) && (**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(i)*16))).Fino != (**(**Tstat)(__ccgo_up(bp + 100))).Fst_ino) {
+			break
+		}
+		goto _12
+	_12:
+		;
+		i = i + 1
+	}
+	if i < int32(SEM_NSEMS_MAX) {
+		Xmunmap(tls, map1, uint32(16))
+		(**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(slot)*16))).Fsem = uintptr(0)
+		slot = i
+		map1 = (**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(i)*16))).Fsem
+	}
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Frefcnt = (**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Frefcnt + 1
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Fsem = map1
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Fino = (**(**Tstat)(__ccgo_up(bp + 100))).Fst_ino
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	_pthread_setcancelstate(tls, **(**int32)(__ccgo_up(bp)), uintptr(0))
+	return map1
+	goto fail
+fail:
+	;
+	_pthread_setcancelstate(tls, **(**int32)(__ccgo_up(bp)), uintptr(0))
+	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(slot)*16))).Fsem = uintptr(0)
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	return UintptrFromInt32(0)
+}
+
+func Xsem_close(tls *TLS, sem uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v, (%v:)", tls, sem, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var i, v2 int32
+	var v3 uintptr
+	_, _, _ = i, v2, v3
+	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	i = 0
+	for {
+		if !(i < int32(SEM_NSEMS_MAX) && (**(**struct {
+			Fino    Tino_t
+			Fsem    uintptr
+			Frefcnt int32
+		})(__ccgo_up(_semtab + uintptr(i)*16))).Fsem != sem) {
+			break
+		}
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	v3 = _semtab + uintptr(i)*16 + 12
+	*(*int32)(unsafe.Pointer(v3)) = *(*int32)(unsafe.Pointer(v3)) - 1
+	v2 = *(*int32)(unsafe.Pointer(v3))
+	if v2 != 0 {
+		___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+		return 0
+	}
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(i)*16))).Fsem = uintptr(0)
+	(**(**struct {
+		Fino    Tino_t
+		Fsem    uintptr
+		Frefcnt int32
+	})(__ccgo_up(_semtab + uintptr(i)*16))).Fino = uint64(0)
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	Xmunmap(tls, sem, uint32(16))
+	return 0
+}
+
+func Xsem_post(tls *TLS, sem uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v, (%v:)", tls, sem, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var new1, priv, val, waiters, v1 int32
+	_, _, _, _, _ = new1, priv, val, waiters, v1
+	priv = **(**int32)(__ccgo_up(sem + 2*4))
+	for cond := true; cond; cond = _a_cas(tls, sem, val, new1) != val {
+		val = **(**int32)(__ccgo_up(sem))
+		waiters = **(**int32)(__ccgo_up(sem + 1*4))
+		if val&int32(SEM_VALUE_MAX) == int32(SEM_VALUE_MAX) {
+			**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EOVERFLOW)
+			return -int32(1)
+		}
+		new1 = val + int32(1)
+		if waiters <= int32(1) {
+			new1 = Int32FromUint32(uint32(new1) & ^Uint32FromUint32(0x80000000))
+		}
+	}
+	if val < 0 {
+		if waiters > int32(1) {
+			v1 = int32(1)
+		} else {
+			v1 = -int32(1)
+		}
+		___wake(tls, sem, v1, priv)
+	}
+	return 0
+}
+
+func _cleanup1(tls *TLS, p uintptr) {
+	_a_dec(tls, p)
+}
+
+func Xsem_timedwait(tls *TLS, sem uintptr, at uintptr) (r1 int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v at=%v, (%v:)", tls, sem, at, origin(2))
+		defer func() { trc("-> %v", r1) }()
+	}
+	bp := tls.Alloc(16)
+	defer tls.Free(16)
+	var priv, r, spins, v1 int32
+	var _ /* __cb at bp+0 */ t__ptcb
+	_, _, _, _ = priv, r, spins, v1
+	Xpthread_testcancel(tls)
+	if !(Xsem_trywait(tls, sem) != 0) {
+		return 0
+	}
+	spins = int32(100)
+	for {
+		v1 = spins
+		spins = spins - 1
+		if !(v1 != 0 && !(**(**int32)(__ccgo_up(sem))&Int32FromInt32(SEM_VALUE_MAX) != 0) && !(**(**int32)(__ccgo_up(sem + 1*4)) != 0)) {
+			break
+		}
+		_a_spin(tls)
+	}
+	for Xsem_trywait(tls, sem) != 0 {
+		priv = **(**int32)(__ccgo_up(sem + 2*4))
+		_a_inc(tls, sem+uintptr(1)*4)
+		_a_cas(tls, sem, 0, Int32FromUint32(0x80000000))
+		__pthread_cleanup_push(tls, bp, __ccgo_fp(_cleanup1), sem+UintptrFromInt32(1)*4)
+		r = ___timedwait_cp(tls, sem, Int32FromUint32(0x80000000), CLOCK_REALTIME, at, priv)
+		__pthread_cleanup_pop(tls, bp, int32(1))
+		if r != 0 {
+			**(**int32)(__ccgo_up(X__errno_location(tls))) = r
+			return -int32(1)
+		}
+	}
+	return 0
+}
+
+func Xsem_trywait(tls *TLS, sem uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v, (%v:)", tls, sem, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	var val, v1 int32
+	_, _ = val, v1
+	for {
+		v1 = **(**int32)(__ccgo_up(sem))
+		val = v1
+		if !(v1&int32(SEM_VALUE_MAX) != 0) {
+			break
+		}
+		if _a_cas(tls, sem, val, val-int32(1)) == val {
+			return 0
+		}
+	}
+	**(**int32)(__ccgo_up(X__errno_location(tls))) = int32(EAGAIN)
+	return -int32(1)
+}
+
+func Xsem_unlink(tls *TLS, name uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v name=%v, (%v:)", tls, name, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return Xshm_unlink(tls, name)
+}
+
+func Xsem_wait(tls *TLS, sem uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v sem=%v, (%v:)", tls, sem, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return Xsem_timedwait(tls, sem, uintptr(0))
+}
+
 func X__map_file(tls *TLS, pathname uintptr, size uintptr) (r uintptr) {
 	if __ccgo_strace {
 		trc("tls=%v pathname=%v size=%v, (%v:)", tls, pathname, size, origin(2))
@@ -148021,6 +148541,8 @@ func X__tm_to_secs(tls *TLS, tm uintptr) (r int64) {
 	return t
 }
 
+const calloc3 = "undef"
+
 var _std_name [7]int8
 var _dst_name [7]int8
 
@@ -148040,7 +148562,7 @@ var _old_tz_buf [32]int8
 var _old_tz = uintptr(unsafe.Pointer(&_old_tz_buf))
 var _old_tz_size = uint32(32)
 
-var _lock4 [1]int32
+var _lock5 [1]int32
 
 func _getint2(tls *TLS, p uintptr) (r int32) {
 	var x uint32
@@ -148200,9 +148722,9 @@ func _do_tzset(tls *TLS) {
 	_, _, _, _, _, _, _, _, _, _, _, _ = i, l, map1, p1, pathname, posix_form, scale, skip, try, v2, v5, v6
 	pathname = bp + 6 + uintptr(24)
 	map1 = uintptr(0)
-	**(**uintptr)(__ccgo_up(bp + 288)) = Xgetenv(tls, __ccgo_ts+1570)
+	**(**uintptr)(__ccgo_up(bp + 288)) = Xgetenv(tls, __ccgo_ts+1586)
 	if !(**(**uintptr)(__ccgo_up(bp + 288)) != 0) {
-		**(**uintptr)(__ccgo_up(bp + 288)) = __ccgo_ts + 1573
+		**(**uintptr)(__ccgo_up(bp + 288)) = __ccgo_ts + 1589
 	}
 	if !(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 288)))) != 0) {
 		**(**uintptr)(__ccgo_up(bp + 288)) = uintptr(unsafe.Pointer(&X__utc))
@@ -148251,7 +148773,7 @@ func _do_tzset(tls *TLS) {
 	if int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 288))))) != int32(':') {
 		**(**uintptr)(__ccgo_up(bp + 292)) = **(**uintptr)(__ccgo_up(bp + 288))
 		_getname(tls, bp+301, bp+292)
-		if **(**uintptr)(__ccgo_up(bp + 292)) != **(**uintptr)(__ccgo_up(bp + 288)) && (int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292))))) == int32('+') || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292))))) == int32('-') || BoolInt32(Uint32FromInt8(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292)))))-uint32('0') < uint32(10)) != 0 || !(Xstrcmp(tls, bp+301, __ccgo_ts+1588) != 0) || !(Xstrcmp(tls, bp+301, __ccgo_ts+1592) != 0)) {
+		if **(**uintptr)(__ccgo_up(bp + 292)) != **(**uintptr)(__ccgo_up(bp + 288)) && (int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292))))) == int32('+') || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292))))) == int32('-') || BoolInt32(Uint32FromInt8(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 292)))))-uint32('0') < uint32(10)) != 0 || !(Xstrcmp(tls, bp+301, __ccgo_ts+1604) != 0) || !(Xstrcmp(tls, bp+301, __ccgo_ts+1608) != 0)) {
 			posix_form = int32(1)
 		}
 	}
@@ -148263,7 +148785,7 @@ func _do_tzset(tls *TLS) {
 			**(**uintptr)(__ccgo_up(bp + 288)) = **(**uintptr)(__ccgo_up(bp + 288)) + 1
 		}
 		if int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 288))))) == int32('/') || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp + 288))))) == int32('.') {
-			if !(X__libc.Fsecure != 0) || !(Xstrcmp(tls, **(**uintptr)(__ccgo_up(bp + 288)), __ccgo_ts+1573) != 0) {
+			if !(X__libc.Fsecure != 0) || !(Xstrcmp(tls, **(**uintptr)(__ccgo_up(bp + 288)), __ccgo_ts+1589) != 0) {
 				map1 = X__map_file(tls, **(**uintptr)(__ccgo_up(bp + 288)), uintptr(unsafe.Pointer(&_map_size)))
 			}
 		} else {
@@ -148290,7 +148812,7 @@ func _do_tzset(tls *TLS) {
 			**(**uintptr)(__ccgo_up(bp + 288)) = uintptr(unsafe.Pointer(&X__utc))
 		}
 	}
-	if map1 != 0 && (_map_size < uint32(44) || Xmemcmp(tls, map1, __ccgo_ts+1596, uint32(4)) != 0) {
+	if map1 != 0 && (_map_size < uint32(44) || Xmemcmp(tls, map1, __ccgo_ts+1612, uint32(4)) != 0) {
 		X__munmap(tls, map1, _map_size)
 		map1 = uintptr(0)
 		**(**uintptr)(__ccgo_up(bp + 288)) = uintptr(unsafe.Pointer(&X__utc))
@@ -148554,7 +149076,7 @@ func X__secs_to_zone(tls *TLS, t int64, local int32, isdst uintptr, offset uintp
 	var t0, t1, y int64
 	var _ /* alt at bp+0 */ Tsize_t
 	_, _, _, _ = i, t0, t1, y
-	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___lock(tls, uintptr(unsafe.Pointer(&_lock5)))
 	_do_tzset(tls)
 	if _zi != 0 {
 		i = _scan_trans(tls, t, local, bp)
@@ -148565,7 +149087,7 @@ func X__secs_to_zone(tls *TLS, t int64, local int32, isdst uintptr, offset uintp
 			if oppoff != 0 {
 				**(**int32)(__ccgo_up(oppoff)) = int32(Int32FromUint32(_zi_read32(tls, _types+uintptr(uint32(6)***(**Tsize_t)(__ccgo_up(bp))))))
 			}
-			___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+			___unlock(tls, uintptr(unsafe.Pointer(&_lock5)))
 			return
 		}
 	}
@@ -148607,7 +149129,7 @@ std:
 		**(**int32)(__ccgo_up(oppoff)) = -_dst_off
 	}
 	**(**uintptr)(__ccgo_up(zonename)) = Xtzname[0]
-	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock5)))
 	return
 	goto dst
 dst:
@@ -148618,13 +149140,13 @@ dst:
 		**(**int32)(__ccgo_up(oppoff)) = -Xtimezone
 	}
 	**(**uintptr)(__ccgo_up(zonename)) = Xtzname[int32(1)]
-	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock5)))
 }
 
 func ___tzset(tls *TLS) {
-	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___lock(tls, uintptr(unsafe.Pointer(&_lock5)))
 	_do_tzset(tls)
-	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock5)))
 }
 
 func X__tm_to_tzname(tls *TLS, tm uintptr) (r uintptr) {
@@ -148635,12 +149157,12 @@ func X__tm_to_tzname(tls *TLS, tm uintptr) (r uintptr) {
 	var p uintptr
 	_ = p
 	p = (*Ttm)(unsafe.Pointer(tm)).F__tm_zone
-	___lock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___lock(tls, uintptr(unsafe.Pointer(&_lock5)))
 	_do_tzset(tls)
 	if p != uintptr(unsafe.Pointer(&X__utc)) && p != Xtzname[0] && p != Xtzname[int32(1)] && (!(_zi != 0) || uint32(p)-uint32(_abbrevs) >= Uint32FromInt32(int32(_abbrevs_end)-int32(_abbrevs))) {
 		p = __ccgo_ts
 	}
-	___unlock(tls, uintptr(unsafe.Pointer(&_lock4)))
+	___unlock(tls, uintptr(unsafe.Pointer(&_lock5)))
 	return p
 }
 
@@ -148729,7 +149251,7 @@ func X__asctime_r(tls *TLS, tm uintptr, buf uintptr) (r uintptr) {
 	}
 	bp := tls.Alloc(64)
 	defer tls.Free(64)
-	if Xsnprintf(tls, buf, uint32(26), __ccgo_ts+1601, VaList(bp+8, X__nl_langinfo_l(tls, int32(ABDAY_1)+(*Ttm)(unsafe.Pointer(tm)).Ftm_wday, uintptr(unsafe.Pointer(&X__c_locale))), X__nl_langinfo_l(tls, int32(ABMON_1)+(*Ttm)(unsafe.Pointer(tm)).Ftm_mon, uintptr(unsafe.Pointer(&X__c_locale))), (*Ttm)(unsafe.Pointer(tm)).Ftm_mday, (*Ttm)(unsafe.Pointer(tm)).Ftm_hour, (*Ttm)(unsafe.Pointer(tm)).Ftm_min, (*Ttm)(unsafe.Pointer(tm)).Ftm_sec, int32(1900)+(*Ttm)(unsafe.Pointer(tm)).Ftm_year)) >= int32(26) {
+	if Xsnprintf(tls, buf, uint32(26), __ccgo_ts+1617, VaList(bp+8, X__nl_langinfo_l(tls, int32(ABDAY_1)+(*Ttm)(unsafe.Pointer(tm)).Ftm_wday, uintptr(unsafe.Pointer(&X__c_locale))), X__nl_langinfo_l(tls, int32(ABMON_1)+(*Ttm)(unsafe.Pointer(tm)).Ftm_mon, uintptr(unsafe.Pointer(&X__c_locale))), (*Ttm)(unsafe.Pointer(tm)).Ftm_mday, (*Ttm)(unsafe.Pointer(tm)).Ftm_hour, (*Ttm)(unsafe.Pointer(tm)).Ftm_min, (*Ttm)(unsafe.Pointer(tm)).Ftm_sec, int32(1900)+(*Ttm)(unsafe.Pointer(tm)).Ftm_year)) >= int32(26) {
 		/* ISO C requires us to use the above format string,
 		 * even if it will not fit in the buffer. Thus asctime_r
 		 * is _supposed_ to crash if the fields in tm are too large.
@@ -149037,7 +149559,7 @@ func Xgetdate(tls *TLS, s uintptr) (r uintptr) {
 	var _ /* fmt at bp+0 */ [100]int8
 	_, _, _, _ = datemsk, f, p, ret
 	ret = uintptr(0)
-	datemsk = Xgetenv(tls, __ccgo_ts+1633)
+	datemsk = Xgetenv(tls, __ccgo_ts+1649)
 	f = uintptr(0)
 	_pthread_setcancelstate(tls, PTHREAD_CANCEL_DEFERRED, bp+100)
 	if !(datemsk != 0) {
@@ -149319,10 +149841,10 @@ func X__strftime_fmt_1(tls *TLS, s uintptr, l uintptr, f int32, tm uintptr, loc 
 		val = int64((*Ttm)(unsafe.Pointer(tm)).Ftm_mday)
 		goto number
 	case int32('D'):
-		fmt = __ccgo_ts + 1641
+		fmt = __ccgo_ts + 1657
 		goto recu_strftime
 	case int32('F'):
-		fmt = __ccgo_ts + 1650
+		fmt = __ccgo_ts + 1666
 		goto recu_strftime
 	case int32('g'):
 		fallthrough
@@ -149411,7 +149933,7 @@ func X__strftime_fmt_1(tls *TLS, s uintptr, l uintptr, f int32, tm uintptr, loc 
 		item = int32(T_FMT_AMPM)
 		goto nl_strftime
 	case int32('R'):
-		fmt = __ccgo_ts + 1659
+		fmt = __ccgo_ts + 1675
 		goto recu_strftime
 	case int32('s'):
 		val = X__tm_to_secs(tls, tm) - int64((*Ttm)(unsafe.Pointer(tm)).F__tm_gmtoff)
@@ -149424,7 +149946,7 @@ func X__strftime_fmt_1(tls *TLS, s uintptr, l uintptr, f int32, tm uintptr, loc 
 		**(**Tsize_t)(__ccgo_up(l)) = uint32(1)
 		return __ccgo_ts + 1315
 	case int32('T'):
-		fmt = __ccgo_ts + 1665
+		fmt = __ccgo_ts + 1681
 		goto recu_strftime
 	case int32('u'):
 		if (*Ttm)(unsafe.Pointer(tm)).Ftm_wday != 0 {
@@ -149463,7 +149985,7 @@ func X__strftime_fmt_1(tls *TLS, s uintptr, l uintptr, f int32, tm uintptr, loc 
 	case int32('Y'):
 		val = int64((*Ttm)(unsafe.Pointer(tm)).Ftm_year) + int64(1900)
 		if val >= int64(10000) {
-			**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1674, VaList(bp+8, val)))
+			**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1690, VaList(bp+8, val)))
 			return s
 		}
 		width = int32(4)
@@ -149473,7 +149995,7 @@ func X__strftime_fmt_1(tls *TLS, s uintptr, l uintptr, f int32, tm uintptr, loc 
 			**(**Tsize_t)(__ccgo_up(l)) = uint32(0)
 			return __ccgo_ts
 		}
-		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1680, VaList(bp+8, (*Ttm)(unsafe.Pointer(tm)).F__tm_gmtoff/int32(3600)*int32(100)+(*Ttm)(unsafe.Pointer(tm)).F__tm_gmtoff%int32(3600)/int32(60))))
+		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1696, VaList(bp+8, (*Ttm)(unsafe.Pointer(tm)).F__tm_gmtoff/int32(3600)*int32(100)+(*Ttm)(unsafe.Pointer(tm)).F__tm_gmtoff%int32(3600)/int32(60))))
 		return s
 	case int32('Z'):
 		if (*Ttm)(unsafe.Pointer(tm)).Ftm_isdst < 0 {
@@ -149498,13 +150020,13 @@ number:
 	}
 	switch v1 {
 	case int32('-'):
-		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1687, VaList(bp+8, val)))
+		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1703, VaList(bp+8, val)))
 	case int32('_'):
-		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1692, VaList(bp+8, width, val)))
+		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1708, VaList(bp+8, width, val)))
 	case int32('0'):
 		fallthrough
 	default:
-		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1698, VaList(bp+8, width, val)))
+		**(**Tsize_t)(__ccgo_up(l)) = Uint32FromInt32(Xsnprintf(tls, s, uint32(100), __ccgo_ts+1714, VaList(bp+8, width, val)))
 		break
 	}
 	return s
@@ -149866,7 +150388,7 @@ func Xstrptime(tls *TLS, s uintptr, f uintptr, tm uintptr) (r uintptr) {
 		goto numeric_range
 	_19:
 		;
-		s = Xstrptime(tls, s, __ccgo_ts+1641, tm)
+		s = Xstrptime(tls, s, __ccgo_ts+1657, tm)
 		if !(s != 0) {
 			return uintptr(0)
 		}
@@ -149954,7 +150476,7 @@ func Xstrptime(tls *TLS, s uintptr, f uintptr, tm uintptr) (r uintptr) {
 		goto _41
 	_29:
 		;
-		s = Xstrptime(tls, s, __ccgo_ts+1659, tm)
+		s = Xstrptime(tls, s, __ccgo_ts+1675, tm)
 		if !(s != 0) {
 			return uintptr(0)
 		}
@@ -149967,7 +150489,7 @@ func Xstrptime(tls *TLS, s uintptr, f uintptr, tm uintptr) (r uintptr) {
 		goto numeric_range
 	_31:
 		;
-		s = Xstrptime(tls, s, __ccgo_ts+1665, tm)
+		s = Xstrptime(tls, s, __ccgo_ts+1681, tm)
 		if !(s != 0) {
 			return uintptr(0)
 		}
@@ -150550,7 +151072,7 @@ func Xchown(tls *TLS, path uintptr, uid Tuid_t, gid Tgid_t) (r int32) {
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall3(tls, int32(SYS_chown32), int32(path), Int32FromUint32(uid), Int32FromUint32(gid))))
 }
 
-func _dummy12(tls *TLS, fd int32) (r int32) {
+func _dummy13(tls *TLS, fd int32) (r int32) {
 	return fd
 }
 
@@ -150561,7 +151083,7 @@ func Xclose(tls *TLS, fd int32) (r1 int32) {
 	}
 	var r int32
 	_ = r
-	fd = _dummy12(tls, fd)
+	fd = _dummy13(tls, fd)
 	r = int32(___syscall_cp(tls, int32(SYS_close), fd, 0, 0, 0, 0, 0))
 	if r == -int32(EINTR) {
 		r = 0
@@ -150881,7 +151403,7 @@ func Xgetlogin(tls *TLS) (r uintptr) {
 		trc("tls=%v, (%v:)", tls, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return Xgetenv(tls, __ccgo_ts+1705)
+	return Xgetenv(tls, __ccgo_ts+1721)
 }
 
 func Xgetlogin_r(tls *TLS, name uintptr, size Tsize_t) (r int32) {
@@ -155788,6 +156310,8 @@ var X__seed48 = [7]uint16{
 	6: uint16(0xb),
 }
 
+var X__sem_open_lockptr = uintptr(unsafe.Pointer(&_lock4))
+
 var Xsigngam int32
 
 var X__stack_chk_guard Tuintptr_t
@@ -155830,7 +156354,7 @@ var X__syslog_lockptr = uintptr(unsafe.Pointer(&_lock2))
 
 var Xtimezone int32
 
-var X__timezone_lockptr = uintptr(unsafe.Pointer(&_lock4))
+var X__timezone_lockptr = uintptr(unsafe.Pointer(&_lock5))
 
 var Xtzname = [2]uintptr{}
 
@@ -155914,4 +156438,36 @@ var Xstdout = uintptr(unsafe.Pointer(&X__stdout_FILE))
 
 var __ccgo_ts = (*reflect.StringHeader)(unsafe.Pointer(&__ccgo_ts1)).Data
 
-var __ccgo_ts1 = "\x00/bin:/usr/bin\x00%s\x008b \xd0\xc1\xd2\xcf\xcc\xd8\x00$2a$00$abcdefghijklmnopqrstuu\x00\xff\xa334\xff\xff\xff\xa3345\x00*\x00\x80\xff\x80\x01 \x7f\x81\x80\x80\r\n\xff\x7f \x81 test\x00_0.../9Zz\x00_0.../9ZzX7iSJNd21sU\x00\x80x\x00\x80x22/wK52ZKGA\x00x\x00$1$\x00$5$\x00rounds=\x00rounds=%u$\x00$5$%s%.*s$\x00$6$\x00$6$%s%.*s$\x00toupper\x00tolower\x00Assertion failed: %s (%s: %s: %d)\n\x00infinity\x00nan\x00\x00\x01\x02\x04\a\x03\x06\x05\x00/proc/self/fd/\x00%s: \x00: \x00/dev/tty\x00\n\x00/etc/shells\x00rbe\x00rb\x00UTF-8\x00NLSPATH\x00LANG\x00_.@\x00.@\x00%\x00messages\x00%s/%.*s%.*s/%s/%s.mo\x00\x00n!=1;\x00Plural-Forms:\x00nplurals=\x00plural=\x00Ê̄Ê̌ê̄ê̌\x00utf8\x00ASCII\x00C\x00LC_ALL\x00C.UTF-8\x00POSIX\x00MUSL_LOCPATH\x00.\x00%*.*f\x00/\x00MSGVERB\x00label\x00severity\x00text\x00action\x00tag\x00HALT: \x00ERROR: \x00WARNING: \x00INFO: \x00/dev/console\x00\nTO FIX: \x00 \x00%s%s%s%s%s%s%s%s\n\x00PWD\x00: unrecognized option: \x00: option requires an argument: \x00: option does not take an argument: \x00: option is ambiguous: \x00%*[^\n]%*[\n]\x00 %n%*[^ \t]%n %n%*[^ \t]%n %n%*[^ \t]%n %n%*[^ \t]%n %d %d\x00%s\t%s\t%s\t%s\t%d\t%d\n\x00/dev/ptmx\x00/dev/pts/%d\x00%b %e %T\x00<%d>%s %n%s%s%.0d%s: \x00[\x00]\x00%.*s\x00/dev/shm/\x00%.2X\x00:%.2X\x00%d.%d.%d.%d.in-addr.arpa\x00ip6.arpa\x00/etc/hosts\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00/etc/services\x00/udp\x00/tcp\x00tcp\x00udp\x00%s%s%s\n\x00%d.%d.%d.%d\x00%x:%x:%x:%x:%x:%x:%x:%x\x00%x:%x:%x:%x:%x:%x:%d.%d.%d.%d\x00:0\x00/etc/resolv.conf\x00options\x00ndots:\x00attempts:\x00timeout:\x00nameserver\x00domain\x00search\x00127.0.0.1\x00/etc/group\x00/etc/passwd\x00/dev/null\x00re\x00r\x00%s:%s:%u:\x00,\x00%s%s\x00%s:%s:%u:%u:%s:%s:%s\n\x00%s:%s:%.*ld:%.*ld:%.*ld:%.*ld:%.*ld:%.*ld:%.*lu\n\x00PATH\x00/usr/local/bin:/bin:/usr/bin\x00HOME\x00\t\x00\r\x00\f\x00\a\x00\x1b\x00[[:alnum:]_]\x00[^[:alnum:]_]\x00[[:space:]]\x00[^[:space:]]\x00[[:digit:]]\x00[^[:digit:]]\x00rwa\x00/tmp\x00temp\x00w+\x00-0X+0X 0X-0x+0x 0x\x00inf\x00INF\x00NAN\x00-+   0X0x\x00(null)\x00%*s\x00%%%s%s%s%s%s*.*%c%c\x00#\x00+\x00-\x000\x00\x00\x00\x00\x00%.*s%.0d%s%c%%lln\x00%*\x00%.*e\x00%.*f\x00000000000000000\x00%.*g\x00@\x00\x00\x00\x00\x00\x00\x00XXXXXX\x00TZ\x00/etc/localtime\x00UTC\x00GMT\x00TZif\x00%.3s %.3s%3d %.2d:%.2d:%.2d %d\n\x00DATEMSK\x00%m/%d/%y\x00%Y-%m-%d\x00%H:%M\x00%H:%M:%S\x00+%lld\x00%+.4ld\x00%lld\x00%*lld\x00%0*lld\x00LOGNAME\x00"
+var __ccgo_ts1 = "\x00/bin:/usr/bin\x00%s\x008b \xd0\xc1\xd2\xcf\xcc\xd8\x00$2a$00$abcdefghijklmnopqrstuu\x00\xff\xa334\xff\xff\xff\xa3345\x00*\x00\x80\xff\x80\x01 \x7f\x81\x80\x80\r\n\xff\x7f \x81 test\x00_0.../9Zz\x00_0.../9ZzX7iSJNd21sU\x00\x80x\x00\x80x22/wK52ZKGA\x00x\x00$1$\x00$5$\x00rounds=\x00rounds=%u$\x00$5$%s%.*s$\x00$6$\x00$6$%s%.*s$\x00toupper\x00tolower\x00Assertion failed: %s (%s: %s: %d)\n\x00infinity\x00nan\x00\x00\x01\x02\x04\a\x03\x06\x05\x00/proc/self/fd/\x00%s: \x00: \x00/dev/tty\x00\n\x00/etc/shells\x00rbe\x00rb\x00UTF-8\x00NLSPATH\x00LANG\x00_.@\x00.@\x00%\x00messages\x00%s/%.*s%.*s/%s/%s.mo\x00\x00n!=1;\x00Plural-Forms:\x00nplurals=\x00plural=\x00Ê̄Ê̌ê̄ê̌\x00utf8\x00ASCII\x00C\x00LC_ALL\x00C.UTF-8\x00POSIX\x00MUSL_LOCPATH\x00.\x00%*.*f\x00/\x00MSGVERB\x00label\x00severity\x00text\x00action\x00tag\x00HALT: \x00ERROR: \x00WARNING: \x00INFO: \x00/dev/console\x00\nTO FIX: \x00 \x00%s%s%s%s%s%s%s%s\n\x00PWD\x00: unrecognized option: \x00: option requires an argument: \x00: option does not take an argument: \x00: option is ambiguous: \x00%*[^\n]%*[\n]\x00 %n%*[^ \t]%n %n%*[^ \t]%n %n%*[^ \t]%n %n%*[^ \t]%n %d %d\x00%s\t%s\t%s\t%s\t%d\t%d\n\x00/dev/ptmx\x00/dev/pts/%d\x00%b %e %T\x00<%d>%s %n%s%s%.0d%s: \x00[\x00]\x00%.*s\x00/dev/shm/\x00%.2X\x00:%.2X\x00%d.%d.%d.%d.in-addr.arpa\x00ip6.arpa\x00/etc/hosts\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00/etc/services\x00/udp\x00/tcp\x00tcp\x00udp\x00%s%s%s\n\x00%d.%d.%d.%d\x00%x:%x:%x:%x:%x:%x:%x:%x\x00%x:%x:%x:%x:%x:%x:%d.%d.%d.%d\x00:0\x00/etc/resolv.conf\x00options\x00ndots:\x00attempts:\x00timeout:\x00nameserver\x00domain\x00search\x00127.0.0.1\x00/etc/group\x00/etc/passwd\x00/dev/null\x00re\x00r\x00%s:%s:%u:\x00,\x00%s%s\x00%s:%s:%u:%u:%s:%s:%s\n\x00%s:%s:%.*ld:%.*ld:%.*ld:%.*ld:%.*ld:%.*ld:%.*lu\n\x00PATH\x00/usr/local/bin:/bin:/usr/bin\x00HOME\x00\t\x00\r\x00\f\x00\a\x00\x1b\x00[[:alnum:]_]\x00[^[:alnum:]_]\x00[[:space:]]\x00[^[:space:]]\x00[[:digit:]]\x00[^[:digit:]]\x00rwa\x00/tmp\x00temp\x00w+\x00-0X+0X 0X-0x+0x 0x\x00inf\x00INF\x00NAN\x00-+   0X0x\x00(null)\x00%*s\x00%%%s%s%s%s%s*.*%c%c\x00#\x00+\x00-\x000\x00\x00\x00\x00\x00%.*s%.0d%s%c%%lln\x00%*\x00%.*e\x00%.*f\x00000000000000000\x00%.*g\x00@\x00\x00\x00\x00\x00\x00\x00XXXXXX\x00/dev/shm/tmp-%d\x00TZ\x00/etc/localtime\x00UTC\x00GMT\x00TZif\x00%.3s %.3s%3d %.2d:%.2d:%.2d %d\n\x00DATEMSK\x00%m/%d/%y\x00%Y-%m-%d\x00%H:%M\x00%H:%M:%S\x00+%lld\x00%+.4ld\x00%lld\x00%*lld\x00%0*lld\x00LOGNAME\x00"
+
+// The environment functions below wrap the transpiled musl versions, renamed
+// to ___musl_*, and mirror successful changes to the Go environment. See
+// https://gitlab.com/cznic/libc/-/issues/58.
+
+func Xsetenv(tls *TLS, var1 uintptr, value uintptr, overwrite int32) (r int32) {
+	if r = ___musl_setenv(tls, var1, value, overwrite); r == 0 {
+		envMirrorSet(GoString(var1), GoString(Xgetenv(tls, var1)))
+	}
+	return r
+}
+
+func Xunsetenv(tls *TLS, name uintptr) (r int32) {
+	if r = ___musl_unsetenv(tls, name); r == 0 {
+		envMirrorUnset(GoString(name))
+	}
+	return r
+}
+
+func Xputenv(tls *TLS, s uintptr) (r int32) {
+	if r = ___musl_putenv(tls, s); r == 0 {
+		envMirrorPut(GoString(s))
+	}
+	return r
+}
+
+func Xclearenv(tls *TLS) (r int32) {
+	if r = ___musl_clearenv(tls); r == 0 {
+		envMirrorClear()
+	}
+	return r
+}

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/tracing"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -198,19 +197,5 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, http.He
 // injectTraceHeaders explicitly injects trace context into HTTP headers.
 // This is necessary because context.WithoutCancel breaks the normal trace propagation.
 func (b *ProxyBackend) injectTraceHeaders(req *http.Request) {
-	ctx := req.Context()
-
-	// First, try OpenTracing if it's registered (dskit might be using this)
-	if opentracing.IsGlobalTracerRegistered() {
-		if span := opentracing.SpanFromContext(ctx); span != nil {
-			tracer := opentracing.GlobalTracer()
-			// Inject the span context into the HTTP headers
-			_ = tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
-			return
-		}
-	}
-
-	// Otherwise, use OpenTelemetry propagation
-	propagator := otel.GetTextMapPropagator()
-	propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
+	otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 }

@@ -44,3 +44,35 @@ func TestProducer_Produce(t *testing.T) {
 	require.NoError(t, p.Produce(ctx, "tenant", metadata))
 	require.Equal(t, []*kgo.Record{}, kafka.produced)
 }
+
+func TestProducer_ProduceRecord(t *testing.T) {
+	kafka := mockKafka{}
+	p := newProducer(&kafka, "topic", 2, "zone1", log.NewNopLogger(), prometheus.NewRegistry())
+	rec := proto.StreamMetadataRecord{
+		// Zone is expected to be overwritten with the producer's zone.
+		Zone:   "zone2",
+		Tenant: "tenant",
+		Metadata: &proto.StreamMetadata{
+			StreamHash: 0x1,
+			TotalSize:  100,
+		},
+		ShardRateBucket: &proto.ShardRateBucket{
+			BucketStart: 100,
+			Size_:       200,
+			Pushes:      2,
+		},
+		ShardCount: 3,
+	}
+	require.NoError(t, p.ProduceRecord(context.Background(), &rec))
+	require.Equal(t, "zone1", rec.Zone)
+	b, err := rec.Marshal()
+	require.NoError(t, err)
+	expectedRecords := []*kgo.Record{{
+		Topic: "topic",
+		Key:   []byte("tenant"),
+		Value: b,
+		// 0x1 mod 2 partitions.
+		Partition: 1,
+	}}
+	require.Equal(t, expectedRecords, kafka.produced)
+}

@@ -6,37 +6,11 @@ package shared
 import (
 	"context"
 	"errors"
-	"os"
-	"runtime"
-	"strings"
 )
 
 const (
-	// DefaultConcurrency is the legacy default concurrency value.
-	//
-	// Deprecated: Use DefaultConcurrencyValue() instead, which returns a value based on CPU core count.
 	DefaultConcurrency = 5
 )
-
-// DefaultConcurrencyValue returns the default concurrency based on CPU count,
-// clamped between 8 and 96. Set the AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY
-// environment variable to "true" to revert to the previous default of 5.
-func DefaultConcurrencyValue() uint16 {
-	if strings.EqualFold(os.Getenv("AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY"), "true") {
-		return DefaultConcurrency
-	}
-	return uint16(max(8, min(96, runtime.NumCPU())))
-}
-
-// DefaultStreamConcurrencyValue returns the default concurrency for streaming
-// uploads. Set the AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY environment
-// variable to "true" to revert to the previous default of 1.
-func DefaultStreamConcurrencyValue() uint16 {
-	if strings.EqualFold(os.Getenv("AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY"), "true") {
-		return 1
-	}
-	return uint16(max(8, min(96, runtime.NumCPU())))
-}
 
 // BatchTransferOptions identifies options used by doBatchTransfer.
 type BatchTransferOptions struct {
@@ -56,7 +30,7 @@ func DoBatchTransfer(ctx context.Context, o *BatchTransferOptions) error {
 	}
 
 	if o.Concurrency == 0 {
-		o.Concurrency = DefaultConcurrencyValue()
+		o.Concurrency = DefaultConcurrency // default concurrency
 	}
 
 	// Prepare and do parallel operations.

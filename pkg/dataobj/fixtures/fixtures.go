@@ -2,15 +2,20 @@ package fixtures
 
 import (
 	"io"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -27,6 +32,7 @@ var defaultLogSectionConfig = logSectionConfig{
 		SchemaLabels:              []string{"label:service_name"},
 		StreamOrder:               logs.StreamOrderStableHashV1,
 		ShardCount:                streams.ShardFactor,
+		DropDuplicates:            false, // never modify the requested input
 	},
 }
 
@@ -43,10 +49,23 @@ type logSectionConfig struct {
 	builderOpts *logs.BuilderOptions
 }
 
+// WithSchemaLabels computes the schema sort key for each log record from its
+// stream labels. Without this option, SchemaKey is left unset.
+func WithSchemaLabels(schemaLabels ...string) LogFixtureOpt {
+	return func(b *LogFixtureBuilder) {
+		b.schemaLabels = slices.Clone(schemaLabels)
+	}
+}
+
+// LogFixtureOpt customizes a LogFixtureBuilder.
+type LogFixtureOpt func(*LogFixtureBuilder)
+
 // LogFixtureBuilder builds matching stream and log records for section fixtures.
-// IDs are assigned in first-seen stream order; log records retain insertion order and SchemaKey is left unset.
+// IDs are assigned in first-seen stream order; log records retain insertion order.
+// Sort keys are computed while building each record; they are used to define order but are not persisted.
 type LogFixtureBuilder struct {
 	t             *testing.T
+	schemaLabels  []string
 	streamIndexes map[string]int
 	streams       []streams.Stream
 	logs          []logs.Record
@@ -56,10 +75,16 @@ type LogFixtureBuilder struct {
 // IDs are assigned in first-seen stream order and log records are returned in insertion order.
 //
 // Callers may use either the ForStream(labelString).Entry(ts, md, msg) syntax or the more verbose Entry(stream, ts, md, msg) syntax.
-func NewLogsFixtureBuilder(t *testing.T) *LogFixtureBuilder {
-	return &LogFixtureBuilder{
+// Use WithSchemaLabels to choose the schema key used while building records.
+// The physical shard bucket always comes from the stable hash of stream labels.
+func NewLogsFixtureBuilder(t *testing.T, opts ...LogFixtureOpt) *LogFixtureBuilder {
+	b := &LogFixtureBuilder{
 		t: t,
 	}
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b
 }
 
 type StreamFixture struct {
@@ -91,13 +116,14 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 	}
 	ts := time.Unix(int64(tsSeconds), 0).UTC()
 	key := stream.String()
+	streamHash := labels.StableHash(stream)
 	index, ok := b.streamIndexes[key]
 	if !ok {
 		index = len(b.streams)
 		b.streamIndexes[key] = index
 		b.streams = append(b.streams, streams.Stream{
 			ID: int64(index + 1), Labels: stream,
-			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.ShardBucket(stream)),
+			MinTimestamp: ts, MaxTimestamp: ts, ShardBucket: int64(streams.ShardBucketFromHash(streamHash)),
 		})
 	}
 	s := &b.streams[index]
@@ -112,9 +138,15 @@ func (b *LogFixtureBuilder) Entry(stream labels.Labels, tsSeconds int, structure
 	smLabels, err := syntax.ParseLabels(structuredMetadata)
 	require.NoError(b.t, err)
 	smLabels.Range(func(l labels.Label) { s.UncompressedSize += int64(len(l.Value)) })
+
+	var schemaKey string
+	if b.schemaLabels != nil {
+		schemaKey, err = logsobj.ComputeSchemaKey(stream, b.schemaLabels)
+		require.NoError(b.t, err)
+	}
 	b.logs = append(b.logs, logs.Record{
 		StreamID: s.ID, Timestamp: ts, Metadata: smLabels, Line: []byte(logMessage),
-		StreamHash: labels.StableHash(s.Labels), ShardBucket: uint32(s.ShardBucket),
+		SchemaKey: schemaKey, ShardBucket: uint32(s.ShardBucket), StreamHash: streamHash,
 	})
 }
 
@@ -172,6 +204,67 @@ func StreamsSection(t *testing.T, tenant string, labelSets []streams.Stream) dat
 	return sectionBuilder
 }
 
+// ReadTenantStreams reads the tenant's streams across all streams sections in
+// object order. Returned labels are copied so the streams remain valid after
+// the iterator advances.
+func ReadTenantStreams(t *testing.T, obj *dataobj.Object, tenant string) []streams.Stream {
+	t.Helper()
+	var result []streams.Stream
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := streams.Open(t.Context(), section)
+		require.NoError(t, err)
+		for item := range streams.IterSection(t.Context(), opened) {
+			stream, err := item.Value()
+			require.NoError(t, err)
+			stream.Labels = stream.Labels.Copy()
+			result = append(result, stream)
+		}
+	}
+	return result
+}
+
+// ReadTenantLogs reads the tenant's records across all logs sections in object
+// order, preserving their physical read order. Records are copied because the
+// logs iterator reuses its buffers.
+func ReadTenantLogs(t *testing.T, obj *dataobj.Object, tenant string) []logs.Record {
+	t.Helper()
+	var result []logs.Record
+	for i, section := range obj.Sections().Filter(logs.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		result = append(result, ReadTenantLogSection(t, obj, tenant, i)...)
+	}
+	return result
+}
+
+// ReadTenantLogSection reads one logs-relative section in physical row order.
+// The index counts every logs section in the object, including other tenants'.
+// Returned records are independent of the iterator's reused buffers.
+func ReadTenantLogSection(t *testing.T, obj *dataobj.Object, tenant string, sectionIndex int) []logs.Record {
+	t.Helper()
+	for i, section := range obj.Sections().Filter(logs.CheckSection) {
+		if i != sectionIndex {
+			continue
+		}
+		require.Equal(t, tenant, section.Tenant, "logs section %d belongs to another tenant", sectionIndex)
+		opened, err := logs.Open(t.Context(), section)
+		require.NoError(t, err)
+		var records []logs.Record
+		for item := range logs.IterSection(t.Context(), opened) {
+			record, err := item.Value()
+			require.NoError(t, err)
+			records = append(records, record.Copy())
+		}
+		return records
+	}
+	t.Fatalf("logs section %d does not exist", sectionIndex)
+	return nil
+}
+
 // DataObject returns a dataobj.Object populated with the given sections.
 func DataObject(t *testing.T, sections ...dataobj.SectionBuilder) (*dataobj.Object, io.Closer) {
 	t.Helper()
@@ -184,4 +277,17 @@ func DataObject(t *testing.T, sections ...dataobj.SectionBuilder) (*dataobj.Obje
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
 	return obj, closer
+}
+
+// StoredDataObject builds a data object from the given sections, writes it to bucket, and returns
+// the path it was written to.
+func StoredDataObject(t *testing.T, bucket objstore.Bucket, sections ...dataobj.SectionBuilder) string {
+	t.Helper()
+
+	obj, closer := DataObject(t, sections...)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	path, err := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger()).Upload(t.Context(), obj)
+	require.NoError(t, err)
+	return path
 }

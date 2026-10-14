@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,17 +28,143 @@ func TestRowReader_NoPredicates(t *testing.T) {
 }
 
 func TestRowReader_StreamIDPredicate(t *testing.T) {
-	logsSection := buildTestSection(t)
+	// recordsForStreams returns one record per stream ID, in the given order. Each record has a
+	// distinct timestamp and a line that names its stream and position.
+	recordsForStreams := func(streamIDs ...int64) []Record {
+		start := time.Unix(1_700_000_000, 0)
+		records := make([]Record, len(streamIDs))
+		for i, id := range streamIDs {
+			records[i] = Record{
+				StreamID:  id,
+				Timestamp: start.Add(time.Duration(i) * time.Second),
+				Line:      fmt.Appendf(nil, "stream=%d row=%d", id, i),
+			}
+		}
+		return records
+	}
 
-	readBuf := make([]Record, 3)
-	rowReader := NewRowReader(logsSection)
+	// linesOfStreams returns the sorted lines of the records that belong to the given streams.
+	linesOfStreams := func(records []Record, streamIDs ...int64) []string {
+		var lines []string
+		for _, record := range records {
+			if slices.Contains(streamIDs, record.StreamID) {
+				lines = append(lines, string(record.Line))
+			}
+		}
+		slices.Sort(lines)
+		return lines
+	}
 
-	err := rowReader.MatchStreams(slices.Values([]int64{1}))
-	require.NoError(t, err)
-	require.NoError(t, rowReader.Open(context.Background()))
-	n, err := rowReader.Read(context.Background(), readBuf)
-	require.NoError(t, err)
-	require.Equal(t, 1, n)
+	// readLinesOf reads the rows of the given streams from a section and returns their sorted
+	// lines. It takes no testing.T, so goroutines can call it.
+	readLinesOf := func(ctx context.Context, section *Section, streamIDs ...int64) ([]string, error) {
+		reader := NewRowReader(section)
+		defer reader.Close()
+
+		if err := reader.MatchStreams(slices.Values(streamIDs)); err != nil {
+			return nil, err
+		}
+		if err := reader.Open(ctx); err != nil {
+			return nil, err
+		}
+
+		var lines []string
+		buf := make([]Record, 4)
+		for {
+			n, err := reader.Read(ctx, buf)
+			for _, record := range buf[:n] {
+				lines = append(lines, string(record.Line))
+			}
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		slices.Sort(lines)
+		return lines, nil
+	}
+
+	// readLines is readLinesOf, but it fails the test on an error.
+	readLines := func(t *testing.T, section *Section, streamIDs ...int64) []string {
+		t.Helper()
+
+		lines, err := readLinesOf(t.Context(), section, streamIDs...)
+		require.NoError(t, err)
+		return lines
+	}
+
+	t.Run("returns the row of the matched stream", func(t *testing.T) {
+		logsSection := buildTestSection(t)
+
+		readBuf := make([]Record, 3)
+		rowReader := NewRowReader(logsSection)
+
+		err := rowReader.MatchStreams(slices.Values([]int64{1}))
+		require.NoError(t, err)
+		require.NoError(t, rowReader.Open(t.Context()))
+		n, err := rowReader.Read(t.Context(), readBuf)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+	})
+
+	t.Run("returns every row of the matched streams and none of the streams between them when each stream's rows are contiguous", func(t *testing.T) {
+		records := recordsForStreams(1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5)
+		section := buildSectionFromRecords(t, SortStreamASC, records)
+
+		require.Equal(t, linesOfStreams(records, 2, 4), readLines(t, section, 2, 4))
+	})
+
+	t.Run("returns every row of the matched streams when stream IDs interleave", func(t *testing.T) {
+		records := recordsForStreams(1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4)
+		section := buildSectionFromRecords(t, SortTimestampDESC, records)
+
+		require.Equal(t, linesOfStreams(records, 2, 3), readLines(t, section, 2, 3))
+	})
+
+	t.Run("returns no row when no stream of the section matches", func(t *testing.T) {
+		records := recordsForStreams(1, 1, 1, 2, 2, 2)
+		section := buildSectionFromRecords(t, SortStreamASC, records)
+
+		require.Empty(t, readLines(t, section, 99))
+	})
+
+	t.Run("returns the same rows for sections sorted by stream and by timestamp", func(t *testing.T) {
+		records := recordsForStreams(1, 2, 3, 1, 2, 3, 1, 1, 2, 3, 3, 3)
+		byStream := buildSectionFromRecords(t, SortStreamASC, records)
+		byTimestamp := buildSectionFromRecords(t, SortTimestampDESC, records)
+
+		want := linesOfStreams(records, 1, 3)
+		require.Equal(t, want, readLines(t, byStream, 1, 3))
+		require.Equal(t, want, readLines(t, byTimestamp, 1, 3))
+	})
+
+	t.Run("gives every reader of one section the full result when many goroutines read it at once", func(t *testing.T) {
+		records := recordsForStreams(1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4)
+		section := buildSectionFromRecords(t, SortStreamASC, records)
+		want := linesOfStreams(records, 2, 3)
+
+		const readers = 8
+		var (
+			wg      sync.WaitGroup
+			results = make([][]string, readers)
+			errs    = make([]error, readers)
+		)
+		for i := range readers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				results[i], errs[i] = readLinesOf(t.Context(), section, 2, 3)
+			}()
+		}
+		wg.Wait()
+
+		for i := range readers {
+			require.NoError(t, errs[i])
+			require.Equal(t, want, results[i], "reader %d", i)
+		}
+	})
 }
 
 func TestRowReader_ReadBeforeOpen(t *testing.T) {
@@ -495,20 +622,28 @@ func buildTestProjectionSection(t *testing.T) *Section {
 }
 
 func buildTestSection(t *testing.T) *Section {
+	return buildSectionFromRecords(t, SortStreamASC, []Record{
+		{
+			StreamID:  1,
+			Timestamp: time.Now(),
+			Line:      []byte("test"),
+		},
+		{
+			StreamID:  2,
+			Timestamp: time.Now(),
+			Line:      []byte("test2"),
+		},
+	})
+}
+
+func buildSectionFromRecords(t *testing.T, sortOrder SortOrder, records []Record) *Section {
 	logsBuilder := NewBuilder(nil, BuilderOptions{
 		StripeMergeLimit: 2,
-		SortOrder:        SortStreamASC,
+		SortOrder:        sortOrder,
 	})
-	logsBuilder.Append(Record{
-		StreamID:  1,
-		Timestamp: time.Now(),
-		Line:      []byte("test"),
-	})
-	logsBuilder.Append(Record{
-		StreamID:  2,
-		Timestamp: time.Now(),
-		Line:      []byte("test2"),
-	})
+	for _, record := range records {
+		logsBuilder.Append(record)
+	}
 
 	b := dataobj.NewBuilder(nil)
 	require.NoError(t, b.Append(logsBuilder))
@@ -519,7 +654,7 @@ func buildTestSection(t *testing.T) *Section {
 
 	var logsSection *Section
 	for _, section := range obj.Sections() {
-		logsSection, err = Open(context.Background(), section)
+		logsSection, err = Open(t.Context(), section)
 		require.NoError(t, err)
 	}
 	return logsSection

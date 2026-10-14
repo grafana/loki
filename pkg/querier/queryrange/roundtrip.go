@@ -211,7 +211,7 @@ func NewMiddleware(
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache, cacheGenNumLoader, retentionEnabled, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -502,6 +502,13 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
+	case *logproto.LoglineIndexRequest:
+		logQueryExecution(ctx, logger,
+			"type", "logline_index",
+			"query", op.Expr,
+			"length", op.Through.Sub(op.From),
+		)
+		return r.next.Do(ctx, req)
 	case *logproto.ShardsRequest:
 		logQueryExecution(ctx, logger,
 			"type", "shards",
@@ -615,7 +622,7 @@ func getOperation(path string) string {
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
-func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	var cacheMiddleware base.Middleware
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewLogResultCache(
@@ -626,6 +633,8 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 				return !r.GetCachingOptions().Disabled
 			},
 			NewDefaultLogCacheKeyGenerator(limits, cfg.Transformer),
+			cacheGenNumLoader,
+			retentionEnabled,
 			metrics.LogResultCacheMetrics,
 		)
 		if err != nil {
@@ -673,11 +682,11 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -742,13 +751,13 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					// Too many shards on limited queries results in slowing down this type of query
 					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
 					32, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}
@@ -1023,11 +1032,11 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -1151,11 +1160,11 @@ func NewInstantMetricTripperware(
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}

@@ -18,6 +18,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,10 +29,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -44,19 +43,36 @@ const (
 	// compactor) can iterate over the same time windows used internally.
 	MetastoreWindowSize = 12 * time.Hour
 
-	// TocPrefix is the prefix under which ToC files are stored in the object storage.
+	// TocPrefix is the prefix under which ToC files are stored in the object
+	// storage, laid out as tocs/<window>/<tenant>/toc.toc.
 	TocPrefix = "tocs/"
+
+	tocFileName = "toc.toc"
+
+	// duplicatesLogsPerSecond and duplicatesLogsBurst set the rate limit of the duplicate
+	// sections logger.
+	duplicatesLogsPerSecond = 1
+	duplicatesLogsBurst     = 5
 )
 
-var tracer = otel.Tracer("pkg/dataobj/metastore")
+var (
+	tracer = otel.Tracer("pkg/dataobj/metastore")
+
+	// errDifferentSectionStatistics is the error of a lookup that finds one section described by more
+	// than one index object, with different statistics.
+	errDifferentSectionStatistics = errors.New("the same section was found in multiple index objects with different statistics")
+)
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	readPostingsSections bool
-	bucket               objstore.Bucket
-	parallelism          int
-	logger               log.Logger
-	metrics              *ObjectMetastoreMetrics
+	bucket      objstore.BucketReader
+	parallelism int
+	logger      log.Logger
+	metrics     *ObjectMetastoreMetrics
+
+	// duplicatesLogger limits the logs of duplicate sections. One query can find thousands of
+	// them.
+	duplicatesLogger log.Logger
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -79,6 +95,52 @@ type DataobjSectionDescriptor struct {
 	// the section and in the LogQL query, and are therefore ambiguous. It is the
 	// deduped union across the section's streams.
 	AmbiguousPredicates []string
+}
+
+// DataobjSectionDescriptors is a set of section descriptors. A resolution covers every object
+// whose sections match, so a set generally holds sections of several objects.
+type DataobjSectionDescriptors []*DataobjSectionDescriptor
+
+// ByObject groups the descriptors by the object that holds them.
+//
+// A stream ID means something only within one object, so a caller that reads streams has to
+// work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
+func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
+	byObject := make(map[string]DataobjSectionDescriptors)
+	for _, descriptor := range d {
+		byObject[descriptor.ObjectPath] = append(byObject[descriptor.ObjectPath], descriptor)
+	}
+	return byObject
+}
+
+// StreamIDs returns the stream IDs the descriptors list, deduplicated and in first-seen order.
+//
+// Call it on one object's descriptors, which [DataobjSectionDescriptors.ByObject] returns. A
+// data object's builder assigns its own stream IDs, so the same ID names a different stream in
+// another object.
+func (d DataobjSectionDescriptors) StreamIDs() []int64 {
+	// One object holds far more streams than sections, so size by the stream IDs rather than by
+	// the descriptors that carry them.
+	var total int
+	for _, descriptor := range d {
+		total += len(descriptor.StreamIDs)
+	}
+
+	var (
+		out  = make([]int64, 0, total)
+		seen = make(map[int64]struct{})
+	)
+
+	for _, descriptor := range d {
+		for _, id := range descriptor.StreamIDs {
+			if _, duplicate := seen[id]; duplicate {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // dedupeStringSlice returns s with duplicates removed, order preserved.
@@ -132,27 +194,76 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	}
 }
 
-// TableOfContentsPath returns the object-storage path of the ToC file that
-// covers the given window-aligned time. The path layout is part of the
-// metastore's on-disk contract; callers must align window to MetastoreWindowSize.
-func TableOfContentsPath(window time.Time) string {
-	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
+// sameStreamAndStatistics reports whether two descriptors of one section have the same streams,
+// row count and size.
+func (d *DataobjSectionDescriptor) sameStreamAndStatistics(other *DataobjSectionDescriptor) bool {
+	// The postings flow reports no row count and no size, so it skips a zero value.
+	return slices.Equal(sortedIDs(d.StreamIDs), sortedIDs(other.StreamIDs)) &&
+		(d.RowCount == 0 || other.RowCount == 0 || d.RowCount == other.RowCount) &&
+		(d.Size == 0 || other.Size == 0 || d.Size == other.Size)
 }
 
-// IterTableOfContentsPaths returns a sequence of (path, time-range) pairs
-// covering every ToC window that overlaps [start, end]. start and end may
-// be unaligned; the iterator truncates them to MetastoreWindowSize boundaries.
-func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+// DataobjSectionDescriptorWithIndex is a section descriptor with the path of the index object
+// that listed it.
+type DataobjSectionDescriptorWithIndex struct {
+	*DataobjSectionDescriptor
+
+	// IndexPath is the path of the index object that listed the section.
+	IndexPath string
+}
+
+// sortedIDs returns the IDs in ascending order. It returns ids itself when they already are, so
+// the caller must not modify the result. It never modifies ids.
+func sortedIDs(ids []int64) []int64 {
+	if slices.IsSorted(ids) {
+		return ids
+	}
+	return slices.Sorted(slices.Values(ids))
+}
+
+// TableOfContentsPath returns the path of the tenant's ToC for window.
+// window must be aligned to MetastoreWindowSize.
+func TableOfContentsPath(tenant string, window time.Time) string {
+	return TableOfContentsWindowPrefix(window) + tenant + "/" + tocFileName
+}
+
+// TableOfContentsWindowPrefix returns the folder holding every tenant's ToC for window.
+// window must be aligned to MetastoreWindowSize.
+func TableOfContentsWindowPrefix(window time.Time) string {
+	return TocPrefix + strings.ReplaceAll(window.Format(time.RFC3339), ":", "_") + "/"
+}
+
+// ListTableOfContentsTenants returns the tenants that have a ToC for window, sorted.
+// An empty window returns no tenants and no error.
+func ListTableOfContentsTenants(ctx context.Context, bucket objstore.BucketReader, window time.Time) ([]string, error) {
+	prefix := TableOfContentsWindowPrefix(window)
+
+	var tenants []string
+	err := bucket.Iter(ctx, prefix, func(name string) error {
+		// Each tenant's ToC sits in its own folder; skip anything else.
+		tenant, ok := strings.CutSuffix(strings.TrimPrefix(name, prefix), "/")
+		if ok && tenant != "" && !strings.Contains(tenant, "/") {
+			tenants = append(tenants, tenant)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listing ToCs under %s: %w", prefix, err)
+	}
+	slices.Sort(tenants)
+	return tenants, nil
+}
+
+// IterTableOfContentsPaths returns the paths of the tenant's ToCs for every
+// window that overlaps [start, end]. start and end may be unaligned; the
+// iterator truncates them to MetastoreWindowSize boundaries.
+func IterTableOfContentsPaths(tenant string, start, end time.Time) iter.Seq[string] {
 	minTocWindow := start.Truncate(MetastoreWindowSize).UTC()
 	maxTocWindow := end.Truncate(MetastoreWindowSize).UTC()
 
-	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
+	return func(yield func(string) bool) {
 		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(MetastoreWindowSize) {
-			tocTimeRange := multitenancy.TimeRange{
-				MinTime: tocWindow,
-				MaxTime: tocWindow.Add(MetastoreWindowSize),
-			}
-			if !yield(TableOfContentsPath(tocWindow), tocTimeRange) {
+			if !yield(TableOfContentsPath(tenant, tocWindow)) {
 				return
 			}
 		}
@@ -169,11 +280,12 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	}
 
 	store := &ObjectMetastore{
-		readPostingsSections: cfg.ReadPostingsSections,
-		bucket:               b,
-		parallelism:          64,
-		logger:               logger,
-		metrics:              metrics,
+		bucket:      dataobj.NewInstrumentedBucketReader(b),
+		parallelism: 64,
+		logger:      logger,
+		metrics:     metrics,
+
+		duplicatesLogger: dslog.NewRateLimitedLogger(logger, duplicatesLogsPerSecond, duplicatesLogsBurst, nil),
 	}
 
 	return store
@@ -203,7 +315,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	var (
 		tablePaths []string
 	)
-	for path := range IterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(tenantID, start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -231,7 +343,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 
 	// Get all metastore paths for the time range
 	var tablePaths []string
-	for path := range IterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(tenantID, start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -541,9 +653,17 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	return entries
 }
 
-func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
-	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.Sections")
+func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ SectionsResponse, returnErr error) {
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionSections)
 	defer span.End()
+
+	start := time.Now()
+	// This runs before span.End, which stops the region from recording.
+	defer func() {
+		if returnErr == nil {
+			span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		}
+	}()
 
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
@@ -565,7 +685,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		return SectionsResponse{}, nil
 	}
 
-	var sections []*DataobjSectionDescriptor
+	var sections []DataobjSectionDescriptorWithIndex
 	sectionsMu := sync.Mutex{}
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -595,7 +715,9 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			sp := reader.(statsProvider)
 			totalSections.Add(sp.stats().ReadRows)
 
-			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
+			for _, section := range sectionsResp.SectionsResponse.Sections {
+				sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexEntry.Path})
+			}
 			sectionsMu.Unlock()
 
 			return nil
@@ -606,9 +728,14 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		return SectionsResponse{}, err
 	}
 
-	ratio := float64(len(sections)) / float64(totalSections.Load())
+	uniqueSections, err := m.dropDuplicateSections(ctx, sections)
+	if err != nil {
+		return SectionsResponse{}, err
+	}
+
+	ratio := float64(len(uniqueSections)) / float64(totalSections.Load())
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
-	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
+	m.metrics.resolvedSectionsTotal.Observe(float64(len(uniqueSections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
 	duration := sectionsTimer.ObserveDuration()
 
@@ -617,14 +744,63 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		"duration", duration,
 		"tables", len(indexes.TableOfContentsPaths),
 		"indexes", len(indexes.Indexes),
-		"sections", len(sections),
+		"sections", len(uniqueSections),
 		"ratio", ratio,
 		"matchers", matchersToString(req.Matchers),
 		"start", req.Start,
 		"end", req.End,
 	)
 
-	return SectionsResponse{sections}, nil
+	return SectionsResponse{uniqueSections}, nil
+}
+
+// dropDuplicateSections keeps the first descriptor of each section, unchanged,
+// and drops the others. The kept descriptors stay in input order.
+//
+// Two index objects can describe the same section, for example when the
+// builder indexes one log object twice after a failed flush. Both index the
+// same log object, so they must agree on the section. It returns an error when
+// a later copy disagrees with the first one.
+func (m *ObjectMetastore) dropDuplicateSections(ctx context.Context, sections []DataobjSectionDescriptorWithIndex) ([]*DataobjSectionDescriptor, error) {
+	var (
+		seen = make(map[SectionKey]DataobjSectionDescriptorWithIndex, len(sections))
+		kept = make([]*DataobjSectionDescriptor, 0, len(sections))
+	)
+
+	for _, section := range sections {
+		first, ok := seen[section.SectionKey]
+		if !ok {
+			seen[section.SectionKey] = section
+			kept = append(kept, section.DataobjSectionDescriptor)
+			continue
+		}
+
+		if !first.sameStreamAndStatistics(section.DataobjSectionDescriptor) {
+			m.metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue).Inc()
+
+			// This log carries the details the error lacks. It does not use duplicatesLogger,
+			// because each failed query logs once and the limit could drop it.
+			level.Error(utillog.WithContext(ctx, m.logger)).Log(
+				"msg", errDifferentSectionStatistics.Error(),
+				"object", first.ObjectPath,
+				"section", first.SectionIdx,
+				"first_index", first.IndexPath,
+				"second_index", section.IndexPath,
+			)
+			return nil, errDifferentSectionStatistics
+		}
+
+		level.Info(utillog.WithContext(ctx, m.duplicatesLogger)).Log(
+			"msg", "the same section was found in multiple index objects, deduplicating it",
+			"object", first.ObjectPath,
+			"section", first.SectionIdx,
+			"kept_index", first.IndexPath,
+			"dropped_index", section.IndexPath,
+		)
+		m.metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse).Inc()
+	}
+
+	return kept, nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
@@ -638,35 +814,16 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	tenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
-	}
-
-	var reader ArrowRecordBatchReader
-	flow := flowStreams
-	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
-		flow = flowPostings
-		reader = newPostingsIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	} else {
-		reader = newIndexSectionsReader(
-			m.logger,
-			idxObj,
-			req.SectionsRequest.Start,
-			req.SectionsRequest.End,
-			req.SectionsRequest.Matchers,
-			req.SectionsRequest.Predicates,
-			req.BatchSize,
-		)
-	}
+	flow := flowPostings
+	var reader ArrowRecordBatchReader = newPostingsIndexSectionsReader(
+		m.logger,
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.BatchSize,
+	)
 
 	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
 	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
@@ -674,24 +831,23 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
-// hasPostingsSection reports whether obj has a postings section owned by tenant.
-func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
-	for _, sec := range obj.Sections() {
-		if sec.Tenant == tenant && postings.CheckSection(sec) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
+func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
+	start := time.Now()
+	defer func() {
+		m.metrics.getIndexesTotalDuration.WithLabelValues(getIndexesResult(returnErr)).Observe(time.Since(start).Seconds())
+	}()
+
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return GetIndexesResponse{}, err
+	}
 
 	resp := GetIndexesResponse{}
 
 	// Get all metastore paths for the time range
-	for path := range IterTableOfContentsPaths(req.Start, req.End) {
+	for path := range IterTableOfContentsPaths(tenantID, req.Start, req.End) {
 		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
 	}
 	span.Record(StatMetastoreTocTables.Observe(int64(len(resp.TableOfContentsPaths))))

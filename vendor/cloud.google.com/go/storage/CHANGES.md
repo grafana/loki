@@ -1,6 +1,29 @@
 # Changes
 
 
+## [1.69.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.68.0...storage/v1.69.0) (2026-10-01)
+
+
+### Features
+
+* **all:** Update supported go versions ([#20520](https://github.com/googleapis/google-cloud-go/issues/20520)) ([90413d3](https://github.com/googleapis/google-cloud-go/commit/90413d3e9d381ef4b92e3c496d98b023c5b2d8cc))
+* **storage:** Add read stall retry for gRPC storage client ([#20525](https://github.com/googleapis/google-cloud-go/issues/20525)) ([8bfc486](https://github.com/googleapis/google-cloud-go/commit/8bfc4863da4151976a5e4629ef9dce429edb43d5))
+
+
+### Bug Fixes
+
+* **storage:** Add App Hub storage.googleapis.com prefix to destination.id ([#20569](https://github.com/googleapis/google-cloud-go/issues/20569)) ([2bca92a](https://github.com/googleapis/google-cloud-go/commit/2bca92a333bcadaa78b7c3b841e5a293e3a681d7))
+* **storage:** Follow-ups for read stall retry ([#20577](https://github.com/googleapis/google-cloud-go/issues/20577)) ([24eacd5](https://github.com/googleapis/google-cloud-go/commit/24eacd52ffc1697341d5f6a8380abc656292367a))
+* **storage:** Update PartSize documentation and optimize cleanup ([#19930](https://github.com/googleapis/google-cloud-go/issues/19930)) ([3d09abf](https://github.com/googleapis/google-cloud-go/commit/3d09abf7dd357cbf5c1022a7e65c7859d617ccd6))
+* **various:** Address format directive issues ([#20547](https://github.com/googleapis/google-cloud-go/issues/20547)) ([e2e1047](https://github.com/googleapis/google-cloud-go/commit/e2e104731999b3bfc75ed0b8f2d71844ced3b073))
+
+## [1.68.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.1...storage/v1.68.0) (2026-09-17)
+
+
+### Bug Fixes
+
+* **storage:** Minor documentation fixes ([#20531](https://github.com/googleapis/google-cloud-go/issues/20531)) ([8a55dee](https://github.com/googleapis/google-cloud-go/commit/8a55dee7d694d1b0b35f9eaff8a0517bffec320d))
+
 ## [1.67.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.67.0...storage/v1.67.1) (2026-09-07)
 
 

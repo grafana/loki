@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/push"
 	loghttppush "github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -30,7 +30,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, loghttppush.ParseOTLPRequest, loghttppush.OTLPError, constants.OTLP)
+	d.pushHandler(w, r, loghttppush.NewOTLPRequestParser(d.cfg.OTLPConfig.DeferAttributeExpansion), loghttppush.OTLPError, constants.OTLP)
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser loghttppush.RequestParser, errorWriter loghttppush.ErrorWriter, format string) {
@@ -189,7 +189,7 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	streams []push.Stream,
+	streams []logproto.InternalStreamAdapter,
 	streamResolver *requestScopedStreamResolver,
 	pushStats *loghttppush.Stats,
 	presumedAgentIP string,

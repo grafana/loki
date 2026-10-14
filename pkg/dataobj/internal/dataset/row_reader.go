@@ -60,8 +60,9 @@ type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	origColumnLookup     map[Column]int // Find the index of a column in opts.Columns.
-	primaryColumnIndexes []int          // Indexes of primary columns in opts.Columns.
+	origColumnLookup     map[Column]int      // Find the index of a column in opts.Columns.
+	primaryColumnIndexes []int               // Indexes of primary columns in opts.Columns.
+	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -277,18 +278,20 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 			count = readSize // required columns are already filled
 		}
 
+		compiled := r.compiledPredicates[i]
+
 		passCount = 0
-		for i := range count {
-			size := s[i].SizeOfColumns(idxs)
+		for j := range count {
+			size := s[j].SizeOfColumns(idxs)
 			primaryColumnBytes += size
 
-			if !checkPredicate(p, r.origColumnLookup, s[i]) {
+			if !compiled.eval(s[j]) {
 				continue
 			}
-			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
+			// We move s[j] to s[passCount] by *swapping* the rows. Copying would
 			// result in the Row.Values slice existing in two places in the buffer,
 			// which causes memory corruption when filling in rows.
-			s[passCount], s[i] = s[i], s[passCount]
+			s[passCount], s[j] = s[j], s[passCount]
 			passCount++
 		}
 
@@ -332,70 +335,19 @@ func (r *RowReader) alignRow() (uint64, error) {
 	return nextRow, nil
 }
 
-func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
-	if p == nil {
-		return true
+// compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
+// references resolved to Row value indexes. It returns an error if a predicate references a
+// column absent from [RowReaderOptions]. The caller must clear r.compiledPredicates first;
+// Reset does this.
+func (r *RowReader) compilePredicates() error {
+	for _, p := range r.opts.Predicates {
+		cp, err := compilePredicate(p, r.origColumnLookup)
+		if err != nil {
+			return err
+		}
+		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
-
-	switch p := p.(type) {
-	case AndPredicate:
-		return checkPredicate(p.Left, lookup, row) && checkPredicate(p.Right, lookup, row)
-
-	case OrPredicate:
-		return checkPredicate(p.Left, lookup, row) || checkPredicate(p.Right, lookup, row)
-
-	case NotPredicate:
-		return !checkPredicate(p.Inner, lookup, row)
-
-	case TruePredicate:
-		return true
-
-	case FalsePredicate:
-		return false
-
-	case EqualPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) == 0
-
-	case InPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-
-		value := row.Values[columnIndex]
-		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
-			return false
-		}
-		return p.Values.Contains(value)
-
-	case GreaterThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) > 0
-
-	case LessThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) < 0
-
-	case FuncPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return p.Keep(p.Column, row.Values[columnIndex])
-
-	default:
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
-	}
+	return nil
 }
 
 // buildMask returns an iterator that yields row ranges from full that are not
@@ -465,6 +417,7 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.row = 0
 	r.ranges.Reset()
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
+	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
 	r.ready = false
 }
 
@@ -472,10 +425,10 @@ func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
 
-	// r.validatePredicate must be called before initializing anything else; for
-	// simplicity, other functions assume that the predicate is valid and can
-	// panic if it isn't.
-	if err := r.validatePredicate(); err != nil {
+	// r.compilePredicates must be called before initializing anything else; for
+	// simplicity, other functions assume that the predicates are valid and can
+	// panic if they aren't.
+	if err := r.compilePredicates(); err != nil {
 		return err
 	}
 
@@ -516,49 +469,6 @@ func (r *RowReader) primaryColumns() []Column {
 // secondaryColumns returns the secondary columns to read.
 func (r *RowReader) secondaryColumns() []Column {
 	return r.dl.SecondaryColumns()
-}
-
-// validatePredicate ensures that all columns used in a predicate have been
-// provided in [RowReaderOptions].
-func (r *RowReader) validatePredicate() error {
-	process := func(c Column) error {
-		_, ok := r.origColumnLookup[c]
-		if !ok {
-			return fmt.Errorf("predicate column %v not found in RowReader columns", c)
-		}
-		return nil
-	}
-
-	var err error
-
-	for _, pp := range r.opts.Predicates {
-		WalkPredicate(pp, func(p Predicate) bool {
-			if err != nil {
-				return false
-			}
-
-			switch p := p.(type) {
-			case EqualPredicate:
-				err = process(p.Column)
-			case InPredicate:
-				err = process(p.Column)
-			case GreaterThanPredicate:
-				err = process(p.Column)
-			case LessThanPredicate:
-				err = process(p.Column)
-			case FuncPredicate:
-				err = process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-				// No columns to process.
-			default:
-				panic(fmt.Sprintf("dataset.RowReader.validatePredicate: unsupported predicate type %T", p))
-			}
-
-			return true // Continue walking the Predicate.
-		})
-	}
-
-	return err
 }
 
 // initDownloader initializes the reader's [rowReaderDownloader]. initDownloader is

@@ -147,6 +147,18 @@ func (d *DataDecoder) getBuffer() []byte {
 	return d.buffer
 }
 
+// extendedKind returns the kind for an extended type byte. Type bytes 1
+// through 8 give kinds 8 through 15. Type byte 0 wraps to 255 before the
+// widening, so it and bytes 9 through 255 give unknown kinds above 15. The
+// spec does not define type byte 0, and kinds 0 through 7 have their own
+// control-byte encoding. This has no branch, so it adds no cost to lookups.
+// For type bytes 1 through 255, the kind is the spec's type number, the byte
+// plus 7. Type byte 0 gives kind 263, so an "unknown type: 263" error means
+// type byte 0.
+func extendedKind(typeByte byte) Kind {
+	return Kind(typeByte-1) + 8
+}
+
 // decodeCtrlData decodes the control byte and data info at the given offset.
 // Encoding follows the MaxMind DB spec: the control byte's high 3 bits
 // encode the type (or KindExtended if zero, in which case the next byte
@@ -166,7 +178,7 @@ func (d *DataDecoder) decodeCtrlData(offset uint) (Kind, uint, uint, error) {
 		if newOffset >= bufferLen {
 			return 0, 0, 0, mmdberrors.NewOffsetError()
 		}
-		kindNum = Kind(d.buffer[newOffset] + 7)
+		kindNum = extendedKind(d.buffer[newOffset])
 		newOffset++
 	}
 
@@ -694,11 +706,12 @@ func (d *DataDecoder) decodeKeyAt(offset uint) ([]byte, uint, uint, error) {
 				}
 			}
 		}
-		if key, dataOffset, newOffset, ok := d.decodePointerKeyFast(
+		key, dataOffset, newOffset, ok := d.decodePointerKeyFast(
 			offset,
 			uint(ctrlByte),
 			bufferLen,
-		); ok {
+		)
+		if ok {
 			return key, dataOffset - 1, newOffset, nil
 		}
 	default:

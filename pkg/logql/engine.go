@@ -63,6 +63,12 @@ var (
 	lastEntryMinTime = time.Unix(-100, 0)
 )
 
+// seriesLimitPartialResultsWarning returns the warning of a query that returns partial results
+// because it reached the series limit.
+func seriesLimitPartialResultsWarning(maxSeries int) string {
+	return fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries)
+}
+
 type QueryParams interface {
 	LogSelector() (syntax.LogSelectorExpr, error)
 	GetStart() time.Time
@@ -79,6 +85,15 @@ type SelectLogParams struct {
 func (s SelectLogParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectLogParams {
 	cpy := *s.QueryRequest
 	cpy.StoreChunks = chunkRefGroup
+	return SelectLogParams{&cpy}
+}
+
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectLogParams) WithTimeRange(start, end time.Time) SelectLogParams {
+	cpy := *s.QueryRequest
+	cpy.Start = start
+	cpy.End = end
 	return SelectLogParams{&cpy}
 }
 
@@ -110,6 +125,15 @@ type SelectSampleParams struct {
 func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
 	cpy := *s.SampleQueryRequest
 	cpy.StoreChunks = chunkRefGroup
+	return SelectSampleParams{&cpy}
+}
+
+// WithTimeRange returns a copy of s covering the given time range. The copy owns its request, so
+// the time range of s does not change.
+func (s SelectSampleParams) WithTimeRange(start, end time.Time) SelectSampleParams {
+	cpy := *s.SampleQueryRequest
+	cpy.Start = start
+	cpy.End = end
 	return SelectSampleParams{&cpy}
 }
 
@@ -195,7 +219,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 	}
 	return &QueryEngine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize, l),
 		limits:           l,
 		opts:             opts,
 	}
@@ -298,7 +322,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data, err)
 	}
 
 	return logqlmodel.Result{
@@ -385,7 +409,23 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
+	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
+	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
+	//
+	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
+	// true, matching the NewStepEvaluator call below.
+	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
+		switch sampleOrderFor(ctx, expr, q.limits, true) {
+		case logproto.SAMPLE_ORDER_BY_STREAM:
+			stats.FromContext(ctx).AddStreamFirstQueries(1)
+		default:
+			stats.FromContext(ctx).AddTimestampFirstQueries(1)
+		}
+	}
+
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, true)
 	if err != nil {
 		return nil, err
 	}
@@ -399,8 +439,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
-			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true
@@ -471,7 +509,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 		if httpreq.IsLogsDrilldownRequest(ctx) {
 			// For Logs Drilldown requests, return partial results with warning
 			vec = vec[:maxSeries]
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			// Since we've already reached the series limit, skip processing additional steps and add the initial vector to seriesIndex
 			next = false
 			vectorsToSeries(vec, seriesIndex)
@@ -514,7 +552,7 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 			}
 			// Logs Drilldown returns partial results with a warning instead of failing.
-			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			metadata.FromContext(ctx).AddWarning(seriesLimitPartialResultsWarning(maxSeries))
 			break
 		}
 

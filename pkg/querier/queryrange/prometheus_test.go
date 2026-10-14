@@ -56,6 +56,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"sectionsResolutionMaxTime": 0,
 				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0,
 				"wireBytesTransferred": 0
@@ -101,6 +102,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"sectionsResolutionMaxTime": 0,
 				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0,
 				"wireBytesTransferred": 0
@@ -216,7 +218,9 @@ var emptyStats = `"stats": {
 		"queueTime": 0,
 		"splits": 0,
 		"shards": 0,
+		"streamFirstQueries": 0,
 		"subqueries": 0,
+		"timestampFirstQueries": 0,
 		"totalBytesProcessed":0,
 		"totalEntriesReturned":0,
 		"totalLinesProcessed":0,

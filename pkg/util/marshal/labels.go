@@ -2,14 +2,14 @@ package marshal
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // NewLabelSet constructs a Labelset from a promql metric list as a string
 func NewLabelSet(s string) (loghttp.LabelSet, error) {
-	lbls, err := parser.NewParser(parser.Options{}).ParseMetric(s)
+	lbls, err := syntax.ParseMetric(s)
 	if err != nil {
 		return nil, err
 	}

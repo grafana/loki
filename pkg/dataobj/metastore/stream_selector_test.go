@@ -246,24 +246,115 @@ func normalize(results []SectionStreams) []string {
 }
 
 func TestStreamSelector_SectionAmbiguousNames(t *testing.T) {
-	ctx := context.Background()
-	// Both streams match app=web. Stream 1 also carries label "trace_id"
-	// (colliding with the structured-metadata predicate name).
 	secs, closer := buildLabelBloomSection(t, []labelPosting{
 		{name: "app", value: "web", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
-		{name: "app", value: "web", streamID: 2, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
-		{name: "trace_id", value: "x", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		{name: "provider", value: "idology", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
 	}, nil)
 	defer closer()
-
 	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "web")}
-	preds := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "x")}
-	r := newStreamSelector(ms, preds, time.Unix(0, 0), time.Unix(0, 1000))
-	res, err := openAndSelectStreams(ctx, t, r, secs)
-	require.NoError(t, err)
-	require.Len(t, res, 1)
-	require.ElementsMatch(t, []int64{1, 2}, streamIDs(res[0]))
-	require.ElementsMatch(t, []string{"trace_id"}, res[0].AmbiguousNames)
+
+	tests := []struct {
+		name  string
+		preds []*labels.Matcher
+		want  []string
+	}{
+		{
+			name:  "reports a stream label named by an equality predicate",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "provider", "idology")},
+			want:  []string{"provider"},
+		},
+		{
+			name:  "reports a stream label named by a regex predicate",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
+			want:  []string{"provider"},
+		},
+		{
+			name:  "reports a stream label named by a not-equal predicate",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "provider", "other")},
+			want:  []string{"provider"},
+		},
+		{
+			name: "reports a name once when several predicates share it",
+			preds: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
+				labels.MustNewMatcher(labels.MatchNotRegexp, "provider", "oth.*"),
+			},
+			want: []string{"provider"},
+		},
+		{
+			name: "reports a name once when equality and regex predicates share it",
+			preds: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "provider", "idology"),
+				labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
+			},
+			want: []string{"provider"},
+		},
+		{
+			name:  "ignores nil predicates",
+			preds: []*labels.Matcher{nil, labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*")},
+			want:  []string{"provider"},
+		},
+		{
+			name:  "reports nothing for a name that is not a stream label",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*")},
+			want:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000))
+			res, err := openAndSelectStreams(context.Background(), t, r, secs)
+			require.NoError(t, err)
+			require.Len(t, res, 1)
+			require.ElementsMatch(t, tt.want, res[0].AmbiguousNames)
+		})
+	}
+}
+
+func TestStreamSelector_NonEqualityPredicatesAndAdmission(t *testing.T) {
+	secs, closer := buildLabelBloomSection(t,
+		[]labelPosting{
+			{name: "app", value: "nginx", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		},
+		[]bloomPosting{
+			{columnName: "trace_id", values: []string{"abc"}, streamID: 1, obj: "obj-a", section: 0},
+		},
+	)
+	defer closer()
+	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
+	regex := labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*")
+
+	tests := []struct {
+		name  string
+		preds []*labels.Matcher
+		want  int
+	}{
+		{
+			name:  "keeps the section when only a regex predicate names a label that is not a stream label",
+			preds: []*labels.Matcher{regex},
+			want:  1,
+		},
+		{
+			name:  "keeps the section when the equality predicate hits the bloom and a regex predicate is present",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc"), labels.MustNewMatcher(labels.MatchRegexp, "app", "ng.*")},
+			want:  1,
+		},
+		{
+			name:  "drops the section when the equality predicate misses the bloom and a regex predicate is present",
+			preds: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "zzz"), labels.MustNewMatcher(labels.MatchRegexp, "app", "ng.*")},
+			want:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newStreamSelector(ms, tt.preds, time.Unix(0, 0), time.Unix(0, 1000))
+			res, err := openAndSelectStreams(context.Background(), t, r, secs)
+			require.NoError(t, err)
+			require.Len(t, res, tt.want)
+		})
+	}
 }
 
 func TestStreamSelector_BloomFilters(t *testing.T) {

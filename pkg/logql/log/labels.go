@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -10,6 +11,9 @@ import (
 )
 
 const MaxInternedStrings = 1024
+
+// errorLabelsCount is how many labels appendErrorLabels can add: __error__ and __error_details__.
+const errorLabelsCount = 2
 
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.StableHash(labels.EmptyLabels()), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
@@ -122,7 +126,8 @@ type BaseLabelsBuilder struct {
 
 	groups                       []string
 	baseMap                      map[string]string
-	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints               ParserHint       // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -155,19 +160,31 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
 			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
-		resultCache:    make(map[uint64]LabelsResult),
-		hasher:         newHasher(),
-		groups:         groups,
-		parserKeyHints: parserKeyHints,
-		noLabels:       noLabels,
-		without:        without,
-		jsonPaths:      make(map[string][]string),
+		resultCache:      make(map[uint64]LabelsResult),
+		hasher:           newHasher(),
+		groups:           groups,
+		parserKeyHints:   parserKeyHints,
+		labelFilterHints: NoLabelFilterHints(),
+		noLabels:         noLabels,
+		without:          without,
+		jsonPaths:        make(map[string][]string),
 	}
 }
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+}
+
+// WithLabelFilterHints sets the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline. Returns b for chaining.
+func (b *BaseLabelsBuilder) WithLabelFilterHints(h LabelFilterHints) *BaseLabelsBuilder {
+	if h == nil {
+		h = NoLabelFilterHints()
+	}
+	b.labelFilterHints = h
+	return b
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -211,6 +228,13 @@ func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
 }
 
+// LabelFilterHints returns the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline.
+func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
+	return b.labelFilterHints
+}
+
 func (b *BaseLabelsBuilder) hasDel() bool {
 	return len(b.del) > 0
 }
@@ -232,9 +256,17 @@ func (b *BaseLabelsBuilder) sizeAdd() int {
 	return length
 }
 
-// SetErr sets the error label.
-func (b *LabelsBuilder) SetErr(err string) *LabelsBuilder {
+// SetErr sets the error and its details. The input details may be nil.
+//
+// The two go together, because each error owns its own details. A later stage that replaces the
+// error must not inherit the details of the one before it.
+func (b *LabelsBuilder) SetErr(err string, details error) *LabelsBuilder {
 	b.err = err
+	b.errDetails = ""
+	if details != nil {
+		b.errDetails = details.Error()
+	}
+
 	return b
 }
 
@@ -395,7 +427,14 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 	lbs.Range(func(l labels.Label) {
 		name := l.Name
 		if b.BaseHas(name) {
-			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
+			name = fmt.Sprintf("%s%s", name, DuplicateSuffix)
+
+			// The renamed label can itself already be taken (e.g. by a stream label of that
+			// exact name): in such case, we preserve the already existing one and the this value
+			// gets dropped.
+			if _, _, ok := b.getWithCategory(name); ok {
+				return
+			}
 		}
 
 		if name == logqlmodel.ErrorLabel {
@@ -442,6 +481,7 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 			Value: b.errDetails,
 		})
 	}
+
 	return buf
 }
 
@@ -663,16 +703,15 @@ func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResu
 
 // GroupedLabels returns the LabelsResult from the builder.
 // Groups are applied and the cache is used when possible.
+//
+// The special error labels that carry a pipeline error survive the grouping.
 func (b *LabelsBuilder) GroupedLabels() LabelsResult {
-	if b.HasErr() {
-		// We need to return now before applying grouping otherwise the error might get lost.
-		return b.LabelsResult()
-	}
 	if b.noLabels {
-		return EmptyLabelsResult
+		return b.toNoLabelsGroup()
 	}
-	// unchanged path.
-	if !b.hasDel() && !b.hasAdd() {
+	// Fast path when no stage changed a label. Both results it returns are memoized for the whole
+	// stream, so an errored line takes the slow path below instead of polluting the cached value.
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if len(b.groups) == 0 {
 			return b.currentResult
 		}
@@ -684,14 +723,33 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	}
 
 	if b.without {
-		return b.withoutResult()
+		return b.toWithoutGroup()
 	}
-	return b.withResult()
+	return b.toByGroup()
 }
 
-func (b *LabelsBuilder) withResult() LabelsResult {
+// toNoLabelsGroup returns the GroupedLabels result for a `by ()` grouping, which emits one
+// unlabeled series.
+func (b *LabelsBuilder) toNoLabelsGroup() LabelsResult {
+	if !b.HasErr() {
+		return EmptyLabelsResult
+	}
+
 	if b.buf == nil {
-		b.buf = make([]labels.Label, 0, len(b.groups))
+		b.buf = make([]labels.Label, 0, errorLabelsCount)
+	} else {
+		b.buf = b.buf[:0]
+	}
+
+	// The grouping keeps no label, but the error still has to reach the output.
+	b.buf = b.appendErrorLabels(b.buf)
+	return b.toUncategorizedResult(b.buf)
+}
+
+// toByGroup returns the GroupedLabels result for a `by (...)` grouping.
+func (b *LabelsBuilder) toByGroup() LabelsResult {
+	if b.buf == nil {
+		b.buf = make([]labels.Label, 0, len(b.groups)+errorLabelsCount)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -719,16 +777,18 @@ Outer:
 			b.buf = append(b.buf, labels.Label{Name: g, Value: value})
 		}
 	}
+	b.buf = b.appendErrorLabels(b.buf)
 	return b.toUncategorizedResult(b.buf)
 }
 
-func (b *LabelsBuilder) withoutResult() LabelsResult {
+// toWithoutGroup returns the GroupedLabels result for a `without (...)` grouping.
+func (b *LabelsBuilder) toWithoutGroup() LabelsResult {
 	if b.buf == nil {
 		size := b.base.Len() + b.sizeAdd() - len(b.del) - len(b.groups)
 		if size < 0 {
 			size = 0
 		}
-		b.buf = make([]labels.Label, 0, size)
+		b.buf = make([]labels.Label, 0, size+errorLabelsCount)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -769,9 +829,12 @@ func (b *LabelsBuilder) withoutResult() LabelsResult {
 		}
 	}
 
+	b.buf = b.appendErrorLabels(b.buf)
 	return b.toUncategorizedResult(b.buf)
 }
 
+// toBaseGroup returns the grouping applied to the base labels, memoized for the whole stream.
+// It carries no error label, so a line with an error must not use it.
 func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	if b.groupedResult != nil {
 		return b.groupedResult
@@ -785,6 +848,30 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	res := NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels())
 	b.groupedResult = res
 	return res
+}
+
+// appendErrorLabels returns buf with the labels that report the pipeline error, which grouping does
+// not keep. It returns buf unchanged when the builder holds no error.
+//
+// appendErrorLabels compacts buf in place, so the caller must use the returned slice.
+func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
+	if !b.HasErr() {
+		return buf
+	}
+
+	// The builder owns the error, so its values win. The input buf can already hold __error__ or
+	// __error_details__: keeping them, instead of the builder's error, would make the two labels
+	// report different errors.
+	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
+		return l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel
+	})
+
+	buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
+	if b.errDetails != "" {
+		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
+	}
+
+	return buf
 }
 
 type internedStringSet map[string]struct {

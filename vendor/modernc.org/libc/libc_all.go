@@ -160,3 +160,126 @@ func X__builtin_ilogbf(tls *TLS, x float32) int32 {
 	// which allows math.Ilogb to correctly return their negative exponent.
 	return int32(math.Ilogb(float64(x)))
 }
+
+// The __builtin_ forms of the <math.h> functions below are what ccgo emits
+// when a call resolves to a compiler builtin. They forward to the libc
+// implementations. See https://gitlab.com/cznic/libc/-/issues/56 and
+// https://gitlab.com/cznic/ccgo/-/issues/62.
+
+func X__builtin_acosh(t *TLS, x float64) float64 { return Xacosh(t, x) }
+
+func X__builtin_asinh(t *TLS, x float64) float64 { return Xasinh(t, x) }
+
+func X__builtin_asinhf(t *TLS, x float32) float32 { return Xasinhf(t, x) }
+
+func X__builtin_atanh(t *TLS, x float64) float64 { return Xatanh(t, x) }
+
+func X__builtin_cbrt(t *TLS, x float64) float64 { return Xcbrt(t, x) }
+
+func X__builtin_erf(t *TLS, x float64) float64 { return Xerf(t, x) }
+
+func X__builtin_erfc(t *TLS, x float64) float64 { return Xerfc(t, x) }
+
+func X__builtin_exp2(t *TLS, x float64) float64 { return Xexp2(t, x) }
+
+func X__builtin_expm1(t *TLS, x float64) float64 { return Xexpm1(t, x) }
+
+func X__builtin_fdim(t *TLS, x, y float64) float64 { return Xfdim(t, x, y) }
+
+func X__builtin_fmaf(t *TLS, x, y, z float32) float32 { return Xfmaf(t, x, y, z) }
+
+func X__builtin_lgamma(t *TLS, x float64) float64 { return Xlgamma(t, x) }
+
+func X__builtin_log1p(t *TLS, x float64) float64 { return Xlog1p(t, x) }
+
+func X__builtin_log1pf(t *TLS, x float32) float32 { return Xlog1pf(t, x) }
+
+func X__builtin_logb(t *TLS, x float64) float64 { return Xlogb(t, x) }
+
+func X__builtin_nextafter(t *TLS, x, y float64) float64 { return Xnextafter(t, x, y) }
+
+func X__builtin_nextafterf(t *TLS, x, y float32) float32 { return Xnextafterf(t, x, y) }
+
+func X__builtin_nexttoward(t *TLS, x, y float64) float64 { return Xnexttoward(t, x, y) }
+
+func X__builtin_remainder(t *TLS, x, y float64) float64 { return Xremainder(t, x, y) }
+
+func X__builtin_remquo(t *TLS, x, y float64, quo uintptr) float64 { return Xremquo(t, x, y, quo) }
+
+func X__builtin_rint(t *TLS, x float64) float64 { return Xrint(t, x) }
+
+func X__builtin_scalbn(t *TLS, x float64, n int32) float64 { return Xscalbn(t, x, n) }
+
+func X__builtin_tgamma(t *TLS, x float64) float64 { return Xtgamma(t, x) }
+
+// int __flt_rounds(void)
+//
+// The value of FLT_ROUNDS. Rounding to nearest is the only mode supported,
+// fesetround is not available.
+func X__flt_rounds(t *TLS) int32 {
+	return 1
+}
+
+func X__builtin_flt_rounds(t *TLS) int32 {
+	return 1
+}
+
+// float fmaf(float x, float y, float z)
+//
+// The product of two floats is exact in double precision and adding z to it
+// rounds once. Converting that double to float would round a second time,
+// which gives a wrong result when the double is exactly halfway between two
+// floats. Rounding an inexact double to odd first makes the final conversion
+// correctly rounded (Boldo, Melquiond: Emulation of a FMA and correctly
+// rounded sums: proved algorithms using rounding to odd).
+func Xfmaf(t *TLS, x, y, z float32) (r float32) {
+	if __ccgo_strace {
+		trc("t=%v x=%v y=%v z=%v, (%v:)", t, x, y, z, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	xy := float64(x) * float64(y) // exact
+	fz := float64(z)
+	s := xy + fz
+	if math.IsNaN(s) || math.IsInf(s, 0) {
+		return float32(s)
+	}
+
+	// TwoSum: s+err == xy+fz exactly.
+	bb := s - xy
+	err := (xy - (s - bb)) + (fz - bb)
+	if err != 0 {
+		if u := math.Float64bits(s); u&1 == 0 {
+			// Round to odd: move s by one ulp towards the exact sum.
+			if (err > 0) == (s > 0) {
+				u++
+			} else {
+				u--
+			}
+			s = math.Float64frombits(u)
+		}
+	}
+	return float32(s)
+}
+
+// char *__builtin___strncat_chk(char *dest, const char *src, size_t n, size_t destlen)
+func X__builtin___strncat_chk(t *TLS, dest, src uintptr, n, destlen Tsize_t) (r uintptr) {
+	if __ccgo_strace {
+		trc("t=%v dest=%v src=%v n=%v destlen=%v, (%v:)", t, dest, src, n, destlen, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	dlen := strlen(dest)
+	var slen Tsize_t
+	for slen < n && *(*byte)(unsafe.Pointer(src + uintptr(slen))) != 0 {
+		slen++
+	}
+	if destlen != ^Tsize_t(0) && dlen+slen+1 > destlen {
+		Xabort(t)
+	}
+
+	d := dest + uintptr(dlen)
+	for i := Tsize_t(0); i < slen; i++ {
+		*(*byte)(unsafe.Pointer(d + uintptr(i))) = *(*byte)(unsafe.Pointer(src + uintptr(i)))
+	}
+	*(*byte)(unsafe.Pointer(d + uintptr(slen))) = 0
+	return dest
+}

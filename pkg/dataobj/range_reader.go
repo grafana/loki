@@ -7,8 +7,6 @@ import (
 	"math"
 
 	"github.com/thanos-io/objstore"
-
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // rangeReader is an interface that can read a range of bytes from an object.
@@ -25,6 +23,8 @@ type rangeReader interface {
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
 }
 
+// bucketRangeReader reads an object from a bucket. It records no statistics.
+// [FromBucket] gives it an instrumented bucket, which does.
 type bucketRangeReader struct {
 	bucket objstore.BucketReader
 	path   string
@@ -39,52 +39,11 @@ func (rr *bucketRangeReader) Size(ctx context.Context) (int64, error) {
 }
 
 func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
-	rc, err := rr.bucket.Get(ctx, rr.path)
-	if err != nil {
-		return nil, err
-	}
-	return newDownloadCountingReadCloser(ctx, rc), nil
+	return rr.bucket.Get(ctx, rr.path)
 }
 
 func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
-	rc, err := rr.bucket.GetRange(ctx, rr.path, offset, length)
-	if err != nil {
-		return nil, err
-	}
-	return newDownloadCountingReadCloser(ctx, rc), nil
-}
-
-// downloadCountingReadCloser wraps an [io.ReadCloser] returned by an
-// object-store request and accumulates the number of bytes read from it.
-// The accumulated total is recorded against [StatObjectBytesDownloaded] on
-// [xcap.Region] in the context (if any) when the reader is closed, so the
-// total reflects bytes actually transferred from storage rather than the
-// requested range size.
-type downloadCountingReadCloser struct {
-	inner  io.ReadCloser
-	region *xcap.Region
-	n      int64
-}
-
-func newDownloadCountingReadCloser(ctx context.Context, rc io.ReadCloser) *downloadCountingReadCloser {
-	return &downloadCountingReadCloser{
-		inner:  rc,
-		region: xcap.RegionFromContext(ctx),
-	}
-}
-
-func (rc *downloadCountingReadCloser) Read(p []byte) (int, error) {
-	n, err := rc.inner.Read(p)
-	rc.n += int64(n)
-	return n, err
-}
-
-func (rc *downloadCountingReadCloser) Close() error {
-	if rc.n > 0 {
-		rc.region.Record(StatObjectBytesDownloaded.Observe(rc.n))
-		rc.n = 0
-	}
-	return rc.inner.Close()
+	return rr.bucket.GetRange(ctx, rr.path, offset, length)
 }
 
 type readerAtRangeReader struct {

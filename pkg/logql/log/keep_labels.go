@@ -19,7 +19,7 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 
 	// TODO: Reuse buf?
 	for _, lb := range lbls.UnsortedLabels(nil) {
-		if isSpecialLabel(lb.Name) {
+		if logqlmodel.IsPipelineErrorLabel(lb.Name) {
 			continue
 		}
 
@@ -51,13 +51,4 @@ func (kl *KeepLabels) Hints() StageHints {
 
 func (kl *KeepLabels) RequiredLabelNames() []string {
 	return []string{}
-}
-
-func isSpecialLabel(lblName string) bool {
-	switch lblName {
-	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
-		return true
-	}
-
-	return false
 }

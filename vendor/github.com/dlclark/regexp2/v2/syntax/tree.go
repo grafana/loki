@@ -130,6 +130,10 @@ const (
 	NtUpdateBumpalong NodeType = 46
 	// Matches one Unicode extended grapheme cluster (\X).
 	NtGrapheme NodeType = 47
+	// Implements ECMAScript 2025 §22.2.2.3.1 RepeatMatcher, step 4:
+	// clears capture M before an iteration, with backtracking restore.
+	// Unlike a reference or balancing group, this does not observe its value.
+	NtResetCapture NodeType = 48
 )
 
 func newRegexNode(t NodeType, opt RegexOptions) *RegexNode {
@@ -784,7 +788,7 @@ func (n *RegexNode) isIntrinsicallyAtomic() bool {
 	switch n.T {
 	case NtOne, NtNotone, NtSet, NtMulti, NtRef, NtGrapheme,
 		NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
-		NtBeginning, NtStart, NtEndZ, NtEnd, NtNothing, NtEmpty, NtUpdateBumpalong,
+		NtBeginning, NtStart, NtEndZ, NtEnd, NtNothing, NtEmpty, NtUpdateBumpalong, NtResetCapture,
 		NtOneloopatomic, NtNotoneloopatomic, NtSetloopatomic,
 		NtPosLook, NtNegLook, NtAtomic:
 		return true
@@ -2036,7 +2040,7 @@ func (n *RegexNode) ComputeMinLength() int {
 	case NtAtomic, NtCapture, NtGroup:
 		// For groups, we just delegate to the sole child.
 		return n.Children[0].ComputeMinLength()
-	case NtEmpty, NtNothing,
+	case NtEmpty, NtNothing, NtResetCapture,
 		NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEnd, NtEndZ, NtEol,
 		NtNonboundary, NtNonECMABoundary, NtStart, NtNegLook, NtPosLook, NtRef:
 		// Nothing to match. In the future, we could potentially use Nothing to say that the min length
@@ -2130,7 +2134,7 @@ func (n *RegexNode) computeMaxLength() int {
 	case NtAtomic, NtCapture:
 		// For groups, we just delegate to the sole child.
 		return n.Children[0].computeMaxLength()
-	case NtEmpty, NtNothing, NtUpdateBumpalong,
+	case NtEmpty, NtNothing, NtUpdateBumpalong, NtResetCapture,
 		NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEnd, NtEndZ, NtEol,
 		NtNonboundary, NtNonECMABoundary, NtStart, NtNegLook, NtPosLook:
 		//zero-width
@@ -2167,6 +2171,7 @@ var typeStr = []string{
 	"OneloopAtomic", "NotoneloopAtomic", "SetloopAtomic",
 	"UpdateBumpalong",
 	"Grapheme",
+	"ResetCapture",
 }
 
 func (n *RegexNode) Description() string {
@@ -2201,7 +2206,7 @@ func (n *RegexNode) Description() string {
 		buf.WriteString("(Ch = " + CharDescription(n.Ch) + ")")
 	case NtCapture:
 		buf.WriteString("(index = " + strconv.Itoa(n.M) + ", unindex = " + strconv.Itoa(n.N) + ")")
-	case NtRef, NtBackRefCond:
+	case NtRef, NtBackRefCond, NtResetCapture:
 		buf.WriteString("(index = " + strconv.Itoa(n.M) + ")")
 	case NtMulti:
 		fmt.Fprintf(buf, "(String = %#v)", string(n.Str))

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -19,6 +20,11 @@ type Limits interface {
 	IngestionBurstSizeBytes(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
+	// PolicyShardStreams returns the shard-streams config for the policy, or
+	// the tenant's config when the policy does not override it. The shard
+	// store uses its desired_rate to turn an observed stream rate into a
+	// shard count (see stream_shard_store.go).
+	PolicyShardStreams(userID, policy string) (shardstreams.Config, bool)
 }
 
 type limitsChecker struct {

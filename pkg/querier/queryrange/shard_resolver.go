@@ -13,17 +13,15 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
-	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 func newDynamicShardResolver(
@@ -35,19 +33,19 @@ func newDynamicShardResolver(
 	r queryrangebase.Request,
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
-) (logql.ShardResolver, bool) {
+) (*dynamicShardResolver, bool) {
 	return &dynamicShardResolver{
 		ctx:              ctx,
 		logger:           logger,
 		statsHandler:     statsHandler,
 		retryNextHandler: retryNext,
 		next:             next,
-		limits:           limits,
 		from:             model.Time(r.GetStart().UnixMilli()),
 		through:          model.Time(r.GetEnd().UnixMilli()),
 		maxParallelism:   maxParallelism,
 		maxShards:        maxShards,
 		defaultLookback:  defaultLookback,
+		chunkPolicy:      newChunkShardingPolicy(limits),
 	}, true
 }
 
@@ -59,12 +57,17 @@ type dynamicShardResolver struct {
 	retryNextHandler queryrangebase.Handler // next handler wrapped with retries
 	next             queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
 	logger           log.Logger
-	limits           Limits
 
 	from, through   model.Time
 	maxParallelism  int
 	maxShards       int
 	defaultLookback time.Duration
+
+	// plannedChunks sums the chunks in the index stats and shards the
+	// resolver looked up, as an estimate of the chunks the request scans.
+	plannedChunks atomic.Int64
+
+	chunkPolicy chunkShardingPolicy
 }
 
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
@@ -157,6 +160,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	}
 
 	combined := stats.MergeStats(results...)
+	r.plannedChunks.Add(int64(combined.Chunks))
 
 	level.Debug(log).Log(
 		append(
@@ -189,8 +193,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		return 0, 0, err
 	}
 
-	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
-	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
+	factor := r.chunkPolicy.powerOfTwoShards(tenantIDs, combined, r.maxShards)
 
 	bytesPerShard := combined.Bytes
 	if factor > 0 {
@@ -277,6 +280,11 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 
 	// accumulate stats
 	logqlstats.JoinResults(r.ctx, casted.Response.Statistics)
+	for _, shard := range casted.Response.Shards {
+		if shard.Stats != nil {
+			r.plannedChunks.Add(int64(shard.Stats.Chunks))
+		}
+	}
 
 	var refs int
 	for _, x := range casted.Response.ChunkGroups {
@@ -293,5 +301,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"precomputed_refs", refs,
 	)
 
-	return casted.Response.Shards, casted.Response.ChunkGroups, err
+	shards, chunkGroups := r.chunkPolicy.boundedShards(casted.Response.Shards, casted.Response.ChunkGroups)
+	return shards, chunkGroups, nil
 }

@@ -3,29 +3,31 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
+func TestLoadTenantIndexes_ReadsTenantToC(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -40,15 +42,14 @@ func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
 		},
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
+	// Each tenant's entries come from its own ToC, never another tenant's.
+	gotA, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.NoError(t, err)
-	require.Len(t, got, 2, "two tenants written")
+	requireIndexPaths(t, gotA, "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
 
-	require.Len(t, got["tenant-a"], 2)
-	require.Len(t, got["tenant-b"], 1)
-
-	requireIndexPaths(t, got["tenant-a"], "indexes/aa/idx-a-0", "indexes/bb/idx-a-1")
-	requireIndexPaths(t, got["tenant-b"], "indexes/cc/idx-b-0")
+	gotB, err := loadTenantIndexes(ctx, bucket, window, "tenant-b")
+	require.NoError(t, err)
+	requireIndexPaths(t, gotB, "indexes/cc/idx-b-0")
 }
 
 // TestLoadTenantIndexes_MissingToCReturnsNotFound verifies the no-ToC case
@@ -59,37 +60,50 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
-	_, err := loadTenantIndexes(ctx, bucket, window)
+	_, err := loadTenantIndexes(ctx, bucket, window, "tenant-a")
 	require.Error(t, err)
 	require.True(t, bucket.IsObjNotFoundErr(err),
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
 }
 
-// testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
-type testIndex struct {
-	path                 string
-	start                time.Time
-	end                  time.Time
-	fileSize             uint64
-	uncompressedLogsSize uint64
+func TestLoadTenantIndexes_PanicsOnAnotherTenantsSection(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-b": {{path: "indexes/aa/idx-b-0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
+	})
+	// Put tenant-b's ToC where tenant-a's belongs.
+	r, err := bucket.Get(ctx, metastore.TableOfContentsPath("tenant-b", window))
+	require.NoError(t, err)
+	defer r.Close()
+	require.NoError(t, bucket.Upload(ctx, metastore.TableOfContentsPath("tenant-a", window), r))
+
+	require.Panics(t, func() { _, _ = loadTenantIndexes(ctx, bucket, window, "tenant-a") })
 }
 
-// writeToCWithIndexes writes a synthetic ToC containing one index pointer per
+// testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
+type testIndex struct {
+	path  string
+	start time.Time
+	end   time.Time
+}
+
+// writeToCWithIndexes writes synthetic per-tenant ToCs containing one index pointer per
 // (tenant, path) entry. Each entry's time range must fall inside the
 // MetastoreWindowSize window the ToC covers (otherwise WriteEntry will route
 // it to a different ToC file).
 func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Bucket, entries map[string][]testIndex) {
 	t.Helper()
-	w := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	w := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	for tenant, paths := range entries {
 		for _, e := range paths {
-			require.NoError(t, w.WriteEntry(ctx, e.path, []multitenancy.TimeRange{{
-				Tenant:               tenant,
-				MinTime:              e.start,
-				MaxTime:              e.end,
-				FileSize:             e.fileSize,
-				UncompressedLogsSize: e.uncompressedLogsSize,
-			}}))
+			require.NoError(t, w.WriteEntry(ctx, tenant, metastore.TableOfContentsEntry{
+				Path:      e.path,
+				StartTime: e.start,
+				EndTime:   e.end,
+			}))
 		}
 	}
 }
@@ -211,8 +225,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: logSortPrefix{labels: []string{"auth"}},
-			Max: logSortPrefix{labels: []string{"billing"}},
+			Min: newLogSortPrefix(0, []string{"auth"}),
+			Max: newLogSortPrefix(0, []string{"billing"}),
 		},
 	}, refs)
 }
@@ -269,8 +283,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: logSortPrefix{labels: []string{"auth", "eu"}},
-			Max: logSortPrefix{labels: []string{"auth", "eu"}},
+			Min: newLogSortPrefix(0, []string{"auth", "eu"}),
+			Max: newLogSortPrefix(0, []string{"auth", "eu"}),
 		},
 	}, refs)
 }
@@ -372,42 +386,6 @@ func TestLogSectionRefsFor_ReadsAndValidatesShardCount(t *testing.T) {
 	})
 }
 
-// TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
-// populates indexEntry.FileSize and indexEntry.UncompressedLogsSize from a ToC
-// whose rows were written with non-zero sizes.
-func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"tenant-a": {
-			{path: "indexes/aa/idx-a-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
-				fileSize: 1024, uncompressedLogsSize: 2048},
-			{path: "indexes/bb/idx-a-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour),
-				fileSize: 512, uncompressedLogsSize: 4096},
-		},
-	})
-
-	got, err := loadTenantIndexes(ctx, bucket, window)
-	require.NoError(t, err)
-	require.Len(t, got["tenant-a"], 2)
-
-	// Build map by path to avoid order-dependent assertions (ToC order is not a contract).
-	byPath := make(map[string]indexEntry)
-	for _, e := range got["tenant-a"] {
-		byPath[e.Path] = e
-	}
-
-	idx0 := byPath["indexes/aa/idx-a-0"]
-	require.Equal(t, uint64(1024), idx0.FileSize)
-	require.Equal(t, uint64(2048), idx0.UncompressedLogsSize)
-
-	idx1 := byPath["indexes/bb/idx-a-1"]
-	require.Equal(t, uint64(512), idx1.FileSize)
-	require.Equal(t, uint64(4096), idx1.UncompressedLogsSize)
-}
-
 func TestCompareIndexSortKey(t *testing.T) {
 	base := indexSortKey{kind: postings.KindLabel, columnName: "service", labelValue: "api", minTimestamp: 10, maxTimestamp: 20}
 	tests := []indexSortKey{
@@ -481,4 +459,48 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
+}
+
+func TestCompareLogSortPrefix(t *testing.T) {
+	schema := []string{"label:service_name", "label:namespace"}
+	planKey := func(t *testing.T, ls labels.Labels) logSortPrefix {
+		t.Helper()
+		return newLogSortPrefix(
+			streams.ShardBucketFromHash(labels.StableHash(ls)),
+			[]string{ls.Get("service_name"), ls.Get("namespace")},
+		)
+	}
+	streamKey := func(t *testing.T, ls labels.Labels) streams.SortKey {
+		t.Helper()
+		schemaKey, err := logsobj.ComputeSchemaKey(ls, schema)
+		require.NoError(t, err)
+		return streams.NewSortKey(ls, schemaKey)
+	}
+
+	t.Run("planner order is nondecreasing over streams in stream ID order", func(t *testing.T) {
+		var all []labels.Labels
+		for _, svc := range []string{"", "a", "a\x00", "a\x00b", "ab", "b"} {
+			for _, ns := range []string{"", "\x00", "b", "eu", "us"} {
+				for i := range 4 {
+					all = append(all, labels.FromStrings(
+						"service_name", svc, "namespace", ns, "pod", fmt.Sprint(i),
+					))
+				}
+			}
+		}
+		slices.SortFunc(all, func(a, b labels.Labels) int {
+			return streams.CompareSortKey(streamKey(t, a), streamKey(t, b))
+		})
+
+		keys := make([]logSortPrefix, len(all))
+		for i, ls := range all {
+			keys[i] = planKey(t, ls)
+		}
+		require.True(t, slices.IsSortedFunc(keys, compareLogSortPrefix))
+	})
+
+	t.Run("planner key equals the stream sort key prefix", func(t *testing.T) {
+		ls := labels.FromStrings("service_name", "a\x00", "namespace", "b")
+		require.Equal(t, streamKey(t, ls).Prefix(), planKey(t, ls).prefix)
+	})
 }

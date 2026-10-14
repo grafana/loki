@@ -44,7 +44,7 @@ func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *indexpoint
 
 	s := indexpointers.NewBuilder(nil, pageSize, pageRows)
 	for _, d := range indexPointerTestData {
-		s.Append(d.Path, d.StartTs, d.EndTs, d.FileSize, d.UncompressedLogsSize)
+		s.Append(d.Path, d.StartTs, d.EndTs)
 	}
 
 	builder := dataobj.NewBuilder(nil)
