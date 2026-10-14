@@ -46,6 +46,7 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"bytes"
 	"math"
 	"sync/atomic"
 	"unsafe"
@@ -144,6 +145,15 @@ func Xstrlen(t *TLS, s uintptr) (r Tsize_t) {
 
 func _strlen(t *TLS, s uintptr) (r Tsize_t) {
 	return strlen(s)
+}
+
+// memcmp returns -1/0/+1 rather than musl's difference of the first
+// mismatched bytes; C99 7.21.4 specifies only the sign.
+func memcmp(s1, s2 uintptr, n Tsize_t) int32 {
+	if n == 0 {
+		return 0
+	}
+	return int32(bytes.Compare(unsafe.Slice((*byte)(unsafe.Pointer(s1)), n), unsafe.Slice((*byte)(unsafe.Pointer(s2)), n)))
 }
 
 func X__builtin_ilogb(tls *TLS, x float64) int32 {
