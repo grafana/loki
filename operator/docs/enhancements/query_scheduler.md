@@ -157,6 +157,22 @@ The query-scheduler is stateless and can be deployed as a `Deployment`.
 #### Replication Factor
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
 
+Queries are not replicated. Each query goes to exactly one scheduler. Each querier goroutine is statically bound to one scheduler per stream with no dynamic load balancing.
+
+Example: a `1x.small` LokiStack will have 2 of each component (4 CPUs per pod):
+`max_concurrent = 4` (we set this to be equal to # of CPU cores)
+
+With 2 schedulers, each querier pod splits its 4 goroutines evenly:
+
+`concurrency per scheduler per pod = 4 / 2 = 2 goroutines`
+
+So across both querier pods:
+- Scheduler 1 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
+- Scheduler 2 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
+
+And on the frontend side, each frontend pod opens 2 goroutines per scheduler (Loki's default `scheduler_worker_concurrency = 2`), so with 2 frontend pods:
+- Scheduler 1 ← 2 goroutines (frontend A) + 2 goroutines (frontend B) = 4 frontend goroutines feeding it
+- Scheduler 2 ← 2 goroutines (frontend A) + 2 goroutines (frontend B) = 4 frontend goroutines feeding it
 
 #### Observability
 
