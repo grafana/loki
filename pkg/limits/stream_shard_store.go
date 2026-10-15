@@ -16,20 +16,20 @@ import (
 var (
 	streamShardTrackedStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_tracked_streams",
-		"The current number of logical (pre-shard) streams tracked for stream sharding per tenant.",
-		[]string{"tenant"},
+		"The current number of logical (pre-shard) streams tracked for stream sharding per tenant and policy.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	streamShardTotalStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_total_streams",
-		"The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.",
-		[]string{"tenant"},
+		"The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant and policy implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	streamShardTotalShardsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_total_shards",
-		"The current number of physical streams that belong to a sharded stream per tenant. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.",
-		[]string{"tenant"},
+		"The current number of physical streams that belong to a sharded stream per tenant and policy. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 )
@@ -502,33 +502,39 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 // ingesters see.
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
-		trackedStreams = make(map[string]int)
-		totalStreams   = make(map[string]uint64)
-		totalShards    = make(map[string]uint64)
+		trackedStreams = make(map[string]map[string]uint64)
+		totalStreams   = make(map[string]map[string]uint64)
+		totalShards    = make(map[string]map[string]uint64)
 	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, bucket := range policies {
-					trackedStreams[tenant] += len(bucket.streams)
-					totalStreams[tenant] += bucket.slots
+				for policy, bucket := range policies {
+					addTenantPolicy(trackedStreams, tenant, policy, uint64(len(bucket.streams)))
+					addTenantPolicy(totalStreams, tenant, policy, bucket.slots)
 					for _, stream := range bucket.streams {
 						if stream.slots >= 2 {
-							totalShards[tenant] += stream.slots
+							addTenantPolicy(totalShards, tenant, policy, stream.slots)
 						}
 					}
 				}
 			}
 		}
 	})
-	for tenant, n := range trackedStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range trackedStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for tenant, n := range totalStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range totalStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for tenant, n := range totalShards {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range totalShards {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
 }
 
