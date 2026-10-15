@@ -178,7 +178,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
@@ -242,7 +242,7 @@ func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 		{StreamID: 2, Timestamp: time.Unix(2, 0).UTC(), Line: []byte("b")}, // svcB, dev
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -301,7 +301,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 		{StreamID: 1, Timestamp: ts3, Line: []byte("mid")},    // svcA, ts=30
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 2 postings: service_name=svcA, env=prod (both from stream 1).
@@ -336,7 +336,7 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 		{StreamID: 4, Timestamp: ts1, Line: []byte("")}, // shard: 15 (dev)
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 5 postings: service_name={svcA, svcB}, env={dev, staging, prod}
@@ -402,7 +402,7 @@ func TestLabelPostingsCalculation_SharedLabelAggregation(t *testing.T) {
 		{StreamID: 1, Timestamp: ts1, Line: line1},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -475,7 +475,7 @@ func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 
 	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	// No data → builder is empty, Flush returns ErrBuilderEmpty.
 	_, _, err := builder.Flush()
@@ -497,7 +497,7 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch1))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
@@ -586,7 +586,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 				if err := calc.ProcessBatch(context.Background(), calcCtx, batch); err != nil {
 					b.Fatal(err)
 				}
-				if err := calc.Flush(context.Background(), calcCtx); err != nil {
+				if err := calc.Flush(context.Background(), calcCtx, builder); err != nil {
 					b.Fatal(err)
 				}
 			}

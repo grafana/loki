@@ -141,7 +141,7 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, []logs.Record{
 		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("x")},
 	}))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -189,7 +189,7 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, records))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 2)
@@ -249,7 +249,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	// We expect 3 aggregates: "", "svcA", and "svcB".
@@ -308,7 +308,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 		{StreamID: 1, Timestamp: ts, Line: []byte("msg")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -348,7 +348,7 @@ func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 		},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -366,7 +366,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 		{StreamID: 3, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("no svc")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	require.Len(t, actual, 1)
@@ -392,7 +392,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 		{StreamID: 1, Timestamp: time.Unix(30, 0).UTC(), Line: []byte("third batch")},
 	}
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch2))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	actual := flushAndReadAllStatsTable(t, builder)
 	// svcA and svcB
@@ -418,7 +418,7 @@ func TestStatsCalculation_EmptyBatch(t *testing.T) {
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))
-	require.NoError(t, calc.Flush(context.Background(), ctx))
+	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
 	// No data → builder is empty, Flush returns ErrBuilderEmpty.
 	_, _, err := builder.Flush()

@@ -87,7 +87,7 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
@@ -139,7 +139,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
@@ -176,7 +176,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	}
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
@@ -199,7 +199,7 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	stat := makeColumnValuesStats([]string{"trace_id"})
 	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	// Calculate appends the streams before the logs sections, so the builder
 	// is not empty when it flushes.
@@ -249,7 +249,7 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch1))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
-	require.NoError(t, calc.Flush(context.Background(), calcCtx))
+	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
 	tbl := flushAndReadAllPostingsTable(t, builder)
 
