@@ -45,8 +45,9 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 
-	// TargetSectionSize is 1 byte, so each AppendStat call cuts a new stats
-	// section.
+	// TargetSectionSize is 1 byte, so the tests cover index objects with many
+	// sections. Each AppendStat call cuts a new stats section, and the postings
+	// encoder writes one postings section per entry.
 	TargetSectionSize: 1,
 }
 
@@ -348,9 +349,9 @@ func newMultiSectionSource(t *testing.T) *dataobj.Object {
 
 // calculateConcurrently builds the index object of source with 4 workers.
 //
-// A fixed GOMAXPROCS makes the test behave the same on each machine. With 1,
-// the errgroup in Calculate runs one section at a time, so the order of builder
-// writes cannot change.
+// A fixed GOMAXPROCS gives Calculate the same worker limit on each machine.
+// With 1, the errgroup in Calculate runs one section at a time, so the order of
+// builder writes cannot change.
 //
 // calculateConcurrently sets the target section size to 1 byte itself, so the
 // test does not depend on that value in the shared test config. Each

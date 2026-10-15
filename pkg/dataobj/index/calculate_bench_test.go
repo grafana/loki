@@ -70,9 +70,10 @@ var benchCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetObjectSize:        1 << 28, // 256 MiB, large enough for the whole object
 	BufferSize:              2 << 20,
 	SectionStripeMergeLimit: 2,
-	// TargetSectionSize is 1 byte, so each append in Flush cuts a new stats
-	// section. The sequential flush phase in Calculate then encodes many small
-	// sections, and the benchmark measures that cost.
+	// TargetSectionSize is 1 byte, so the index has many small sections. Each
+	// AppendStat call in the sequential flush phase of Calculate cuts a stats
+	// section, and Calculator.Flush writes one postings section per entry. The
+	// benchmark measures the cost of encoding these sections.
 	TargetSectionSize: 1,
 }
 
