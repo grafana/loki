@@ -277,8 +277,8 @@ type Limits struct {
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 
-	// ShardFactor is the number of stream shard buckets in new data objects.
-	ShardFactor ShardFactor `yaml:"shard_factor" json:"shard_factor" doc:"hidden"`
+	// DataObjShardFactor is the number of stream shard buckets in new data objects.
+	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
 }
 
 // ShardFactor is the number of shard buckets that data objects divide a
@@ -635,8 +635,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 
 	l.SortSchema = DefaultSortSchema
-	l.ShardFactor = streams.DefaultShardBuckets
-	f.Var(&l.ShardFactor, "limits.shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two. Only %d is supported.", streams.DefaultShardBuckets))
+	l.DataObjShardFactor = streams.DefaultShardBuckets
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two. Only %d is supported.", streams.DefaultShardBuckets))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -782,8 +782,8 @@ func (l *Limits) Validate() error {
 		return fmt.Errorf("sort_schema: %w", err)
 	}
 
-	if err := l.ShardFactor.Validate(); err != nil {
-		return fmt.Errorf("shard_factor: %w", err)
+	if err := l.DataObjShardFactor.Validate(); err != nil {
+		return fmt.Errorf("dataobj_shard_factor: %w", err)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -1526,7 +1526,7 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 
 // ShardLayout returns the shard layout of new data objects for userID.
 func (o *Overrides) ShardLayout(userID string) streams.ShardLayout {
-	layout, err := o.getOverridesForUser(userID).ShardFactor.Layout()
+	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
 		// Limits.Validate rejects invalid factors from flags, YAML, and
 		// runtime overrides, so only limits that skip validation reach

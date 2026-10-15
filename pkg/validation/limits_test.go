@@ -1474,7 +1474,7 @@ func TestShardFactor(t *testing.T) {
 	t.Run("register flags sets the default factor", func(t *testing.T) {
 		var l Limits
 		l.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.ShardFactor)
+		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.DataObjShardFactor)
 		require.NoError(t, l.Validate())
 	})
 
@@ -1501,8 +1501,8 @@ func TestShardFactor(t *testing.T) {
 		var l Limits
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)
 		l.RegisterFlags(fs)
-		require.NoError(t, fs.Parse([]string{"-limits.shard-factor=16"}))
-		require.ErrorContains(t, l.Validate(), "shard_factor: shard factor 16 is not supported")
+		require.NoError(t, fs.Parse([]string{"-limits.dataobj-shard-factor=16"}))
+		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor: shard factor 16 is not supported")
 	})
 
 	t.Run("set returns an error for a value that is not a number", func(t *testing.T) {
@@ -1517,7 +1517,7 @@ func TestShardFactor(t *testing.T) {
 
 		var l Limits
 		require.NoError(t, yaml.Unmarshal([]byte(`ingestion_rate_mb: 10`), &l))
-		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.ShardFactor)
+		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.DataObjShardFactor)
 	})
 
 	t.Run("limits from yaml with an unsupported factor fail validation", func(t *testing.T) {
@@ -1526,8 +1526,8 @@ func TestShardFactor(t *testing.T) {
 		SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
 		var l Limits
-		require.NoError(t, yaml.Unmarshal([]byte(`shard_factor: 8`), &l))
-		require.ErrorContains(t, l.Validate(), "shard_factor")
+		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 8`), &l))
+		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor")
 	})
 }
 
