@@ -21,74 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// concurrentBuilder is the part of [indexobj.Builder] that Prepare and
-// ProcessBatch can use.
-//
-// Calls from different logs sections interleave in any order. These methods
-// never cut a section, and the builder aggregates and sorts what they write
-// before it encodes it. So the order of the calls does not change the index
-// object.
-type concurrentBuilder interface {
-	PrepareBloomColumn(objectPath string, sectionIdx int64, columnName string, estimatedCardinality uint, shardBuckets int64)
-	ObserveBloomPosting(obs postings.BloomObservation) error
-	ObserveLabelPosting(obs postings.LabelObservation)
-}
-
-// logsIndexCalculation is one calculation step for a logs section.
-//
-// Prepare and ProcessBatch get only a [concurrentBuilder], so they cannot
-// write to the builder in an order-dependent way. Flush gets the full builder.
-type logsIndexCalculation interface {
-	// Name returns a short identifier for this calculation step, used for metrics labels.
-	Name() string
-	// Prepare is called before the first batch of logs is processed in order to initialize any state.
-	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
-	// ProcessBatch is called for each batch of logs records.
-	//
-	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
-	// to have exclusive access to the builder via the calculation context and
-	// must not retain references to it after the call returns. If false, the
-	// implementation MUST NOT touch the shared builder during ProcessBatch;
-	// all shared-state mutation must be deferred to Flush.
-	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
-	// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the
-	// shared builder. When false, ProcessBatch is safe to run concurrently
-	// with other sections' lock-free ProcessBatch calls (each section has its
-	// own calculation-step state, so there is no cross-section sharing).
-	ProcessBatchNeedsBuilderLock() bool
-	// Flush writes the remaining results of the step to builder.
-	//
-	// Calculate calls Flush once per logs section, in section order, after
-	// Prepare and ProcessBatch finish for every logs section of the object.
-	// No other call uses builder at that time, so Flush has exclusive access
-	// to it. Flush must not keep builder after it returns.
-	//
-	// The builder can cut a section on any append, so Flush must append in an
-	// order that depends only on the section data, never in map iteration
-	// order.
-	Flush(ctx context.Context, context *logsCalculationContext, builder *indexobj.Builder) error
-}
-
-type logsCalculationContext struct {
-	objectPath string
-	sectionIdx int64
-	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
-	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
-	// be a problem.
-	streamLabels       map[int64]labels.Labels // source stream ID -> labels
-	streamShardBuckets map[int64]uint32        // source stream ID -> shard bucket
-	builder            concurrentBuilder
-}
-
-// These steps are applied to all logs and are unique to a section
-func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
-	return []logsIndexCalculation{
-		&columnValuesCalculation{},
-		&statsCalculation{schema: sortSchema},
-		&labelPostingsCalculation{},
-	}
-}
-
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build the postings and stats of each logs section.
 // Calculator is bound to a single tenant.
@@ -147,8 +79,8 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
 
-	// processed keeps the state of each logs section until all of them finish,
-	// so peak memory grows with the number of logs sections in the object.
+	// processed keeps the step state of each logs section, mostly the stats
+	// aggregates, until every logs section finishes.
 	processed := make([]*processedLogsSection, reader.Sections().Count(logs.CheckSection))
 	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
@@ -168,10 +100,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	}
 
 	// Flush the logs sections one at a time in section order, so that the
-	// index object is the same on each build. The stats step appends its rows
-	// in Flush, and AppendStat cuts a stats section when its estimated size
-	// goes above the target size. The flush order decides where these cuts
-	// fall, so it decides which rows each stats section holds.
+	// index object is the same on each build.
 	for i, p := range processed {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -235,8 +164,8 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	return streamLabels, shardBuckets, nil
 }
 
-// processedLogsSection holds the state of a logs section between
-// processLogsSection and flushLogsSection.
+// processedLogsSection holds the calculation steps of one logs section and the
+// results they keep until flushLogsSection writes them to the shared builder.
 type processedLogsSection struct {
 	calcCtx       *logsCalculationContext
 	steps         []logsIndexCalculation
@@ -382,4 +311,63 @@ func (c *Calculator) flushLogsSection(ctx context.Context, p *processedLogsSecti
 		c.metrics.observeStepDuration(calculation.Name(), p.stepDurations[i])
 	}
 	return nil
+}
+
+// These steps are applied to all logs and are unique to a section
+func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
+	return []logsIndexCalculation{
+		&columnValuesCalculation{},
+		&statsCalculation{schema: sortSchema},
+		&labelPostingsCalculation{},
+	}
+}
+
+// logsIndexCalculation is one calculation step for a logs section.
+//
+// Prepare and ProcessBatch get only a [concurrentBuilder], so they cannot
+// write to the builder in an order-dependent way. Flush gets the full builder.
+type logsIndexCalculation interface {
+	// Name returns a short identifier for this calculation step, used for metrics labels.
+	Name() string
+	// Prepare is called before the first batch of logs is processed in order to initialize any state.
+	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
+	// ProcessBatch is called for each batch of logs records.
+	//
+	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
+	// to have exclusive access to the builder via the calculation context and
+	// must not retain references to it after the call returns. If false, the
+	// implementation MUST NOT touch the shared builder during ProcessBatch;
+	// all shared-state mutation must be deferred to Flush.
+	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
+	// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the
+	// shared builder. When false, ProcessBatch is safe to run concurrently
+	// with other sections' lock-free ProcessBatch calls (each section has its
+	// own calculation-step state, so there is no cross-section sharing).
+	ProcessBatchNeedsBuilderLock() bool
+	// Flush writes the remaining results of the step to builder. Calculate
+	// calls it once per logs section, in section order, and no other call uses
+	// builder at that time.
+	Flush(ctx context.Context, context *logsCalculationContext, builder *indexobj.Builder) error
+}
+
+type logsCalculationContext struct {
+	objectPath string
+	sectionIdx int64
+	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
+	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
+	// be a problem.
+	streamLabels       map[int64]labels.Labels // source stream ID -> labels
+	streamShardBuckets map[int64]uint32        // source stream ID -> shard bucket
+	builder            concurrentBuilder
+}
+
+// concurrentBuilder is the part of [indexobj.Builder] that can be used
+// by [logsIndexCalculation] steps.
+//
+// We only allow to call indexobj.Builder methods that change the data
+// in a deterministic way so that index building is idempotent.
+type concurrentBuilder interface {
+	PrepareBloomColumn(objectPath string, sectionIdx int64, columnName string, estimatedCardinality uint, shardBuckets int64)
+	ObserveBloomPosting(obs postings.BloomObservation) error
+	ObserveLabelPosting(obs postings.LabelObservation)
 }
