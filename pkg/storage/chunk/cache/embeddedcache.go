@@ -332,7 +332,7 @@ func (c *EmbeddedCache[K, V]) Get(_ context.Context, key K) (V, bool) {
 // Entry struct, its element in the LRU list, and the map slot pointing to it.
 // Entry size calculators add the key and value sizes to it.
 func EntryOverhead[K comparable, V any](entry *Entry[K, V]) uint64 {
-	return uint64(int(unsafe.Sizeof(*entry)) + elementSize + elementPrtSize)
+	return uint64(int(unsafe.Sizeof(*entry)) + elementSize + elementPrtSize) // #nosec G103 -- Sizeof only measures the entry type; no pointer conversion or memory access -- nosemgrep: use-of-unsafe-block
 }
 
 func sizeOf(item *Entry[string, []byte]) uint64 {
