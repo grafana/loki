@@ -502,7 +502,7 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 // ingesters see.
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
-		trackedStreams = make(map[string]map[string]int)
+		trackedStreams = make(map[string]map[string]uint64)
 		totalStreams   = make(map[string]map[string]uint64)
 		totalShards    = make(map[string]map[string]uint64)
 	)
@@ -510,7 +510,7 @@ func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
 				for policy, bucket := range policies {
-					addTenantPolicy(trackedStreams, tenant, policy, len(bucket.streams))
+					addTenantPolicy(trackedStreams, tenant, policy, uint64(len(bucket.streams)))
 					addTenantPolicy(totalStreams, tenant, policy, bucket.slots)
 					for _, stream := range bucket.streams {
 						if stream.slots >= 2 {

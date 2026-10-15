@@ -72,10 +72,10 @@ const noPolicy = ""
 
 // addTenantPolicy adds n to the count for the tenant and policy in m,
 // creating the per-tenant map if it does not exist.
-func addTenantPolicy[T int | uint64](m map[string]map[string]T, tenant, policy string, n T) {
+func addTenantPolicy(m map[string]map[string]uint64, tenant, policy string, n uint64) {
 	policies, ok := m[tenant]
 	if !ok {
-		policies = make(map[string]T)
+		policies = make(map[string]uint64)
 		m[tenant] = policies
 	}
 	policies[policy] += n
@@ -347,8 +347,8 @@ func (s *usageStore) Describe(descs chan<- *prometheus.Desc) {
 func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
 		cutoff = s.clock.Now().Add(-s.activeWindow).UnixNano()
-		active = make(map[string]map[string]int)
-		total  = make(map[string]map[string]int)
+		active = make(map[string]map[string]uint64)
+		total  = make(map[string]map[string]uint64)
 	)
 	// Count both the total number of active streams and the total number of
 	// streams for each tenant and policy.
