@@ -87,7 +87,7 @@ type Builder struct {
 
 // NewBuilder creates a new streams section builder. pageSize is the target
 // page size in bytes. shardLayout selects the shard bucket of each stream
-// that the builder adds.
+// that [Builder.Record] adds, and Flush records it in the section metadata.
 func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
@@ -154,6 +154,9 @@ func (b *Builder) observeRecord(ts time.Time) {
 }
 
 // AppendValue may only be used for copying streams from an existing section.
+// It keeps the shard bucket of val, so the source section must use the
+// shard layout of b. Otherwise the recorded layout does not match the bucket
+// column.
 func (b *Builder) AppendValue(val Stream) {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()

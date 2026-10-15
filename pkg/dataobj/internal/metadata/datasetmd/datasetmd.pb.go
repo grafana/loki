@@ -768,6 +768,8 @@ type SortInfo struct {
 	// contain a single element. Otherwise, this field will contain multiple
 	// elements when compound sorting is used.
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
+	// schema_labels is set only on LOG sections.
+	//
 	// schema_labels, if non-empty, indicates that rows are sorted by shard_bucket
 	// (when shard_count > 1), then the values of these fully-qualified sort keys
 	// (in order), then stream hash (see stream_order), followed by column_sorts
@@ -782,6 +784,11 @@ type SortInfo struct {
 	// shard_count is the number of physical shard buckets that participate in
 	// the stream layout. Zero means the field was not persisted by a legacy
 	// writer.
+	//
+	// In a STREAMS section, shard_count is the layout of the shard bucket
+	// column. It is the only field that STREAMS sections set, and zero means
+	// the default layout. In a LOG section, it must equal the shard_count of the
+	// STREAMS section of the same tenant.
 	ShardCount uint32 `protobuf:"varint,4,opt,name=shard_count,json=shardCount,proto3" json:"shard_count,omitempty"`
 }
 

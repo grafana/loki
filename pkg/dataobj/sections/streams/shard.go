@@ -14,17 +14,18 @@ const maxShardBits = 16
 
 // DefaultShardBits is the shard bit count of [DefaultShardLayout].
 //
-// Do not change it. Readers assume that every object uses the default
-// layout, so a new value makes them mis-read every existing object. The
-// per-tenant shard factor limit rejects other factors for the same reason.
+// Do not change it. Streams sections with no recorded shard count use the
+// default layout, and query readers still assume it for every object. A new
+// value makes them mis-read existing objects. The per-tenant shard factor
+// limit rejects other factors until query readers use the recorded layout.
 const DefaultShardBits = 5
 
 // DefaultShardBuckets is the bucket count of [DefaultShardLayout].
 const DefaultShardBuckets = 1 << DefaultShardBits
 
-// DefaultShardLayout returns the layout that readers assume for every object
-// when they map query shards to buckets. Writers use it unless a tenant sets
-// another shard factor.
+// DefaultShardLayout returns the layout of streams sections with no recorded
+// shard count. Query readers assume it for every object when they map query
+// shards to buckets.
 func DefaultShardLayout() ShardLayout {
 	return ShardLayout{bits: DefaultShardBits}
 }

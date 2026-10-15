@@ -90,7 +90,8 @@ func (s *Section) NumRows() int {
 }
 
 // ShardLayout returns the layout of the section's shard bucket column. A
-// section with no recorded shard count gives [DefaultShardLayout].
+// section with no recorded shard count gives [DefaultShardLayout], because
+// writers that did not record the count always used the default layout.
 //
 // ShardLayout returns an error if the recorded count is not a valid
 // layout.

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"slices"
@@ -365,11 +366,14 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 	const (
 		tenant      = "t1"
+		otherTenant = "t2"
 		streamCount = 16
 	)
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	nonDefault, err := streams.ShardLayoutFromBuckets(4)
+	require.NoError(t, err)
 
-	source := func(t *testing.T) *dataobj.Object {
+	appendedSource := func(t *testing.T) *dataobj.Object {
 		t.Helper()
 		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{tenant: {"label:app"}})
 		require.NoError(t, err)
@@ -384,8 +388,16 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, closer.Close()) })
 		return obj
 	}
+	builtSource := func(layouts map[string]streams.ShardLayout) func(t *testing.T) *dataobj.Object {
+		return func(t *testing.T) *dataobj.Object {
+			t.Helper()
+			return buildObjectWithShardLayouts(t, []string{"label:app"}, layouts, streamCount, now)
+		}
+	}
 
-	bucketsByLabels := func(t *testing.T, obj *dataobj.Object) map[string]int64 {
+	// streamBuckets returns the shard bucket of each stream, keyed by tenant
+	// and labels.
+	streamBuckets := func(t *testing.T, obj *dataobj.Object) map[string]int64 {
 		t.Helper()
 		buckets := map[string]int64{}
 		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
@@ -394,17 +406,51 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 			for res := range streams.IterSection(t.Context(), streamsSection) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				buckets[stream.Labels.String()] = stream.ShardBucket
+				buckets[sec.Tenant+"/"+stream.Labels.String()] = stream.ShardBucket
 			}
 		}
 		return buckets
 	}
 
-	nonDefault, err := streams.ShardLayoutFromBuckets(4)
-	require.NoError(t, err)
-	sourceWithLayout := func(t *testing.T) *dataobj.Object {
+	// requireTenantLayout checks that tenant's streams and logs sections in
+	// obj record layout, and that the logs rows follow the stream buckets
+	// before the schema key of schemaLabels.
+	requireTenantLayout := func(t *testing.T, obj *dataobj.Object, tenant string, layout streams.ShardLayout, schemaLabels []string) {
 		t.Helper()
-		return buildObjectWithShardLayout(t, tenant, []string{"label:app"}, nonDefault, streamCount, now)
+		streamsSection, gotLayout, err := openTenantStreams(t.Context(), obj, tenant)
+		require.NoError(t, err)
+		require.Equal(t, layout, gotLayout)
+
+		byID := map[int64]streams.Stream{}
+		for res := range streams.IterSection(t.Context(), streamsSection) {
+			stream, err := res.Value()
+			require.NoError(t, err)
+			byID[stream.ID] = stream
+		}
+
+		type rowKey struct {
+			bucket    int64
+			schemaKey string
+		}
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
+			logsSection, err := logs.Open(t.Context(), sec)
+			require.NoError(t, err)
+			require.Equal(t, layout.Buckets(), logsSection.SortLayout().ShardCount)
+
+			var previous rowKey
+			for res := range logs.IterSection(t.Context(), logsSection) {
+				record, err := res.Value()
+				require.NoError(t, err)
+				stream, ok := byID[record.StreamID]
+				require.True(t, ok, "record references unknown stream %d", record.StreamID)
+				schemaKey, err := ComputeSchemaKey(stream.Labels, schemaLabels)
+				require.NoError(t, err)
+				key := rowKey{bucket: stream.ShardBucket, schemaKey: schemaKey}
+				require.False(t, key.bucket < previous.bucket || (key.bucket == previous.bucket && key.schemaKey < previous.schemaKey),
+					"rows must be ordered by stream bucket, then schema key: %v after %v", key, previous)
+				previous = key
+			}
+		}
 	}
 
 	tests := []struct {
@@ -412,35 +458,49 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 		source    func(t *testing.T) *dataobj.Object
 		overrides TenantOverrides
 		resort    bool
-		layout    streams.ShardLayout
+		layouts   map[string]streams.ShardLayout
 	}{
 		{
 			name:      "the merge-only copy keeps the bucket of every stream",
-			source:    source,
+			source:    appendedSource,
 			overrides: tenantOverrides{tenant: {"label:app"}},
 			resort:    false,
-			layout:    streams.DefaultShardLayout(),
+			layouts:   map[string]streams.ShardLayout{tenant: streams.DefaultShardLayout()},
 		},
 		{
 			name:      "the re-sorting copy keeps the bucket of every stream",
-			source:    source,
+			source:    appendedSource,
 			overrides: tenantOverrides{tenant: {"label:cluster"}},
 			resort:    true,
-			layout:    streams.DefaultShardLayout(),
+			layouts:   map[string]streams.ShardLayout{tenant: streams.DefaultShardLayout()},
 		},
 		{
 			name:      "the merge-only copy keeps a non-default source layout and the bucket of every stream",
-			source:    sourceWithLayout,
+			source:    builtSource(map[string]streams.ShardLayout{tenant: nonDefault}),
 			overrides: tenantOverrides{tenant: {"label:app"}},
 			resort:    false,
-			layout:    nonDefault,
+			layouts:   map[string]streams.ShardLayout{tenant: nonDefault},
 		},
 		{
 			name:      "the re-sorting copy keeps a non-default source layout and the bucket of every stream",
-			source:    sourceWithLayout,
+			source:    builtSource(map[string]streams.ShardLayout{tenant: nonDefault}),
 			overrides: tenantOverrides{tenant: {"label:cluster"}},
 			resort:    true,
-			layout:    nonDefault,
+			layouts:   map[string]streams.ShardLayout{tenant: nonDefault},
+		},
+		{
+			name:      "the merge-only copy keeps the source layout of each tenant when tenants differ",
+			source:    builtSource(map[string]streams.ShardLayout{tenant: nonDefault, otherTenant: streams.DefaultShardLayout()}),
+			overrides: tenantOverrides{tenant: {"label:app"}, otherTenant: {"label:app"}},
+			resort:    false,
+			layouts:   map[string]streams.ShardLayout{tenant: nonDefault, otherTenant: streams.DefaultShardLayout()},
+		},
+		{
+			name:      "the re-sorting copy keeps the source layout of each tenant when tenants differ",
+			source:    builtSource(map[string]streams.ShardLayout{tenant: nonDefault, otherTenant: streams.DefaultShardLayout()}),
+			overrides: tenantOverrides{tenant: {"label:cluster"}, otherTenant: {"label:cluster"}},
+			resort:    true,
+			layouts:   map[string]streams.ShardLayout{tenant: nonDefault, otherTenant: streams.DefaultShardLayout()},
 		},
 	}
 
@@ -458,9 +518,9 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-			sourceBuckets := bucketsByLabels(t, src)
-			require.Len(t, sourceBuckets, streamCount)
-			require.Equal(t, sourceBuckets, bucketsByLabels(t, copied))
+			sourceBuckets := streamBuckets(t, src)
+			require.Len(t, sourceBuckets, streamCount*len(test.layouts))
+			require.Equal(t, sourceBuckets, streamBuckets(t, copied))
 
 			distinctBuckets := map[int64]struct{}{}
 			for _, bucket := range sourceBuckets {
@@ -468,60 +528,59 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 			}
 			require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
 
-			for _, sec := range copied.Sections().Filter(streams.CheckSection) {
-				streamsSection, err := streams.Open(t.Context(), sec)
-				require.NoError(t, err)
-				layout, err := streamsSection.ShardLayout()
-				require.NoError(t, err)
-				require.Equal(t, test.layout, layout)
-			}
-			for _, sec := range copied.Sections().Filter(logs.CheckSection) {
-				logsSection, err := logs.Open(t.Context(), sec)
-				require.NoError(t, err)
-				require.Equal(t, test.layout.Buckets(), logsSection.SortLayout().ShardCount)
+			require.ElementsMatch(t, slices.Collect(maps.Keys(test.layouts)), copied.Tenants())
+			for tenant, layout := range test.layouts {
+				requireTenantLayout(t, copied, tenant, layout, test.overrides.SortSchemaLabels(tenant))
 			}
 		})
 	}
 }
 
-// buildObjectWithShardLayout builds a sorted object for tenant with
-// streamCount streams in layout. The Builder always writes the default
-// layout, so the sections are built directly.
-func buildObjectWithShardLayout(t *testing.T, tenant string, schemaLabels []string, layout streams.ShardLayout, streamCount int, ts time.Time) *dataobj.Object {
+// buildObjectWithShardLayouts builds an object with streamCount streams for
+// each tenant in layouts, in the layout of that tenant. It builds the sections
+// directly, because the Builder writes only the default layout.
+//
+// The logs sections claim [logs.StreamOrderStableHashV1], but stream IDs
+// follow insertion order. The object is valid input for CopyAndSort, which
+// remaps every stream ID.
+func buildObjectWithShardLayouts(t *testing.T, schemaLabels []string, layouts map[string]streams.ShardLayout, streamCount int, ts time.Time) *dataobj.Object {
 	t.Helper()
 
-	sb := streams.NewBuilder(nil, int(testBuilderConfig.TargetPageSize), testBuilderConfig.MaxPageRows, layout)
-	sb.SetTenant(tenant)
-	lb := logs.NewBuilder(nil, logs.BuilderOptions{
-		PageSizeHint:     int(testBuilderConfig.TargetPageSize),
-		BufferSize:       int(testBuilderConfig.BufferSize),
-		StripeMergeLimit: testBuilderConfig.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
-		SortOrder:        logs.SortSchemaASC,
-		SchemaLabels:     schemaLabels,
-		StreamOrder:      logs.StreamOrderStableHashV1,
-		ShardCount:       layout.Buckets(),
-	})
-	lb.SetTenant(tenant)
-
-	for i := range streamCount {
-		ls := labels.FromStrings("app", fmt.Sprintf("app-%d", i), "cluster", "test")
-		schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
-		require.NoError(t, err)
-		hash := labels.StableHash(ls)
-		lb.Append(logs.Record{
-			StreamID:    sb.Record(ls, ts, 4),
-			Timestamp:   ts,
-			Line:        []byte("line"),
-			SchemaKey:   schemaKey,
-			ShardBucket: layout.BucketFromHash(hash),
-			StreamHash:  hash,
+	objBuilder := dataobj.NewBuilder(nil)
+	for _, tenant := range slices.Sorted(maps.Keys(layouts)) {
+		layout := layouts[tenant]
+		sb := streams.NewBuilder(nil, int(testBuilderConfig.TargetPageSize), testBuilderConfig.MaxPageRows, layout)
+		sb.SetTenant(tenant)
+		lb := logs.NewBuilder(nil, logs.BuilderOptions{
+			PageSizeHint:     int(testBuilderConfig.TargetPageSize),
+			BufferSize:       int(testBuilderConfig.BufferSize),
+			StripeMergeLimit: testBuilderConfig.SectionStripeMergeLimit,
+			AppendStrategy:   logs.AppendOrdered,
+			SortOrder:        logs.SortSchemaASC,
+			SchemaLabels:     schemaLabels,
+			StreamOrder:      logs.StreamOrderStableHashV1,
+			ShardCount:       layout.Buckets(),
 		})
+		lb.SetTenant(tenant)
+
+		for i := range streamCount {
+			ls := labels.FromStrings("app", fmt.Sprintf("app-%d", i), "cluster", "test")
+			schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
+			require.NoError(t, err)
+			hash := labels.StableHash(ls)
+			lb.Append(logs.Record{
+				StreamID:    sb.Record(ls, ts, 4),
+				Timestamp:   ts,
+				Line:        []byte("line"),
+				SchemaKey:   schemaKey,
+				ShardBucket: layout.BucketFromHash(hash),
+				StreamHash:  hash,
+			})
+		}
+		require.NoError(t, objBuilder.Append(sb))
+		require.NoError(t, objBuilder.Append(lb))
 	}
 
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(sb))
-	require.NoError(t, objBuilder.Append(lb))
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, closer.Close()) })
@@ -536,11 +595,11 @@ func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 		resort  bool
 	}{
 		{
-			name:    "all sections match",
+			name:    "selects merge-only when every section matches the target",
 			layouts: []logs.SortLayout{target, target},
 		},
 		{
-			name: "schema labels mismatch",
+			name: "selects a resort when the schema labels differ from the target",
 			layouts: []logs.SortLayout{{
 				SchemaLabels: []string{"label:cluster"},
 				StreamOrder:  target.StreamOrder,
@@ -549,7 +608,7 @@ func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 			resort: true,
 		},
 		{
-			name: "stream order mismatch",
+			name: "selects a resort when the stream order differs from the target",
 			layouts: []logs.SortLayout{{
 				SchemaLabels: target.SchemaLabels,
 				StreamOrder:  logs.StreamOrderUnspecified,
@@ -558,7 +617,7 @@ func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 			resort: true,
 		},
 		{
-			name: "shard count mismatch",
+			name: "selects a resort when a logs section shard count differs from its streams section",
 			layouts: []logs.SortLayout{{
 				SchemaLabels: target.SchemaLabels,
 				StreamOrder:  target.StreamOrder,
@@ -567,7 +626,7 @@ func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 			resort: true,
 		},
 		{
-			name: "mixed layouts resort the whole object",
+			name: "selects a resort of the whole object when one of several sections differs",
 			layouts: []logs.SortLayout{
 				target,
 				{

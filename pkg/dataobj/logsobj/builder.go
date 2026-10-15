@@ -251,8 +251,8 @@ func (b *Builder) schemaLabelsFor(tenant string) []string {
 	return b.overrides.SortSchemaLabels(tenant)
 }
 
-// shardLayoutFor returns the shard layout of objects written for a tenant.
-// All tenants use [streams.DefaultShardLayout].
+// shardLayoutFor returns the shard layout of objects that Append builds for a
+// tenant. All tenants use [streams.DefaultShardLayout].
 func (b *Builder) shardLayoutFor(string) streams.ShardLayout {
 	return streams.DefaultShardLayout()
 }
@@ -506,8 +506,8 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		// The copy keeps the source shard layout, so every stream keeps its
-		// bucket through AppendValue.
+		// sb records shardLayout in the section metadata. AppendValue keeps
+		// each source bucket, so shardLayout must be the source layout.
 		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, shardLayout)
 		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
 			return nil, nil, err
@@ -599,8 +599,8 @@ func openTenantStreams(ctx context.Context, obj *dataobj.Object, tenant string) 
 
 // requiresResort trusts each logs section's persisted layout contract and
 // selects a full-object resort when any section differs from its tenant's
-// target layout. The target keeps the source shard layout, so only a sort
-// schema change selects a resort.
+// target layout. The target uses the shard layout of the tenant's streams
+// section, so a change of the tenant shard factor never selects a resort.
 func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
 	for _, tenant := range obj.Tenants() {
 		found := false
