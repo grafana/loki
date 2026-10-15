@@ -889,8 +889,9 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 		return f, f.PatternError()
 	case *log.NoopLabelFilter:
 		return log.NoopStage, nil
+	default:
+		return e.LabelFilterer, nil
 	}
-	return e.LabelFilterer, nil
 }
 
 func (e *LabelFilterExpr) String() string {

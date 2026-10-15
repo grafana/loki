@@ -334,8 +334,10 @@ func metadataMatcherCandidates(filter logqllog.LabelFilterer) []*labels.Matcher 
 		if typed.And {
 			return append(metadataMatcherCandidates(typed.Left), metadataMatcherCandidates(typed.Right)...)
 		}
+		return nil
+	default:
+		return nil
 	}
-	return nil
 }
 
 // pushdownCandidate returns matcher as a pushdown candidate, or nil when it is not one.

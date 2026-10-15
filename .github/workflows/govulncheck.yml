@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.2"
   GOVULNCHECK_VERSION: "v1.3.0"
+  GOTOOLCHAIN: local
 
 jobs:
   govulncheck:
@@ -33,10 +33,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Get Go version
+        id: go-version
+        run: echo "version=$(make -s goversion)" >> "$GITHUB_OUTPUT"
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ steps.go-version.outputs.version }}
           cache: true
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
