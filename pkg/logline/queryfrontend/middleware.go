@@ -440,7 +440,9 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 // lookback ended at or before the ingester cutoff.
 func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
 	report := verification.Report{HintRanges: len(hints)}
-	// A positive absent_over_time sample means the window was empty.
+	// absent_over_time is not checked. A 1 is an empty window, and the miss is a
+	// step the matrix left out. This check does not walk the query's step grid,
+	// so the report stays empty and Correct() is true.
 	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
 		return report
 	}
