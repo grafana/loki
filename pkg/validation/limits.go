@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-	yaml "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
@@ -288,8 +288,8 @@ type Limits struct {
 type ShardFactor uint32
 
 // Layout returns the shard layout for f. Zero gives
-// [streams.DefaultShardLayout]. Layout returns an error if f is not a power of
-// two or is more than 2^[streams.MaxShardBits].
+// [streams.DefaultShardLayout]. Layout returns an error if f is not a valid
+// [streams.ShardLayout] bucket count.
 func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 	if f == 0 {
 		return streams.DefaultShardLayout(), nil
@@ -1525,8 +1525,8 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 	return s
 }
 
-// ShardLayout returns the shard layout of new data objects for userID.
-func (o *Overrides) ShardLayout(userID string) streams.ShardLayout {
+// DataObjShardLayout returns the shard layout of new data objects for userID.
+func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
 		// Limits.Validate rejects invalid factors, so only unvalidated limits

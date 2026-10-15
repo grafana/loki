@@ -36,6 +36,6 @@ type CombinedLimits interface {
 	bucket.SSEConfigProvider
 	logline_query_limits.Limits
 	SortSchemaLabels(userID string) []string
-	ShardLayout(userID string) streams.ShardLayout
+	DataObjShardLayout(userID string) streams.ShardLayout
 	CompactionPhases(userID string) (runIndex, runLog bool)
 }

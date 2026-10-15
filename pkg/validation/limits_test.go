@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	yaml "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
@@ -1592,13 +1592,13 @@ func TestOverrides_ShardLayout(t *testing.T) {
 	t.Run("returns the default layout for tenants without an override", func(t *testing.T) {
 		ov, err := NewOverrides(newDefaults(), nil)
 		require.NoError(t, err)
-		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("any-tenant"))
+		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("any-tenant"))
 	})
 
 	t.Run("returns the default layout when the factor is unset", func(t *testing.T) {
 		ov, err := NewOverrides(Limits{}, nil)
 		require.NoError(t, err)
-		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("any-tenant"))
+		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("any-tenant"))
 	})
 
 	t.Run("returns the layout of the tenant's own override", func(t *testing.T) {
@@ -1608,8 +1608,8 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		globalLimits.DataObjShardFactor = 16
 		ov, err := NewOverrides(globalLimits, newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
 		require.NoError(t, err)
-		require.Equal(t, uint32(64), ov.ShardLayout("custom").Buckets())
-		require.Equal(t, uint32(16), ov.ShardLayout("other").Buckets())
+		require.Equal(t, uint32(64), ov.DataObjShardLayout("custom").Buckets())
+		require.Equal(t, uint32(16), ov.DataObjShardLayout("other").Buckets())
 	})
 
 	t.Run("returns the default layout when an unvalidated override has an invalid factor", func(t *testing.T) {
@@ -1617,6 +1617,6 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		tenantLimits.DataObjShardFactor = 24
 		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
 		require.NoError(t, err)
-		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("custom"))
+		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
 	})
 }
