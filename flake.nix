@@ -79,7 +79,7 @@
 
               chart-testing
               gcc
-              go_1_26
+              go_1_27
               golangci-lint
               gotools
               helm-docs
