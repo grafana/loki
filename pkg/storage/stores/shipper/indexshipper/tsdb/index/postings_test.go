@@ -15,6 +15,7 @@ package index
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -476,6 +477,13 @@ func TestMergedPostings(t *testing.T) {
 			require.Equal(t, expected, res)
 		})
 	}
+}
+
+func TestMergedPostingsKeepsErrorWhenAllInputsFail(t *testing.T) {
+	errFail := errors.New("fail")
+	p := Merge(ErrPostings(errFail), ErrPostings(errFail))
+	require.False(t, p.Next())
+	require.ErrorIs(t, p.Err(), errFail)
 }
 
 func TestMergedPostingsSeek(t *testing.T) {
