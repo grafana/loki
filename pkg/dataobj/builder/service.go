@@ -173,19 +173,18 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	// Partition 0 always has a builder, so its builder reports how many
 	// builders the other partitions need.
 	var reporter services.Service
-	if cfg.ReportRequiredReplicas && partitionID == 0 {
+	if partitionID == 0 {
 		consumerGroup, err := newConsumerGroupFunc(instanceID)
 		if err != nil {
-			level.Warn(logger).Log("msg", "cannot derive the consumer groups of other builders, not reporting required replicas", "err", err)
-		} else {
-			reporter = newRequiredReplicasReporter(
-				kafkav2.NewTopicOffsetReader(readerClient, cfg.Topic),
-				consumerGroup,
-				cfg.ReportRequiredReplicasInterval,
-				logger,
-				reg,
-			)
+			return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
 		}
+		reporter = newRequiredReplicasReporter(
+			kafkav2.NewTopicOffsetReader(readerClient, cfg.Topic),
+			consumerGroup,
+			cfg.RequiredReplicasRefreshInterval,
+			logger,
+			reg,
+		)
 	}
 	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, logger), nil
 }

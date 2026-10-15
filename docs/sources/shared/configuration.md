@@ -1397,18 +1397,12 @@ dataobj:
     # CLI flag: -dataobj.builder.partition-id
     [partition_id: <int> | default = -1]
 
-    # When true, the builder that consumes partition 0 exports
-    # loki_dataobj_builder_required_replicas: the highest partition with unread
-    # records plus 1. Use it to scale the builders. Other builders ignore this
-    # setting. It assumes that every builder derives its partition from its
-    # hostname.
-    # CLI flag: -dataobj.builder.report-required-replicas
-    [report_required_replicas: <boolean> | default = true]
-
     # How often the builder that consumes partition 0 reads the offsets of every
-    # partition to refresh loki_dataobj_builder_required_replicas.
-    # CLI flag: -dataobj.builder.report-required-replicas-interval
-    [report_required_replicas_interval: <duration> | default = 30s]
+    # partition to refresh loki_dataobj_builder_required_replicas: the highest
+    # partition with unread records plus 1. Use it to scale the builders. It
+    # assumes that every builder derives its partition from its hostname.
+    # CLI flag: -dataobj.builder.required-replicas-refresh-interval
+    [required_replicas_refresh_interval: <duration> | default = 30s]
 
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for

@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -94,6 +95,13 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		})
 	}
 
+	refreshCount := func(t *testing.T, r *requiredReplicasReporter) uint64 {
+		t.Helper()
+		var m dto.Metric
+		require.NoError(t, r.refreshDuration.(prometheus.Metric).Write(&m))
+		return m.GetHistogram().GetSampleCount()
+	}
+
 	requireReplicas := func(t *testing.T, r *requiredReplicasReporter, expected float64) {
 		t.Helper()
 		require.Equal(t, 1, testutil.CollectAndCount(r.requiredReplicas))
@@ -173,14 +181,34 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 4)
 
+		lastRefresh := testutil.ToFloat64(r.lastRefresh)
+
 		produce(t, client, 7, 1)
 		failNextOffsetFetch(cluster)
 		require.ErrorIs(t, r.refresh(t.Context()), kerr.GroupAuthorizationFailed)
 		requireReplicas(t, r, 4)
 		require.Equal(t, float64(1), testutil.ToFloat64(r.refreshFailures))
+		require.Equal(t, lastRefresh, testutil.ToFloat64(r.lastRefresh))
 
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 8)
+	})
+
+	t.Run("sets the last refresh time when a refresh succeeds", func(t *testing.T) {
+		_, _, r := newTestReporter(t)
+		before := time.Now()
+		require.NoError(t, r.refresh(t.Context()))
+		lastRefresh := time.Unix(0, int64(testutil.ToFloat64(r.lastRefresh)*1e9))
+		require.WithinRange(t, lastRefresh, before.Add(-time.Millisecond), time.Now())
+	})
+
+	t.Run("observes the duration of every refresh, successful or not", func(t *testing.T) {
+		cluster, client, r := newTestReporter(t)
+		produce(t, client, 3, 1)
+		require.NoError(t, r.refresh(t.Context()))
+		failNextOffsetFetch(cluster)
+		require.Error(t, r.refresh(t.Context()))
+		require.Equal(t, uint64(2), refreshCount(t, r))
 	})
 
 	t.Run("exports no value until the first refresh succeeds", func(t *testing.T) {
@@ -190,6 +218,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.Error(t, r.refresh(t.Context()))
 		require.Equal(t, 0, testutil.CollectAndCount(r.requiredReplicas))
 		require.Equal(t, float64(1), testutil.ToFloat64(r.refreshFailures))
+		require.Zero(t, testutil.ToFloat64(r.lastRefresh))
 	})
 
 	t.Run("refreshes when the service starts", func(t *testing.T) {

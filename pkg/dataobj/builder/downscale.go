@@ -45,14 +45,3 @@ func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partiti
 		return recordsLeft == 0, nil
 	}
 }
-
-// recordsLeftToConsume returns the number of records of a partition that its
-// consumer group did not consume yet. resumeOffset is the next offset to
-// consume, or kafkav2.OffsetStart (-2) if the group never committed.
-//
-// The group consumes from the start offset if retention deleted the records
-// after its committed offset.
-func recordsLeftToConsume(startOffset, endOffset, resumeOffset int64) int64 {
-	nextOffsetToConsume := max(resumeOffset, startOffset)
-	return max(endOffset-nextOffsetToConsume, 0)
-}

@@ -20,9 +20,11 @@ import (
 // requiredReplicasReporter exports the number of builder replicas needed to
 // consume every partition with unread records.
 //
-// The builder with ordinal p consumes partition p. So the number is the
-// highest partition with unread records plus 1, not a count of partitions.
-// It is 0 when no partition has unread records.
+// The number is the highest partition with unread records plus 1, or 0 if no
+// partition has unread records. Usually partitions 0 to N-1 all have unread
+// records, and the number is N. If a lower partition has no unread records,
+// the number does not go down: the builder with ordinal p consumes partition
+// p, so the highest partition still needs its builder.
 //
 // The gauge keeps its last value when a refresh fails. It exports nothing
 // until the first refresh succeeds, so a restart never exports a false 0.
@@ -38,6 +40,8 @@ type requiredReplicasReporter struct {
 	// exports no series until the first Set.
 	requiredReplicas *prometheus.GaugeVec
 	refreshFailures  prometheus.Counter
+	lastRefresh      prometheus.Gauge
+	refreshDuration  prometheus.Histogram
 }
 
 // newRequiredReplicasReporter returns a reporter that refreshes the gauge once
@@ -62,6 +66,18 @@ func newRequiredReplicasReporter(
 		refreshFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_required_replicas_refresh_failures_total",
 			Help: "Total number of failed refreshes of loki_dataobj_builder_required_replicas.",
+		}),
+		lastRefresh: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_builder_required_replicas_last_refresh_timestamp_seconds",
+			Help: "The Unix time of the last successful refresh of loki_dataobj_builder_required_replicas.",
+		}),
+		refreshDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_dataobj_builder_required_replicas_refresh_duration_seconds",
+			Help:                            "Time taken to read the offsets of every partition and refresh loki_dataobj_builder_required_replicas, successful or not.",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}),
 	}
 	r.Service = services.NewBasicService(nil, r.running, nil).WithName("dataobj-builder-required-replicas-reporter")
@@ -88,12 +104,15 @@ func (r *requiredReplicasReporter) running(ctx context.Context) error {
 func (r *requiredReplicasReporter) refresh(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, r.interval)
 	defer cancel()
+	start := time.Now()
 	replicas, err := r.readRequiredReplicas(ctx)
+	r.refreshDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
 		r.refreshFailures.Inc()
 		return err
 	}
 	r.requiredReplicas.WithLabelValues().Set(float64(replicas))
+	r.lastRefresh.SetToCurrentTime()
 	return nil
 }
 
@@ -153,4 +172,15 @@ func newConsumerGroupFunc(instanceID string) (func(partition int32) string, erro
 	return func(partition int32) string {
 		return prefix + "-" + strconv.Itoa(int(partition))
 	}, nil
+}
+
+// recordsLeftToConsume returns the number of records of a partition that its
+// consumer group did not consume yet. resumeOffset is the next offset to
+// consume, or kafkav2.OffsetStart (-2) if the group never committed.
+//
+// The group consumes from the start offset if retention deleted the records
+// after its committed offset.
+func recordsLeftToConsume(startOffset, endOffset, resumeOffset int64) int64 {
+	nextOffsetToConsume := max(resumeOffset, startOffset)
+	return max(endOffset-nextOffsetToConsume, 0)
 }
