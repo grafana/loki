@@ -233,6 +233,18 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
+		// Check for unknown section types
+		for _, sec := range obj.Sections() {
+			switch {
+			case logs.CheckSection(sec):
+				continue
+			case streams.CheckSection(sec):
+				continue
+			default:
+				return nil, fmt.Errorf("merging source logs %q: unknown section %q", path, sec)
+			}
+		}
+
 		// Use a slice rather than a map iterated in order, sized for all log sections in the object.
 		// Slots for unselected sections or sections belonging to other tenants will remain nil
 		logSections := make([]*dataobj.Section, obj.Sections().Count(logs.CheckSection))

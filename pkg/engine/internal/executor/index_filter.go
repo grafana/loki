@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -75,11 +74,8 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		case stats.CheckSection(sec):
 			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
-		case pointers.CheckSection(sec):
-			// Index objects built before the index builder stopped writing
-			// pointers sections still hold them. The compactor does not support them.
-			continue
 		case streams.CheckSection(sec):
+			// The index calculator still writes a streams section. The compactor does not support it.
 			continue
 		default:
 			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec)

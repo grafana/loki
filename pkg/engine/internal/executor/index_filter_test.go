@@ -272,16 +272,31 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ElementsMatch(t, wantStats, readAllStatsRowsFromBucket(t, bucket, artifact.Path))
 	})
 
-	t.Run("skips pointers and streams sections of the source index", func(t *testing.T) {
+	t.Run("returns an error when the source index holds a pointers section", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
-		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
-		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0)})
 
 		pointersBuilder := pointers.NewBuilder(nil, 0, 0)
 		pointersBuilder.SetTenant("acme")
 		pointersBuilder.ObserveStream("logs/a", 0, 1, 1, time.Unix(0, 1_000), 100)
 		require.NoError(t, objBuilder.Append(pointersBuilder))
+
+		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
+			ObjectPaths: []string{"logs/a"},
+		})
+		require.ErrorContains(t, err, "unknown section")
+	})
+
+	t.Run("skips the streams section of the source index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		objBuilder := dataobj.NewBuilder(nil)
+		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
+		appendFilterStats(t, objBuilder, "acme", []stats.Stat{filterStatRow("logs/a", 0), filterStatRow("logs/b", 0)})
 
 		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout())
 		streamsBuilder.SetTenant("acme")
@@ -297,7 +312,6 @@ func TestDoIndexFilter(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
-			require.False(t, pointers.CheckSection(sec), "output must not hold a pointers section")
 			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
 		}
 		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)

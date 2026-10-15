@@ -22,6 +22,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -256,6 +257,35 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 		apps[st.Labels.Get("app")] = true
 	}
 	require.Equal(t, map[string]bool{"a": true}, apps, "other tenants' streams must be excluded")
+}
+
+func TestCollectLogSources_SectionTypes(t *testing.T) {
+	t.Run("returns an error when the source object holds a section other than logs or streams", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		const tenant = "T"
+
+		objBuilder := dataobj.NewBuilder(nil)
+		streamsBuilder := streams.NewBuilder(nil, 8192, 0, streams.DefaultShardLayout())
+		streamsBuilder.SetTenant(tenant)
+		streamsBuilder.Record(labels.FromStrings("app", "a"), time.Unix(0, 1_000), 100)
+		require.NoError(t, objBuilder.Append(streamsBuilder))
+
+		indexPointersBuilder := indexpointers.NewBuilder(nil, 1024, 0)
+		indexPointersBuilder.SetTenant(tenant)
+		indexPointersBuilder.Append("indexes/other", time.Unix(0, 1_000), time.Unix(0, 2_000))
+		require.NoError(t, objBuilder.Append(indexPointersBuilder))
+
+		uploadFilterSourceIndex(t, bucket, "obj", objBuilder)
+
+		_, err := newTestExecutorContext(t, bucket).collectLogSources(ctx, &physical.LogMerge{
+			Tenant: tenant,
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "obj"}}},
+			},
+		})
+		require.ErrorContains(t, err, "unknown section")
+	})
 }
 
 // TestCollectLogSources_ReadsFromUnprefixedDataBucket reproduces the bug where

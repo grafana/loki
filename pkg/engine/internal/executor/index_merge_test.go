@@ -511,75 +511,68 @@ func TestDoIndexMerge_CompactedIndexCloseErrorPropagates(t *testing.T) {
 	require.ErrorContains(t, err, "scratch remove failed")
 }
 
-// [REDACTED] tests that the executor correctly
-// skips legacy section types (streams, pointers) while processing a source object
-// that contains all four section types: streams, pointers, stats, and postings.
-func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
+func TestExecuteIndexMerge_LegacySections(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	// Build a source object with all four section types: streams, pointers, stats, postings.
 	srcPath := "source/index-legacy.dat"
-	buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath)
-
-	// Construct an IndexMerge node with a single RunRef.
-	node := &physical.IndexMerge{
-		NodeID:         ulid.Make(),
-		Tenant:         "tenant-1",
-		ToCWindowStart: 0,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder
-			}},
-		},
-	}
-
-	// Run the executor.
-	execCtx := newTestExecutorContext(t, bucket)
-	artifacts, err := execCtx.doIndexMerge(ctx, node)
-	require.NoError(t, err, "merge should succeed despite legacy sections")
-
-	// Verify the output exists.
-	require.NoError(t, artifacts.Validate())
-	outputPath := artifacts.Path
-
-	exists, err := bucket.Exists(ctx, outputPath)
-	require.NoError(t, err)
-	require.True(t, exists, "output object must exist")
-
-	outObj := openObjectFromBucket(ctx, t, bucket, outputPath)
-
-	// Check what sections are present in the output.
-	var sawPostings, sawStats bool
-	for _, sec := range outObj.Sections() {
-		if postings.CheckSection(sec) {
-			sawPostings = true
-		}
-		if stats.CheckSection(sec) {
-			sawStats = true
+	newNode := func() *physical.IndexMerge {
+		return &physical.IndexMerge{
+			NodeID: ulid.Make(),
+			Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: srcPath}}},
+			},
 		}
 	}
 
-	// Legacy sections (streams, pointers) are not passed through the merger.
+	t.Run("merges postings and stats and drops the streams section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath, false)
 
-	require.True(t, sawPostings, "output must contain a postings section")
-	require.True(t, sawStats, "output must contain a stats section")
+		artifacts, err := newTestExecutorContext(t, bucket).doIndexMerge(ctx, newNode())
+		require.NoError(t, err)
+		require.NoError(t, artifacts.Validate())
 
-	// Verify content exists in both sections.
-	postingsRows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
-	statsRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
+		var sawPostings, sawStats bool
+		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifacts.Path).Sections() {
+			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
+			sawPostings = sawPostings || postings.CheckSection(sec)
+			sawStats = sawStats || stats.CheckSection(sec)
+		}
+		require.True(t, sawPostings, "output must contain a postings section")
+		require.True(t, sawStats, "output must contain a stats section")
+		require.NotEmpty(t, readPostingsRowsFromBucket(ctx, t, bucket, artifacts.Path))
+		require.NotEmpty(t, readStatsRowsFromBucket(ctx, t, bucket, artifacts.Path))
+	})
 
-	require.NotEmpty(t, postingsRows, "output postings section should have rows")
-	require.NotEmpty(t, statsRows, "output stats section should have rows")
+	t.Run("returns an error when the source index holds a pointers section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath, true)
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(ctx, newNode())
+		require.ErrorContains(t, err, "unknown section")
+	})
 }
 
-// buildSourceWithLegacySections builds a dataobj containing streams, pointers,
-// stats, and postings sections (all four section types), then uploads it.
-// This simulates an index object from before the index builder stopped
-// writing pointers sections.
-func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
+// buildSourceWithLegacySections builds an index object with streams, stats,
+// and postings sections, then uploads it. withPointers also adds a pointers
+// section.
+func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string, withPointers bool) {
 	t.Helper()
 	ctx := context.Background()
+
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 21, // 2 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}
+
+	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err, "failed to create indexobj.Builder")
+
+	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
 
 	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000, streams.DefaultShardLayout())
