@@ -16,11 +16,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-	yaml "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -52,7 +53,10 @@ const (
 
 	defaultPerStreamRateLimit   = 3 << 20 // 3MB
 	DefaultTSDBMaxBytesPerShard = sharding.DefaultTSDBMaxBytesPerShard
-	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
+	// DefaultDataObjMaxBytesPerShard is the default of the -querier.dataobj-max-bytes-per-shard
+	// setting, ten times the default of the TSDB setting.
+	DefaultDataObjMaxBytesPerShard = 10 * DefaultTSDBMaxBytesPerShard
+	defaultPerStreamBurstLimit     = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
 
@@ -152,6 +156,7 @@ type Limits struct {
 	QueryTimeout                model.Duration     `yaml:"query_timeout" json:"query_timeout"`
 	StreamFirstExecutionEnabled bool               `yaml:"stream_first_execution_enabled" json:"stream_first_execution_enabled" category:"experimental"`
 	DataObjQueryStartTime       dskit_flagext.Time `yaml:"dataobj_query_start_time" json:"dataobj_query_start_time" category:"experimental"`
+	DataObjMaxBytesPerShard     flagext.ByteSize   `yaml:"dataobj_max_bytes_per_shard" json:"dataobj_max_bytes_per_shard" category:"experimental"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration                   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -271,6 +276,53 @@ type Limits struct {
 
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
+
+	// DataObjShardFactor is the number of stream shard buckets in new data
+	// objects for the tenant. Zero means the default.
+	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+}
+
+// ShardFactor is the number of shard buckets that data objects divide a
+// tenant's streams into. It must be a power of two. Zero means the default,
+// [streams.DefaultShardBuckets].
+type ShardFactor uint32
+
+// Layout returns the shard layout for f. Zero gives
+// [streams.DefaultShardLayout]. Layout returns an error if f is not a valid
+// [streams.ShardLayout] bucket count.
+func (f ShardFactor) Layout() (streams.ShardLayout, error) {
+	if f == 0 {
+		return streams.DefaultShardLayout(), nil
+	}
+	return streams.ShardLayoutFromBuckets(uint32(f))
+}
+
+// Validate returns an error if f is not a supported shard factor.
+//
+// Validate accepts only the default factor. Readers assume the default layout
+// for every object, so objects with another factor give wrong query results.
+func (f ShardFactor) Validate() error {
+	layout, err := f.Layout()
+	if err != nil {
+		return err
+	}
+	if layout != streams.DefaultShardLayout() {
+		return fmt.Errorf("shard factor %d is not supported, only %d is", f, streams.DefaultShardBuckets)
+	}
+	return nil
+}
+
+// String implements flag.Value.
+func (f ShardFactor) String() string { return strconv.FormatUint(uint64(f), 10) }
+
+// Set implements flag.Value.
+func (f *ShardFactor) Set(v string) error {
+	n, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		return fmt.Errorf("parse shard factor %q: %w", v, err)
+	}
+	*f = ShardFactor(n)
+	return nil
 }
 
 type FieldDetectorConfig struct {
@@ -424,15 +476,17 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
 	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. When a specific per-tenant timeout is used, the global timeout is ignored.")
-	f.BoolVar(&l.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, the querier evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order.")
-	f.Var(&l.DataObjQueryStartTime, "querier.dataobj-query-start-time", "Time, inclusive, from which the querier reads stream-first metric queries from data objects. 0 disables it.")
+	f.BoolVar(&l.StreamFirstExecutionEnabled, "querier.stream-first-execution-enabled", false, "When enabled, Loki evaluates eligible metric queries in stream-first order, which reads samples one stream at a time instead of in timestamp order. The query-frontend and the querier read this setting.")
+	f.Var(&l.DataObjQueryStartTime, "querier.dataobj-query-start-time", "Time, inclusive, from which stream-first metric queries read data objects. The query-frontend and the querier read this setting. 0 disables it.")
+	_ = l.DataObjMaxBytesPerShard.Set(strconv.FormatInt(DefaultDataObjMaxBytesPerShard, 10))
+	f.Var(&l.DataObjMaxBytesPerShard, "querier.dataobj-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads data objects. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The query-frontend reads this setting. The query-frontend uses it only with the power-of-two sharding strategy. The bounded strategy uses -querier.tsdb-max-bytes-per-shard.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how far back in time series data and metadata can be queried, up until lookback duration ago. This limit is enforced in the query frontend, the querier and the ruler. If the requested time range is outside the allowed range, the request will not fail, but will be modified to only query data within the allowed time range. The default value of 0 does not set a limit.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 128, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
 	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
-	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit.")
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Target maximum number of bytes assigned to a single sharded query that reads chunks. Also expressible in human readable forms (1GB, etc). Note: This is a _target_ and not an absolute limit. The actual limit can be higher, but the query planner will try to build shards up to this limit. The bounded sharding strategy also uses this setting for queries that read data objects.")
 	f.StringVar(
 		&l.TSDBShardingStrategy,
 		"limits.tsdb-sharding-strategy",
@@ -582,6 +636,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 
 	l.SortSchema = DefaultSortSchema
+	l.DataObjShardFactor = streams.DefaultShardBuckets
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Only %d is supported.", streams.DefaultShardBuckets))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -714,6 +770,10 @@ func (l *Limits) Validate() error {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
 	}
 
+	if l.DataObjMaxBytesPerShard <= 0 {
+		return errors.New("querier.dataobj-max-bytes-per-shard must be greater than 0")
+	}
+
 	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
 		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
 			l.EngineResultsCacheTimeBucketInterval)
@@ -721,6 +781,10 @@ func (l *Limits) Validate() error {
 
 	if err := l.SortSchema.Validate(); err != nil {
 		return fmt.Errorf("sort_schema: %w", err)
+	}
+
+	if err := l.DataObjShardFactor.Validate(); err != nil {
+		return fmt.Errorf("dataobj_shard_factor: %w", err)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -1362,8 +1426,16 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
-// DataObjQueryStartTime returns the time from which the querier reads the tenant's stream-first
-// metric queries from data objects. The zero time disables it.
+// DataObjMaxBytesPerShard returns the target maximum number of bytes assigned to a specific shard
+// in a query that reads data objects.
+//
+// The result is a uint64, because the default does not fit in an int that has 32 bits.
+func (o *Overrides) DataObjMaxBytesPerShard(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).DataObjMaxBytesPerShard)
+}
+
+// DataObjQueryStartTime returns the time from which the tenant reads stream-first metric queries
+// from data objects. The zero time turns data-object reads off for the tenant.
 func (o *Overrides) DataObjQueryStartTime(userID string) time.Time {
 	return time.Time(o.getOverridesForUser(userID).DataObjQueryStartTime)
 }
@@ -1451,6 +1523,18 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 		return DefaultSortSchema
 	}
 	return s
+}
+
+// DataObjShardLayout returns the shard layout of new data objects for userID.
+func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
+	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
+	if err != nil {
+		// Limits.Validate rejects invalid factors, so only unvalidated limits
+		// reach this branch. It does not log, because writers call
+		// ShardLayout once per record.
+		return streams.DefaultShardLayout()
+	}
+	return layout
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

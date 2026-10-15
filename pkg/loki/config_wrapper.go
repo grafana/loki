@@ -125,6 +125,7 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyLoglineKafkaConfig(r)
 		applyLoglineIndexConfig(r)
 		applyQuerierDataObjConfig(r)
+		applyQueryRangeDataObjConfig(r)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -806,4 +807,11 @@ func applyLoglineKafkaConfig(r *ConfigWrapper) {
 func applyQuerierDataObjConfig(r *ConfigWrapper) {
 	r.Querier.DataObjEnabled = r.DataObj.Enabled
 	r.Querier.DataObjStorageLag = r.DataObj.StorageLag
+}
+
+// applyQueryRangeDataObjConfig copies the data-object settings the query-frontend reads. The query
+// range config has no flag or YAML key for them.
+func applyQueryRangeDataObjConfig(r *ConfigWrapper) {
+	r.QueryRange.DataObjEnabled = r.DataObj.Enabled
+	r.QueryRange.DataObjStorageLag = r.DataObj.StorageLag
 }

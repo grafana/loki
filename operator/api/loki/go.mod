@@ -6,7 +6,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	k8s.io/api v0.26.9
 	k8s.io/apimachinery v0.26.9
-	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.14.5
 )
 
@@ -25,6 +25,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.80.1 // indirect
-	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
+	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 )

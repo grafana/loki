@@ -19,6 +19,14 @@ eval instant at 60s count_over_time({app="a"} |= "ERR" [1m])
 # An empty string matches every line.
 eval instant at 60s count_over_time({app="a"} |= "" [1m])
   {app="a"} 5
+# The same line filters inside sum().
+eval instant at 60s sum(count_over_time({app="a"} |= "err" [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} != "err" [1m]))
+  {} 2
+# A filter after line_format sees the formatted line "a", which no stored line holds.
+eval instant at 60s sum(count_over_time({app="a"} |= "err" | line_format "{{.app}}" |= "a" [1m]))
+  {} 3
 
 # |~ / !~ (regexp match)
 clear
@@ -36,6 +44,8 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |~ "code=5.." [1
 # !~ keeps the lines the regex does not match.
 eval instant at 60s count_over_time({app="a"} !~ "code=5.." [1m])
   {app="a"} 2
+eval instant at 60s sum(count_over_time({app="a"} |~ "code=5.." [1m]))
+  {} 3
 # A regex is case-sensitive; (?i) makes it case-insensitive and also matches CODE=503.
 eval instant at 60s count_over_time({app="a"} |~ "(?i)code=5.." [1m])
   {app="a"} 4
@@ -58,6 +68,8 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |> "GET <_> 200"
 # !> keeps the lines the pattern does not match.
 eval instant at 60s count_over_time({app="a"} !> "GET <_> 200" [1m])
   {app="a"} 2
+eval instant at 60s sum(count_over_time({app="a"} |> "GET <_> 200" [1m]))
+  {} 3
 # A pattern with no <_> matches the whole line, so a substring pattern matches nothing.
 eval instant at 60s count_over_time({app="a"} |> "GET /api" [1m])
   expect empty
@@ -81,6 +93,8 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |= ip("192.168.1
 # != ip keeps lines with no IP in the range, including a line with no IP at all.
 eval instant at 60s count_over_time({app="a"} != ip("192.168.1.0/24") [1m])
   {app="a"} 2
+eval instant at 60s sum(count_over_time({app="a"} |= ip("192.168.1.0/24") [1m]))
+  {} 3
 # A wider range matches the other subnet.
 eval instant at 60s count_over_time({app="a"} |= ip("10.0.0.0/8") [1m])
   {app="a"} 1
@@ -171,6 +185,8 @@ load
 
 eval instant at 60s count_over_time({app="a"} |= "error" or "warn" [1m])
   {app="a"} 5
+eval instant at 60s sum(count_over_time({app="a"} |= "error" or "warn" [1m]))
+  {} 5
 # Three or more operands chain; this one keeps every line.
 eval instant at 60s count_over_time({app="a"} |= "error" or "warn" or "info" [1m])
   {app="a"} 7
@@ -199,6 +215,8 @@ load
 
 eval instant at 60s count_over_time({app="a"} |= "error" |= "status=500" [1m])
   {app="a"} 3
+eval instant at 60s sum(count_over_time({app="a"} |= "error" |= "status=500" [1m]))
+  {} 3
 eval range from 40s to 80s step 20s count_over_time({app="a"} |= "error" |= "status=500" [1m])   # overlapping
   {app="a"} 2 3 3
 eval range from 60s to 180s step 120s count_over_time({app="a"} |= "error" |= "status=500" [1m]) # non-overlapping

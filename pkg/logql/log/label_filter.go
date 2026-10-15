@@ -138,8 +138,8 @@ func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, 
 
 // Hints implements Stage.
 func (NoopLabelFilter) Hints() StageHints {
-	// It does nothing, so it changes no labels.
-	return StageHints{CanModifyLabels: false}
+	// It does nothing, so it changes no labels and no line.
+	return StageHints{CanModifyLabels: false, CanModifyLine: false}
 }
 
 func (NoopLabelFilter) isLabelFilterer() {}
@@ -221,8 +221,11 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 
 // Hints implements Stage.
 func (d *BytesLabelFilter) Hints() StageHints {
-	// It sets __error__ when the label value does not parse as bytes, which changes the output labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It sets __error__ when the label value does not parse as bytes, which changes the output labels.
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+	}
 }
 
 func (d *BytesLabelFilter) isLabelFilterer() {}
@@ -294,8 +297,11 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 
 // Hints implements Stage.
 func (d *DurationLabelFilter) Hints() StageHints {
-	// It sets __error__ when the label value does not parse as a duration, which changes the output labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It sets __error__ when the label value does not parse as a duration, which changes the output labels.
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+	}
 }
 
 func (d *DurationLabelFilter) isLabelFilterer() {}
@@ -362,8 +368,11 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 
 // Hints implements Stage.
 func (n *NumericLabelFilter) Hints() StageHints {
-	// It sets __error__ when the label value does not parse as a number, which changes the output labels.
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It sets __error__ when the label value does not parse as a number, which changes the output labels.
+		CanModifyLabels: true,
+		CanModifyLine:   false,
+	}
 }
 
 func (n *NumericLabelFilter) isLabelFilterer() {}
@@ -414,6 +423,7 @@ func (s *StringLabelFilter) Hints() StageHints {
 		CanModifyLabels:   false,
 		ReadsErrorLabel:   readsError,
 		KeepsErroredLines: keepsError,
+		CanModifyLine:     false,
 	}
 }
 
@@ -459,6 +469,7 @@ func (s *LineFilterLabelFilter) Hints() StageHints {
 		CanModifyLabels:   false,
 		ReadsErrorLabel:   readsError,
 		KeepsErroredLines: keepsError,
+		CanModifyLine:     false,
 	}
 }
 

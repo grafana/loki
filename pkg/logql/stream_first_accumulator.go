@@ -37,6 +37,12 @@ func StreamFirstRangeAggregation(query string) (*syntax.RangeAggregationExpr, bo
 	if err != nil {
 		return nil, false
 	}
+	return StreamFirstRangeAggregationExpr(expr)
+}
+
+// StreamFirstRangeAggregationExpr returns the range aggregation of a stream-first sum expression,
+// and true. It returns false for any other expression.
+func StreamFirstRangeAggregationExpr(expr syntax.Expr) (*syntax.RangeAggregationExpr, bool) {
 	vec, ok := expr.(*syntax.VectorAggregationExpr)
 	if !ok || vec.Operation != syntax.OpTypeSum {
 		return nil, false

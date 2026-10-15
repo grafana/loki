@@ -19,17 +19,6 @@ type SortKey struct {
 	Labels      labels.Labels
 }
 
-// NewSortKey computes the globally stable sorting key for a stream.
-func NewSortKey(streamLabels labels.Labels, schemaKey string) SortKey {
-	hash := labels.StableHash(streamLabels)
-	return SortKey{
-		ShardBucket: ShardBucketFromHash(hash),
-		SchemaKey:   schemaKey,
-		Hash:        hash,
-		Labels:      streamLabels,
-	}
-}
-
 // CompareSortKey compares stream keys by shard bucket, schema key,
 // stable hash, and full labels.
 func CompareSortKey(a, b SortKey) int {

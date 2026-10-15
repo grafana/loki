@@ -3,6 +3,8 @@ package index
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -43,7 +45,9 @@ var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 
-	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per index object to maintain state.
+	// TargetSectionSize is 1 byte, so the tests cover index objects with many
+	// sections. Each AppendStat call cuts a new stats section, and the postings
+	// encoder writes one postings section per entry.
 	TargetSectionSize: 1,
 }
 
@@ -96,11 +100,11 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	// streamShardBuckets from labels; a missing or zeroed map would either
 	// error or collapse these into one row.
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := streams.ShardBucket(first)
+	firstShard := streams.DefaultShardLayout().BucketFromLabels(first)
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if streams.ShardBucket(candidate) != firstShard {
+		if streams.DefaultShardLayout().BucketFromLabels(candidate) != firstShard {
 			second = candidate
 			break
 		}
@@ -148,8 +152,8 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
 	}
 	require.Equal(t, map[int64]struct{}{
-		int64(firstShard):                  {},
-		int64(streams.ShardBucket(second)): {},
+		int64(firstShard): {},
+		int64(streams.DefaultShardLayout().BucketFromLabels(second)): {},
 	}, gotShards)
 }
 
@@ -225,6 +229,42 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), 1)
 	})
 
+	t.Run("builds the same index object key on each rebuild of a multi-section object", func(t *testing.T) {
+		source := newMultiSectionSource(t)
+
+		wantKey := ""
+		for i := range 11 {
+			obj := calculateConcurrently(t, source)
+			if i == 0 {
+				// The index must hold more than one stats section. With one
+				// section, the builder sorts all rows before it encodes them,
+				// so the flush order cannot change the bytes and the test
+				// cannot detect an unordered flush.
+				require.Greater(t, obj.Sections().Count(stats.CheckSection), 1)
+			}
+
+			key, err := ObjectKey(context.Background(), obj)
+			require.NoError(t, err)
+			if i == 0 {
+				wantKey = key
+				continue
+			}
+			require.Equal(t, wantKey, key, "object key differs on rebuild %d", i)
+		}
+	})
+
+	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
+		obj := calculateConcurrently(t, newMultiSectionSource(t))
+
+		rows := readAllStatsRows(t, obj)
+		require.NotEmpty(t, rows)
+		sectionIndexes := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			sectionIndexes = append(sectionIndexes, row["section_index.int64"].(int64))
+		}
+		require.True(t, slices.IsSorted(sectionIndexes), "section indexes are not sorted: %v", sectionIndexes)
+	})
+
 	t.Run("returns ErrNotSingleTenant and leaves the builder empty when the object holds several tenants", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -278,6 +318,20 @@ func TestCalculator_Calculate(t *testing.T) {
 		requireEmptyCalculator(t, calculator, indexBuilder)
 	})
 
+	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds a streams section without logs sections", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+		calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+
+		obj, closer := fixtures.DataObject(t, fixtures.StreamsSection(t, tenant, testLogsFixture(t).Streams()))
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		err = calculator.Calculate(context.Background(), logger, obj, "test/path")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.ErrorContains(t, err, "no logs section")
+		requireEmptyCalculator(t, calculator, indexBuilder)
+	})
+
 	t.Run("returns ErrUnprocessableObject and leaves the builder empty when the object holds neither streams nor logs sections", func(t *testing.T) {
 		indexBuilder, err := indexobj.NewBuilder(tenant, testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -298,6 +352,44 @@ func TestCalculator_Calculate(t *testing.T) {
 	})
 }
 
+// newMultiSectionSource returns a data object with at least two logs sections.
+func newMultiSectionSource(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	source, cleanup := buildSyntheticDataobj(t, 64<<10, 100, 50)
+	t.Cleanup(cleanup)
+	return source
+}
+
+// calculateConcurrently builds the index object of source with 4 workers.
+//
+// A fixed GOMAXPROCS gives Calculate the same worker limit on each machine.
+// With 1, the errgroup in Calculate runs one section at a time, so the order of
+// builder writes cannot change.
+//
+// calculateConcurrently sets the target section size to 1 byte itself, so the
+// test does not depend on that value in the shared test config. Each
+// AppendStat call then cuts a stats section, and the flush order decides which
+// rows each stats section holds.
+func calculateConcurrently(t *testing.T, source *dataobj.Object) *dataobj.Object {
+	t.Helper()
+
+	prevProcs := runtime.GOMAXPROCS(4)
+	defer runtime.GOMAXPROCS(prevProcs)
+
+	cfg := testCalculatorConfig
+	cfg.TargetSectionSize = 1
+	indexBuilder, err := indexobj.NewBuilder(benchTenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
+	require.NoError(t, err)
+	calculator := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))
+	require.NoError(t, calculator.Calculate(context.Background(), log.NewNopLogger(), source, "test/path"))
+
+	obj, closer, _, err := calculator.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return obj
+}
+
 // requireEmptyCalculator checks that calculator and its builder hold no data.
 func requireEmptyCalculator(t *testing.T, calculator *Calculator, builder *indexobj.Builder) {
 	t.Helper()
@@ -315,7 +407,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	)
 	sourceBuilder := dataobj.NewBuilder(nil)
 	ts := time.Unix(10, 0).UTC()
-	streamBuilder := streams.NewBuilder(nil, 2048, 10000)
+	streamBuilder := streams.NewBuilder(nil, 2048, 10000, streams.DefaultShardLayout())
 	streamBuilder.SetTenant(tenant)
 	id := streamBuilder.Record(labels.FromStrings("service_name", tenant), ts, 10)
 	appendLogsSection := func() {

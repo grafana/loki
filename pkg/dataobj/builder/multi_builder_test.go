@@ -36,7 +36,7 @@ func TestMultiObjectBuilder_AppendSplitsAcrossWindows(t *testing.T) {
 		},
 	}, w1))
 
-	builders := m.GetBuilders()
+	builders := m.getBuilders()
 	require.Len(t, builders, 2)
 	// Two windows means two builders were created.
 	require.Equal(t, 2, factory.created)
@@ -54,7 +54,7 @@ func TestMultiObjectBuilder_AppendSplitsAcrossTenantsAndWindows(t *testing.T) {
 	w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
 	w2 := w1.Add(metastore.MetastoreWindowSize)
 
-	// Append tenants and windows out of order to show that GetBuilders sorts
+	// Append tenants and windows out of order to show that getBuilders sorts
 	// them rather than relying on insertion order.
 	for _, tenant := range []string{"tenant-b", "tenant-a"} {
 		require.NoError(t, m.Append(tenant, logproto.Stream{
@@ -66,7 +66,7 @@ func TestMultiObjectBuilder_AppendSplitsAcrossTenantsAndWindows(t *testing.T) {
 		}, w1))
 	}
 
-	builders := m.GetBuilders()
+	builders := m.getBuilders()
 	require.Len(t, builders, 4)
 	require.Equal(t, 4, factory.created)
 
@@ -105,7 +105,7 @@ func TestMultiObjectBuilder_AppendReusesBuilderForSameWindow(t *testing.T) {
 
 	// Both appends land in the same window, so only one builder is created and
 	// reused.
-	require.Len(t, m.GetBuilders(), 1)
+	require.Len(t, m.getBuilders(), 1)
 	require.Equal(t, 1, factory.created)
 }
 
@@ -117,7 +117,7 @@ func TestMultiObjectBuilder_GetBuildersSorted(t *testing.T) {
 	w2 := w1.Add(metastore.MetastoreWindowSize)
 	w3 := w2.Add(metastore.MetastoreWindowSize)
 
-	// Append the windows out of order; GetBuilders must still return them in
+	// Append the windows out of order; getBuilders must still return them in
 	// ascending window order regardless of map iteration randomization.
 	require.NoError(t, m.Append("tenant", logproto.Stream{
 		Labels: `{app="foo"}`,
@@ -128,7 +128,7 @@ func TestMultiObjectBuilder_GetBuildersSorted(t *testing.T) {
 		},
 	}, w1))
 
-	builders := m.GetBuilders()
+	builders := m.getBuilders()
 	require.Len(t, builders, 3)
 	require.Equal(t, w1, truncatedWindow(t, builders[0]))
 	require.Equal(t, w2, truncatedWindow(t, builders[1]))
@@ -180,7 +180,7 @@ func TestMultiObjectBuilder_AppendDoesNotKeepEmptyBuilderOnError(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to parse labels")
 	// A failed append must not leave an empty builder behind.
-	require.Empty(t, m.GetBuilders())
+	require.Empty(t, m.getBuilders())
 }
 
 func TestMultiObjectBuilder_AppendPropagatesFactoryError(t *testing.T) {
@@ -195,7 +195,7 @@ func TestMultiObjectBuilder_AppendPropagatesFactoryError(t *testing.T) {
 	}, w1)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "boom")
-	require.Empty(t, m.GetBuilders())
+	require.Empty(t, m.getBuilders())
 }
 
 func TestMultiObjectBuilder_Reset(t *testing.T) {
@@ -207,11 +207,11 @@ func TestMultiObjectBuilder_Reset(t *testing.T) {
 		Labels:  `{app="foo"}`,
 		Entries: []push.Entry{windowEntry(w1, time.Minute, "a")},
 	}, w1))
-	require.NotEmpty(t, m.GetBuilders())
+	require.NotEmpty(t, m.getBuilders())
 	require.Positive(t, m.GetEstimatedSize())
 
 	m.Reset()
-	require.Empty(t, m.GetBuilders())
+	require.Empty(t, m.getBuilders())
 	require.Equal(t, 0, m.GetEstimatedSize())
 	require.False(t, m.IsFull())
 }

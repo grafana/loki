@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -20,7 +19,6 @@ import (
 	"github.com/go-kit/log/level"
 	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -31,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -304,36 +301,6 @@ func matchersToString(matchers []*labels.Matcher) string {
 	return s.String()
 }
 
-func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
-
-	// Get all metastore paths for the time range
-	var (
-		tablePaths []string
-	)
-	for path := range IterTableOfContentsPaths(tenantID, start, end) {
-		tablePaths = append(tablePaths, path)
-	}
-
-	// List objects from all stores concurrently
-	entries, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
-	if err != nil {
-		return nil, err
-	}
-
-	// Search the stream sections of the matching objects to find matching streams
-	predicate := streamPredicateFromMatchers(start, end, matchers...)
-	paths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		paths = append(paths, entry.Path)
-	}
-	return m.listStreamsFromObjects(ctx, paths, predicate)
-}
-
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -357,110 +324,6 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 		paths = append(paths, entry.Path)
 	}
 	return paths, nil
-}
-
-func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	uniqueLabels := map[string]struct{}{}
-
-	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
-		if _, ok := uniqueLabels[label.Name]; !ok {
-			uniqueLabels[label.Name] = struct{}{}
-		}
-	}, matchers...)
-
-	return slices.Collect(maps.Keys(uniqueLabels)), err
-}
-
-func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	values := map[string]struct{}{}
-
-	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
-		if _, ok := values[label.Value]; !ok {
-			values[label.Value] = struct{}{}
-		}
-	}, matchers...)
-
-	return slices.Collect(maps.Keys(values)), err
-}
-
-func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
-	streams, err := m.streams(ctx, start, end, matchers...)
-	if err != nil {
-		return err
-	}
-
-	for _, streamLabels := range streams {
-		if streamLabels == nil {
-			continue
-		}
-
-		streamLabels.Range(func(streamLabel labels.Label) {
-			foreach(streamLabel)
-		})
-	}
-
-	return nil
-}
-
-func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) streams.RowPredicate {
-	if len(matchers) == 0 {
-		return nil
-	}
-
-	predicates := make([]streams.RowPredicate, 0, len(matchers)+1)
-	predicates = append(predicates, streams.TimeRangeRowPredicate{
-		StartTime:    start,
-		EndTime:      end,
-		IncludeStart: true,
-		IncludeEnd:   true,
-	})
-	for _, matcher := range matchers {
-		switch matcher.Type {
-		case labels.MatchEqual:
-			predicates = append(predicates, streams.LabelMatcherRowPredicate{
-				Name:  matcher.Name,
-				Value: matcher.Value,
-			})
-		case labels.MatchNotEqual:
-			predicates = append(predicates, streams.NotRowPredicate{
-				Inner: streams.LabelMatcherRowPredicate{
-					Name:  matcher.Name,
-					Value: matcher.Value,
-				},
-			})
-		case labels.MatchRegexp:
-			predicates = append(predicates, streams.LabelFilterRowPredicate{
-				Name: matcher.Name,
-				Keep: func(_, value string) bool {
-					return matcher.Matches(value)
-				},
-			})
-		case labels.MatchNotRegexp:
-			predicates = append(predicates, streams.NotRowPredicate{
-				Inner: streams.LabelFilterRowPredicate{
-					Name: matcher.Name,
-					Keep: func(_, value string) bool {
-						return !matcher.Matches(value)
-					},
-				},
-			})
-		}
-	}
-
-	if len(predicates) == 1 {
-		return predicates[0]
-	}
-
-	current := predicates[0]
-
-	for _, predicate := range predicates[1:] {
-		and := streams.AndRowPredicate{
-			Left:  predicate,
-			Right: current,
-		}
-		current = and
-	}
-	return current
 }
 
 // listObjectsFromTables concurrently lists objects from multiple metastore files
@@ -489,57 +352,6 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	}
 
 	return dedupeAndSortEntries(objects), nil
-}
-
-func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
-	mu := sync.Mutex{}
-	foundStreams := make(map[uint64][]*labels.Labels, 1024)
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-
-	for _, path := range paths {
-		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
-			if err != nil {
-				return fmt.Errorf("getting object from bucket: %w", err)
-			}
-
-			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
-				addLabels(&mu, foundStreams, &stream.Labels)
-			})
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	streamsSlice := make([]*labels.Labels, 0, len(foundStreams))
-	for _, labels := range foundStreams {
-		streamsSlice = append(streamsSlice, labels...)
-	}
-
-	return streamsSlice, nil
-}
-
-func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
-	mtx.Lock()
-	defer mtx.Unlock()
-
-	key := labels.StableHash(*newLabels)
-	matches, ok := streams[key]
-	if !ok {
-		streams[key] = append(streams[key], newLabels)
-		return
-	}
-
-	for _, lbs := range matches {
-		if labels.Equal(*lbs, *newLabels) {
-			return
-		}
-	}
-	streams[key] = append(streams[key], newLabels)
 }
 
 func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
@@ -572,53 +384,6 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 	}
 
 	return entries, nil
-}
-
-func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
-	var reader streams.RowReader
-	defer reader.Close()
-
-	buf := make([]streams.Stream, 1024)
-
-	for _, section := range object.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
-		sec, err := streams.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening section: %w", err)
-		}
-
-		reader.Reset(sec)
-		if predicate != nil {
-			err := reader.SetPredicate(predicate)
-			if err != nil {
-				return err
-			}
-		}
-		if err := reader.Open(ctx); err != nil {
-			return fmt.Errorf("opening streams row reader: %w", err)
-		}
-
-		for {
-			num, err := reader.Read(ctx, buf)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-			if num == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, stream := range buf[:num] {
-				f(stream)
-			}
-		}
-	}
-	return nil
 }
 
 // dedupeAndSortEntries takes a slice of IndexEntry slices and returns a sorted slice of unique entries (by path).
@@ -667,8 +432,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
-	selector := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
-	if selector == nil {
+	if len(req.Matchers) == 0 {
 		// At least one stream matcher is required, currently.
 		return SectionsResponse{}, nil
 	}
@@ -705,7 +469,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 
 			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
 			if err != nil {
-				return fmt.Errorf("collect sections: %w", err)
+				return fmt.Errorf("collect sections of index object %q: %w", indexEntry.Path, err)
 			}
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
@@ -733,10 +497,17 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, err
 	}
 
-	ratio := float64(len(uniqueSections)) / float64(totalSections.Load())
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(uniqueSections)))
-	m.metrics.resolvedSectionsRatio.Observe(ratio)
+
+	// The stream filters can resolve no section, and then the ratio is undefined. Observing 0/0
+	// would turn the histogram sum into NaN. Observing 0 would claim that deduplication dropped
+	// every section.
+	var ratio float64
+	if totalSections.Load() > 0 {
+		ratio = float64(len(uniqueSections)) / float64(totalSections.Load())
+		m.metrics.resolvedSectionsRatio.Observe(ratio)
+	}
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
@@ -814,8 +585,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	flow := flowPostings
-	var reader ArrowRecordBatchReader = newPostingsIndexSectionsReader(
+	reader := newPostingsIndexSectionsReader(
 		m.logger,
 		idxObj,
 		req.SectionsRequest.Start,
@@ -823,12 +593,9 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
+		req.SectionsRequest.ShardBucketRange,
 	)
-
-	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
-	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
-
-	return IndexSectionsReaderResponse{Reader: reader}, nil
+	return IndexSectionsReaderResponse{Reader: &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics}}, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (_ GetIndexesResponse, returnErr error) {

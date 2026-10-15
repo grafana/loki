@@ -1314,7 +1314,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			limits := tc.limits
 			limits.splitDuration = map[string]time.Duration{tenantID: tc.splitInterval}
 
-			splits, enabled := newMetricQuerySplitter(limits, tc.iqo).split(refTime, []string{tenantID}, tc.input)
+			splits, enabled := newMetricQuerySplitter(Config{}, limits, tc.iqo).split(refTime, []string{tenantID}, tc.input)
 			require.True(t, enabled)
 			if !assert.Equal(t, tc.expected, splits) {
 				t.Logf("expected and actual do not match\n")
