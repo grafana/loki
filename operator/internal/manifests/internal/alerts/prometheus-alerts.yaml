@@ -179,21 +179,20 @@ groups:
     for: 15m
     labels:
       severity: critical
-  - alert: LokistackDeprecatedBoltDBSchema
+  - alert: LokistackSchemaUpgradesRequired
     annotations:
       description: |-
-        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using BoltDB storage schema versions (v11 or v12) which are not supported.
-        The LokiStack is in a degraded state and will not reconcile until all v11 and v12 schemas are removed from the configuration.
-        You must migrate to v13 schemas before this LokiStack can be reconciled.
-        Refer to the runbook for migration documentation.
-      summary: "LokiStack is using unsupported BoltDB schema versions and is in a degraded state."
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using a storage schema
+        configuration that does not contain the latest schema version. It is recommended to update the schema
+        configuration to update the schema version to the latest version in the future.
+      summary: "One or more of the deployed LokiStacks contains an outdated storage schema configuration."
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Schema-Upgrades-Required"
     expr: |
       sum (
-        lokistack_status_condition{condition="Degraded",reason="InvalidObjectStorageSchema",status="true"}
+        lokistack_status_condition{reason="StorageNeedsSchemaUpdate",status="true"}
       ) by (stack_namespace, stack_name)
       > 0
-    for: 5m
+    for: 1m
     labels:
       severity: warning
   - alert: LokistackComponentsNotReadyWarning

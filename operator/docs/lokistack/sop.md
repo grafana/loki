@@ -335,15 +335,15 @@ One or more Loki ingesters are failing to flush at least 20% of their chunks to 
   - **For Capacity Issues**: Increase storage size/IOPS or implement lifecycle policies
   - **For Configuration Issues**: Correct the LokiStack storage configuration and wait for a restart of the ingesters
 
-## Lokistack Schema Upgrades Required
+## Lokistack Storage Schema Warning
 
 ### Impact
 
-The LokiStack contains deprecated BoltDB storage schema versions (v11 or v12) which are not supported in this operator version. The LokiStack will be in a degraded state and will not reconcile until the schemas are migrated to v13.
+The LokiStack warns on a newer object storage schema being available for configuration.
 
 ### Summary
 
-The schema configuration contains v11 or v12 schemas that must be migrated to v13. These deprecated BoltDB schema versions are not supported and prevent the LokiStack from reconciling.
+The schema configuration does not contain the most recent schema version and needs an update.
 
 ### Severity
 
@@ -358,15 +358,7 @@ The schema configuration contains v11 or v12 schemas that must be migrated to v1
 
 ### Steps
 
-Complete migration to v13 schemas before this LokiStack can reconcile. See the migration guide for detailed instructions: https://loki-operator.dev/docs/user-guides/migrate-to-v13-schemas.md/
-
-Summary of required steps:
-1. Add a v13 schema with future effective date (if not already done)
-2. Wait for the effective date to pass and v13 to become active
-3. Wait for retention period to expire for old data stored with v11/v12 schemas
-4. Remove all v11 and v12 schema entries from the LokiStack spec
-
-**Important**: You must remove ALL v11 and v12 schemas from the configuration, not just set v13 as the active schema. The operator will not reconcile LokiStacks that contain any v11 or v12 schema definitions.
+- Add a new object storage schema V13 with a future EffectiveDate
 
 ## Lokistack Components Not Ready Warning
 
