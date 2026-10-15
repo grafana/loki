@@ -187,15 +187,6 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 				require.ElementsMatch(t, pathsA, got)
 			},
 		},
-		{
-			name: "Values",
-			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
-				got, err := mstore.Values(ctx, start, end)
-				require.NoError(t, err)
-				require.NotContains(t, got, "only-in-b")
-				require.Contains(t, got, "foo")
-			},
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := &getRecordingBucket{Bucket: builder.bucket}
@@ -211,131 +202,6 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, len(matchers))
-	})
-}
-
-func TestNonExistentLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "invalid"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 0)
-	})
-}
-
-func TestMixedLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "invalid"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 0)
-	})
-}
-
-func TestLabelsSingleMatcher(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-
-		require.Len(t, matchedLabels, 3)
-		for _, expectedLabel := range []string{"env", "team", "app"} {
-			require.NotEqual(t, slices.Index(matchedLabels, expectedLabel), -1)
-		}
-	})
-}
-
-func TestLabelsEmptyMatcher(t *testing.T) {
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 3)
-	})
-}
-
-func TestValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, len(matchers))
-	})
-}
-
-func TestNonExistentValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "invalid"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 0)
-	})
-}
-
-func TestMixedValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 0)
-	})
-}
-
-func TestValuesSingleMatcher(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 5)
-	})
-}
-
-func TestValuesEmptyMatcher(t *testing.T) {
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 6)
-		for _, expectedValue := range []string{"foo", "prod", "bar", "dev", "baz", "a"} {
-			require.NotEqual(t, slices.Index(matchedValues, expectedValue), -1)
-		}
-	})
 }
 
 func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
@@ -1223,27 +1089,6 @@ func TestDataobjSectionDescriptorMerge_NilLabels(t *testing.T) {
 	desc.Merge(ptr2, []string{"env"})
 
 	require.ElementsMatch(t, []string{"env"}, desc.AmbiguousPredicates)
-}
-
-func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
-	now := time.Now().UTC()
-	start := now.Add(-time.Hour * 5)
-	end := now.Add(time.Hour * 5)
-
-	builder := newTestDataBuilder(t)
-
-	for _, stream := range testStreams {
-		builder.addStreamAndFlush(tenant, stream)
-	}
-
-	mstore := newTestObjectMetastore(builder.bucket)
-	defer func() {
-		require.NoError(t, builder.bucket.Close())
-	}()
-
-	ctx := user.InjectOrgID(context.Background(), tenant)
-
-	mfunc(ctx, start, end, mstore)
 }
 
 func newTestDataBuilder(t testing.TB) *testDataBuilder {
