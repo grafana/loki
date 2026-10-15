@@ -436,32 +436,38 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 
 // compareDryRunMetric reports whether every positive sample's lookback window overlaps a hint.
 // An overlap does not necessarily mean the final metric result will be correct. This check
-// avoids re-running the metric query with hints.
-func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange) (bool, *dryRunMetricSteps) {
+// avoids re-running the metric query with hints. TotalEntries counts the positive steps whose
+// lookback ended at or before the ingester cutoff.
+func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
+	report := verification.Report{HintRanges: len(hints)}
 	// A positive absent_over_time sample means the window was empty.
 	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
-		return true, nil
+		return report
 	}
 	group := metricMatcherGroup(expr)
-	var positive, missed int
 	for _, stream := range promResp.Response.Data.Result {
 		for _, sample := range stream.Samples {
 			if sample.Value <= 0 {
 				continue
 			}
-			positive++
 			step := time.UnixMilli(sample.TimestampMs)
 			// A sample reads the range and offset ending at this one step.
 			winStart, winEnd := group.Widen(step, step)
-			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
-				missed++
+			// Hint lookup stops at the ingester cutoff, so a lookback that extends past it
+			// counted lines the index was not asked to cover.
+			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
+				continue
 			}
+			report.TotalEntries++
+			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
+				report.FalseNegativeTimestamps = append(report.FalseNegativeTimestamps, step)
+				continue
+			}
+			report.CoveredEntries++
 		}
 	}
-	if missed == 0 {
-		return true, nil
-	}
-	return false, &dryRunMetricSteps{positive: positive, missed: missed}
+	report.FalseNegatives = report.TotalEntries - report.CoveredEntries
+	return report
 }
 
 // metricMatcherGroup returns the single matcher group for a supported metric query.
@@ -484,12 +490,6 @@ func isAbsentOverTimeAgg(expr syntax.Expr) bool {
 	}
 }
 
-// dryRunMetricSteps counts positive samples and how many of their lookback windows miss every hint.
-type dryRunMetricSteps struct {
-	positive int
-	missed   int
-}
-
 func logDryRunVerification(
 	metrics *Metrics,
 	logger log.Logger,
@@ -497,10 +497,9 @@ func logDryRunVerification(
 	hintSummary dryRunHintSummary,
 	eligibleEnd time.Time,
 	queryType string,
-	correct bool,
 	report *verification.Report,
-	steps *dryRunMetricSteps,
 ) {
+	correct := report.Correct()
 	label := "correct"
 	if !correct {
 		label = "false_negative"
@@ -521,20 +520,12 @@ func logDryRunVerification(
 		"initial_skip_seconds", hintSummary.initialSkipSeconds,
 		"hint_ranges_checksum", hintSummary.rangesChecksum,
 	}
-	if report != nil {
-		logValues = append(logValues,
-			"total_entries", report.TotalEntries,
-			"covered_entries", report.CoveredEntries,
-			"false_negatives", report.FalseNegatives,
-		)
-	}
-	if steps != nil {
-		logValues = append(logValues,
-			"positive_steps", steps.positive,
-			"missed_steps", steps.missed,
-		)
-	}
-	logValues = append(logValues, "correct", correct)
+	logValues = append(logValues,
+		"total_entries", report.TotalEntries,
+		"covered_entries", report.CoveredEntries,
+		"false_negatives", report.FalseNegatives,
+		"correct", correct,
+	)
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
 }
@@ -826,17 +817,13 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	var (
-		correct bool
-		report  *verification.Report
-		steps   *dryRunMetricSteps
-	)
+	var report *verification.Report
 	switch r := resp.(type) {
 	case *queryrange.LokiPromResponse:
-		correct, steps = compareDryRunMetric(expr, r, lookup.ranges)
+		vr := compareDryRunMetric(expr, r, lookup.ranges, eligibleEnd)
+		report = &vr
 	case *queryrange.LokiResponse:
 		vr := verifyDryRunHints(lookup.ranges, r, eligibleEnd)
-		correct = vr.Correct()
 		report = &vr
 	default:
 		level.Warn(logger).Log(
@@ -845,7 +832,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		)
 		return resp, queryErr
 	}
-	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, correct, report, steps)
+	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, report)
 	return resp, queryErr
 }
 

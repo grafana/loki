@@ -2284,8 +2284,9 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 			require.NotEmpty(t, logLine)
 			require.Contains(t, logLine, "correct=true")
 			require.Contains(t, logLine, "query_type=metric")
-			require.NotContains(t, logLine, "positive_steps=")
-			require.NotContains(t, logLine, "missed_steps=")
+			require.Contains(t, logLine, "total_entries=1")
+			require.Contains(t, logLine, "covered_entries=1")
+			require.Contains(t, logLine, "false_negatives=0")
 		})
 	}
 }
@@ -2323,9 +2324,62 @@ func TestDryRun_MetricRange_EmptyHintsMissPositiveStep(t *testing.T) {
 	require.NotEmpty(t, logLine)
 	require.Contains(t, logLine, "correct=false", "a positive sample with no overlapping hint is a miss")
 	require.Contains(t, logLine, "query_type=metric")
-	require.Contains(t, logLine, "positive_steps=1")
-	require.Contains(t, logLine, "missed_steps=1")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=0")
+	require.Contains(t, logLine, "false_negatives=1")
 	require.NotContains(t, logLine, "non-Loki response")
+}
+
+func TestDryRun_MetricRange_IngesterWindowSamplesExcluded(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-6 * time.Hour)
+	// Lookback ends before the 3h cutoff, so this step is checked.
+	storeStep := now.Add(-4 * time.Hour)
+	// Lookback ends after the cutoff, so this step is left out.
+	ingesterStep := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: nil},
+	}
+
+	userResp := &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result: []queryrangebase.SampleStream{{
+					Labels: []logproto.LabelAdapter{{Name: "app", Value: "api"}},
+					Samples: []logproto.LegacySample{
+						{TimestampMs: storeStep.UnixMilli(), Value: 1},
+						{TimestampMs: ingesterStep.UnixMilli(), Value: 1},
+					},
+				}},
+			},
+		},
+	}
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{
+		DryRun:               true,
+		NgramLength:          6,
+		QueryIngestersWithin: 3 * time.Hour,
+	}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+
+	_, gotThrough := hp.Window()
+	require.WithinDuration(t, now.Add(-3*time.Hour), gotThrough.Time(), 2*time.Second)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=false")
+	require.Contains(t, logLine, "total_entries=1", "the ingester-window step is left out")
+	require.Contains(t, logLine, "covered_entries=0")
+	require.Contains(t, logLine, "false_negatives=1")
 }
 
 func TestDryRun_MetricRange_AbsentOverTimeSkipsOverlap(t *testing.T) {
@@ -2353,7 +2407,8 @@ func TestDryRun_MetricRange_AbsentOverTimeSkipsOverlap(t *testing.T) {
 	logLine := findLogLine(logs.String(), "logline dry-run verification")
 	require.NotEmpty(t, logLine)
 	require.Contains(t, logLine, "correct=true", "a positive absent_over_time sample means the window was empty")
-	require.NotContains(t, logLine, "missed_steps=")
+	require.Contains(t, logLine, "total_entries=0")
+	require.Contains(t, logLine, "false_negatives=0")
 }
 
 func TestDryRun_MetricRange_UnsupportedSkipsHintLookup(t *testing.T) {
