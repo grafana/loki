@@ -1,6 +1,15 @@
 package streams
 
-import "github.com/prometheus/prometheus/model/labels"
+import (
+	"fmt"
+	"math/bits"
+
+	"github.com/prometheus/prometheus/model/labels"
+)
+
+// MaxShardBits is the largest shard bit count that a [ShardLayout] can have.
+// It keeps the bucket count well inside a uint32.
+const MaxShardBits = 16
 
 // DefaultShardBits is the shard bit count of [DefaultShardLayout].
 //
@@ -24,9 +33,23 @@ func DefaultShardLayout() ShardLayout {
 // and readers trust them without a new hash check. A reader that uses a
 // different layout than the writer returns wrong results.
 //
-// The zero value has one bucket.
+// The zero value has one bucket. Bits is never more than [MaxShardBits].
 type ShardLayout struct {
 	bits uint8
+}
+
+// ShardLayoutFromBuckets returns the layout with the given bucket count, as
+// stored in object metadata. It returns an error if buckets is not a power of
+// two in [1, 2^MaxShardBits].
+func ShardLayoutFromBuckets(buckets uint32) (ShardLayout, error) {
+	if buckets == 0 || buckets&(buckets-1) != 0 {
+		return ShardLayout{}, fmt.Errorf("shard bucket count %d is not a power of two", buckets)
+	}
+	n := bits.TrailingZeros32(buckets)
+	if n > MaxShardBits {
+		return ShardLayout{}, fmt.Errorf("shard bucket count %d is more than the maximum %d", buckets, 1<<MaxShardBits)
+	}
+	return ShardLayout{bits: uint8(n)}, nil
 }
 
 // Bits returns the number of high hash bits that select a bucket.

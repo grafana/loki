@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -275,6 +276,52 @@ type Limits struct {
 
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
+
+	// ShardFactor is the number of stream shard buckets in new data objects.
+	ShardFactor ShardFactor `yaml:"shard_factor" json:"shard_factor" doc:"hidden"`
+}
+
+// ShardFactor is the number of shard buckets that data objects divide a
+// tenant's streams into. It must be a power of two. Zero means the default,
+// [streams.DefaultShardBuckets].
+type ShardFactor uint32
+
+// Layout returns the shard layout of f.
+func (f ShardFactor) Layout() (streams.ShardLayout, error) {
+	if f == 0 {
+		return streams.DefaultShardLayout(), nil
+	}
+	return streams.ShardLayoutFromBuckets(uint32(f))
+}
+
+// Validate returns an error if f is not a supported shard factor.
+//
+// Validate accepts only the default factor. Readers assume that every object
+// uses the default layout, so objects with another factor would return wrong
+// query results. Lift this restriction only after readers use the layout that
+// each object records.
+func (f ShardFactor) Validate() error {
+	layout, err := f.Layout()
+	if err != nil {
+		return err
+	}
+	if layout != streams.DefaultShardLayout() {
+		return fmt.Errorf("shard factor %d is not supported, only %d is", f, streams.DefaultShardBuckets)
+	}
+	return nil
+}
+
+// String implements flag.Value.
+func (f ShardFactor) String() string { return strconv.FormatUint(uint64(f), 10) }
+
+// Set implements flag.Value.
+func (f *ShardFactor) Set(v string) error {
+	n, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		return fmt.Errorf("parse shard factor %q: %w", v, err)
+	}
+	*f = ShardFactor(n)
+	return nil
 }
 
 type FieldDetectorConfig struct {
@@ -588,6 +635,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 
 	l.SortSchema = DefaultSortSchema
+	l.ShardFactor = streams.DefaultShardBuckets
+	f.Var(&l.ShardFactor, "limits.shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two. Only %d is supported.", streams.DefaultShardBuckets))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -731,6 +780,10 @@ func (l *Limits) Validate() error {
 
 	if err := l.SortSchema.Validate(); err != nil {
 		return fmt.Errorf("sort_schema: %w", err)
+	}
+
+	if err := l.ShardFactor.Validate(); err != nil {
+		return fmt.Errorf("shard_factor: %w", err)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -1469,6 +1522,18 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 		return DefaultSortSchema
 	}
 	return s
+}
+
+// ShardLayout returns the shard layout of new data objects for userID.
+func (o *Overrides) ShardLayout(userID string) streams.ShardLayout {
+	layout, err := o.getOverridesForUser(userID).ShardFactor.Layout()
+	if err != nil {
+		// Limits.Validate rejects invalid factors from flags, YAML, and
+		// runtime overrides, so only limits that skip validation reach
+		// this branch.
+		return streams.DefaultShardLayout()
+	}
+	return layout
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

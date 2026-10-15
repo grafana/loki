@@ -44,3 +44,34 @@ func TestShardLayout(t *testing.T) {
 		require.Equal(t, ls, key.Labels)
 	})
 }
+
+func TestShardLayoutFromBuckets(t *testing.T) {
+	t.Run("returns the layout whose bucket count is the input", func(t *testing.T) {
+		for _, buckets := range []uint32{1, 2, 32, 1 << MaxShardBits} {
+			layout, err := ShardLayoutFromBuckets(buckets)
+			require.NoError(t, err)
+			require.Equal(t, buckets, layout.Buckets())
+		}
+	})
+
+	t.Run("returns the default layout for the default bucket count", func(t *testing.T) {
+		layout, err := ShardLayoutFromBuckets(DefaultShardBuckets)
+		require.NoError(t, err)
+		require.Equal(t, DefaultShardLayout(), layout)
+	})
+
+	t.Run("returns an error when the count is zero", func(t *testing.T) {
+		_, err := ShardLayoutFromBuckets(0)
+		require.ErrorContains(t, err, "not a power of two")
+	})
+
+	t.Run("returns an error when the count is not a power of two", func(t *testing.T) {
+		_, err := ShardLayoutFromBuckets(24)
+		require.ErrorContains(t, err, "not a power of two")
+	})
+
+	t.Run("returns an error when the count is above the maximum", func(t *testing.T) {
+		_, err := ShardLayoutFromBuckets(1 << (MaxShardBits + 1))
+		require.ErrorContains(t, err, "more than the maximum")
+	})
+}
