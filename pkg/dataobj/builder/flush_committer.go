@@ -24,17 +24,20 @@ type committer interface {
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
-// An indexer allows mocking of index building in tests.
+// An indexer allows mocking of index building in tests. Implementations must
+// be safe for concurrent use.
 type indexer interface {
 	Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error)
 }
 
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
+// Implementations must be safe for concurrent use.
 type tocWriter interface {
 	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
 }
 
-// A flusher allows mocking of flushes in tests.
+// A flusher allows mocking of flushes in tests. Implementations must be safe
+// for concurrent use.
 type flusher interface {
 	// Flush builds, sorts and uploads the builder's data object. On success the
 	// caller owns the returned [io.Closer] and must close it once it is done
@@ -52,9 +55,10 @@ type flushCommitterImpl struct {
 	partition int32
 	logger    log.Logger
 
-	// concurrency is the maximum number of builders that one flush processes
-	// at the same time. Each in-flight builder holds its sorted object until
-	// the ToC records its index, so this also bounds the extra flush memory.
+	// concurrency is the maximum number of builders that one flush has in
+	// progress. Each builder in progress holds its sorted object until the ToC
+	// records its index, so concurrency also bounds the sorted objects in
+	// memory. It is at least 1.
 	concurrency int
 
 	duration      *prometheus.HistogramVec
@@ -134,26 +138,27 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	return nil
 }
 
-// flushAll flushes, indexes and records each builder in the ToC, with at most
-// c.concurrency builders in progress. It returns once every started builder
-// is done and has released its object.
+// flushAll flushes and indexes each builder and records each index in the
+// ToC, with at most c.concurrency builders in progress. It returns once every
+// started builder is done and has released its object.
 //
 // The first failure cancels the builders in progress and skips the builders
 // not yet started. flushAll returns that first failure, not the cancellation
 // errors that it causes in the other builders.
 //
-// Builders start in the order given but can finish in any order. This is safe
-// because each builder holds one tenant and window, so it writes to its own
-// ToC. The caller commits the offset only after flushAll returns.
+// flushAll takes the builders in the order given, but builders in progress
+// can run and finish in any order. This is safe because a ToC is an unordered
+// set of index pointers, and the ToC writer is safe for concurrent use. The
+// caller commits the offset only after flushAll returns.
 func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.concurrency)
 	for _, b := range builders {
 		g.Go(func() error {
 			// Skip the builder if the flush was canceled or another builder
-			// failed while this one waited for a slot. The builder flush does
-			// not check the context, so it would build an object only to
-			// discard it.
+			// failed while this one waited for a slot. builder.Flush takes no
+			// context, so it would build the whole object before the sort
+			// sees the cancellation.
 			if err := gctx.Err(); err != nil {
 				return err
 			}
@@ -232,7 +237,11 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 			return index.Result{}, err
 		}
 		lastErr = err
-		level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
+		// An attempt that stops because ctx is done did not fail, and the loop
+		// does not retry it.
+		if ctx.Err() == nil {
+			level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
+		}
 		b.Wait()
 	}
 	// The loop only gives up once the context is done. Surface that alongside

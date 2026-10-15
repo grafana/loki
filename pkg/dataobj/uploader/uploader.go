@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -97,8 +98,11 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 
 	objectPath, err := d.getKey(ctx, object)
 	if err != nil {
-		d.metrics.uploadFailures.Inc()
-		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(object.Size()))
+		// A key that fails because ctx is done is not an upload failure.
+		if ctx.Err() == nil {
+			d.metrics.uploadFailures.Inc()
+			d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(object.Size()))
+		}
 		return "", fmt.Errorf("generating object key: %w", err)
 	}
 
@@ -112,6 +116,7 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 
 	logger := log.With(d.logger, "key", objectPath, "size", size)
 
+	uploaded := false
 	for backoff.Ongoing() {
 		level.Debug(logger).Log("msg", "attempting to upload dataobj to object storage", "attempt", backoff.NumRetries())
 
@@ -124,6 +129,10 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 			return d.bucket.Upload(ctx, objectPath, reader)
 		}()
 		if err == nil {
+			uploaded = true
+			break
+		}
+		if ctx.Err() != nil {
 			break
 		}
 		level.Warn(logger).Log("msg", "failed to upload dataobj to object storage; will retry", "err", err, "attempt", backoff.NumRetries())
@@ -132,9 +141,18 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 
 	d.metrics.uploadTotal.Inc()
 
-	if err != nil {
-		d.metrics.uploadFailures.Inc()
-		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
+	if !uploaded {
+		// The loop does not run at all if ctx is already done, so err can be
+		// nil here. backoff.Err reports why the retries stopped. It keeps a
+		// canceled ctx visible to the caller, which treats that as a shutdown
+		// rather than as a failed upload.
+		err = errors.Join(backoff.Err(), err)
+
+		// An upload that stops because ctx is done did not fail.
+		if ctx.Err() == nil {
+			d.metrics.uploadFailures.Inc()
+			d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
+		}
 		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
 	}
 

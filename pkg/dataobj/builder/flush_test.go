@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -143,6 +144,20 @@ func TestFlusher_Flush(t *testing.T) {
 		# TYPE loki_dataobj_builder_release_failures_total counter
 		loki_dataobj_builder_release_failures_total 1
 		`), "loki_dataobj_builder_release_failures_total"))
+	})
+
+	t.Run("should not count a failure when the context is canceled", func(t *testing.T) {
+		var (
+			reg         = prometheus.NewRegistry()
+			testBuilder = newTestMockBuilder(t)
+		)
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		f := newFlusher(&mockSorter{}, &failureUploader{}, log.NewNopLogger(), reg)
+		_, _, _, err := f.Flush(ctx, testBuilder, flushReasonBuilderFull)
+		require.Error(t, err)
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectSuccessMetrics), flushMetricNames...))
 	})
 
 	t.Run("should return the upload error when releasing the sorted object also fails", func(t *testing.T) {
