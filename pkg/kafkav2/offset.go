@@ -197,3 +197,87 @@ func (r *OffsetReader) listOffset(ctx context.Context, partition int32, timestam
 	}
 	return partitionRes.Offset, nil
 }
+
+// TopicOffsetReader reads the offsets of many partitions of a topic at once.
+//
+// Each method sends one request per broker, not one request per partition.
+// StartOffsets and EndOffsets also send a metadata request to find the
+// partitions of the topic.
+type TopicOffsetReader struct {
+	adm   *kadm.Client
+	topic string
+}
+
+// NewTopicOffsetReader returns a new TopicOffsetReader.
+func NewTopicOffsetReader(client *kgo.Client, topic string) *TopicOffsetReader {
+	return &TopicOffsetReader{
+		adm:   kadm.NewClient(client),
+		topic: topic,
+	}
+}
+
+// StartOffsets returns the start offset of each partition, keyed by
+// partition. See [OffsetReader.StartOffset].
+func (r *TopicOffsetReader) StartOffsets(ctx context.Context) (map[int32]int64, error) {
+	listed, err := r.adm.ListStartOffsets(ctx, r.topic)
+	return r.listedOffsets(listed, err)
+}
+
+// EndOffsets returns the end offset of each partition, keyed by partition.
+func (r *TopicOffsetReader) EndOffsets(ctx context.Context) (map[int32]int64, error) {
+	listed, err := r.adm.ListEndOffsets(ctx, r.topic)
+	return r.listedOffsets(listed, err)
+}
+
+// listedOffsets returns an error if any partition failed. A partial result
+// would make some partitions look empty.
+func (r *TopicOffsetReader) listedOffsets(listed kadm.ListedOffsets, err error) (map[int32]int64, error) {
+	if err != nil {
+		return nil, err
+	}
+	if err := listed.Error(); err != nil {
+		return nil, err
+	}
+	offsets := make(map[int32]int64, len(listed[r.topic]))
+	for partition, o := range listed[r.topic] {
+		offsets[partition] = o.Offset
+	}
+	return offsets, nil
+}
+
+// ResumeOffsets returns the next offset to consume for each partition in
+// groups, keyed by partition. groups maps each partition to the consumer
+// group that consumes it.
+//
+// The offset is [OffsetStart] if the group has no committed offset for its
+// partition, as in [OffsetReader.ResumeOffset].
+func (r *TopicOffsetReader) ResumeOffsets(ctx context.Context, groups map[int32]string) (map[int32]int64, error) {
+	names := make([]string, 0, len(groups))
+	for _, group := range groups {
+		names = append(names, group)
+	}
+	fetched := r.adm.FetchManyOffsets(ctx, names...)
+
+	offsets := make(map[int32]int64, len(groups))
+	for partition, group := range groups {
+		offsets[partition] = OffsetStart
+		res, ok := fetched[group]
+		if !ok || errors.Is(res.Err, kerr.GroupIDNotFound) {
+			continue
+		}
+		if res.Err != nil {
+			return nil, fmt.Errorf("failed to fetch offsets of group %s: %w", group, res.Err)
+		}
+		committed, ok := res.Fetched.Lookup(r.topic, partition)
+		if !ok {
+			continue
+		}
+		if committed.Err != nil {
+			return nil, fmt.Errorf("failed to fetch offset of group %s: %w", group, committed.Err)
+		}
+		if committed.At >= 0 {
+			offsets[partition] = committed.At + 1
+		}
+	}
+	return offsets, nil
+}
