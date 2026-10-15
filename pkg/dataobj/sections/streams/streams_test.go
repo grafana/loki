@@ -2,8 +2,15 @@ package streams
 
 import (
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 func TestSection_HasColumn(t *testing.T) {
@@ -74,4 +81,61 @@ func TestSection_HasColumn(t *testing.T) {
 			require.Equal(t, test.want, section.HasColumn(test.lookup))
 		})
 	}
+}
+
+func TestSection_ShardLayout(t *testing.T) {
+	openSection := func(t *testing.T, sb dataobj.SectionBuilder) *Section {
+		t.Helper()
+		obj := buildObjectWithUnknownColumn(t, sb)
+		sec, err := Open(t.Context(), obj.Sections()[0])
+		require.NoError(t, err)
+		return sec
+	}
+
+	t.Run("returns the layout that the builder recorded", func(t *testing.T) {
+		layout, err := ShardLayoutFromBuckets(4)
+		require.NoError(t, err)
+		builder := NewBuilder(nil, 1024, 0, layout)
+		builder.SetTenant("tenant")
+		builder.Record(labels.FromStrings("app", "foo"), time.Unix(10, 0), 1)
+
+		got, err := openSection(t, builder).ShardLayout()
+		require.NoError(t, err)
+		require.Equal(t, layout, got)
+	})
+
+	t.Run("returns the default layout when the section has no shard count", func(t *testing.T) {
+		got, err := openSection(t, &unknownColumnSectionBuilder{}).ShardLayout()
+		require.NoError(t, err)
+		require.Equal(t, DefaultShardLayout(), got)
+	})
+
+	t.Run("returns an error when the recorded shard count is not a power of two", func(t *testing.T) {
+		_, err := openSection(t, &sortInfoSectionBuilder{info: &datasetmd.SortInfo{ShardCount: 24}}).ShardLayout()
+		require.ErrorContains(t, err, "not a power of two")
+	})
+}
+
+// sortInfoSectionBuilder encodes a streams section with one stream ID column
+// and the given sort info.
+type sortInfoSectionBuilder struct {
+	info *datasetmd.SortInfo
+}
+
+func (b *sortInfoSectionBuilder) Type() dataobj.SectionType { return sectionType }
+
+func (b *sortInfoSectionBuilder) Reset() {}
+
+func (b *sortInfoSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
+	var enc columnar.Encoder
+	defer enc.Reset()
+
+	streamIDBuilder := newInt64ColumnBuilder("stream_id", ColumnTypeStreamID.String())
+	_ = streamIDBuilder.Append(0, dataset.Int64Value(1))
+	if err := encodeTestColumns(&enc, streamIDBuilder); err != nil {
+		return 0, err
+	}
+	enc.SetTenant("tenant")
+	enc.SetSortInfo(b.info)
+	return enc.Flush(w)
 }

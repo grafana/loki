@@ -400,26 +400,53 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 		return buckets
 	}
 
+	nonDefault, err := streams.ShardLayoutFromBuckets(4)
+	require.NoError(t, err)
+	sourceWithLayout := func(t *testing.T) *dataobj.Object {
+		t.Helper()
+		return buildObjectWithShardLayout(t, tenant, []string{"label:app"}, nonDefault, streamCount, now)
+	}
+
 	tests := []struct {
 		name      string
+		source    func(t *testing.T) *dataobj.Object
 		overrides TenantOverrides
 		resort    bool
+		layout    streams.ShardLayout
 	}{
 		{
 			name:      "the merge-only copy keeps the bucket of every stream",
+			source:    source,
 			overrides: tenantOverrides{tenant: {"label:app"}},
 			resort:    false,
+			layout:    streams.DefaultShardLayout(),
 		},
 		{
 			name:      "the re-sorting copy keeps the bucket of every stream",
+			source:    source,
 			overrides: tenantOverrides{tenant: {"label:cluster"}},
 			resort:    true,
+			layout:    streams.DefaultShardLayout(),
+		},
+		{
+			name:      "the merge-only copy keeps a non-default source layout and the bucket of every stream",
+			source:    sourceWithLayout,
+			overrides: tenantOverrides{tenant: {"label:app"}},
+			resort:    false,
+			layout:    nonDefault,
+		},
+		{
+			name:      "the re-sorting copy keeps a non-default source layout and the bucket of every stream",
+			source:    sourceWithLayout,
+			overrides: tenantOverrides{tenant: {"label:cluster"}},
+			resort:    true,
+			layout:    nonDefault,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			src := source(t)
+			src := test.source(t)
 
 			builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), test.overrides)
 			require.NoError(t, err)
@@ -440,8 +467,65 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 				distinctBuckets[bucket] = struct{}{}
 			}
 			require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
+
+			for _, sec := range copied.Sections().Filter(streams.CheckSection) {
+				streamsSection, err := streams.Open(t.Context(), sec)
+				require.NoError(t, err)
+				layout, err := streamsSection.ShardLayout()
+				require.NoError(t, err)
+				require.Equal(t, test.layout, layout)
+			}
+			for _, sec := range copied.Sections().Filter(logs.CheckSection) {
+				logsSection, err := logs.Open(t.Context(), sec)
+				require.NoError(t, err)
+				require.Equal(t, test.layout.Buckets(), logsSection.SortLayout().ShardCount)
+			}
 		})
 	}
+}
+
+// buildObjectWithShardLayout builds a sorted object for tenant with
+// streamCount streams in layout. The Builder always writes the default
+// layout, so the sections are built directly.
+func buildObjectWithShardLayout(t *testing.T, tenant string, schemaLabels []string, layout streams.ShardLayout, streamCount int, ts time.Time) *dataobj.Object {
+	t.Helper()
+
+	sb := streams.NewBuilder(nil, int(testBuilderConfig.TargetPageSize), testBuilderConfig.MaxPageRows, layout)
+	sb.SetTenant(tenant)
+	lb := logs.NewBuilder(nil, logs.BuilderOptions{
+		PageSizeHint:     int(testBuilderConfig.TargetPageSize),
+		BufferSize:       int(testBuilderConfig.BufferSize),
+		StripeMergeLimit: testBuilderConfig.SectionStripeMergeLimit,
+		AppendStrategy:   logs.AppendOrdered,
+		SortOrder:        logs.SortSchemaASC,
+		SchemaLabels:     schemaLabels,
+		StreamOrder:      logs.StreamOrderStableHashV1,
+		ShardCount:       layout.Buckets(),
+	})
+	lb.SetTenant(tenant)
+
+	for i := range streamCount {
+		ls := labels.FromStrings("app", fmt.Sprintf("app-%d", i), "cluster", "test")
+		schemaKey, err := ComputeSchemaKey(ls, schemaLabels)
+		require.NoError(t, err)
+		hash := labels.StableHash(ls)
+		lb.Append(logs.Record{
+			StreamID:    sb.Record(ls, ts, 4),
+			Timestamp:   ts,
+			Line:        []byte("line"),
+			SchemaKey:   schemaKey,
+			ShardBucket: layout.BucketFromHash(hash),
+			StreamHash:  hash,
+		})
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(sb))
+	require.NoError(t, objBuilder.Append(lb))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return obj
 }
 
 func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
@@ -499,6 +583,10 @@ func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			objectBuilder := dataobj.NewBuilder(scratch.NewMemory())
+			streamsBuilder := streams.NewBuilder(nil, 2048, 0, streams.DefaultShardLayout())
+			streamsBuilder.SetTenant("tenant")
+			streamsBuilder.Record(labels.FromStrings("app", "a"), time.Unix(0, 0).UTC(), 4)
+			require.NoError(t, objectBuilder.Append(streamsBuilder))
 			for i, layout := range test.layouts {
 				logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
 					PageSizeHint:     2048,

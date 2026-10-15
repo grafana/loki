@@ -272,6 +272,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	columnarEnc.SetTenant(b.tenant)
+	columnarEnc.SetSortInfo(&datasetmd.SortInfo{ShardCount: b.shardLayout.Buckets()})
 
 	n, err = columnarEnc.Flush(w)
 	if err == nil {

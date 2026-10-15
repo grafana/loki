@@ -450,6 +450,9 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // CopyAndSort uses the persisted SortLayout to choose implementation. If every logs section
 // already follows its tenant's target layout, it performs only a k-way merge
 // and stream-ID remap. If any section differs, it re-sorts the entire object.
+//
+// The copy keeps the shard layout of each tenant's source streams section.
+// The tenant overrides set only the sort schema.
 func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	// Must reset builder when done.
 	defer b.Reset()
@@ -468,10 +471,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// The layout of sb is unused. sb receives streams only through
-	// AppendValue, which keeps each stream's shard bucket.
-	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout())
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
@@ -496,23 +495,10 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		// TODO(chaudum): Handle special case len(sections) == 1
 
 		schemaLabels := b.schemaLabelsFor(tenant)
-		shardLayout := b.shardLayoutFor(tenant)
 
-		var streamSections []*dataobj.Section
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
-			return streams.CheckSection(s) && s.Tenant == tenant
-		}) {
-			streamSections = append(streamSections, sec)
-		}
-		if len(streamSections) == 0 {
-			return nil, nil, fmt.Errorf("no streams sections found for tenant: %v", tenant)
-		} else if len(streamSections) > 1 {
-			return nil, nil, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
-		}
-
-		streamsSection, err := streams.Open(ctx, streamSections[0])
+		streamsSection, shardLayout, err := openTenantStreams(ctx, obj, tenant)
 		if err != nil {
-			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
+			return nil, nil, err
 		}
 
 		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, shardLayout, streamsSection.NumRows())
@@ -520,6 +506,9 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
+		// The copy keeps the source shard layout, so every stream keeps its
+		// bucket through AppendValue.
+		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, shardLayout)
 		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
 			return nil, nil, err
 		}
@@ -582,13 +571,44 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	return b.builder.Flush()
 }
 
+// openTenantStreams opens the single streams section of tenant in obj and
+// returns it with its shard layout.
+func openTenantStreams(ctx context.Context, obj *dataobj.Object, tenant string) (*streams.Section, streams.ShardLayout, error) {
+	var streamSections []*dataobj.Section
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return streams.CheckSection(s) && s.Tenant == tenant
+	}) {
+		streamSections = append(streamSections, sec)
+	}
+	if len(streamSections) == 0 {
+		return nil, streams.ShardLayout{}, fmt.Errorf("no streams sections found for tenant: %v", tenant)
+	} else if len(streamSections) > 1 {
+		return nil, streams.ShardLayout{}, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
+	}
+
+	section, err := streams.Open(ctx, streamSections[0])
+	if err != nil {
+		return nil, streams.ShardLayout{}, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
+	}
+	layout, err := section.ShardLayout()
+	if err != nil {
+		return nil, streams.ShardLayout{}, fmt.Errorf("reading shard layout for tenant %s: %w", tenant, err)
+	}
+	return section, layout, nil
+}
+
 // requiresResort trusts each logs section's persisted layout contract and
 // selects a full-object resort when any section differs from its tenant's
-// target layout.
+// target layout. The target keeps the source shard layout, so only a sort
+// schema change selects a resort.
 func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
 	for _, tenant := range obj.Tenants() {
 		found := false
-		want := TargetSortLayout(b.schemaLabelsFor(tenant), b.shardLayoutFor(tenant))
+		_, shardLayout, err := openTenantStreams(ctx, obj, tenant)
+		if err != nil {
+			return false, err
+		}
+		want := TargetSortLayout(b.schemaLabelsFor(tenant), shardLayout)
 		for _, section := range obj.Sections().Filter(func(section *dataobj.Section) bool {
 			return logs.CheckSection(section) && section.Tenant == tenant
 		}) {

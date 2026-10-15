@@ -89,6 +89,19 @@ func (s *Section) NumRows() int {
 	return int(s.columns[0].inner.Metadata().RowsCount)
 }
 
+// ShardLayout returns the layout of the section's shard bucket column. A
+// section with no recorded shard count gives [DefaultShardLayout].
+//
+// ShardLayout returns an error if the recorded count is not a valid
+// layout.
+func (s *Section) ShardLayout() (ShardLayout, error) {
+	si := s.inner.SortInfo()
+	if si == nil || si.ShardCount == 0 {
+		return DefaultShardLayout(), nil
+	}
+	return ShardLayoutFromBuckets(si.ShardCount)
+}
+
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
