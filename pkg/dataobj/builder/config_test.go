@@ -29,22 +29,28 @@ func TestConfig_RegisterFlags(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
-	newValidConfig := func() Config {
-		var cfg Config
-		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		cfg.Topic = "test"
-		return cfg
+	for _, tc := range []struct {
+		name             string
+		flushConcurrency int
+		wantErr          string
+	}{
+		{name: "accepts a flush concurrency of 1", flushConcurrency: 1},
+		{name: "accepts a flush concurrency above 1", flushConcurrency: 4},
+		{name: "rejects a flush concurrency of 0", flushConcurrency: 0, wantErr: "flush concurrency must be at least 1"},
+		{name: "rejects a negative flush concurrency", flushConcurrency: -1, wantErr: "flush concurrency must be at least 1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg Config
+			cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+			cfg.Topic = "test"
+			cfg.FlushConcurrency = tc.flushConcurrency
+
+			err := cfg.Validate()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, tc.wantErr)
+		})
 	}
-
-	t.Run("accepts a flush concurrency above 1", func(t *testing.T) {
-		cfg := newValidConfig()
-		cfg.FlushConcurrency = 4
-		require.NoError(t, cfg.Validate())
-	})
-
-	t.Run("rejects a flush concurrency of 0", func(t *testing.T) {
-		cfg := newValidConfig()
-		cfg.FlushConcurrency = 0
-		require.EqualError(t, cfg.Validate(), "flush concurrency must be at least 1")
-	})
 }

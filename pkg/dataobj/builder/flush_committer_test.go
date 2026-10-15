@@ -279,14 +279,12 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 		return builders
 	}
 
-	t.Run("should flush up to the concurrency limit at the same time", func(t *testing.T) {
-		// The flushes sleep on the fake clock of the bubble, so elapsed time
-		// shows how many of them overlapped.
+	t.Run("should keep at most the concurrency limit of objects open at the same time", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			var (
 				reg            = prometheus.NewRegistry()
-				flusher        = &mockFlusher{obj: &dataobj.Object{}, delay: time.Second}
-				indexer        = &mockIndexer{}
+				flusher        = &mockFlusher{obj: &dataobj.Object{}}
+				indexer        = &mockIndexer{delay: time.Second}
 				tocWriter      = &mockTOCWriter{}
 				committer      = &mockCommitter{}
 				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 4, log.NewNopLogger(), reg)
@@ -294,8 +292,12 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 			start := time.Now()
 			require.NoError(t, flushCommitter.Flush(t.Context(), newBuilders(t, 8), "test", 7))
 
+			// Each index call sleeps 1s on the fake clock of the bubble, so 2s
+			// means that two groups of 4 builders overlapped.
 			require.Equal(t, 2*time.Second, time.Since(start))
-			require.Equal(t, 4, flusher.maxInFlight)
+			// An object stays open from its flush until the ToC records its
+			// index, so this bounds the whole flush of a builder.
+			require.Equal(t, 4, flusher.maxOpen)
 			require.Equal(t, 8, flusher.flushes)
 			require.ElementsMatch(t, []string{
 				"object_001", "object_002", "object_003", "object_004",
@@ -312,8 +314,8 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			var (
 				reg       = prometheus.NewRegistry()
-				flusher   = &mockFlusher{obj: &dataobj.Object{}, delay: time.Second}
-				indexer   = &mockIndexer{}
+				flusher   = &mockFlusher{obj: &dataobj.Object{}}
+				indexer   = &mockIndexer{delay: time.Second}
 				tocWriter = &mockTOCWriter{}
 				committer = &mockCommitter{}
 
@@ -333,13 +335,11 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 	})
 
 	t.Run("should cancel the other builders and not commit when one fails", func(t *testing.T) {
-		// The bubble fails the test if a flush goroutine is still blocked when
-		// Flush returns.
 		synctest.Test(t, func(t *testing.T) {
 			var (
 				reg     = prometheus.NewRegistry()
 				flusher = &mockFlusher{obj: &dataobj.Object{}}
-				// The second object fails once the other two in flight are
+				// The second object fails once the other two in progress are
 				// blocked in indexing, so the failure must cancel them.
 				indexer = &blockingIndexer{
 					failPath: "object_002",
@@ -352,10 +352,12 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 3, log.NewNopLogger(), reg)
 			)
 
+			// synctest.Test fails the test if a flush goroutine is still
+			// blocked after Flush returns.
 			err := flushCommitter.Flush(t.Context(), newBuilders(t, 5), "test", 7)
-			// The first failure is returned, not the cancellation it caused in
-			// the other builders. The processor treats a cancellation as a
-			// shutdown rather than an unrecoverable flush.
+			// Flush returns the first failure, not the cancellations that it
+			// caused. The processor treats a cancellation as a shutdown, so a
+			// cancellation would hide the unrecoverable flush.
 			require.ErrorIs(t, err, index.ErrUnprocessableObject)
 			require.NotErrorIs(t, err, context.Canceled)
 			// The last two builders never started.
@@ -366,11 +368,65 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 			requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
 		})
 	})
+
+	t.Run("should return a cancellation and not commit when the flush is canceled with builders in progress", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			var (
+				reg            = prometheus.NewRegistry()
+				flusher        = &mockFlusher{obj: &dataobj.Object{}}
+				indexer        = &blockingIndexer{blocked: make(chan struct{})}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 3, log.NewNopLogger(), reg)
+			)
+			go func() {
+				for range 3 {
+					<-indexer.blocked
+				}
+				cancel()
+			}()
+
+			err := flushCommitter.Flush(ctx, newBuilders(t, 5), "test", 7)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, 3, flusher.flushes)
+			require.Equal(t, 3, flusher.closer.closed)
+			require.Empty(t, tocWriter.paths)
+			require.Empty(t, committer.offsets)
+			requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 0, resultCancelled: 1})
+		})
+	})
+
+	// Not run under synctest: the real builders use zstd, which pools
+	// goroutines and channels. Binding those to a bubble crashes later tests.
+	t.Run("should flush real builders concurrently and record each index in the ToC", func(t *testing.T) {
+		tenants := make([]benchTenant, 8)
+		for i := range tenants {
+			tenants[i] = benchTenant{name: fmt.Sprintf("tenant-%d", i), lines: 500, seed: uint64(i)}
+		}
+		flush := newBenchFlush(t, benchBucketLatency{}, 4)
+		builders := make([]builder, len(tenants))
+		for i, tenant := range tenants {
+			builders[i] = tenant.fill(t, flush.factory)
+		}
+
+		require.NoError(t, flush.committer.Flush(t.Context(), builders, "test", 7))
+		require.Equal(t, []int64{7}, flush.offsets.offsets)
+		require.Len(t, flush.bucket.tocPaths(), len(tenants))
+	})
 }
 
 // blockingIndexer fails to index the object at failPath. Every other call
-// blocks until its context is done. The failing call waits for others calls
-// to block first, so the failure always happens while they are in progress.
+// blocks until its context is done.
+//
+// The failing call waits until others calls block, so the failure happens
+// while they are in progress. Besides the failing call, exactly others calls
+// must arrive. Any later call blocks forever on the send to blocked.
+//
+// If failPath is empty, every call blocks, and the test must receive from
+// blocked.
 type blockingIndexer struct {
 	failPath string
 	err      error
@@ -379,7 +435,7 @@ type blockingIndexer struct {
 }
 
 func (m *blockingIndexer) Index(ctx context.Context, _ *dataobj.Object, objPath string) (index.Result, error) {
-	if objPath == m.failPath {
+	if m.failPath != "" && objPath == m.failPath {
 		for range m.others {
 			<-m.blocked
 		}

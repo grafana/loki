@@ -32,7 +32,7 @@ import (
 // real sorter, indexer and ToC writer. The bucket adds a latency per request,
 // so uploads and ToC writes take time without using CPU.
 //
-// Run it with -cpu=2 to match a builder with a CPU limit of 2 cores.
+// Run it with -cpu=2 to match a builder that runs on 2 cores.
 //
 // Each case reports peak-heap-MiB: the peak heap during the flush above the
 // heap before it. This includes garbage, so it depends on when the GC runs.
@@ -60,7 +60,7 @@ func BenchmarkFlushCommitter_Concurrency(b *testing.B) {
 	}{
 		// Requests take no time, so the flush is CPU work only.
 		{name: "upload=none", latency: none},
-		// Data object uploads are slow, as before the upload size fix.
+		// Data object uploads take 2.5 times as long as other uploads.
 		{name: "upload=scaled-slow", latency: scaledSlow, live: true},
 		// Data object uploads take as long as other uploads.
 		{name: "upload=scaled-fast", latency: scaledFast},
@@ -101,44 +101,14 @@ func BenchmarkFlushCommitter_Concurrency(b *testing.B) {
 }
 
 func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLatency, order func([]builder), concurrency int, live bool) {
-	var cfg Config
-	cfg.RegisterFlags(flag.NewFlagSet("bench", flag.PanicOnError))
-	cfg.LogsobjBuilder.DropDuplicates = true
-
-	var (
-		logger       = log.NewNopLogger()
-		reg          = prometheus.NewRegistry()
-		scratchStore = scratch.NewMemory()
-	)
-	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
-	var (
-		indexerMetrics    = index.NewIndexerMetrics(reg)
-		indexobjMetrics   = indexobj.NewBuilderMetrics(reg)
-		calculatorMetrics = index.NewCalculatorMetrics(reg)
-		tocWriterMetrics  = metastore.NewTocWriterMetrics(reg)
-		flusher           = newFlusher(logsobj.NewSorter(factory, reg), nil, logger, reg)
-	)
-
 	var peak, base uint64
 	for b.Loop() {
 		b.StopTimer()
 		// A new bucket per flush keeps the ToCs from growing across flushes.
-		bucket := &benchBucket{Bucket: objstore.NewInMemBucket(), latency: latency}
-		idxBucket := objstore.NewPrefixedBucket(bucket, "index/")
-		flusher.uploader = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
-		indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, indexerMetrics, indexobjMetrics, calculatorMetrics)
-		if err != nil {
-			b.Fatal(err)
-		}
-		tocWriter := metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, tocWriterMetrics, indexobjMetrics)
-		committer := newFlushCommitter(flusher, &mockCommitter{}, indexer, tocWriter, 0, concurrency, logger, prometheus.NewRegistry())
-
+		flush := newBenchFlush(b, latency, concurrency)
 		builders := make([]builder, len(tenants))
 		for i, tenant := range tenants {
-			builders[i] = tenant.fill(b, factory)
+			builders[i] = tenant.fill(b, flush.factory)
 		}
 		order(builders)
 
@@ -146,7 +116,7 @@ func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLate
 		sampler := startHeapSampler(live)
 		b.StartTimer()
 
-		if err := committer.Flush(context.Background(), builders, flushReasonBuilderFull, 1); err != nil {
+		if err := flush.committer.Flush(context.Background(), builders, flushReasonBuilderFull, 1); err != nil {
 			b.Fatal(err)
 		}
 
@@ -160,6 +130,54 @@ func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLate
 		b.ReportMetric(float64(peak)/(1<<20), "peak-live-MiB")
 	} else {
 		b.ReportMetric(float64(peak)/(1<<20), "peak-heap-MiB")
+	}
+}
+
+// benchFlush is a flush committer built from the real flush components, with
+// the default builder config. It writes to a new [benchBucket].
+type benchFlush struct {
+	committer *flushCommitterImpl
+	// factory creates the builders to flush.
+	factory *logsobj.BuilderFactory
+	bucket  *benchBucket
+	// offsets records the offsets that the committer commits.
+	offsets *mockCommitter
+}
+
+func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *benchFlush {
+	tb.Helper()
+
+	var cfg Config
+	cfg.RegisterFlags(flag.NewFlagSet("bench", flag.PanicOnError))
+	cfg.LogsobjBuilder.DropDuplicates = true
+
+	var (
+		logger       = log.NewNopLogger()
+		reg          = prometheus.NewRegistry()
+		scratchStore = scratch.NewMemory()
+		bucket       = &benchBucket{Bucket: objstore.NewInMemBucket(), latency: latency}
+		idxBucket    = objstore.NewPrefixedBucket(bucket, "index/")
+		offsets      = &mockCommitter{}
+	)
+	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	var (
+		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
+		flusher   = newFlusher(logsobj.NewSorter(factory, reg), uploader, logger, reg)
+		tocWriter = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
+	)
+	return &benchFlush{
+		committer: newFlushCommitter(flusher, offsets, indexer, tocWriter, 0, concurrency, logger, reg),
+		factory:   factory,
+		bucket:    bucket,
+		offsets:   offsets,
 	}
 }
 
@@ -177,7 +195,7 @@ type benchTenant struct {
 // The lines are in logfmt, with random IDs to keep compression realistic.
 // Their timestamps are out of order inside one ToC window, so the sort has
 // work to do.
-func (t benchTenant) fill(b *testing.B, factory *logsobj.BuilderFactory) builder {
+func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builder {
 	const (
 		linesPerStream = 2_000
 		linesPerAppend = 100
@@ -192,7 +210,7 @@ func (t benchTenant) fill(b *testing.B, factory *logsobj.BuilderFactory) builder
 	)
 	lb, err := factory.NewBuilder()
 	if err != nil {
-		b.Fatal(err)
+		tb.Fatal(err)
 	}
 	for n, streamID := t.lines, 0; n > 0; streamID++ {
 		labels := fmt.Sprintf(`{service="svc-%d", env="prod", pod="pod-%d"}`, streamID%7, streamID)
@@ -209,20 +227,21 @@ func (t benchTenant) fill(b *testing.B, factory *logsobj.BuilderFactory) builder
 				n--
 			}
 			if err := lb.Append(t.name, stream, recTime); err != nil {
-				b.Fatal(err)
+				tb.Fatal(err)
 			}
 		}
 	}
 	return lb
 }
 
-// newBenchTenants returns the builders of one flush. The sizes follow a real
-// partition, where 80% of the objects in a flush are below 100 KB:
-//   - 40 small builders of about 400 KB of log lines each,
-//   - 8 medium builders of about 8 MB each,
-//   - 2 large builders of about 60 MB each.
+// newBenchTenants returns the tenants of one flush. The sizes follow a real
+// partition, where 80% of the uploaded objects are below 100 KB after
+// compression:
+//   - 40 small tenants of about 400 KB of raw log lines each,
+//   - 8 medium tenants of about 8 MB of raw log lines each,
+//   - 2 large tenants of about 60 MB of raw log lines each.
 //
-// The sizes are spread across the tenant names, so the large builders do not
+// The sizes are spread across the tenant names, so the large tenants do not
 // come first or last in tenant order.
 func newBenchTenants() []benchTenant {
 	const (
@@ -258,23 +277,21 @@ type benchBucketLatency struct {
 	// get is the base time of a download.
 	get time.Duration
 	// bytesPerSecond is the upload bandwidth of one request. It adds to the
-	// base time of an upload.
+	// base time of every Upload. ToC writes use GetAndReplace and ignore it.
 	bytesPerSecond float64
 }
 
-// benchBucket adds latency to the requests of an in-memory bucket. It keeps
-// only ToC objects and discards every other upload, so that uploaded data does
-// not add to the heap that the benchmark measures.
+// benchBucket adds latency to the requests of an in-memory bucket.
+//
+// Upload discards the data, so that uploaded objects do not add to the heap
+// that the benchmark measures. The ToC writer uses only GetAndReplace, which
+// keeps the ToCs in the in-memory bucket.
 type benchBucket struct {
 	objstore.Bucket
 	latency benchBucketLatency
 }
 
-func (b *benchBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	if isBenchToc(name) {
-		time.Sleep(b.latency.put)
-		return b.Bucket.Upload(ctx, name, r)
-	}
+func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader) error {
 	n, err := io.Copy(io.Discard, r)
 	if err != nil {
 		return err
@@ -295,15 +312,23 @@ func (b *benchBucket) Get(ctx context.Context, name string) (io.ReadCloser, erro
 	return b.Bucket.Get(ctx, name)
 }
 
-// GetAndReplace sleeps before it calls the in-memory bucket, because that
-// bucket holds a single lock for every replace.
+// GetAndReplace sleeps before it calls the in-memory bucket. That bucket holds
+// one lock for every replace, so a sleep inside it would serialize all ToC
+// writes.
 func (b *benchBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	time.Sleep(b.latency.get + b.latency.put)
 	return b.Bucket.GetAndReplace(ctx, name, f)
 }
 
-func isBenchToc(name string) bool {
-	return strings.Contains(name, metastore.TocPrefix)
+// tocPaths returns the paths of the ToCs in the bucket.
+func (b *benchBucket) tocPaths() []string {
+	var paths []string
+	for name := range b.Bucket.(*objstore.InMemBucket).Objects() {
+		if strings.Contains(name, metastore.TocPrefix) {
+			paths = append(paths, name)
+		}
+	}
+	return paths
 }
 
 // heapSampler records the peak heap while it runs.

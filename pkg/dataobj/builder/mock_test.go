@@ -116,16 +116,14 @@ type mockFlusher struct {
 	// obj is returned by every flush, letting tests assert that the flushed
 	// object reaches the caller.
 	obj *dataobj.Object
-	// closer is returned by every flush, letting tests assert that the caller
-	// releases the flushed object once it is done with it.
+	// closer is closed each time the caller closes a flushed object, letting
+	// tests assert that the caller releases every flushed object.
 	closer countingCloser
-	// delay is how long each flush takes. Tests set it to make flushes
-	// overlap.
-	delay time.Duration
-	// inFlight counts the flushes in progress. maxInFlight is the largest
-	// value that inFlight reached.
-	inFlight, maxInFlight int
-	// onFlush, if set, runs before each flush returns.
+	// open counts the flushed objects that the caller has not closed yet.
+	// maxOpen is the largest value that open reached.
+	open, maxOpen int
+	// onFlush, if set, runs before each flush returns. It runs without the
+	// lock, so it must be safe for concurrent use.
 	onFlush func()
 }
 
@@ -133,20 +131,26 @@ func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Ob
 	m.mtx.Lock()
 	m.flushes++
 	path := fmt.Sprintf("object_%03d", m.flushes)
-	m.inFlight++
-	m.maxInFlight = max(m.maxInFlight, m.inFlight)
-	m.mtx.Unlock()
-
-	time.Sleep(m.delay)
-
-	m.mtx.Lock()
-	m.inFlight--
+	m.open++
+	m.maxOpen = max(m.maxOpen, m.open)
 	m.mtx.Unlock()
 
 	if m.onFlush != nil {
 		m.onFlush()
 	}
-	return m.obj, &m.closer, path, nil
+	return m.obj, mockFlushedObject{flusher: m}, path, nil
+}
+
+// mockFlushedObject is the closer of an object that a [mockFlusher] flushed.
+type mockFlushedObject struct {
+	flusher *mockFlusher
+}
+
+func (o mockFlushedObject) Close() error {
+	o.flusher.mtx.Lock()
+	o.flusher.open--
+	o.flusher.mtx.Unlock()
+	return o.flusher.closer.Close()
 }
 
 // mockIndexer implements the indexer interface, recording what it was asked to
@@ -159,9 +163,13 @@ type mockIndexer struct {
 	// errs is consumed one entry per call so tests can drive retries. Once it
 	// is exhausted, indexing succeeds.
 	errs []error
+	// delay is how long each call sleeps before it indexes. In a synctest
+	// bubble, the sleep advances the fake clock.
+	delay time.Duration
 }
 
 func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
+	time.Sleep(m.delay)
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.objs = append(m.objs, obj)
