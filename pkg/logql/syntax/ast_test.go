@@ -1414,6 +1414,22 @@ func TestWithoutPushableLineFilters(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, parse(t, `sum(count_over_time({app="a"} | json [1m]))`).String(), got.String())
 	})
+
+	t.Run("keeps each remaining line filter once in an expression whose extractor was already built", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} |= "a" | line_format "x" |= "b" | json |= "c" [1m]))`)
+		_, err := expr.Extractor()
+		require.NoError(t, err)
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		_, err = got.Extractor()
+		require.NoError(t, err)
+
+		want := parse(t, `sum(count_over_time({app="a"} | line_format "x" |= "b" | json |= "c" [1m]))`)
+		_, err = want.Extractor()
+		require.NoError(t, err)
+		require.Equal(t, want.String(), got.String())
+	})
 }
 
 var result bool

@@ -156,7 +156,12 @@ func (v *cloneVisitor) VisitPipeline(e *PipelineExpr) {
 		Left:        MustClone[*MatchersExpr](e.Left),
 		MultiStages: make(MultiStageExpr, len(e.MultiStages)),
 	}
+	clonedLineFilters := map[*LineFilterExpr]*LineFilterExpr{}
 	for i, s := range e.MultiStages {
+		if f, ok := s.(*LineFilterExpr); ok {
+			copied.MultiStages[i] = cloneLineFilter(f, clonedLineFilters)
+			continue
+		}
 		copied.MultiStages[i] = MustClone[StageExpr](s)
 	}
 
@@ -282,6 +287,23 @@ func (v *cloneVisitor) VisitLabelParser(e *LineParserExpr) {
 }
 
 func (v *cloneVisitor) VisitLineFilter(e *LineFilterExpr) {
+	v.cloned = cloneLineFilter(e, map[*LineFilterExpr]*LineFilterExpr{})
+}
+
+// cloneLineFilter returns a clone of e and of the filters it reaches through Left.
+//
+// Building a pipeline from an expression chains its line filters through Left. The expression
+// still lists each chained filter as a stage. One node is then both a stage and the Left of a
+// later filter.
+//
+// cloneLineFilter maps each original filter to its clone in clonedLineFilters. It returns the
+// stored clone when it meets the same node again. Without this, the stage and the Left link
+// become two clones. A pipeline built from the clone then runs the filter twice.
+func cloneLineFilter(e *LineFilterExpr, clonedLineFilters map[*LineFilterExpr]*LineFilterExpr) *LineFilterExpr {
+	if copied, ok := clonedLineFilters[e]; ok {
+		return copied
+	}
+
 	copied := &LineFilterExpr{
 		LineFilter: LineFilter{
 			Ty:    e.Ty,
@@ -292,14 +314,15 @@ func (v *cloneVisitor) VisitLineFilter(e *LineFilterExpr) {
 	}
 
 	if e.Left != nil {
-		copied.Left = MustClone[*LineFilterExpr](e.Left)
+		copied.Left = cloneLineFilter(e.Left, clonedLineFilters)
 	}
 
 	if e.Or != nil {
 		copied.Or = MustClone[*LineFilterExpr](e.Or)
 	}
 
-	v.cloned = copied
+	clonedLineFilters[e] = copied
+	return copied
 }
 
 func (v *cloneVisitor) VisitLineFmt(e *LineFmtExpr) {
