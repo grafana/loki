@@ -55,7 +55,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, currentStack, newStac
 
 	storageStatus := lokiv1.LokiStackStorageStatus{}
 	if currentStack != nil {
-		// Use existing cluster state, newStack is empty on create
 		storageStatus = currentStack.Status.Storage
 	}
 

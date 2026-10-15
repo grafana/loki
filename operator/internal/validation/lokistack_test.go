@@ -1125,7 +1125,7 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testing-stack",
 				},
-				Spec:   tc.spec.Spec,
+				Spec: tc.spec.Spec,
 			}
 			ctx := context.Background()
 
