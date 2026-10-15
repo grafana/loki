@@ -7,11 +7,12 @@ package filepool
 
 import (
 	"errors"
+	"math/rand/v2"
 	"os"
-	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 )
 
 var ErrPoolStopped = errors.New("file handle pool is stopped")
@@ -63,11 +64,16 @@ func (c SingleFilePoolNoopCloser) Put(_ *os.File) error {
 // new handles and closing them when required. Get and Put operations on this
 // pool never block. If there are no available file handles, one will be created
 // on Get. If the pool is full, the file handle is closed on Put.
+//
+// The pool is lock-free: idle file handles live in a fixed array of slots,
+// with atomic Swap and CompareAndSwap operations used to Get and Put file
+// handles into slots.
+// Each scan for an available handle, or empty slot starts at a random index
+// to reduce contention.
 type FilePool struct {
 	path    string
-	handles chan *os.File
-	mtx     sync.RWMutex
-	stopped bool
+	slots   []atomic.Pointer[os.File]
+	stopped atomic.Bool
 
 	metrics *FilePoolMetrics
 }
@@ -76,71 +82,80 @@ type FilePool struct {
 // Get always opens new file handles and Put always closes them immediately.
 func NewFilePool(path string, capacity uint, metrics *FilePoolMetrics) *FilePool {
 	return &FilePool{
-		path: path,
-		// We don't care if capacity is 0 which means the channel will be unbuffered. Because
-		// we have default cases for reads and writes to the channel, we will always open
-		// new files and close file handles immediately if the channel is unbuffered.
-		handles: make(chan *os.File, capacity),
+		path:    path,
+		slots:   make([]atomic.Pointer[os.File], capacity),
 		metrics: metrics,
 	}
 }
 
-// Get returns a pooled file handle if available or opens a new one
+// Get returns a pooled file handle if available or opens a new one if there
 // are no pooled handles available. If this pool has been stopped, an error
 // is returned.
 func (p *FilePool) Get() (*os.File, error) {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-
-	if p.stopped {
+	if p.stopped.Load() {
 		return nil, ErrPoolStopped
 	}
 
-	select {
-	case f := <-p.handles:
-		p.metrics.pooledOpenCount.Inc()
-		return f, nil
-	default:
-		p.metrics.openCount.Inc()
-		return os.Open(p.path)
+	if n := len(p.slots); n > 0 {
+		start := rand.IntN(n)
+		for i := range n {
+			s := &p.slots[(start+i)%n]
+			if s.Load() == nil {
+				continue
+			}
+			if f := s.Swap(nil); f != nil {
+				p.metrics.pooledOpenCount.Inc()
+				return f, nil
+			}
+		}
 	}
+
+	p.metrics.openCount.Inc()
+	return os.Open(p.path)
 }
 
 // Put returns a file handle to the pool if there is space available or closes
 // the file handle if there is not. If this pool has been stopped, the file handle
 // is closed immediately.
 func (p *FilePool) Put(f *os.File) error {
-	p.mtx.RLock()
-	defer p.mtx.RUnlock()
-
-	if p.stopped {
+	if p.stopped.Load() {
 		return f.Close()
 	}
 
-	select {
-	case p.handles <- f:
-		p.metrics.pooledCloseCount.Inc()
-		return nil
-	default:
-		p.metrics.closeCount.Inc()
-		return f.Close()
+	if n := len(p.slots); n > 0 {
+		start := rand.IntN(n)
+		for i := range n {
+			s := &p.slots[(start+i)%n]
+			if s.Load() != nil {
+				continue
+			}
+			if !s.CompareAndSwap(nil, f) {
+				continue
+			}
+			// Stop may have run since we checked.
+			// If the pool is now stopped, try to reclaim the handle and close it.
+			// If we fail, then Stop beat us to it.
+			if p.stopped.Load() && s.CompareAndSwap(f, nil) {
+				return f.Close()
+			}
+			p.metrics.pooledCloseCount.Inc()
+			return nil
+		}
 	}
+
+	p.metrics.closeCount.Inc()
+	return f.Close()
 }
 
 // Stop closes all pooled file handles. After this method is called, subsequent
 // Get calls will return an error and Put calls will immediately close the file
 // handle.
 func (p *FilePool) Stop() {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	p.stopped = true
+	p.stopped.Store(true)
 
-	for {
-		select {
-		case f := <-p.handles:
+	for i := range p.slots {
+		if f := p.slots[i].Swap(nil); f != nil {
 			_ = f.Close()
-		default:
-			return
 		}
 	}
 }

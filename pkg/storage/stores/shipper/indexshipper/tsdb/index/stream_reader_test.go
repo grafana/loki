@@ -187,6 +187,54 @@ func BenchmarkPostings(b *testing.B) {
 	}
 }
 
+// BenchmarkPostingsParallel reproduces many concurrent queries against the
+// same index file, each matching many small postings lists.
+// Every read of a postings list takes and returns a file handle, so this benchmark
+// stresses the file handle pool.
+// Run with -cpu to vary contention.
+func BenchmarkPostingsParallel(b *testing.B) {
+	const (
+		numSeries      = 100_000
+		numLabelValues = 64
+		labelName      = "pod"
+	)
+	path := writeBenchmarkFixture(b, numSeries, 1)
+	r, err := NewStreamFileReader(path, DefaultStreamOptions())
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = r.Close() })
+
+	// Sample pod names, which we'll query the postings for
+	labelValues := make([]string, 0, numLabelValues)
+	for i := range numLabelValues {
+		labelValues = append(labelValues, fmt.Sprintf("pod-%d", i*(numSeries/numLabelValues)))
+	}
+	sort.Strings(labelValues)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			postings, err := r.Postings(labelName, nil, labelValues...)
+			if err != nil {
+				b.Error(err)
+				return
+			}
+			n := 0
+			for postings.Next() {
+				n++
+			}
+			if err := postings.Err(); err != nil {
+				b.Error(err)
+				return
+			}
+			if n != numLabelValues {
+				b.Errorf("got %d postings, want %d", n, numLabelValues)
+				return
+			}
+		}
+	})
+}
+
 // chunkSpan is the millisecond width of every chunk written by
 // writeManyChunksFixture. Chunks are contiguous, so a series with n chunks
 // covers [0, n*chunkSpan).
