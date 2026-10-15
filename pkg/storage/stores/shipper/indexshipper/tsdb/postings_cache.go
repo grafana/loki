@@ -1,26 +1,35 @@
 package tsdb
 
 import (
+	"container/list"
 	"context"
 	"encoding/binary"
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // postingsCache stores immutable, decoded references in process. Iterators share
 // their backing arrays but maintain independent positions.
 type postingsCache struct {
-	cache cache.TypedCache[string, []storage.SeriesRef]
+	cache *cache.EmbeddedCache[string, []storage.SeriesRef]
+
+	fetchedKeys, hits prometheus.Counter
+	// Fetch samples are observed on each hit; store samples on each insertion.
+	fetchedSize, storedSize      prometheus.Observer
+	fetchDuration, storeDuration prometheus.Observer
 }
 
 func newPostingsCache(cfg cache.EmbeddedCacheConfig, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
@@ -33,13 +42,52 @@ func newPostingsCache(cfg cache.EmbeddedCacheConfig, name string, reg prometheus
 	if embedded == nil {
 		return nil
 	}
+	// Metric names, labels and buckets match cache.Instrument so this cache
+	// appears on the same dashboards as every other cache.
+	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   constants.Loki,
+		Name:        "cache_value_size_bytes",
+		Help:        "Size of values in the cache.",
+		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method"})
+	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   constants.Loki,
+		Name:        "cache_request_duration_seconds",
+		Help:        "Total time spent in seconds doing cache requests.",
+		Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method", "status_code"})
 	return &postingsCache{
-		cache: cache.CollectTypedStats(cache.InstrumentTyped(name, embedded, reg, postingsSize), postingsSize),
+		cache: embedded,
+		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_fetched_keys",
+			Help:        "Total count of keys requested from cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_hits",
+			Help:        "Total count of keys found in cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		fetchedSize:   valueSize.WithLabelValues("fetch"),
+		storedSize:    valueSize.WithLabelValues("store"),
+		fetchDuration: duration.WithLabelValues(name+".fetch", "200"),
+		storeDuration: duration.WithLabelValues(name+".store", "200"),
 	}
 }
 
-// seriesRefSize is computed once so cache size observations only multiply lengths.
-var seriesRefSize = int(reflect.TypeFor[storage.SeriesRef]().Size())
+var (
+	// seriesRefSize is computed once so cache size observations only multiply lengths.
+	seriesRefSize = int(reflect.TypeFor[storage.SeriesRef]().Size())
+	// postingsEntryOverhead mirrors the embedded cache's own accounting for byte
+	// values: the entry struct, its list element, and the map slot pointing to it.
+	postingsEntryOverhead = reflect.TypeFor[cache.Entry[string, []storage.SeriesRef]]().Size() +
+		reflect.TypeFor[list.Element]().Size() +
+		reflect.TypeFor[*list.Element]().Size()
+)
 
 // postingsSize is the number of bytes occupied by the references in use.
 func postingsSize(refs []storage.SeriesRef) int {
@@ -49,7 +97,7 @@ func postingsSize(refs []storage.SeriesRef) int {
 // postingsEntrySize accounts for the retained backing array, not just its used
 // length. This estimates per-entry memory, not Go allocator overhead.
 func postingsEntrySize(entry *cache.Entry[string, []storage.SeriesRef]) uint64 {
-	return cache.EntryOverhead(entry) + uint64(len(entry.Key)) + uint64(cap(entry.Value))*uint64(seriesRefSize)
+	return uint64(postingsEntryOverhead) + uint64(len(entry.Key)) + uint64(cap(entry.Value)*seriesRefSize)
 }
 
 func objectIdentity(prefix, table, tenant, filename string) string {
@@ -126,9 +174,7 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 		return nil, err
 	}
 	refs = compactPostings(refs)
-	// Results larger than the memory budget are rejected by the embedded cache,
-	// which cannot otherwise fail to store.
-	_ = c.cache.Store(ctx, []string{key}, [][]storage.SeriesRef{refs})
+	c.store(ctx, key, refs)
 	return index.NewListPostings(refs), nil
 }
 
@@ -148,11 +194,36 @@ func compactPostings(refs []storage.SeriesRef) []storage.SeriesRef {
 // fetchPostings returns an iterator over the cached references for key, or nil
 // on a miss. An empty value is a cached empty result, not a miss.
 func (c *postingsCache) fetchPostings(ctx context.Context, key string) index.Postings {
-	_, values, _, err := c.cache.Fetch(ctx, []string{key})
-	if err != nil || len(values) == 0 {
+	start := time.Now()
+	refs, hit := c.cache.Get(ctx, key)
+	elapsed := time.Since(start)
+	c.fetchDuration.Observe(elapsed.Seconds())
+	c.fetchedKeys.Inc()
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesRequested(stats.IndexCache, 1)
+	st.AddCacheDownloadTime(stats.IndexCache, elapsed)
+	if !hit {
 		return nil
 	}
-	return index.NewListPostings(values[0])
+	size := postingsSize(refs)
+	c.hits.Inc()
+	c.fetchedSize.Observe(float64(size))
+	st.AddCacheEntriesFound(stats.IndexCache, 1)
+	st.AddCacheBytesRetrieved(stats.IndexCache, size)
+	return index.NewListPostings(refs)
+}
+
+// store caches refs for key. Results larger than the memory budget are rejected
+// by the embedded cache, which cannot otherwise fail to store.
+func (c *postingsCache) store(ctx context.Context, key string, refs []storage.SeriesRef) {
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesStored(stats.IndexCache, 1)
+	c.storedSize.Observe(float64(postingsSize(refs)))
+	start := time.Now()
+	_ = c.cache.Store(ctx, []string{key}, [][]storage.SeriesRef{refs})
+	c.storeDuration.Observe(time.Since(start).Seconds())
 }
 
 // Stop releases the cached references.

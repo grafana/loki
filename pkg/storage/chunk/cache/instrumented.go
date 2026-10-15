@@ -15,13 +15,7 @@ import (
 
 // Instrument returns an instrumented cache.
 func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
-	return InstrumentTyped[string, []byte](name, cache, reg, byteSliceSize)
-}
-
-// InstrumentTyped returns an instrumented typed cache that exposes the same
-// metrics as Instrument. valueSize reports the size of a cached value in bytes.
-func InstrumentTyped[K comparable, V any](name string, cache TypedCache[K, V], reg prometheus.Registerer, valueSize func(V) int) TypedCache[K, V] {
-	valueSizeHistogram := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "cache_value_size_bytes",
 		Help:      "Size of values in the cache.",
@@ -32,10 +26,9 @@ func InstrumentTyped[K comparable, V any](name string, cache TypedCache[K, V], r
 		ConstLabels: prometheus.Labels{"name": name},
 	}, []string{"method"})
 
-	return &instrumentedCache[K, V]{
-		name:       name,
-		TypedCache: cache,
-		valueSize:  valueSize,
+	return &instrumentedCache{
+		name:  name,
+		Cache: cache,
 
 		requestDuration: instr.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
@@ -60,35 +53,30 @@ func InstrumentTyped[K comparable, V any](name string, cache TypedCache[K, V], r
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
-		storedValueSize:  valueSizeHistogram.WithLabelValues("store"),
-		fetchedValueSize: valueSizeHistogram.WithLabelValues("fetch"),
+		storedValueSize:  valueSize.WithLabelValues("store"),
+		fetchedValueSize: valueSize.WithLabelValues("fetch"),
 	}
 }
 
-func byteSliceSize(buf []byte) int {
-	return len(buf)
-}
-
-type instrumentedCache[K comparable, V any] struct {
+type instrumentedCache struct {
 	name string
-	TypedCache[K, V]
-	valueSize func(V) int
+	Cache
 
 	fetchedKeys, hits                 prometheus.Counter
 	storedValueSize, fetchedValueSize prometheus.Observer
 	requestDuration                   *instr.HistogramCollector
 }
 
-func (i *instrumentedCache[K, V]) Store(ctx context.Context, keys []K, values []V) error {
-	for j := range values {
-		i.storedValueSize.Observe(float64(i.valueSize(values[j])))
+func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+	for j := range bufs {
+		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
 
 	method := i.name + ".store"
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := trace.SpanFromContext(ctx)
 		sp.SetAttributes(attribute.Int("keys", len(keys)))
-		storeErr := i.TypedCache.Store(ctx, keys, values)
+		storeErr := i.Cache.Store(ctx, keys, bufs)
 		if storeErr != nil {
 			sp.SetStatus(codes.Error, storeErr.Error())
 			sp.RecordError(storeErr)
@@ -97,11 +85,11 @@ func (i *instrumentedCache[K, V]) Store(ctx context.Context, keys []K, values []
 	})
 }
 
-func (i *instrumentedCache[K, V]) Fetch(ctx context.Context, keys []K) ([]K, []V, []K, error) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
 	var (
-		found    []K
-		values   []V
-		missing  []K
+		found    []string
+		bufs     [][]byte
+		missing  []string
 		fetchErr error
 		method   = i.name + ".fetch"
 	)
@@ -109,7 +97,7 @@ func (i *instrumentedCache[K, V]) Fetch(ctx context.Context, keys []K) ([]K, []V
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := trace.SpanFromContext(ctx)
 		sp.SetAttributes(attribute.Int("keys requested", len(keys)))
-		found, values, missing, fetchErr = i.TypedCache.Fetch(ctx, keys)
+		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
 		if fetchErr != nil {
 			sp.SetStatus(codes.Error, fetchErr.Error())
 			sp.RecordError(fetchErr)
@@ -125,13 +113,13 @@ func (i *instrumentedCache[K, V]) Fetch(ctx context.Context, keys []K) ([]K, []V
 
 	i.fetchedKeys.Add(float64(len(keys)))
 	i.hits.Add(float64(len(found)))
-	for j := range values {
-		i.fetchedValueSize.Observe(float64(i.valueSize(values[j])))
+	for j := range bufs {
+		i.fetchedValueSize.Observe(float64(len(bufs[j])))
 	}
 
-	return found, values, missing, err
+	return found, bufs, missing, err
 }
 
-func (i *instrumentedCache[K, V]) Stop() {
-	i.TypedCache.Stop()
+func (i *instrumentedCache) Stop() {
+	i.Cache.Stop()
 }

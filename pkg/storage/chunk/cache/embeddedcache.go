@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"context"
 	"flag"
-	"reflect"
 	"sync"
 	"time"
 	"unsafe"
@@ -329,15 +328,12 @@ func (c *EmbeddedCache[K, V]) Get(_ context.Context, key K) (V, bool) {
 	return empty, false
 }
 
-// EntryOverhead returns the bytes an entry costs beyond its key and value: the
-// Entry struct, its element in the LRU list, and the map slot pointing to it.
-// Entry size calculators add the key and value sizes to it.
-func EntryOverhead[K comparable, V any](_ *Entry[K, V]) uint64 {
-	return uint64(reflect.TypeFor[Entry[K, V]]().Size()) + uint64(elementSize+elementPrtSize)
-}
-
 func sizeOf(item *Entry[string, []byte]) uint64 {
-	return EntryOverhead(item) + uint64(len(item.Key)) + uint64(cap(item.Value))
+	return uint64(int(unsafe.Sizeof(*item)) + // size of Entry
+		len(item.Key) + // size of Key
+		cap(item.Value) + // size of Value
+		elementSize + // size of the element in linked list
+		elementPrtSize) // size of the pointer to an element in the map
 }
 
 func NewNoopTypedCache[K comparable, V any]() TypedCache[K, V] {
