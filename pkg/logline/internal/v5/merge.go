@@ -30,8 +30,17 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 		return format.HeaderInfo{}, fmt.Errorf("streaming merge requires at least 2 readers, got %d", len(readers))
 	}
 	var sw *StreamingIndexWriter
-	err := doMergeFromReaders(ctx, readers, sizes, func(docCount uint32) (mergeWriter, error) {
-		w, err := newStreamingIndexWriterTo(out, cfg, docCount)
+	err := doMergeFromReaders(ctx, readers, sizes, func(docCount uint32, layout documentLayout) (mergeWriter, error) {
+		wcfg, err := cfg.withLayout(layout)
+		if err != nil {
+			return nil, err
+		}
+		// deduplicateDocuments collapses documents with equal time bounds, so
+		// the shards of each interval would become one document.
+		if wcfg.DocumentShardBits > 0 {
+			return nil, fmt.Errorf("merge: indexes with %d document shard bits cannot be merged: documents are deduplicated by time bounds, which would collapse the document shards of each interval", wcfg.DocumentShardBits)
+		}
+		w, err := newStreamingIndexWriterTo(out, wcfg, docCount)
 		if err != nil {
 			return nil, err
 		}
@@ -44,9 +53,10 @@ func StreamingMergeIndexReaders(ctx context.Context, readers []io.ReaderAt, size
 	return sw.Info(), nil
 }
 
-// doMergeFromReaders opens inputs from readers, deduplicates documents, creates
-// a writer via newWriter, runs the k-way merge, and closes the writer.
-func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, newWriter func(docCount uint32) (mergeWriter, error)) error {
+// doMergeFromReaders opens inputs from readers, checks they share one document
+// layout, deduplicates documents, creates a writer via newWriter, runs the
+// k-way merge, and closes the writer.
+func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int64, newWriter func(docCount uint32, layout documentLayout) (mergeWriter, error)) error {
 	idxReaders, iterators, err := openMergeInputsFromReaders(readers, sizes)
 	if err != nil {
 		return err
@@ -57,9 +67,14 @@ func doMergeFromReaders(ctx context.Context, readers []io.ReaderAt, sizes []int6
 		}
 	}()
 
+	layout, err := commonDocumentLayout(idxReaders)
+	if err != nil {
+		return err
+	}
+
 	allDocs, remaps := deduplicateDocuments(idxReaders)
 
-	w, err := newWriter(uint32(len(allDocs)))
+	w, err := newWriter(uint32(len(allDocs)), layout)
 	if err != nil {
 		return err
 	}
@@ -99,6 +114,22 @@ func openMergeInputsFromReaders(readers []io.ReaderAt, sizes []int64) ([]*IndexR
 		iterators[i] = it
 	}
 	return idxReaders, iterators, nil
+}
+
+// commonDocumentLayout returns the document layout shared by every input.
+// Inputs with different intervals or shard bits number their documents
+// differently, so they cannot be merged.
+func commonDocumentLayout(readers []*IndexReader) (documentLayout, error) {
+	want := readers[0].header.documentLayout()
+	for i, r := range readers[1:] {
+		if got := r.header.documentLayout(); got != want {
+			return documentLayout{}, fmt.Errorf(
+				"merge: input %d has document interval %v and %d document shard bits, input 0 has %v and %d",
+				i+1, got.interval, got.shardBits, want.interval, want.shardBits,
+			)
+		}
+	}
+	return want, nil
 }
 
 // deduplicateDocuments builds a unified document table from multiple readers.
