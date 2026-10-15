@@ -337,7 +337,8 @@ Stores stream metadata and statistics.
 **Kind**: `pointers`
 **Location**: `pkg/dataobj/sections/pointers/`
 
-Used in index objects to point to other objects that contain logs, via stream or predicate lookup.
+Used in older index objects to point to other objects that contain logs, via stream or predicate lookup.
+The index builder no longer writes this section, and the compactor skips it.
 
 **Columns:**
 - `path` (binary): Path to data object in object storage

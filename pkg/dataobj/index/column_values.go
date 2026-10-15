@@ -69,6 +69,8 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 	return batchErr
 }
 
+// Flush does nothing, because ProcessBatch writes the bloom postings directly
+// to the builder.
 func (c *columnValuesCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
 	return nil
 }

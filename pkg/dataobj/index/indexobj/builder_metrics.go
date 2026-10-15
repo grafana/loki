@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -18,7 +17,6 @@ import (
 
 // BuilderMetrics provides instrumentation for a [Builder].
 type BuilderMetrics struct {
-	pointers      *pointers.Metrics
 	indexPointers *indexpointers.Metrics
 	streams       *streams.Metrics
 	postings      *postings.Metrics
@@ -46,7 +44,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 
 	m := &BuilderMetrics{
 		indexPointers: indexpointers.NewMetrics(),
-		pointers:      pointers.NewMetrics(),
 		streams:       streams.NewMetrics(),
 		postings:      postings.NewMetrics(),
 		stats:         stats.NewMetrics(),
@@ -111,7 +108,6 @@ func NewBuilderMetrics(reg prometheus.Registerer) *BuilderMetrics {
 	if reg != nil {
 		if err := errors.Join(
 			m.indexPointers.Register(reg),
-			m.pointers.Register(reg),
 			m.streams.Register(reg),
 			m.postings.Register(reg),
 			m.stats.Register(reg),
