@@ -17,19 +17,27 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+// concurrentBuilder is the part of [indexobj.Builder] that Prepare and
+// ProcessBatch can use.
+//
+// Calls from different logs sections interleave in any order. These methods
+// never cut a section, and the builder aggregates and sorts what they write
+// before it encodes it. So the order of the calls does not change the index
+// object.
+type concurrentBuilder interface {
+	PrepareBloomColumn(objectPath string, sectionIdx int64, columnName string, estimatedCardinality uint, shardBuckets int64)
+	ObserveBloomPosting(obs postings.BloomObservation) error
+	ObserveLabelPosting(obs postings.LabelObservation)
+}
+
 // logsIndexCalculation is one calculation step for a logs section.
 //
-// Implementations must follow these rules, so that the index object is the
-// same on each build:
-//   - Calculate runs Prepare and ProcessBatch for different sections
-//     concurrently, in any order. They must only call builder methods that
-//     never cut a section and that sort the data before encoding.
-//   - Calculate runs Flush once per section, in section order. Flush must
-//     write to the builder in an order that depends only on the section data,
-//     never in map iteration order.
+// Prepare and ProcessBatch get only a [concurrentBuilder], so they cannot
+// write to the builder in an order-dependent way. Flush gets the full builder.
 type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
@@ -48,10 +56,17 @@ type logsIndexCalculation interface {
 	// with other sections' lock-free ProcessBatch calls (each section has its
 	// own calculation-step state, so there is no cross-section sharing).
 	ProcessBatchNeedsBuilderLock() bool
-	// Calculate calls Flush after Prepare and ProcessBatch finish for every
-	// logs section of the object.
-	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
-	Flush(ctx context.Context, context *logsCalculationContext) error
+	// Flush writes the remaining results of the step to builder.
+	//
+	// Calculate calls Flush once per logs section, in section order, after
+	// Prepare and ProcessBatch finish for every logs section of the object.
+	// No other call uses builder at that time, so Flush has exclusive access
+	// to it. Flush must not keep builder after it returns.
+	//
+	// The builder can cut a section on any append, so Flush must append in an
+	// order that depends only on the section data, never in map iteration
+	// order.
+	Flush(ctx context.Context, context *logsCalculationContext, builder *indexobj.Builder) error
 }
 
 type logsCalculationContext struct {
@@ -62,7 +77,7 @@ type logsCalculationContext struct {
 	// be a problem.
 	streamLabels       map[int64]labels.Labels // source stream ID -> labels
 	streamShardBuckets map[int64]uint32        // source stream ID -> shard bucket
-	builder            *indexobj.Builder
+	builder            concurrentBuilder
 }
 
 // These steps are applied to all logs and are unique to a section
@@ -132,6 +147,8 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return fmt.Errorf("failed to process stream section path=%s: %w", objectPath, err)
 	}
 
+	// processed keeps the state of each logs section until all of them finish,
+	// so peak memory grows with the number of logs sections in the object.
 	processed := make([]*processedLogsSection, reader.Sections().Count(logs.CheckSection))
 	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
@@ -150,11 +167,11 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return err
 	}
 
-	// Flush the sections one at a time in section order, so that the index
-	// object is the same on each build. Flush appends stats rows, and the
-	// builder cuts a stats section when its estimated size goes above the
-	// target size. The flush order decides where these cuts fall, so it
-	// decides which rows each section holds.
+	// Flush the logs sections one at a time in section order, so that the
+	// index object is the same on each build. The stats step appends its rows
+	// in Flush, and AppendStat cuts a stats section when its estimated size
+	// goes above the target size. The flush order decides where these cuts
+	// fall, so it decides which rows each stats section holds.
 	for i, p := range processed {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -228,7 +245,7 @@ type processedLogsSection struct {
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 // The provided section index counts only logs sections, matching the indexes yielded by Filter, not positions in reader.Sections().
-// The caller must pass the result to flushLogsSection, which writes the rest of the section data into the builder.
+// The caller must pass the result to flushLogsSection, which runs the Flush of each step.
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) (*processedLogsSection, error) {
 	logsBuf := make([]logs.Record, 8192)
 
@@ -355,7 +372,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 func (c *Calculator) flushLogsSection(ctx context.Context, p *processedLogsSection) error {
 	for i, calculation := range p.steps {
 		start := time.Now()
-		if err := calculation.Flush(ctx, p.calcCtx); err != nil {
+		if err := calculation.Flush(ctx, p.calcCtx, c.indexobjBuilder); err != nil {
 			return fmt.Errorf("failed to flush calculation %s: %w", calculation.Name(), err)
 		}
 		p.stepDurations[i] += time.Since(start)
