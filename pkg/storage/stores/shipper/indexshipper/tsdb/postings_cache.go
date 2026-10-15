@@ -3,9 +3,9 @@ package tsdb
 import (
 	"context"
 	"encoding/binary"
+	"reflect"
 	"slices"
 	"strings"
-	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,15 +38,18 @@ func newPostingsCache(cfg cache.EmbeddedCacheConfig, name string, reg prometheus
 	}
 }
 
+// seriesRefSize is computed once so cache size observations only multiply lengths.
+var seriesRefSize = int(reflect.TypeFor[storage.SeriesRef]().Size())
+
 // postingsSize is the number of bytes occupied by the references in use.
 func postingsSize(refs []storage.SeriesRef) int {
-	return len(refs) * int(unsafe.Sizeof(storage.SeriesRef(0)))
+	return len(refs) * seriesRefSize
 }
 
 // postingsEntrySize accounts for the retained backing array, not just its used
 // length. This estimates per-entry memory, not Go allocator overhead.
 func postingsEntrySize(entry *cache.Entry[string, []storage.SeriesRef]) uint64 {
-	return cache.EntryOverhead(entry) + uint64(len(entry.Key)) + uint64(cap(entry.Value))*uint64(unsafe.Sizeof(storage.SeriesRef(0)))
+	return cache.EntryOverhead(entry) + uint64(len(entry.Key)) + uint64(cap(entry.Value))*uint64(seriesRefSize)
 }
 
 func objectIdentity(prefix, table, tenant, filename string) string {
