@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.6.18](https://github.com/grafana/loki/compare/v3.6.17...v3.6.18) (2026-10-15)
+
+
+### Bug Fixes
+
+* **deps:** Update dependencies related to otel for 3.6 ([#25180](https://github.com/grafana/loki/issues/25180)) ([603de5a](https://github.com/grafana/loki/commit/603de5ad370c2b45ca38f031a8116257b018d89c))
+* **security/LOW/:** Update module go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc to v1.45.0 [SECURITY] (release-3.6.x) ([#24619](https://github.com/grafana/loki/issues/24619)) ([3e7c0ed](https://github.com/grafana/loki/commit/3e7c0ed5c6aaf287325dfda43c1cb1e90eeceaa8))
+* **security/LOW/:** Update module go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp to v1.45.0 [SECURITY] (release-3.6.x) ([#24620](https://github.com/grafana/loki/issues/24620)) ([ad5a87c](https://github.com/grafana/loki/commit/ad5a87c611d386ac9b33ae04dfdd674a4620f72d))
+* **security:** Bump Go to 1.26.9 [SECURITY] (release-3.6.x) ([#25193](https://github.com/grafana/loki/issues/25193)) ([c969f5c](https://github.com/grafana/loki/commit/c969f5cf4b4ca6073d29e0a74b236f4d05d7b79a))
+
 ## [3.6.17](https://github.com/grafana/loki/compare/v3.6.16...v3.6.17) (2026-09-09)
 
 
