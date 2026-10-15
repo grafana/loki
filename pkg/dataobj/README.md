@@ -321,7 +321,7 @@ Stores log records in columnar format.
 **Kind**: `streams`
 **Location**: `pkg/dataobj/sections/streams/`
 
-Stores stream metadata and statistics in logs objects. Index objects built by older versions also hold one.
+Stores stream metadata and statistics in logs objects.
 
 **Columns:**
 - `stream_id` (int64): Unique stream identifier
