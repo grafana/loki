@@ -525,27 +525,33 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 // appendLoglineStats adds the logline index fields for queries that went
 // through the logline query-frontend middleware.
 func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []interface{} {
-	idx := stats.Index
-	if idx.LoglineHintStatus == "" {
+	l := stats.Logline
+	if l == nil {
+		return logValues
+	}
+	logValues = append(logValues, "logline_outcome", l.Outcome)
+	// A query skipped before the hint lookup has no other logline stats.
+	if l.HintStatus == "" {
 		return logValues
 	}
 
 	logValues = append(logValues,
-		"logline_hint_status", idx.LoglineHintStatus,
-		"logline_hint_lookup_time", time.Duration(idx.LoglineHintLookupTime),
-		"logline_hint_ranges", idx.LoglineHintRanges,
-		"logline_hint_ranges_duration", time.Duration(idx.LoglineHintRangesDuration),
-		"logline_skipped_requests", idx.LoglineSkippedRequests,
-		"logline_narrowed_requests", idx.LoglineNarrowedRequests,
-		"shard_planned_chunks", idx.ShardPlannedChunks,
-		"logline_scanned_chunks", idx.ShardPlannedChunksScanned,
+		"logline_hint_status", l.HintStatus,
+		"logline_hint_lookup_time", time.Duration(l.HintLookupTime),
+		"logline_hint_ranges", l.HintRanges,
+		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
+		"logline_skipped_requests", l.SkippedRequests,
+		"logline_narrowed_requests", l.NarrowedRequests,
+		"logline_object_requests", l.ObjectRequests,
+		"logline_io_bytes", util.HumanizeBytes(uint64(l.IOBytes)),
+		"logline_io_wait", time.Duration(l.IOWait),
+		"shard_planned_chunks", l.PlannedChunks,
+		"logline_scanned_chunks", l.ScannedChunks,
 	)
 	// Missing when no split went through shard planning, for example when the
-	// results cache answered the whole query. The planned chunks are an
-	// estimate, so more chunks than planned can be scanned.
-	if planned := idx.ShardPlannedChunks; planned > 0 {
-		ratio := 1 - float64(idx.ShardPlannedChunksScanned)/float64(planned)
-		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", min(max(ratio, 0), 1)))
+	// results cache answered the whole query.
+	if l.PlannedChunks > 0 {
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", l.ChunkFilterRatio))
 	}
 	return logValues
 }

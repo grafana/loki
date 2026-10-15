@@ -189,9 +189,9 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	resp, err := handler.Do(testTenantContextWithLive(), req)
 	require.NoError(t, err)
 
-	idx := resp.(*queryrange.LokiResponse).Statistics.Index
-	require.Equal(t, hintStatusOK, idx.LoglineHintStatus)
-	require.Equal(t, int64(1), idx.LoglineNarrowedRequests, "only the rerun's sub-request counts")
+	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
+	require.Equal(t, hintStatusOK, loglineStats.HintStatus)
+	require.Equal(t, int64(1), loglineStats.NarrowedRequests, "only the rerun's sub-request counts")
 }
 
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {
