@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/kafkav2"
@@ -19,15 +18,6 @@ import (
 
 // requiredReplicasReporter exports the number of builder replicas needed to
 // consume every partition with unread records.
-//
-// The number is the highest partition with unread records plus 1, or 0 if no
-// partition has unread records. Usually partitions 0 to N-1 all have unread
-// records, and the number is N. If a lower partition has no unread records,
-// the number does not go down: the builder with ordinal p consumes partition
-// p, so the highest partition still needs its builder.
-//
-// The gauge keeps its last value when a refresh fails. It exports nothing
-// until the first refresh succeeds, so a restart never exports a false 0.
 type requiredReplicasReporter struct {
 	services.Service
 
@@ -35,13 +25,7 @@ type requiredReplicasReporter struct {
 	consumerGroup func(partition int32) string
 	interval      time.Duration
 	logger        log.Logger
-
-	// requiredReplicas has no labels. It is a vector because a vector
-	// exports no series until the first Set.
-	requiredReplicas *prometheus.GaugeVec
-	refreshFailures  prometheus.Counter
-	lastRefresh      prometheus.Gauge
-	refreshDuration  prometheus.Histogram
+	metrics       *requiredReplicasMetrics
 }
 
 // newRequiredReplicasReporter returns a reporter that refreshes the gauge once
@@ -59,26 +43,7 @@ func newRequiredReplicasReporter(
 		consumerGroup: consumerGroup,
 		interval:      interval,
 		logger:        logger,
-		requiredReplicas: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_dataobj_builder_required_replicas",
-			Help: "The number of builder replicas needed to consume every partition with unread records: the highest such partition plus 1, or 0 if there is none. The value stays the same while refreshes fail.",
-		}, nil),
-		refreshFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_builder_required_replicas_refresh_failures_total",
-			Help: "Total number of failed refreshes of loki_dataobj_builder_required_replicas.",
-		}),
-		lastRefresh: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_builder_required_replicas_last_refresh_timestamp_seconds",
-			Help: "The Unix time of the last successful refresh of loki_dataobj_builder_required_replicas.",
-		}),
-		refreshDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_dataobj_builder_required_replicas_refresh_duration_seconds",
-			Help:                            "Time taken to read the offsets of every partition and refresh loki_dataobj_builder_required_replicas, successful or not.",
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
+		metrics:       newRequiredReplicasMetrics(reg),
 	}
 	r.Service = services.NewBasicService(nil, r.running, nil).WithName("dataobj-builder-required-replicas-reporter")
 	return r
@@ -106,13 +71,13 @@ func (r *requiredReplicasReporter) refresh(ctx context.Context) error {
 	defer cancel()
 	start := time.Now()
 	replicas, err := r.readRequiredReplicas(ctx)
-	r.refreshDuration.Observe(time.Since(start).Seconds())
+	r.metrics.refreshDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
-		r.refreshFailures.Inc()
+		r.metrics.refreshFailures.Inc()
 		return err
 	}
-	r.requiredReplicas.WithLabelValues().Set(float64(replicas))
-	r.lastRefresh.SetToCurrentTime()
+	r.metrics.requiredReplicas.WithLabelValues().Set(float64(replicas))
+	r.metrics.lastRefresh.SetToCurrentTime()
 	return nil
 }
 

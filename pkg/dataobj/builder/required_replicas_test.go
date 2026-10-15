@@ -98,14 +98,14 @@ func TestRequiredReplicasReporter(t *testing.T) {
 	refreshCount := func(t *testing.T, r *requiredReplicasReporter) uint64 {
 		t.Helper()
 		var m dto.Metric
-		require.NoError(t, r.refreshDuration.(prometheus.Metric).Write(&m))
+		require.NoError(t, r.metrics.refreshDuration.(prometheus.Metric).Write(&m))
 		return m.GetHistogram().GetSampleCount()
 	}
 
 	requireReplicas := func(t *testing.T, r *requiredReplicasReporter, expected float64) {
 		t.Helper()
-		require.Equal(t, 1, testutil.CollectAndCount(r.requiredReplicas))
-		require.Equal(t, expected, testutil.ToFloat64(r.requiredReplicas))
+		require.Equal(t, 1, testutil.CollectAndCount(r.metrics.requiredReplicas))
+		require.Equal(t, expected, testutil.ToFloat64(r.metrics.requiredReplicas))
 	}
 
 	t.Run("reports zero when no partition has records", func(t *testing.T) {
@@ -181,14 +181,14 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 4)
 
-		lastRefresh := testutil.ToFloat64(r.lastRefresh)
+		lastRefresh := testutil.ToFloat64(r.metrics.lastRefresh)
 
 		produce(t, client, 7, 1)
 		failNextOffsetFetch(cluster)
 		require.ErrorIs(t, r.refresh(t.Context()), kerr.GroupAuthorizationFailed)
 		requireReplicas(t, r, 4)
-		require.Equal(t, float64(1), testutil.ToFloat64(r.refreshFailures))
-		require.Equal(t, lastRefresh, testutil.ToFloat64(r.lastRefresh))
+		require.Equal(t, float64(1), testutil.ToFloat64(r.metrics.refreshFailures))
+		require.Equal(t, lastRefresh, testutil.ToFloat64(r.metrics.lastRefresh))
 
 		require.NoError(t, r.refresh(t.Context()))
 		requireReplicas(t, r, 8)
@@ -198,7 +198,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		_, _, r := newTestReporter(t)
 		before := time.Now()
 		require.NoError(t, r.refresh(t.Context()))
-		lastRefresh := time.Unix(0, int64(testutil.ToFloat64(r.lastRefresh)*1e9))
+		lastRefresh := time.Unix(0, int64(testutil.ToFloat64(r.metrics.lastRefresh)*1e9))
 		require.WithinRange(t, lastRefresh, before.Add(-time.Millisecond), time.Now())
 	})
 
@@ -216,9 +216,9 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		produce(t, client, 3, 1)
 		failNextOffsetFetch(cluster)
 		require.Error(t, r.refresh(t.Context()))
-		require.Equal(t, 0, testutil.CollectAndCount(r.requiredReplicas))
-		require.Equal(t, float64(1), testutil.ToFloat64(r.refreshFailures))
-		require.Zero(t, testutil.ToFloat64(r.lastRefresh))
+		require.Equal(t, 0, testutil.CollectAndCount(r.metrics.requiredReplicas))
+		require.Equal(t, float64(1), testutil.ToFloat64(r.metrics.refreshFailures))
+		require.Zero(t, testutil.ToFloat64(r.metrics.lastRefresh))
 	})
 
 	t.Run("refreshes when the service starts", func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 		t.Cleanup(func() { require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r)) })
 		require.Eventually(t, func() bool {
-			return testutil.CollectAndCount(r.requiredReplicas) == 1
+			return testutil.CollectAndCount(r.metrics.requiredReplicas) == 1
 		}, 5*time.Second, 10*time.Millisecond)
 		requireReplicas(t, r, 2)
 	})
