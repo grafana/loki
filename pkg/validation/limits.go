@@ -277,7 +277,8 @@ type Limits struct {
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 
-	// DataObjShardFactor is the number of stream shard buckets in new data objects.
+	// DataObjShardFactor is the number of stream shard buckets in new data
+	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
 }
 
@@ -286,7 +287,9 @@ type Limits struct {
 // [streams.DefaultShardBuckets].
 type ShardFactor uint32
 
-// Layout returns the shard layout of f.
+// Layout returns the shard layout for f. Zero gives
+// [streams.DefaultShardLayout]. Layout returns an error if f is not a power of
+// two or is more than 2^[streams.MaxShardBits].
 func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 	if f == 0 {
 		return streams.DefaultShardLayout(), nil
@@ -296,10 +299,8 @@ func (f ShardFactor) Layout() (streams.ShardLayout, error) {
 
 // Validate returns an error if f is not a supported shard factor.
 //
-// Validate accepts only the default factor. Readers assume that every object
-// uses the default layout, so objects with another factor would return wrong
-// query results. Lift this restriction only after readers use the layout that
-// each object records.
+// Validate accepts only the default factor. Readers assume the default layout
+// for every object, so objects with another factor give wrong query results.
 func (f ShardFactor) Validate() error {
 	layout, err := f.Layout()
 	if err != nil {
@@ -636,7 +637,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
-	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two. Only %d is supported.", streams.DefaultShardBuckets))
+	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Only %d is supported.", streams.DefaultShardBuckets))
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -1528,9 +1529,9 @@ func (o *Overrides) SortSchema(userID string) SortSchema {
 func (o *Overrides) ShardLayout(userID string) streams.ShardLayout {
 	layout, err := o.getOverridesForUser(userID).DataObjShardFactor.Layout()
 	if err != nil {
-		// Limits.Validate rejects invalid factors from flags, YAML, and
-		// runtime overrides, so only limits that skip validation reach
-		// this branch.
+		// Limits.Validate rejects invalid factors, so only unvalidated limits
+		// reach this branch. It does not log, because writers call
+		// ShardLayout once per record.
 		return streams.DefaultShardLayout()
 	}
 	return layout

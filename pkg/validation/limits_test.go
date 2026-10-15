@@ -1470,7 +1470,82 @@ func TestOverrides_DataObjQueryStartTime(t *testing.T) {
 	})
 }
 
-func TestShardFactor(t *testing.T) {
+// setDefaultLimitsForYAML sets the global YAML defaults for the test and
+// restores the previous defaults when the test ends.
+func setDefaultLimitsForYAML(t *testing.T, defaults Limits) {
+	t.Helper()
+	previous := defaultLimits.Load()
+	SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	t.Cleanup(func() { defaultLimits.Store(previous) })
+}
+
+func TestShardFactor_Layout(t *testing.T) {
+	t.Run("returns the default layout for zero", func(t *testing.T) {
+		layout, err := ShardFactor(0).Layout()
+		require.NoError(t, err)
+		require.Equal(t, streams.DefaultShardLayout(), layout)
+	})
+
+	t.Run("returns the layout with the factor as its bucket count", func(t *testing.T) {
+		layout, err := ShardFactor(64).Layout()
+		require.NoError(t, err)
+		require.Equal(t, uint32(64), layout.Buckets())
+	})
+
+	t.Run("returns an error for a factor that is not a power of two", func(t *testing.T) {
+		_, err := ShardFactor(24).Layout()
+		require.ErrorContains(t, err, "not a power of two")
+	})
+}
+
+func TestShardFactor_Validate(t *testing.T) {
+	t.Run("accepts the default factor", func(t *testing.T) {
+		require.NoError(t, ShardFactor(streams.DefaultShardBuckets).Validate())
+	})
+
+	t.Run("accepts zero, which means the default factor", func(t *testing.T) {
+		require.NoError(t, ShardFactor(0).Validate())
+	})
+
+	t.Run("rejects a factor that is not a power of two", func(t *testing.T) {
+		require.ErrorContains(t, ShardFactor(24).Validate(), "not a power of two")
+	})
+
+	t.Run("rejects a power of two that is not the default", func(t *testing.T) {
+		require.ErrorContains(t, ShardFactor(64).Validate(), "shard factor 64 is not supported, only 32 is")
+	})
+
+	t.Run("rejects a factor above the maximum", func(t *testing.T) {
+		require.ErrorContains(t, ShardFactor(1<<20).Validate(), "more than the maximum")
+	})
+}
+
+func TestShardFactor_Set(t *testing.T) {
+	t.Run("string returns the value that set parsed", func(t *testing.T) {
+		var f ShardFactor
+		require.NoError(t, f.Set("32"))
+		require.Equal(t, ShardFactor(32), f)
+		require.Equal(t, "32", f.String())
+	})
+
+	t.Run("returns an error for a value that is not a number", func(t *testing.T) {
+		var f ShardFactor
+		require.Error(t, f.Set("many"))
+	})
+
+	t.Run("returns an error for a negative value", func(t *testing.T) {
+		var f ShardFactor
+		require.Error(t, f.Set("-1"))
+	})
+
+	t.Run("returns an error for a value that overflows uint32", func(t *testing.T) {
+		var f ShardFactor
+		require.Error(t, f.Set("4294967296"))
+		require.Zero(t, f, "a failed set must not change the value")
+	})
+}
+
+func TestLimits_DataObjShardFactor(t *testing.T) {
 	t.Run("register flags sets the default factor", func(t *testing.T) {
 		var l Limits
 		l.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
@@ -1478,26 +1553,7 @@ func TestShardFactor(t *testing.T) {
 		require.NoError(t, l.Validate())
 	})
 
-	t.Run("validate accepts the default factor", func(t *testing.T) {
-		require.NoError(t, ShardFactor(streams.DefaultShardBuckets).Validate())
-	})
-
-	t.Run("validate accepts zero, which means the default factor", func(t *testing.T) {
-		require.NoError(t, ShardFactor(0).Validate())
-		layout, err := ShardFactor(0).Layout()
-		require.NoError(t, err)
-		require.Equal(t, streams.DefaultShardLayout(), layout)
-	})
-
-	t.Run("validate rejects a factor that is not a power of two", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(24).Validate(), "not a power of two")
-	})
-
-	t.Run("validate rejects a power of two that is not the default", func(t *testing.T) {
-		require.ErrorContains(t, ShardFactor(64).Validate(), "shard factor 64 is not supported, only 32 is")
-	})
-
-	t.Run("limits validation rejects an invalid factor from the flag", func(t *testing.T) {
+	t.Run("validation rejects an unsupported factor from the flag", func(t *testing.T) {
 		var l Limits
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)
 		l.RegisterFlags(fs)
@@ -1505,25 +1561,20 @@ func TestShardFactor(t *testing.T) {
 		require.ErrorContains(t, l.Validate(), "dataobj_shard_factor: shard factor 16 is not supported")
 	})
 
-	t.Run("set returns an error for a value that is not a number", func(t *testing.T) {
-		var f ShardFactor
-		require.Error(t, f.Set("many"))
-	})
-
-	t.Run("limits from yaml without the field keep the default factor", func(t *testing.T) {
+	t.Run("yaml without the field keeps the default factor", func(t *testing.T) {
 		var defaults Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		SetDefaultLimitsForYAMLUnmarshalling(defaults)
+		setDefaultLimitsForYAML(t, defaults)
 
 		var l Limits
 		require.NoError(t, yaml.Unmarshal([]byte(`ingestion_rate_mb: 10`), &l))
 		require.Equal(t, ShardFactor(streams.DefaultShardBuckets), l.DataObjShardFactor)
 	})
 
-	t.Run("limits from yaml with an unsupported factor fail validation", func(t *testing.T) {
+	t.Run("validation rejects an unsupported factor from yaml", func(t *testing.T) {
 		var defaults Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		SetDefaultLimitsForYAMLUnmarshalling(defaults)
+		setDefaultLimitsForYAML(t, defaults)
 
 		var l Limits
 		require.NoError(t, yaml.Unmarshal([]byte(`dataobj_shard_factor: 8`), &l))
@@ -1532,10 +1583,14 @@ func TestShardFactor(t *testing.T) {
 }
 
 func TestOverrides_ShardLayout(t *testing.T) {
-	t.Run("returns the default layout for tenants without an override", func(t *testing.T) {
+	newDefaults := func() Limits {
 		var defaults Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
-		ov, err := NewOverrides(defaults, nil)
+		return defaults
+	}
+
+	t.Run("returns the default layout for tenants without an override", func(t *testing.T) {
+		ov, err := NewOverrides(newDefaults(), nil)
 		require.NoError(t, err)
 		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("any-tenant"))
 	})
@@ -1544,5 +1599,24 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		ov, err := NewOverrides(Limits{}, nil)
 		require.NoError(t, err)
 		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("any-tenant"))
+	})
+
+	t.Run("returns the layout of the tenant's own override", func(t *testing.T) {
+		tenantLimits := newDefaults()
+		tenantLimits.DataObjShardFactor = 64
+		globalLimits := newDefaults()
+		globalLimits.DataObjShardFactor = 16
+		ov, err := NewOverrides(globalLimits, newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
+		require.NoError(t, err)
+		require.Equal(t, uint32(64), ov.ShardLayout("custom").Buckets())
+		require.Equal(t, uint32(16), ov.ShardLayout("other").Buckets())
+	})
+
+	t.Run("returns the default layout when an unvalidated override has an invalid factor", func(t *testing.T) {
+		tenantLimits := newDefaults()
+		tenantLimits.DataObjShardFactor = 24
+		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
+		require.NoError(t, err)
+		require.Equal(t, streams.DefaultShardLayout(), ov.ShardLayout("custom"))
 	})
 }
