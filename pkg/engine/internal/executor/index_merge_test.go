@@ -524,24 +524,12 @@ func TestExecuteIndexMerge_LegacySections(t *testing.T) {
 		}
 	}
 
-	t.Run("merges postings and stats and drops the streams section", func(t *testing.T) {
+	t.Run("returns an error when the source index holds a streams section", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath, false)
 
-		artifacts, err := newTestExecutorContext(t, bucket).doIndexMerge(ctx, newNode())
-		require.NoError(t, err)
-		require.NoError(t, artifacts.Validate())
-
-		var sawPostings, sawStats bool
-		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifacts.Path).Sections() {
-			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
-			sawPostings = sawPostings || postings.CheckSection(sec)
-			sawStats = sawStats || stats.CheckSection(sec)
-		}
-		require.True(t, sawPostings, "output must contain a postings section")
-		require.True(t, sawStats, "output must contain a stats section")
-		require.NotEmpty(t, readPostingsRowsFromBucket(ctx, t, bucket, artifacts.Path))
-		require.NotEmpty(t, readStatsRowsFromBucket(ctx, t, bucket, artifacts.Path))
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(ctx, newNode())
+		require.ErrorContains(t, err, "unknown section")
 	})
 
 	t.Run("returns an error when the source index holds a pointers section", func(t *testing.T) {

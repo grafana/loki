@@ -292,7 +292,7 @@ func TestDoIndexFilter(t *testing.T) {
 		require.ErrorContains(t, err, "unknown section")
 	})
 
-	t.Run("skips the streams section of the source index", func(t *testing.T) {
+	t.Run("returns an error when the source index holds a streams section", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		objBuilder := dataobj.NewBuilder(nil)
 		appendFilterPostings(t, objBuilder, "acme", 1<<20, []string{"logs/a", "logs/b"}, false)
@@ -305,18 +305,11 @@ func TestDoIndexFilter(t *testing.T) {
 
 		uploadFilterSourceIndex(t, bucket, sourcePath, objBuilder)
 
-		artifact, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
+		_, err := newTestExecutorContext(t, bucket).doIndexFilter(ctx, &physical.IndexFilter{
 			NodeID: ulid.Make(), Tenant: "acme", SourceIndexPath: sourcePath,
 			ObjectPaths: []string{"logs/a"},
 		})
-		require.NoError(t, err)
-
-		for _, sec := range openObjectFromBucket(ctx, t, bucket, artifact.Path).Sections() {
-			require.False(t, streams.CheckSection(sec), "output must not hold a streams section")
-		}
-		postingsPaths, statsPaths := indexObjectPaths(t, bucket, artifact.Path)
-		require.Equal(t, []string{"logs/a"}, postingsPaths)
-		require.Equal(t, []string{"logs/a"}, statsPaths)
+		require.ErrorContains(t, err, "unknown section")
 	})
 
 	t.Run("returns an error when the source index holds an unsupported section type", func(t *testing.T) {

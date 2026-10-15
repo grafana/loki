@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
@@ -74,9 +73,6 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		case stats.CheckSection(sec):
 			err = copyRows(ctx, sec, openStatsReader, keep, foundStats, func(row stats.Stat) string { return row.ObjectPath },
 				func(row stats.Stat) error { return builder.AppendStat(node.Tenant, row) })
-		case streams.CheckSection(sec):
-			// The index calculator still writes a streams section. The compactor does not support it.
-			continue
 		default:
 			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec)
 		}

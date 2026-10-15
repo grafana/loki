@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -186,10 +185,6 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				}
 				statsSeen++
 				group.stats = append(group.stats, sec)
-			case streams.CheckSection(sec):
-				// The index calculator still writes a streams section, but the compactor
-				// does not support it.
-				continue
 			default:
 				return nil, fmt.Errorf("merging source index %q: unknown section %q", path, sec)
 			}
