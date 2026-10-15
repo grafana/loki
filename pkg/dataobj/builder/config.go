@@ -21,7 +21,7 @@ type Config struct {
 	MaxBuilderAge    time.Duration `yaml:"max_builder_age"`
 
 	// FlushConcurrency is the maximum number of data objects that one flush
-	// builds, uploads and indexes at the same time.
+	// builds, uploads and indexes at the same time. It must be at least 1.
 	FlushConcurrency int `yaml:"flush_concurrency"`
 
 	// This is temporary until we move to kafkav2.
@@ -92,7 +92,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		&cfg.FlushConcurrency,
 		prefix+"flush-concurrency",
 		1,
-		"The maximum number of data objects to build, upload and index at the same time during a flush. Each concurrent object adds the memory to sort and index it. The offset is committed once every object succeeds.",
+		"The maximum number of data objects that one flush builds, uploads and indexes at the same time. Each extra object in progress adds the memory to sort, upload and index it. If one object fails, the flush cancels the others. The builder commits the Kafka offset only after every object succeeds.",
 	)
 	f.IntVar(
 		&cfg.PartitionID,
