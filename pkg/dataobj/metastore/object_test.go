@@ -187,15 +187,6 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 				require.ElementsMatch(t, pathsA, got)
 			},
 		},
-		{
-			name: "Values",
-			query: func(ctx context.Context, t *testing.T, mstore *ObjectMetastore) {
-				got, err := mstore.Values(ctx, start, end)
-				require.NoError(t, err)
-				require.NotContains(t, got, "only-in-b")
-				require.Contains(t, got, "foo")
-			},
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bucket := &getRecordingBucket{Bucket: builder.bucket}
@@ -211,131 +202,6 @@ func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, len(matchers))
-	})
-}
-
-func TestNonExistentLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "invalid"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 0)
-	})
-}
-
-func TestMixedLabels(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "invalid"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 0)
-	})
-}
-
-func TestLabelsSingleMatcher(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
-		require.NoError(t, err)
-
-		require.Len(t, matchedLabels, 3)
-		for _, expectedLabel := range []string{"env", "team", "app"} {
-			require.NotEqual(t, slices.Index(matchedLabels, expectedLabel), -1)
-		}
-	})
-}
-
-func TestLabelsEmptyMatcher(t *testing.T) {
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedLabels, err := mstore.Labels(ctx, start, end)
-		require.NoError(t, err)
-		require.Len(t, matchedLabels, 3)
-	})
-}
-
-func TestValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, len(matchers))
-	})
-}
-
-func TestNonExistentValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "invalid"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 0)
-	})
-}
-
-func TestMixedValues(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "ops"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 0)
-	})
-}
-
-func TestValuesSingleMatcher(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 5)
-	})
-}
-
-func TestValuesEmptyMatcher(t *testing.T) {
-	queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, 6)
-		for _, expectedValue := range []string{"foo", "prod", "bar", "dev", "baz", "a"} {
-			require.NotEqual(t, slices.Index(matchedValues, expectedValue), -1)
-		}
-	})
 }
 
 func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
@@ -354,15 +220,7 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 		lbls, err := syntax.ParseLabels(ts.Labels)
 		require.NoError(t, err)
 
-		newIdx, err := builder.AppendStream(streams.Stream{
-			ID:               int64(i),
-			Labels:           lbls,
-			MinTimestamp:     ts.Entries[0].Timestamp,
-			MaxTimestamp:     ts.Entries[0].Timestamp,
-			UncompressedSize: 0,
-		})
-		require.NoError(t, err)
-		observeLabelPostings(builder, "test-path", 1, newIdx, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		observeLabelPostings(builder, "test-path", 1, int64(i), lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 	}
 
 	// Build and store the object
@@ -491,14 +349,6 @@ func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-3*time.Hour), 5)
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-2*time.Hour), 0)
 
@@ -724,14 +574,7 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 			lbls, err := syntax.ParseLabels(line.labels)
 			require.NoError(t, err)
 
-			idx, err := builder.AppendStream(streams.Stream{
-				ID:           line.streamID,
-				Labels:       lbls,
-				MinTimestamp: line.timestamp,
-				MaxTimestamp: line.timestamp,
-			})
-			require.NoError(t, err)
-			observeLabelPostings(builder, line.objectPath, line.section, idx, lbls, line.timestamp, 1)
+			observeLabelPostings(builder, line.objectPath, line.section, line.streamID, lbls, line.timestamp, 1)
 		}
 
 		timeRanges := []dataobj.TimeRange{builder.TimeRange()}
@@ -909,22 +752,6 @@ func TestObjectMetastore_Sections_DuplicateSections(t *testing.T) {
 		require.Contains(t, logs.String(), secondIndex)
 		requireDuplicateSections(t, reg, 0, 1)
 	})
-
-	t.Run("returns the duplicate section once when two index objects list the same streams in a different order", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		prod := indexedLine{objectPath: "src-obj", section: 0, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now}
-		dev := indexedLine{objectPath: "src-obj", section: 0, streamID: 2, labels: `{app="foo", env="dev"}`, timestamp: now}
-		addIndexObject(t, bucket, []indexedLine{prod, dev})
-		addIndexObject(t, bucket, []indexedLine{dev, prod})
-		mstore, reg, _ := newMetastore(bucket)
-
-		got, err := mstore.Sections(ctx, request)
-		require.NoError(t, err)
-
-		require.Len(t, got.Sections, 1)
-		require.ElementsMatch(t, []int64{1, 2}, got.Sections[0].StreamIDs)
-		requireDuplicateSections(t, reg, 1, 0)
-	})
 }
 
 func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
@@ -940,36 +767,12 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "prod"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo", "env", "prod"), now.Add(-3*time.Hour), 5)
 
 	// Stream 2: app=bar, env=dev
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               2,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "env", Value: "dev"}),
-		MinTimestamp:     now.Add(-1 * time.Hour),
-		MaxTimestamp:     now,
-		UncompressedSize: 10,
-	})
-	require.NoError(t, err)
 	observeLabelPostings(builder, "test-path", 1, 2, labels.FromStrings("app", "bar", "env", "dev"), now.Add(-1*time.Hour), 10)
 
 	// Stream 3: app=foo, env=dev (shares app label with stream 1, env with stream 2)
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               3,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "dev"}),
-		MinTimestamp:     now.Add(-30 * time.Minute),
-		MaxTimestamp:     now.Add(-15 * time.Minute),
-		UncompressedSize: 7,
-	})
-	require.NoError(t, err)
 	observeLabelPostings(builder, "test-path", 2, 3, labels.FromStrings("app", "foo", "env", "dev"), now.Add(-30*time.Minute), 7)
 
 	// Build and store the object
@@ -1095,15 +898,7 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	}, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
 
-	// Create a stream with label app=foo
-	_, err = builder.AppendStream(streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
+	// Index a stream with label app=foo
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-3*time.Hour), 5)
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-2*time.Hour), 0)
 
@@ -1223,27 +1018,6 @@ func TestDataobjSectionDescriptorMerge_NilLabels(t *testing.T) {
 	desc.Merge(ptr2, []string{"env"})
 
 	require.ElementsMatch(t, []string{"env"}, desc.AmbiguousPredicates)
-}
-
-func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
-	now := time.Now().UTC()
-	start := now.Add(-time.Hour * 5)
-	end := now.Add(time.Hour * 5)
-
-	builder := newTestDataBuilder(t)
-
-	for _, stream := range testStreams {
-		builder.addStreamAndFlush(tenant, stream)
-	}
-
-	mstore := newTestObjectMetastore(builder.bucket)
-	defer func() {
-		require.NoError(t, builder.bucket.Close())
-	}()
-
-	ctx := user.InjectOrgID(context.Background(), tenant)
-
-	mfunc(ctx, start, end, mstore)
 }
 
 func newTestDataBuilder(t testing.TB) *testDataBuilder {

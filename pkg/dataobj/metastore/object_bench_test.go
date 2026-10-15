@@ -90,16 +90,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx, err := builder.AppendStream(streams.Stream{
-					ID:               globalStreamID,
-					Labels:           lbls,
-					MinTimestamp:     ts.Entries[0].Timestamp,
-					MaxTimestamp:     ts.Entries[0].Timestamp,
-					UncompressedSize: 0,
-				})
-				require.NoError(b, err)
-
-				observeLabelPostings(builder, "test-path", int64(fileIdx+1), newIdx, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+				observeLabelPostings(builder, "test-path", int64(fileIdx+1), globalStreamID, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 
 				globalStreamID++
 			}
@@ -191,15 +182,6 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 			require.NoError(b, err)
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
-
-			_, err = builder.AppendStream(streams.Stream{
-				ID:               1,
-				Labels:           lbls,
-				MinTimestamp:     now.Add(-3 * time.Hour),
-				MaxTimestamp:     now.Add(-2 * time.Hour),
-				UncompressedSize: 5,
-			})
-			require.NoError(b, err)
 
 			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-3*time.Hour), 5)
 			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-2*time.Hour), 0)

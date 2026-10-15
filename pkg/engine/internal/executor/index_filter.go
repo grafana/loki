@@ -80,8 +80,6 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 			// pointers sections still hold them. The compactor does not support them.
 			continue
 		case streams.CheckSection(sec):
-			// Streams sections may exist for fresh indexes until this section is no longer built.
-			// The compactor does not support them.
 			continue
 		default:
 			return nil, fmt.Errorf("filtering source index %q: unknown section %q", node.SourceIndexPath, sec)
