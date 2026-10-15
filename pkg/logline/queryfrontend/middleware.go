@@ -562,12 +562,18 @@ func (h *loglinePrefetchHandler) doDryRun(
 	queryBytes uint64,
 ) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, h.logger)
-	eligibleEnd := through
+	// A supported metric query has one log selector, so it has one matcher group.
+	// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
+	readStart, readEnd := from, through
+	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
+		readStart, readEnd = groups[0].Widen(from, through)
+	}
+	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
 		cutoff := time.Now().Add(-h.queryIngestersWithin).UTC()
-		if cutoff.After(from) && cutoff.Before(through) {
+		if cutoff.After(readStart) && cutoff.Before(readEnd) {
 			eligibleEnd = cutoff
-		} else if !cutoff.After(from) {
+		} else if !cutoff.After(readStart) {
 			// Entire query is in the ingester window — nothing to verify.
 			return h.next.Do(ctx, req)
 		}
@@ -602,18 +608,12 @@ func (h *loglinePrefetchHandler) doDryRun(
 	go func() {
 		defer close(lookup.done)
 		start := time.Now()
-		// A supported metric query has one log selector, so it has one matcher group.
-		// A log query has one too, with a zero interval and offset, so Widen leaves it unchanged.
-		lookupFrom, lookupThrough := from, eligibleEnd
-		if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
-			lookupFrom, lookupThrough = groups[0].Widen(from, eligibleEnd)
-		}
 		hints, stats, hintErr := h.hintProvider.ProvideHints(
 			prefetchCtx,
 			tenant,
 			expr,
-			model.TimeFromUnixNano(lookupFrom.UnixNano()),
-			model.TimeFromUnixNano(lookupThrough.UnixNano()),
+			model.TimeFromUnixNano(readStart.UnixNano()),
+			model.TimeFromUnixNano(eligibleEnd.UnixNano()),
 		)
 		lookup.duration = time.Since(start)
 		if h.metrics != nil && h.metrics.hintProviderDuration != nil {
@@ -1044,17 +1044,17 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 		return h.next.Do(ctx, req)
 	}
 
-	if intervalEnd.After(result.ingesterCutoff) {
-		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
-		return h.next.Do(ctx, req)
-	}
-
 	// A metric split reads before its start. Overlap and clipping use that window
 	// so a lookback match is not treated as a miss. Log queries widen by zero.
 	expr, _ := syntax.ParseExpr(lokiReq.Query)
 	readStart, readEnd := intervalStart, intervalEnd
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(intervalStart, intervalEnd)
+	}
+
+	if readEnd.After(result.ingesterCutoff) {
+		h.metrics.passthroughSubRequests.WithLabelValues("ingester_window").Inc()
+		return h.next.Do(ctx, req)
 	}
 
 	overlapping := rangesOverlapping(result.ranges, readStart, readEnd)
