@@ -277,15 +277,20 @@ func (c *Client) Flush() error {
 }
 
 // FlushTenant triggers a synchronous flush of the calling tenant's in-memory
-// chunks (the tenant is taken from the client's X-Scope-OrgID) and then forces
-// the ingester's in-memory index to be shipped to the backing store. An empty
-// selector flushes all of the tenant's in-memory streams; a non-empty selector
-// is a LogQL stream selector restricting which streams are flushed.
+// chunks (the tenant is the client's instance ID) and then forces the ingester's
+// in-memory index to be shipped to the backing store. An empty selector flushes
+// all of the tenant's in-memory streams; a non-empty selector is a LogQL stream
+// selector restricting which streams are flushed.
+//
+// EXPERIMENTAL: this uses the experimental /flush/tenant endpoint.
 func (c *Client) FlushTenant(selector string) error {
-	u := fmt.Sprintf("%s/flush/tenant", c.baseURL)
+	params := url.Values{}
+	params.Set("id", c.instanceID)
+	params.Set("flush_index", "true")
 	if selector != "" {
-		u += "?streams=" + url.QueryEscape(selector)
+		params.Set("matchers", selector)
 	}
+	u := fmt.Sprintf("%s/flush/tenant?%s", c.baseURL, params.Encode())
 
 	req, err := c.request(context.Background(), "POST", u)
 	if err != nil {

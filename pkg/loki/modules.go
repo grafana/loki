@@ -883,10 +883,11 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
 	)
-	// Tenant-scoped flush. Wrapped with the auth middleware so the tenant is
-	// available in the request context (X-Scope-OrgID).
+	// Tenant-scoped flush (experimental). The tenant is the "id" param rather than
+	// X-Scope-OrgID because the caller is an operator, so it carries no auth
+	// middleware, like /flush.
 	t.Server.HTTP.Methods("POST").Path("/flush/tenant").Handler(
-		t.HTTPAuthMiddleware.Wrap(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler))),
+		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler)),
 	)
 	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
@@ -2017,8 +2018,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	// On-demand index sync: refresh the object-listing cache and download newly
 	// shipped indexes so a freshly flushed index becomes queryable without
 	// waiting for the periodic list-cache TTL. This is cluster-wide and not
-	// tenant-scoped, so it carries no auth middleware (mirroring /flush rather
-	// than /flush/tenant). PUT triggers an async sync; GET reports its status.
+	// tenant-scoped, so it carries no auth middleware (mirroring /flush and
+	// /flush/tenant). PUT triggers an async sync; GET reports its status.
 	t.Server.HTTP.Methods("PUT").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexesHandler))
 	t.Server.HTTP.Methods("GET").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexStatusHandler))
 
