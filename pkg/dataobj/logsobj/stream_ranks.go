@@ -18,7 +18,7 @@ type MultiSourceRankedStreams struct {
 // RankMixedStreams extracts uniques streams from all sources, sorts them by SortKey,
 // and assigns IDs according to rank. sources[i] is the localID -> stream map for one
 // input object.
-func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream) (*MultiSourceRankedStreams, error) {
+func RankMixedStreams(schemaLabels []string, shardLayout streams.ShardLayout, sources ...map[int64]streams.Stream) (*MultiSourceRankedStreams, error) {
 	type localRef struct {
 		sourceIdx int
 		localID   int64
@@ -34,7 +34,7 @@ func RankMixedStreams(schemaLabels []string, sources ...map[int64]streams.Stream
 				return nil, fmt.Errorf("computing schema key for source %d: %w", sourceIdx, err)
 			}
 
-			key := streams.NewSortKey(s.Labels, schemaKey)
+			key := shardLayout.NewSortKey(s.Labels, schemaKey)
 			lk := s.Labels.String()
 			if _, ok := byLabels[lk]; !ok {
 				byLabels[lk] = key

@@ -1945,9 +1945,9 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 
 	type timeRange struct{ start, end time.Time }
 
-	// selectRanges returns the time ranges the chunk store and the data-object store were asked
+	// selectRangesFor returns the time ranges the chunk store and the data-object store were asked
 	// for, when the querier reads the store leg of a request from start to end.
-	selectRanges := func(t *testing.T, tenantStart time.Time, withDataObjStore bool, order logproto.SampleOrder, start, end time.Time) (chunks, dataObjs []timeRange) {
+	selectRangesFor := func(t *testing.T, tenantStart time.Time, withDataObjStore bool, options *logproto.DataObjOptions, order logproto.SampleOrder, start, end time.Time) (chunks, dataObjs []timeRange) {
 		t.Helper()
 		chunkStore, dataObjStore := &mockStore{}, &mockStore{}
 
@@ -1960,7 +1960,7 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 		require.NoError(t, err)
 		q.now = func() time.Time { return now }
 
-		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: start, End: end, Order: order}}
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: start, End: end, Order: order, DataObjOptions: options}}
 		ctx := user.InjectOrgID(context.Background(), "tenant")
 		store, err := q.storeForSelectSamples(ctx, params)
 		require.NoError(t, err)
@@ -1976,6 +1976,24 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 		}
 		return chunks, dataObjs
 	}
+
+	// selectRanges is selectRangesFor with a request that the query-frontend marked eligible.
+	selectRanges := func(t *testing.T, tenantStart time.Time, withDataObjStore bool, order logproto.SampleOrder, start, end time.Time) (chunks, dataObjs []timeRange) {
+		t.Helper()
+		return selectRangesFor(t, tenantStart, withDataObjStore, &logproto.DataObjOptions{Eligible: true}, order, start, end)
+	}
+
+	t.Run("reads only chunks for a request without data-object options", func(t *testing.T) {
+		chunks, dataObjs := selectRangesFor(t, hour(0), true, nil, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
+
+	t.Run("reads only chunks for a request the query-frontend did not mark eligible", func(t *testing.T) {
+		chunks, dataObjs := selectRangesFor(t, hour(0), true, &logproto.DataObjOptions{}, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
+		require.Equal(t, []timeRange{{hour(1), hour(2)}}, chunks)
+		require.Empty(t, dataObjs)
+	})
 
 	t.Run("reads only chunks for a tenant without a data-object start time", func(t *testing.T) {
 		chunks, dataObjs := selectRanges(t, time.Time{}, true, logproto.SAMPLE_ORDER_BY_STREAM, hour(1), hour(2))
@@ -2047,7 +2065,7 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 		q, err := New(Config{DataObjStorageLag: storageLag}, &mockStore{}, &mockStore{}, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: hour(0)}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0)
 		require.NoError(t, err)
 
-		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: hour(1), End: hour(2), Order: logproto.SAMPLE_ORDER_BY_STREAM}}
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: hour(1), End: hour(2), Order: logproto.SAMPLE_ORDER_BY_STREAM, DataObjOptions: &logproto.DataObjOptions{Eligible: true}}}
 		_, err = q.storeForSelectSamples(context.Background(), params)
 		require.Error(t, err)
 	})

@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -76,7 +77,7 @@ func (s *compactionScenario) compactUntilIdle(tenant string) {
 	for cycle := range 10 {
 		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window)
 		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
-		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant, s.stored.Window)
+		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
 		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)
 		if indexOutcome == phaseOutcomeNoWork && logOutcome == phaseOutcomeNoWork {
 			return
@@ -168,10 +169,10 @@ func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 	targetSchema := []string{"label:app"}
 	clusterSchema := []string{"label:cluster"}
-	targetLayout := logsobj.TargetSortLayout(targetSchema)
-	clusterLayout := logsobj.TargetSortLayout(clusterSchema)
-	legacyStreamOrder := logs.SortLayout{SchemaLabels: targetSchema, StreamOrder: logs.StreamOrderUnspecified, ShardCount: streams.ShardFactor}
-	legacyShardCount := logs.SortLayout{SchemaLabels: targetSchema, StreamOrder: logs.StreamOrderStableHashV1, ShardCount: streams.ShardFactor / 2}
+	targetLayout := logsobj.TargetSortLayout(targetSchema, streams.DefaultShardLayout())
+	clusterLayout := logsobj.TargetSortLayout(clusterSchema, streams.DefaultShardLayout())
+	legacyStreamOrder := logs.SortLayout{SchemaLabels: targetSchema, StreamOrder: logs.StreamOrderUnspecified, ShardCount: streams.DefaultShardLayout().Buckets()}
+	legacyShardCount := logs.SortLayout{SchemaLabels: targetSchema, StreamOrder: logs.StreamOrderStableHashV1, ShardCount: streams.DefaultShardLayout().Buckets() / 2}
 
 	type indexGroup struct {
 		schema     []string
@@ -186,22 +187,22 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 		{
 			name: "matching schemas compact",
 			indexGroups: []indexGroup{{
-				schema: targetSchema, shardCount: streams.ShardFactor, layouts: []logs.SortLayout{targetLayout, targetLayout},
+				schema: targetSchema, shardCount: int64(streams.DefaultShardLayout().Buckets()), layouts: []logs.SortLayout{targetLayout, targetLayout},
 			}},
 			expectedIndexes: 1,
 		},
 		{
 			name: "mismatched schemas sort each object",
 			indexGroups: []indexGroup{{
-				schema: clusterSchema, shardCount: streams.ShardFactor, layouts: []logs.SortLayout{clusterLayout, clusterLayout},
+				schema: clusterSchema, shardCount: int64(streams.DefaultShardLayout().Buckets()), layouts: []logs.SortLayout{clusterLayout, clusterLayout},
 			}},
 			expectedIndexes: 2,
 		},
 		{
 			name: "matching and mismatched indexes progress together",
 			indexGroups: []indexGroup{
-				{schema: targetSchema, shardCount: streams.ShardFactor, layouts: []logs.SortLayout{targetLayout, targetLayout}},
-				{schema: clusterSchema, shardCount: streams.ShardFactor, layouts: []logs.SortLayout{clusterLayout, clusterLayout}},
+				{schema: targetSchema, shardCount: int64(streams.DefaultShardLayout().Buckets()), layouts: []logs.SortLayout{targetLayout, targetLayout}},
+				{schema: clusterSchema, shardCount: int64(streams.DefaultShardLayout().Buckets()), layouts: []logs.SortLayout{clusterLayout, clusterLayout}},
 			},
 			expectedIndexes: 3,
 		},
@@ -215,7 +216,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 		{
 			name: "legacy shard count triggers sorting",
 			indexGroups: []indexGroup{{
-				schema: targetSchema, shardCount: streams.ShardFactor / 2, layouts: []logs.SortLayout{legacyShardCount, legacyShardCount},
+				schema: targetSchema, shardCount: int64(streams.DefaultShardLayout().Buckets() / 2), layouts: []logs.SortLayout{legacyShardCount, legacyShardCount},
 			}},
 			expectedIndexes: 2,
 		},
@@ -261,7 +262,7 @@ func TestCoordinator_LogCompactionSortSchemaCompatibility(t *testing.T) {
 			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
-			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant, window))
+			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant))
 
 			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
@@ -295,7 +296,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 		statsBuilder.Append(stats.Stat{
 			ObjectPath: sourcePath, SectionIndex: 0, SortSchema: strings.Join(sortSchema, ","),
 			Labels: schemaLabels, MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.Add(time.Second).UnixNano(),
-			RowCount: 2, UncompressedSize: 100, ShardBucket: streams.ShardBucket(streamLabels),
+			RowCount: 2, UncompressedSize: 100, ShardBucket: streams.DefaultShardLayout().BucketFromLabels(streamLabels),
 		})
 		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath: sourcePath, ShardBuckets: shardCount, SectionIndex: 0,
@@ -309,7 +310,7 @@ func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.B
 
 func TestE2ECompactionConvergence(t *testing.T) {
 	fiveSourceLayouts := func() []logs.SortLayout {
-		layout := logsobj.TargetSortLayout([]string{"label:app"})
+		layout := logsobj.TargetSortLayout([]string{"label:app"}, streams.DefaultShardLayout())
 		return []logs.SortLayout{layout, layout, layout, layout, layout}
 	}
 
@@ -490,7 +491,7 @@ func requireLogContents(t *testing.T, contents compactortest.Contents, schema []
 	require.Equal(t, contents.StatsObjectPaths, contents.PostingsObjectPaths, "stats and postings must reference the same log objects")
 	require.Equal(t, map[string]bool{strings.Join(schema, ","): true}, contents.SortSchemas)
 	require.NotEmpty(t, contents.LogSectionLayouts)
-	expectedLayouts := slices.Repeat([]logs.SortLayout{logsobj.TargetSortLayout(schema)}, len(contents.LogSectionLayouts))
+	expectedLayouts := slices.Repeat([]logs.SortLayout{logsobj.TargetSortLayout(schema, streams.DefaultShardLayout())}, len(contents.LogSectionLayouts))
 	require.True(t, slices.EqualFunc(expectedLayouts, contents.LogSectionLayouts, logsobj.EqualSortLayout), "every section must use the target layout")
 }
 
@@ -501,7 +502,7 @@ func requireSingleSortedRun(t *testing.T, scenario *compactionScenario, indexes 
 	sections, indexedSchema, shardCount, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
 	require.NoError(t, err)
 	require.Equal(t, schema, indexedSchema)
-	require.Equal(t, int64(streams.ShardFactor), shardCount)
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), shardCount)
 	require.NotEmpty(t, sections)
 
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
@@ -539,7 +540,7 @@ func scenarioStreamSortKey(t *testing.T, stream streams.Stream, schema []string)
 		require.NotEmpty(t, name, "schema key %q must name a label", label)
 		values[i] = stream.Labels.Get(name)
 	}
-	return logSortPrefix{shard: uint32(stream.ShardBucket), labels: values}
+	return newLogSortPrefix(uint32(stream.ShardBucket), values)
 }
 
 // newIntegrationCoordinator owns an in-process scheduler and worker sharing the
@@ -609,7 +610,7 @@ func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstor
 		indexDispatcher: &planDispatcher{runPlan: run, limit: compactionCfg.MaxRunningCompactionTasks},
 		logDispatcher:   &planDispatcher{runPlan: run, limit: compactionCfg.LogMaxRunningCompactionTasks},
 		publisher: &tocPublisher{
-			writer:  metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger()),
+			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: compactionCfg.ToCConsolidateTimeout,
 			dryRun:  compactionCfg.DryRun,
 		},

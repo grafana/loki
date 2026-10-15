@@ -308,8 +308,11 @@ func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
 	return labelsContain(b.add[category], key)
 }
 
-// BaseHas returns the base labels have the given key
+// BaseHas returns whether the base labels have the given key, ignoring keys already removed by a previous stage (e.g. `drop`).
 func (b *LabelsBuilder) BaseHas(key string) bool {
+	if slices.Contains(b.del, key) {
+		return false
+	}
 	return b.base.Has(key)
 }
 
@@ -755,11 +758,6 @@ func (b *LabelsBuilder) toByGroup() LabelsResult {
 	}
 Outer:
 	for _, g := range b.groups {
-		for _, n := range b.del {
-			if g == n {
-				continue Outer
-			}
-		}
 		for category, la := range b.add {
 			for _, l := range la {
 				if g == l.Name {
@@ -770,6 +768,11 @@ Outer:
 					continue Outer
 				}
 			}
+		}
+
+		// A deleted stream label is gone, but a label added after the delete (e.g. by a parser) is not.
+		if slices.Contains(b.del, g) {
+			continue
 		}
 
 		value := b.base.Get(g)

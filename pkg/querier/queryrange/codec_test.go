@@ -53,6 +53,18 @@ var (
 func Test_codec_EncodeDecodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
+	// The codec decodes a request with a plan.
+	dataObjRange := func(eligible bool) *LokiRequest {
+		req := dataObjRangeRequest(eligible)
+		req.Plan = testutil.MustPlan(req.Query)
+		return req
+	}
+	dataObjInstant := func(eligible bool) *LokiInstantRequest {
+		req := dataObjInstantRequest(eligible)
+		req.Plan = testutil.MustPlan(req.Query)
+		return req
+	}
+
 	tests := []struct {
 		name       string
 		reqBuilder func() (*http.Request, error)
@@ -101,6 +113,18 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			EndTs:     end,
 			Plan:      testutil.MustPlan(`{foo="bar"} |~ "foo"`),
 		}, false},
+		{"query_range that data objects may serve", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, dataObjRangeRequest(true))
+		}, dataObjRange(true), false},
+		{"query_range that data objects may not serve", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, dataObjRangeRequest(false))
+		}, dataObjRange(false), false},
+		{"query instant that data objects may serve", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, dataObjInstantRequest(true))
+		}, dataObjInstant(true), false},
+		{"query instant that data objects may not serve", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, dataObjInstantRequest(false))
+		}, dataObjInstant(false), false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/series?start=%d&end=%d&match={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
@@ -415,6 +439,29 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 			require.True(t, params.CachingOptions().Disabled, "expected CachingOptions.Disabled to be true")
 		})
 	}
+}
+
+func TestParamsFromRequest_DataObjOptions(t *testing.T) {
+	t.Run("returns the options of a range request", func(t *testing.T) {
+		params, err := ParamsFromRequest(dataObjRangeRequest(true))
+		require.NoError(t, err)
+
+		require.True(t, params.GetDataObjOptions().GetEligible())
+	})
+
+	t.Run("returns the options of an instant request", func(t *testing.T) {
+		params, err := ParamsFromRequest(dataObjInstantRequest(true))
+		require.NoError(t, err)
+
+		require.True(t, params.GetDataObjOptions().GetEligible())
+	})
+
+	t.Run("returns no options for a request that is not eligible", func(t *testing.T) {
+		params, err := ParamsFromRequest(dataObjRangeRequest(false))
+		require.NoError(t, err)
+
+		require.Nil(t, params.GetDataObjOptions())
+	})
 }
 
 func Test_codec_DecodeResponse(t *testing.T) {
@@ -998,6 +1045,11 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
 	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
 	require.Len(t, got.URL.Query()["hintRanges"], 1)
+	require.False(t, got.URL.Query().Has("dataObjEligible"))
+
+	eligible, err := DefaultCodec.EncodeRequest(ctx, toEncode.WithDataObjOptions(&logproto.DataObjOptions{Eligible: true}))
+	require.NoError(t, err)
+	require.Equal(t, "true", eligible.URL.Query().Get("dataObjEligible"))
 
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
@@ -1036,6 +1088,92 @@ func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
 		{Start: start.Add(20 * time.Minute), End: start.Add(40 * time.Minute)},
 		{Start: end, End: end.Add(time.Minute)},
 	}, original.HintRanges)
+}
+
+func TestLokiRequest_DataObjOptionsSurviveCopies(t *testing.T) {
+	t.Run("keeps the options when a range request changes its time range", func(t *testing.T) {
+		req := dataObjRangeRequest(true).WithStartEnd(start, start.Add(time.Minute))
+
+		require.True(t, req.(*LokiRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options when a range request changes its query", func(t *testing.T) {
+		req := dataObjRangeRequest(true).WithQuery(`sum(rate({app="b"}[1m]))`)
+
+		require.True(t, req.(*LokiRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options when an instant request changes its query", func(t *testing.T) {
+		req := dataObjInstantRequest(true).WithQuery(`sum(rate({app="b"}[1m]))`)
+
+		require.True(t, req.(*LokiInstantRequest).DataObjOptions.GetEligible())
+	})
+}
+
+func TestLokiRequest_WithDataObjOptions(t *testing.T) {
+	t.Run("returns a copy of the request that has the options", func(t *testing.T) {
+		req := dataObjRangeRequest(false)
+		options := &logproto.DataObjOptions{Eligible: true}
+
+		got := req.WithDataObjOptions(options)
+
+		require.NotSame(t, req, got)
+		require.Same(t, options, got.DataObjOptions)
+	})
+
+	t.Run("does not change the request it receives", func(t *testing.T) {
+		req := dataObjRangeRequest(true)
+		original := req.DataObjOptions
+
+		got := req.WithDataObjOptions(nil)
+
+		require.Nil(t, got.DataObjOptions)
+		require.Same(t, original, req.DataObjOptions)
+		require.True(t, original.GetEligible())
+	})
+
+	t.Run("keeps the other fields of the request", func(t *testing.T) {
+		req := dataObjRangeRequest(false)
+
+		got := req.WithDataObjOptions(&logproto.DataObjOptions{Eligible: true})
+
+		want := *req
+		want.DataObjOptions = got.DataObjOptions
+		require.Equal(t, want, *got)
+	})
+}
+
+func TestLokiInstantRequest_WithDataObjOptions(t *testing.T) {
+	t.Run("returns a copy of the request that has the options", func(t *testing.T) {
+		req := dataObjInstantRequest(false)
+		options := &logproto.DataObjOptions{Eligible: true}
+
+		got := req.WithDataObjOptions(options)
+
+		require.NotSame(t, req, got)
+		require.Same(t, options, got.DataObjOptions)
+	})
+
+	t.Run("does not change the request it receives", func(t *testing.T) {
+		req := dataObjInstantRequest(true)
+		original := req.DataObjOptions
+
+		got := req.WithDataObjOptions(nil)
+
+		require.Nil(t, got.DataObjOptions)
+		require.Same(t, original, req.DataObjOptions)
+		require.True(t, original.GetEligible())
+	})
+
+	t.Run("keeps the other fields of the request", func(t *testing.T) {
+		req := dataObjInstantRequest(false)
+
+		got := req.WithDataObjOptions(&logproto.DataObjOptions{Eligible: true})
+
+		want := *req
+		want.DataObjOptions = got.DataObjOptions
+		require.Equal(t, want, *got)
+	})
 }
 
 func Test_codec_series_EncodeRequest(t *testing.T) {
@@ -2997,4 +3135,30 @@ func generateSeries() (res []logproto.SeriesIdentifier) {
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
+}
+
+const streamFirstQuery = `sum(count_over_time({app="a"}[1m]))`
+
+func dataObjRangeRequest(eligible bool) *LokiRequest {
+	return &LokiRequest{
+		Query:          streamFirstQuery,
+		Limit:          100,
+		Step:           60000,
+		Direction:      logproto.FORWARD,
+		Path:           "/loki/api/v1/query_range",
+		StartTs:        start,
+		EndTs:          end,
+		DataObjOptions: dataObjOptionsFor(eligible),
+	}
+}
+
+func dataObjInstantRequest(eligible bool) *LokiInstantRequest {
+	return &LokiInstantRequest{
+		Query:          streamFirstQuery,
+		Limit:          100,
+		Direction:      logproto.FORWARD,
+		Path:           "/loki/api/v1/query",
+		TimeTs:         start,
+		DataObjOptions: dataObjOptionsFor(eligible),
+	}
 }

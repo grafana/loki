@@ -289,6 +289,18 @@ regardless of the data provider.
 4. **Consider caching**: Use `Result.Offset()` as a cache key for database
    records
 
+Standalone `mmdbdata.NewDecoder` calls do not cache strings by default. For a
+decoder that repeatedly reads the same strings, pass `mmdbdata.WithStringCache()`.
+The decoder and its cursors share the cache. Use `decoder.CursorAt(offset)` to
+read different records from the same buffer without constructing a new decoder
+or changing its position. Independent cursors can be read concurrently. Keep the
+input buffer unchanged while a cached decoder or any of its cursors are in use.
+Separate `NewDecoder` calls do not share caches.
+
+On 64-bit systems, the table allocates 72 KiB when the first string of 2 through
+100 bytes is read, plus memory for retained strings. Reader-supplied decoders
+and cursors use the Reader's caching policy.
+
 ## Getting Database Files
 
 ### Free GeoLite2 Databases
@@ -310,6 +322,30 @@ Download from
 
 Contributions welcome! Please fork the repository and open a pull request with
 your changes.
+
+### Cache Benchmarks
+
+The real-City benchmarks use `GeoLite2-City.mmdb` in the current directory or
+the path in `MAXMIND_REAL_CITY_DB`. They need a full City database and skip when
+the default file is absent. An invalid explicit path fails the benchmark.
+
+Measure lookup time and allocations without instrumentation:
+
+```sh
+MAXMIND_REAL_CITY_DB=/path/to/GeoIP2-City.mmdb go test -run '^$' -bench '^BenchmarkRealCityCache$' -benchmem
+```
+
+Measure cache hit rates separately:
+
+```sh
+MAXMIND_REAL_CITY_DB=/path/to/GeoIP2-City.mmdb go test -tags cachemetrics -run '^$' -bench '^BenchmarkRealCityCacheHitRate$'
+```
+
+The `cachemetrics` build adds shared counters and suppresses benchmark timing.
+Use its hit-rate results separately from uninstrumented timings.
+`BenchmarkStringCacheHotHome` exercises the home-slot fast path;
+`BenchmarkStringCacheHotDisplaced` exercises bucket scanning. Neither
+microbenchmark represents a full database lookup.
 
 ## License
 

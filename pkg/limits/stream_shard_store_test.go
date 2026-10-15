@@ -607,15 +607,15 @@ func TestStreamShardStore_Collect(t *testing.T) {
 	}, clock.Now())
 
 	require.NoError(t, testutil.CollectAndCompare(s, strings.NewReader(`
-# HELP loki_ingest_limits_stream_shard_tracked_streams The current number of logical (pre-shard) streams tracked for stream sharding per tenant.
+# HELP loki_ingest_limits_stream_shard_tracked_streams The current number of logical (pre-shard) streams tracked for stream sharding per tenant and policy.
 # TYPE loki_ingest_limits_stream_shard_tracked_streams gauge
-loki_ingest_limits_stream_shard_tracked_streams{tenant="test"} 2
-# HELP loki_ingest_limits_stream_shard_total_shards The current number of physical streams that belong to a sharded stream per tenant. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.
+loki_ingest_limits_stream_shard_tracked_streams{policy="",tenant="test"} 2
+# HELP loki_ingest_limits_stream_shard_total_shards The current number of physical streams that belong to a sharded stream per tenant and policy. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.
 # TYPE loki_ingest_limits_stream_shard_total_shards gauge
-loki_ingest_limits_stream_shard_total_shards{tenant="test"} 3
-# HELP loki_ingest_limits_stream_shard_total_streams The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.
+loki_ingest_limits_stream_shard_total_shards{policy="",tenant="test"} 3
+# HELP loki_ingest_limits_stream_shard_total_streams The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant and policy implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.
 # TYPE loki_ingest_limits_stream_shard_total_streams gauge
-loki_ingest_limits_stream_shard_total_streams{tenant="test"} 4
+loki_ingest_limits_stream_shard_total_streams{policy="",tenant="test"} 4
 `),
 		"loki_ingest_limits_stream_shard_tracked_streams",
 		"loki_ingest_limits_stream_shard_total_streams",

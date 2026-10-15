@@ -142,7 +142,7 @@ func (e existsFilter) Filter(line []byte) bool {
 }
 
 func (e existsFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, e.Filter(line)
 	})
 }
@@ -162,7 +162,7 @@ func (n notFilter) Filter(line []byte) bool {
 }
 
 func (n notFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, n.Filter(line)
 	})
 }
@@ -208,7 +208,7 @@ func (a andFilter) Filter(line []byte) bool {
 }
 
 func (a andFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, a.Filter(line)
 	})
 }
@@ -287,7 +287,7 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, a.Filter(line)
 	})
 }
@@ -331,7 +331,7 @@ func (a orFilter) Filter(line []byte) bool {
 }
 
 func (a orFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, a.Filter(line)
 	})
 }
@@ -366,7 +366,7 @@ func (r regexpFilter) Filter(line []byte) bool {
 }
 
 func (r regexpFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, r.Filter(line)
 	})
 }
@@ -393,7 +393,7 @@ func (l equalFilter) Filter(line []byte) bool {
 }
 
 func (l equalFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, l.Filter(line)
 	})
 }
@@ -522,7 +522,7 @@ func containsLower(line, substr []byte) bool {
 }
 
 func (l containsFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, l.Filter(line)
 	})
 }
@@ -572,7 +572,7 @@ func (f containsAllFilter) Filter(line []byte) bool {
 }
 
 func (f containsAllFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, f.Filter(line)
 	})
 }
@@ -859,7 +859,7 @@ func (f *patternFilter) Matches(test Checker) bool {
 }
 
 func (f *patternFilter) ToStage() Stage {
-	return NewStageFunc(nil, StageHints{CanModifyLabels: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(nil, StageHints{CanModifyLabels: false, CanModifyLine: false}, func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 		return line, f.Filter(line)
 	})
 }

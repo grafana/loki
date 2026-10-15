@@ -1,3 +1,12 @@
+# Release (2026-10-09)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.5
+  * **Bug Fix**: Retain the key with the zero value when encountering a null-value key in a dense map. This matches how legacy code-generated JSON deserializers behaved.
+
 # Release (2026-10-07)
 
 ## General Highlights

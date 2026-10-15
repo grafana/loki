@@ -149,6 +149,37 @@ func TestQueryRequestWrapUnwrap_HintRanges(t *testing.T) {
 	require.Equal(t, req.HintRanges, unwrapped.(*LokiRequest).HintRanges)
 }
 
+func TestQueryRequestWrapUnwrap_DataObjOptions(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), "fake")
+
+	unwrap := func(t *testing.T, req queryrangebase.Request) queryrangebase.Request {
+		t.Helper()
+		wrapped, err := (Codec{}).QueryRequestWrap(ctx, req)
+		require.NoError(t, err)
+		data, err := wrapped.Marshal()
+		require.NoError(t, err)
+
+		var decoded QueryRequest
+		require.NoError(t, decoded.Unmarshal(data))
+		unwrapped, _, err := (Codec{}).QueryRequestUnwrap(t.Context(), &decoded)
+		require.NoError(t, err)
+		return unwrapped
+	}
+
+	t.Run("keeps the options of a range request", func(t *testing.T) {
+		require.True(t, unwrap(t, dataObjRangeRequest(true)).(*LokiRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options of an instant request", func(t *testing.T) {
+		require.True(t, unwrap(t, dataObjInstantRequest(true)).(*LokiInstantRequest).DataObjOptions.GetEligible())
+	})
+
+	t.Run("keeps the options unset for a request that is not eligible", func(t *testing.T) {
+		require.Nil(t, unwrap(t, dataObjRangeRequest(false)).(*LokiRequest).DataObjOptions)
+		require.Nil(t, unwrap(t, dataObjInstantRequest(false)).(*LokiInstantRequest).DataObjOptions)
+	})
+}
+
 // Benchmark_UnwrapSeries is the sibling Benchmark_CodecDecodeSeries.
 func Benchmark_UnwrapSeries(b *testing.B) {
 	// Setup

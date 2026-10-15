@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
@@ -57,8 +58,11 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinecompactor "github.com/grafana/loki/v3/pkg/logline/compactor"
 	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
+	loglinescheduler "github.com/grafana/loki/v3/pkg/logline/scheduler"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -158,6 +162,8 @@ const (
 	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
 	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
 	LoglineCorrectness              = "logline-correctness"
+	LoglineScheduler                = "logline-scheduler"
+	LoglineCompactor                = "logline-compactor"
 	UIRing                          = "ui-ring"
 	UI                              = "ui"
 	All                             = "all"
@@ -2363,6 +2369,7 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
+	const componentName = "dataobj-compaction-planner"
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
 	}
@@ -2371,9 +2378,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
+	logger := log.With(util_log.Logger, "component", componentName)
 
-	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
@@ -2384,7 +2391,19 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": componentName},
+		prometheus.DefaultRegisterer,
+	)
+	tocWriter := metastore.NewTableOfContentsWriter(
+		indexBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(reg),
+		indexobj.NewBuilderMetrics(reg),
+	)
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
@@ -2809,4 +2828,77 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 
 	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
+}
+
+// initLoglineScheduler plans compaction jobs, hands them to logline workers,
+// and deletes indexes that are past retention or were merged away.
+func (t *Loki) initLoglineScheduler() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineScheduler)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compaction-scheduler"}, prometheus.DefaultRegisterer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	// Indexes are shared across tenants, so retention reads every tenant's
+	// limits rather than the per-tenant view t.Overrides gives.
+	overrides, err := validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline retention limits: %w", err)
+	}
+
+	svc, err := loglinescheduler.New(
+		indexStore,
+		loglinelimits.NewMaxLimits(overrides, prometheus.DefaultRegisterer),
+		loglinescheduler.Config{
+			Compaction: t.Cfg.Logline.Compaction,
+			Retention:  t.Cfg.Logline.Retention,
+		},
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := loglinescheduler.RegisterHandlers(t.Server, svc, logger); err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+// initLoglineCompactor runs the compaction jobs handed out by the logline
+// scheduler.
+func (t *Loki) initLoglineCompactor() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineCompactor)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, prometheus.DefaultRegisterer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	// Merged indexes must apply the same density threshold the builder used.
+	return loglinecompactor.New(
+		indexStore,
+		loglinecompactor.Config{
+			Compaction:       t.Cfg.Logline.Compaction,
+			DensityThreshold: t.Cfg.Logline.Index.DensityThreshold,
+		},
+		logger,
+		prometheus.DefaultRegisterer,
+	)
 }

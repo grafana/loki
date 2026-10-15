@@ -1,5 +1,46 @@
 # Changes
 
+## 2.8.0 - 2026-10-11
+
+- String caching now uses buckets to improve concurrent decoding. On 64-bit
+  systems, the table grows from 64 KiB to 72 KiB and is allocated only when an
+  eligible string is decoded. Entry capacity grows from 4,096 to 7,168, which
+  can also increase retained string memory. Pull request by James Ranson.
+  GitHub #252.
+- Standalone `mmdbdata.NewDecoder` calls now default to no string cache.
+  This reduces setup cost for short-lived decoders. Use the new
+  `mmdbdata.WithStringCache()` option for repeated reads through a retained
+  decoder or its cursors. Without the option, repeated string reads can
+  allocate more and run slower. Cursors supplied by a `Reader` continue to
+  share its caching policy.
+- Added `mmdbdata.Decoder.CursorAt(offset)` to read independent records from
+  one buffer without changing the decoder's position. The cursors share its
+  string cache and can be read concurrently while the buffer remains valid
+  and unchanged.
+- Reduced `maxminddb-gen` generation and test time by reusing loaded dependencies
+  during output validation, avoiding duplicate syntax work, and omitting unused
+  parser metadata. Full type checking and generated-output validation remain
+  enabled. Validation normalizes paths from package loaders to avoid false
+  duplicate declarations. GitHub #256.
+- Reduced reflection decoding overhead for string struct fields, including
+  fields read through database pointers, while retaining existing validation
+  and custom unmarshaling behavior.
+- Shared string-cache handling between map keys and decoded string values.
+- Fixed `Reader.Verify()` accepting invalid UTF-8 values overwritten by
+  duplicate map keys. Verification now checks every encoded string in the data
+  and metadata sections, including overwritten values.
+- Fixed `maxminddb-gen` rejecting fields that use type aliases of supported
+  types, including aliases in nested containers.
+- Fixed `maxminddb-gen` panicking when a byte slice or its elements use an
+  imported type alias.
+- Fixed `maxminddb-gen` emitting inaccessible type names for imported container
+  aliases with private element or map key types. Generated helpers infer those
+  types while retaining allocation, overflow, and size checks.
+- Fixed `maxminddb-gen` emitting private byte aliases in constraints for nested
+  byte slice aliases.
+- Fixed `maxminddb-gen` emitting inaccessible types for imported aliases whose
+  generic arguments contain private types, fields, or methods.
+
 ## 2.7.0 - 2026-09-29
 
 - Go 1.26 or later is now required. CI now tests Go 1.26 and 1.27.
