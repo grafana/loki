@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -69,6 +70,6 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 	return batchErr
 }
 
-func (c *columnValuesCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
+func (c *columnValuesCalculation) Flush(_ context.Context, _ *logsCalculationContext, _ *indexobj.Builder) error {
 	return nil
 }

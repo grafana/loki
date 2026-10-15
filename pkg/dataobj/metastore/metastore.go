@@ -18,12 +18,6 @@ type Metastore interface {
 	GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error)
 	IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error)
 	CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error)
-
-	// Labels returns all possible labels from matching streams between [start,end]
-	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream
-
-	// Values returns all possible values for the given label matchers between [start,end]
-	Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get all values for a given set of label matchers
 }
 
 type SectionsRequest struct {

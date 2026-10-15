@@ -23,7 +23,7 @@ type multiBuilder interface {
 	GetEstimatedSize() int
 	IsFull() bool
 	Reset()
-	GetBuilders() []builder
+	getBuilders() []builder
 }
 
 // A builder allows mocking of [logsobj.Builder] in tests.
@@ -249,7 +249,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.sizeEstimate.Set(0)
 	}()
 
-	err := p.flushCommitter.Flush(ctx, p.builder.GetBuilders(), reason, p.lastOffset)
+	err := p.flushCommitter.Flush(ctx, p.builder.getBuilders(), reason, p.lastOffset)
 	if err == nil {
 		return nil
 	}

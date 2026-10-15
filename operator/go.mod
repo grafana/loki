@@ -14,7 +14,7 @@ require (
 	github.com/grafana/loki/v3 v3.7.6
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.2
 	github.com/openshift/api v0.0.0-20260827103138-252412308277 // release-5.0
-	github.com/openshift/cloud-credential-operator v0.0.0-20260812220200-b187feee66f4 // release-5.0
+	github.com/openshift/cloud-credential-operator v0.0.0-20260923223624-82a5b4459331 // release-5.0
 	github.com/openshift/library-go v0.0.0-20260814122159-7b930c0d20a6 // release-5.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.93.1
 	github.com/prometheus/client_golang v1.24.1
@@ -186,7 +186,7 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f // indirect
+	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
 	golang.org/x/mod v0.41.0 // indirect
@@ -211,7 +211,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/streaming v0.37.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
-	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
+	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
