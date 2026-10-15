@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -1117,7 +1118,7 @@ func TestFilterReordering(t *testing.T) {
 	})
 }
 
-func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
+func TestMultiStageExpr_PushableLineFilters_WithoutPushableLineFilters(t *testing.T) {
 	tests := map[string]struct {
 		query string
 
@@ -1125,6 +1126,9 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 		wantNil bool
 
 		wantKeep, wantDrop []string
+
+		// wantRest is the printed form of the stages WithoutPushableLineFilters returns.
+		wantRest string
 	}{
 		"a leading filter keeps the lines that match and drops the rest": {
 			query:    `{app="x"} |= "a"`,
@@ -1188,69 +1192,83 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 		},
 		"a filter after a parser is included": {
 			query:    `{app="x"} | json |= "a"`,
+			wantRest: `| json`,
 			wantKeep: []string{"a"},
 			wantDrop: []string{"b"},
 		},
 		"a filter after a label filter is included": {
 			query:    `{app="x"} | level="x" |= "a"`,
+			wantRest: `| level="x"`,
 			wantKeep: []string{"a"},
 			wantDrop: []string{"b"},
 		},
 		"a filter after label_format is included": {
 			query:    `{app="x"} | label_format k=level |= "a"`,
+			wantRest: `| label_format k=level`,
 			wantKeep: []string{"a"},
 			wantDrop: []string{"b"},
 		},
 		"filters on both sides of a parser apply as an and": {
 			query:    `{app="x"} |= "a" | json |= "b"`,
+			wantRest: `| json`,
 			wantKeep: []string{"ab"},
 			wantDrop: []string{"a", "b"},
 		},
 		"chained filters on both sides of a parser apply as an and": {
 			query:    `{app="x"} |= "a" |= "b" | json |= "c"`,
+			wantRest: `| json`,
 			wantKeep: []string{"abc", "cba"},
 			wantDrop: []string{"ab", "ac", "bc", ""},
 		},
 		"filters on both sides of a label filter apply as an and": {
 			query:    `{app="x"} |= "a" | level="x" |= "b"`,
+			wantRest: `| level="x"`,
 			wantKeep: []string{"ab"},
 			wantDrop: []string{"a", "b"},
 		},
 		"an or chain before a parser and a filter after it apply as an and": {
 			query:    `{app="x"} |= "a" or "b" | json != "c"`,
+			wantRest: `| json`,
 			wantKeep: []string{"a", "b", "xay"},
 			wantDrop: []string{"ac", "bc", "c", ""},
 		},
 		"a filter before a line_format is included and a filter after it is not": {
 			query:    `{app="x"} |= "a" | line_format "{{.app}}" |= "b"`,
+			wantRest: `| line_format "{{.app}}" |= "b"`,
 			wantKeep: []string{"a", "ab"},
 			wantDrop: []string{"b"},
 		},
 		"a filter before a decolorize is included and a filter after it is not": {
 			query:    `{app="x"} |= "a" | decolorize |= "b"`,
+			wantRest: `| decolorize |= "b"`,
 			wantKeep: []string{"a", "ab"},
 			wantDrop: []string{"b"},
 		},
 		"a filter before an unpack is included and a filter after it is not": {
 			query:    `{app="x"} |= "a" | unpack |= "b"`,
+			wantRest: `| unpack |= "b"`,
 			wantKeep: []string{"a", "ab"},
 			wantDrop: []string{"b"},
 		},
 		"a filter directly after a line_format is not included": {
-			query:   `{app="x"} | line_format "{{.app}}" |= "b"`,
-			wantNil: true,
+			query:    `{app="x"} | line_format "{{.app}}" |= "b"`,
+			wantRest: `| line_format "{{.app}}" |= "b"`,
+			wantNil:  true,
 		},
 		"a filter directly after a decolorize is not included": {
-			query:   `{app="x"} | decolorize != "b"`,
-			wantNil: true,
+			query:    `{app="x"} | decolorize != "b"`,
+			wantRest: `| decolorize != "b"`,
+			wantNil:  true,
 		},
 		"a filter directly after an unpack is not included": {
-			query:   `{app="x"} | unpack |= "b"`,
-			wantNil: true,
+			query:    `{app="x"} | unpack |= "b"`,
+			wantRest: `| unpack |= "b"`,
+			wantNil:  true,
 		},
 		"a pipeline with no line filter has none": {
-			query:   `{app="x"} | json | level="x"`,
-			wantNil: true,
+			query:    `{app="x"} | json | level="x"`,
+			wantRest: `| json | level="x"`,
+			wantNil:  true,
 		},
 		"an empty-string filter keeps every line, so it is not returned": {
 			query:   `{app="x"} |= ""`,
@@ -1262,6 +1280,14 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 			wantDrop: []string{"b"},
 		},
 	}
+
+	var (
+		// contractLines run through the original stages, and through the filter followed by the stages
+		// WithoutPushableLineFilters returns. Each case adds its keep and drop lines.
+		contractLines = []string{"", "a", "b", "c", "ab", "ac", "bc", "abc", "cba", "xay", "level=x a", `{"a":"x"}`, "from 10.1.2.3", "x e"}
+		streamLabels  = labels.FromStrings("app", "x")
+		metadata      = labels.FromStrings("level", "x")
+	)
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -1275,19 +1301,48 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				filter, err := stages.UnprocessedLineFilter()
+				pushableFilter, err := stages.PushableLineFilters()
 				require.NoError(t, err)
+				rest, err := stages.WithoutPushableLineFilters()
+				require.NoError(t, err)
+				require.Equal(t, test.wantRest, rest.String(), "AST rewritten by Pipeline: %v", rewritten)
 
 				if test.wantNil {
-					require.Nil(t, filter, "AST rewritten by Pipeline: %v", rewritten)
-					continue
+					require.Nil(t, pushableFilter, "AST rewritten by Pipeline: %v", rewritten)
+				} else {
+					require.NotNil(t, pushableFilter, "AST rewritten by Pipeline: %v", rewritten)
+					for _, line := range test.wantKeep {
+						require.True(t, pushableFilter.Filter([]byte(line)), "line %q should pass, AST rewritten by Pipeline: %v", line, rewritten)
+					}
+					for _, line := range test.wantDrop {
+						require.False(t, pushableFilter.Filter([]byte(line)), "line %q should not pass, AST rewritten by Pipeline: %v", line, rewritten)
+					}
 				}
-				require.NotNil(t, filter, "AST rewritten by Pipeline: %v", rewritten)
-				for _, line := range test.wantKeep {
-					require.True(t, filter.Filter([]byte(line)), "line %q should pass, AST rewritten by Pipeline: %v", line, rewritten)
-				}
-				for _, line := range test.wantDrop {
-					require.False(t, filter.Filter([]byte(line)), "line %q should not pass, AST rewritten by Pipeline: %v", line, rewritten)
+
+				// The filter and the rest stages, applied in order, must match the original pipeline on
+				// every line. Compare the keep or drop decision, the output line and the labels.
+				originalPipeline, err := stages.Pipeline()
+				require.NoError(t, err)
+				restPipeline, err := rest.Pipeline()
+				require.NoError(t, err)
+				originalStreamPipeline := originalPipeline.ForStream(streamLabels)
+				restStreamPipeline := restPipeline.ForStream(streamLabels)
+
+				for _, line := range slices.Concat(contractLines, test.wantKeep, test.wantDrop) {
+					wantLine, wantLabels, wantOK := originalStreamPipeline.Process(0, []byte(line), metadata)
+
+					gotOK := pushableFilter == nil || pushableFilter.Filter([]byte(line))
+					var gotLine []byte
+					var gotLabels log.LabelsResult
+					if gotOK {
+						gotLine, gotLabels, gotOK = restStreamPipeline.Process(0, []byte(line), metadata)
+					}
+
+					require.Equal(t, wantOK, gotOK, "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+					if wantOK {
+						require.Equal(t, string(wantLine), string(gotLine), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+						require.Equal(t, wantLabels.String(), gotLabels.String(), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+					}
 				}
 			}
 		})
@@ -1296,7 +1351,7 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 	t.Run("returns an error for a filter that cannot be built", func(t *testing.T) {
 		stages := MultiStageExpr{&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a", Op: "unknown"}}}
 
-		filter, err := stages.UnprocessedLineFilter()
+		filter, err := stages.PushableLineFilters()
 		require.Error(t, err)
 		require.Nil(t, filter)
 	})
@@ -1307,9 +1362,57 @@ func TestMultiStageExpr_UnprocessedLineFilter(t *testing.T) {
 			&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a"}},
 		}
 
-		filter, err := stages.UnprocessedLineFilter()
+		filter, err := stages.PushableLineFilters()
 		require.Error(t, err)
 		require.Nil(t, filter)
+
+		rest, err := stages.WithoutPushableLineFilters()
+		require.Error(t, err)
+		require.Nil(t, rest)
+	})
+}
+
+func TestWithoutPushableLineFilters(t *testing.T) {
+	parse := func(t *testing.T, query string) SampleExpr {
+		t.Helper()
+		expr, err := ParseSampleExpr(query)
+		require.NoError(t, err)
+		return expr
+	}
+
+	t.Run("returns nil when the expression has no pipeline", func(t *testing.T) {
+		got, err := WithoutPushableLineFilters(parse(t, `count_over_time({app="a"}[1m])`))
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("returns nil when the pipeline has no line filter to remove", func(t *testing.T) {
+		got, err := WithoutPushableLineFilters(parse(t, `count_over_time({app="a"} | line_format "x" |= "a" [1m])`))
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("returns a copy without the pushable line filters and leaves the original unchanged", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} |= "a" | line_format "x" |= "b" | json |= "c" [1m]))`)
+		original := expr.String()
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		require.Equal(t, parse(t, `sum(count_over_time({app="a"} | line_format "x" |= "b" | json |= "c" [1m]))`).String(), got.String())
+
+		_, err = got.Extractor()
+		require.NoError(t, err)
+		require.Equal(t, original, expr.String())
+	})
+
+	t.Run("removes the line filters from an expression whose extractor was already built", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} | json |= "a" [1m]))`)
+		_, err := expr.Extractor()
+		require.NoError(t, err)
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		require.Equal(t, parse(t, `sum(count_over_time({app="a"} | json [1m]))`).String(), got.String())
 	})
 }
 
