@@ -27,8 +27,8 @@ import (
 
 var streamsDesc = prometheus.NewDesc(
 	"loki_24h_streams",
-	"The number of unique streams seen per tenant since the start of the current UTC day.",
-	[]string{"tenant"},
+	"The number of unique streams seen per tenant and ingestion policy since the start of the current UTC day.",
+	[]string{"tenant", "policy"},
 	nil,
 )
 
@@ -49,7 +49,7 @@ type Service struct {
 	logger log.Logger
 
 	mtx     sync.Mutex
-	streams map[string]map[uint64]struct{}
+	streams map[string]map[string]map[uint64]struct{}
 	// day is the start of the UTC day being counted. Records before it are
 	// ignored.
 	day time.Time
@@ -89,7 +89,7 @@ func newService(cfg Config, c kafkaConsumer, logger log.Logger, reg prometheus.R
 		cfg:     cfg,
 		client:  c,
 		logger:  logger,
-		streams: make(map[string]map[uint64]struct{}),
+		streams: make(map[string]map[string]map[uint64]struct{}),
 		clock:   clock,
 		recordsFetched: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -123,17 +123,19 @@ func (s *Service) Collect(ch chan<- prometheus.Metric) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.rotate()
-	for tenant, streams := range s.streams {
-		ch <- prometheus.MustNewConstMetric(streamsDesc, prometheus.GaugeValue, float64(len(streams)), tenant)
+	for tenant, policies := range s.streams {
+		for policy, streams := range policies {
+			ch <- prometheus.MustNewConstMetric(streamsDesc, prometheus.GaugeValue, float64(len(streams)), tenant, policy)
+		}
 	}
 }
 
-// Count returns the number of unique streams for the tenant.
-func (s *Service) Count(tenant string) int {
+// Count returns the number of unique streams for the tenant and policy.
+func (s *Service) Count(tenant, policy string) int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.rotate()
-	return len(s.streams[tenant])
+	return len(s.streams[tenant][policy])
 }
 
 func (s *Service) running(ctx context.Context) error {
@@ -178,7 +180,7 @@ func (s *Service) poll(ctx context.Context) error {
 func (s *Service) rotate() {
 	if day := startOfDay(s.clock.Now()); day.After(s.day) {
 		s.day = day
-		s.streams = make(map[string]map[uint64]struct{})
+		s.streams = make(map[string]map[string]map[uint64]struct{})
 	}
 }
 
@@ -203,10 +205,15 @@ func (s *Service) processRecord(r *kgo.Record) error {
 		s.recordsInvalid.Inc()
 		return errors.New("record has no metadata")
 	}
-	m, ok := s.streams[rec.Tenant]
+	policies, ok := s.streams[rec.Tenant]
+	if !ok {
+		policies = make(map[string]map[uint64]struct{})
+		s.streams[rec.Tenant] = policies
+	}
+	m, ok := policies[rec.Metadata.IngestionPolicy]
 	if !ok {
 		m = make(map[uint64]struct{})
-		s.streams[rec.Tenant] = m
+		policies[rec.Metadata.IngestionPolicy] = m
 	}
 	m[rec.Metadata.StreamHash] = struct{}{}
 	return nil
