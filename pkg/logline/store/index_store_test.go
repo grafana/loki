@@ -761,13 +761,13 @@ type shortReadUploadBucket struct {
 	err      error
 }
 
-func (b *shortReadUploadBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *shortReadUploadBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if strings.HasSuffix(name, b.returnOn) {
 		buf := make([]byte, b.readN)
 		_, _ = io.ReadFull(r, buf)
 		return b.err
 	}
-	return b.Bucket.Upload(ctx, name, r)
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }
 
 // ---- Store.Delete tests ----
@@ -2162,14 +2162,14 @@ func (e *errorBucket) IsObjNotFoundErr(err error) bool {
 	return e.Bucket.IsObjNotFoundErr(err)
 }
 
-func (e *errorBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (e *errorBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if e.failUpload {
 		return fmt.Errorf("injected upload error")
 	}
 	if e.failUploadMeta && strings.HasSuffix(name, "/meta.json") {
 		return fmt.Errorf("injected meta upload error")
 	}
-	return e.Bucket.Upload(ctx, name, r)
+	return e.Bucket.Upload(ctx, name, r, opts...)
 }
 
 // trackingBucket wraps an objstore.Bucket and records Get and Iter calls for test assertions.
