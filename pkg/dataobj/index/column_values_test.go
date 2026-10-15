@@ -201,11 +201,6 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	// Calculate appends the streams before the logs sections, so the builder
-	// is not empty when it flushes.
-	_, err := builder.AppendStream(streams.Stream{Labels: labels.FromStrings("env", "prod")})
-	require.NoError(t, err)
-
 	// The column was registered during Prepare, so the postings section still
 	// holds a bloom posting for trace_id, with empty data because no records
 	// were processed.

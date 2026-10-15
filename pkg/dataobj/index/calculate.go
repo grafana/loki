@@ -113,6 +113,11 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	if err != nil {
 		return fmt.Errorf("path=%s: %w", objectPath, err)
 	}
+	// Only logs sections give postings and stats. Reject an object without
+	// them, because its index would be empty and Flush would fail.
+	if reader.Sections().Count(logs.CheckSection) == 0 {
+		return fmt.Errorf("path=%s: %w: data object holds no logs section", objectPath, ErrUnprocessableObject)
+	}
 
 	// Process the streams section first, because the logs sections need the
 	// labels and shard bucket of each stream.
@@ -175,9 +180,6 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			break
 		}
 		for _, stream := range streamBuf[:n] {
-			if _, err := c.indexobjBuilder.AppendStream(stream); err != nil {
-				return nil, nil, fmt.Errorf("failed to append to stream: %w", err)
-			}
 			if _, ok := streamLabels[stream.ID]; !ok {
 				streamLabels[stream.ID] = stream.Labels
 				shardBuckets[stream.ID] = streams.DefaultShardLayout().BucketFromLabels(stream.Labels)
