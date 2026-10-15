@@ -472,6 +472,7 @@ func TestDryRun_VerifiesHintCoverage(t *testing.T) {
 	logLine := findLogLine(logs.String(), "logline dry-run verification")
 	require.NotEmpty(t, logLine)
 	require.Contains(t, logLine, "correct=true")
+	require.Contains(t, logLine, "query_type=filter")
 	require.Contains(t, logLine, "false_negatives=0")
 	require.Contains(t, logLine, "total_entries=1")
 	require.Contains(t, logLine, "query_timeout=false")
@@ -2294,6 +2295,8 @@ func TestDryRun_MetricRange_ShadowUsesWidenedWindow(t *testing.T) {
 			logLine := findLogLine(logs.String(), "logline dry-run verification")
 			require.NotEmpty(t, logLine)
 			require.Contains(t, logLine, "correct=true")
+			require.Contains(t, logLine, "query_type=metric")
+			require.NotContains(t, logLine, "unhinted_series=")
 		})
 	}
 }
@@ -2330,6 +2333,9 @@ func TestDryRun_MetricRange_EmptyHintsShadowIsEmptyMatrix(t *testing.T) {
 	logLine := findLogLine(logs.String(), "logline dry-run verification")
 	require.NotEmpty(t, logLine)
 	require.Contains(t, logLine, "correct=false", "an empty shadow matrix does not match the unhinted series")
+	require.Contains(t, logLine, "query_type=metric")
+	require.Contains(t, logLine, "unhinted_series=1")
+	require.Contains(t, logLine, "hinted_series=0")
 	require.NotContains(t, logLine, "non-Loki response")
 }
 

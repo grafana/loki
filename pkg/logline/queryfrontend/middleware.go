@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -433,6 +435,115 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
+// compareDryRunMetric runs the query again with hints and reports whether the series match.
+// skip is true when the shadow query failed and that skip has already been logged.
+func (h *loglinePrefetchHandler) compareDryRunMetric(
+	ctx context.Context,
+	logger log.Logger,
+	lokiReq *queryrange.LokiRequest,
+	promResp *queryrange.LokiPromResponse,
+	lookup *dryRunLookupResult,
+	from, through, eligibleEnd time.Time,
+) (correct bool, series *dryRunMetricSeries, skip bool) {
+	shadowResp, shadowErr := h.next.Do(withHintPrefetch(ctx, &hintPrefetchResult{
+		ranges:         lookup.ranges,
+		queryStart:     from,
+		queryEnd:       through,
+		ingesterCutoff: eligibleEnd,
+		stats:          lookup.stats,
+		done:           lookup.done, // already closed
+	}), lokiReq)
+	if shadowErr != nil {
+		level.Warn(logger).Log("msg", "logline dry-run verification skipped due query error", "err", shadowErr)
+		return false, nil, true
+	}
+	shadowProm, ok := shadowResp.(*queryrange.LokiPromResponse)
+	if !ok {
+		level.Warn(logger).Log(
+			"msg", "logline dry-run verification skipped due non-Loki response",
+			"response_type", fmt.Sprintf("%T", shadowResp),
+		)
+		return false, nil, true
+	}
+	if metricMatricesEqual(promResp, shadowProm) {
+		return true, nil, false
+	}
+	return false, &dryRunMetricSeries{
+		unhinted: metricSeriesCount(promResp),
+		hinted:   metricSeriesCount(shadowProm),
+	}, false
+}
+
+// dryRunMetricSeries is the series count on each side of a mismatched metric comparison.
+type dryRunMetricSeries struct {
+	unhinted int
+	hinted   int
+}
+
+func logDryRunVerification(
+	metrics *Metrics,
+	logger log.Logger,
+	lookup *dryRunLookupResult,
+	hintSummary dryRunHintSummary,
+	eligibleEnd time.Time,
+	queryType string,
+	correct bool,
+	report *verification.Report,
+	series *dryRunMetricSeries,
+) {
+	label := "correct"
+	if !correct {
+		label = "false_negative"
+	}
+	if metrics != nil && metrics.dryRunVerified != nil {
+		metrics.dryRunVerified.WithLabelValues(label).Inc()
+	}
+	logValues := []any{
+		"msg", "logline dry-run verification",
+		"query_type", queryType,
+		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
+		"hint_duration", lookup.duration,
+		"hint_ranges", len(lookup.ranges),
+		"hint_ranges_detail", hintprovider.FormatHintRanges(lookup.ranges),
+		"hint_total_seconds", hintSummary.hintTotalSeconds,
+		"earliest_hint_time", hintSummary.earliestHintTime,
+		"latest_hint_time", hintSummary.latestHintTime,
+		"initial_skip_seconds", hintSummary.initialSkipSeconds,
+		"hint_ranges_checksum", hintSummary.rangesChecksum,
+	}
+	if report != nil {
+		logValues = append(logValues,
+			"total_entries", report.TotalEntries,
+			"covered_entries", report.CoveredEntries,
+			"false_negatives", report.FalseNegatives,
+		)
+	}
+	if series != nil {
+		logValues = append(logValues,
+			"unhinted_series", series.unhinted,
+			"hinted_series", series.hinted,
+		)
+	}
+	logValues = append(logValues, "correct", correct)
+	logValues = appendHintStats(logValues, lookup.stats)
+	level.Info(logger).Log(logValues...)
+}
+
+// metricMatricesEqual reports whether the two metric responses have the same series.
+func metricMatricesEqual(a, b *queryrange.LokiPromResponse) bool {
+	if a == nil || b == nil || a.Response == nil || b.Response == nil {
+		return false
+	}
+	return reflect.DeepEqual(a.Response.Data.Result, b.Response.Data.Result)
+}
+
+func metricSeriesCount(resp *queryrange.LokiPromResponse) int {
+	if resp == nil || resp.Response == nil {
+		return 0
+	}
+	return len(resp.Response.Data.Result)
+}
+
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}
@@ -687,6 +798,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	}
 
 	hintSummary := summarizeDryRunHints(lookup.ranges, from, through, eligibleEnd, lokiReq.Direction)
+	queryType, _ := logql.QueryType(expr)
 
 	// Hint lookup succeeded. If the query timed out we can still report
 	// the hint data — mark correct=true since the hints themselves were
@@ -697,6 +809,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		}
 		logValues := []any{
 			"msg", "logline dry-run verification",
+			"query_type", queryType,
 			"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
 			"hint_duration", lookup.duration,
 			"hint_ranges", len(lookup.ranges),
@@ -718,44 +831,31 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	lokiResp, ok := resp.(*queryrange.LokiResponse)
-	if !ok {
+	var (
+		correct bool
+		report  *verification.Report
+		series  *dryRunMetricSeries
+	)
+	switch r := resp.(type) {
+	case *queryrange.LokiPromResponse:
+		c, s, skip := h.compareDryRunMetric(ctx, logger, lokiReq, r, lookup, from, through, eligibleEnd)
+		if skip {
+			return resp, queryErr
+		}
+		correct = c
+		series = s
+	case *queryrange.LokiResponse:
+		vr := verifyDryRunHints(lookup.ranges, r, eligibleEnd)
+		correct = vr.Correct()
+		report = &vr
+	default:
 		level.Warn(logger).Log(
 			"msg", "logline dry-run verification skipped due non-Loki response",
 			"response_type", fmt.Sprintf("%T", resp),
 		)
 		return resp, queryErr
 	}
-
-	vr := verifyDryRunHints(lookup.ranges, lokiResp, eligibleEnd)
-	correct := vr.Correct()
-	label := "correct"
-	if !correct {
-		label = "false_negative"
-	}
-	if h.metrics != nil && h.metrics.dryRunVerified != nil {
-		h.metrics.dryRunVerified.WithLabelValues(label).Inc()
-	}
-
-	logValues := []any{
-		"msg", "logline dry-run verification",
-		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
-		"hint_duration", lookup.duration,
-		"hint_ranges", len(lookup.ranges),
-		"hint_ranges_detail", hintprovider.FormatHintRanges(lookup.ranges),
-		"hint_total_seconds", hintSummary.hintTotalSeconds,
-		"earliest_hint_time", hintSummary.earliestHintTime,
-		"latest_hint_time", hintSummary.latestHintTime,
-		"initial_skip_seconds", hintSummary.initialSkipSeconds,
-		"hint_ranges_checksum", hintSummary.rangesChecksum,
-		"total_entries", vr.TotalEntries,
-		"covered_entries", vr.CoveredEntries,
-		"false_negatives", vr.FalseNegatives,
-		"correct", correct,
-	}
-	logValues = appendHintStats(logValues, lookup.stats)
-	level.Info(logger).Log(logValues...)
-
+	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, correct, report, series)
 	return resp, queryErr
 }
 
