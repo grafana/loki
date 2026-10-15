@@ -34,16 +34,25 @@ func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partiti
 		if err != nil {
 			return false, fmt.Errorf("failed to get resume offset: %w", err)
 		}
-		// resumeOffset is kafkav2.OffsetStart (-2) if the group never committed.
-		nextOffsetToConsume := max(resumeOffset, startOffset)
-		recordsLeftToConsume := max(endOffset-nextOffsetToConsume, 0)
+		recordsLeft := recordsLeftToConsume(startOffset, endOffset, resumeOffset)
 		level.Debug(logger).Log(
 			"msg", "checked records left to consume",
 			"start_offset", startOffset,
 			"end_offset", endOffset,
 			"resume_offset", resumeOffset,
-			"records_left_to_consume", recordsLeftToConsume,
+			"records_left_to_consume", recordsLeft,
 		)
-		return recordsLeftToConsume == 0, nil
+		return recordsLeft == 0, nil
 	}
+}
+
+// recordsLeftToConsume returns the number of records of a partition that its
+// consumer group did not consume yet. resumeOffset is the next offset to
+// consume, or kafkav2.OffsetStart (-2) if the group never committed.
+//
+// The group consumes from the start offset if retention deleted the records
+// after its committed offset.
+func recordsLeftToConsume(startOffset, endOffset, resumeOffset int64) int64 {
+	nextOffsetToConsume := max(resumeOffset, startOffset)
+	return max(endOffset-nextOffsetToConsume, 0)
 }

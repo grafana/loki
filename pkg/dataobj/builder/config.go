@@ -30,6 +30,15 @@ type Config struct {
 	// PartitionID overrides the Kafka partition this instance consumes. A negative value (the
 	// default) derives the partition from the hostname.
 	PartitionID int `yaml:"partition_id"`
+
+	// ReportRequiredReplicas enables loki_dataobj_builder_required_replicas on
+	// the builder that consumes partition 0.
+	ReportRequiredReplicas bool `yaml:"report_required_replicas"`
+
+	// ReportRequiredReplicasInterval is the time between two refreshes of
+	// loki_dataobj_builder_required_replicas. It also limits the time of one
+	// refresh.
+	ReportRequiredReplicasInterval time.Duration `yaml:"report_required_replicas_interval"`
 }
 
 func (cfg *Config) Validate() error {
@@ -44,6 +53,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.FlushConcurrency < 1 {
 		return errors.New("flush concurrency must be at least 1")
+	}
+	if cfg.ReportRequiredReplicas && cfg.ReportRequiredReplicasInterval <= 0 {
+		return errors.New("report required replicas interval must be positive")
 	}
 	return nil
 }
@@ -99,5 +111,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+"partition-id",
 		-1,
 		"The Kafka partition to consume. A negative value derives it from the instance hostname instead.",
+	)
+	f.BoolVar(
+		&cfg.ReportRequiredReplicas,
+		prefix+"report-required-replicas",
+		true,
+		"When true, the builder that consumes partition 0 exports loki_dataobj_builder_required_replicas: the highest partition with unread records plus 1. Use it to scale the builders. Other builders ignore this setting. It assumes that every builder derives its partition from its hostname.",
+	)
+	f.DurationVar(
+		&cfg.ReportRequiredReplicasInterval,
+		prefix+"report-required-replicas-interval",
+		30*time.Second,
+		"How often the builder that consumes partition 0 reads the offsets of every partition to refresh loki_dataobj_builder_required_replicas.",
 	)
 }

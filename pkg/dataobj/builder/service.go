@@ -44,6 +44,7 @@ type Service struct {
 	offsetReader       resumeOffsetReader
 	partition          int32
 	processor          services.Service
+	reporter           services.Service
 	downscalePermitted downscalePermittedFunc
 	logger             log.Logger
 	subservicesWatcher *services.FailureWatcher
@@ -168,15 +169,34 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	)
 
 	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
-	return newService(consumer, offsetReader, processor, downscalePermitted, partitionID, logger), nil
+
+	// Partition 0 always has a builder, so its builder reports how many
+	// builders the other partitions need.
+	var reporter services.Service
+	if cfg.ReportRequiredReplicas && partitionID == 0 {
+		consumerGroup, err := newConsumerGroupFunc(instanceID)
+		if err != nil {
+			level.Warn(logger).Log("msg", "cannot derive the consumer groups of other builders, not reporting required replicas", "err", err)
+		} else {
+			reporter = newRequiredReplicasReporter(
+				kafkav2.NewTopicOffsetReader(readerClient, cfg.Topic),
+				consumerGroup,
+				cfg.ReportRequiredReplicasInterval,
+				logger,
+				reg,
+			)
+		}
+	}
+	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
-// partition. It fails if either of them fails.
+// partition, and reporter if it is not nil. It fails if any of them fails.
 func newService(
 	consumer partitionConsumer,
 	offsetReader resumeOffsetReader,
 	processor services.Service,
+	reporter services.Service,
 	downscalePermitted downscalePermittedFunc,
 	partition int32,
 	logger log.Logger,
@@ -186,6 +206,7 @@ func newService(
 		offsetReader:       offsetReader,
 		partition:          partition,
 		processor:          processor,
+		reporter:           reporter,
 		downscalePermitted: downscalePermitted,
 		logger:             logger,
 		subservicesWatcher: services.NewFailureWatcher(),
@@ -195,6 +216,9 @@ func newService(
 	// running reads it.
 	s.subservicesWatcher.WatchService(processor)
 	s.subservicesWatcher.WatchService(consumer)
+	if reporter != nil {
+		s.subservicesWatcher.WatchService(reporter)
+	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s
 }
@@ -210,6 +234,11 @@ func (s *Service) starting(ctx context.Context) error {
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
+	}
+	if s.reporter != nil {
+		if err := services.StartAndAwaitRunning(ctx, s.reporter); err != nil {
+			return fmt.Errorf("failed to start required replicas reporter: %w", err)
+		}
 	}
 	return nil
 }
@@ -228,6 +257,11 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
+	if s.reporter != nil {
+		if err := services.StopAndAwaitTerminated(ctx, s.reporter); err != nil {
+			level.Warn(s.logger).Log("msg", "failed to stop required replicas reporter", "err", err)
+		}
+	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
 	}
