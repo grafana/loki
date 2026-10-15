@@ -548,18 +548,6 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	t.Helper()
 	ctx := context.Background()
 
-	cfg := logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		MaxPageRows:             10000,
-		TargetObjectSize:        1 << 22, // 4 MiB
-		TargetSectionSize:       1 << 21, // 2 MiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	}
-
-	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
-	require.NoError(t, err, "failed to create indexobj.Builder")
-
 	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
 
@@ -600,7 +588,9 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 
 	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(streamsBuilder))
-	require.NoError(t, objBuilder.Append(pointersBuilder))
+	if withPointers {
+		require.NoError(t, objBuilder.Append(pointersBuilder))
+	}
 	require.NoError(t, objBuilder.Append(statsBuilder))
 	require.NoError(t, objBuilder.Append(postingsBuilder))
 
