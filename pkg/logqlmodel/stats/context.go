@@ -572,8 +572,7 @@ func (c *Context) AddChunksRef(i int64) {
 }
 
 // AddChunkFetchFailures counts chunks that could not be fetched or decoded for
-// the query, even when propagateChunkFetchErrors chose to tolerate the
-// failure instead of failing the whole query.
+// the query, which always fails the query outright.
 func (c *Context) AddChunkFetchFailures(i int64) {
 	atomic.AddInt64(&c.store.ChunkFetchFailures, i)
 }
