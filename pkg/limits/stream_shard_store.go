@@ -502,34 +502,39 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 // ingesters see.
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
-		trackedStreams = make(map[tenantPolicy]int)
-		totalStreams   = make(map[tenantPolicy]uint64)
-		totalShards    = make(map[tenantPolicy]uint64)
+		trackedStreams = make(map[string]map[string]int)
+		totalStreams   = make(map[string]map[string]uint64)
+		totalShards    = make(map[string]map[string]uint64)
 	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
 				for policy, bucket := range policies {
-					key := tenantPolicy{tenant: tenant, policy: policy}
-					trackedStreams[key] += len(bucket.streams)
-					totalStreams[key] += bucket.slots
+					addTenantPolicy(trackedStreams, tenant, policy, len(bucket.streams))
+					addTenantPolicy(totalStreams, tenant, policy, bucket.slots)
 					for _, stream := range bucket.streams {
 						if stream.slots >= 2 {
-							totalShards[key] += stream.slots
+							addTenantPolicy(totalShards, tenant, policy, stream.slots)
 						}
 					}
 				}
 			}
 		}
 	})
-	for key, n := range trackedStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), key.tenant, key.policy)
+	for tenant, policies := range trackedStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for key, n := range totalStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), key.tenant, key.policy)
+	for tenant, policies := range totalStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for key, n := range totalShards {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), key.tenant, key.policy)
+	for tenant, policies := range totalShards {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
 }
 
