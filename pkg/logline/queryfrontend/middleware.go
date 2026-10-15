@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"reflect"
 	"sort"
 	"time"
 
@@ -435,49 +434,60 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
-// compareDryRunMetric runs the query again with hints and reports whether the series match.
-// skip is true when the shadow query failed and that skip has already been logged.
-func (h *loglinePrefetchHandler) compareDryRunMetric(
-	ctx context.Context,
-	logger log.Logger,
-	lokiReq *queryrange.LokiRequest,
-	promResp *queryrange.LokiPromResponse,
-	lookup *dryRunLookupResult,
-	from, through, eligibleEnd time.Time,
-) (correct bool, series *dryRunMetricSeries, skip bool) {
-	shadowResp, shadowErr := h.next.Do(withHintPrefetch(ctx, &hintPrefetchResult{
-		ranges:         lookup.ranges,
-		queryStart:     from,
-		queryEnd:       through,
-		ingesterCutoff: eligibleEnd,
-		stats:          lookup.stats,
-		done:           lookup.done, // already closed
-	}), lokiReq)
-	if shadowErr != nil {
-		level.Warn(logger).Log("msg", "logline dry-run verification skipped due query error", "err", shadowErr)
-		return false, nil, true
+// compareDryRunMetric reports whether every positive sample's lookback window overlaps a hint.
+// An overlap does not necessarily mean the final metric result will be correct. This check
+// avoids re-running the metric query with hints.
+func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange) (bool, *dryRunMetricSteps) {
+	// A positive absent_over_time sample means the window was empty.
+	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
+		return true, nil
 	}
-	shadowProm, ok := shadowResp.(*queryrange.LokiPromResponse)
-	if !ok {
-		level.Warn(logger).Log(
-			"msg", "logline dry-run verification skipped due non-Loki response",
-			"response_type", fmt.Sprintf("%T", shadowResp),
-		)
-		return false, nil, true
+	group := metricMatcherGroup(expr)
+	var positive, missed int
+	for _, stream := range promResp.Response.Data.Result {
+		for _, sample := range stream.Samples {
+			if sample.Value <= 0 {
+				continue
+			}
+			positive++
+			step := time.UnixMilli(sample.TimestampMs)
+			// A sample reads the range and offset ending at this one step.
+			winStart, winEnd := group.Widen(step, step)
+			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
+				missed++
+			}
+		}
 	}
-	if metricMatricesEqual(promResp, shadowProm) {
-		return true, nil, false
+	if missed == 0 {
+		return true, nil
 	}
-	return false, &dryRunMetricSeries{
-		unhinted: metricSeriesCount(promResp),
-		hinted:   metricSeriesCount(shadowProm),
-	}, false
+	return false, &dryRunMetricSteps{positive: positive, missed: missed}
 }
 
-// dryRunMetricSeries is the series count on each side of a mismatched metric comparison.
-type dryRunMetricSeries struct {
-	unhinted int
-	hinted   int
+// metricMatcherGroup returns the single matcher group for a supported metric query.
+func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
+	groups, err := syntax.MatcherGroups(expr)
+	if err != nil || len(groups) != 1 {
+		return syntax.MatcherRange{}
+	}
+	return groups[0]
+}
+
+func isAbsentOverTimeAgg(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.VectorAggregationExpr:
+		return isAbsentOverTimeAgg(e.Left)
+	case *syntax.RangeAggregationExpr:
+		return e.Operation == syntax.OpRangeTypeAbsent
+	default:
+		return false
+	}
+}
+
+// dryRunMetricSteps counts positive samples and how many of their lookback windows miss every hint.
+type dryRunMetricSteps struct {
+	positive int
+	missed   int
 }
 
 func logDryRunVerification(
@@ -489,7 +499,7 @@ func logDryRunVerification(
 	queryType string,
 	correct bool,
 	report *verification.Report,
-	series *dryRunMetricSeries,
+	steps *dryRunMetricSteps,
 ) {
 	label := "correct"
 	if !correct {
@@ -518,30 +528,15 @@ func logDryRunVerification(
 			"false_negatives", report.FalseNegatives,
 		)
 	}
-	if series != nil {
+	if steps != nil {
 		logValues = append(logValues,
-			"unhinted_series", series.unhinted,
-			"hinted_series", series.hinted,
+			"positive_steps", steps.positive,
+			"missed_steps", steps.missed,
 		)
 	}
 	logValues = append(logValues, "correct", correct)
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
-}
-
-// metricMatricesEqual reports whether the two metric responses have the same series.
-func metricMatricesEqual(a, b *queryrange.LokiPromResponse) bool {
-	if a == nil || b == nil || a.Response == nil || b.Response == nil {
-		return false
-	}
-	return reflect.DeepEqual(a.Response.Data.Result, b.Response.Data.Result)
-}
-
-func metricSeriesCount(resp *queryrange.LokiPromResponse) int {
-	if resp == nil || resp.Response == nil {
-		return 0
-	}
-	return len(resp.Response.Data.Result)
 }
 
 func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
@@ -834,16 +829,11 @@ func (h *loglinePrefetchHandler) doDryRun(
 	var (
 		correct bool
 		report  *verification.Report
-		series  *dryRunMetricSeries
+		steps   *dryRunMetricSteps
 	)
 	switch r := resp.(type) {
 	case *queryrange.LokiPromResponse:
-		c, s, skip := h.compareDryRunMetric(ctx, logger, lokiReq, r, lookup, from, through, eligibleEnd)
-		if skip {
-			return resp, queryErr
-		}
-		correct = c
-		series = s
+		correct, steps = compareDryRunMetric(expr, r, lookup.ranges)
 	case *queryrange.LokiResponse:
 		vr := verifyDryRunHints(lookup.ranges, r, eligibleEnd)
 		correct = vr.Correct()
@@ -855,7 +845,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		)
 		return resp, queryErr
 	}
-	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, correct, report, series)
+	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, correct, report, steps)
 	return resp, queryErr
 }
 
