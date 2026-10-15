@@ -237,11 +237,7 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 			return index.Result{}, err
 		}
 		lastErr = err
-		// An attempt that stops because ctx is done did not fail, and the loop
-		// does not retry it.
-		if ctx.Err() == nil {
-			level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
-		}
+		level.Warn(c.logger).Log("msg", "failed to index data object", "err", lastErr, "attempt", b.NumRetries())
 		b.Wait()
 	}
 	// The loop only gives up once the context is done. Surface that alongside

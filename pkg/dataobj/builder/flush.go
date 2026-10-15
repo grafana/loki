@@ -83,9 +83,7 @@ func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string)
 	timer := prometheus.NewTimer(f.flushDuration)
 	defer timer.ObserveDuration()
 	obj, objCloser, objPath, err := f.flush(ctx, builder)
-	// A flush that stops because ctx is done did not fail. For example, the
-	// flush committer cancels the flushes in progress when another one fails.
-	if err != nil && ctx.Err() == nil {
+	if err != nil {
 		f.flushFailures.Inc()
 	}
 	return obj, objCloser, objPath, err
