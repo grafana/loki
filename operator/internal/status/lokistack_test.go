@@ -109,7 +109,7 @@ func TestGenerateCondition(t *testing.T) {
 			t.Parallel()
 
 			condition, err := generateCondition(context.TODO(), tc.componentStatus, k, &lokiStack, tc.degradedErr)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.wantCondition, condition)
 		})
 	}
@@ -289,7 +289,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 				},
 			}
 			condition := generateWarnings(lokiStack)
-			require.Equal(t, condition, tc.wantCondition)
+			require.Equal(t, tc.wantCondition, condition)
 		})
 	}
 }
@@ -339,7 +339,7 @@ func TestGenerateWarningCondition_WhenIngesterReplicasLessThanReplicationFactor(
 				},
 			}
 			condition := generateWarnings(lokiStack)
-			require.Equal(t, condition, tc.wantCondition)
+			require.Equal(t, tc.wantCondition, condition)
 		})
 	}
 }

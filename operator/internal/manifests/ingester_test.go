@@ -31,7 +31,7 @@ func TestNewIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiConfigHash)
-	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationLokiConfigHash])
 }
 
 func TestNewIngesterStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
@@ -53,7 +53,7 @@ func TestNewIngesterStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
-	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationLokiObjectStoreHash])
 }
 
 func TestNewIngesterStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
@@ -73,7 +73,7 @@ func TestNewIngesterStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *t
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
-	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationCertRotationRequiredAt])
 }
 
 func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {

@@ -21,7 +21,7 @@ func TestDeleteDashboards(t *testing.T) {
 
 	err = DeleteDashboards(context.TODO(), k, "operator-ns")
 	require.NoError(t, err)
-	require.Equal(t, k.DeleteCallCount(), len(objs))
+	require.Len(t, objs, k.DeleteCallCount())
 }
 
 func TestDeleteDashboards_ReturnsNoError_WhenNotFound(t *testing.T) {
