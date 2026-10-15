@@ -25,8 +25,7 @@ type Decoder struct {
 var decoderPool = sync.Pool{New: func() any { return new(Decoder) }}
 
 type decoderOptions struct {
-	// Intentionally empty for now. DecoderOption callbacks are still invoked so
-	// adding options in a future release is non-breaking.
+	stringCache bool
 }
 
 // DecoderOption configures a Decoder.
@@ -34,15 +33,27 @@ type DecoderOption func(*decoderOptions)
 
 // NewDecoder creates a new Decoder with the given DataDecoder, offset, and options.
 func NewDecoder(d DataDecoder, offset uint, options ...DecoderOption) *Decoder {
-	opts := decoderOptions{}
-	for _, option := range options {
-		option(&opts)
+	if len(options) > 0 {
+		var opts decoderOptions
+		for _, option := range options {
+			option(&opts)
+		}
+		if opts.stringCache && d.stringCache == nil {
+			d.stringCache = newStringCache()
+		}
 	}
 
 	decoder := &Decoder{ownedData: d, offset: offset}
 	decoder.d = &decoder.ownedData
 	decoder.cursorDecoder = decoder.d
 	return decoder
+}
+
+// WithStringCache enables string caching without replacing an existing cache.
+func WithStringCache() DecoderOption {
+	return func(options *decoderOptions) {
+		options.stringCache = true
+	}
 }
 
 func acquireDecoder(d *DataDecoder, offset uint) *Decoder {

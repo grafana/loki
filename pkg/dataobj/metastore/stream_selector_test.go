@@ -995,7 +995,7 @@ func TestStreamSelector_ShardBucketRange(t *testing.T) {
 
 	for _, test := range matcherSets {
 		t.Run(fmt.Sprintf("%s resolves every matching stream inside every bucket range, and no stream inside it that the unpruned selection lacks", test.name), func(t *testing.T) {
-			everything := postings.ShardBucketRange{From: 0, To: streams.ShardFactor - 1}
+			everything := postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets() - 1}
 			require.NotEmpty(t, expected(test.matchers, everything), "the matchers must select a stream, or the comparison proves nothing")
 
 			unpruned := selected(t, test.matchers, nil)

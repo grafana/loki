@@ -279,16 +279,12 @@ github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
 github.com/apache/arrow-go/v18/arrow/arrio
 github.com/apache/arrow-go/v18/arrow/bitutil
-github.com/apache/arrow-go/v18/arrow/compute
-github.com/apache/arrow-go/v18/arrow/compute/exec
-github.com/apache/arrow-go/v18/arrow/compute/internal/kernels
 github.com/apache/arrow-go/v18/arrow/csv
 github.com/apache/arrow-go/v18/arrow/decimal
 github.com/apache/arrow-go/v18/arrow/decimal128
 github.com/apache/arrow-go/v18/arrow/decimal256
 github.com/apache/arrow-go/v18/arrow/encoded
 github.com/apache/arrow-go/v18/arrow/endian
-github.com/apache/arrow-go/v18/arrow/extensions
 github.com/apache/arrow-go/v18/arrow/float16
 github.com/apache/arrow-go/v18/arrow/internal
 github.com/apache/arrow-go/v18/arrow/internal/debug
@@ -304,15 +300,8 @@ github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
 github.com/apache/arrow-go/v18/internal/utils/maphash
-github.com/apache/arrow-go/v18/parquet
-github.com/apache/arrow-go/v18/parquet/compress
-github.com/apache/arrow-go/v18/parquet/internal/debug
-github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet
-github.com/apache/arrow-go/v18/parquet/schema
-github.com/apache/arrow-go/v18/parquet/variant
 # github.com/apache/thrift v0.25.0
 ## explicit; go 1.26
-github.com/apache/thrift/lib/go/thrift
 # github.com/aws/aws-sdk-go-v2 v1.47.3
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws
@@ -953,7 +942,7 @@ github.com/grafana/gomemcache/memcache
 ## explicit; go 1.13
 github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
-## explicit; go 1.26.7
+## explicit; go 1.27.2
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.7.0
 ## explicit; go 1.25.0
@@ -1260,10 +1249,10 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/oschwald/geoip2-golang/v2 v2.4.0
+# github.com/oschwald/geoip2-golang/v2 v2.5.0
 ## explicit; go 1.26.0
 github.com/oschwald/geoip2-golang/v2
-# github.com/oschwald/maxminddb-golang/v2 v2.7.0
+# github.com/oschwald/maxminddb-golang/v2 v2.8.0
 ## explicit; go 1.26.0
 github.com/oschwald/maxminddb-golang/v2
 github.com/oschwald/maxminddb-golang/v2/internal/decoder
@@ -1310,7 +1299,7 @@ github.com/parquet-go/parquet-go/variant
 # github.com/philhofer/fwd v1.2.0
 ## explicit; go 1.20
 github.com/philhofer/fwd
-# github.com/pierrec/lz4/v4 v4.1.32
+# github.com/pierrec/lz4/v4 v4.1.33
 ## explicit; go 1.22
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
@@ -1341,7 +1330,7 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/pressly/goose/v3 v3.28.0
+# github.com/pressly/goose/v3 v3.29.0
 ## explicit; go 1.26.0
 github.com/pressly/goose/v3
 github.com/pressly/goose/v3/database
@@ -2008,7 +1997,7 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
+# golang.org/x/exp v0.0.0-20261011100332-faecfb24eb49
 ## explicit; go 1.26.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices

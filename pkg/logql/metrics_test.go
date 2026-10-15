@@ -44,6 +44,8 @@ func TestQueryType(t *testing.T) {
 		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric},
 		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter},
 		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter},
+		{"filter followed by empty filter", `{app="foo"} |= "foo" |= ""`, QueryTypeFilter},
+		{"limited with empty filters", `{app="foo"} |= "" |= ""`, QueryTypeLimited},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
