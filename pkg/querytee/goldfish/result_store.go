@@ -55,7 +55,8 @@ type bucketResultStore struct {
 
 // NewResultStore creates a ResultStore based on configuration.
 func NewResultStore(ctx context.Context, cfg ResultsStorageConfig, logger log.Logger) (ResultStore, error) {
-	bucketClient, err := bucketclient.NewClient(ctx, cfg.Backend, cfg.Bucket, "goldfish-results", logger, nil)
+	// TODO: see if we need a bigger connection pool than we get by passing 0.
+	bucketClient, err := bucketclient.NewClient(ctx, cfg.Backend, cfg.Bucket, "goldfish-results", logger, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket client: %w", err)
 	}
