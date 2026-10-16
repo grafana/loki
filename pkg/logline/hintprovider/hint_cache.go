@@ -148,10 +148,11 @@ func (p *CachingHintProvider) fetchDays(
 const maxSharedLookupAttempts = 3
 
 // fetchDay looks up one day, sharing the delegate call with concurrent callers
-// for the same tenant, query and day. The shared call runs with the context of
-// the caller that started it, so a caller that only joined it retries when
-// that context ends and its own is still live. Retrying starts a new shared
-// call under the retrying caller's context.
+// for the same tenant, query and day. Each caller stops waiting when its own
+// context ends, and the shared call keeps running for the others. The shared
+// call runs with the context of the caller that started it, so a caller that
+// only joined it retries when that context ends and its own is still live.
+// Retrying starts a new shared call under the retrying caller's context.
 func (p *CachingHintProvider) fetchDay(
 	gCtx, ctx context.Context,
 	tenant string,
@@ -166,7 +167,7 @@ func (p *CachingHintProvider) fetchDay(
 
 	for attempt := 1; ; attempt++ {
 		led := false
-		value, _, shared := p.flight.Do(sfKey, func() (any, error) {
+		ch := p.flight.DoChan(sfKey, func() (any, error) {
 			led = true
 			hints, stats, provideErr := p.delegate.ProvideHints(ctx, tenant, expr, dayFrom, dayThrough)
 			if provideErr != nil {
@@ -180,13 +181,20 @@ func (p *CachingHintProvider) fetchDay(
 			}
 			return &provideHintsResult{hints: hints, stats: stats}, nil
 		})
-		if shared {
+
+		var call singleflight.Result
+		select {
+		case call = <-ch:
+		case <-gCtx.Done():
+			return &provideHintsResult{err: gCtx.Err()}, nil
+		}
+		if call.Shared {
 			p.singleflightDedupedTot.Inc()
 		}
 
-		res, ok := value.(*provideHintsResult)
+		res, ok := call.Val.(*provideHintsResult)
 		if !ok {
-			return nil, fmt.Errorf("unexpected singleflight result type %T", value)
+			return nil, fmt.Errorf("unexpected singleflight result type %T", call.Val)
 		}
 		if led || !isContextErr(res.err) || gCtx.Err() != nil || attempt == maxSharedLookupAttempts {
 			return res, nil

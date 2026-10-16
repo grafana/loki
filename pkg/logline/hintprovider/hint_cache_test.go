@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -516,12 +516,87 @@ type cancelFirstCallHintProvider struct {
 }
 
 func (p *cancelFirstCallHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
-	if p.calls.Add(1) == 1 {
+	if p.calls.Inc() == 1 {
 		close(p.started)
 		<-ctx.Done()
 		return nil, NewQueryStats(), ctx.Err()
 	}
 	return cloneHints(p.hints), NewQueryStats(), nil
+}
+
+// releasedHintProvider blocks each call until release is closed or the call's
+// context ends.
+type releasedHintProvider struct {
+	calls   atomic.Int64
+	started chan struct{}
+	release chan struct{}
+	hints   *Hints
+}
+
+func (p *releasedHintProvider) ProvideHints(ctx context.Context, _ string, _ syntax.Expr, _, _ model.Time) (*Hints, *QueryStats, error) {
+	if p.calls.Inc() == 1 {
+		close(p.started)
+	}
+	select {
+	case <-p.release:
+		return cloneHints(p.hints), NewQueryStats(), nil
+	case <-ctx.Done():
+		return nil, NewQueryStats(), ctx.Err()
+	}
+}
+
+func TestCachingHintProvider_SingleflightJoinerStopsWaitingWhenCanceled(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	hintRange := HintTimeRange{
+		Start: time.Date(2026, 3, 10, 4, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 3, 10, 4, 10, 0, 0, time.UTC),
+	}
+	delegate := &releasedHintProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		hints:   &Hints{TimeRanges: []HintTimeRange{hintRange}},
+	}
+	provider := NewCachingHintProvider(delegate, nil, reg)
+
+	expr := mustParseExpr(t, `{job="api"} |= "error"`)
+	tenant := "tenant-a"
+	from := model.TimeFromUnixNano(time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC).UnixNano())
+	through := model.TimeFromUnixNano(time.Date(2026, 3, 10, 23, 0, 0, 0, time.UTC).UnixNano())
+
+	type result struct {
+		hints *Hints
+		err   error
+	}
+	leader := make(chan result, 1)
+	go func() {
+		hints, _, err := provider.ProvideHints(context.Background(), tenant, expr, from, through)
+		leader <- result{hints: hints, err: err}
+	}()
+	<-delegate.started
+
+	joinerCtx, cancelJoiner := context.WithCancel(context.Background())
+	joinerErr := make(chan error, 1)
+	go func() {
+		_, _, err := provider.ProvideHints(joinerCtx, tenant, expr, from, through)
+		joinerErr <- err
+	}()
+	// Give the joiner time to join the leader's lookup before it is canceled.
+	time.Sleep(100 * time.Millisecond)
+	cancelJoiner()
+
+	select {
+	case err := <-joinerErr:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the canceled joiner kept waiting for the shared lookup")
+	}
+
+	close(delegate.release)
+	res := <-leader
+	require.NoError(t, res.err)
+	require.Equal(t, []HintTimeRange{hintRange}, res.hints.TimeRanges)
+	require.Equal(t, int64(1), delegate.calls.Load(), "the joiner must not start its own lookup")
+	require.Zero(t, testutil.ToFloat64(provider.singleflightRetriesTot))
 }
 
 func TestCachingHintProvider_SingleflightJoinerOutlivesCanceledLeader(t *testing.T) {
