@@ -61,6 +61,9 @@ func (i *Ingester) flushStreams(ctx context.Context, tenantID string, matchers [
 		instances = i.getInstances()
 	} else if inst, ok := i.getInstanceByID(tenantID); ok {
 		instances = []*instance{inst}
+	} else {
+		level.Warn(i.logger).Log("msg", "flush requested for unknown tenant", "tenant", tenantID)
+		return nil
 	}
 
 	var job *flushJob
