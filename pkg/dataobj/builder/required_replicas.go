@@ -104,7 +104,9 @@ func (r *requiredReplicasReporter) readRequiredReplicas(ctx context.Context) (in
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch committed offsets: %w", err)
 	}
-	var replicas int32
+	// Builder-0 always counts, because it exports this gauge. A value of 0
+	// would scale builder-0 away, and nothing would scale the builders back up.
+	replicas := int32(1)
 	for partition := range groups {
 		if recordsLeftToConsume(startOffsets[partition], endOffsets[partition], resumeOffsets[partition]) > 0 {
 			replicas = max(replicas, partition+1)

@@ -108,20 +108,20 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.Equal(t, expected, testutil.ToFloat64(r.metrics.requiredReplicas))
 	}
 
-	t.Run("reports zero when no partition has records", func(t *testing.T) {
+	t.Run("reports one when no partition has records", func(t *testing.T) {
 		_, _, r := newTestReporter(t)
 		require.NoError(t, r.refresh(t.Context()))
-		requireReplicas(t, r, 0)
+		requireReplicas(t, r, 1)
 	})
 
-	t.Run("reports zero when every builder committed its last record", func(t *testing.T) {
+	t.Run("reports one when every builder committed its last record", func(t *testing.T) {
 		_, client, r := newTestReporter(t)
 		produce(t, client, 0, 3)
 		produce(t, client, 4, 5)
 		commit(t, client, r, 0, 2)
 		commit(t, client, r, 4, 4)
 		require.NoError(t, r.refresh(t.Context()))
-		requireReplicas(t, r, 0)
+		requireReplicas(t, r, 1)
 	})
 
 	t.Run("reports the partition plus one when its builder has unread records", func(t *testing.T) {
@@ -139,12 +139,12 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		requireReplicas(t, r, 6)
 	})
 
-	t.Run("reports zero when retention deleted every record of a partition its builder never consumed", func(t *testing.T) {
+	t.Run("reports one when retention deleted every record of a partition its builder never consumed", func(t *testing.T) {
 		_, client, r := newTestReporter(t)
 		produce(t, client, 5, 3)
 		deleteRecordsBefore(t, client, 5, 3)
 		require.NoError(t, r.refresh(t.Context()))
-		requireReplicas(t, r, 0)
+		requireReplicas(t, r, 1)
 	})
 
 	t.Run("reports the partition plus one when records remain after a start offset above the committed offset", func(t *testing.T) {
@@ -156,13 +156,13 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		requireReplicas(t, r, 3)
 	})
 
-	t.Run("reports zero when retention deleted every record after the committed offset", func(t *testing.T) {
+	t.Run("reports one when retention deleted every record after the committed offset", func(t *testing.T) {
 		_, client, r := newTestReporter(t)
 		produce(t, client, 2, 5)
 		commit(t, client, r, 2, 0)
 		deleteRecordsBefore(t, client, 2, 5)
 		require.NoError(t, r.refresh(t.Context()))
-		requireReplicas(t, r, 0)
+		requireReplicas(t, r, 1)
 	})
 
 	t.Run("reports the highest partition with unread records plus one", func(t *testing.T) {

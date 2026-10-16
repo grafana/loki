@@ -72,7 +72,7 @@ func newRequiredReplicasMetrics(reg prometheus.Registerer) *requiredReplicasMetr
 	m := &requiredReplicasMetrics{
 		requiredReplicas: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_required_replicas",
-			Help: "The number of builder replicas needed to consume every partition with unread records: the highest such partition plus 1, or 0 if there is none. The value stays the same while refreshes fail.",
+			Help: "The number of builder replicas needed to consume every partition with unread records: the highest such partition plus 1, or 1 if there is none. The value stays the same while refreshes fail.",
 		}, nil),
 		lastRefresh: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_required_replicas_last_refresh_timestamp_seconds",
