@@ -11,9 +11,10 @@ import (
 type Metrics struct {
 	// hintProviderDuration measures time spent in ProvideHints per query.
 	hintProviderDuration prometheus.Histogram
-	// hintWaitDuration measures, once per live query, the wall time during
-	// which at least one sub-request was held at the filter waiting for hints.
-	// Labels: status — the logline hintStatus of the query.
+	// hintWaitDuration measures, once per live query that starts a hint lookup,
+	// the wall time during which at least one sub-request was held at the filter
+	// waiting for hints.
+	// Labels: status — the logline hintStatus when the query returns.
 	hintWaitDuration *prometheus.HistogramVec
 	// hintRangesReturned measures the number of time ranges returned per query.
 	hintRangesReturned prometheus.Histogram

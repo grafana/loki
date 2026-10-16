@@ -167,9 +167,10 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hintRange := hintprovider.HintTimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
+	release := make(chan struct{})
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
-		delay: 50 * time.Millisecond,
+		hints:   &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
+		release: release,
 	}
 
 	// The provisional query goes through the filter too, but its querier call
@@ -182,9 +183,16 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 	metrics := newTestMetrics()
-	filterMW := NewLoglineFilterMiddleware(time.Second, metrics, nil)
+	filtered := NewLoglineFilterMiddleware(time.Second, metrics, nil).Wrap(querier)
+	// Hints arrive only once the provisional query's sub-request waits for them.
+	releaseOnceWaiting := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if !shardPlanningRerunGuardFromContext(ctx) {
+			go releaseWhenWaiting(hintPrefetchFromContext(ctx), 1, release)
+		}
+		return filtered.Do(ctx, req)
+	})
 	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, metrics, nil)
-	handler := prefetchMW.Wrap(filterMW.Wrap(querier))
+	handler := prefetchMW.Wrap(releaseOnceWaiting)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	resp, err := handler.Do(testTenantContextWithLive(), req)

@@ -59,15 +59,24 @@ running, so sub-requests that reach the filter in a later wave wait up to
 ### Hint wait
 
 The hint wait is the wall time during which at least one sub-request was held at the
-filter for the lookup. It is the latency Logline adds to the query. The filter runs
+filter for the lookup. It is the latency Logline adds by holding sub-requests, which
+isn't all of the latency Logline adds: it leaves out the index-stats call that checks
+the byte threshold and the re-planning after a shard-planning rerun. The filter runs
 once per split and shard sub-request, and those wait in parallel and in waves, so
-`waitTracker` records the union of their wait intervals rather than the sum. The
-prefetch middleware reports the wait once per live query: on the response as
-`Logline.HintWaitTime` (`logline_hint_wait_time` on the `metrics.go` line) and in the
-`logline_query_frontend_hint_wait_seconds` histogram, labeled by hint status. The
-histogram also counts failed queries, and records a zero when the hints were ready
-before any sub-request needed them. Dry-run queries don't wait, so they aren't
-observed.
+`waitTracker` records the union of their wait intervals rather than the sum.
+
+The prefetch middleware reports the wait once per live query that starts a hint
+lookup: on the response as `Logline.HintWaitTime` (`logline_hint_wait_time` on the
+`metrics.go` line) and in the `logline_query_frontend_hint_wait_seconds` histogram.
+The histogram also counts failed queries, and records a zero when the hints were ready
+before any sub-request needed them. Dry-run queries and queries skipped before the
+lookup aren't observed.
+
+The histogram's `status` label is the hint status when the query returns, not whether
+a sub-request timed out. `incomplete` includes queries that the results cache answered
+before the lookup finished, with a zero wait. `ok` includes queries whose sub-requests
+timed out, if the lookup finished before the query did. A timed-out wait shows up as a
+wait of at least `HintTimeout`.
 
 ### Query stats
 

@@ -40,6 +40,7 @@ type mockHintProvider struct {
 	sawSkipCache bool
 	sawCancel    bool
 	delay        time.Duration
+	release      chan struct{} // when set, ProvideHints blocks until it is closed
 	stats        *hintprovider.QueryStats
 }
 
@@ -86,6 +87,7 @@ func (m *mockHintProvider) ProvideHints(
 	err := m.err
 	m.sawSkipCache = hintprovider.SkipCache(ctx)
 	delay := m.delay
+	release := m.release
 	if m.stats != nil {
 		stats = m.stats
 	}
@@ -103,7 +105,33 @@ func (m *mockHintProvider) ProvideHints(
 			return nil, stats, ctx.Err()
 		}
 	}
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			m.mu.Lock()
+			m.sawCancel = true
+			m.mu.Unlock()
+			return nil, stats, ctx.Err()
+		}
+	}
 	return hints, stats, err
+}
+
+func waitingSubRequests(r *hintPrefetchResult) int {
+	r.wait.mu.Lock()
+	defer r.wait.mu.Unlock()
+	return r.wait.waiters
+}
+
+// releaseWhenWaiting closes release once n sub-requests wait for the lookup,
+// or after a deadline so a broken tracker fails the test instead of hanging it.
+func releaseWhenWaiting(r *hintPrefetchResult, n int, release chan struct{}) {
+	deadline := time.Now().Add(5 * time.Second)
+	for waitingSubRequests(r) < n && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
 }
 
 func (m *mockHintProvider) Calls() int {
@@ -2268,7 +2296,8 @@ func TestPrefetchFilter_HintWait(t *testing.T) {
 
 	t.Run("parallel sub-requests count once", func(t *testing.T) {
 		metrics := newTestMetrics()
-		hp := &mockHintProvider{hints: hints, delay: 50 * time.Millisecond}
+		release := make(chan struct{})
+		hp := &mockHintProvider{hints: hints, release: release}
 		handler := hintWaitStack(hp, metrics, 10*time.Second,
 			func(ctx context.Context, req queryrangebase.Request, filter queryrangebase.Handler) (queryrangebase.Response, error) {
 				resps := make([]queryrangebase.Response, 4)
@@ -2277,6 +2306,7 @@ func TestPrefetchFilter_HintWait(t *testing.T) {
 				for i := range resps {
 					wg.Go(func() { resps[i], errs[i] = filter.Do(ctx, req) })
 				}
+				releaseWhenWaiting(hintPrefetchFromContext(ctx), len(resps), release)
 				wg.Wait()
 				if err := errors.Join(errs...); err != nil {
 					return nil, err
