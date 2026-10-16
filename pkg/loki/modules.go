@@ -2810,7 +2810,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		t.Cfg.StorageConfig.ObjectStore,
 		storeCfg,
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "correctness"}, prometheus.DefaultRegisterer),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline index store: %w", err)
