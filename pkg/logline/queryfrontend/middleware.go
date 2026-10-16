@@ -434,10 +434,10 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
-// compareDryRunMetric reports whether every positive sample's lookback window overlaps a hint.
-// An overlap does not necessarily mean the final metric result will be correct. This check
+// compareDryRunMetric reports whether hints fully cover every positive sample's lookback.
+// Full coverage does not necessarily mean the final metric result will be correct. This check
 // avoids re-running the metric query with hints. TotalEntries counts the positive steps whose
-// lookback ended at or before the ingester cutoff.
+// lookback ended at or before the ingester cutoff. A miss records that whole lookback.
 func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
 	report := verification.Report{HintRanges: len(hints)}
 	// absent_over_time is not checked. A 1 is an empty window, and the miss is a
@@ -461,8 +461,11 @@ func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse
 				continue
 			}
 			report.TotalEntries++
-			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
-				report.FalseNegativeTimestamps = append(report.FalseNegativeTimestamps, step)
+			if !lookbackCovered(hints, winStart, winEnd) {
+				report.FalseNegativeLookbacks = append(report.FalseNegativeLookbacks, hintprovider.HintTimeRange{
+					Start: winStart,
+					End:   winEnd,
+				})
 				continue
 			}
 			report.CoveredEntries++
@@ -479,6 +482,28 @@ func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 		return syntax.MatcherRange{}
 	}
 	return groups[0]
+}
+
+// lookbackCovered reports whether ranges cover every instant of [start, end].
+// ranges are sorted by start and overlapping ranges are already merged.
+func lookbackCovered(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if !end.After(start) {
+		return verification.TimestampCovered(ranges, start)
+	}
+	coveredUntil := start
+	for _, r := range ranges {
+		if !r.End.After(coveredUntil) {
+			continue
+		}
+		if r.Start.After(coveredUntil) {
+			return false
+		}
+		coveredUntil = r.End
+		if !coveredUntil.Before(end) {
+			return true
+		}
+	}
+	return false
 }
 
 func isAbsentOverTimeAgg(expr syntax.Expr) bool {
@@ -528,6 +553,11 @@ func logDryRunVerification(
 		"false_negatives", report.FalseNegatives,
 		"correct", correct,
 	)
+	if len(report.FalseNegativeLookbacks) > 0 {
+		logValues = append(logValues,
+			"false_negative_lookbacks", hintprovider.FormatHintRanges(report.FalseNegativeLookbacks),
+		)
+	}
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
 }
