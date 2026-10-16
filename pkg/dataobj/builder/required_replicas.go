@@ -71,9 +71,8 @@ func (r *requiredReplicasReporter) refresh(ctx context.Context) error {
 	defer cancel()
 	start := time.Now()
 	replicas, err := r.readRequiredReplicas(ctx)
-	r.metrics.refreshDuration.Observe(time.Since(start).Seconds())
+	r.metrics.refreshDuration.WithLabelValues(resultOf(err)).Observe(time.Since(start).Seconds())
 	if err != nil {
-		r.metrics.refreshFailures.Inc()
 		return err
 	}
 	r.metrics.requiredReplicas.WithLabelValues().Set(float64(replicas))

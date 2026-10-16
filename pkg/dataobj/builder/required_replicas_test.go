@@ -95,10 +95,10 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		})
 	}
 
-	refreshCount := func(t *testing.T, r *requiredReplicasReporter) uint64 {
+	refreshCount := func(t *testing.T, r *requiredReplicasReporter, result string) uint64 {
 		t.Helper()
 		var m dto.Metric
-		require.NoError(t, r.metrics.refreshDuration.(prometheus.Metric).Write(&m))
+		require.NoError(t, r.metrics.refreshDuration.WithLabelValues(result).(prometheus.Metric).Write(&m))
 		return m.GetHistogram().GetSampleCount()
 	}
 
@@ -187,7 +187,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		failNextOffsetFetch(cluster)
 		require.ErrorIs(t, r.refresh(t.Context()), kerr.GroupAuthorizationFailed)
 		requireReplicas(t, r, 4)
-		require.Equal(t, float64(1), testutil.ToFloat64(r.metrics.refreshFailures))
+		require.Equal(t, uint64(1), refreshCount(t, r, resultError))
 		require.Equal(t, lastRefresh, testutil.ToFloat64(r.metrics.lastRefresh))
 
 		require.NoError(t, r.refresh(t.Context()))
@@ -202,13 +202,19 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.WithinRange(t, lastRefresh, before.Add(-time.Millisecond), time.Now())
 	})
 
-	t.Run("observes the duration of every refresh, successful or not", func(t *testing.T) {
+	t.Run("observes the duration of each refresh by result", func(t *testing.T) {
 		cluster, client, r := newTestReporter(t)
 		produce(t, client, 3, 1)
 		require.NoError(t, r.refresh(t.Context()))
 		failNextOffsetFetch(cluster)
 		require.Error(t, r.refresh(t.Context()))
-		require.Equal(t, uint64(2), refreshCount(t, r))
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		require.ErrorIs(t, r.refresh(ctx), context.Canceled)
+
+		require.Equal(t, uint64(1), refreshCount(t, r, resultOK))
+		require.Equal(t, uint64(1), refreshCount(t, r, resultError))
+		require.Equal(t, uint64(1), refreshCount(t, r, resultCancelled))
 	})
 
 	t.Run("exports no value until the first refresh succeeds", func(t *testing.T) {
@@ -217,7 +223,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		failNextOffsetFetch(cluster)
 		require.Error(t, r.refresh(t.Context()))
 		require.Equal(t, 0, testutil.CollectAndCount(r.metrics.requiredReplicas))
-		require.Equal(t, float64(1), testutil.ToFloat64(r.metrics.refreshFailures))
+		require.Equal(t, uint64(1), refreshCount(t, r, resultError))
 		require.Zero(t, testutil.ToFloat64(r.metrics.lastRefresh))
 	})
 
