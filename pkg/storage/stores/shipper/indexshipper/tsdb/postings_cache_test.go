@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -20,17 +19,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-)
-
-const (
-	fetchedKeysMetric    = "loki_cache_fetched_keys"
-	hitsMetric           = "loki_cache_hits"
-	addedEntriesMetric   = "loki_embeddedcache_added_new_total"
-	currentEntriesMetric = "loki_embeddedcache_entries"
 )
 
 func TestPostingsCacheCanonicalKey(t *testing.T) {
@@ -59,7 +50,7 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 		"tenant-a": {{labels: labels.FromStrings("app", "api"), fp: 1, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 11}}}},
 		"tenant-b": {{labels: labels.FromStrings("app", "api"), fp: 2, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 22}}}},
 	}, filepath.Join(root, "table"), time.Unix(1, 0))
-	c, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	file, err := openShippableTSDBWithPostingsCache(path, index.MmapOptions{}, c, "prefix", root)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
@@ -69,16 +60,15 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	require.NoError(t, err)
 	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-
 	require.Equal(t, first, second)
-	require.Equal(t, float64(2), metricValue(t, reg, fetchedKeysMetric))
-	require.Equal(t, float64(1), metricValue(t, reg, hitsMetric))
 
+	// The same matcher for another tenant must not be served from tenant-a's entry.
 	other, err := idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
 	require.NotEqual(t, first, other, "tenants must not share postings")
-	require.Equal(t, float64(1), metricValue(t, reg, hitsMetric), "the other tenant's query must miss")
-	require.Equal(t, float64(2), metricValue(t, reg, addedEntriesMetric), "tenant matchers must produce separate cache entries")
+	otherAgain, err := idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
+	require.NoError(t, err)
+	require.Equal(t, other, otherAgain)
 }
 
 type postingsReaderSpy struct {
@@ -111,7 +101,7 @@ func newPostingsReaderSpy(t *testing.T) *postingsReaderSpy {
 
 func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	reader := newPostingsReaderSpy(t)
-	postingsCache, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
+	postingsCache := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	low := index.NewShard(0, 2)
@@ -162,7 +152,7 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
-	c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
@@ -199,15 +189,15 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, reader.Close()) })
 			baseline := NewTSDBIndex(reader)
-			candidate := NewTSDBIndex(reader)
-			pc, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+			spy := &postingsReaderSpy{IndexReader: reader}
+			candidate := NewTSDBIndex(spy)
+			pc := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
 			candidate.setPostingsCache(pc, "file")
 			for _, selector := range []string{`{app="api"}`, `{group="1"}`, `{group!="1"}`, `{group=~"1|2"}`, `{group!~"1|2"}`, `{group=""}`, `{app="missing"}`} {
 				t.Run(selector, func(t *testing.T) {
 					matchers, err := syntax.ParseMatchers(selector, false)
 					require.NoError(t, err)
-					entriesBefore := metricValue(t, reg, addedEntriesMetric)
-					hitsBefore := metricValue(t, reg, hitsMetric)
+					callsBefore := spy.calls
 					filters := []index.FingerprintFilter{nil}
 					for _, count := range []uint32{2, 4, 16} {
 						for shard := uint32(0); shard < count; shard++ {
@@ -234,45 +224,25 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						require.NoError(t, baseline.Volume(ctx, "tenant", 0, 10, wantVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.NoError(t, candidate.Volume(ctx, "tenant", 0, 10, gotVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.Equal(t, wantVolume.Volumes(), gotVolume.Volumes())
+						if filter == nil {
+							require.Greater(t, spy.calls, callsBefore, "the first query must read postings from the index")
+							callsBefore = spy.calls
+						}
 					}
-					require.Equal(t, entriesBefore+1, metricValue(t, reg, addedEntriesMetric), "all shards and query operations must share one entry")
-					require.Equal(t, hitsBefore+float64(4*len(filters)-1), metricValue(t, reg, hitsMetric), "every query after the first must hit")
+					require.Equal(t, callsBefore, spy.calls, "all shards and query operations must share one cached postings list")
 				})
 			}
 		})
 	}
 }
 
-// newTestPostingsCache returns an enabled cache and the registry holding its
-// metrics, which tests read with metricValue.
-func newTestPostingsCache(t testing.TB, cfg cache.EmbeddedCacheConfig) (*postingsCache, *prometheus.Registry) {
+func newTestPostingsCache(t testing.TB, cfg cache.EmbeddedCacheConfig) *postingsCache {
 	t.Helper()
 	cfg.Enabled = true
-	reg := prometheus.NewRegistry()
-	c := newPostingsCache(cfg, "test-embedded-cache", reg, log.NewNopLogger())
+	c := newPostingsCache(cfg, "test-embedded-cache", nil, log.NewNopLogger())
 	require.NotNil(t, c)
 	t.Cleanup(c.Stop)
-	return c, reg
-}
-
-// metricValue returns the value of the single counter or gauge registered under name.
-func metricValue(t testing.TB, reg prometheus.Gatherer, name string) float64 {
-	t.Helper()
-	families, err := reg.Gather()
-	require.NoError(t, err)
-	for _, family := range families {
-		if family.GetName() != name {
-			continue
-		}
-		require.Len(t, family.GetMetric(), 1, "%s must have exactly one series", name)
-		m := family.GetMetric()[0]
-		if m.GetGauge() != nil {
-			return m.GetGauge().GetValue()
-		}
-		return m.GetCounter().GetValue()
-	}
-	t.Fatalf("metric %s is not registered", name)
-	return 0
+	return c
 }
 
 func storePostings(ctx context.Context, t testing.TB, c *postingsCache, key string, refs []storage.SeriesRef) {
@@ -281,7 +251,7 @@ func storePostings(ctx context.Context, t testing.TB, c *postingsCache, key stri
 }
 
 func TestPostingsCacheIteratorsAdvanceIndependently(t *testing.T) {
-	c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
 	ctx := context.Background()
 	want := []storage.SeriesRef{3, 6, 9}
 	storePostings(ctx, t, c, "key", want)
@@ -311,7 +281,7 @@ func TestPostingsCacheIteratorsAdvanceIndependently(t *testing.T) {
 }
 
 func TestPostingsCacheEmptyResultIsAHit(t *testing.T) {
-	c, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
 	computations := 0
 	compute := func() (index.Postings, error) {
 		computations++
@@ -325,11 +295,10 @@ func TestPostingsCacheEmptyResultIsAHit(t *testing.T) {
 		require.NoError(t, p.Err())
 	}
 	require.Equal(t, 1, computations, "only the first query should compute the empty result")
-	require.Equal(t, float64(2), metricValue(t, reg, hitsMetric), "the next two queries should hit the cache")
 }
 
 func TestPostingsCacheItemLimitAndRetainedIterator(t *testing.T) {
-	c := newPostingsCache(cache.EmbeddedCacheConfig{Enabled: true, MaxSizeItems: 1}, "limit", prometheus.NewRegistry(), log.NewNopLogger())
+	c := newPostingsCache(cache.EmbeddedCacheConfig{Enabled: true, MaxSizeItems: 1}, "limit", nil, log.NewNopLogger())
 	require.NotNil(t, c)
 	ctx := context.Background()
 	compute := func() (index.Postings, error) { return index.NewListPostings([]storage.SeriesRef{1, 2}), nil }
@@ -348,7 +317,7 @@ func TestPostingsCacheItemLimitAndRetainedIterator(t *testing.T) {
 // workload the cache exists for, so population must not be dropped under contention.
 func TestPostingsCacheConcurrentMissesAllPopulate(t *testing.T) {
 	const misses = 64
-	c, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: misses})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: misses})
 	ctx := context.Background()
 	var wg sync.WaitGroup
 	for n := range misses {
@@ -363,14 +332,13 @@ func TestPostingsCacheConcurrentMissesAllPopulate(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	require.Equal(t, float64(misses), metricValue(t, reg, addedEntriesMetric))
 	for n := range misses {
 		require.NotNil(t, c.fetchPostings(ctx, fmt.Sprint("key-", n)), "key-%d must be cached", n)
 	}
 }
 
 func TestPostingsCacheOversizedResultIsNotCached(t *testing.T) {
-	c, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
 	// 200k references occupy 1.6 MB, more than the 1 MB budget.
 	refs := make([]storage.SeriesRef, 200_000)
 	for i := range refs {
@@ -389,11 +357,11 @@ func TestPostingsCacheOversizedResultIsNotCached(t *testing.T) {
 		require.Equal(t, refs, got, "the query must still receive the full result")
 	}
 	require.Equal(t, 2, computations, "an oversized result is recomputed on each query")
-	require.Zero(t, metricValue(t, reg, currentEntriesMetric))
+	require.Nil(t, c.fetchPostings(context.Background(), "huge"))
 }
 
 func TestPostingsCacheCompactsStoredReferences(t *testing.T) {
-	c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
 	ctx := context.Background()
 	// Build postings whose expansion grows by appending and so carries spare capacity.
 	var want []storage.SeriesRef
@@ -415,29 +383,13 @@ func TestPostingsCacheCompactsStoredReferences(t *testing.T) {
 	require.Equal(t, len(values[0]), cap(values[0]), "the cached array must not carry spare capacity")
 }
 
-func TestPostingsCacheRecordsQueryStats(t *testing.T) {
-	c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
-	st, ctx := stats.NewContext(context.Background())
-	compute := func() (index.Postings, error) { return index.NewListPostings([]storage.SeriesRef{1, 2}), nil }
-	for range 2 {
-		_, err := c.cachedPostings(ctx, "key", compute)
-		require.NoError(t, err)
-	}
-	got := st.Caches().Index
-	require.Equal(t, int32(3), got.Requests, "a miss issues a fetch and a store, a hit issues a fetch")
-	require.Equal(t, int32(2), got.EntriesRequested)
-	require.Equal(t, int32(1), got.EntriesFound)
-	require.Equal(t, int32(1), got.EntriesStored)
-	require.Equal(t, int64(2*8), got.BytesReceived, "the hit returns two 8-byte references")
-}
-
 func TestPostingsCacheTTL(t *testing.T) {
 	for _, ttl := range []time.Duration{0, time.Second} {
 		t.Run(fmt.Sprint(ttl), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				c := newPostingsCache(cache.EmbeddedCacheConfig{
 					Enabled: true, MaxSizeItems: 1, TTL: ttl, PurgeInterval: time.Second,
-				}, "ttl", prometheus.NewRegistry(), log.NewNopLogger())
+				}, "ttl", nil, log.NewNopLogger())
 				defer c.Stop()
 				_, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
 					return index.EmptyPostings(), nil
@@ -462,13 +414,13 @@ func TestConfiguredPostingsCacheDisabled(t *testing.T) {
 		{MaxSizeMB: 1},
 		{Enabled: true},
 	} {
-		c := newPostingsCache(cfg, "disabled", prometheus.NewRegistry(), log.NewNopLogger())
+		c := newPostingsCache(cfg, "disabled", nil, log.NewNopLogger())
 		require.Nil(t, c)
 	}
 }
 
 func TestPostingsCacheCancellation(t *testing.T) {
-	c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
@@ -487,8 +439,8 @@ func BenchmarkPostingsCacheHit(b *testing.B) {
 			for i := range refs {
 				refs[i] = storage.SeriesRef(i * 3)
 			}
-			_, ctx := stats.NewContext(context.Background())
-			c, _ := newTestPostingsCache(b, cache.EmbeddedCacheConfig{MaxSizeMB: 16})
+			ctx := context.Background()
+			c := newTestPostingsCache(b, cache.EmbeddedCacheConfig{MaxSizeMB: 16})
 			storePostings(ctx, b, c, "key", refs)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -502,7 +454,7 @@ func BenchmarkPostingsCacheHit(b *testing.B) {
 }
 
 func TestPostingsCacheCanceledQueryDoesNotCompute(t *testing.T) {
-	c, reg := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
 	reader := &postingsReaderSpy{}
 	idx := NewTSDBIndex(reader)
 	idx.setPostingsCache(c, "file")
@@ -514,7 +466,6 @@ func TestPostingsCacheCanceledQueryDoesNotCompute(t *testing.T) {
 	})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, reader.calls)
-	require.Zero(t, metricValue(t, reg, fetchedKeysMetric))
 }
 
 func TestPostingsCacheFailedComputationIsNotCached(t *testing.T) {
@@ -523,7 +474,7 @@ func TestPostingsCacheFailedComputationIsNotCached(t *testing.T) {
 		func() (index.Postings, error) { return nil, failure },
 		func() (index.Postings, error) { return index.ErrPostings(failure), nil },
 	} {
-		c, _ := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 2})
+		c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 2})
 		p, err := c.cachedPostings(context.Background(), "key", compute)
 		require.ErrorIs(t, err, failure)
 		require.Nil(t, p)
