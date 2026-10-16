@@ -150,7 +150,7 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 // consuming a partition for the given streams, appending the results of all
 // instances in the zone to responses.
 //
-// resultIsAnswer decides which results count as an answer to their stream.
+// shouldFallbackToNextZone decides which results count as an answer to their stream.
 // Results it rejects are left out of responses, and the streams they belong
 // to, identified with resultStreamHash, are reported as unanswered so that
 // [ringLimitsClient.exhaustAllZones] retries them against the next zone.
@@ -161,7 +161,7 @@ func newFanout[Req, Resp any](
 	newReq func(tenant string, streams []*proto.StreamMetadata) *Req,
 	call func(ctx context.Context, client proto.IngestLimitsClient, req *Req) ([]Resp, error),
 	resultStreamHash func(res Resp) uint64,
-	resultIsAnswer func(res Resp) bool,
+	shouldFallbackToNextZone func(res Resp) bool, // this argument can eventually be removed once ExceedsLimits has been removed
 ) rpcFanoutFunc {
 	return func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, zone string, consumers map[int32]string) ([]uint64, error) {
 		errg, ctx := errgroup.WithContext(ctx)
@@ -195,7 +195,7 @@ func newFanout[Req, Resp any](
 		notAnswered := make(map[uint64]struct{})
 		for r := range responseCh {
 			for _, res := range r {
-				if resultIsAnswer(res) {
+				if shouldFallbackToNextZone(res) {
 					*responses = append(*responses, res)
 				} else {
 					notAnswered[resultStreamHash(res)] = struct{}{}
