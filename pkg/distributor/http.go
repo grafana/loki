@@ -62,6 +62,22 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		w.WriteHeader(http.StatusNoContent)
 	}
 
+	// recordRequestTooLarge fails a request whose body was too large to parse. It counts
+	// the compressed bytes received, since that's the only size info we've got for a
+	// request we never finished parsing.
+	recordRequestTooLarge := func(err error) {
+		if r.ContentLength > 0 {
+			validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", format).Add(float64(r.ContentLength))
+		} else {
+			level.Error(logger).Log(
+				"msg", "negative content length observed",
+				"tenantID", tenantID,
+				"contentLength", r.ContentLength)
+		}
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't decompress push request: %w", err))
+		recordFail(http.StatusRequestEntityTooLarge, err.Error())
+	}
+
 	// TODO: In future, we want to be able to compose this with the middleware pattern,
 	// but this requires refactor of this file to support next handlers. We will do
 	// this at a later time.
@@ -102,22 +118,16 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	req, pushStats, err := pushRequestParser(tenantID, r, d.validator.Limits, d.tenantConfigs, maxPushSize, int64(maxPushSize), d.usageTracker, streamResolver, logger)
 	if err != nil {
 		switch {
-		// message too large handling
-		case errors.Is(err, util.ErrMessageSizeTooLarge) || errors.Is(err, util.ErrMessageDecompressedSizeTooLarge):
-			err = fmt.Errorf("%w: %s", loghttppush.ErrRequestBodyTooLarge, err.Error())
-			fallthrough
+		case errors.Is(err, util.ErrMessageSizeTooLarge):
+			recordRequestTooLarge(fmt.Errorf("%w: %s", loghttppush.ErrRequestBodyTooLarge, err.Error()))
+			return
+
+		case errors.Is(err, util.ErrMessageDecompressedSizeTooLarge):
+			recordRequestTooLarge(fmt.Errorf("%w: %s", loghttppush.ErrRequestBodyTooLarge, err.Error()))
+			return
+
 		case errors.Is(err, loghttppush.ErrRequestBodyTooLarge):
-			// count the compressed bytes received. it's the only info we've got
-			if r.ContentLength > 0 {
-				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", format).Add(float64(r.ContentLength))
-			} else {
-				level.Error(logger).Log(
-					"msg", "negative content length observed",
-					"tenantID", tenantID,
-					"contentLength", r.ContentLength)
-			}
-			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't decompress push request: %w", err))
-			recordFail(http.StatusRequestEntityTooLarge, err.Error())
+			recordRequestTooLarge(err)
 			return
 
 		// all logs filtered. a success!
@@ -126,12 +136,10 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			recordSuccess("successful push request filtered all lines")
 			return
 
-		// all other errors
 		default:
 			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
 			recordFail(http.StatusBadRequest, err.Error())
 			return
-
 		}
 	}
 
