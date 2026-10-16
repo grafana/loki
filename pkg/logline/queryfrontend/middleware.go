@@ -512,51 +512,6 @@ func isAbsentOverTimeAgg(expr syntax.Expr) bool {
 	}
 }
 
-func logDryRunVerification(
-	metrics *Metrics,
-	logger log.Logger,
-	lookup *dryRunLookupResult,
-	hintSummary dryRunHintSummary,
-	eligibleEnd time.Time,
-	queryType string,
-	report *verification.Report,
-) {
-	correct := report.Correct()
-	label := "correct"
-	if !correct {
-		label = "false_negative"
-	}
-	if metrics != nil && metrics.dryRunVerified != nil {
-		metrics.dryRunVerified.WithLabelValues(label).Inc()
-	}
-	logValues := []any{
-		"msg", "logline dry-run verification",
-		"query_type", queryType,
-		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
-		"hint_duration", lookup.duration,
-		"hint_ranges", len(lookup.ranges),
-		"hint_ranges_detail", hintprovider.FormatHintRanges(lookup.ranges),
-		"hint_total_seconds", hintSummary.hintTotalSeconds,
-		"earliest_hint_time", hintSummary.earliestHintTime,
-		"latest_hint_time", hintSummary.latestHintTime,
-		"initial_skip_seconds", hintSummary.initialSkipSeconds,
-		"hint_ranges_checksum", hintSummary.rangesChecksum,
-	}
-	logValues = append(logValues,
-		"total_entries", report.TotalEntries,
-		"covered_entries", report.CoveredEntries,
-		"false_negatives", report.FalseNegatives,
-		"correct", correct,
-	)
-	if len(report.FalseNegativeRanges) > 0 {
-		logValues = append(logValues,
-			"false_negative_ranges", hintprovider.FormatHintRanges(report.FalseNegativeRanges),
-		)
-	}
-	logValues = appendHintStats(logValues, lookup.stats)
-	level.Info(logger).Log(logValues...)
-}
-
 func dryRunLogReport(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}
@@ -844,14 +799,12 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	var report *verification.Report
+	var vr verification.Report
 	switch r := resp.(type) {
 	case *queryrange.LokiPromResponse:
-		vr := dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
-		report = &vr
+		vr = dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
 	case *queryrange.LokiResponse:
-		vr := dryRunLogReport(lookup.ranges, r, eligibleEnd)
-		report = &vr
+		vr = dryRunLogReport(lookup.ranges, r, eligibleEnd)
 	default:
 		level.Warn(logger).Log(
 			"msg", "logline dry-run verification skipped due non-Loki response",
@@ -859,7 +812,40 @@ func (h *loglinePrefetchHandler) doDryRun(
 		)
 		return resp, queryErr
 	}
-	logDryRunVerification(h.metrics, logger, lookup, hintSummary, eligibleEnd, queryType, report)
+	correct := vr.Correct()
+	label := "correct"
+	if !correct {
+		label = "false_negative"
+	}
+	if h.metrics != nil && h.metrics.dryRunVerified != nil {
+		h.metrics.dryRunVerified.WithLabelValues(label).Inc()
+	}
+
+	logValues := []any{
+		"msg", "logline dry-run verification",
+		"query_type", queryType,
+		"eligible_end", eligibleEnd.Format(time.RFC3339Nano),
+		"hint_duration", lookup.duration,
+		"hint_ranges", len(lookup.ranges),
+		"hint_ranges_detail", hintprovider.FormatHintRanges(lookup.ranges),
+		"hint_total_seconds", hintSummary.hintTotalSeconds,
+		"earliest_hint_time", hintSummary.earliestHintTime,
+		"latest_hint_time", hintSummary.latestHintTime,
+		"initial_skip_seconds", hintSummary.initialSkipSeconds,
+		"hint_ranges_checksum", hintSummary.rangesChecksum,
+		"total_entries", vr.TotalEntries,
+		"covered_entries", vr.CoveredEntries,
+		"false_negatives", vr.FalseNegatives,
+		"correct", correct,
+	}
+	if len(vr.FalseNegativeRanges) > 0 {
+		logValues = append(logValues,
+			"false_negative_ranges", hintprovider.FormatHintRanges(vr.FalseNegativeRanges),
+		)
+	}
+	logValues = appendHintStats(logValues, lookup.stats)
+	level.Info(logger).Log(logValues...)
+
 	return resp, queryErr
 }
 
