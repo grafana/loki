@@ -181,8 +181,9 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 		}
 		return emptyStreamResponse(), nil
 	})
-	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
-	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	metrics := newTestMetrics()
+	filterMW := NewLoglineFilterMiddleware(time.Second, metrics, nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, metrics, nil)
 	handler := prefetchMW.Wrap(filterMW.Wrap(querier))
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -192,6 +193,9 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
 	require.Equal(t, hintStatusOK, loglineStats.HintStatus)
 	require.Equal(t, int64(1), loglineStats.NarrowedRequests, "only the rerun's sub-request counts")
+	require.Positive(t, loglineStats.HintWaitTime, "the provisional query's sub-request waited for the lookup")
+	count, _ := hintWaitObservations(t, metrics, hintStatusOK)
+	require.Equal(t, uint64(1), count, "the provisional query and the rerun share one observation")
 }
 
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {

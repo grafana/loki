@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -95,6 +96,69 @@ type hintPrefetchResult struct {
 	ingesterCutoff time.Time     // data after this is in ingester window only
 	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
+	wait           waitTracker   // time sub-requests spent waiting for done
+}
+
+// waitForLookup blocks until the lookup is done, ctx ends or timeout passes,
+// and reports whether the timeout passed.
+func (r *hintPrefetchResult) waitForLookup(ctx context.Context, timeout time.Duration) (timedOut bool, err error) {
+	select {
+	case <-r.done:
+		return false, nil
+	default:
+	}
+
+	r.wait.begin(time.Now())
+	defer func() { r.wait.end(time.Now()) }()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-r.done:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-timer.C:
+		return true, nil
+	}
+}
+
+// waitTracker measures the wall time during which at least one sub-request
+// waits for the hint lookup. Sub-requests wait in parallel and in waves, so
+// this is the union of their wait intervals, not the sum.
+type waitTracker struct {
+	mu      sync.Mutex
+	waiters int
+	start   time.Time
+	total   time.Duration
+}
+
+func (w *waitTracker) begin(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters == 0 {
+		w.start = now
+	}
+	w.waiters++
+}
+
+func (w *waitTracker) end(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.waiters--
+	if w.waiters == 0 {
+		w.total += now.Sub(w.start)
+	}
+}
+
+// duration returns the wait time so far, including a wait still in progress.
+func (w *waitTracker) duration(now time.Time) time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters > 0 {
+		return w.total + now.Sub(w.start)
+	}
+	return w.total
 }
 
 type dryRunLookupResult struct {
@@ -194,6 +258,7 @@ func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult
 	}
 	l := lokiResp.Statistics.LoglineStats()
 	l.HintStatus = result.status()
+	l.HintWaitTime = result.wait.duration(time.Now()).Nanoseconds()
 	if l.HintStatus != hintStatusIncomplete {
 		l.HintLookupTime = result.lookupDuration.Nanoseconds()
 		l.HintRanges = int64(len(result.ranges))
@@ -972,6 +1037,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}()
 
 	ctx = withHintPrefetch(ctx, result)
+	defer h.observeHintWait(result)
 	if !h.shardPlanning.Enabled {
 		resp, err := h.next.Do(ctx, req)
 		if err != nil {
@@ -1040,6 +1106,13 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 }
 
+// observeHintWait records the hint wait of a live query. Call it once per
+// query, including queries that fail, so the histogram counts every lookup.
+func (h *loglinePrefetchHandler) observeHintWait(result *hintPrefetchResult) {
+	wait := result.wait.duration(time.Now())
+	h.metrics.hintWaitDuration.WithLabelValues(result.status()).Observe(wait.Seconds())
+}
+
 // nextWithOutcome runs the query without a hint lookup. In live mode it records
 // why the lookup was skipped.
 func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryrangebase.Request, mode Mode, outcome string) (queryrangebase.Response, error) {
@@ -1096,15 +1169,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	intervalStart := lokiReq.StartTs.UTC()
 	intervalEnd := lokiReq.EndTs.UTC()
 
-	timer := time.NewTimer(h.hintTimeout)
-	defer timer.Stop()
-	select {
-	case <-result.done:
-		result.stats.ObservePrefetchCall(false)
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-timer.C:
-		result.stats.ObservePrefetchCall(true)
+	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
+	if err != nil {
+		return nil, err
+	}
+	result.stats.ObservePrefetchCall(timedOut)
+	if timedOut {
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
 		return h.next.Do(ctx, req)

@@ -1,6 +1,8 @@
 package queryfrontend
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -9,6 +11,10 @@ import (
 type Metrics struct {
 	// hintProviderDuration measures time spent in ProvideHints per query.
 	hintProviderDuration prometheus.Histogram
+	// hintWaitDuration measures, once per live query, the wall time during
+	// which at least one sub-request was held at the filter waiting for hints.
+	// Labels: status — the logline hintStatus of the query.
+	hintWaitDuration *prometheus.HistogramVec
 	// hintRangesReturned measures the number of time ranges returned per query.
 	hintRangesReturned prometheus.Histogram
 	// hintPassthrough counts queries bypassed without hint narrowing.
@@ -48,6 +54,16 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help:    "Time spent in ProvideHints per query in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
+		hintWaitDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name: "logline_query_frontend_hint_wait_seconds",
+			Help: "Wall time per live query during which at least one sub-request waited for logline hints, in seconds",
+			// The classic buckets extend past the default 15s hint timeout, which
+			// a query pays more than once when its sub-requests wait in waves.
+			Buckets:                         []float64{0.005, 0.025, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 60},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}, []string{"status"}),
 		hintRangesReturned: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "logline_query_frontend_hint_ranges_returned",
 			Help:    "Number of time ranges returned by ProvideHints per query",
