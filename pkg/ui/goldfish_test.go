@@ -121,7 +121,7 @@ func (m *mockBucket) Get(ctx context.Context, key string) (io.ReadCloser, error)
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+func (m *mockBucket) Upload(_ context.Context, _ string, _ io.Reader, _ ...objstore.ObjectUploadOption) error {
 	return nil
 }
 
@@ -183,6 +183,14 @@ func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
 
 func (m *mockBucket) IsObjNotFoundErr(_ error) bool {
 	return false
+}
+
+func (m *mockBucket) IsConditionNotMetErr(_ error) bool {
+	return false
+}
+
+func (m *mockBucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return nil
 }
 
 func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
