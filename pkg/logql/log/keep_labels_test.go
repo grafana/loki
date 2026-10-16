@@ -100,12 +100,14 @@ func Test_KeepLabels(t *testing.T) {
 				"namespace", "prod",
 				"env", "prod",
 				"pod_uuid", "foo",
-				logqlmodel.PreserveErrorLabel, "true",
+				logqlmodel.ErrorLabel, "JSONParserErr",
+				logqlmodel.ErrorDetailsLabel, "Malformed JSON error",
 			),
 			labels.FromStrings(
 				"app", "foo",
 				"namespace", "prod",
-				logqlmodel.PreserveErrorLabel, "true",
+				logqlmodel.ErrorLabel, "JSONParserErr",
+				logqlmodel.ErrorDetailsLabel, "Malformed JSON error",
 			),
 		},
 	} {

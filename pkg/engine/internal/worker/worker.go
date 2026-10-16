@@ -118,7 +118,10 @@ type Config struct {
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
-	LogMergeObserver   executor.LogMergeObserver
+
+	// NewLogMergeObserver returns the LogMerge observer for each thread.
+	// Optional; nil disables observation.
+	NewLogMergeObserver executor.NewLogMergeObserverFunc
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -216,6 +219,10 @@ func (w *Worker) run(ctx context.Context) error {
 	// Spin up worker threads.
 	var threads []*thread
 	for i := range w.numThreads {
+		var logMergeObserver executor.LogMergeObserver
+		if w.config.NewLogMergeObserver != nil {
+			logMergeObserver = w.config.NewLogMergeObserver(i)
+		}
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
 			PrefetchBytes:  w.config.PrefetchBytes,
@@ -232,7 +239,7 @@ func (w *Worker) run(ctx context.Context) error {
 			BuilderMetrics: w.config.BuilderMetrics,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
-			LogMergeObserver:   w.config.LogMergeObserver,
+			LogMergeObserver:   logMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

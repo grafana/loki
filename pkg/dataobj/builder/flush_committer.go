@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
@@ -23,17 +24,20 @@ type committer interface {
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
-// An indexer allows mocking of index building in tests.
+// An indexer allows mocking of index building in tests. Implementations must
+// be safe for concurrent use.
 type indexer interface {
 	Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error)
 }
 
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
+// Implementations must be safe for concurrent use.
 type tocWriter interface {
 	WriteEntry(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry) error
 }
 
-// A flusher allows mocking of flushes in tests.
+// A flusher allows mocking of flushes in tests. Implementations must be safe
+// for concurrent use.
 type flusher interface {
 	// Flush builds, sorts and uploads the builder's data object. On success the
 	// caller owns the returned [io.Closer] and must close it once it is done
@@ -51,6 +55,12 @@ type flushCommitterImpl struct {
 	partition int32
 	logger    log.Logger
 
+	// concurrency is the maximum number of builders that one flush has in
+	// progress. Each builder in progress holds its sorted object until the ToC
+	// records its index, so concurrency also bounds the sorted objects in
+	// memory. It is at least 1.
+	concurrency int
+
 	duration      *prometheus.HistogramVec
 	e2eLagSeconds prometheus.Gauge
 }
@@ -67,6 +77,7 @@ func newFlushCommitter(
 	indexer indexer,
 	tocWriter tocWriter,
 	partition int32,
+	concurrency int,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) *flushCommitterImpl {
@@ -86,13 +97,14 @@ func newFlushCommitter(
 	d.WithLabelValues(resultCancelled)
 
 	return &flushCommitterImpl{
-		flusher:   flusher,
-		committer: committer,
-		indexer:   indexer,
-		tocWriter: tocWriter,
-		partition: partition,
-		logger:    logger,
-		duration:  d,
+		flusher:     flusher,
+		committer:   committer,
+		indexer:     indexer,
+		tocWriter:   tocWriter,
+		partition:   partition,
+		logger:      logger,
+		duration:    d,
+		concurrency: concurrency,
 		e2eLagSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_builder_e2e_lag_seconds",
 			Help: "Time between a log line being written to Kafka by the distributors and it becoming available for querying in seconds.",
@@ -109,10 +121,8 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	// earliest record times.
 	earliest := earliestRecordTime(builders)
 
-	for _, b := range builders {
-		if err := c.flushOne(ctx, b, reason); err != nil {
-			return err
-		}
+	if err := c.flushAll(ctx, builders, reason); err != nil {
+		return err
 	}
 
 	// Everything above is queryable once its index is in the metastore, so the
@@ -128,6 +138,36 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	return nil
 }
 
+// flushAll flushes and indexes each builder and records each index in the
+// ToC, with at most c.concurrency builders in progress. It returns once every
+// started builder is done and has released its object.
+//
+// The first failure cancels the builders in progress and skips the builders
+// not yet started. flushAll returns that first failure, not the cancellation
+// errors that it causes in the other builders.
+//
+// flushAll takes the builders in the order given, but builders in progress
+// can run and finish in any order. This is safe because a ToC is an unordered
+// set of index pointers, and the ToC writer is safe for concurrent use. The
+// caller commits the offset only after flushAll returns.
+func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(c.concurrency)
+	for _, b := range builders {
+		g.Go(func() error {
+			// Skip the builder if the flush was canceled or another builder
+			// failed while this one waited for a slot. builder.Flush takes no
+			// context, so it would build the whole object before the sort
+			// sees the cancellation.
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			return c.flushOne(gctx, b, reason)
+		})
+	}
+	return g.Wait()
+}
+
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
 	obj, objCloser, objPath, err := c.flusher.Flush(ctx, builder, reason)
 	if err != nil {
@@ -137,15 +177,15 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	// the flusher counts and logs any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error only if the context is canceled, otherwise it
-	// retries indefinitely.
+	// index returns an error if the context is canceled or the object can't
+	// be processed. It retries every other error indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
 		return fmt.Errorf("failed to index data object: %w", err)
 	}
 
-	// WriteEntry retries each ToC window until it succeeds, so it returns an
-	// error only if the context is canceled.
+	// A WriteEntry error fails the flush, so the offset is not committed and
+	// the records are read again.
 	if err := c.tocWriter.WriteEntry(ctx, res.TimeRange.Tenant, metastore.TableOfContentsEntry{
 		Path:      res.Path,
 		StartTime: res.TimeRange.MinTime,
@@ -179,8 +219,8 @@ func earliestRecordTime(builders []builder) time.Time {
 // the index is not referenced from the metastore until it is recorded in the
 // ToC.
 //
-// Builders hold a single tenant, so [index.ErrNotSingleTenant] means that
-// invariant is broken. It is returned right away, as retrying can't fix it.
+// An error that wraps [index.ErrUnprocessableObject] comes from the shape of
+// the object. It is returned right away, as retrying can't fix it.
 func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -193,7 +233,7 @@ func (c *flushCommitterImpl) index(ctx context.Context, obj *dataobj.Object, obj
 		if err == nil {
 			return res, nil
 		}
-		if errors.Is(err, index.ErrNotSingleTenant) {
+		if errors.Is(err, index.ErrUnprocessableObject) {
 			return index.Result{}, err
 		}
 		lastErr = err

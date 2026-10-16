@@ -7,10 +7,16 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
 	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
+	v5 "github.com/grafana/loki/v3/pkg/logline/internal/v5"
 )
 
 // CurrentVersion is the canonical name for the current index format.
 // "v3" indexes log lines, structured metadata values, and stream label values.
+//
+// "v5" is registered and in development. It is a fork of the v3 on-disk format
+// plus the v4 packed-term extractor, and it will change. Do not set
+// -logline-index.version=v5. CurrentVersion stays "v3" so a binary upgrade
+// does not start writing v5.
 const CurrentVersion = "v3"
 
 // AllVersions returns every supported format version.
@@ -19,13 +25,18 @@ const CurrentVersion = "v3"
 // extraction (numeric content uses 9-digit packed grams so integer queries can
 // narrow, #2530). The format factories below therefore dispatch "v4" to the v3
 // implementation; only ExtractorForVersion returns a different function.
-func AllVersions() []string { return []string{"v3", "v4"} }
+//
+// v5 is in development. Its on-disk bytes still match v3, and its extractor
+// matches v4. Format operations dispatch to the v5 package so later changes
+// stay out of v3 and v4.
+func AllVersions() []string { return []string{"v3", "v4", "v5"} }
 
 // ValidateVersion returns an error if the version string is not a supported
-// index format version.
+// index format version. "v5" is accepted so the in-development fork can be
+// tested; it is not a production version.
 func ValidateVersion(version string) error {
 	switch version {
-	case "v3", "v4":
+	case "v3", "v4", "v5":
 		return nil
 	default:
 		return fmt.Errorf("unsupported index version: %q", version)
@@ -64,6 +75,12 @@ type Merger interface {
 // OpenReaderCached for fast reopens without re-reading metadata.
 func OpenReader(version string, r io.ReaderAt, offset, size int64, info format.HeaderInfo) (Reader, any, error) {
 	switch version {
+	case "v5": // in development; bytes still match v3
+		reader, err := v5.OpenIndexAtWithHeader(r, offset, size, info)
+		if err != nil {
+			return nil, nil, err
+		}
+		return reader, reader.CachedState(), nil
 	case "v3", "v4": // v4 shares the v3 on-disk format
 		reader, err := v3.OpenIndexAtWithHeader(r, offset, size, info)
 		if err != nil {
@@ -79,6 +96,8 @@ func OpenReader(version string, r io.ReaderAt, offset, size int64, info format.H
 // OpenReader call, avoiding metadata re-reads.
 func OpenReaderCached(version string, r io.ReaderAt, offset, size int64, cached any) (Reader, error) {
 	switch version {
+	case "v5": // in development; bytes still match v3
+		return v5.OpenIndexAtCached(r, offset, size, cached)
 	case "v3", "v4": // v4 shares the v3 on-disk format
 		return v3.OpenIndexAtCached(r, offset, size, cached)
 	default:
@@ -91,6 +110,8 @@ func OpenReaderCached(version string, r io.ReaderAt, offset, size int64, cached 
 // cfg may be nil for version defaults.
 func NewWriter(version, path string, docs []format.DocumentMetadata, cfg *format.WriterConfig) (Writer, error) {
 	switch version {
+	case "v5": // in development; bytes still match v3
+		return v5.NewWriter(path, docs, cfg)
 	case "v3", "v4": // v4 shares the v3 on-disk format
 		return v3.NewWriter(path, docs, cfg)
 	default:
@@ -102,6 +123,10 @@ func NewWriter(version, path string, docs []format.DocumentMetadata, cfg *format
 // cfg may be nil for version defaults.
 func NewMerger(version string, cfg *format.WriterConfig) (Merger, error) {
 	switch version {
+	case "v5": // in development; bytes still match v3
+		return mergerFunc(func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error) {
+			return v5.Merge(ctx, readers, sizes, out, cfg)
+		}), nil
 	case "v3", "v4": // v4 shares the v3 on-disk format
 		return mergerFunc(func(ctx context.Context, readers []io.ReaderAt, sizes []int64, out io.Writer) (format.HeaderInfo, error) {
 			return v3.Merge(ctx, readers, sizes, out, cfg)
@@ -123,11 +148,12 @@ func (f mergerFunc) Merge(ctx context.Context, readers []io.ReaderAt, sizes []in
 // The returned string is the detected version and the any value is opaque
 // cached state for OpenReaderCached.
 //
-// A v4 file is byte-identical to a v3 file, so footer probing cannot tell them
-// apart and this reports "v3" for both. That is safe for the callers of this
-// function, which are format-only tools (dump, convert, identity) that never
-// re-extract n-grams. The query path never auto-detects: it takes the version
-// from meta.json, so a v4 index is always read with the v4 extractor.
+// A v4 file is byte-identical to a v3 file, and the in-development v5 fork is
+// too, so footer probing cannot tell them apart and this reports "v3" for all
+// three. That is safe for the callers of this function, which are format-only
+// tools (dump, convert, identity) that never re-extract n-grams. The query
+// path never auto-detects: it takes the version from meta.json, so a v4 or v5
+// index is always read with that version's extractor.
 func OpenReaderAt(r io.ReaderAt, offset, size int64) (Reader, string, any, error) {
 	if size >= int64(v3.IndexFooterSize) {
 		if reader, err := v3.OpenIndexAt(r, offset, size); err == nil {

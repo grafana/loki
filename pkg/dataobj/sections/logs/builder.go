@@ -41,6 +41,20 @@ type Record struct {
 	StreamHash uint64
 }
 
+// UncompressedSize returns the line bytes plus the structured metadata value
+// bytes of r. It matches streams.Stream.UncompressedSize and the index
+// statistics, so every producer reports the same quantity.
+//
+// Metadata names are not counted because the section stores each name once
+// per column, not once per record.
+func (r *Record) UncompressedSize() int64 {
+	size := int64(len(r.Line))
+	r.Metadata.Range(func(l labels.Label) {
+		size += int64(len(l.Value))
+	})
+	return size
+}
+
 // Reset clears r so it can be reused for another row.
 //
 // The line is truncated rather than dropped, so it keeps its capacity and a reused Record
@@ -147,6 +161,10 @@ type BuilderOptions struct {
 	// ShardCount is the number of physical shard buckets in the sort layout.
 	// Zero means unspecified.
 	ShardCount uint32
+
+	// DropDuplicates indicates whether duplicate records should be dropped or retained during Flush.
+	// Records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	DropDuplicates bool
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -237,10 +255,7 @@ func recordSize(record Record) int {
 
 	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
-	size += len(record.Line)
+	size += int(record.UncompressedSize())
 
 	return size
 }
@@ -264,7 +279,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
 		buf = &b.sectionBuffer
 	}
-	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder, b.opts.DropDuplicates)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()

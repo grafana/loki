@@ -20,11 +20,11 @@
         # The go version in nixpkgs often trails behind the latest by a few
         # days. Overlay to pin to the exact version go.mod expects.
         goOverlay = final: prev: {
-          go_1_26 = prev.go_1_26.overrideAttrs (old: rec {
-            version = "1.26.7";
+          go_1_27 = prev.go_1_27.overrideAttrs (old: rec {
+            version = "1.27.2";
             src = prev.fetchurl {
               url = "https://go.dev/dl/go${version}.src.tar.gz";
-              hash = "sha256-DtJOrHVRBQhbif6cq8J0K5GgrXuUtZ0602SRjryJVq0=";
+              hash = "sha256-A0ldorpkiU1A9cSZLklFT6eLUGkGBP+Stq//UIG3bmI=";
             };
           });
         };
@@ -45,7 +45,8 @@
         };
 
         pkgs = base // {
-          inherit (unstable) buildGoModule;
+          inherit (unstable) go_1_27;
+          buildGoModule = unstable.buildGo127Module;
         };
       in
       rec {
@@ -79,7 +80,7 @@
 
               chart-testing
               gcc
-              go_1_26
+              go_1_27
               golangci-lint
               gotools
               helm-docs
@@ -88,7 +89,8 @@
               statix
               yamllint
             ]
-            ++ (builtins.attrValues packages);
+            # Docker image archives cannot be sourced as shell build inputs.
+            ++ (builtins.attrValues (builtins.removeAttrs packages [ "loki-helm-test-docker" ]));
         };
       }
     );

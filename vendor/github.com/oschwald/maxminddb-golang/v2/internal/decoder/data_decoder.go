@@ -652,10 +652,7 @@ func (d *DataDecoder) decodeStringKey(offset uint) (string, uint, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	if d.stringCache == nil {
-		return string(key), nextOffset, nil
-	}
-	return d.stringCache.internAt(cacheOffset, key), nextOffset, nil
+	return d.decodeStringBytes(cacheOffset, key), nextOffset, nil
 }
 
 // decodeKeyAt also returns the key's control-record offset for callers that

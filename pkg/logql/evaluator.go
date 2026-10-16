@@ -27,8 +27,6 @@ import (
 
 type QueryRangeType string
 
-const trueString = "true"
-
 var (
 	InstantType QueryRangeType = "instant"
 	RangeType   QueryRangeType = "range"
@@ -47,6 +45,7 @@ type Params interface {
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
 	GetHintRanges() []logproto.HintTimeRange
+	GetDataObjOptions() *logproto.DataObjOptions
 	CachingOptions() resultscache.CachingOptions
 }
 
@@ -136,9 +135,16 @@ type LiteralParams struct {
 	storeChunks    *logproto.ChunkRefGroup
 	hintRanges     []logproto.HintTimeRange
 	cachingOptions resultscache.CachingOptions
+	dataObjOptions *logproto.DataObjOptions
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
+
+// WithDataObjOptions returns a copy of the params with the given data-object options.
+func (p LiteralParams) WithDataObjOptions(options *logproto.DataObjOptions) LiteralParams {
+	p.dataObjOptions = options
+	return p
+}
 
 // String impls Params
 func (p LiteralParams) QueryString() string { return p.queryString }
@@ -172,6 +178,9 @@ func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.store
 
 // GetHintRanges implements Params.
 func (p LiteralParams) GetHintRanges() []logproto.HintTimeRange { return p.hintRanges }
+
+// GetDataObjOptions implements Params.
+func (p LiteralParams) GetDataObjOptions() *logproto.DataObjOptions { return p.dataObjOptions }
 
 // CachingOptions returns whether Loki query created from this params should be cached.
 func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
@@ -344,36 +353,25 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			sampleOrder := ev.sampleOrderFor(ctx, rangExpr, isRootExpr)
+			sampleOrder := sampleOrderFor(ctx, e, ev.limits, isRootExpr)
 
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params, _ bool) (StepEvaluator, error) {
-				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-					&logproto.SampleQueryRequest{
-						// extend startTs backwards by step
-						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
-						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
-						// intentionally send the vector for reducing labels.
-						Selector: e.String(),
-						Shards:   q.Shards(),
-						Plan: &plan.QueryPlan{
-							AST: expr,
-						},
-						StoreChunks: q.GetStoreChunks(),
-						HintRanges:  q.GetHintRanges(),
-						Order:       sampleOrder,
-					},
-				})
+				keepsErroredLines, err := syntax.KeepsErroredLines(rangExpr.Left)
+				if err != nil {
+					return nil, err
+				}
+
+				it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, rangExpr.Left, sampleOrder))
 				if err != nil {
 					return nil, err
 				}
 				switch sampleOrder {
 				case logproto.SAMPLE_ORDER_BY_STREAM:
-					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx))
+					return newStreamFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, e.Grouping, ev.maxQuerySeries(ctx), keepsErroredLines)
 				case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
-					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+					return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, keepsErroredLines)
 				default:
 					util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 					return nil, errors.Errorf("unknown sample order %v", sampleOrder)
@@ -384,30 +382,20 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
-		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-			&logproto.SampleQueryRequest{
-				// extend startTs backwards by step
-				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
-				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
-				// intentionally send the vector for reducing labels.
-				Selector: e.String(),
-				Shards:   q.Shards(),
-				Plan: &plan.QueryPlan{
-					AST: expr,
-				},
-				StoreChunks: q.GetStoreChunks(),
-				HintRanges:  q.GetHintRanges(),
-			},
-		})
+		keepsErroredLines, err := syntax.KeepsErroredLines(e.Left)
 		if err != nil {
 			return nil, err
 		}
-		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+
+		it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, e.Left, logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+		if err != nil {
+			return nil, err
+		}
+		return newTimestampFirstRangeAggEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, keepsErroredLines)
 	case *syntax.LabelAggregationExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, false)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, false)
 	case *syntax.CountDistinctSketchExpr:
-		return ev.newCountDistinctEvaluator(ctx, expr, e.String(), e.Left, q, true)
+		return ev.newCountDistinctEvaluator(ctx, expr, e.Left, q, true)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -423,8 +411,33 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	}
 }
 
-// sampleOrderFor returns the sample order to use for the range aggregation rangExpr.
-func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax.RangeAggregationExpr, isRootExpr bool) logproto.SampleOrder {
+// selectSampleParamsFor returns the params that select the samples of left, the log range of expr.
+//
+// The request sends the whole expr as the selector, so the querier can reduce labels at the source.
+// It carries the shards, hints and data-object options of q. The caller must pass the order that
+// its step evaluator consumes.
+func selectSampleParamsFor(q Params, expr syntax.SampleExpr, left *syntax.LogRangeExpr, order logproto.SampleOrder) SelectSampleParams {
+	return SelectSampleParams{
+		&logproto.SampleQueryRequest{
+			// extend startTs backwards by the range interval and the offset
+			Start: q.Start().Add(-left.Interval).Add(-left.Offset),
+			// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
+			Selector: expr.String(),
+			Shards:   q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			StoreChunks:    q.GetStoreChunks(),
+			HintRanges:     q.GetHintRanges(),
+			DataObjOptions: q.GetDataObjOptions(),
+			Order:          order,
+		},
+	}
+}
+
+// sampleOrderFor returns the sample order to use for expr.
+func sampleOrderFor(ctx context.Context, expr syntax.SampleExpr, limits Limits, isRootExpr bool) logproto.SampleOrder {
 	const timestampFirst = logproto.SAMPLE_ORDER_BY_TIMESTAMP
 
 	// The stream-first iterator enforces the series limit on its output series. Only at the root
@@ -432,7 +445,8 @@ func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax
 	if !isRootExpr {
 		return timestampFirst
 	}
-	if _, ok := newStepAccumulatorFuncFor(rangExpr); !ok {
+
+	if _, ok := StreamFirstRangeAggregation(expr.String()); !ok {
 		return timestampFirst
 	}
 
@@ -441,7 +455,7 @@ func (ev *DefaultEvaluator) sampleOrderFor(ctx context.Context, rangExpr *syntax
 		return timestampFirst
 	}
 	for _, id := range tenantIDs {
-		if !ev.limits.StreamFirstExecutionEnabled(id) {
+		if !limits.StreamFirstExecutionEnabled(id) {
 			return timestampFirst
 		}
 	}
@@ -461,28 +475,20 @@ func (ev *DefaultEvaluator) maxQuerySeries(ctx context.Context) int {
 func (ev *DefaultEvaluator) newCountDistinctEvaluator(
 	ctx context.Context,
 	expr syntax.SampleExpr,
-	selector string,
 	left *syntax.LogRangeExpr,
 	q Params,
 	emitSketch bool,
 ) (StepEvaluator, error) {
-	it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
-		&logproto.SampleQueryRequest{
-			Start:    q.Start().Add(-left.Interval).Add(-left.Offset),
-			End:      q.End().Add(-left.Offset).Add(time.Nanosecond),
-			Selector: selector,
-			Shards:   q.Shards(),
-			Plan: &plan.QueryPlan{
-				AST: expr,
-			},
-			StoreChunks: q.GetStoreChunks(),
-			HintRanges:  q.GetHintRanges(),
-		},
-	})
+	keepsErroredLines, err := syntax.KeepsErroredLines(left)
 	if err != nil {
 		return nil, err
 	}
-	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch), nil
+
+	it, err := ev.querier.SelectSamples(ctx, selectSampleParamsFor(q, expr, left, logproto.SAMPLE_ORDER_BY_TIMESTAMP))
+	if err != nil {
+		return nil, err
+	}
+	return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, left.Interval, left.Offset, emitSketch, keepsErroredLines), nil
 }
 
 func newVectorAggEvaluator(
@@ -762,6 +768,7 @@ func newTimestampFirstRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
+	keepsErroredLines bool,
 ) (_ StepEvaluator, returnErr error) {
 	defer func() {
 		if returnErr != nil {
@@ -786,8 +793,9 @@ func newTimestampFirstRangeAggEvaluator(
 			return nil, err
 		}
 		return &AbsentRangeVectorEvaluator{
-			iter: iter,
-			lbs:  absentLabels,
+			iter:              iter,
+			lbs:               absentLabels,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeQuantileSketch:
 		iter := newQuantileSketchIterator(
@@ -798,7 +806,8 @@ func newTimestampFirstRangeAggEvaluator(
 		)
 
 		return &QuantileSketchStepEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeFirstWithTimestamp:
 		iter := newFirstWithTimestampIterator(
@@ -809,7 +818,8 @@ func newTimestampFirstRangeAggEvaluator(
 		)
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	case syntax.OpRangeTypeLastWithTimestamp:
 		iter := newLastWithTimestampIterator(
@@ -820,7 +830,8 @@ func newTimestampFirstRangeAggEvaluator(
 		)
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	default:
 		iter, err := newTimestampFirstRangeVectorIterator(
@@ -834,7 +845,8 @@ func newTimestampFirstRangeAggEvaluator(
 		}
 
 		return &RangeVectorEvaluator{
-			iter: iter,
+			iter:              iter,
+			keepsErroredLines: keepsErroredLines,
 		}, nil
 	}
 }
@@ -850,6 +862,7 @@ func newStreamFirstRangeAggEvaluator(
 	o time.Duration,
 	grouping *syntax.Grouping,
 	maxSeries int,
+	keepsErroredLines bool,
 ) (StepEvaluator, error) {
 	rangeIter, err := newStreamFirstRangeVectorIterator(
 		ctx, it, expr,
@@ -858,16 +871,21 @@ func newStreamFirstRangeAggEvaluator(
 		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 		grouping,
 		maxSeries,
+		keepsErroredLines,
 	)
 	if err != nil {
 		util.LogErrorWithContext(ctx, "closing sample iterator", it.Close)
 		return nil, err
 	}
-	return &RangeVectorEvaluator{iter: rangeIter}, nil
+	return &RangeVectorEvaluator{iter: rangeIter, keepsErroredLines: keepsErroredLines}, nil
 }
 
 type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
+
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
 
 	err error
 }
@@ -878,12 +896,9 @@ func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.SampleVector() {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
-		}
+	if err := pipelineErr(r.keepsErroredLines, vec.SampleVector(), sampleMetric); err != nil {
+		r.err = err
+		return false, 0, SampleVector{}
 	}
 	return true, ts, vec
 }
@@ -901,6 +916,10 @@ type AbsentRangeVectorEvaluator struct {
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
 	err error
 }
 
@@ -910,12 +929,9 @@ func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.SampleVector() {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
-		}
+	if err := pipelineErr(r.keepsErroredLines, vec.SampleVector(), sampleMetric); err != nil {
+		r.err = err
+		return false, 0, SampleVector{}
 	}
 	if len(vec.SampleVector()) > 0 {
 		return next, ts, SampleVector{}
@@ -1016,13 +1032,19 @@ func newBinOpStepEvaluator(
 }
 
 type BinOpStepEvaluator struct {
-	rse     StepEvaluator
-	lse     StepEvaluator
+	// rse and lse must never be nil. Next reads Error on both on every call.
+	rse StepEvaluator
+	lse StepEvaluator
+
 	expr    *syntax.BinOpExpr
 	lastErr error
 }
 
 func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.Error() != nil {
+		return false, 0, nil
+	}
+
 	var (
 		ts       int64
 		next     bool
@@ -1034,6 +1056,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	if !next {
 		return next, ts, nil
 	}
+	if err := e.rse.Error(); err != nil {
+		return false, ts, nil
+	}
 	rhs = r.SampleVector()
 	// build matching signature for each sample in right vector
 	rsigs := make([]uint64, len(rhs))
@@ -1044,6 +1069,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r = e.lse.Next()
 	if !next {
 		return next, ts, nil
+	}
+	if err := e.lse.Error(); err != nil {
+		return false, ts, nil
 	}
 	lhs = r.SampleVector()
 	// build matching signature for each sample in left vector
@@ -1062,6 +1090,9 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 		results = vectorUnless(lhs, rhs, lsigs, rsigs)
 	default:
 		results, e.lastErr = vectorBinop(e.expr.Op, e.expr.Opts, lhs, rhs, lsigs, rsigs)
+		if e.lastErr != nil {
+			return false, ts, nil
+		}
 	}
 	return true, ts, SampleVector(results)
 }
@@ -1499,3 +1530,19 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	}
 	return m, nil
 }
+
+// pipelineErr returns the error for the first sample whose metric carries __error__, or nil when
+// the query asked to keep such samples, or none of them carry one.
+func pipelineErr[T any](keepsErroredLines bool, samples []T, metric func(T) labels.Labels) error {
+	if keepsErroredLines {
+		return nil
+	}
+	for _, s := range samples {
+		if m := metric(s); m.Has(logqlmodel.ErrorLabel) {
+			return logqlmodel.NewPipelineErr(m)
+		}
+	}
+	return nil
+}
+
+func sampleMetric(s promql.Sample) labels.Labels { return s.Metric }

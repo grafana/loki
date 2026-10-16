@@ -2,11 +2,14 @@ package logqltest
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -18,11 +21,19 @@ const (
 	queryFrontendNoShardTimestampFirstStackName = "query-frontend + query-scheduler (no sharding, timestamp-first)"
 	queryFrontendShardTimestampFirstStackName   = "query-frontend + query-scheduler (sharding, timestamp-first)"
 	queryFrontendShardStreamFirstStackName      = "query-frontend + query-scheduler (sharding, stream-first)"
+	directDataObjStackName                      = "direct (dataobj)"
+	queryFrontendShardDataObjStackName          = "query-frontend + query-scheduler (sharding, dataobj)"
+	queryFrontendShardDataObjAndChunkStackName  = "query-frontend + query-scheduler (sharding, dataobj and chunk)"
 )
 
 var (
-	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName}
+	stackNames = []string{directTimestampFirstStackName, directStreamFirstStackName, queryFrontendNoShardTimestampFirstStackName, queryFrontendShardTimestampFirstStackName, queryFrontendShardStreamFirstStackName, directDataObjStackName, queryFrontendShardDataObjStackName, queryFrontendShardDataObjAndChunkStackName}
 )
+
+// splitDataObjStart is the data-object start time of the stack that reads both data objects and
+// chunks, as an offset from epoch. The stack reads the samples before it from chunks and the rest
+// from data objects.
+const splitDataObjStart = 90 * time.Second
 
 func isKnownStackName(name string) bool {
 	for _, n := range stackNames {
@@ -38,12 +49,14 @@ func isKnownStackName(name string) bool {
 type executionStack interface {
 	// name identifies the stack in subtest output.
 	name() string
-	// setStreams (re)builds the stack's store with the provided log streams.
-	setStreams(streams []logproto.Stream)
+	// setStores rebuilds the stack's querier over stores.
+	setStores(stores *scriptStores)
 	// eval runs cmd and returns the query result.
 	eval(cmd evalCmd) (logqlmodel.Result, error)
 	// isQueryShardingSupported reports whether this stack runs queries with sharding enabled.
 	isQueryShardingSupported() bool
+	// isStreamFirstEnabled reports whether this stack runs eligible queries in stream-first order.
+	isStreamFirstEnabled() bool
 	// isEvalSupported reports whether this stack can run the given cmd and exp.
 	isEvalSupported(cmd evalCmd, exp expectations) bool
 }
@@ -74,18 +87,21 @@ func isQueryShardingSupported(query string) bool {
 	return shardable
 }
 
-// newScriptStore builds a chunk store from streams and registers its close.
-func newScriptStore(t *testing.T, streams []logproto.Stream) *testingChunkStore {
-	store := newTestingChunkStore(t)
+// newScriptQuerierFunc builds the querier of an execution stack over stores.
+type newScriptQuerierFunc func(t *testing.T, stores *scriptStores) logql.Querier
 
-	// The close runs before the store's temp dir is removed: newTestingChunkStore
-	// registers the temp-dir cleanup first, so this later-registered cleanup runs
-	// first (t.Cleanup is LIFO).
-	t.Cleanup(store.close)
+// newChunkQuerier returns a querier that reads the streams from the chunk store.
+func newChunkQuerier(t *testing.T, stores *scriptStores) logql.Querier {
+	return newScriptQuerier(t, stores, time.Time{})
+}
 
-	store.write(t, streams)
-	store.flush(t)
-	return store
+// newDataObjQuerierFunc returns a newScriptQuerierFunc whose querier reads the streams of
+// stream-first queries from data objects, from dataObjQueryStart on. It does so only for queries
+// that the caller marked eligible.
+func newDataObjQuerierFunc(dataObjQueryStart time.Time) newScriptQuerierFunc {
+	return func(t *testing.T, stores *scriptStores) logql.Querier {
+		return newScriptQuerier(t, stores, dataObjQueryStart)
+	}
 }
 
 // execLimits are the limits an execution stack runs queries with. They apply to every tenant. The
@@ -109,3 +125,42 @@ func (l execLimits) StreamFirstExecutionEnabled(string) bool {
 func (execLimits) DebugEngineTasks(string) bool { return false }
 
 func (execLimits) DebugEngineStreams(string) bool { return false }
+
+// checkDataObjReads returns an error when res holds a sample that only data objects can provide,
+// but the query read no data-object row. It catches a routing bug that reads every sample from
+// chunks, which the results alone cannot show, because chunks hold every stream too.
+//
+// Only a stream-first query reads data objects. A sample comes only from data objects when its
+// whole range window is at or after dataObjQueryStart. A zero-value dataObjQueryStart disables the check.
+func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart time.Time) error {
+	if dataObjQueryStart.IsZero() {
+		return nil
+	}
+	rangeAgg, ok := logql.StreamFirstRangeAggregation(query)
+	if !ok {
+		return nil
+	}
+
+	// The window of the sample at t is (t - offset - interval, t - offset].
+	windowStart := func(t int64) time.Time {
+		return time.UnixMilli(t).Add(-rangeAgg.Left.Offset - rangeAgg.Left.Interval)
+	}
+	needsDataObj := false
+	switch data := res.Data.(type) {
+	case promql.Vector:
+		for _, s := range data {
+			needsDataObj = needsDataObj || (s.F > 0 && !windowStart(s.T).Before(dataObjQueryStart))
+		}
+	case promql.Matrix:
+		for _, series := range data {
+			for _, p := range series.Floats {
+				needsDataObj = needsDataObj || (p.F > 0 && !windowStart(p.T).Before(dataObjQueryStart))
+			}
+		}
+	}
+
+	if needsDataObj && res.Statistics.Querier.Store.Dataobj.PrePredicateDecompressedRows == 0 {
+		return fmt.Errorf("query %q returned samples after the data-object start time, but read no data-object rows", query)
+	}
+	return nil
+}

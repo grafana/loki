@@ -242,8 +242,8 @@ func (rws readerWithServer) Shutdown(ctx context.Context) error {
 }
 
 func getenv(key, fallback string) string {
-	result, ok := os.LookupEnv(key)
-	if !ok {
+	result := os.Getenv(key)
+	if result == "" {
 		return fallback
 	}
 	return result

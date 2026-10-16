@@ -69,25 +69,26 @@ func tryFindFirstCharClass(node *RegexNode, ccIn **CharSet) int {
 	case NtNotone, NtNotoneloop, NtNotonelazy, NtNotoneloopatomic:
 		if cc == nil {
 			cc = &CharSet{}
-			*ccIn = cc
-		}
-		if cc.IsMergeable() {
 			cc.addChar(node.Ch)
 			cc.negate = true
-			/*if node.Ch > 0 {
-				// Add the range before the excluded char.
-				cc.addRange(0, (node.Ch - 1))
+			*ccIn = cc
+		} else if cc.IsMergeable() {
+			// Union the complement ranges with the accumulated characters
+			// before canonicalizing; negating the accumulator would exclude them.
+			if node.Ch > 0 {
+				cc.ranges = append(cc.ranges, SingleRange{0, node.Ch - 1})
 			}
 			if node.Ch < unicode.MaxRune {
-				// Add the range after the excluded char.
-				cc.addRange(node.Ch+1, unicode.MaxRune)
-			}*/
-			if node.T == NtNotone || node.M > 0 {
-				return 1
+				cc.ranges = append(cc.ranges, SingleRange{node.Ch + 1, unicode.MaxRune})
 			}
-			return -1
+			cc.canonicalize()
+		} else {
+			return 0
 		}
-		return 0
+		if node.T == NtNotone || node.M > 0 {
+			return 1
+		}
+		return -1
 
 	case NtSet, NtSetloop, NtSetlazy, NtSetloopatomic:
 		{
@@ -130,7 +131,7 @@ func tryFindFirstCharClass(node *RegexNode, ccIn **CharSet) int {
 
 	// Zero-width elements.  These don't contribute to the starting set, so return null to indicate a caller
 	// should keep looking past them.
-	case NtEmpty, NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
+	case NtEmpty, NtResetCapture, NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
 		NtBeginning, NtStart, NtEndZ, NtEnd, NtUpdateBumpalong, NtPosLook, NtNegLook:
 		return -1
 
@@ -837,7 +838,7 @@ func tryFindRawFixedSets(node *RegexNode, res *[]FixedDistanceSet, distance *int
 			*distance += node.M
 			return true
 		}
-	case NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEmpty, NtEnd, NtEndZ, NtEol,
+	case NtBeginning, NtBol, NtBoundary, NtECMABoundary, NtEmpty, NtResetCapture, NtEnd, NtEndZ, NtEol,
 		NtNonboundary, NtNonECMABoundary, NtUpdateBumpalong,
 		NtStart, NtNegLook, NtPosLook:
 		// Zero-width anchors and assertions.  In theory, for PositiveLookaround and NegativeLookaround we could also
@@ -1281,7 +1282,7 @@ func isZeroWidthLandmarkGap(node *RegexNode) bool {
 		return true
 	}
 	switch node.T {
-	case NtEmpty, NtUpdateBumpalong,
+	case NtEmpty, NtResetCapture, NtUpdateBumpalong,
 		NtBeginning, NtBol, NtStart, NtEndZ, NtEnd, NtEol,
 		NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
 		return true

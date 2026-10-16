@@ -35,7 +35,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// Tenant is the tenant [Builder.Append] stores logs for.
+// Tenant is the tenant a [Builder] stores logs for. A Builder holds one tenant
+// because the index Calculator accepts only single-tenant objects.
 const Tenant = "objtest"
 
 // indexPrefix is where index objects and their table of contents live within the bucket.
@@ -48,6 +49,10 @@ type Option func(*builderOptions)
 
 type builderOptions struct {
 	targetSectionSize flagext.Bytes
+	targetPageSize    flagext.Bytes
+	targetObjectSize  flagext.Bytes
+	bufferSize        flagext.Bytes
+	maxPageRows       int
 }
 
 // WithTargetSectionSize targets the uncompressed data one logs section holds, so a small value
@@ -60,10 +65,34 @@ func WithTargetSectionSize(size flagext.Bytes) Option {
 	return func(o *builderOptions) { o.targetSectionSize = size }
 }
 
+// WithTargetPageSize targets the uncompressed data one encoded page holds. Zero keeps the
+// builder's default.
+func WithTargetPageSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.targetPageSize = size }
+}
+
+// WithTargetObjectSize targets the compressed, encoded data one object holds before Append
+// flushes it and starts a new one, so a small value splits a corpus across many objects instead
+// of the few the builder's default otherwise produces. Zero keeps the builder's default.
+func WithTargetObjectSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.targetObjectSize = size }
+}
+
+// WithBufferSize sets the size of the buffer the builder accumulates encoded data in before
+// flushing it. Zero keeps the builder's default.
+func WithBufferSize(size flagext.Bytes) Option {
+	return func(o *builderOptions) { o.bufferSize = size }
+}
+
+// WithMaxPageRows caps the row count of an encoded page. Zero keeps the builder's default.
+func WithMaxPageRows(rows int) Option {
+	return func(o *builderOptions) { o.maxPageRows = rows }
+}
+
 // Builder is a bucket holding logs data objects and index data objects. Append logs with
 // [Builder.Append], then call [Builder.Close] to write the indexes that make them resolvable.
 type Builder struct {
-	t      *testing.T // Test associated with the store
+	t      testing.TB // Test associated with the store
 	dir    string     // Actual directory holding data
 	logger log.Logger
 
@@ -78,7 +107,7 @@ type Builder struct {
 }
 
 // NewBuilder creates a builder that can be used for accumulating logs.
-func NewBuilder(t *testing.T, opts ...Option) *Builder {
+func NewBuilder(t testing.TB, opts ...Option) *Builder {
 	var options builderOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -103,13 +132,25 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 	if options.targetSectionSize > 0 {
 		builderConfig.TargetSectionSize = options.targetSectionSize
 	}
+	if options.targetPageSize > 0 {
+		builderConfig.TargetPageSize = options.targetPageSize
+	}
+	if options.targetObjectSize > 0 {
+		builderConfig.TargetObjectSize = options.targetObjectSize
+	}
+	if options.bufferSize > 0 {
+		builderConfig.BufferSize = options.bufferSize
+	}
+	if options.maxPageRows > 0 {
+		builderConfig.MaxPageRows = options.maxPageRows
+	}
 
 	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPrefix)
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
+	logsMetastoreToc := newTableOfContentsWriter(bucket, logger)
+	indexMetastoreToc := newTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &Builder{
 		t:      t,
@@ -128,12 +169,6 @@ func NewBuilder(t *testing.T, opts ...Option) *Builder {
 
 // Append appends the given streams to the builder for [Tenant].
 func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
-	b.AppendFor(ctx, Tenant, streams...)
-}
-
-// AppendFor appends the given streams to the builder for tenant. Appending for two tenants
-// without an intervening [Builder.Flush] puts both tenants' sections in one object.
-func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logproto.Stream) {
 	require.False(b.t, b.closed, "append before Close: logs appended afterwards reach no index, so a query would not see them")
 
 	for _, stream := range streams {
@@ -141,7 +176,7 @@ func (b *Builder) AppendFor(ctx context.Context, tenant string, streams ...logpr
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
 		}
 
-		require.NoError(b.t, b.logsBuilder.Append(tenant, stream, time.Now()), "failed to append stream")
+		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}
@@ -176,7 +211,7 @@ func (b *Builder) flush(ctx context.Context) error {
 		return fmt.Errorf("uploading logs object: %w", err)
 	}
 
-	if err := WriteTableOfContentsEntries(ctx, b.logsMetastoreToc, path, timeRanges); err != nil {
+	if err := writeTableOfContentsEntries(ctx, b.logsMetastoreToc, path, timeRanges); err != nil {
 		return fmt.Errorf("updating metastore: %w", err)
 	}
 
@@ -198,7 +233,7 @@ func (b *Builder) Close() {
 }
 
 func (b *Builder) buildIndex(ctx context.Context) error {
-	indexBuilder, err := indexobj.NewBuilder(b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(Tenant, b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
 	if err != nil {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}
@@ -252,7 +287,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 }
 
 func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculator) error {
-	obj, closer, timeRanges, err := calculator.Flush()
+	obj, closer, timeRange, err := calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush index: %w", err)
 	}
@@ -271,7 +306,7 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 
 	if err := b.indexBucket.Upload(ctx, key, reader); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
-	} else if err := WriteTableOfContentsEntries(ctx, b.indexMetastoreToc, key, timeRanges); err != nil {
+	} else if err := writeTableOfContentsEntries(ctx, b.indexMetastoreToc, key, []dataobj.TimeRange{timeRange}); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -297,31 +332,51 @@ func (b *Builder) Location() Location {
 
 // Metastore returns a metastore that resolves the builder's objects. Call it after
 // [Builder.Close], which writes the indexes it reads.
-//
-// It reads postings sections. That is the opt-in flow, because ReadPostingsSections defaults to
-// off, so a test through this metastore does not cover the default streams-section flow.
 func (b *Builder) Metastore() *metastore.ObjectMetastore {
 	require.True(b.t, b.closed, "call Close before Metastore: without the indexes it resolves nothing and a query returns an empty result")
 
 	return metastore.NewObjectMetastore(
 		b.bucket,
-		metastore.Config{IndexStoragePrefix: indexPrefix, ReadPostingsSections: true},
+		metastore.Config{IndexStoragePrefix: indexPrefix},
 		b.logger,
 		metastore.NewObjectMetastoreMetrics(nil),
 	)
 }
 
-// WriteTableOfContentsEntries records the object at path in the ToC of every tenant in
+// writeTableOfContentsEntries records the object at path in the ToC of every tenant in
 // timeRanges, for every window each time range overlaps.
-func WriteTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
+func writeTableOfContentsEntries(ctx context.Context, toc *metastore.TableOfContentsWriter, path string, timeRanges []dataobj.TimeRange) error {
 	for _, tr := range timeRanges {
-		if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
-			Path:      path,
-			StartTime: tr.MinTime,
-			EndTime:   tr.MaxTime,
-		}); err != nil {
-			return err
+		for window := tr.MinTime.UTC().Truncate(metastore.MetastoreWindowSize); !window.After(tr.MaxTime); window = window.Add(metastore.MetastoreWindowSize) {
+			// WriteEntry accepts an entry of one window only, so we write 1 entry for each window
+			start, end := tr.MinTime, tr.MaxTime
+			if start.Before(window) {
+				start = window
+			}
+			if lastInstant := window.Add(metastore.MetastoreWindowSize - time.Nanosecond); end.After(lastInstant) {
+				end = lastInstant
+			}
+			if err := toc.WriteEntry(ctx, tr.Tenant, metastore.TableOfContentsEntry{
+				Path:      path,
+				StartTime: start,
+				EndTime:   end,
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// newTableOfContentsWriter returns a ToC writer for bucket with the default
+// configs. It does not register the writer's metrics.
+func newTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *metastore.TableOfContentsWriter {
+	return metastore.NewTableOfContentsWriter(
+		bucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(nil),
+		indexobj.NewBuilderMetrics(nil),
+	)
 }

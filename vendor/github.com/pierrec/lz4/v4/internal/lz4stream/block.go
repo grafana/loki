@@ -175,13 +175,13 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				data, err := block.Uncompress(f, size.Get(), nil, false)
+				buf, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
 					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
 				} else {
-					c <- data
+					c <- buf
 				}
 			}()
 		}
@@ -244,7 +244,12 @@ func (b *FrameDataBlock) init(f *Frame) *FrameDataBlock {
 		b = new(FrameDataBlock)
 	}
 	b.Close(f) // return any buffer still held; noop if already closed
-	buf := f.BlockSizeIndex().Get()
+	var buf []byte
+	if f.isLegacy() {
+		buf = lz4block.GetLegacy()
+	} else {
+		buf = f.BlockSizeIndex().Get()
+	}
 	b.Data = buf
 	b.data = buf
 	return b
@@ -388,6 +393,10 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 
 func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byte, error) {
 	if b.Size.Uncompressed() {
+		if len(b.data) > len(dst) {
+			// Only legacy blocks can be larger than the block size.
+			return nil, lz4errors.ErrInvalidSourceShortBuffer
+		}
 		n := copy(dst, b.data)
 		dst = dst[:n]
 	} else {

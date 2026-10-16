@@ -291,7 +291,7 @@ func TestPartitionProcessor_FlushSplitsAcrossTenantsAndWindows(t *testing.T) {
 		require.NoError(t, proc.processRecord(ctx, rec))
 
 		// Three windows for tenant-a and two for tenant-b.
-		require.Len(t, m.GetBuilders(), 5)
+		require.Len(t, m.getBuilders(), 5)
 
 		require.NoError(t, proc.flush(ctx, "forced"))
 		require.Equal(t, 1, flushCommitter.flushes)
@@ -299,7 +299,7 @@ func TestPartitionProcessor_FlushSplitsAcrossTenantsAndWindows(t *testing.T) {
 		require.Equal(t, rec.Offset, flushCommitter.lastOffset)
 
 		// The multi-builder is reset after a successful flush.
-		require.Empty(t, m.GetBuilders())
+		require.Empty(t, m.getBuilders())
 		require.Equal(t, 0, m.GetEstimatedSize())
 	})
 }

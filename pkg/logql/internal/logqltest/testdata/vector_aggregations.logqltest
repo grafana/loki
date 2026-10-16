@@ -142,8 +142,8 @@ eval instant at 60s sum without (extra) (max_over_time({app="foo"} | logfmt | un
   {app="foo", zone="eu"} 6
   {app="foo", zone="us"} 28
 
-# A __error__ set directly as structured metadata is an extraction error too. It still fails the
-# query, and a __error__ filter still drops it.
+# A __error__ set directly as structured metadata is an extraction error too, and a __error__
+# filter decides what to do with it exactly like a parser-raised error.
 clear
 load
   {app="a"} "1" @ 10s [repeat every 10s for 6]
@@ -153,6 +153,8 @@ eval instant at 60s sum(count_over_time({app="a"}[1m]))
   expect fail
 eval instant at 60s sum(count_over_time({app="a"} | __error__="" [1m]))
   {} 6
+eval instant at 60s sum(count_over_time({app="a"} | __error__!="" [1m]))
+  {} 5
 # A line filter still fails the query on the errored line it keeps, and still counts correctly once
 # it drops that line instead.
 eval instant at 60s sum(count_over_time({app="a"} |= "2" [1m]))

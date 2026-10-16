@@ -148,11 +148,14 @@ Commands:
     status               Dump the migration status for the current DB
     version              Print the current version of the database
     create NAME [sql|go] Creates new migration file with the current timestamp
+    env                  Print the current Goose environment configuration
     fix                  Apply sequential ordering to migrations
     validate             Check migration files without running them
 ```
 
 </details>
+
+See [drivers](#drivers) for driver-specific details.
 
 Commonly used commands:
 
@@ -493,6 +496,15 @@ When you're ready to deploy your migrations in a production environment, we also
 `fix` command to convert your migrations into sequential order, while preserving the timestamp
 ordering. We recommend running `fix` in the CI pipeline, and only when the migrations are ready for
 production.
+
+# Drivers
+
+Some drivers have specific requirements or special behaviour. Make sure to read the documentation
+for your database's driver before adopting and deploying Goose.
+
+* [ClickHouse](doc/dialect-clickhouse.md) only fully supports some clickhouse
+  deployment modes and requires careful configuration or work-arounds for
+  others.
 
 ## Credit
 

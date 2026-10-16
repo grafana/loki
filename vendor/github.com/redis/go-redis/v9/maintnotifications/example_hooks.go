@@ -43,7 +43,7 @@ func (mh *MetricsHook) PreHook(ctx context.Context, notificationCtx push.Notific
 
 	// Log connection information if available
 	if conn, ok := notificationCtx.Conn.(*pool.Conn); ok {
-		internal.Logger.Printf(ctx, logs.MetricsHookProcessingNotification(notificationType, conn.GetID()))
+		internal.Logger.Printf(ctx, "%s", logs.MetricsHookProcessingNotification(notificationType, conn.GetID()))
 	}
 
 	// Store start time in context for duration calculation
@@ -67,7 +67,7 @@ func (mh *MetricsHook) PostHook(ctx context.Context, notificationCtx push.Notifi
 
 		// Log error details with connection information
 		if conn, ok := notificationCtx.Conn.(*pool.Conn); ok {
-			internal.Logger.Printf(ctx, logs.MetricsHookRecordedError(notificationType, conn.GetID(), result))
+			internal.Logger.Printf(ctx, "%s", logs.MetricsHookRecordedError(notificationType, conn.GetID(), result))
 		}
 	}
 }

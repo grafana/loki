@@ -20,8 +20,16 @@ type Config struct {
 	IdleFlushTimeout time.Duration `yaml:"idle_flush_timeout"`
 	MaxBuilderAge    time.Duration `yaml:"max_builder_age"`
 
+	// FlushConcurrency is the maximum number of data objects that one flush
+	// builds, uploads and indexes at the same time. It must be at least 1.
+	FlushConcurrency int `yaml:"flush_concurrency"`
+
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`
+
+	// PartitionID overrides the Kafka partition this instance consumes. A negative value (the
+	// default) derives the partition from the hostname.
+	PartitionID int `yaml:"partition_id"`
 }
 
 func (cfg *Config) Validate() error {
@@ -33,6 +41,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.Topic == "" {
 		return errors.New("topic is required")
+	}
+	if cfg.FlushConcurrency < 1 {
+		return errors.New("flush concurrency must be at least 1")
 	}
 	return nil
 }
@@ -76,5 +87,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+"max-builder-age",
 		time.Hour,
 		"The maximum amount of time to accumulate data in a builder before flushing it. Defaults to 1 hour.",
+	)
+	f.IntVar(
+		&cfg.FlushConcurrency,
+		prefix+"flush-concurrency",
+		1,
+		"The maximum number of data objects that one flush builds, uploads and indexes at the same time. Each extra object in progress adds the memory to sort, upload and index it. If one object fails, the flush cancels the others. The builder commits the Kafka offset only after every object succeeds.",
+	)
+	f.IntVar(
+		&cfg.PartitionID,
+		prefix+"partition-id",
+		-1,
+		"The Kafka partition to consume. A negative value derives it from the instance hostname instead.",
 	)
 }

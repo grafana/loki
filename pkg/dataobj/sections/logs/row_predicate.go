@@ -34,6 +34,10 @@ type (
 	// A LogMessageFilterRowPredicate is a RowPredicate that requires the log
 	// message of the entry to pass a Keep function.
 	LogMessageFilterRowPredicate struct {
+		// Keep receives a nil line when the entry has no message value. The slice
+		// belongs to the reader and is valid only during the call, so Keep must not
+		// retain, modify, or append to it. Reads of one query can call the same Keep
+		// at the same time, so it must be safe for concurrent use.
 		Keep func(line []byte) bool
 	}
 

@@ -298,16 +298,18 @@ func (i *TSDBIndex) forPostings(
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	compute := func() (index.Postings, error) {
-		return PostingsForMatchers(i.reader, fpFilter, matchers...)
-	}
 	var p index.Postings
 	var err error
 	postingsCache, postingsID := i.postingsCache, i.postingsID
 	if postingsCache != nil {
-		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, fpFilter, matchers), compute)
+		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, matchers), func() (index.Postings, error) {
+			return PostingsForMatchers(i.reader, nil, matchers...)
+		})
+		if err == nil {
+			p = i.reader.ShardPostings(p, fpFilter)
+		}
 	} else {
-		p, err = compute()
+		p, err = PostingsForMatchers(i.reader, fpFilter, matchers...)
 	}
 	if err != nil {
 		return err

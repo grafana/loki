@@ -13,9 +13,8 @@ import (
 
 const MaxInternedStrings = 1024
 
-// errorLabelsCount is how many labels appendErrorLabels can add: __error__, __error_details__ and
-// __preserve_error__.
-const errorLabelsCount = 3
+// errorLabelsCount is how many labels appendErrorLabels can add: __error__ and __error_details__.
+const errorLabelsCount = 2
 
 var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.StableHash(labels.EmptyLabels()), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
@@ -125,14 +124,11 @@ type BaseLabelsBuilder struct {
 	err string
 	// nolint:structcheck
 	errDetails string
-	// preserveError reports whether the query asked to keep the lines that carry err, so a metric
-	// query returns such a sample instead of failing.
-	// nolint:structcheck
-	preserveError bool
 
 	groups                       []string
 	baseMap                      map[string]string
-	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints               ParserHint       // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -165,19 +161,31 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
 			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
-		resultCache:    make(map[uint64]LabelsResult),
-		hasher:         newHasher(),
-		groups:         groups,
-		parserKeyHints: parserKeyHints,
-		noLabels:       noLabels,
-		without:        without,
-		jsonPaths:      make(map[string][]string),
+		resultCache:      make(map[uint64]LabelsResult),
+		hasher:           newHasher(),
+		groups:           groups,
+		parserKeyHints:   parserKeyHints,
+		labelFilterHints: NoLabelFilterHints(),
+		noLabels:         noLabels,
+		without:          without,
+		jsonPaths:        make(map[string][]string),
 	}
 }
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+}
+
+// WithLabelFilterHints sets the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline. Returns b for chaining.
+func (b *BaseLabelsBuilder) WithLabelFilterHints(h LabelFilterHints) *BaseLabelsBuilder {
+	if h == nil {
+		h = NoLabelFilterHints()
+	}
+	b.labelFilterHints = h
+	return b
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -211,7 +219,6 @@ func (b *BaseLabelsBuilder) Reset() {
 	}
 	b.err = ""
 	b.errDetails = ""
-	b.preserveError = false
 	b.baseMap = nil
 	b.parserKeyHints.Reset()
 }
@@ -220,6 +227,13 @@ func (b *BaseLabelsBuilder) Reset() {
 // Returns nil when it's impossible to hint labels extractions.
 func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
+}
+
+// LabelFilterHints returns the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline.
+func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
+	return b.labelFilterHints
 }
 
 func (b *BaseLabelsBuilder) hasDel() bool {
@@ -243,23 +257,16 @@ func (b *BaseLabelsBuilder) sizeAdd() int {
 	return length
 }
 
-// SetErr sets the whole error state: the error, its details, and whether the query asked to keep
-// the lines that carry it. The input details may be nil.
+// SetErr sets the error and its details. The input details may be nil.
 //
-// The three go together, because each error owns its own details. A later stage that replaces the
+// The two go together, because each error owns its own details. A later stage that replaces the
 // error must not inherit the details of the one before it.
-//
-// Whether to keep the line is the query's answer rather than the stage's, so SetErr reads it from
-// the parser hints. Every error a pipeline can raise answers the same way: a filter on __error__
-// asks to keep the errored lines, whichever stage failed (before or after the __error__ filter
-// stage).
 func (b *LabelsBuilder) SetErr(err string, details error) *LabelsBuilder {
 	b.err = err
 	b.errDetails = ""
 	if details != nil {
 		b.errDetails = details.Error()
 	}
-	b.preserveError = b.parserKeyHints.PreserveError()
 
 	return b
 }
@@ -281,7 +288,6 @@ func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
 
 func (b *LabelsBuilder) ResetError() *LabelsBuilder {
 	b.err = ""
-	b.preserveError = false
 	return b
 }
 
@@ -303,8 +309,11 @@ func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
 	return labelsContain(b.add[category], key)
 }
 
-// BaseHas returns the base labels have the given key
+// BaseHas returns whether the base labels have the given key, ignoring keys already removed by a previous stage (e.g. `drop`).
 func (b *LabelsBuilder) BaseHas(key string) bool {
+	if slices.Contains(b.del, key) {
+		return false
+	}
 	return b.base.Has(key)
 }
 
@@ -474,19 +483,6 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{
 			Name:  logqlmodel.ErrorDetailsLabel,
 			Value: b.errDetails,
-		})
-	}
-
-	// The builder owns the preserve answer, so a line that carries __preserve_error__ of its own
-	// must not report it. Otherwise a stream could switch off the failure a metric query returns
-	// for an errored sample.
-	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
-		return l.Name == logqlmodel.PreserveErrorLabel
-	})
-	if b.preserveError {
-		buf = append(buf, labels.Label{
-			Name:  logqlmodel.PreserveErrorLabel,
-			Value: trueString,
 		})
 	}
 
@@ -774,11 +770,6 @@ func (b *LabelsBuilder) toByGroup() LabelsResult {
 	}
 Outer:
 	for _, g := range b.groups {
-		for _, n := range b.del {
-			if g == n {
-				continue Outer
-			}
-		}
 		for category, la := range b.add {
 			for _, l := range la {
 				if g == l.Name {
@@ -789,6 +780,11 @@ Outer:
 					continue Outer
 				}
 			}
+		}
+
+		// A deleted stream label is gone, but a label added after the delete (e.g. by a parser) is not.
+		if slices.Contains(b.del, g) {
+			continue
 		}
 
 		value := b.base.Get(g)
@@ -888,15 +884,6 @@ func (b *LabelsBuilder) appendErrorLabels(buf []labels.Label) []labels.Label {
 	buf = append(buf, labels.Label{Name: logqlmodel.ErrorLabel, Value: b.err})
 	if b.errDetails != "" {
 		buf = append(buf, labels.Label{Name: logqlmodel.ErrorDetailsLabel, Value: b.errDetails})
-	}
-
-	// The builder owns the answer, so a __preserve_error__ the line carries must not reach the
-	// output. Otherwise a stream could switch off the failure a metric query returns.
-	buf = slices.DeleteFunc(buf, func(l labels.Label) bool {
-		return l.Name == logqlmodel.PreserveErrorLabel
-	})
-	if b.preserveError {
-		buf = append(buf, labels.Label{Name: logqlmodel.PreserveErrorLabel, Value: trueString})
 	}
 
 	return buf

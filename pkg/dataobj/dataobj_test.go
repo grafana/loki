@@ -576,6 +576,10 @@ func (b *failingBucket) GetRange(context.Context, string, int64, int64) (io.Read
 	return nil, b.err
 }
 
+// IsObjNotFoundErr never reports a not-found error. The bucket embeds no real bucket, and the
+// instrumented reader asks it to classify the error GetRange returns.
+func (b *failingBucket) IsObjNotFoundErr(error) bool { return false }
+
 // flakyBucket fails the first n GetRange calls with err, then serves every later one normally. A test
 // can use this to tell whether a caller retried a failed read: if it did, and the retry landed past the
 // first n calls, it would see success where a non-retrying caller would see err.
