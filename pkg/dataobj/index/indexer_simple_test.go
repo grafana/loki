@@ -31,7 +31,7 @@ type failingBucket struct {
 	objstore.Bucket
 }
 
-func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader, _ ...objstore.ObjectUploadOption) error {
 	return errors.New("mock upload error")
 }
 

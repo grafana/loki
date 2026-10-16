@@ -47,7 +47,7 @@ func (b *SSEBucketClient) Close() error {
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	if sse, err := b.getCustomS3SSEConfig(); err != nil {
 		return err
 	} else if sse != nil {
@@ -56,7 +56,7 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 		ctx = thanos_s3.ContextWithSSEConfig(ctx, sse)
 	}
 
-	return b.bucket.Upload(ctx, name, r)
+	return b.bucket.Upload(ctx, name, r, opts...)
 }
 
 func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.ReadCloser) (io.ReadCloser, error)) error {
@@ -135,6 +135,14 @@ func (b *SSEBucketClient) Exists(ctx context.Context, name string) (bool, error)
 // IsObjNotFoundErr implements objstore.Bucket.
 func (b *SSEBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
+}
+
+func (b *SSEBucketClient) IsConditionNotMetErr(err error) bool {
+	return b.bucket.IsConditionNotMetErr(err)
+}
+
+func (b *SSEBucketClient) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return b.bucket.SupportedObjectUploadOptions()
 }
 
 // Attributes implements objstore.Bucket.

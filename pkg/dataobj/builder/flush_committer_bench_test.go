@@ -291,7 +291,7 @@ type benchBucket struct {
 	latency benchBucketLatency
 }
 
-func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader) error {
+func (b *benchBucket) Upload(_ context.Context, name string, r io.Reader, _ ...objstore.ObjectUploadOption) error {
 	n, err := io.Copy(io.Discard, r)
 	if err != nil {
 		return err

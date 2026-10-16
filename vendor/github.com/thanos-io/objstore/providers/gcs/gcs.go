@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	htransport "google.golang.org/api/transport/http"
@@ -62,6 +64,8 @@ type Config struct {
 	// Set this to 1 to disable retries.
 	MaxRetries int `yaml:"max_retries"`
 }
+
+var errConditionInvalid = errors.New("invalid condition: gcs supports generational object versions")
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
 type Bucket struct {
@@ -318,6 +322,7 @@ func (b *Bucket) Attributes(ctx context.Context, name string) (objstore.ObjectAt
 	return objstore.ObjectAttributes{
 		Size:         attrs.Size,
 		LastModified: attrs.Updated,
+		Version:      &objstore.ObjectVersion{Type: objstore.Generation, Value: strconv.Itoa(int(attrs.Generation))},
 	}, nil
 }
 
@@ -338,27 +343,38 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // Upload writes the file specified in src to remote GCS location specified as target.
-func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.upload(ctx, name, r, 0, false)
-}
-
-// Upload writes the file specified in src to remote GCS location specified as target.
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generation int64, requireNewObject bool) error {
-	o := b.bkt.Object(name)
-
-	var w *storage.Writer
-	if generation != 0 {
-		o = o.If(storage.Conditions{GenerationMatch: generation})
+func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
+	if err := objstore.ValidateUploadOptions(b.SupportedObjectUploadOptions(), opts...); err != nil {
+		return err
 	}
-	if requireNewObject {
-		o = o.If(storage.Conditions{DoesNotExist: true})
+
+	uploadOpts := objstore.ApplyObjectUploadOptions(opts...)
+
+	obj := b.bkt.Object(name)
+	if uploadOpts.Condition != nil {
+		if uploadOpts.Condition.Type != objstore.Generation {
+			return errConditionInvalid
+		}
+		g8n, err := strconv.Atoi(uploadOpts.Condition.Value)
+		if err != nil {
+			return err
+		}
+		if uploadOpts.IfNotMatch {
+			obj = obj.If(storage.Conditions{GenerationNotMatch: int64(g8n)})
+		} else {
+			obj = obj.If(storage.Conditions{GenerationMatch: int64(g8n)})
+		}
+	} else if uploadOpts.IfNotExists {
+		obj = obj.If(storage.Conditions{DoesNotExist: true})
 	}
-	w = o.NewWriter(ctx)
+
+	w := obj.NewWriter(ctx)
 
 	// if `chunkSize` is 0, we don't set any custom value for writer's ChunkSize.
 	// It uses whatever the default value https://pkg.go.dev/google.golang.org/cloud/storage#Writer
 	if b.chunkSize > 0 {
 		w.ChunkSize = b.chunkSize
+		w.ContentType = uploadOpts.ContentType
 	}
 
 	if _, err := io.Copy(w, r); err != nil {
@@ -390,8 +406,15 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 		defer newContent.Close()
 	}
 
-	// Upload with the previous generation, or mustNotExist for new objects
-	return b.upload(ctx, name, newContent, generation, storageReader == nil)
+	if generation != 0 {
+		ver := objstore.ObjectVersion{Type: objstore.Generation, Value: fmt.Sprint(generation)}
+		return b.Upload(ctx, name, newContent, objstore.WithIfMatch(&ver))
+	}
+	return b.Upload(ctx, name, newContent, objstore.WithIfNotExists())
+}
+
+func (b *Bucket) SupportedObjectUploadOptions() []objstore.ObjectUploadOptionType {
+	return []objstore.ObjectUploadOptionType{objstore.ContentType, objstore.IfNotExists, objstore.IfMatch, objstore.IfNotMatch}
 }
 
 // Delete removes the object with the given name.
@@ -410,6 +433,18 @@ func (b *Bucket) IsAccessDeniedErr(err error) bool {
 		return true
 	}
 	return false
+}
+
+// IsConditionNotMetErr returns true if error means a conditional upload condition was not met.
+func (b *Bucket) IsConditionNotMetErr(err error) bool {
+	var gapiErr *googleapi.Error
+	// See https://cloud.google.com/storage/docs/json_api/v1/status-codes
+	if errors.As(err, &gapiErr) &&
+		(gapiErr.Code == http.StatusPreconditionFailed ||
+			gapiErr.Code == http.StatusNotModified) {
+		return true
+	}
+	return errors.Is(err, errConditionInvalid)
 }
 
 func (b *Bucket) Close() error {

@@ -1320,6 +1320,9 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/pkg/xattr v0.4.10
+## explicit; go 1.14
+github.com/pkg/xattr
 # github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df
 ## explicit; go 1.26.4
 github.com/planetscale/vtprotobuf/protohelpers
@@ -1554,8 +1557,8 @@ github.com/stretchr/testify/internal/difflib
 github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20261009124658-72d3b9ff63af => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
-## explicit; go 1.22
+# github.com/thanos-io/objstore v0.0.0-20261009124658-72d3b9ff63af => github.com/bboreham/thanos-objstore v0.0.0-20261013175046-6b8f77bdab28
+## explicit; go 1.24.0
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil
 github.com/thanos-io/objstore/exthttp
@@ -2422,7 +2425,7 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
-# github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20261013190022-d05e3fae91a4
+# github.com/thanos-io/objstore => github.com/bboreham/thanos-objstore v0.0.0-20261013175046-6b8f77bdab28
 # github.com/twmb/franz-go => github.com/twmb/franz-go v1.21.7
 # github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v1.18.0
 # github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.13.1

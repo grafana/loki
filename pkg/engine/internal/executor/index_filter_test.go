@@ -137,13 +137,13 @@ type sizeRecordingBucket struct {
 	sizeErr error
 }
 
-func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *sizeRecordingBucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		b.sizeErr = err
 	}
 	b.sizes[name] = size
-	return b.Bucket.Upload(ctx, name, r)
+	return b.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func TestDoIndexFilter(t *testing.T) {
