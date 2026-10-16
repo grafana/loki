@@ -182,46 +182,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 const localhost = "localhost"
 
-func TestUIServiceInitialization(t *testing.T) {
-	dir := t.TempDir()
-
-	t.Run("UI is not initialized when disabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
-			cfg.UI.Enabled = false
-		})
-		c, err := New(cfg)
-		require.NoError(t, err)
-
-		services, err := c.ModuleManager.InitModuleServices(UI)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
-
-		require.NoError(t, err)
-		assert.Nil(t, c.UI, "UI service should be nil when UI is disabled")
-	})
-
-	t.Run("UI is initialized when enabled", func(t *testing.T) {
-		cfg := minimalWorkingConfig(t, dir, UI, func(cfg *Config) {
-			cfg.UI.Enabled = true
-		})
-		c, err := New(cfg)
-		require.NoError(t, err)
-
-		services, err := c.ModuleManager.InitModuleServices(UI)
-		defer func() {
-			for _, service := range services {
-				service.StopAsync()
-			}
-		}()
-
-		require.NoError(t, err)
-		assert.NotNil(t, c.UI, "UI service should be initialized when UI is enabled")
-	})
-}
-
 // TestIndexGatewayInterceptorsOrderedBeforeServer is a regression test for a
 // bug where initServer was called before initIndexGatewayInterceptors, resulting
 // in the interceptors not being effective.

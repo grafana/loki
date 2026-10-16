@@ -103,6 +103,9 @@ type ReadTask struct {
 	metadataNames []string
 	predicates    []logs.RowPredicate
 
+	// needReturningLine is true when the returned records should carry the line.
+	needReturningLine bool
+
 	start, end time.Time
 }
 
@@ -124,7 +127,7 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 }
 
 // records turns one section read's rows into forwardable records, attaching each stream's
-// identity and copying each line.
+// identity and copying each line when the task needs it.
 //
 // It fails on a row whose stream the task did not plan to read. The read matches only the
 // task's streams, so an unexpected ID means that broke, and dropping the row would under-count
@@ -137,16 +140,21 @@ func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, row.StreamID)
 		}
+
+		var line []byte
+		if t.needReturningLine {
+			// Copy the line, because DecodeRow reuses one buffer for it across reads.
+			line = append(line, row.Line...)
+		}
+
 		out = append(out, LogRecord{
 			streamHash:   stream.streamHash,
 			streamLabels: stream.streamLabels,
 			timestamp:    row.Timestamp.UnixNano(),
-			// Copy the line, because DecodeRow reuses one buffer for it across reads.
-			//
+			line:         line,
 			// Metadata needs no copy. The symbolizer clones every string it interns and
 			// the labels builder allocates its result, so forwarded metadata outlives
 			// the reader safely.
-			line:     append([]byte(nil), row.Line...),
 			metadata: row.Metadata,
 		})
 	}

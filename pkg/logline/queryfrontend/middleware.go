@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -95,6 +97,69 @@ type hintPrefetchResult struct {
 	ingesterCutoff time.Time     // data after this is in ingester window only
 	lookupDuration time.Duration // wall time of the lookup, set before done is closed
 	done           chan struct{} // closed when lookup completes
+	wait           waitTracker   // time sub-requests spent waiting for done
+}
+
+// waitForLookup blocks until the lookup is done, ctx ends or timeout passes,
+// and reports whether the timeout passed.
+func (r *hintPrefetchResult) waitForLookup(ctx context.Context, timeout time.Duration) (timedOut bool, err error) {
+	select {
+	case <-r.done:
+		return false, nil
+	default:
+	}
+
+	r.wait.begin(time.Now())
+	defer func() { r.wait.end(time.Now()) }()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-r.done:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-timer.C:
+		return true, nil
+	}
+}
+
+// waitTracker measures the wall time during which at least one sub-request
+// waits for the hint lookup. Sub-requests wait in parallel and in waves, so
+// this is the union of their wait intervals, not the sum.
+type waitTracker struct {
+	mu      sync.Mutex
+	waiters int
+	start   time.Time
+	total   time.Duration
+}
+
+func (w *waitTracker) begin(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters == 0 {
+		w.start = now
+	}
+	w.waiters++
+}
+
+func (w *waitTracker) end(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.waiters--
+	if w.waiters == 0 {
+		w.total += now.Sub(w.start)
+	}
+}
+
+// duration returns the wait time so far, including a wait still in progress.
+func (w *waitTracker) duration(now time.Time) time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.waiters > 0 {
+		return w.total + now.Sub(w.start)
+	}
+	return w.total
 }
 
 type dryRunLookupResult struct {
@@ -105,7 +170,7 @@ type dryRunLookupResult struct {
 	done     chan struct{}
 }
 
-// Values of the loglineHintStatus statistic.
+// Values of the logline hintStatus statistic.
 const (
 	hintStatusOK             = "ok"
 	hintStatusUnsupported    = "unsupported"
@@ -137,22 +202,86 @@ func (r *hintPrefetchResult) status() string {
 	}
 }
 
-// attachLoglineStats sets the lookup-level logline statistics on the final
-// query response. The stats collector aliases the response's statistics, so
-// these values reach the frontend metrics.go line.
+// Values of the logline outcome statistic, which tells whether the index
+// skipped data or why it didn't.
+const (
+	outcomeDataSkipped          = "data_skipped"
+	outcomeTinyDataSkipped      = "tiny_data_skipped"
+	outcomeSkipRatioUnavailable = "skip_ratio_unavailable"
+	outcomeTimeRangeNotIndexed  = "time_range_not_indexed"
+	outcomeRecentDataOnly       = "recent_data_only"
+	outcomeUnsupportedQuery     = "unsupported_query"
+	outcomeQueryTooSmall        = "query_too_small"
+	outcomeSizeEstimateFailed   = "size_estimate_failed"
+	outcomeLookupFailed         = "lookup_failed"
+	outcomeLookupTimeout        = "lookup_timeout"
+	outcomeCanceled             = "canceled"
+)
+
+// tinyDataSkippedRatio is the chunk filter ratio below which the index is
+// reported as having skipped too little data to help.
+const tinyDataSkippedRatio = 0.25
+
+// loglineOutcome derives the outcome of a query that went through the hint
+// lookup from its final logline statistics.
+func loglineOutcome(l *logqlstats.Logline) string {
+	switch l.HintStatus {
+	case hintStatusUnsupported:
+		return outcomeUnsupportedQuery
+	case hintStatusError:
+		return outcomeLookupFailed
+	case hintStatusIncomplete:
+		return outcomeLookupTimeout
+	case hintStatusCanceled:
+		return outcomeCanceled
+	case hintStatusIngesterWindow:
+		return outcomeRecentDataOnly
+	}
+	switch {
+	case l.PlannedChunks <= 0:
+		return outcomeSkipRatioUnavailable
+	case l.SkippedRequests+l.NarrowedRequests == 0:
+		return outcomeTimeRangeNotIndexed
+	case l.ChunkFilterRatio < tinyDataSkippedRatio:
+		return outcomeTinyDataSkipped
+	default:
+		return outcomeDataSkipped
+	}
+}
+
+// attachLoglineStats sets the lookup-level logline statistics and the outcome
+// on the final query response. The stats collector aliases the response's
+// statistics, so these values reach the frontend metrics.go line.
 func attachLoglineStats(resp queryrangebase.Response, result *hintPrefetchResult) {
 	lokiResp, ok := resp.(*queryrange.LokiResponse)
 	if !ok || result == nil {
 		return
 	}
-	idx := &lokiResp.Statistics.Index
-	idx.LoglineHintStatus = result.status()
-	if idx.LoglineHintStatus == hintStatusIncomplete {
-		return
+	l := lokiResp.Statistics.LoglineStats()
+	l.HintStatus = result.status()
+	l.HintWaitTime = result.wait.duration(time.Now()).Nanoseconds()
+	if l.HintStatus != hintStatusIncomplete {
+		l.HintLookupTime = result.lookupDuration.Nanoseconds()
+		l.HintRanges = int64(len(result.ranges))
+		l.HintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
+		if result.stats != nil {
+			snap := result.stats.Snapshot()
+			l.ObjectRequests = snap.ObjectStorageRequests
+			l.IOBytes = snap.TotalIOBytes
+			l.IOWait = snap.TotalIOWait.Nanoseconds()
+		}
 	}
-	idx.LoglineHintLookupTime = result.lookupDuration.Nanoseconds()
-	idx.LoglineHintRanges = int64(len(result.ranges))
-	idx.LoglineHintRangesDuration = indexedHintDuration(result.ranges, result.queryStart, result.queryEnd).Nanoseconds()
+	setLoglineChunkStats(&lokiResp.Statistics)
+	l.Outcome = loglineOutcome(l)
+}
+
+// setLoglineChunkStats copies the shard planning chunk counts and their ratio
+// into the logline statistics.
+func setLoglineChunkStats(s *logqlstats.Result) {
+	l := s.LoglineStats()
+	l.PlannedChunks = s.Index.ShardPlannedChunks
+	l.ScannedChunks = s.Index.ShardPlannedChunksScanned
+	l.ChunkFilterRatio, _ = s.Index.ChunkFilterRatio()
 }
 
 // indexedHintDuration sums the hint ranges clipped to [start, end], leaving out
@@ -867,7 +996,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// When ngramLength is not configured (<=0), skip the early check and let
 	// ProvideHints handle support detection internally.
 	if h.ngramLength > 0 && len(hintprovider.SupportedQuery(expr, h.ngramLength)) == 0 {
-		return h.next.Do(ctx, req)
+		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
 	// Shared eligibility: stats-based byte threshold.
@@ -882,7 +1011,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"err", err,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeSizeEstimateFailed)
 		}
 		if queryBytes < uint64(minQueryBytes) {
 			if h.metrics != nil && h.metrics.hintSkippedSmallQuery != nil {
@@ -893,7 +1022,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 				"query_bytes", queryBytes,
 				"threshold_bytes", minQueryBytes,
 			)
-			return h.next.Do(ctx, req)
+			return h.nextWithOutcome(ctx, req, mode, outcomeQueryTooSmall)
 		}
 	}
 
@@ -977,6 +1106,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}()
 
 	ctx = withHintPrefetch(ctx, result)
+	defer h.observeHintWait(result)
 	if !h.shardPlanning.Enabled {
 		resp, err := h.next.Do(ctx, req)
 		if err != nil {
@@ -1045,6 +1175,27 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 }
 
+// observeHintWait records the hint wait of a live query. Call it once per
+// query, including queries that fail, so the histogram counts every lookup.
+func (h *loglinePrefetchHandler) observeHintWait(result *hintPrefetchResult) {
+	wait := result.wait.duration(time.Now())
+	h.metrics.hintWaitDuration.WithLabelValues(result.status()).Observe(wait.Seconds())
+}
+
+// nextWithOutcome runs the query without a hint lookup. In live mode it records
+// why the lookup was skipped.
+func (h *loglinePrefetchHandler) nextWithOutcome(ctx context.Context, req queryrangebase.Request, mode Mode, outcome string) (queryrangebase.Response, error) {
+	resp, err := h.next.Do(ctx, req)
+	if mode != ModeLive || err != nil {
+		return resp, err
+	}
+	if lokiResp, ok := resp.(*queryrange.LokiResponse); ok {
+		setLoglineChunkStats(&lokiResp.Statistics)
+		lokiResp.Statistics.LoglineStats().Outcome = outcome
+	}
+	return resp, nil
+}
+
 // NewLoglineFilterMiddleware intercepts each interval sub-request from
 // SplitByInterval and either skips it or attaches clipped hint ranges.
 func NewLoglineFilterMiddleware(
@@ -1087,15 +1238,12 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	intervalStart := lokiReq.StartTs.UTC()
 	intervalEnd := lokiReq.EndTs.UTC()
 
-	timer := time.NewTimer(h.hintTimeout)
-	defer timer.Stop()
-	select {
-	case <-result.done:
-		result.stats.ObservePrefetchCall(false)
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-timer.C:
-		result.stats.ObservePrefetchCall(true)
+	timedOut, err := result.waitForLookup(ctx, h.hintTimeout)
+	if err != nil {
+		return nil, err
+	}
+	result.stats.ObservePrefetchCall(timedOut)
+	if timedOut {
 		h.metrics.hintPassthrough.WithLabelValues("timeout").Inc()
 		level.Warn(logger).Log("msg", "hint prefetch timeout, falling back to passthrough", "timeout", h.hintTimeout)
 		return h.next.Do(ctx, req)
@@ -1151,9 +1299,9 @@ func (h *loglineFilterHandler) Do(ctx context.Context, req queryrangebase.Reques
 	if err == nil {
 		switch r := resp.(type) {
 		case *queryrange.LokiResponse:
-			r.Statistics.Index.LoglineNarrowedRequests++
+			r.Statistics.LoglineStats().NarrowedRequests++
 		case *queryrange.LokiPromResponse:
-			r.Statistics.Index.LoglineNarrowedRequests++
+			r.Statistics.LoglineStats().NarrowedRequests++
 		}
 	}
 	return resp, err
@@ -1168,13 +1316,13 @@ func skippedResponse(req *queryrange.LokiRequest, expr syntax.Expr) queryrangeba
 
 func skippedLokiResponse(req *queryrange.LokiRequest) *queryrange.LokiResponse {
 	resp := emptyLokiResponse(req)
-	resp.Statistics.Index.LoglineSkippedRequests = 1
+	resp.Statistics.LoglineStats().SkippedRequests = 1
 	return resp
 }
 
 func skippedMetricResponse() *queryrange.LokiPromResponse {
 	resp := emptyMetricResponse()
-	resp.Statistics.Index.LoglineSkippedRequests = 1
+	resp.Statistics.LoglineStats().SkippedRequests = 1
 	return resp
 }
 

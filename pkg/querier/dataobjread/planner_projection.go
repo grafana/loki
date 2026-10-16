@@ -14,13 +14,15 @@ import (
 )
 
 // ProjectionPlan says which columns of a logs section a query reads and which of its metadata
-// filters and line filters can be pushed into the read.
+// filters and line filters can be pushed into the read. It also yields the unpushed query, through
+// [ProjectionPlan.UnpushedExpr].
 //
 // It is derived once per query and then applied per section, because whether a filter can be
 // pushed depends on the labels of the streams that section holds.
 type ProjectionPlan struct {
-	// needMessage reports whether the log line must be read.
-	needMessage bool
+	// needReturningLine reports whether the returned records should include the log line. It is
+	// true when the unpushed query or a delete may read the line.
+	needReturningLine bool
 
 	// needAllMetadata reports whether every metadata column must be read.
 	needAllMetadata bool
@@ -35,6 +37,10 @@ type ProjectionPlan struct {
 	// lineFilter is the push-down line filter, which runs on the stored line. It never comes from a
 	// delete request, and it must be safe for concurrent use.
 	lineFilter logqllog.Filterer
+
+	// unpushedExpr is the query without the line filter stages the read applies or that keep every
+	// line. It is nil when the query has none.
+	unpushedExpr syntax.SampleExpr
 }
 
 // NewProjectionPlan derives the projection for expr, widened by the selectors of the query's
@@ -50,8 +56,8 @@ type ProjectionPlan struct {
 // query must still count.
 func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr) (ProjectionPlan, error) {
 	var (
-		needMessage bool
-		anyWithout  bool
+		needReturningLine bool
+		anyWithout        bool
 
 		// queryDerivesLabels and deleteDerivesLabels record a parser, formatter or other stage
 		// that builds labels out of the line. They are tracked apart because they have
@@ -105,7 +111,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		case *syntax.RangeAggregationExpr:
 			// bytes_over_time and bytes_rate measure the line length.
 			if typed.Operation == syntax.OpRangeTypeBytes || typed.Operation == syntax.OpRangeTypeBytesRate {
-				needMessage = true
+				needReturningLine = true
 			}
 			if typed.Left != nil && typed.Left.Unwrap != nil {
 				addMetadataName(typed.Left.Unwrap.Identifier)
@@ -135,7 +141,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		for _, stage := range pipeline.MultiStages {
 			switch typed := stage.(type) {
 			case *syntax.LineFilterExpr:
-				needMessage = true
+				needReturningLine = true
 			case *syntax.LabelFilterExpr:
 				for _, name := range typed.RequiredLabelNames() {
 					addMetadataName(name)
@@ -149,24 +155,39 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 		}
 	}
 
-	walkStages(selector, true, &queryDerivesLabels)
-	for _, del := range deletes {
-		walkStages(del, false, &deleteDerivesLabels)
-	}
-
-	// Push down the line filter that is safe to run directly on the stored line.
+	// Push down the line filters that are safe to run directly on the stored line.
 	var lineFilter logqllog.Filterer
 	if pipeline, ok := selector.(*syntax.PipelineExpr); ok {
-		lineFilter, err = pipeline.MultiStages.UnprocessedLineFilter()
+		lineFilter, err = pipeline.MultiStages.PushableLineFilters()
 		if err != nil {
 			return ProjectionPlan{}, err
 		}
 	}
 
+	// The read applies the pushable line filters, and a filter that keeps every line needs no check.
+	// Leave them all out of the unpushed query, so they do not force the read to forward the line.
+	unpushed, err := syntax.WithoutPushableLineFilters(expr)
+	if err != nil {
+		return ProjectionPlan{}, err
+	}
+
+	pipelineSelector := selector
+	if unpushed != nil {
+		if pipelineSelector, err = unpushed.Selector(); err != nil {
+			return ProjectionPlan{}, err
+		}
+	}
+
+	walkStages(pipelineSelector, true, &queryDerivesLabels)
+	for _, del := range deletes {
+		walkStages(del, false, &deleteDerivesLabels)
+	}
+
 	derivesLabels := queryDerivesLabels || deleteDerivesLabels
 	plan := ProjectionPlan{
-		lineFilter:  lineFilter,
-		needMessage: needMessage || derivesLabels,
+		lineFilter:        lineFilter,
+		needReturningLine: needReturningLine || derivesLabels,
+		unpushedExpr:      unpushed,
 		// The output carries names that cannot be listed ahead of time unless the top-level
 		// aggregation reduces it to a known label set.
 		needAllMetadata: derivesLabels || anyWithout || !reducesOutputLabels(expr),
@@ -184,6 +205,15 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	return plan, nil
 }
 
+// UnpushedExpr returns the query without the line filter stages that the read applies or that keep
+// every line. It returns nil when the query has no such stage. The unpushed query is then the whole
+// query.
+func (p ProjectionPlan) UnpushedExpr() syntax.SampleExpr { return p.unpushedExpr }
+
+// needReadingLine reports whether the read must load the line from storage, to return it or to
+// apply the line filter.
+func (p ProjectionPlan) needReadingLine() bool { return p.needReturningLine || p.lineFilter != nil }
+
 // forStreams returns the columns to read and the predicates to push for a section whose streams
 // carry the given label names. The message predicate of a line filter is the last predicate.
 func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (columns []logs.ColumnType, metadataNames []string, predicates []logs.RowPredicate) {
@@ -192,7 +222,7 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 	if p.needAllMetadata {
 		columns = append(columns, logs.ColumnTypeMetadata)
 	}
-	if p.needMessage {
+	if p.needReadingLine() {
 		columns = append(columns, logs.ColumnTypeMessage)
 	}
 	if !p.needAllMetadata {

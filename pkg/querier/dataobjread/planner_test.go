@@ -60,6 +60,23 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Len(t, tasks, len(descriptors))
 	})
 
+	t.Run("it omits the line from every task when only a pushed line filter reads it", func(t *testing.T) {
+		readPlanner, _ := newTestPlanner(t, nil)
+		expr, err := syntax.ParseSampleExpr(`sum by (app) (count_over_time({app=~".+"} |= "x" [1m]))`)
+		require.NoError(t, err)
+		projection, err := NewProjectionPlan(expr, nil)
+		require.NoError(t, err)
+
+		query := plainQuery(t)
+		query.Projection = projection
+		tasks, err := drainTasks(readPlanner.Plan(t.Context(), query))
+		require.NoError(t, err)
+		require.NotEmpty(t, tasks)
+		for _, task := range tasks {
+			require.False(t, task.needReturningLine)
+		}
+	})
+
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)

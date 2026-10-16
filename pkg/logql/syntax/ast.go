@@ -312,20 +312,18 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	return current
 }
 
-// UnprocessedLineFilter returns a line filter made of the subset of line filters that can safely
-// run on the stored line, before any stage that can modify the line. A line that passes can still
-// be dropped later, so the caller must keep running the pipeline.
+// PushableLineFilters returns, as one filter, the line filters that can run before every other
+// stage. These are the line filters before the first stage that can modify the line.
 //
-// It returns nil when no line filter comes before a stage that can modify the line. It returns an
-// error when a stage cannot be built.
-func (m MultiStageExpr) UnprocessedLineFilter() (log.Filterer, error) {
-	stages, err := m.unprocessedLineFilterStages()
+// It returns nil when no such filter exists or when the filters keep every line.
+func (m MultiStageExpr) PushableLineFilters() (log.Filterer, error) {
+	pushable, _, err := m.splitPushableStages()
 	if err != nil {
 		return nil, err
 	}
 
-	filters := make([]log.Filterer, 0, len(stages))
-	for _, s := range stages {
+	filters := make([]log.Filterer, 0, len(pushable))
+	for _, s := range pushable {
 		f, err := s.Filter()
 		if err != nil {
 			return nil, logqlmodel.NewStageError(s.String(), err)
@@ -339,43 +337,94 @@ func (m MultiStageExpr) UnprocessedLineFilter() (log.Filterer, error) {
 	return nil, nil
 }
 
-// unprocessedLineFilterStages returns the line filter stages that run on the stored line. It stops
-// at the first stage that can modify the line.
-func (m MultiStageExpr) unprocessedLineFilterStages() ([]*LineFilterExpr, error) {
+// WithoutPushableLineFilters returns m without the line filter stages before the first stage that
+// can modify the line. It also removes a filter that keeps every line, which PushableLineFilters
+// leaves out of its result.
+func (m MultiStageExpr) WithoutPushableLineFilters() (MultiStageExpr, error) {
+	_, rest, err := m.splitPushableStages()
+	return rest, err
+}
+
+// WithoutPushableLineFilters returns a copy of expr whose pipeline has no stage that
+// [MultiStageExpr.WithoutPushableLineFilters] removes. It returns nil when expr has no such stage.
+// It never changes expr.
+func WithoutPushableLineFilters(expr SampleExpr) (SampleExpr, error) {
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	pipeline, ok := selector.(*PipelineExpr)
+	if !ok {
+		return nil, nil
+	}
+	rest, err := pipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) == len(pipeline.MultiStages) {
+		return nil, nil
+	}
+
+	clone, err := Clone[SampleExpr](expr)
+	if err != nil {
+		return nil, err
+	}
+	cloneSelector, err := clone.Selector()
+	if err != nil {
+		return nil, err
+	}
+	clonePipeline, ok := cloneSelector.(*PipelineExpr)
+	if !ok {
+		return nil, fmt.Errorf("the clone of %q lost its pipeline", expr)
+	}
+
+	// Do not reuse rest. Its stages are the nodes of expr, and building a pipeline from them changes
+	// those nodes.
+	clonePipeline.MultiStages, err = clonePipeline.MultiStages.WithoutPushableLineFilters()
+	if err != nil {
+		return nil, err
+	}
+	return clone, nil
+}
+
+// splitPushableStages splits m at the first stage that can modify the line. It returns the line
+// filter stages before that stage, and the remaining stages of m without them.
+func (m MultiStageExpr) splitPushableStages() (pushable []*LineFilterExpr, rest MultiStageExpr, err error) {
 	var (
-		filters []*LineFilterExpr
-		chained = map[*LineFilterExpr]struct{}{}
+		allLineFilters     []*LineFilterExpr
+		chainedLineFilters = map[*LineFilterExpr]struct{}{}
 	)
 
-	for _, e := range m {
+	for i, e := range m {
 		if f, ok := e.(*LineFilterExpr); ok {
-			filters = append(filters, f)
+			allLineFilters = append(allLineFilters, f)
 
 			// Mark every filter that f reaches through Left. Filter on f already covers them.
 			for l := f.Left; l != nil; l = l.Left {
-				chained[l] = struct{}{}
+				chainedLineFilters[l] = struct{}{}
 			}
 			continue
 		}
 
 		s, err := e.Stage()
 		if err != nil {
-			return nil, logqlmodel.NewStageError(e.String(), err)
+			return nil, nil, logqlmodel.NewStageError(e.String(), err)
 		}
+		rest = append(rest, e)
 		if s.Hints().CanModifyLine {
+			rest = append(rest, m[i+1:]...)
 			break
 		}
 	}
 
 	// Drop every filter that another filter reaches through Left. Filter on the last link of a chain
 	// already covers the filters before it, so keeping both would run those filters twice.
-	heads := filters[:0]
-	for _, f := range filters {
-		if _, ok := chained[f]; !ok {
-			heads = append(heads, f)
+	for _, f := range allLineFilters {
+		if _, ok := chainedLineFilters[f]; !ok {
+			pushable = append(pushable, f)
 		}
 	}
-	return heads, nil
+	return pushable, rest, nil
 }
 
 func (m MultiStageExpr) String() string {

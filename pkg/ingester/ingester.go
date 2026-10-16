@@ -230,7 +230,7 @@ type Interface interface {
 	logproto.StreamDataServer
 
 	CheckReady(ctx context.Context) error
-	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	FlushHandler(w http.ResponseWriter, r *http.Request)
 	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
