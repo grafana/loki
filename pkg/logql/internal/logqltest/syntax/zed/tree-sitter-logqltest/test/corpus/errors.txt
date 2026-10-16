@@ -1,0 +1,29 @@
+==================
+A broken line does not affect the lines after it
+==================
+
+load
+  {app="a"} "no timestamp"
+  {app="a"} "fine" @ 0s
+eval bogus
+clear
+
+---
+
+(source_file
+  (load_command)
+  (ERROR
+    (label_set
+      (label_set_body))
+    (string
+      (string_content)))
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content))
+    (at_clause
+      (duration)))
+  (ERROR
+    (UNEXPECTED 'b'))
+  (clear_command))

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "logqltest",
+      "camelcase": "Logqltest",
+      "title": "LogQL test script",
+      "scope": "source.logqltest",
+      "file-types": [
+        "logqltest"
+      ],
+      "highlights": "../languages/logqltest/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "AGPL-3.0",
+    "description": "Tree-sitter grammar for the logqltest declarative DSL",
+    "links": {
+      "repository": "https://github.com/grafana/loki"
+    }
+  }
+}

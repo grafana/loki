@@ -1,0 +1,66 @@
+==================
+Eval instant
+==================
+
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m]))
+
+---
+
+(source_file
+  (eval_instant
+    (duration)
+    (query)))
+
+==================
+Eval range
+==================
+
+eval range from 0 to 60s step 30s count_over_time({app="foo"}[30s])
+
+---
+
+(source_file
+  (eval_range
+    (duration)
+    (duration)
+    (duration)
+    (query)))
+
+==================
+Eval select, direction is case-insensitive
+==================
+
+eval select from 0 to 60s Forward {app="foo"} |= "status=200"
+eval select from 0 to 60s backward {app="foo"}
+
+---
+
+(source_file
+  (eval_select
+    (duration)
+    (duration)
+    (direction)
+    (query))
+  (eval_select
+    (duration)
+    (duration)
+    (direction)
+    (query)))
+
+==================
+A quoted # in the query is not a comment
+==================
+
+eval instant at 0s count_over_time({app="a"} |= "a#b" [1m]) # but this is
+eval instant at 0s count_over_time({app="a"} |= `a#b` [1m])
+
+---
+
+(source_file
+  (eval_instant
+    (duration)
+    (query))
+  (comment)
+  (eval_instant
+    (duration)
+    (query)))

@@ -1,0 +1,70 @@
+==================
+Template variable in a log line
+==================
+
+  {app="a"} "value={{.i}} and {{ .i }}" @ 0s
+  {app="a"} `{"i":{{.i}}}` @ 0s
+
+---
+
+(source_file
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content)
+      (template_variable)
+      (string_content)
+      (template_variable))
+    (at_clause
+      (duration)))
+  (stream_line
+    (label_set
+      (label_set_body))
+    (raw_string
+      (string_content)
+      (string_content)
+      (template_variable)
+      (string_content))
+    (at_clause
+      (duration))))
+
+==================
+Backslashes are plain text and the string ends at the next quote
+==================
+
+  {app="a"} "a\nb\" @ 0s
+
+---
+
+(source_file
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content))
+    (at_clause
+      (duration))))
+
+==================
+A brace that is not a template variable is plain text
+==================
+
+  {app="a"} "{ {x} {{y}} }" @ 0s
+
+---
+
+(source_file
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content)
+      (string_content))
+    (at_clause
+      (duration))))

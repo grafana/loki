@@ -1,0 +1,116 @@
+==================
+Series line with every sample form
+==================
+
+  {app="a"} _ 1 -2.5 1e3 NaN +Inf -Inf Inf 2+3x2 1-1x2 4x3
+
+---
+
+(source_file
+  (stream_line
+    (label_set
+      (label_set_body))
+    (gap)
+    (number)
+    (number)
+    (number)
+    (special_float)
+    (special_float)
+    (special_float)
+    (special_float)
+    (expansion
+      (number)
+      (number)
+      (expansion_operator)
+      (number))
+    (expansion
+      (number)
+      (number)
+      (expansion_operator)
+      (number))
+    (expansion
+      (number)
+      (expansion_operator)
+      (number))))
+
+==================
+Scalar line
+==================
+
+  42
+
+---
+
+(source_file
+  (scalar_line
+    (number)))
+
+==================
+Log stream line with clauses
+==================
+
+  {app="a"} "boom" @ 10s [metadata lvl="error" "trace id"="abc"] [parsed level="error"]
+  {app="a"} `{"k":"v"}` @ 20s [repeat every 10s for 6]
+
+---
+
+(source_file
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content))
+    (at_clause
+      (duration))
+    (metadata_clause
+      (label_pair
+        (label_name)
+        (label_value))
+      (label_pair
+        (label_name)
+        (label_value)))
+    (parsed_clause
+      (label_pair
+        (label_name)
+        (label_value))))
+  (stream_line
+    (label_set
+      (label_set_body))
+    (raw_string
+      (string_content)
+      (string_content))
+    (at_clause
+      (duration))
+    (repeat_clause
+      (duration)
+      (number))))
+
+==================
+Expect annotations
+==================
+
+  expect empty
+  expect ordered
+  expect fail
+  expect fail msg: parsing \"\": invalid syntax # not part of the message
+  expect fail regex: ^foo.*bar$
+  expect values-toleration 0.02 on "query-frontend + query-scheduler (sharding, stream-first)"
+  skip values-comparison on "direct (timestamp-first)"
+
+---
+
+(source_file
+  (expect_command)
+  (expect_command)
+  (expect_command)
+  (expect_command
+    (failure_text))
+  (comment)
+  (expect_command
+    (failure_text))
+  (expect_command
+    (number)
+    (stack_name))
+  (skip_command
+    (skip_target)
+    (stack_name)))

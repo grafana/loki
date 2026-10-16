@@ -1,0 +1,12 @@
+name = "LogQL Test Script"
+grammar = "logqltest"
+path_suffixes = ["logqltest"]
+line_comments = ["# "]
+tab_size = 2
+brackets = [
+    { start = "{", end = "}", close = true, newline = false },
+    { start = "[", end = "]", close = true, newline = false },
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "\"", end = "\"", close = true, newline = false, not_in = ["comment", "string"] },
+    { start = "`", end = "`", close = true, newline = false, not_in = ["comment", "string"] },
+]

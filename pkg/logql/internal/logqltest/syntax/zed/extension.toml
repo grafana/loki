@@ -1,0 +1,16 @@
+id = "logqltest"
+name = "LogQL Test Script"
+description = "Syntax highlighting for the logqltest declarative DSL (pkg/logql/internal/logqltest/testdata/*.logqltest)."
+version = "0.1.0"
+schema_version = 1
+authors = ["Grafana Labs"]
+repository = "https://github.com/grafana/loki"
+
+# The grammar is built from this repository when the extension is installed. To work on the grammar
+# or to avoid fetching the whole repository, see ../README.md.
+[grammars.logqltest]
+# repository = "https://github.com/grafana/loki"
+# rev = "main"
+repository = "file:///Users/spiridonov/development/loki"
+rev = "spiridonov-logql-label-collision-edge-cases"
+path = "pkg/logql/internal/logqltest/syntax/zed/tree-sitter-logqltest"

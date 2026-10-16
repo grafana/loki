@@ -1,0 +1,3 @@
+# Zed builds the grammar into the extension directory when it is installed as a dev extension.
+/grammars/
+*.wasm

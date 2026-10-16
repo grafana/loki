@@ -1,0 +1,77 @@
+# a comment
+# <- comment
+load
+# <- keyword
+  {app="a"} "v={{.i}}" @ 10s [repeat every 10s for 6] [metadata k="v"]
+# ^ tag
+#           ^ string
+#              ^ variable.special
+#                      ^ operator
+#                        ^ number
+#                             ^ keyword
+#                                    ^ keyword
+#                                              ^ keyword
+#                                                  ^ number
+#                                                     ^ punctuation.bracket
+#                                                      ^ keyword
+#                                                               ^ property
+#                                                                ^ operator
+#                                                                 ^ string
+  {app="a"} `raw "q"` @ 0s
+#           ^ string
+#                ^ string
+eval range from 0 to 60s step 30s count_over_time({app="a"}[30s]) # note
+# <- keyword
+#    ^ keyword
+#          ^ keyword
+#               ^ number
+#                 ^ keyword
+#                    ^ number
+#                        ^ keyword
+#                             ^ number
+#                                 ^ string
+#                                                          ^ string
+#                                                                 ^ comment
+  {app="a"} _ 2+3x2 NaN -Inf 1e3
+# ^ tag
+#           ^ constant
+#             ^ number
+#              ^ number
+#                ^ operator
+#                   ^ constant
+#                       ^ constant
+#                            ^ number
+eval select from 0 to 20s Forward {app="a"}
+#    ^ keyword
+#                         ^ constant
+#                                 ^ string
+  {app="a"} "boom" @ 10s [parsed p="1"]
+#                         ^ keyword
+#                                ^ property
+#                                  ^ string
+eval instant at 0s foo
+#    ^ keyword
+#            ^ keyword
+#               ^ number
+#                  ^ string
+  expect fail msg: boom # why
+# ^ keyword
+#        ^ keyword
+#             ^ keyword
+#                  ^ string
+#                       ^ comment
+  expect values-toleration 0.02 on "stack"
+#        ^ keyword
+#                          ^ number
+#                       ^ keyword
+#                                  ^ string
+  skip values-comparison on "stack"
+# ^ keyword
+#      ^ keyword
+#                           ^ string
+  expect ordered
+#        ^ keyword
+  3
+# ^ number
+clear
+# <- keyword

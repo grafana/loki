@@ -1,0 +1,55 @@
+==================
+Clear and load
+==================
+
+clear
+load
+  {app="foo"} "a line" @ 0s
+
+---
+
+(source_file
+  (clear_command)
+  (load_command)
+  (stream_line
+    (label_set
+      (label_set_body))
+    (string
+      (string_content))
+    (at_clause
+      (duration))))
+
+==================
+Comments and blank lines
+==================
+
+# a comment
+
+load # trailing comment
+
+# another
+
+---
+
+(source_file
+  (comment)
+  (load_command)
+  (comment)
+  (comment))
+
+==================
+No trailing newline
+==================
+clear
+---
+
+(source_file
+  (clear_command))
+
+==================
+Empty file
+==================
+
+---
+
+(source_file)
