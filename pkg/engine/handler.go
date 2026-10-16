@@ -169,9 +169,9 @@ func (h *metricsRecordingHandler) Do(ctx context.Context, req queryrangebase.Req
 		if r.Data.ResultType == loghttp.ResultTypeStream {
 			result = r.Data.Result
 		}
-		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, result)
+		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, result, nil)
 	case *queryrange.LokiPromResponse:
-		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, nil)
+		logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), r.Statistics, nil, nil)
 	}
 
 	return resp, nil

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"slices"
@@ -169,12 +168,6 @@ type cursor struct {
 	// request or when the source is stopped.
 	useState atomic.Bool
 
-	// fatal is set when a batch decompresses past
-	// MaxDecompressBatchBytes. The cursor stays unusable, no matter
-	// what completes, until SetOffsets moves it past the batch or the
-	// partition is unassigned.
-	fatal atomic.Bool
-
 	topicPartitionData // updated in metadata when session is stopped
 
 	// cursorOffset is our epoch/offset that we are consuming. When a fetch
@@ -218,7 +211,7 @@ func (o *cursorOffset) lastConsumedMilli() int64 {
 	if o.lastConsumedTime.IsZero() {
 		return 0
 	}
-	return max(o.lastConsumedTime.UnixMilli(), 1) // ensure we lookup a time after 0, not a reserved offset below 0
+	return o.lastConsumedTime.UnixMilli()
 }
 
 // use, for fetch requests, freezes a view of the cursorOffset.
@@ -237,10 +230,8 @@ func (c *cursor) use() *cursorOffsetNext {
 // unset transitions a cursor to an unusable state when the cursor is no longer
 // to be consumed. This is called exclusively after sources are stopped.
 // This also unsets the cursor offset, which is assumed to be unused now.
-// A later assignment starts the cursor fresh, so a fatal batch is forgotten.
 func (c *cursor) unset() {
 	c.useState.Store(false)
-	c.fatal.Store(false)
 	c.setOffset(cursorOffset{
 		offset:            -1,
 		lastConsumedEpoch: -1,
@@ -261,9 +252,6 @@ func (c *cursor) usable() bool {
 // eligible for fetching. With kfake (in-process), a fetch can complete and
 // move() can overwrite c.source before we reach maybeConsume.
 func (c *cursor) allowUsable() {
-	if c.fatal.Load() {
-		return
-	}
 	s := c.source
 	c.useState.Swap(true)
 	s.maybeConsume()
@@ -1158,20 +1146,6 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- bool) 
 		s.session.commitFromReq(req.committedTopics, req.committedForgotten)
 	}
 
-	// The broker resolves a session partition's name once, when the
-	// partition enters the session. If the topic is deleted and
-	// recreated, that partition now reaches the new topic and every
-	// fetch of the session answers it INCONSISTENT_TOPIC_ID. A full
-	// fetch carries our ID and is answered UNKNOWN_TOPIC_ID.
-	//
-	// We strip inconsistent_topic_id and unknown_topic_id, so we need
-	// to reset the session: if we don't, fetching can spin loop (brokers return
-	// error responses immediately, no waiting for other data on other partitions).
-	if updateWhy.has(kerr.InconsistentTopicID) {
-		s.cl.cfg.logger.Log(LogLevelInfo, "fetch partition has an inconsistent topic ID, resetting session", "broker", logID(s.nodeID))
-		s.session.reset()
-	}
-
 	// If we have a reason to update (per-partition fetch errors), and the
 	// reason is not just unknown topic or partition, then we immediately
 	// update metadata. We avoid updating for unknown because it _likely_
@@ -1306,7 +1280,6 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 			// preferred read replica. If Kafka replies with a preferred replica,
 			// it sends no records.
 			if preferred := rp.PreferredReadReplica; resp.Version >= 11 && preferred >= 0 {
-				s.cl.sawPreferredReplica.Store(true)
 				preferreds = append(preferreds, cursorOffsetPreferred{
 					cursorOffsetNext: *partOffset,
 					preferredReplica: preferred,
@@ -1322,20 +1295,6 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 					continue
 				}
 				updateWhy.add(topic, partition, fp.Err)
-
-				// Refetching the batch can only fail the same way.
-				// We keep the partition so the error reaches
-				// PollFetches, and the cursor stays unusable after
-				// the fetch is drained.
-				if tooLarge, ok := errors.AsType[*ErrDecompressTooLarge](fp.Err); ok {
-					partOffset.from.fatal.Store(true)
-					s.cl.cfg.logger.Log(LogLevelError, "batch decompresses larger than MaxDecompressBatchBytes, stopping consuming the partition; skip the batch with SetOffsets",
-						"broker", logID(s.nodeID),
-						"topic", topic,
-						"partition", partition,
-						"offset", tooLarge.Offset,
-					)
-				}
 			}
 
 			// A response can carry batch data for a partition yet
@@ -1433,46 +1392,32 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 				// no reset offset was configured. If so, we ignore
 				// trying to reset and instead keep our failed partition.
 				addList := func(replica int32, log bool) {
-					switch {
-					case s.cl.cfg.resetOffset.noReset:
+					if s.cl.cfg.resetOffset.noReset {
 						keep = true
-
-					case c.lastConsumedTime.IsZero():
-						// Nothing consumed: a rewind has nothing to rewind from and
-						// resumes at the log start.
-						reset := s.cl.cfg.resetOffset
-						if reset.at == atRewind {
-							reset = NewOffset().AtStart()
-						}
+					} else if !c.lastConsumedTime.IsZero() {
+						// We were consuming and the log changed under us, so rather than follow the reset policy
+						// we resume by the last consumed timestamp, bounded within the log and never ahead of
+						// where we were; see listOffsetsForBrokerLoad.
 						reloadOffsets.addLoad(topic, partition, loadTypeList, offsetLoad{
-							replica: replica,
-							Offset:  reset,
+							replica:   replica,
+							ooorMilli: c.lastConsumedTime.UnixMilli(),
+							Offset:    NewOffset().At(partOffset.offset),
 						})
 						if log {
-							s.cl.cfg.logger.Log(LogLevelInfo, "received OFFSET_OUT_OF_RANGE on the first fetch, resetting to the configured ConsumeResetOffset",
+							s.cl.cfg.logger.Log(LogLevelWarn, "received OFFSET_OUT_OF_RANGE, resetting to the nearest offset; either you were consuming too slowly and the broker has deleted the segment you were in the middle of consuming, or the broker has lost data and has not yet transferred leadership",
 								"broker", logID(s.nodeID),
 								"topic", topic,
 								"partition", partition,
 								"prior_offset", partOffset.offset,
 							)
 						}
-
-					default:
-						// We were consuming and the log changed under us. If we fell below the log start, the
-						// start is exact and we resume there. Otherwise the broker lost data at a point we
-						// cannot determine, and ConsumeResetOffset decides; see listOffsetsForBrokerLoad. The
-						// epoch never reaches the wire on a list load; we carry the epoch we consumed at so
-						// the reset can report it in ErrDataLoss.
+					} else {
 						reloadOffsets.addLoad(topic, partition, loadTypeList, offsetLoad{
-							replica:           replica,
-							lastConsumedMilli: c.lastConsumedMilli(),
-							Offset:            NewOffset().At(partOffset.offset).WithEpoch(c.lastConsumedEpoch),
+							replica: replica,
+							Offset:  s.cl.cfg.resetOffset,
 						})
 						if log {
-							s.cl.cfg.logger.Log(LogLevelWarn, "received OFFSET_OUT_OF_RANGE while consuming;"+
-								" either you were consuming too slowly and the broker has deleted the segment you were in the middle of consuming,"+
-								" in which case we resume at the log start,"+
-								" or the broker has lost data, in which case we resume per ConsumeResetOffset",
+							s.cl.cfg.logger.Log(LogLevelInfo, "received OFFSET_OUT_OF_RANGE on the first fetch, resetting to the configured ConsumeResetOffset",
 								"broker", logID(s.nodeID),
 								"topic", topic,
 								"partition", partition,
@@ -1508,9 +1453,9 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 					if kip320 {
 						reloadOffsets.addLoad(topic, partition, loadTypeEpoch, offsetLoad{
 							replica: -1,
-							// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it issues follows
-							// ConsumeResetOffset; see loadEpochsForBrokerLoad.
-							lastConsumedMilli: c.lastConsumedMilli(),
+							// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it issues is by the last
+							// consumed timestamp; see loadEpochsForBrokerLoad.
+							ooorMilli: c.lastConsumedMilli(),
 							Offset: Offset{
 								at:    partOffset.offset,
 								epoch: partOffset.lastConsumedEpoch,
@@ -1537,9 +1482,9 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 				if partOffset.lastConsumedEpoch >= 0 {
 					reloadOffsets.addLoad(topic, partition, loadTypeEpoch, offsetLoad{
 						replica: -1,
-						// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it issues follows
-						// ConsumeResetOffset; see loadEpochsForBrokerLoad.
-						lastConsumedMilli: c.lastConsumedMilli(),
+						// If the validation answers UNDEFINED_EPOCH_OFFSET, the reset it issues is by the last
+						// consumed timestamp; see loadEpochsForBrokerLoad.
+						ooorMilli: c.lastConsumedMilli(),
 						Offset: Offset{
 							at:    partOffset.offset,
 							epoch: partOffset.lastConsumedEpoch,
@@ -1803,23 +1748,6 @@ func ProcessFetchPartition(o ProcessFetchPartitionOpts, rp *kmsg.FetchResponseTo
 	return fp, o.Offset
 }
 
-func (o *ProcessFetchPartitionOpts) decompress(decompressor Decompressor, src []byte, compression CompressionCodecType, offset, nextOffset int64, epoch int32) ([]byte, error) {
-	out, err := decompressor.Decompress(src, compression)
-	if err == nil {
-		return out, nil
-	}
-	if errors.Is(err, ErrMaxDecompress) {
-		err = &ErrDecompressTooLarge{
-			Topic:      o.Topic,
-			Partition:  o.Partition,
-			Offset:     offset,
-			Epoch:      epoch,
-			NextOffset: nextOffset,
-		}
-	}
-	return nil, &errDecompress{err}
-}
-
 type aborter map[int64][]int64
 
 func buildAborter(rp *kmsg.FetchResponseTopicPartition) aborter {
@@ -1934,8 +1862,8 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	var decompressBytes []byte
 	if compression := CompressionCodecType(batch.Attributes & 0x0007); compression != 0 {
 		var err error
-		if rawRecords, err = o.decompress(decompressor, rawRecords, compression, batch.FirstOffset, lastOffset+1, batch.PartitionLeaderEpoch); err != nil {
-			fp.Err = err
+		if rawRecords, err = decompressor.Decompress(rawRecords, compression); err != nil {
+			fp.Err = &errDecompress{err}
 			return 0, 0 // truncated batch
 		}
 		// We only put back into the decompress pool IF we decompressed
@@ -2145,9 +2073,9 @@ func (o *ProcessFetchPartitionOpts) processV1OuterMessage(
 		return 1, 0
 	}
 
-	rawInner, err := o.decompress(decompressor, message.Value, compression, message.Offset, message.Offset+1, -1)
+	rawInner, err := decompressor.Decompress(message.Value, compression)
 	if err != nil {
-		fp.Err = err
+		fp.Err = &errDecompress{err}
 		return 0, 0 // truncated batch
 	}
 
@@ -2297,9 +2225,9 @@ func (o *ProcessFetchPartitionOpts) processV0OuterMessage(
 		return 1, 0 // uncompressed bytes is 0; set to compressed bytes on return
 	}
 
-	rawInner, err := o.decompress(decompressor, message.Value, compression, message.Offset, message.Offset+1, -1)
+	rawInner, err := decompressor.Decompress(message.Value, compression)
 	if err != nil {
-		fp.Err = err
+		fp.Err = &errDecompress{err}
 		return 0, 0 // truncated batch
 	}
 
@@ -2566,6 +2494,7 @@ func (f *fetchRequest) addCursor(c *cursor) {
 		f.usedOffsets[c.topic] = partitions
 		f.id2topic[c.topicID] = c.topic
 		f.topic2id[c.topic] = c.topicID
+		var noID [16]byte
 		if c.topicID == noID {
 			f.disableIDs = true
 		}
@@ -2946,6 +2875,7 @@ func (s *fetchSession) commitFromReq(topics []kmsg.FetchRequestTopic, forgotten 
 		s.used = make(map[string]map[int32]fetchSessionOffsetEpoch)
 		s.t2id = make(map[string][16]byte)
 	}
+	var noID [16]byte
 	for _, rt := range topics {
 		topic := rt.Topic
 		if topic == "" {
@@ -3026,7 +2956,7 @@ func (s *fetchSession) lookupTopic(topic string, t2id map[string][16]byte) fetch
 		s.used[topic] = t
 		id := t2id[topic]
 		s.t2id[topic] = id
-		if id == noID {
+		if id == ([16]byte{}) {
 			s.disableIDs = true
 		}
 	}

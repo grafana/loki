@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -26,8 +27,8 @@ type QueryParams struct {
 type QueryShard struct {
 	assignment *logql.Shard
 
-	// buckets is the bucket range the assignment maps to, or nil when the shard restricts no
-	// stream.
+	// buckets is the bucket range the assignment maps to, or nil when the shard has no range
+	// to push down.
 	buckets *shardBucketRange
 }
 
@@ -45,12 +46,21 @@ func NewQueryShard(assignment *logql.Shard) *QueryShard {
 }
 
 // bucketRange returns the bucket range to push into a streams read. It is nil for a nil shard,
-// and for a shard that restricts no stream.
+// and for a shard that has no range to push down.
 func (q *QueryShard) bucketRange() *shardBucketRange {
 	if q == nil {
 		return nil
 	}
 	return q.buckets
+}
+
+// metastoreBucketRange returns the bucket range to push into metastore sections resolution.
+func (q *QueryShard) metastoreBucketRange() *postings.ShardBucketRange {
+	bucketRange := q.bucketRange()
+	if bucketRange == nil {
+		return nil
+	}
+	return &postings.ShardBucketRange{From: bucketRange.from, To: bucketRange.to}
 }
 
 // prunes reports whether the shard narrows a streams read to a bucket range.
@@ -68,9 +78,10 @@ func (q *QueryShard) resolvesExactly() bool {
 // shardBucketRange is the inclusive range of streams-section shard buckets a query shard can
 // hold.
 //
-// from and to are valid shard buckets, in [0, streams.ShardFactor). The fields are uint32
-// because that is the width [streams.ShardBucketFromHash] produces, which also keeps the
-// widening to the predicate's int64 column value lossless.
+// from and to are valid shard buckets of [streams.DefaultShardLayout]. Readers assume that every
+// object uses that layout. The fields are uint32 because that is the width
+// [streams.ShardLayout.BucketFromHash] produces, which also keeps the widening to the
+// predicate's int64 column value lossless.
 //
 // exact reports whether the range is the shard and nothing more. When it is false the range
 // covers streams outside the shard, so the caller must keep the per-stream stream-hash check.
@@ -86,7 +97,7 @@ type shardBucketRange struct {
 //
 // Shard buckets and power-of-two query shards both come from the high bits of
 // labels.StableHash, so a shard maps to a contiguous bucket range. The range is the shard
-// exactly when the shard count is at most [streams.ShardFactor]. A larger count makes several
+// exactly when the shard count is at most streams.DefaultShardBuckets. A larger count makes several
 // shards share a bucket, and a bounded shard is never exact, so both keep the stream-hash
 // check.
 func shardBucketRangeFor(shard *logql.Shard) (shardBucketRange, bool) {
@@ -104,17 +115,17 @@ func shardBucketRangeFor(shard *logql.Shard) (shardBucketRange, bool) {
 		// nothing. Calling that exact would skip the stream-hash check and hand every stream to
 		// every shard. Nothing on this path validates the count, so check it here.
 		powerOfTwo := shard.PowerOfTwo.Of&(shard.PowerOfTwo.Of-1) == 0
-		exact = powerOfTwo && shard.PowerOfTwo.Of <= streams.ShardFactor
+		exact = powerOfTwo && shard.PowerOfTwo.Of <= streams.DefaultShardLayout().Buckets()
 	}
 
 	// through is the exclusive end of the fingerprint range, except for the last shard of
 	// either variant, where it saturates at MaxUint64 and is inclusive. Subtracting one is
-	// still right there: only the top streams.ShardBits bits pick the bucket, so MaxUint64-1
+	// still right there: only the top streams.DefaultShardBits bits pick the bucket, so MaxUint64-1
 	// and MaxUint64 share one.
 	from, through := shard.GetFromThrough()
 	return shardBucketRange{
-		from:  streams.ShardBucketFromHash(uint64(from)),
-		to:    streams.ShardBucketFromHash(uint64(through - 1)),
+		from:  streams.DefaultShardLayout().BucketFromHash(uint64(from)),
+		to:    streams.DefaultShardLayout().BucketFromHash(uint64(through - 1)),
 		exact: exact,
 	}, true
 }

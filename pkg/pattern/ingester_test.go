@@ -19,6 +19,8 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
@@ -151,6 +153,46 @@ func TestInstancePushQuery(t *testing.T) {
 		"foo=baz num=<_>",
 		"ts=<_> msg=hello",
 	}, patterns)
+}
+
+func TestIngesterPushInternal(t *testing.T) {
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(ring.ReplicationSet{Instances: []ring.InstanceDesc{{Id: "localhost", Addr: "ingester0"}}}, nil)
+
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	level := func(lvl string) []push.LabelAdapter {
+		return []push.LabelAdapter{{Name: constants.LevelLabel, Value: lvl}}
+	}
+	entry := func(sec int64) push.Entry {
+		return push.Entry{Timestamp: time.Unix(sec, 0), Line: "ts=1 msg=hello"}
+	}
+
+	// The levels are only on shared attributes, so they reach the pattern
+	// ingester only if PushInternal expands them onto the entries.
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	_, err = ing.PushInternal(ctx, &logproto.InternalPushRequest{
+		Streams: []logproto.InternalStreamAdapter{{
+			Labels: `{service_name="checkout"}`,
+			ResourceLogs: []logproto.ResourceLogs{
+				{Attrs: level(constants.LogLevelError), ScopeLogs: []logproto.ScopeLogs{{Entries: []push.Entry{entry(1), entry(2)}}}},
+				{ScopeLogs: []logproto.ScopeLogs{{Attrs: level(constants.LogLevelInfo), Entries: []push.Entry{entry(3)}}}},
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	inst, ok := ing.getInstanceByID("foo")
+	require.True(t, ok)
+	counts := map[string]uint64{}
+	for lvl, m := range inst.aggMetricsByStreamAndLevel[`{service_name="checkout"}`] {
+		counts[lvl] = m.count
+	}
+	require.Equal(t, map[string]uint64{constants.LogLevelError: 2, constants.LogLevelInfo: 1}, counts)
 }
 
 func TestInstancePushAggregateMetrics(t *testing.T) {

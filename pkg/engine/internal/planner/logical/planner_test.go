@@ -70,6 +70,11 @@ func (q *query) GetHintRanges() []logproto.HintTimeRange {
 	return nil
 }
 
+// GetDataObjOptions implements logql.Params.
+func (q *query) GetDataObjOptions() *logproto.DataObjOptions {
+	return nil
+}
+
 // Interval implements logql.Params.
 func (q *query) Interval() time.Duration {
 	return q.interval

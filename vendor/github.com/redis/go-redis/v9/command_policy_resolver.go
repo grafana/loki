@@ -200,10 +200,14 @@ func NewDefaultCommandPolicyResolver() *commandInfoResolver {
 	return NewCommandInfoResolver(func(ctx context.Context, cmd Cmder) *routing.CommandPolicy {
 		module := "core"
 		command := cmd.Name()
-		cmdParts := strings.Split(command, ".")
-		if len(cmdParts) == 2 {
-			module = cmdParts[0]
-			command = cmdParts[1]
+		// Split on the first '.' without allocating (strings.Split allocates a slice
+		// on every call; this resolver runs on the hot per-command path — twice per
+		// command for the autopipeline cluster gates — so the allocation showed up in
+		// CPU profiles). Only a single module.command form is recognized, matching the
+		// prior len==2 check.
+		if dot := strings.IndexByte(command, '.'); dot >= 0 && strings.IndexByte(command[dot+1:], '.') < 0 {
+			module = command[:dot]
+			command = command[dot+1:]
 		}
 
 		if policy, ok := defaultPolicies[module][command]; ok {

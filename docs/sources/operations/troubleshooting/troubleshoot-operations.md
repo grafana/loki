@@ -2880,6 +2880,275 @@ Kafka is configured for the distributor but the ingester isn't configured to rea
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
+### Error: Invalid producer max record size bytes
+
+**Error message:**
+
+```text
+the configured producer max record size bytes must be a value between 1048576 and 15983616
+```
+
+**Cause:**
+
+The `kafka_config.producer_max_record_size_bytes` value is outside the allowed range.
+
+**Resolution:**
+
+- **Set `producer_max_record_size_bytes` within the allowed range**:
+
+  ```yaml
+  kafka_config:
+    producer_max_record_size_bytes: 15983616
+  ```
+
+- We strongly recommend leaving this value at its default unless you're testing in a development environment.
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid producer max inflight requests per broker
+
+**Error message:**
+
+```text
+the configured producer max inflight requests per broker must be greater than or equal to 1
+```
+
+**Cause:**
+
+The `kafka_config.producer_max_inflight_requests_per_broker` value is less than `1`.
+
+**Resolution:**
+
+- **Set `producer_max_inflight_requests_per_broker` to `1` or higher**:
+
+  ```yaml
+  kafka_config:
+    producer_max_inflight_requests_per_broker: 20
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Invalid producer linger
+
+**Error message:**
+
+```text
+the configured producer linger must be greater than or equal to 0
+```
+
+**Cause:**
+
+The `kafka_config.producer_linger` value is negative.
+
+**Resolution:**
+
+- **Set `producer_linger` to `0` or a positive duration**:
+
+  ```yaml
+  kafka_config:
+    producer_linger: 50ms
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Partition ring required for Kafka writes
+
+**Error message:**
+
+```text
+partition ring is required for kafka writes
+```
+
+**Cause:**
+
+`distributor.kafka_writes_enabled` is `true`, but the distributor wasn't started with a partition ring. This usually means the partition ring key-value store isn't configured consistently across distributors and ingesters.
+
+**Resolution:**
+
+- **Configure the partition ring key-value store on both distributors and ingesters**:
+
+  ```yaml
+  ingester:
+    kafka_ingestion:
+      enabled: true
+      partition_ring:
+        kvstore:
+          store: memberlist
+  ```
+
+- Ensure every component that participates in Kafka-based ingestion (distributors, ingesters, queriers, and rulers) uses the same key-value store configuration.
+
+**Properties:**
+
+- Enforced by: Distributor startup
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Single entry size exceeds maximum
+
+**Error message:**
+
+```text
+single entry size (%d) exceeds maximum allowed size (%d)
+```
+
+**Cause:**
+
+A single log line is larger than the configured `kafka_config.producer_max_record_size_bytes`. Loki splits large write requests into multiple Kafka records, but it can't split a single log line across records.
+
+**Resolution:**
+
+- **Reduce the size of the log line** at the source before sending it to Loki.
+- **Enforce a maximum log line size** with `limits_config.max_line_size` (default: 256KB). Lines that exceed this limit are discarded before they reach the Kafka producer. Set `limits_config.max_line_size_truncate: true` to truncate oversized lines instead of discarding them:
+
+  ```yaml
+  limits_config:
+    max_line_size: 256KB
+    max_line_size_truncate: true
+  ```
+
+- **Increase `producer_max_record_size_bytes`**, within the allowed range, if your Kafka cluster supports larger records:
+
+  ```yaml
+  kafka_config:
+    producer_max_record_size_bytes: 15983616
+  ```
+
+**Properties:**
+
+- Enforced by: Kafka record encoding
+- Retryable: No
+- HTTP status: 400 (Bad Request)
+- Configurable per tenant: No (`limits_config.max_line_size` and `limits_config.max_line_size_truncate` are configurable per tenant)
+
+### Error: Dataobj builder topic required
+
+**Error message:**
+
+```text
+topic is required
+```
+
+**Cause:**
+
+The experimental data object builder, used for columnar storage, is enabled but no Kafka topic is configured for it.
+
+**Resolution:**
+
+- **Configure the topic for the data object builder**:
+
+  ```yaml
+  dataobj:
+    builder:
+      topic: loki-logs
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Ingest-limits configuration errors
+
+**Error messages:**
+
+```text
+num partitions must be greater than 0
+consumer group must be set
+topic must be set
+```
+
+**Cause:**
+
+The optional ingest-limits service is enabled (`ingest_limits.enabled: true`), but one or more of its required Kafka settings are missing or invalid.
+
+**Resolution:**
+
+- **Configure all required ingest-limits Kafka settings**:
+
+  ```yaml
+  ingest_limits:
+    enabled: true
+    num_partitions: 64
+    consumer_group: ingest-limits
+    topic: loki-ingest-limits
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: Ingest-limits readiness errors
+
+**Error messages:**
+
+```text
+waiting to be assigned some partitions
+partitions are not ready
+```
+
+**Cause:**
+
+The ingest-limits service hasn't finished joining the partition ring yet, or one or more of its assigned partitions aren't ready. This is usually a transient condition during startup or a rolling restart.
+
+**Resolution:**
+
+- **Wait for the service to finish starting.** These errors should clear on their own once the partition ring stabilizes.
+- **If the errors persist**, check connectivity between the ingest-limits service and the Kafka brokers, and check that the configured partition ring key-value store is reachable.
+
+**Properties:**
+
+- Enforced by: Ingest-limits service readiness check
+- Retryable: Yes (transient during startup)
+- HTTP status: 503 (Service Unavailable)
+- Configurable per tenant: No
+
+### Error: Generic Kafka protocol errors
+
+**Error messages:**
+
+```text
+unexpected response type
+malformed response
+```
+
+**Cause:**
+
+The Kafka client received a response from the broker that it didn't expect, or couldn't parse. This usually points to a Kafka, or Kafka-protocol-compatible broker, that uses a protocol version Loki doesn't fully support, or to a network issue that corrupted the response.
+
+**Resolution:**
+
+- **Check your Kafka broker version** against the version supported by Loki's Kafka client ([franz-go](https://github.com/twmb/franz-go)).
+- **Check network connectivity** between Loki and the Kafka brokers for packet loss or truncation.
+
+**Properties:**
+
+- Enforced by: Kafka client (offset manager)
+- Retryable: Yes
+- HTTP status: N/A
+- Configurable per tenant: No
+
 ## Bloom gateway errors
 
 Bloom gateway errors occur when using bloom filters for query acceleration.

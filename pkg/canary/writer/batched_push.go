@@ -37,6 +37,9 @@ type BatchedPush struct {
 // `buildPayload` receives the array of log lines and converts them
 // to a serialized byte array which may be pushed to the loki endpoint.
 func (p *BatchedPush) buildPayload(logs []entry) ([]byte, error) {
+	if p.pusher.protocol == PushProtocolOTLP {
+		return p.pusher.buildOTLPPayload(logs)
+	}
 	streams := make([]logproto.Stream, 0, len(logs))
 
 	for _, e := range logs {

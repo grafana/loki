@@ -110,6 +110,7 @@ func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -278,6 +279,7 @@ func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -363,6 +365,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -497,6 +500,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithHeaderAuthorizati
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -638,6 +642,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithBasicAuthorizatio
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -796,6 +801,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithRelabelConfigs(t 
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -949,6 +955,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithRetention(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1127,6 +1134,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertRelabelConfi
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1250,6 +1258,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1474,6 +1483,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1568,6 +1578,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1663,6 +1674,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec_EnableIPv6(t *testing.T) 
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1757,6 +1769,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithReplicationSpec(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -1886,6 +1899,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSEKMS(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -2014,6 +2028,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithS3SSES3(t *testing.T) {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -2105,6 +2120,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithManualPerStreamRateLimits(t *testing.T
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -2196,6 +2212,7 @@ func defaultOptions() Options {
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -2225,6 +2242,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 			name: "default_config_v11_schema",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},
@@ -2254,6 +2272,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 			name: "v12_schema",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2020-02-05",
 				},
@@ -2313,10 +2332,12 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 			name: "multiple_schema",
 			schemaConfig: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-01-01",
 				},
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV12,
 					EffectiveDate: "2021-01-01",
 				},
@@ -2397,6 +2418,7 @@ func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
 		},
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
+				//nolint:staticcheck
 				Version:       lokiv1.ObjectStorageSchemaV11,
 				EffectiveDate: "2020-10-01",
 			},
@@ -2551,6 +2573,7 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerClien
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
+					//nolint:staticcheck
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-01",
 				},

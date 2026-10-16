@@ -18,4 +18,6 @@ const (
 	ErrWriterNotClosed               Error = "lz4: writer not closed"
 	ErrWriterClosed                  Error = "lz4: writer closed"
 	ErrEndOfStream                   Error = "lz4: end of stream reached"
+	ErrInvalidFrameDescriptor        Error = "lz4: invalid or unsupported frame descriptor"
+	ErrInvalidContentSize            Error = "lz4: content size mismatch"
 )

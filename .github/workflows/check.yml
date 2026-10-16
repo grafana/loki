@@ -2,8 +2,8 @@
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@4587d0b45edcb18585ff09f4e5dd1ed1174efeb6"
     "with":
-      "build_image": "golang:1.27.1"
-      "golang_ci_lint_version": "v2.13.2"
+      "build_image": "golang:1.27.2"
+      "golang_ci_lint_version": "v2.14.0"
       "release_lib_ref": "4587d0b45edcb18585ff09f4e5dd1ed1174efeb6"
       "skip_validation": false
       "use_github_app_token": true

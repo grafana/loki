@@ -225,7 +225,7 @@ func TestNewTimestampFirstSampleQueryClientIterator(t *testing.T) {
 func TestNewStreamFirstSampleQueryClientIterator(t *testing.T) {
 	// A stream-first source: four complete streams, ascending in stream hash.
 	newSource := func() SampleIterator {
-		return NewNonOverlappingSampleIterator([]SampleIterator{
+		return NewChainedSampleIterator([]SampleIterator{
 			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))),
 			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4), mkSample(2, 5))),
 			// One stream whose labels alternate, so the encoding splits it into runs.
@@ -261,8 +261,8 @@ func TestNewStreamFirstSampleQueryClientIterator(t *testing.T) {
 	}
 }
 
-func TestNewNonOverlappingSampleIterator(t *testing.T) {
-	it := NewNonOverlappingSampleIterator([]SampleIterator{
+func TestNewChainedSampleIterator(t *testing.T) {
+	it := NewChainedSampleIterator([]SampleIterator{
 		NewSeriesIterator(varSeries),
 		NewSeriesIterator(logproto.Series{
 			Labels:  varSeries.Labels,
@@ -296,7 +296,7 @@ func TestReadStreamFirstSampleBatch(t *testing.T) {
 	t.Run("should emit one Series per stream, in the input order", func(t *testing.T) {
 		// The streams are fed in descending hash order on purpose: the encoding must keep the
 		// input order, not impose one of its own.
-		src := NewNonOverlappingSampleIterator([]SampleIterator{
+		src := NewChainedSampleIterator([]SampleIterator{
 			NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 1))),
 			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 2), mkSample(2, 3))),
 			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4))),
@@ -315,7 +315,7 @@ func TestReadStreamFirstSampleBatch(t *testing.T) {
 	t.Run("should start a new Series when the labels change but the stream hash does not", func(t *testing.T) {
 		// One stream whose output labels alternate, as structured metadata makes them. Each run
 		// becomes its own Series, so concatenating them replays the samples in timestamp order.
-		src := NewNonOverlappingSampleIterator([]SampleIterator{
+		src := NewChainedSampleIterator([]SampleIterator{
 			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(1, 1))),
 			NewSeriesIterator(mkStreamSeries(`{level="warn"}`, 10, mkSample(2, 2))),
 			NewSeriesIterator(mkStreamSeries(`{level="info"}`, 10, mkSample(3, 3))),
@@ -335,7 +335,7 @@ func TestReadStreamFirstSampleBatch(t *testing.T) {
 		// A grouping query collapses two streams onto one output label set. Fusing them into one
 		// Series would hand the second stream's samples the first stream's hash, and the merge
 		// dedups on the hash, so a matching sample would silently disappear.
-		src := NewNonOverlappingSampleIterator([]SampleIterator{
+		src := NewChainedSampleIterator([]SampleIterator{
 			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 10, mkSample(1, 1), mkSample(2, 2))),
 			NewSeriesIterator(mkStreamSeries(`{job="3"}`, 20, mkSample(1, 3), mkSample(2, 4))),
 		})
@@ -439,14 +439,14 @@ func (i *CloseTestingSmplIterator) Close() error {
 	return nil
 }
 
-func TestNonOverlappingSampleClose(t *testing.T) {
+func TestChainedSampleClose(t *testing.T) {
 	a, b := &CloseTestingSmplIterator{}, &CloseTestingSmplIterator{}
-	itr := NewNonOverlappingSampleIterator([]SampleIterator{a, b})
+	itr := NewChainedSampleIterator([]SampleIterator{a, b})
 
 	// Ensure both itr.cur and itr.iterators are non nil
 	itr.Next()
 
-	require.NotNil(t, itr.(*nonOverlappingSampleIterator).curr)
+	require.NotNil(t, itr.(*chainedSampleIterator).curr)
 
 	itr.Close()
 
@@ -886,7 +886,7 @@ func TestNewStreamFirstMergeSampleIterator(t *testing.T) {
 		// include labels. Otherwise the merge never compares the two copies of one
 		// sample, and both survive.
 		replica := func(first, second logproto.Series) SampleIterator {
-			return NewNonOverlappingSampleIterator([]SampleIterator{NewSeriesIterator(first), NewSeriesIterator(second)})
+			return NewChainedSampleIterator([]SampleIterator{NewSeriesIterator(first), NewSeriesIterator(second)})
 		}
 		foo1 := mkStreamSeries(`{foo="1"}`, 7, logproto.Sample{Timestamp: 1, Hash: 111, Value: 1})
 		foo2 := mkStreamSeries(`{foo="2"}`, 7, logproto.Sample{Timestamp: 1, Hash: 222, Value: 2})
@@ -1459,10 +1459,10 @@ func TestMergeSampleIteratorZeroHash(t *testing.T) {
 	require.NoError(t, it.Close())
 }
 
-// TestNonOverlappingSampleIterator_ShouldSurfaceErrors verifies the concatenation
+// TestChainedSampleIterator_ShouldSurfaceErrors verifies the concatenation
 // reports a sub-iterator failure through Err instead of treating it as normal
 // exhaustion.
-func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
+func TestChainedSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 	failing := func(ts int, labels string, err error) SampleIterator {
 		return &erroringSampleIterator{samples: []logproto.Sample{sample(ts)}, labels: labels, err: err}
 	}
@@ -1471,7 +1471,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 	}
 
 	t.Run("curr stays valued after a clean terminal exhaustion, so accessors keep returning its last value", func(t *testing.T) {
-		it := NewNonOverlappingSampleIterator([]SampleIterator{healthy(1, `{app="a"}`)})
+		it := NewChainedSampleIterator([]SampleIterator{healthy(1, `{app="a"}`)})
 
 		require.True(t, it.Next())
 		require.False(t, it.Next(), "exhausted after the single sample")
@@ -1481,7 +1481,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error stops iteration and is surfaced", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			failing(1, `{app="a"}`, wantErr),
 			healthy(2, `{app="b"}`),
 		})
@@ -1496,7 +1496,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error in the last stream is surfaced", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			healthy(1, `{app="a"}`),
 			failing(2, `{app="b"}`, wantErr),
 		})
@@ -1507,7 +1507,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 	})
 
 	t.Run("no error returns nil", func(t *testing.T) {
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			healthy(1, `{app="a"}`),
 			healthy(2, `{app="b"}`),
 		})
@@ -1522,7 +1522,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("close error surfaces through Close, not Err", func(t *testing.T) {
 		wantErr := errors.New("close boom")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: wantErr},
 			healthy(2, `{app="b"}`),
 		})
@@ -1538,7 +1538,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		// is called.
 		closeBoom := errors.New("close boom")
 		a := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: closeBoom}
-		it := NewNonOverlappingSampleIterator([]SampleIterator{a, healthy(2, `{app="b"}`)})
+		it := NewChainedSampleIterator([]SampleIterator{a, healthy(2, `{app="b"}`)})
 
 		var got int
 		for it.Next() {
@@ -1552,7 +1552,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("stream that errors before any sample stops immediately", func(t *testing.T) {
 		wantErr := errors.New("open failed")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			&erroringSampleIterator{labels: `{app="a"}`, err: wantErr}, // no samples
 			healthy(2, `{app="b"}`),
 		})
@@ -1567,7 +1567,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("error in a middle stream stops before later streams", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			healthy(1, `{app="a"}`),
 			failing(2, `{app="b"}`, wantErr),
 			healthy(3, `{app="c"}`),
@@ -1588,7 +1588,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		later1 := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{app="b"}`}
 		later2 := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{app="c"}`}
 
-		it := NewNonOverlappingSampleIterator([]SampleIterator{errored, later1, later2})
+		it := NewChainedSampleIterator([]SampleIterator{errored, later1, later2})
 		for it.Next() { //nolint:revive
 		}
 		require.NoError(t, it.Close())
@@ -1606,7 +1606,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		wantErr := errors.New("boom")
 		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, err: wantErr, closeErr: wantErr}
 
-		it := NewNonOverlappingSampleIterator([]SampleIterator{errored, healthy(2, `{app="b"}`)})
+		it := NewChainedSampleIterator([]SampleIterator{errored, healthy(2, `{app="b"}`)})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
@@ -1621,7 +1621,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 		closeErr := errors.New("close boom")
 		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, err: wantErr, closeErr: closeErr}
 
-		it := NewNonOverlappingSampleIterator([]SampleIterator{errored, healthy(2, `{app="b"}`)})
+		it := NewChainedSampleIterator([]SampleIterator{errored, healthy(2, `{app="b"}`)})
 		for it.Next() { //nolint:revive
 		}
 		require.ErrorIs(t, it.Err(), wantErr)
@@ -1629,7 +1629,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 	})
 
 	t.Run("Close surfaces every close error", func(t *testing.T) {
-		it := NewNonOverlappingSampleIterator([]SampleIterator{
+		it := NewChainedSampleIterator([]SampleIterator{
 			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, closeErr: errors.New("close a")},
 			&erroringSampleIterator{samples: []logproto.Sample{sample(2)}, closeErr: errors.New("close b")},
 		})
@@ -1641,7 +1641,7 @@ func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
 
 	t.Run("Err is stable after a read error", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		it := NewNonOverlappingSampleIterator([]SampleIterator{failing(1, `{app="a"}`, wantErr)})
+		it := NewChainedSampleIterator([]SampleIterator{failing(1, `{app="a"}`, wantErr)})
 
 		for it.Next() { //nolint:revive
 		}

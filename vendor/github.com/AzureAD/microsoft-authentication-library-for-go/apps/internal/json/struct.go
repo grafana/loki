@@ -12,7 +12,7 @@ import (
 
 func unmarshalStruct(jdec *json.Decoder, i interface{}) error {
 	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		return fmt.Errorf("Unmarshal() received type %T, which is not a *struct", i)
 	}
 	v = v.Elem()
@@ -201,11 +201,11 @@ func fieldBaseType(v reflect.Value, fieldName string) (t reflect.Type, isPtr boo
 		return nil, false, fmt.Errorf("bug: fieldBaseType() lookup of field(%s) on type(%s): do not have field", fieldName, v.Type().Name())
 	}
 	t = sf.Type
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 		isPtr = true
 	}
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		return nil, isPtr, fmt.Errorf("received pointer to pointer type, not supported")
 	}
 	return t, isPtr, nil
@@ -248,7 +248,7 @@ var umarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
 // findFields parses a struct and writes the field tags for lookup. It will return an error
 // if any field has a type of *struct or struct that does not implement json.Marshaler.
 func findFields(v reflect.Value) (translateFields, error) {
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {
@@ -267,7 +267,7 @@ func findFields(v reflect.Value) (translateFields, error) {
 		tfs = append(tfs, tf)
 
 		f := v.Field(i)
-		if f.Kind() == reflect.Ptr {
+		if f.Kind() == reflect.Pointer {
 			f = f.Elem()
 		}
 		if f.Kind() == reflect.Struct {

@@ -69,7 +69,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 				CredentialMode: lokiv1.CredentialModeStatic,
 				Schemas: []lokiv1.ObjectStorageSchema{
 					{
-						Version:       lokiv1.ObjectStorageSchemaV11,
+						Version:       lokiv1.ObjectStorageSchemaV13,
 						EffectiveDate: "2020-10-11",
 					},
 				},
@@ -86,11 +86,11 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 
 	schemas := []lokiv1.ObjectStorageSchema{
 		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2020-10-11",
 		},
 		{
-			Version:       lokiv1.ObjectStorageSchemaV12,
+			Version:       lokiv1.ObjectStorageSchemaV13,
 			EffectiveDate: "2021-10-11",
 		},
 	}
@@ -99,11 +99,11 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		CredentialMode: lokiv1.CredentialModeStatic,
 		Schemas: []lokiv1.ObjectStorageSchema{
 			{
-				Version:       lokiv1.ObjectStorageSchemaV11,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2020-10-11",
 			},
 			{
-				Version:       lokiv1.ObjectStorageSchemaV12,
+				Version:       lokiv1.ObjectStorageSchemaV13,
 				EffectiveDate: "2021-10-11",
 			},
 		},

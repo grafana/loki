@@ -83,7 +83,7 @@ func TestShardPlanning_FirstQueryWinsReturnsUnchangedResponse(t *testing.T) {
 		return want, nil
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -139,7 +139,7 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 		return filterMW.Wrap(querier).Do(ctx, req)
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, reqStart, reqEnd)
 
@@ -162,6 +162,36 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 	require.Equal(t, reqStart, gotInnerStart)
 	require.Equal(t, reqEnd, gotInnerEnd)
 	require.Equal(t, []logproto.HintTimeRange{{Start: hintRange.Start, End: hintRange.End}}, gotHints)
+}
+
+func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hintRange := hintprovider.HintTimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
+		delay: 50 * time.Millisecond,
+	}
+
+	// The provisional query goes through the filter too, but its querier call
+	// only ends when shard planning cancels it.
+	querier := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		if !shardPlanningRerunGuardFromContext(ctx) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return emptyStreamResponse(), nil
+	})
+	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	handler := prefetchMW.Wrap(filterMW.Wrap(querier))
+	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
+
+	resp, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+
+	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
+	require.Equal(t, hintStatusOK, loglineStats.HintStatus)
+	require.Equal(t, int64(1), loglineStats.NarrowedRequests, "only the rerun's sub-request counts")
 }
 
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {
@@ -190,7 +220,7 @@ func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testin
 		return filterMW.Wrap(querier).Do(ctx, req)
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -235,7 +265,7 @@ func TestShardPlanning_MultipleDisjointNarrowHintsRerunWithinThresholds(t *testi
 		return filterMW.Wrap(querier).Do(ctx, req)
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -368,7 +398,7 @@ func TestShardPlanning_BroadOrUnsafeHintsFallBackToFirstQuery(t *testing.T) {
 				return firstResp, nil
 			})
 
-			prefetchMW := NewLoglinePrefetchMiddleware(tc.hp, tc.cfg, mockLimits{}, newTestMetrics(), nil)
+			prefetchMW := prefetchMiddlewareForTest(tc.hp, tc.cfg, mockLimits{}, newTestMetrics(), nil)
 			handler := prefetchMW.Wrap(next)
 			resp, err := handler.Do(testTenantContextWithLive(), tc.req)
 			require.NoError(t, err)
@@ -394,7 +424,7 @@ func TestShardPlanning_DryRunModeNeverReruns(t *testing.T) {
 		return streamResponseWithEntries(logproto.Entry{Timestamp: now.Add(-33 * time.Minute), Line: "error"}), nil
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, cfg, mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
@@ -416,7 +446,7 @@ func TestShardPlanning_RerunGuardPreventsRecursion(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	ctx := withShardPlanningRerunGuard(testTenantContextWithLive())
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
@@ -452,7 +482,7 @@ func TestShardPlanning_PreservesExistingQueryLimitsOnRerun(t *testing.T) {
 		return emptyStreamResponse(), nil
 	})
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
 	handler := prefetchMW.Wrap(next)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 

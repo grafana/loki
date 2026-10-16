@@ -7,10 +7,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/xcap"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -25,7 +29,7 @@ func TestPlanner_Plan(t *testing.T) {
 	// the metastore resolved for them.
 	newTestPlanner := func(t *testing.T, ms metastore.Metastore) (*Planner, metastore.DataobjSectionDescriptors) {
 		t.Helper()
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -56,8 +60,25 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Len(t, tasks, len(descriptors))
 	})
 
+	t.Run("it omits the line from every task when only a pushed line filter reads it", func(t *testing.T) {
+		readPlanner, _ := newTestPlanner(t, nil)
+		expr, err := syntax.ParseSampleExpr(`sum by (app) (count_over_time({app=~".+"} |= "x" [1m]))`)
+		require.NoError(t, err)
+		projection, err := NewProjectionPlan(expr, nil)
+		require.NoError(t, err)
+
+		query := plainQuery(t)
+		query.Projection = projection
+		tasks, err := drainTasks(readPlanner.Plan(t.Context(), query))
+		require.NoError(t, err)
+		require.NotEmpty(t, tasks)
+		for _, task := range tasks {
+			require.False(t, task.needReturningLine)
+		}
+	})
+
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -78,8 +99,52 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Equal(t, `level="error"`, ms.gotRequest.Predicates[0].String())
 	})
 
+	for _, test := range []struct {
+		name  string
+		shard *QueryShard
+		want  *postings.ShardBucketRange
+	}{
+		{
+			name:  "an unsharded query asks the metastore for no bucket range",
+			shard: nil,
+			want:  nil,
+		},
+		{
+			name:  "a shard count of one restricts no stream, so the planner asks the metastore for no bucket range",
+			shard: NewQueryShard(powerOfTwoShard(0, 1)),
+			want:  nil,
+		},
+		{
+			name:  "the first of two shards asks the metastore for the lower half of the buckets",
+			shard: NewQueryShard(powerOfTwoShard(0, 2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+		},
+		{
+			name:  "a shard count above the bucket count asks the metastore for the one bucket it falls in",
+			shard: NewQueryShard(powerOfTwoShard(5, streams.DefaultShardLayout().Buckets()*4)),
+			want:  &postings.ShardBucketRange{From: 1, To: 1},
+		},
+		{
+			name:  "a bounded shard asks the metastore for the buckets it spans",
+			shard: NewQueryShard(boundedShard(0, ^uint64(0)/2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ms := &fixedMetastore{}
+			readPlanner, _ := newTestPlanner(t, ms)
+
+			query := plainQuery(t)
+			query.Shard = test.shard
+			_, err := drainTasks(readPlanner.Plan(t.Context(), query))
+			require.NoError(t, err)
+
+			require.Equal(t, test.want, ms.gotRequest.ShardBucketRange)
+		})
+	}
+
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -96,7 +161,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a stream missing from a shard bucket-pruned read is taken as out of shard rather than an error", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -122,7 +187,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("a section the metastore lists with no stream fails the query", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -136,13 +201,11 @@ func TestPlanner_Plan(t *testing.T) {
 		require.ErrorContains(t, err, "listed no stream")
 	})
 
-	t.Run("a section the metastore lists twice fails the query rather than counting it twice", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+	t.Run("a section listed twice by the metastore fails the query rather than counting it twice", func(t *testing.T) {
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
-		// Two index objects describing one section resolve to two descriptors, because Sections
-		// concatenates their results without merging across them.
 		repeated := *fixture.descriptors[0]
 		ms := &fixedMetastore{descriptors: metastore.DataobjSectionDescriptors{
 			fixture.descriptors[0],
@@ -164,7 +227,7 @@ func TestPlanner_Plan(t *testing.T) {
 	})
 
 	t.Run("no task is planned when the access-control filter denies every stream", func(t *testing.T) {
-		fixture := newObjectsFixture(t, "", fixtureStreams...)
+		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 		t.Cleanup(objects.release)
 
@@ -183,13 +246,32 @@ func TestPlanner_Plan(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, tasks)
 	})
+
+	t.Run("it reads the objects it plans in a root region of their own", func(t *testing.T) {
+		readPlanner, _ := newTestPlanner(t, nil)
+		ctx, capture := xcap.NewCapture(t.Context(), nil)
+
+		_, err := drainTasks(readPlanner.Plan(ctx, plainQuery(t)))
+		require.NoError(t, err)
+
+		var region *xcap.Region
+		for _, r := range capture.Regions() {
+			if r.Name() == regionStreamsReader {
+				region = r
+			}
+		}
+		require.NotNil(t, region, "the planner opens its objects in the streams-reader region")
+		require.True(t, region.ParentID().IsZero(), "the region is a root, so its requests count for the streams-reader component")
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectRequestsGetRange))
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, regionStreamsReader, dataobj.StatObjectBytesDownloaded))
+	})
 }
 
 // TestPlanner_RecoversPanics asserts a panic on the planner's own goroutine fails the
 // query instead of the process. Nothing above the planner can recover it, because it runs on a
 // goroutine of its own.
 func TestPlanner_RecoversPanics(t *testing.T) {
-	fixture := newObjectsFixture(t, "", logproto.Stream{
+	fixture := newObjectsFixture(t, logproto.Stream{
 		Labels:  `{app="a"}`,
 		Entries: []push.Entry{entry(t, 1, "one")},
 	})

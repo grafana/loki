@@ -512,6 +512,16 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
+			// The count leg drops the unwrap, so it cannot reproduce a post filter that reads an
+			// error label. The mapper leaves the whole query alone rather than decompose it.
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error__="" [5m]) by (cluster)`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error__="" [5m]) by (cluster)`,
+		},
+		{
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error_details__="" [5m]) by (cluster)`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy | __error_details__="" [5m]) by (cluster)`,
+		},
+		{
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
 			out: `(
 				sum without() (
