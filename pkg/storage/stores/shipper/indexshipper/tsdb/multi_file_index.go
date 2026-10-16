@@ -126,7 +126,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 	queryBounds := newBounds(from, through)
 
 	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
-		if Overlap(idx, queryBounds) {
+		if overlapIndex(idx, queryBounds) {
 
 			if f := i.getFilterer(); f != nil {
 				// TODO(owen-d): Find a nicer way
