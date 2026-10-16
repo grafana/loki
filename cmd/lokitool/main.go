@@ -1,30 +1,24 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
-	"github.com/alecthomas/kingpin/v2"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/prometheus/common/version"
-
-	"github.com/grafana/loki/v3/pkg/tool/commands"
-)
-
-var (
-	ruleCommand  commands.RuleCommand
-	auditCommand commands.AuditCommand
+	"github.com/grafana/loki/v3/pkg/lokitool/commands"
 )
 
 func main() {
-	app := kingpin.New("lokitool", "A command-line tool to manage Loki.")
-	ruleCommand.Register(app)
-	auditCommand.Register(app)
+	os.Exit(run(os.Args[1:]))
+}
 
-	app.Command("version", "Get the version of the lokitool CLI").Action(func(_ *kingpin.ParseContext) error {
-		fmt.Println(version.Print("loki"))
-		return nil
-	})
+func run(args []string) int {
+	app, global := commands.NewApplication()
+	defer global.Close()
 
-	kingpin.MustParse(app.Parse(os.Args[1:]))
+	if _, err := app.Parse(args); err != nil {
+		log.Error(err)
+		return 1
+	}
+	return 0
 }
