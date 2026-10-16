@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	querystats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -466,6 +467,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 		sl.hashes[hash] = struct{}{}
 		if len(sl.hashes) > sl.maxSeries {
+			// The query already ran. Preserve its usage before discarding the
+			// successful response; the outer collector will see only the error.
+			querystats.JoinPartial(ctx, promResponse.Statistics)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 		}
 	}

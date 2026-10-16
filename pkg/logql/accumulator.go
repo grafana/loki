@@ -56,14 +56,9 @@ func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
 }
 
 func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	if res.Data.Type() != QuantileSketchMatrixType {
-		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
-	}
-	data, ok := res.Data.(ProbabilisticQuantileMatrix)
-	if !ok {
-		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
-	}
-
+	// Record the scanned bytes before validating the result data so a rejected
+	// result still contributes to failed-query usage.
+	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
@@ -72,6 +67,15 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 		res.Statistics.Summary.Shards = 1
 	}
 	a.stats.Merge(res.Statistics)
+
+	if res.Data.Type() != QuantileSketchMatrixType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
+	}
+	data, ok := res.Data.(ProbabilisticQuantileMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
+	}
+
 	metadata.ExtendHeaders(a.headers, res.Headers)
 
 	for _, w := range res.Warnings {
@@ -85,7 +89,6 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
-	a.stats.Merge(res.Statistics)
 	return err
 }
 
@@ -131,14 +134,9 @@ func newCountMinSketchAccumulator() *CountMinSketchAccumulator {
 }
 
 func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	if res.Data.Type() != CountMinSketchVectorType {
-		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), CountMinSketchVectorType)
-	}
-	data, ok := res.Data.(CountMinSketchVector)
-	if !ok {
-		return fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", res.Data)
-	}
-
+	// Record the scanned bytes before validating the result data so a rejected
+	// result still contributes to failed-query usage.
+	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
@@ -147,6 +145,15 @@ func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 		res.Statistics.Summary.Shards = 1
 	}
 	a.stats.Merge(res.Statistics)
+
+	if res.Data.Type() != CountMinSketchVectorType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), CountMinSketchVectorType)
+	}
+	data, ok := res.Data.(CountMinSketchVector)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", res.Data)
+	}
+
 	metadata.ExtendHeaders(a.headers, res.Headers)
 
 	for _, w := range res.Warnings {
@@ -160,7 +167,6 @@ func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.vec, err = a.vec.Merge(&data)
-	a.stats.Merge(res.Statistics)
 	return err
 }
 
@@ -204,6 +210,13 @@ func newCountDistinctSketchAccumulator() *CountDistinctSketchAccumulator {
 }
 
 func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	// Record the scanned bytes before validating the result data so a rejected
+	// result still contributes to failed-query usage.
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+
 	if res.Data.Type() != CountDistinctSketchMatrixType {
 		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctSketchMatrixType)
 	}
@@ -212,10 +225,6 @@ func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logql
 		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", res.Data)
 	}
 
-	if res.Statistics.Summary.Shards == 0 {
-		res.Statistics.Summary.Shards = 1
-	}
-	a.stats.Merge(res.Statistics)
 	metadata.ExtendHeaders(a.headers, res.Headers)
 	for _, w := range res.Warnings {
 		a.warnings[w] = struct{}{}

@@ -280,7 +280,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
 			middlewareStats, statsCtx := stats.NewContext(ctx)
 
-			// start a partial-stats collector that survives the error path
+			// Collect usage from discarded responses, even if the root query succeeds.
 			partialStats, statsCtx := stats.NewPartialContext(statsCtx)
 
 			// execute the request
@@ -375,6 +375,19 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
+				// A later interval can fail after some shards complete, while an
+				// earlier interval satisfies the root query's line limit. Include the
+				// failed interval's partial usage in the successful root response.
+				// Usage recorded after this snapshot remains outside the report.
+				discardedStats := partialStats.Result()
+				// Failed shards or attempts can belong to the same time intervals
+				// as the successful response. This aggregate has no interval
+				// identities, so adding its split count could count those intervals
+				// twice. Recover the work without adding another time partition.
+				discardedStats.Summary.Splits = 0
+				discardedStats.Summary.TotalEntriesReturned = 0
+				responseStats.Merge(discardedStats)
+
 				if data != nil && data.estimatedQueryBytes > responseStats.Summary.EstimatedQueryBytes &&
 					(queryType == queryTypeLog || queryType == queryTypeMetric) {
 					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes

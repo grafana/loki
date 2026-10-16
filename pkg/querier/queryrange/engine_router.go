@@ -121,13 +121,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 		}
 	}
 
-	responses, err := e.process(ctx, inputs, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge responses
-	return e.merger.MergeResponse(responses...)
+	return e.process(ctx, inputs, limit)
 }
 
 // whether the time range of the request overlaps with the time range of the v2 engine
@@ -260,7 +254,7 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
-func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
+func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp, discardedUsage *discardedResponseUsageTracker) {
 	var resp packedResp
 	if r.isV2Engine {
 		resp.resp, resp.err = e.v2Next.Do(ctx, r.req)
@@ -271,6 +265,10 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 		}
 	} else {
 		resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
+	}
+
+	if resp.err == nil {
+		discardedUsage.recordResponse(&r.lokiResult, resp.resp)
 	}
 
 	select {
@@ -291,32 +289,49 @@ func isUnsupportedError(err error) bool {
 	return ok && resp.Code == http.StatusNotImplemented
 }
 
-// process executes the inputs in parallel and collects the responses.
-func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, limit uint32) ([]queryrangebase.Response, error) {
+// process executes the inputs in parallel and returns one merged response on success.
+func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, limit uint32) (queryrangebase.Response, error) {
 	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errors.New("engine router process cancelled"))
+	discardedUsage := &discardedResponseUsageTracker{}
+	var responses []queryrangebase.Response
+
+	// Every exit cancels outstanding work and preserves completed statistics.
+	finishResponses := func(queryErr error) (queryrangebase.Response, error) {
+		cancel(errors.New("engine router process cancelled"))
+		if queryErr != nil {
+			discardedUsage.finalizeResponseUsage(ctx, responses, queryErr)
+			return nil, queryErr
+		}
+
+		response, err := e.merger.MergeResponse(responses...)
+		if err != nil {
+			discardedUsage.finalizeResponseUsage(ctx, responses, err)
+			return nil, err
+		}
+
+		// Attach discarded usage after merging so MergeSplit cannot reset
+		// the combined split count.
+		finalized := discardedUsage.finalizeResponseUsage(ctx, []queryrangebase.Response{response}, nil)
+		return finalized[0], nil
+	}
 
 	// Run all requests in parallel as we only get a max of 3 splits.
 	for _, r := range inputs {
-		go e.handleReq(ctx, r)
+		go e.handleReq(ctx, r, discardedUsage)
 	}
 
-	var responses []queryrangebase.Response
 	var count int64
 	for _, x := range inputs {
 		select {
 		case <-ctx.Done():
-			// Keep the usage of the splits that completed before the
-			// cancellation, and report the cause so a real failure wins over a
-			// generic cancellation.
-			joinPartialFromResponses(ctx, responses)
-			return nil, context.Cause(ctx)
+			// Finalization preserves collected and uncollected usage. Keep the original
+			// cause so a real failure wins over a generic cancellation.
+			return finishResponses(context.Cause(ctx))
 		case data := <-x.ch:
+			discardedUsage.markResponseCollected(&x.lokiResult)
 			if data.err != nil {
-				// Keep the usage of the splits that completed before the failure.
-				joinPartialFromResponses(ctx, responses)
 				cancel(data.err)
-				return nil, data.err
+				return finishResponses(data.err)
 			}
 
 			responses = append(responses, data.resp)
@@ -325,14 +340,14 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, lim
 				if r, ok := data.resp.(*LokiResponse); ok {
 					count += r.Count()
 					if count >= int64(limit) {
-						return responses, nil
+						return finishResponses(nil)
 					}
 				}
 			}
 		}
 	}
 
-	return responses, nil
+	return finishResponses(nil)
 }
 
 // alignV2Range aligns v2Start and v2End to the given step.
