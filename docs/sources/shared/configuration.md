@@ -1615,6 +1615,16 @@ dataobj:
   # CLI flag: -dataobj.storage-lag
   [storage_lag: <duration> | default = 3h]
 
+  # Experimental: limit on the compressed bytes of data object sections that one
+  # query request holds in memory at once. It applies to metric queries that a
+  # querier reads from data objects. A section read waits until its bytes fit. A
+  # section larger than the limit runs alone. A lower limit uses less memory and
+  # slows the query. The limit counts compressed page bytes only, so the memory
+  # of a query is larger than the limit. Each query request has its own limit,
+  # and a split or sharded query sends many requests. 0 means no limit.
+  # CLI flag: -dataobj.query-read-budget
+  [query_read_budget: <int> | default = 0B]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled

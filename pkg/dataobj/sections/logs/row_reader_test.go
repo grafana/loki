@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 )
 
 func TestRowReader_NoPredicates(t *testing.T) {
@@ -647,6 +649,122 @@ func TestRowReader_Reset(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, reader.Close()) })
 
 		require.Len(t, readAllRecords(t, reader), 3)
+	})
+}
+
+func TestRowReader_SetReserver(t *testing.T) {
+	section := buildTestProjectionSection(t)
+
+	t.Run("reserves the section pages on open and returns every byte on close", func(t *testing.T) {
+		budget := readbudget.New(1<<40, nil)
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetReserver(budget.Section("object", 3)))
+		require.NoError(t, reader.Open(t.Context()))
+		require.NotZero(t, budget.Held())
+
+		require.Len(t, readAllRecords(t, reader), 3)
+		require.NoError(t, reader.Close())
+
+		require.Zero(t, budget.Held())
+	})
+
+	t.Run("waits in open until the budget has room", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			budget := readbudget.New(1, nil)
+			holder, err := budget.Section("other", 0).Reserve(t.Context(), 100)
+			require.NoError(t, err)
+
+			reader := NewRowReader(section)
+			require.NoError(t, reader.SetReserver(budget.Section("object", 0)))
+
+			opened := make(chan error, 1)
+			go func() { opened <- reader.Open(t.Context()) }()
+			synctest.Wait()
+			require.Empty(t, opened, "open must wait for the budget")
+
+			holder.Close()
+			synctest.Wait()
+			require.NoError(t, <-opened)
+			require.NoError(t, reader.Close())
+		})
+	})
+
+	t.Run("fails open and holds no bytes when the context ends while it waits for the budget", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			budget := readbudget.New(1, nil)
+			holder, err := budget.Section("other", 0).Reserve(t.Context(), 100)
+			require.NoError(t, err)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			reader := NewRowReader(section)
+			require.NoError(t, reader.SetReserver(budget.Section("object", 0)))
+
+			opened := make(chan error, 1)
+			go func() { opened <- reader.Open(ctx) }()
+			synctest.Wait()
+			require.Empty(t, opened, "open must wait for the budget")
+
+			cancel()
+			synctest.Wait()
+
+			require.ErrorIs(t, <-opened, context.Canceled)
+			require.Equal(t, int64(100), budget.Held())
+			holder.Close()
+			require.Zero(t, budget.Held())
+		})
+	})
+
+	t.Run("is cleared by reset, so the next read reserves nothing", func(t *testing.T) {
+		budget := readbudget.New(1<<40, nil)
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetReserver(budget.Section("object", 0)))
+		reader.Reset(section)
+
+		require.NoError(t, reader.Open(t.Context()))
+		defer reader.Close()
+
+		require.Zero(t, budget.Held())
+	})
+
+	t.Run("returns the reserved bytes when the reader resets without a close", func(t *testing.T) {
+		budget := readbudget.New(1<<40, nil)
+		reader := NewRowReader(section)
+		require.NoError(t, reader.SetReserver(budget.Section("object", 0)))
+		require.NoError(t, reader.Open(t.Context()))
+		require.NotZero(t, budget.Held())
+
+		reader.Reset(section)
+
+		require.Zero(t, budget.Held())
+	})
+
+	t.Run("reopens a reset reader without waiting for the bytes it held", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			budget := readbudget.New(1, nil)
+			reader := NewRowReader(section)
+			require.NoError(t, reader.SetReserver(budget.Section("object", 0)))
+			require.NoError(t, reader.Open(t.Context()))
+
+			reader.Reset(section)
+			require.NoError(t, reader.SetReserver(budget.Section("object", 1)))
+
+			opened := make(chan error, 1)
+			go func() { opened <- reader.Open(t.Context()) }()
+			synctest.Wait()
+			require.Len(t, opened, 1, "open waited for bytes that the same reader held")
+			require.NoError(t, <-opened)
+
+			require.NoError(t, reader.Close())
+			require.Zero(t, budget.Held())
+		})
+	})
+
+	t.Run("fails after reading has started", func(t *testing.T) {
+		reader := NewRowReader(section)
+		require.NoError(t, reader.Open(t.Context()))
+		defer reader.Close()
+
+		require.Error(t, reader.SetReserver(readbudget.New(1, nil).Section("object", 0)))
 	})
 }
 

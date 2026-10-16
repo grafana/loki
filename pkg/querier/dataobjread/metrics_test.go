@@ -3,8 +3,10 @@ package dataobjread
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -26,6 +28,42 @@ func TestNewMetrics(t *testing.T) {
 				require.Zero(t, testutil.ToFloat64(m.objectStoreRequestsFailed.WithLabelValues(component, operation)))
 			}
 		}
+	})
+}
+
+func TestMetrics_Admitted(t *testing.T) {
+	t.Run("it observes the reserved bytes and adds the wait", func(t *testing.T) {
+		m := NewMetrics(nil)
+
+		m.Admitted(3<<20, 2*time.Second)
+		m.Admitted(1<<20, 500*time.Millisecond)
+
+		var observed dto.Metric
+		require.NoError(t, m.sectionReservedBytes.Write(&observed))
+		require.Equal(t, uint64(2), observed.GetHistogram().GetSampleCount())
+		require.Equal(t, float64(4<<20), observed.GetHistogram().GetSampleSum())
+		require.Equal(t, 2.5, testutil.ToFloat64(m.readBudgetWaitSeconds))
+	})
+
+	t.Run("a nil Metrics records nothing", func(t *testing.T) {
+		var m *Metrics
+
+		require.NotPanics(t, func() { m.Admitted(1, time.Second) })
+		require.NotPanics(t, func() { m.Withdrawn(time.Second) })
+	})
+}
+
+func TestMetrics_Withdrawn(t *testing.T) {
+	t.Run("it adds the wait of a reservation that gave up to the total, without a reserved size", func(t *testing.T) {
+		m := NewMetrics(nil)
+
+		m.Admitted(1<<20, time.Second)
+		m.Withdrawn(4 * time.Second)
+
+		var observed dto.Metric
+		require.NoError(t, m.sectionReservedBytes.Write(&observed))
+		require.Equal(t, uint64(1), observed.GetHistogram().GetSampleCount())
+		require.Equal(t, 5.0, testutil.ToFloat64(m.readBudgetWaitSeconds))
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -27,6 +28,11 @@ import (
 const (
 	// DefaultMaxConcurrency is how many logs sections the reader scans at once.
 	DefaultMaxConcurrency = 16
+
+	// DefaultBudgetedMaxConcurrency is the least number of logs section scans that run at once when
+	// a read budget is set. Only the scans whose pages fit in the budget download them. The others
+	// wait, and each holds a goroutine and the metadata of its section.
+	DefaultBudgetedMaxConcurrency = 256
 
 	// DefaultReadBatchSize is how many records one section read decodes and forwards at a time.
 	DefaultReadBatchSize = 1024
@@ -53,6 +59,11 @@ type LogRecord struct {
 //
 // Up to maxConcurrency sections are scanned at once, to hide object-storage latency.
 //
+// A read budget, when the reader has one, makes each scan wait until the compressed bytes of the
+// pages it downloads fit in the budget. It raises the limit on scans to at least
+// [DefaultBudgetedMaxConcurrency], and a scan that waits counts toward the limit. After the
+// download, a scan takes one of maxConcurrency decode slots and keeps its bytes until it has one.
+//
 // Records are forwarded one batch at a time, so a read costs one channel send per batch rather
 // than one per record.
 //
@@ -68,6 +79,14 @@ type LogRecord struct {
 type LogReader struct {
 	objects *OpenObjects
 	metrics *Metrics
+
+	// budget bounds the compressed bytes that the scans hold at once. It is nil when the scans are
+	// not bounded.
+	budget *readbudget.Budget
+
+	// decoding holds one slot for each scan that decodes and forwards batches. It is nil without a
+	// budget, because maxConcurrency then limits the scans that decode.
+	decoding chan struct{}
 
 	// tasks are the section reads to run.
 	tasks *TaskIterator
@@ -95,9 +114,24 @@ type LogReader struct {
 	currPos   int
 }
 
+// LogReaderOption customizes a [LogReader].
+type LogReaderOption func(*LogReader)
+
+// WithReadBudget bounds the compressed bytes that the scans of the reader hold at once. A scan
+// reserves the bytes of the pages it downloads from the budget before it downloads them, and waits
+// until they fit. A nil budget does not bound the scans.
+//
+// The budget decides how many scans download at once, and many scans may wait. So the reader
+// raises its limit on scans to at least [DefaultBudgetedMaxConcurrency]. It keeps maxConcurrency
+// as the number of scans that decode at once and as the queue of decoded batches, because the
+// budget does not count decoded lines.
+func WithReadBudget(budget *readbudget.Budget) LogReaderOption {
+	return func(r *LogReader) { r.budget = budget }
+}
+
 // NewLogReader starts scanning the tasks the iterator streams. It owns a cancellable
 // context for its scans and cancels it on Close, and it owns the iterator's lifetime.
-func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator, maxConcurrency, batchSize int, metrics *Metrics) *LogReader {
+func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator, maxConcurrency, batchSize int, metrics *Metrics, opts ...LogReaderOption) *LogReader {
 	maxConcurrency = max(maxConcurrency, 1)
 	batchSize = max(batchSize, 1)
 
@@ -110,10 +144,23 @@ func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator
 		parentCtx: parentCtx,
 		capture:   xcap.CaptureFromContext(ctx),
 		statsCtx:  stats.FromContext(ctx),
-		batches:   make(chan []LogRecord, maxConcurrency),
 		stopped:   make(chan struct{}),
 		cancel:    cancel,
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+
+	// A budget raises the limit on scans below, so that limit must not size the batch queue or
+	// the scans that decode. Decoded lines dominate the memory of a batch, and the budget does not
+	// count them.
+	queuedBatches := maxConcurrency
+	if r.budget != nil {
+		r.decoding = make(chan struct{}, maxConcurrency)
+		maxConcurrency = max(maxConcurrency, DefaultBudgetedMaxConcurrency)
+		queuedBatches = cap(r.decoding)
+	}
+	r.batches = make(chan []LogRecord, queuedBatches)
 
 	go r.runTasks(ctx, tasks, maxConcurrency, batchSize)
 	return r
@@ -197,14 +244,17 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 			return err
 		})
 	}
-	// Errors are recorded above. Wait only so the batch channel closes after every scan stops.
-	_ = group.Wait()
-
 	// A planning failure surfaces the same way a scan error does, so the query fails instead of
-	// quietly returning the tasks planned before it.
+	// quietly returning the tasks planned before it. The planner records its error before it ends
+	// the task stream, so the error is visible here. Stop the scans that still run for a query that
+	// has already failed, instead of reading every queued section first.
 	if err := tasks.Err(); err != nil {
 		r.setErr(err)
+		r.cancel()
 	}
+
+	// Errors are recorded above. Wait only so the batch channel closes after every scan stops.
+	_ = group.Wait()
 
 	r.metrics.taskWaitSeconds.Add(tasks.Waited().Seconds())
 	r.metrics.taskScanSeconds.Add(time.Duration(scannedNanos.Load()).Seconds())
@@ -221,6 +271,9 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 	}
 
 	reader := logs.NewRowReader(section)
+	if err := reader.SetReserver(r.budget.Section(task.objectPath, task.sectionIdx)); err != nil {
+		return err
+	}
 	defer func() {
 		// Report a close failure only when nothing else failed, so the first error wins.
 		if closeErr := reader.Close(); returnErr == nil {
@@ -238,14 +291,23 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		return err
 	}
 	if err := reader.Open(ctx); err != nil {
-		return err
+		return fmt.Errorf("opening data object %q logs section %d: %w", task.objectPath, task.sectionIdx, err)
+	}
+
+	if r.decoding != nil {
+		select {
+		case r.decoding <- struct{}{}:
+			defer func() { <-r.decoding }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	buf := make([]logs.Record, batchSize)
 	for {
 		n, readErr := reader.Read(ctx, buf)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return readErr
+			return fmt.Errorf("reading data object %q logs section %d: %w", task.objectPath, task.sectionIdx, readErr)
 		}
 		batch, err := task.records(buf[:n])
 		if err != nil {

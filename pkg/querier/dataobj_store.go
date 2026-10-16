@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -47,9 +48,21 @@ func WithDataObjRangeConfig(cfg rangeio.Config) DataObjStoreOption {
 }
 
 // WithDataObjMaxConcurrency sets how many logs sections a query scans at once. A value below one
-// becomes one.
+// becomes one. When [WithDataObjReadBudget] sets a budget, this value is how many sections decode at
+// once, and the query runs at least [dataobjread.DefaultBudgetedMaxConcurrency] scans.
 func WithDataObjMaxConcurrency(n int) DataObjStoreOption {
 	return func(s *DataObjStore) { s.maxConcurrency = max(n, 1) }
+}
+
+// WithDataObjReadBudget bounds the compressed bytes that the section reads of one query request
+// hold at once. Each call to SelectSamples gets its own budget, so the requests of a split or
+// sharded query do not share one. A read reserves the bytes of the pages it downloads before it
+// downloads them, and waits until they fit. A value below one does not bound the reads.
+//
+// The budget decides how many sections download at once, and the scans that do not fit wait. The
+// query runs at least [dataobjread.DefaultBudgetedMaxConcurrency] scans at once.
+func WithDataObjReadBudget(bytes int64) DataObjStoreOption {
+	return func(s *DataObjStore) { s.readBudgetBytes = max(bytes, 0) }
 }
 
 // WithDataObjStreamFilterer drops streams a request may not read.
@@ -72,10 +85,11 @@ type DataObjStore struct {
 	// filterer rejects streams a request may not read. It is nil when nothing filters.
 	filterer chunk.RequestChunkFilterer
 
-	prefetchBytes  int64
-	maxConcurrency int
-	rangeConfig    rangeio.Config
-	metadataCache  dataobj.MetadataCache
+	prefetchBytes   int64
+	maxConcurrency  int
+	readBudgetBytes int64
+	rangeConfig     rangeio.Config
+	metadataCache   dataobj.MetadataCache
 }
 
 // NewDataObjStore returns a [Store] that serves stream-first metric queries from the data objects
@@ -210,7 +224,11 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	// under logs.RowReader starts one, so without this the query's byte and row counts are lost.
 	// The region name matches what the v2 engine reads, so both report the same statistics.
 	readCtx, _ := xcap.StartRegion(ctx, logs.RegionRead)
-	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics)
+	var readerOpts []dataobjread.LogReaderOption
+	if s.readBudgetBytes > 0 {
+		readerOpts = append(readerOpts, dataobjread.WithReadBudget(readbudget.New(s.readBudgetBytes, s.metrics)))
+	}
+	reader := dataobjread.NewLogReader(readCtx, objects, tasks, s.maxConcurrency, dataobjread.DefaultReadBatchSize, s.metrics, readerOpts...)
 
 	// Resolving no section is not an error: the reader then yields no sample and a nil error.
 	return dataobjread.NewSampleIterator(reader, extractor), nil

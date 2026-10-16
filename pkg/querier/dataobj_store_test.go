@@ -81,6 +81,106 @@ func TestWithDataObjMaxConcurrency(t *testing.T) {
 	})
 }
 
+func TestWithDataObjReadBudget(t *testing.T) {
+	appStream := logproto.Stream{
+		Labels:  `{app="a", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")},
+	}
+	otherStream := logproto.Stream{
+		Labels:  `{app="b", env="prod"}`,
+		Entries: []push.Entry{entry(t, 1, "beta")},
+	}
+	const query = `sum by (app) (count_over_time({env="prod"}[1m]))`
+
+	t.Run("a value below one does not bound the scans", func(t *testing.T) {
+		for _, bytes := range []int64{0, -5} {
+			reg := prometheus.NewRegistry()
+			store := newTestDataObjStore(t, []logproto.Stream{appStream}, withReadBudget(bytes), withRegisterer(reg))
+
+			store.selectSamples(testCtx(t), query, at(0), at(10))
+
+			families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+			require.NoError(t, err)
+			reserved := families["loki_querier_dataobj_section_reserved_bytes"].GetMetric()
+			require.Len(t, reserved, 1)
+			require.Zero(t, reserved[0].GetHistogram().GetSampleCount(), "budget of %d bytes", bytes)
+		}
+	})
+
+	t.Run("a query does not wait for the bytes of another query", func(t *testing.T) {
+		var many []push.Entry
+		for i := range 40000 {
+			many = append(many, entry(t, i+1, "x"))
+		}
+		busy := logproto.Stream{Labels: `{app="a", env="prod"}`, Entries: many}
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{busy, otherStream}, withObjectPerStream(), withReadBudget(1), withRegisterer(reg))
+
+		blocked, err := store.selectSamplesIter(testCtx(t), `sum by (app) (count_over_time({app="a"}[1m]))`, at(0), at(50000))
+		require.NoError(t, err)
+		require.True(t, blocked.Next())
+		require.Eventually(t, func() bool {
+			families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+			require.NoError(t, err)
+			reserved := families["loki_querier_dataobj_section_reserved_bytes"].GetMetric()
+			return len(reserved) == 1 && reserved[0].GetHistogram().GetSampleCount() == 1
+		}, 5*time.Second, time.Millisecond)
+
+		done := make(chan []sampleRow, 1)
+		go func() {
+			done <- store.selectSamples(testCtx(t), `sum by (app) (count_over_time({app="b"}[1m]))`, at(0), at(10))
+		}()
+
+		select {
+		case rows := <-done:
+			require.NotEmpty(t, rows)
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, "the second query waited for the bytes of the first one")
+		}
+		require.NoError(t, blocked.Close())
+	})
+
+	t.Run("returns the same samples as an unbounded query when the budget holds less than one section", func(t *testing.T) {
+		streams := []logproto.Stream{appStream, otherStream}
+		unbounded := newTestDataObjStore(t, streams, withObjectPerStream())
+		bounded := newTestDataObjStore(t, streams, withObjectPerStream(), withReadBudget(1))
+
+		want := unbounded.selectSamples(testCtx(t), query, at(0), at(10))
+		got := bounded.selectSamples(testCtx(t), query, at(0), at(10))
+
+		require.NotEmpty(t, want)
+		require.Equal(t, want, got)
+	})
+
+	t.Run("reports each section the budget admitted", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream, otherStream}, withObjectPerStream(), withReadBudget(1), withRegisterer(reg))
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		reserved := families["loki_querier_dataobj_section_reserved_bytes"].GetMetric()
+		require.Len(t, reserved, 1)
+		require.Equal(t, uint64(2), reserved[0].GetHistogram().GetSampleCount(), "one reservation for each of the two objects")
+		require.Positive(t, reserved[0].GetHistogram().GetSampleSum())
+	})
+
+	t.Run("reports nothing while the budget is off", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		store := newTestDataObjStore(t, []logproto.Stream{appStream}, withRegisterer(reg))
+
+		store.selectSamples(testCtx(t), query, at(0), at(10))
+
+		families, err := metrics.NewMetricFamilyMapFromGatherer(reg)
+		require.NoError(t, err)
+		reserved := families["loki_querier_dataobj_section_reserved_bytes"].GetMetric()
+		require.Len(t, reserved, 1)
+		require.Zero(t, reserved[0].GetHistogram().GetSampleCount())
+		require.Zero(t, families.SumCounters("loki_querier_dataobj_read_budget_wait_seconds_total"))
+	})
+}
+
 func TestWithDataObjMetadataCache(t *testing.T) {
 	appStream := logproto.Stream{
 		Labels:  `{app="a", env="prod"}`,
@@ -663,6 +763,7 @@ type testStoreOptions struct {
 	flushEveryStream bool
 	filterer         chunk.RequestChunkFilterer
 	maxConcurrency   int
+	readBudget       int64
 	metadataCache    dataobj.MetadataCache
 	registerer       prometheus.Registerer
 }
@@ -681,6 +782,10 @@ func withObjectPerStream() testStoreOption {
 
 func withMaxConcurrency(n int) testStoreOption {
 	return func(o *testStoreOptions) { o.maxConcurrency = n }
+}
+
+func withReadBudget(bytes int64) testStoreOption {
+	return func(o *testStoreOptions) { o.readBudget = bytes }
 }
 
 // withRegisterer registers the store's metrics on reg.
@@ -727,6 +832,10 @@ func newTestDataObjStore(t *testing.T, streams []logproto.Stream, opts ...testSt
 
 	if options.maxConcurrency != 0 {
 		storeOpts = append(storeOpts, WithDataObjMaxConcurrency(options.maxConcurrency))
+	}
+
+	if options.readBudget != 0 {
+		storeOpts = append(storeOpts, WithDataObjReadBudget(options.readBudget))
 	}
 
 	if options.metadataCache != nil {

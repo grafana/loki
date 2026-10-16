@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -33,6 +37,132 @@ func TestLogReader(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 		require.ElementsMatch(t, []string{"one", "two", "three"}, lines)
+	})
+
+	t.Run("a read budget below one section runs the sections one at a time and still yields every record", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")}})
+		tasks := []ReadTask{fixture.tasks[0], fixture.tasks[0], fixture.tasks[0]}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		observer := &admissionObserver{}
+		budget := readbudget.New(1, observer)
+		observer.budget = budget
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(tasks...), DefaultBudgetedMaxConcurrency, DefaultReadBatchSize, metrics, WithReadBudget(budget))
+
+		lines := drainReader(reader)
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
+
+		require.ElementsMatch(t, []string{"one", "two", "one", "two", "one", "two"}, lines)
+		require.Equal(t, 3, observer.admitted, "every scan reserved from the budget")
+		require.Zero(t, observer.sharedAdmissions, "no scan was admitted while another held bytes")
+		require.Zero(t, budget.Held(), "every reserved byte came back")
+	})
+
+	t.Run("a read budget returns the bytes of a scan that a close stops while it sends and another scan waits", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 64 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line %d", i)))
+		}
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		budget := readbudget.New(1, nil)
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks[0], fixture.tasks[0]), 1, 1, metrics, WithReadBudget(budget))
+		require.Eventually(t, func() bool {
+			return budget.Held() > 0 && len(reader.batches) == cap(reader.batches)
+		}, 5*time.Second, time.Millisecond, "the first scan never filled the batch queue")
+
+		require.NoError(t, reader.Close())
+		require.Zero(t, budget.Held())
+	})
+
+	t.Run("a read budget starts more scans than maxConcurrency", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 64 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line %d", i)))
+		}
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		tasks := make([]ReadTask, DefaultMaxConcurrency+4)
+		for i := range tasks {
+			tasks[i] = fixture.tasks[0]
+		}
+
+		observer := &countingObserver{}
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(tasks...), 1, 1, metrics, WithReadBudget(readbudget.New(1<<40, observer)))
+		defer reader.Close()
+
+		require.Eventually(t, func() bool {
+			return observer.admitted.Load() == int64(len(tasks))
+		}, 5*time.Second, time.Millisecond, "the budget admitted fewer scans than the tasks")
+	})
+
+	t.Run("a read budget decodes the sections one after another when maxConcurrency is one", func(t *testing.T) {
+		var entries []push.Entry
+		want := make([]string, 0, 64)
+		for i := range 64 {
+			line := fmt.Sprintf("line %d", i)
+			entries = append(entries, entry(t, i+1, line))
+			want = append(want, line)
+		}
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks[0], fixture.tasks[0]), 1, 1, metrics, WithReadBudget(readbudget.New(1<<40, nil)))
+		lines := drainReader(reader)
+		require.NoError(t, reader.Close())
+
+		require.Len(t, lines, 128)
+		require.ElementsMatch(t, want, lines[:64], "the first section must finish before the second one decodes")
+		require.ElementsMatch(t, want, lines[64:])
+	})
+
+	t.Run("a planning error stops the scans that are still queued", func(t *testing.T) {
+		var entries []push.Entry
+		for i := range 64 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line %d", i)))
+		}
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+
+		const sections = 8
+		queued := make(chan ReadTask, sections)
+		for range sections {
+			queued <- fixture.tasks[0]
+		}
+		tasks := newTaskIterator(queued, func() {})
+		close(tasks.done)
+
+		budget := readbudget.New(1, nil)
+		reader := NewLogReader(t.Context(), fixture.objects, tasks, 1, 1, metrics, WithReadBudget(budget))
+		require.Eventually(t, func() bool {
+			return budget.Held() > 0 && len(reader.batches) == cap(reader.batches)
+		}, 5*time.Second, time.Millisecond, "the first scan never filled the batch queue")
+
+		wantErr := errors.New("resolution failed")
+		tasks.setErr(wantErr)
+		close(queued)
+
+		lines := drainReader(reader)
+		require.ErrorIs(t, reader.Err(), wantErr)
+		require.Less(t, len(lines), sections*len(entries), "the queued scans kept reading after the planner failed")
+		require.Error(t, reader.Close())
+	})
+
+	t.Run("a read budget sizes the batch queue by maxConcurrency, not by the raised scan limit", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks[0]), 3, DefaultReadBatchSize, metrics, WithReadBudget(readbudget.New(1<<20, nil)))
+		defer reader.Close()
+
+		require.Equal(t, 3, cap(reader.batches))
+	})
+
+	t.Run("without a budget the scan count sizes the batch queue", func(t *testing.T) {
+		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks[0]), 3, DefaultReadBatchSize, metrics)
+		defer reader.Close()
+
+		require.Equal(t, 3, cap(reader.batches))
 	})
 
 	t.Run("a batch size below the row count still yields every distinct line", func(t *testing.T) {
@@ -361,6 +491,34 @@ func newReaderFixture(t *testing.T, streams ...logproto.Stream) readerFixture {
 	require.NotEmpty(t, tasks)
 
 	return readerFixture{objects: objects, tasks: tasks}
+}
+
+// admissionObserver checks that a budget smaller than one section admits a single section at a
+// time: while an admission is reported, the budget holds the bytes of that section alone.
+type admissionObserver struct {
+	budget *readbudget.Budget
+
+	mu               sync.Mutex
+	admitted         int
+	sharedAdmissions int
+}
+
+func (o *admissionObserver) Withdrawn(time.Duration) {}
+
+// countingObserver counts the reservations that a budget admitted.
+type countingObserver struct{ admitted atomic.Int64 }
+
+func (o *countingObserver) Admitted(int64, time.Duration) { o.admitted.Add(1) }
+func (o *countingObserver) Withdrawn(time.Duration)       {}
+
+func (o *admissionObserver) Admitted(bytes int64, _ time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.admitted++
+	if o.budget.Held() != bytes {
+		o.sharedAdmissions++
+	}
 }
 
 // drainReader collects every line the reader yields, as a set.
