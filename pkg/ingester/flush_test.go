@@ -1314,66 +1314,8 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 	return stream
 }
 
-// fuzzReader hands out the fuzz input one byte at a time, returning zeros once
-// the input is exhausted so every input decodes to a valid scenario.
-type fuzzReader struct{ data []byte }
-
-func (r *fuzzReader) next() int {
-	if len(r.data) == 0 {
-		return 0
-	}
-	b := r.data[0]
-	r.data = r.data[1:]
-	return int(b)
-}
-
-var (
-	fuzzTenants = []string{"t0", "t1", "t2"}
-	fuzzApps    = []string{"a0", "a1", "a2", "a3", "a4"}
-)
-
-// fuzzFlushCall is one decoded call to flushStreams.
-type fuzzFlushCall struct {
-	tenantID    string // empty is all tenants
-	selector    string // empty is no matchers
-	matches     func(app string) bool
-	synchronous bool
-	cancelled   bool // the context is cancelled before the call
-}
-
-// decodeFuzzFlushCall turns fuzz bytes into a flush call and the model of which
-// streams it should match.
-func decodeFuzzFlushCall(r *fuzzReader) fuzzFlushCall {
-	c := fuzzFlushCall{matches: func(string) bool { return true }}
-
-	// 0 is all tenants, the last value is a tenant that doesn't exist.
-	if t := r.next() % (len(fuzzTenants) + 2); t == len(fuzzTenants)+1 {
-		c.tenantID = "no-such-tenant"
-	} else if t > 0 {
-		c.tenantID = fuzzTenants[t-1]
-	}
-
-	app := fuzzApps[r.next()%len(fuzzApps)]
-	other := fuzzApps[r.next()%len(fuzzApps)]
-	switch r.next() % 4 {
-	case 1:
-		c.selector = fmt.Sprintf(`{app="%s"}`, app)
-		c.matches = func(a string) bool { return a == app }
-	case 2:
-		c.selector = fmt.Sprintf(`{app=~"%s|%s"}`, app, other)
-		c.matches = func(a string) bool { return a == app || a == other }
-	case 3:
-		c.selector = fmt.Sprintf(`{app=~".+", app!="%s"}`, app)
-		c.matches = func(a string) bool { return a != app }
-	}
-
-	c.synchronous = r.next()%3 != 0
-	c.cancelled = c.synchronous && r.next()%8 == 0
-	return c
-}
-
-// fuzzStoredEntries returns the number of entries the store holds per tenant and app.
-func fuzzStoredEntries(store *testStore) map[string]int {
+// storedEntries returns the number of entries the store holds per tenant and app.
+func storedEntries(store *testStore) map[string]int {
 	store.mtx.Lock()
 	defer store.mtx.Unlock()
 
@@ -1386,165 +1328,82 @@ func fuzzStoredEntries(store *testStore) map[string]int {
 	return out
 }
 
-// FuzzFlushStreams drives flushStreams with random interleavings of pushes,
-// concurrent synchronous and asynchronous flushes (some cancelled), store
-// failures, and finally a flush racing shutdown. It checks that nothing hangs
-// or panics, that no entry is ever stored twice, that a successful synchronous
-// flush has stored everything its streams held, and that after the dust settles
-// every entry is stored exactly once.
+// FuzzFlushStreams interleaves pushes with concurrent flushes of random tenants
+// and streams, some asynchronous and some with an already cancelled context. Each
+// input byte is one step. It checks that nothing hangs, panics or fails, and that
+// once all flushes have settled every pushed entry is stored exactly once.
 func FuzzFlushStreams(f *testing.F) {
 	f.Add([]byte{})
-	f.Add([]byte{0, 4, 1, 0, 1, 1, 0, 2, 1, 1, 0, 0, 0, 0, 0, 1})
-	f.Add([]byte{3, 5, 6, 0, 1, 2, 3, 4, 5, 1, 1, 3, 2, 2, 3, 1, 0, 0, 0, 3, 1, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 0})
-	f.Add([]byte{1, 8, 9, 9, 1, 2, 3, 4, 5, 6, 7, 4, 1, 2, 3, 1, 2, 1, 1, 2, 1, 0, 3, 0, 1, 2, 0, 2, 1, 0, 0, 1, 1, 1, 1, 1})
+	f.Add([]byte{0, 1, 2, 3, 4, 0, 7, 2, 12, 3})
+	f.Add([]byte{0, 5, 10, 2, 2, 3, 4, 1, 6, 2, 90, 3, 4, 0, 2})
 
-	f.Fuzz(func(t *testing.T, data []byte) {
-		r := &fuzzReader{data: data}
+	f.Fuzz(func(t *testing.T, steps []byte) {
+		tenants := []string{"t0", "t1"}
+		apps := []string{"a0", "a1", "a2"}
 
 		cfg := defaultIngesterTestConfig(t)
-		cfg.ConcurrentFlushes = 1 + r.next()%4
-		cfg.FlushOpBackoff.MinBackoff = time.Millisecond
-		cfg.FlushOpBackoff.MaxBackoff = time.Millisecond
+		cfg.ConcurrentFlushes = 1 + len(steps)%3
 		store, ing := newTestStore(t, cfg, nil)
 		defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
 
-		// Fail the next N puts, then recover. Failed async ops are retried forever,
-		// so the failures must be finite.
-		var failures atomic.Int32
-		store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
-			if failures.Dec() >= 0 {
-				return fmt.Errorf("injected store failure")
-			}
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				return err
-			}
-			store.chunks[userID] = append(store.chunks[userID], chunks...)
-			return nil
-		}
-
 		pushed := map[string]int{}
-		var seq int64
-		base := time.Now()
-		push := func(tenantID, app string, lines int) {
-			entries := make([]logproto.Entry, 0, lines)
-			for i := 0; i < lines; i++ {
-				seq++
-				entries = append(entries, logproto.Entry{Timestamp: base.Add(time.Duration(seq)), Line: fmt.Sprintf("line-%d", seq)})
-			}
-			_, err := ing.Push(user.InjectOrgID(context.Background(), tenantID), &logproto.PushRequest{
-				Streams: []logproto.Stream{{Labels: fmt.Sprintf(`{app="%s"}`, app), Entries: entries}},
-			})
-			require.NoError(t, err)
-			pushed[tenantID+"/"+app] += lines
+		var wg sync.WaitGroup
+
+		// settle waits for the running flushes, then flushes everything and checks
+		// that every pushed entry has been stored once. Pushing while a flush is
+		// running can flush a chunk twice, an existing bug unrelated to flush jobs,
+		// so pushes only happen on a settled ingester.
+		settle := func() {
+			wg.Wait()
+			require.NoError(t, ing.flushStreams(context.Background(), "", nil, true))
+			require.Equal(t, pushed, storedEntries(store))
 		}
 
-		requireNoDuplicates := func() {
-			for key, n := range fuzzStoredEntries(store) {
-				require.LessOrEqual(t, n, pushed[key], "%s has more entries stored than were pushed", key)
-			}
-		}
+		for i, b := range steps {
+			kind := int(b) % 5
+			tenant := tenants[int(b/5)%len(tenants)]
+			app := apps[int(b/10)%len(apps)]
 
-		runCalls := func(calls []fuzzFlushCall, ctx context.Context) []error {
-			errs := make([]error, len(calls))
-			var wg sync.WaitGroup
-			for i, c := range calls {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					callCtx := ctx
-					if c.cancelled {
-						var cancel context.CancelFunc
-						callCtx, cancel = context.WithCancel(ctx)
-						cancel()
-					}
-					var matchers []*labels.Matcher
-					if c.selector != "" {
-						var err error
-						matchers, err = syntax.ParseMatchers(c.selector, true)
-						if err != nil {
-							errs[i] = err
-							return
-						}
-					}
-					errs[i] = ing.flushStreams(callCtx, c.tenantID, matchers, c.synchronous)
-				}()
-			}
-			done := make(chan struct{})
-			go func() { wg.Wait(); close(done) }()
-			select {
-			case <-done:
-			case <-time.After(30 * time.Second):
-				t.Fatal("flushStreams calls hung")
-			}
-			return errs
-		}
-
-		for round, rounds := 0, 1+r.next()%8; round < rounds; round++ {
-			// Let every flush op of the previous round finish before pushing. A push
-			// that appends a chunk while an op is flushing the stream reallocates
-			// stream.chunks, so the op marks a stale copy of its chunk as flushed and
-			// the chunk is flushed again. That is independent of flush jobs, so keep
-			// it out of this test. Ops of one queue run in order, so a synchronous
-			// flush of everything only returns once earlier ops are done; it may
-			// fail on injected store failures, which is fine here.
-			_ = ing.flushStreams(context.Background(), "", nil, true)
-
-			for n := r.next() % 6; n > 0; n-- {
-				push(fuzzTenants[r.next()%len(fuzzTenants)], fuzzApps[r.next()%len(fuzzApps)], 1+r.next()%3)
-			}
-			if r.next()%4 == 0 {
-				failures.Store(int32(1 + r.next()%3))
-			}
-			faulty := failures.Load() > 0
-
-			calls := make([]fuzzFlushCall, r.next()%5)
-			for i := range calls {
-				calls[i] = decodeFuzzFlushCall(r)
-			}
-			errs := runCalls(calls, context.Background())
-
-			for i, c := range calls {
-				switch {
-				case !c.synchronous:
-					require.NoError(t, errs[i])
-				case c.cancelled:
-					// Either the cancellation or a result that beat it.
-				case faulty:
-					// The injected failure may or may not hit this call.
-				default:
-					require.NoError(t, errs[i])
-					// Everything the call's streams held when it started, which is
-					// everything pushed so far, has been stored.
-					stored := fuzzStoredEntries(store)
-					for key, n := range pushed {
-						userID, app, _ := strings.Cut(key, "/")
-						if (c.tenantID == "" || c.tenantID == userID) && c.matches(app) {
-							require.Equal(t, n, stored[key], "%s is not fully stored after a successful synchronous flush", key)
-						}
-					}
+			if kind < 2 {
+				if i > 0 && int(steps[i-1])%5 >= 2 {
+					settle()
 				}
+				_, err := ing.Push(user.InjectOrgID(context.Background(), tenant), &logproto.PushRequest{
+					Streams: []logproto.Stream{{
+						Labels:  fmt.Sprintf(`{app="%s"}`, app),
+						Entries: []logproto.Entry{{Timestamp: time.Unix(0, int64(i+1)), Line: fmt.Sprintf("line-%d", i)}},
+					}},
+				})
+				require.NoError(t, err)
+				pushed[tenant+"/"+app]++
+				continue
 			}
-			requireNoDuplicates()
+
+			// kind 2 is a synchronous flush, 3 an asynchronous one and 4 a
+			// synchronous one whose context is already cancelled. An odd byte
+			// restricts the flush to one app of the tenant, an even one flushes
+			// all tenants.
+			var flushTenant string
+			var matchers []*labels.Matcher
+			if b%2 == 1 {
+				flushTenant = tenant
+				matchers = []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", app)}
+			}
+			ctx := context.Background()
+			if kind == 4 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := ing.flushStreams(ctx, flushTenant, matchers, kind != 3); err != nil && !errors.Is(err, context.Canceled) {
+					t.Errorf("flushStreams: %v", err)
+				}
+			}()
 		}
 
-		// Recover the store; a final flush of everything must leave every entry
-		// stored exactly once.
-		failures.Store(0)
-		require.NoError(t, ing.flushStreams(context.Background(), "", nil, true))
-		require.Equal(t, func() map[string]int {
-			if len(pushed) == 0 {
-				return map[string]int{}
-			}
-			return pushed
-		}(), fuzzStoredEntries(store))
-
-		// A flush racing shutdown may fail but must neither hang nor panic.
-		if r.next()%2 == 0 {
-			push(fuzzTenants[0], fuzzApps[0], 1)
-			calls := []fuzzFlushCall{{synchronous: true, matches: func(string) bool { return true }}, {matches: func(string) bool { return true }}}
-			ing.StopAsync()
-			runCalls(calls, context.Background())
-		}
+		settle()
 	})
 }

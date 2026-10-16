@@ -34,9 +34,7 @@ func (i *Ingester) flushQueueIndex(fp model.Fingerprint) int {
 // In asynchronous mode it enqueues an immediate flushOp per stream and returns.
 // In synchronous mode it does the same, but attaches a flushJob to each op and
 // waits for the job to complete. If an op for a stream is already queued the job
-// is attached to it instead of enqueueing a duplicate. Either way the work runs
-// on the flush workers, which keeps the guarantee that a stream is only flushed
-// by one op at a time.
+// is attached to it instead of enqueueing a duplicate.
 //
 // It returns errFlushNotRunning or ErrReadOnly if the ingester is not running or
 // is shutting down. Otherwise it returns the first flush error, or the context's
