@@ -3,13 +3,31 @@ package builder
 import (
 	"context"
 	"errors"
+	"flag"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
+
+func TestNew(t *testing.T) {
+	t.Run("returns an error when the flush concurrency is 0", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.Topic = "test"
+		cfg.FlushConcurrency = 0
+
+		_, err := New(kafka.Config{}, cfg, dataobj_uploader.Config{}, metastore.Config{}, nil, nil, prometheus.NewRegistry(), log.NewNopLogger(), nil)
+		require.ErrorContains(t, err, "flush concurrency must be at least 1")
+	})
+}
 
 func TestService(t *testing.T) {
 	t.Run("fails with the processor error when the processor fails", func(t *testing.T) {
