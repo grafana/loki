@@ -1,0 +1,549 @@
+#
+# `| name="value"` label matcher: which value the name reads, and what happens when the same name
+# comes from more than one source.
+#
+# A name reaches the matcher from three sources: stream labels, structured metadata, and parsed
+# fields. Two rules resolve a name that is present in more than one source:
+#
+# - The base name goes to the highest-precedence source: stream > structured metadata > parsed.
+# - Each value that loses the base name moves to the single <name>_extracted key. There the
+#   precedence is the opposite: parsed > structured metadata > stream.
+#
+# `label_filters.logqltest` covers the other matcher kinds (numeric, duration, bytes, ip) and the
+# logical operators. This file covers name resolution and collisions for the string matcher.
+#
+# The scenarios start with one source, add collisions, and end with the behavior that this file
+# marks as a bug.
+#
+
+# A matcher reads the same name from each of the three sources. Only a parsed field needs a parser.
+clear
+load
+  {app="p"}               "name=alpha msg=p" @ 10s
+  {app="p"}               "name=beta msg=p"  @ 20s # noise: a different parsed value
+  {app="s", name="alpha"} "msg=s"            @ 10s
+  {app="s", name="beta"}  "msg=s"            @ 20s # noise: a different stream label value
+  {app="m"}               "msg=m"            @ 10s [metadata name="alpha"]
+  {app="m"}               "msg=m"            @ 20s [metadata name="beta"] # noise
+
+# parsed field
+eval select from 0 to 30s forward {app="p"} | logfmt | name="alpha"
+  {app="p"} "name=alpha msg=p" @ 10s [parsed msg="p" name="alpha"]
+
+# stream label
+eval select from 0 to 30s forward {app="s"} | name="alpha"
+  {app="s", name="alpha"} "msg=s" @ 10s
+
+# structured metadata stays categorized apart from the stream labels; no parser is needed.
+eval select from 0 to 30s forward {app="m"} | name="alpha"
+  {app="m"} "msg=m" @ 10s [metadata name="alpha"]
+
+# One matcher reads all three sources at once.
+eval select from 0 to 30s forward {app=~"p|s|m"} | logfmt | name="alpha"
+  {app="p"} "name=alpha msg=p" @ 10s [parsed msg="p" name="alpha"]
+  {app="s", name="alpha"} "msg=s" @ 10s [parsed msg="s"]
+  {app="m"} "msg=m" @ 10s [metadata name="alpha"] [parsed msg="m"]
+
+# An absent name reads as an empty value, so `=""` keeps the line and `!=""` drops it.
+clear
+load
+  {app="a"} "name=alpha" @ 10s
+  {app="a"} "other=1"    @ 20s # the line has no name field
+
+eval select from 0 to 30s forward {app="a"} | logfmt | name=""
+  {app="a"} "other=1" @ 20s [parsed other="1"]
+eval select from 0 to 30s forward {app="a"} | logfmt | name!=""
+  {app="a"} "name=alpha" @ 10s [parsed name="alpha"]
+# The absent name compares as "", which is not equal to "alpha", so the second line stays.
+eval select from 0 to 30s forward {app="a"} | logfmt | name!="alpha"
+  {app="a"} "other=1" @ 20s [parsed other="1"]
+
+# A present name that holds an empty value and an absent name are the same to a matcher. The
+# result label set tells them apart, but no matcher can: `=""` keeps both and `!=""` keeps
+# neither. There is no matcher that means "this name exists".
+clear
+load
+  {app="meta"}           "x=1"       @ 10s [metadata name=""]
+  {app="parse"}          "name= x=1" @ 10s
+  {app="none"}           "x=1"       @ 10s
+  {app="empty", name=""} "x=1"       @ 10s
+
+# Structured metadata keeps an empty value, so the name is present in the result.
+eval select from 0 to 30s forward {app="meta"}
+  {app="meta"} "x=1" @ 10s [metadata name=""]
+# logfmt() drops an empty value unless --keep-empty is given.
+eval select from 0 to 30s forward {app="parse"} | logfmt
+  {app="parse"} "name= x=1" @ 10s [parsed x="1"]
+eval select from 0 to 30s forward {app="parse"} | logfmt --keep-empty
+  {app="parse"} "name= x=1" @ 10s [parsed name="" x="1"]
+# A stream label cannot hold an empty value. The load drops it, so the stream has no name at all.
+eval select from 0 to 30s forward {app="empty"}
+  {app="empty"} "x=1" @ 10s
+# One matcher gives the same answer for a present empty value, a dropped empty value, and an
+# absent name.
+eval select from 0 to 30s forward {app=~"meta|parse|none"} | logfmt --keep-empty | name=""
+  {app="meta"} "x=1" @ 10s [metadata name=""] [parsed x="1"]
+  {app="parse"} "name= x=1" @ 10s [parsed name="" x="1"]
+  {app="none"} "x=1" @ 10s [parsed x="1"]
+eval select from 0 to 30s forward {app=~"meta|parse|none"} | logfmt --keep-empty | name!=""
+  expect empty
+
+# A stream label and a parsed field clash: the stream label keeps the base name.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+  {app="a", name="stream"} "name=noise"  @ 20s # noise: a different parsed value
+
+eval select from 0 to 30s forward {app="a"} | logfmt
+  {app="a", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+  {app="a", name="stream"} "name=noise" @ 20s [parsed name_extracted="noise"]
+eval select from 0 to 30s forward {app="a"} | logfmt | name="stream"
+  {app="a", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+  {app="a", name="stream"} "name=noise" @ 20s [parsed name_extracted="noise"]
+# The parsed value is unreachable through the base name.
+eval select from 0 to 30s forward {app="a"} | logfmt | name="parsed"
+  expect empty
+eval select from 0 to 30s forward {app="a"} | logfmt | name_extracted="parsed"
+  {app="a", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+
+# Structured metadata and a parsed field clash: the metadata keeps the base name.
+clear
+load
+  {app="a"} "name=parsed" @ 10s [metadata name="meta"]
+  {app="a"} "name=noise"  @ 20s [metadata name="meta"] # noise: a different parsed value
+
+eval select from 0 to 30s forward {app="a"} | logfmt
+  {app="a"} "name=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+  {app="a"} "name=noise" @ 20s [metadata name="meta"] [parsed name_extracted="noise"]
+eval select from 0 to 30s forward {app="a"} | logfmt | name="meta"
+  {app="a"} "name=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+  {app="a"} "name=noise" @ 20s [metadata name="meta"] [parsed name_extracted="noise"]
+eval select from 0 to 30s forward {app="a"} | logfmt | name="parsed"
+  expect empty
+eval select from 0 to 30s forward {app="a"} | logfmt | name_extracted="parsed"
+  {app="a"} "name=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+
+# A stream label and structured metadata clash: the stream label keeps the base name. No parser
+# takes part, so the rename happens on every query over the stream.
+clear
+load
+  {app="a", name="stream"} "x" @ 10s [metadata name="meta"]
+  {app="a", name="stream"} "y" @ 20s [metadata name="noise"] # noise: a different metadata value
+  {app="a", name="stream"} "z" @ 25s [metadata name=""]
+
+eval select from 0 to 30s forward {app="a"}
+  {app="a", name="stream"} "x" @ 10s [metadata name_extracted="meta"]
+  {app="a", name="stream"} "y" @ 20s [metadata name_extracted="noise"]
+  {app="a", name="stream"} "z" @ 25s [metadata name_extracted=""]
+eval select from 0 to 30s forward {app="a"} | name="stream"
+  {app="a", name="stream"} "x" @ 10s [metadata name_extracted="meta"]
+  {app="a", name="stream"} "y" @ 20s [metadata name_extracted="noise"]
+  {app="a", name="stream"} "z" @ 25s [metadata name_extracted=""]
+eval select from 0 to 30s forward {app="a"} | name="meta"
+  expect empty
+eval select from 0 to 30s forward {app="a"} | name_extracted="meta"
+  {app="a", name="stream"} "x" @ 10s [metadata name_extracted="meta"]
+# An empty metadata value still claims the _extracted name, and the matcher cannot tell that
+# result apart from one where no metadata clashed at all.
+eval select from 0 to 30s forward {app="a"} | name_extracted=""
+  {app="a", name="stream"} "z" @ 25s [metadata name_extracted=""]
+
+# All three sources clash. There is one _extracted key, so only two of the three values survive:
+# the stream label keeps the base name and the parsed field takes _extracted. The metadata value
+# is dropped and no matcher can read it. This loss follows the two rules above, so this file
+# records it as correct behavior rather than a bug.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s [metadata name="meta"]
+  {app="a", name="stream"} "name=noise"  @ 20s [metadata name="meta"] # noise
+
+eval select from 0 to 30s forward {app="a"} | logfmt
+  {app="a", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+  {app="a", name="stream"} "name=noise" @ 20s [parsed name_extracted="noise"]
+eval select from 0 to 30s forward {app="a"} | logfmt | name_extracted="meta"
+  expect empty
+# Without the parser the metadata value takes _extracted and is reachable again. The parser stage
+# alone decides whether the metadata value exists in the result.
+eval select from 0 to 30s forward {app="a"} | name_extracted="meta"
+  {app="a", name="stream"} "name=parsed" @ 10s [metadata name_extracted="meta"]
+  {app="a", name="stream"} "name=noise" @ 20s [metadata name_extracted="meta"]
+
+# A line that holds both `name` and `name_extracted` collides with the renamed field. The parser
+# keeps the first value it writes to a key, so the field order in the line decides the winner.
+clear
+load
+  {app="clash", name="stream"} "name=first name_extracted=second" @ 10s
+  {app="clash", name="stream"} "name_extracted=second name=first" @ 20s
+  {app="plain"}                "name=first name_extracted=second" @ 10s
+
+eval select from 0 to 30s forward {app="clash"} | logfmt | name_extracted="first"
+  {app="clash", name="stream"} "name=first name_extracted=second" @ 10s [parsed name_extracted="first"]
+eval select from 0 to 30s forward {app="clash"} | logfmt | name_extracted="second"
+  {app="clash", name="stream"} "name_extracted=second name=first" @ 20s [parsed name_extracted="second"]
+# Without the stream label no rename happens, so both fields keep their own name.
+eval select from 0 to 30s forward {app="plain"} | logfmt | name="first" | name_extracted="second"
+  {app="plain"} "name=first name_extracted=second" @ 10s [parsed name="first" name_extracted="second"]
+
+# A stream label that is itself named <x>_extracted takes a second suffix when the line holds the
+# same field.
+clear
+load
+  {app="a", name_extracted="stream"} "name_extracted=parsed" @ 10s
+  {app="a", name_extracted="stream"} "name=parsed"           @ 20s # noise: no clashing field
+
+eval select from 0 to 30s forward {app="a"} | logfmt | name_extracted_extracted="parsed"
+  {app="a", name_extracted="stream"} "name_extracted=parsed" @ 10s [parsed name_extracted_extracted="parsed"]
+# A parsed `name` does not clash with the stream label `name_extracted`, so it keeps the base name.
+eval select from 0 to 30s forward {app="a"} | logfmt | name="parsed"
+  {app="a", name_extracted="stream"} "name=parsed" @ 20s [parsed name="parsed"]
+
+# A rename only happens against a stream label or structured metadata. Neither load below renames
+# anything, but both give a label set that looks like a clash.
+clear
+load
+  {app="rename"}   "name=parsed"           @ 10s [metadata name_extracted="meta"]
+  {app="norename"} "name_extracted=parsed" @ 10s [metadata name="meta"]
+
+# The parsed `name` clashes with no source, so it keeps the base name. The metadata keeps
+# _extracted because no rule moves it.
+eval select from 0 to 30s forward {app="rename"} | logfmt
+  {app="rename"} "name=parsed" @ 10s [metadata name_extracted="meta"] [parsed name="parsed"]
+# The metadata `name` clashes with no source and the parsed `name_extracted` clashes with no
+# source, so neither moves. The result is the mirror image of the load above.
+eval select from 0 to 30s forward {app="norename"} | logfmt
+  {app="norename"} "name_extracted=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+# A matcher cannot tell the two apart, so a query must not read _extracted as proof of a clash.
+eval select from 0 to 30s forward {app=~"rename|norename"} | logfmt | name_extracted!=""
+  {app="rename"} "name=parsed" @ 10s [metadata name_extracted="meta"] [parsed name="parsed"]
+  {app="norename"} "name_extracted=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+
+# A duplicate name resolves differently for each source: a parsed field keeps the first value, and
+# structured metadata keeps the last.
+clear
+load
+  {app="p"} "name=first name=second" @ 10s
+  {app="m"} "x=1"                    @ 10s [metadata name="first" name="second"]
+
+eval select from 0 to 30s forward {app="p"} | logfmt | name="first"
+  {app="p"} "name=first name=second" @ 10s [parsed name="first"]
+eval select from 0 to 30s forward {app="p"} | logfmt | name="second"
+  expect empty
+eval select from 0 to 30s forward {app="m"} | name="second"
+  {app="m"} "x=1" @ 10s [metadata name="second"]
+eval select from 0 to 30s forward {app="m"} | name="first"
+  expect empty
+
+# json() flattens a nested object with `_`, then tests the flattened name for a clash. The suffix
+# goes on the flattened name, not on a path segment.
+clear
+load
+  {app="flat", user="stream"}     `{"user":{"id":"7"}}` @ 10s
+  {app="clash", user_id="stream"} `{"user":{"id":"7"}}` @ 10s
+  {app="scalar", user="stream"}   `{"user":"flat"}`     @ 10s
+
+# `user` and `user_id` are different names, so the nested field does not clash with `user`.
+eval select from 0 to 30s forward {app="flat"} | json | user="stream" | user_id="7"
+  {app="flat", user="stream"} `{"user":{"id":"7"}}` @ 10s [parsed user_id="7"]
+# The flattened name clashes, so the suffix lands after the whole path.
+eval select from 0 to 30s forward {app="clash"} | json | user_id_extracted="7"
+  {app="clash", user_id="stream"} `{"user":{"id":"7"}}` @ 10s [parsed user_id_extracted="7"]
+# A scalar at the same key clashes directly.
+eval select from 0 to 30s forward {app="scalar"} | json | user_extracted="flat"
+  {app="scalar", user="stream"} `{"user":"flat"}` @ 10s [parsed user_extracted="flat"]
+
+# A name is sanitized before the clash test, so a matcher must use the sanitized name. A parsed
+# key and a metadata key use different rules for a leading digit: a parsed key takes `_`, a
+# metadata key takes `key_`.
+clear
+load
+  {app="a"} `{"user.name":"json","0x":"z"}` @ 10s [metadata "service.name"="meta" 0y="w"]
+
+eval select from 0 to 30s forward {app="a"} | json | user_name="json"
+  {app="a"} `{"user.name":"json","0x":"z"}` @ 10s [metadata key_0y="w" service_name="meta"] [parsed _0x="z" user_name="json"]
+eval select from 0 to 30s forward {app="a"} | json | service_name="meta" | _0x="z" | key_0y="w"
+  {app="a"} `{"user.name":"json","0x":"z"}` @ 10s [metadata key_0y="w" service_name="meta"] [parsed _0x="z" user_name="json"]
+# The original name is not a valid matcher name, in either the bare or the quoted form.
+eval select from 0 to 30s forward {app="a"} | json | user.name="json"
+  expect fail msg: unexpected .
+eval select from 0 to 30s forward {app="a"} | json | "service.name"="meta"
+  expect fail msg: unexpected STRING
+
+# label_format overrides the base name in place. It is the only stage that writes a clashing name
+# without a suffix, so it is the way to make a matcher read the parsed value under the base name.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+  {app="a", name="stream"} "name=noise"  @ 20s # noise
+
+# A template that targets the clashing name replaces the stream label; the write always lands in
+# the parsed category.
+eval select from 0 to 30s forward {app="a"} | logfmt | label_format name="{{.name_extracted}}" | name="parsed"
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed" name_extracted="parsed"]
+# A rename moves the parsed value onto the base name and removes the source name.
+eval select from 0 to 30s forward {app="a"} | logfmt | label_format name=name_extracted | name="parsed"
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+
+# A regular expression that matches every value makes the matcher a no-op. The query planner
+# removes the stage, so the name does not need to exist.
+clear
+load
+  {app="a", name="stream"} "x" @ 10s
+  {app="a"}                "y" @ 20s # noise: the same app, but no name label
+
+eval select from 0 to 30s forward {app="a"} | absent=~".*"
+  {app="a", name="stream"} "x" @ 10s
+  {app="a"} "y" @ 20s
+eval select from 0 to 30s forward {app="a"} | absent=~""
+  {app="a", name="stream"} "x" @ 10s
+  {app="a"} "y" @ 20s
+# `^$` is a real comparison against the empty value, so it keeps only the line without the name.
+eval select from 0 to 30s forward {app="a"} | name=~"^$"
+  {app="a"} "y" @ 20s
+# `!~".*"` matches nothing.
+eval select from 0 to 30s forward {app="a"} | name!~".*"
+  expect empty
+# A regular expression matcher is anchored to the whole value, and `=` is a literal comparison.
+eval select from 0 to 30s forward {app="a"} | name=~"stre"
+  expect empty
+eval select from 0 to 30s forward {app="a"} | name="stre.*"
+  expect empty
+
+# A matcher and a parser commute when the name comes from a stream label or structured metadata.
+# A parser never writes the base name of a clashing source, it writes <name>_extracted, so the
+# value that the matcher reads is the same on either side of the parser.
+clear
+load
+  {app="s", name="stream"} "name=parsed" @ 10s
+  {app="s", name="other"}  "name=parsed" @ 20s # noise: a different stream label value
+  {app="m"}                "name=parsed" @ 10s [metadata name="meta"]
+  {app="m"}                "name=parsed" @ 20s [metadata name="other"] # noise
+
+# stream label
+eval select from 0 to 30s forward {app="s"} | logfmt | name="stream"
+  {app="s", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+eval select from 0 to 30s forward {app="s"} | name="stream" | logfmt
+  {app="s", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+# structured metadata
+eval select from 0 to 30s forward {app="m"} | logfmt | name="meta"
+  {app="m"} "name=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+eval select from 0 to 30s forward {app="m"} | name="meta" | logfmt
+  {app="m"} "name=parsed" @ 10s [metadata name="meta"] [parsed name_extracted="parsed"]
+# The parsed value is unreachable through the base name in either order.
+eval select from 0 to 30s forward {app="s"} | logfmt | name="parsed"
+  expect empty
+eval select from 0 to 30s forward {app="s"} | name="parsed" | logfmt
+  expect empty
+
+#
+# The scenarios below record behavior that this file marks as a bug. Each one gives the correct
+# result in a comment.
+#
+
+# A matcher and a parser do NOT commute when only the parser supplies the name. A matcher before
+# the parser reads an absent name, which reads as "". A matcher after it reads the parsed value.
+# Only the second form can test a parsed value, so `| name="parsed" | logfmt` is a well-defined
+# query that never matches.
+#
+# Fixed (#24565): a matcher before a parser used to be applied a second time, against the value
+# that the parser writes. A parser stops on a matcher that a just-extracted name fails, which is a
+# valid optimization for a matcher DOWNSTREAM of the parser, because that line was going to be
+# dropped anyway. The hint builder used to collect the matcher of every stage without testing
+# where the stage sits, so it applied an upstream matcher downstream as well.
+#
+# The nil/empty conflation decided which queries reached that second test. A matcher only survives
+# to the parser when it passes against an absent name, so `=""` and `!="<value>"` were exposed,
+# and `="<value>"` and `!=""` were not. The scenarios below are regression guards for the fix.
+#
+# Correct: a matcher reads only the label set that exists when its stage runs.
+clear
+load
+  {app="a"} "name=parsed" @ 10s
+
+# `name="parsed"`: after the parser the name holds "parsed", so the line stays.
+eval select from 0 to 30s forward {app="a"} | logfmt | name="parsed"
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+# Correct: the name is absent before the parser and reads as "", so the matcher drops the line.
+# The query is well formed, but no line can satisfy it.
+eval select from 0 to 30s forward {app="a"} | name="parsed" | logfmt
+  expect empty
+
+# `name=""`: after the parser the name holds "parsed", so the line goes. Correct.
+eval select from 0 to 30s forward {app="a"} | logfmt | name=""
+  expect empty
+# Fixed: the name is absent before the parser, and an absent name equals "", so the matcher keeps
+# the line. The parser then runs normally and is not re-applied.
+eval select from 0 to 30s forward {app="a"} | name="" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+
+# `name!="parsed"`: after the parser the value is equal, so the line goes. Correct.
+eval select from 0 to 30s forward {app="a"} | logfmt | name!="parsed"
+  expect empty
+# Fixed: the absent name reads as "", which is not equal to "parsed", so the matcher keeps the
+# line and the parser runs normally afterward.
+eval select from 0 to 30s forward {app="a"} | name!="parsed" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+
+# `name!=""`: the absent name reads as "", so the matcher drops the line before the parser runs.
+# Both results are correct and they differ, because the two queries ask different questions.
+eval select from 0 to 30s forward {app="a"} | logfmt | name!=""
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+eval select from 0 to 30s forward {app="a"} | name!="" | logfmt
+  expect empty
+
+# `name!="other"`: the matcher passes before the parser and passes again after it, so this pair
+# agrees and hides every case above. One agreeing pair does not prove that the orders commute.
+eval select from 0 to 30s forward {app="a"} | logfmt | name!="other"
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+eval select from 0 to 30s forward {app="a"} | name!="other" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+
+# A two-operand matcher is excluded from the short circuit, so the same intent gives the correct
+# result. This is the workaround, not a separate behavior.
+eval select from 0 to 30s forward {app="a"} | name!="parsed" or name="never" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+
+# Fixed: all four queries below read the same line and now agree, each counting 1. A `by` clause
+# used to make the hint builder drop the collected matchers, which turned the second (buggy)
+# re-application off for the grouped forms — the reason they already gave the correct count
+# before the fix below.
+eval instant at 60s count_over_time({app="a"} | name!="parsed" | logfmt [1m])
+  {app="a", name="parsed"} 1
+eval instant at 60s sum(count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
+  {} 1
+eval instant at 60s sum by (app) (count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
+  {app="a"} 1
+# The series carries `name="parsed"` from a `name!="parsed"` query. That is correct: the matcher
+# ran before the parser, where the name was absent, so it compared against "" and passed; the
+# parser then ran normally and wrote the parsed value.
+eval instant at 60s sum by (name) (count_over_time({app="a"} | name!="parsed" | logfmt [1m]))
+  {name="parsed"} 1
+
+# Fixed (#25091): `drop` now removes a name from the clash test. The parser used to test the raw
+# stream labels, which `drop` did not change, so the parsed field used to take the _extracted name
+# regardless.
+#
+# Correct: `name` is gone when the parser runs, so the parsed field takes the base name.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+
+eval select from 0 to 30s forward {app="a"} | drop name | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+# The base name now holds "parsed", which is not "", so the matcher drops the line.
+eval select from 0 to 30s forward {app="a"} | drop name | logfmt | name=""
+  expect empty
+# A `drop` after the parser gives a different label set, for the correct reason: the parser runs
+# first and renames against the still-present stream label, then `drop` removes it.
+eval select from 0 to 30s forward {app="a"} | logfmt | drop name
+  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+
+# BUG: a rename overwrites whatever already holds the _extracted name. The parser moves `name` to
+# `name_extracted` without testing whether `name_extracted` exists, so the written value hides a
+# stream label or a metadata value of that name.
+#
+# Correct: the value that already holds `name_extracted` survives, and the query can read both
+# values.
+clear
+load
+  {app="s", name="stream", name_extracted="also-stream"} "name=parsed" @ 10s
+  {app="m", name="stream"}                               "name=parsed" @ 10s [metadata name_extracted="meta"]
+
+eval select from 0 to 30s forward {app="s"} | logfmt
+  {app="s", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+eval select from 0 to 30s forward {app="s"} | logfmt | name_extracted="also-stream"
+  expect empty
+# The stream label is present until the parser runs.
+eval select from 0 to 30s forward {app="s"} | name_extracted="also-stream"
+  {app="s", name="stream", name_extracted="also-stream"} "name=parsed" @ 10s
+# The same rename hides a metadata value that holds the _extracted name.
+eval select from 0 to 30s forward {app="m"} | logfmt
+  {app="m", name="stream"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+eval select from 0 to 30s forward {app="m"} | name_extracted="meta"
+  {app="m", name="stream"} "name=parsed" @ 10s [metadata name_extracted="meta"]
+
+# BUG: structured metadata that clashes with a stream label also overwrites a second metadata
+# value that already holds the _extracted name. Metadata reaches the pipeline sorted by name, so
+# `name` always moves to `name_extracted` first and the real `name_extracted` always wins.
+#
+# Correct: both metadata values must reach the result under distinct names.
+clear
+load
+  {app="a", name="stream"} "x" @ 10s [metadata name="meta" name_extracted="meta-extracted"]
+  {app="a", name="stream"} "y" @ 20s [metadata name="meta"] # noise: only one metadata key
+
+eval select from 0 to 30s forward {app="a"} | name_extracted="meta-extracted"
+  {app="a", name="stream"} "x" @ 10s [metadata name_extracted="meta-extracted"]
+# The same metadata key reaches _extracted when nothing else holds that name.
+eval select from 0 to 30s forward {app="a"} | name_extracted="meta"
+  {app="a", name="stream"} "y" @ 20s [metadata name_extracted="meta"]
+
+# BUG: an expression parser whose path or key does not match adds an empty-value label, but it
+# skips that label when the name clashes with a stream label. Each parser asks whether the name
+# already has a value, and the stream label answers for it, so the parser writes nothing under
+# either name. This hits both json() and logfmt() expression form, by different code: json's
+# fallback checks the name across every category instead of just what this parse wrote; logfmt's
+# fallback skips a clashing name up front and never revisits it.
+#
+# Correct: the empty value goes to name_extracted, the same way a matching path would.
+clear
+load
+  {app="plain"}            `{"x":"1"}` @ 10s
+  {app="s", name="stream"} `{"x":"1"}` @ 10s
+
+# Without a clash the missing path gives an empty-value label.
+eval select from 0 to 30s forward {app="plain"} | json name="missing"
+  {app="plain"} `{"x":"1"}` @ 10s [parsed name=""]
+# With a clash neither name nor name_extracted is written.
+eval select from 0 to 30s forward {app="s"} | json name="missing"
+  {app="s", name="stream"} `{"x":"1"}` @ 10s
+eval select from 0 to 30s forward {app="s"} | json name="missing" | name_extracted=""
+  {app="s", name="stream"} `{"x":"1"}` @ 10s
+# A path that matches does write name_extracted, so the two paths disagree.
+eval select from 0 to 30s forward {app="s"} | json name="x"
+  {app="s", name="stream"} `{"x":"1"}` @ 10s [parsed name_extracted="1"]
+
+# The same bug, for logfmt()'s expression form.
+clear
+load
+  {app="plain2"}            "x=1" @ 10s
+  {app="s2", name="stream"} "x=1" @ 10s
+
+# Without a clash the missing key gives an empty-value label, same as json().
+eval select from 0 to 30s forward {app="plain2"} | logfmt name="missing"
+  {app="plain2"} "x=1" @ 10s [parsed name=""]
+# With a clash neither name nor name_extracted is written.
+eval select from 0 to 30s forward {app="s2"} | logfmt name="missing"
+  {app="s2", name="stream"} "x=1" @ 10s
+
+# BUG: a matcher on __error_details__ always reads an empty value. Only __error__ is mapped back
+# to the pipeline error, so __error_details__ is present in the result but no matcher can read it.
+#
+# Correct: `__error_details__=""` must drop the failing line, and `__error_details__!=""` must
+# keep it, the same way __error__ works.
+clear
+load
+  {app="a"} `{"a":` @ 10s
+
+eval select from 0 to 30s forward {app="a"} | json
+  {app="a"} `{"a":` @ 10s [parsed __error__="JSONParserErr" __error_details__="Malformed JSON error"]
+# __error__ reads the error, so these two are correct.
+eval select from 0 to 30s forward {app="a"} | json | __error__=""
+  expect empty
+eval select from 0 to 30s forward {app="a"} | json | __error__="JSONParserErr"
+  {app="a"} `{"a":` @ 10s [parsed __error__="JSONParserErr" __error_details__="Malformed JSON error"]
+# BUG: the details are not empty, so this must drop the line.
+eval select from 0 to 30s forward {app="a"} | json | __error_details__=""
+  {app="a"} `{"a":` @ 10s [parsed __error__="JSONParserErr" __error_details__="Malformed JSON error"]
+# BUG: the details are not empty, so this must keep the line.
+eval select from 0 to 30s forward {app="a"} | json | __error_details__!=""
+  expect empty
+
+# BUG: `drop __error__` also removes __error_details__. `drop` resets the error without recording
+# a deletion, so the builder takes its unchanged-label shortcut and returns the stream labels only.
+#
+# Correct: `drop __error__` removes __error__ and keeps __error_details__, which is what
+# `drop __error_details__` does in the opposite direction.
+eval select from 0 to 30s forward {app="a"} | json | drop __error__
+  {app="a"} `{"a":` @ 10s
+eval select from 0 to 30s forward {app="a"} | json | drop __error_details__
+  {app="a"} `{"a":` @ 10s [parsed __error__="JSONParserErr"]

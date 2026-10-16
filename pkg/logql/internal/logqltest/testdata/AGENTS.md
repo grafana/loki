@@ -163,5 +163,6 @@ eval select from 0 to 30s forward {app="a"} | label_format level=lvl
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
 `functions` (`label_replace`, `vector`), `conversions`, `log_selection` (stream selectors, line
-filters, as opposed to a metric aggregation), … add more as coverage grows (`line_filters`,
-`label_filters`, `parsers`, `formatters`, …).
+filters, as opposed to a metric aggregation), `line_filters`, `label_filters` (matcher kinds and
+logical operators), `label_matchers` (name resolution and `_extracted` collisions), `parsers`,
+`formatters`, … add more as coverage grows.
