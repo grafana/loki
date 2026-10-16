@@ -951,7 +951,7 @@ func TestFlushStreams(t *testing.T) {
 		putStarted, release := make(chan struct{}), make(chan struct{})
 		var once sync.Once
 		var completedPuts atomic.Int32
-		store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
+		store.onPut = func(_ context.Context, _ []chunk.Chunk) error {
 			once.Do(func() { close(putStarted) })
 			<-release
 			completedPuts.Add(1)
