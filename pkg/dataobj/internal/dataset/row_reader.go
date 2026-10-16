@@ -247,68 +247,15 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 
 	// sequentially apply the predicates.
 	for i, p := range r.opts.Predicates {
-		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
-			// keep only columns that haven't been filled yet.
-			_, ok := filledColumns[c]
-			return !ok
-		})
+		var err error
+		passCount, err = r.evalPredicate(ctx, i, p, s[:readSize], filledColumns, &rowsRead, &primaryColumnBytes)
 		if err != nil {
 			return rowsRead, 0, err
-		}
-
-		var count int
-		// read the requested number of rows for the first predicate.
-		if i == 0 {
-			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
-			if err != nil && !errors.Is(err, io.EOF) {
-				return 0, 0, err
-			} else if count == 0 && errors.Is(err, io.EOF) {
-				return 0, 0, io.EOF
-			}
-
-			rowsRead = count
-		} else if len(columns) > 0 {
-			count, err = r.inner.Fill(ctx, columns, s[:readSize])
-			if err != nil && !errors.Is(err, io.EOF) {
-				return rowsRead, 0, err
-			} else if count != readSize {
-				return rowsRead, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", readSize, count)
-			}
-		} else {
-			count = readSize // required columns are already filled
-		}
-
-		compiled := r.compiledPredicates[i]
-
-		passCount = 0
-		for j := range count {
-			size := s[j].SizeOfColumns(idxs)
-			primaryColumnBytes += size
-
-			if !compiled.eval(s[j]) {
-				continue
-			}
-			// We move s[j] to s[passCount] by *swapping* the rows. Copying would
-			// result in the Row.Values slice existing in two places in the buffer,
-			// which causes memory corruption when filling in rows.
-			s[passCount], s[j] = s[j], s[passCount]
-			passCount++
-		}
-
-		// Track rows that are relevant to the stream matchers.
-		// This is updated only if the first predicate is streamID
-		// any other applied predicates measure query selectivity.
-		if i == 0 && isStreamIDPredicate(p) {
-			region.Record(dataobj.StatStreamRelevantRows.Observe(int64(passCount)))
 		}
 
 		if passCount == 0 {
 			// No rows passed the predicate, so we can stop early.
 			break
-		}
-
-		for _, c := range columns {
-			filledColumns[c] = struct{}{}
 		}
 
 		readSize = passCount
@@ -318,6 +265,76 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 	region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
+}
+
+// evalPredicate applies the predicate p, the i-th of r.opts.Predicates, to rows. It loads the
+// columns of p that earlier predicates did not fill, moves the rows that pass to the front of
+// rows, and returns how many there are.
+//
+// For the first predicate, evalPredicate reads rows from the dataset and sets *rowsRead to the
+// number of rows it read. It adds the size of the values it tested to *primaryColumnBytes and the
+// columns it loaded to filledColumns.
+func (r *RowReader) evalPredicate(ctx context.Context, i int, p Predicate, rows []Row, filledColumns map[Column]struct{}, rowsRead *int, primaryColumnBytes *int64) (int, error) {
+	columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
+		// keep only columns that haven't been filled yet.
+		_, ok := filledColumns[c]
+		return !ok
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	var count int
+	// read the requested number of rows for the first predicate.
+	if i == 0 {
+		count, err = r.inner.ReadColumns(ctx, columns, rows)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, err
+		} else if count == 0 && errors.Is(err, io.EOF) {
+			return 0, io.EOF
+		}
+
+		*rowsRead = count
+	} else if len(columns) > 0 {
+		count, err = r.inner.Fill(ctx, columns, rows)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, err
+		} else if count != len(rows) {
+			return 0, fmt.Errorf("failed to fill rows: expected %d, got %d", len(rows), count)
+		}
+	} else {
+		count = len(rows) // required columns are already filled
+	}
+
+	compiled := r.compiledPredicates[i]
+
+	var passCount int
+	for j := range count {
+		size := rows[j].SizeOfColumns(idxs)
+		*primaryColumnBytes += size
+
+		if !compiled.eval(rows[j]) {
+			continue
+		}
+		// We move rows[j] to rows[passCount] by *swapping* the rows. Copying would
+		// result in the Row.Values slice existing in two places in the buffer,
+		// which causes memory corruption when filling in rows.
+		rows[passCount], rows[j] = rows[j], rows[passCount]
+		passCount++
+	}
+
+	// Track rows that are relevant to the stream matchers.
+	// This is updated only if the first predicate is streamID
+	// any other applied predicates measure query selectivity.
+	if i == 0 && isStreamIDPredicate(p) {
+		xcap.RegionFromContext(ctx).Record(dataobj.StatStreamRelevantRows.Observe(int64(passCount)))
+	}
+
+	for _, c := range columns {
+		filledColumns[c] = struct{}{}
+	}
+
+	return passCount, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
