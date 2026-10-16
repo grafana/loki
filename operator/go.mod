@@ -89,8 +89,8 @@ require (
 	github.com/grafana/dskit v0.0.0-20260209132809-8d1c6d34bb5a // indirect
 	github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654 // indirect
 	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 // indirect
-	github.com/grafana/loki/pkg/push v0.0.0-20260827121917-dd170be07101 // indirect
-	github.com/grafana/otel-profiling-go v0.6.0 // indirect
+	github.com/grafana/loki/pkg/push v0.4.0 // indirect
+	github.com/grafana/otel-profiling-go v0.7.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.12 // indirect
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
@@ -99,18 +99,18 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
-	github.com/hashicorp/go-metrics v0.6.1 // indirect
+	github.com/hashicorp/go-metrics v0.7.0 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
-	github.com/hashicorp/memberlist v0.6.0 // indirect
+	github.com/hashicorp/memberlist v0.7.0 // indirect
 	github.com/hashicorp/serf v0.10.4 // indirect
-	github.com/huandu/xstrings v1.5.0 // indirect
+	github.com/huandu/xstrings v1.6.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jaegertracing/jaeger-idl v0.11.1 // indirect
+	github.com/jaegertracing/jaeger-idl v0.14.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect

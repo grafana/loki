@@ -527,10 +527,46 @@ func TestStreamShardStore_MergeKeepsTheFresherFootprint(t *testing.T) {
 	require.NotEmpty(t, stream.remoteBuckets["zone2"])
 }
 
-func TestStreamShardStore_MergeIgnoresRecordsOutsideTheRateWindow(t *testing.T) {
+func TestStreamShardStore_MergeIgnoresRecordsOutsideTheActiveWindow(t *testing.T) {
 	s, clock := newTestStreamShardStore(t, 0, "1KB")
-	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testRateWindow-testBucketSize), 600, 1, 1)
+	mergeRecord(s, "zone2", 0x1, clock.Now().Add(-testActiveWindow-testBucketSize), 600, 1, 1)
 	require.Equal(t, 0, countTrackedStreams(s))
+}
+
+func TestStreamShardStore_MergeRestoresTheFootprintBeyondTheRateWindow(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 0, "1KB")
+	// A record older than the rate window but still inside the active window:
+	// the stream and its shards must count towards the stream limit, while the
+	// bucket itself contributes no rate.
+	stale := clock.Now().Add(-testRateWindow - testBucketSize)
+	mergeRecord(s, "zone2", 0x1, stale, 6<<10, 1, 3)
+	mergeRecord(s, testZone, 0x2, stale, 6<<10, 1, 3)
+
+	remote := trackedStream(t, s, 0x1)
+	require.Equal(t, uint32(3), remote.shardCount)
+	require.Equal(t, uint64(3), remote.slots)
+	require.Empty(t, remote.remoteBuckets)
+
+	own := trackedStream(t, s, 0x2)
+	require.Equal(t, uint64(3), own.slots)
+	require.Empty(t, own.rateBuckets)
+	// The topic holds the record either way, so the produce cursor still
+	// advances and the bucket is not published a second time.
+	require.Equal(t, stale.Truncate(testBucketSize).UnixNano(), own.lastProducedBucket)
+
+	// There is no rate history to justify more than one shard.
+	require.Equal(t, uint32(1), push(t, s, 0x1, 6<<10, clock.Now()).Shards)
+}
+
+func TestStreamShardStore_MergedStreamsBeyondTheRateWindowConsumeTheBudget(t *testing.T) {
+	s, clock := newTestStreamShardStore(t, 2, "1KB")
+	stale := clock.Now().Add(-testRateWindow - testBucketSize)
+	mergeRecord(s, "zone2", 0x1, stale, 600, 1, 1)
+	mergeRecord(s, "zone2", 0x2, stale, 600, 1, 1)
+
+	res := push(t, s, 0x3, 600, clock.Now())
+	require.Zero(t, res.Shards)
+	require.Equal(t, ReasonMaxStreams.String(), res.RejectReason)
 }
 
 func TestStreamShardStore_Evict(t *testing.T) {

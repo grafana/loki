@@ -20,14 +20,17 @@ import (
 
 // countingCloser counts how many times it was closed. When inner is set it is
 // closed too, so a closer substituted by a mock still releases the real
-// resource behind it.
+// resource behind it. It is safe for concurrent use.
 type countingCloser struct {
+	mtx    sync.Mutex
 	closed int
 	err    error
 	inner  io.Closer
 }
 
 func (c *countingCloser) Close() error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	c.closed++
 	if c.inner != nil {
 		_ = c.inner.Close()
@@ -92,41 +95,83 @@ func (m *mockBuilder) TimeRanges() []dataobj.TimeRange {
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
 	offsets []int64
+	// onCommit, if set, runs before the offset is recorded, letting tests check
+	// the state that the commit sees.
+	onCommit func()
 }
 
 func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
+	if m.onCommit != nil {
+		m.onCommit()
+	}
 	m.offsets = append(m.offsets, offset)
 	return nil
 }
 
 // mockFlusher implements the flusher interface, handing out a distinct object
-// path per flush.
+// path per flush. It is safe for concurrent use.
 type mockFlusher struct {
+	mtx     sync.Mutex
 	flushes int
 	// obj is returned by every flush, letting tests assert that the flushed
 	// object reaches the caller.
 	obj *dataobj.Object
-	// closer is returned by every flush, letting tests assert that the caller
-	// releases the flushed object once it is done with it.
+	// closer is closed each time the caller closes a flushed object, letting
+	// tests assert that the caller releases every flushed object.
 	closer countingCloser
+	// open counts the flushed objects that the caller has not closed yet.
+	// maxOpen is the largest value that open reached.
+	open, maxOpen int
+	// onFlush, if set, runs before each flush returns. It runs without the
+	// lock, so it must be safe for concurrent use.
+	onFlush func()
 }
 
 func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+	m.mtx.Lock()
 	m.flushes++
-	return m.obj, &m.closer, fmt.Sprintf("object_%03d", m.flushes), nil
+	path := fmt.Sprintf("object_%03d", m.flushes)
+	m.open++
+	m.maxOpen = max(m.maxOpen, m.open)
+	m.mtx.Unlock()
+
+	if m.onFlush != nil {
+		m.onFlush()
+	}
+	return m.obj, mockFlushedObject{flusher: m}, path, nil
+}
+
+// mockFlushedObject is the closer of an object that a [mockFlusher] flushed.
+type mockFlushedObject struct {
+	flusher *mockFlusher
+}
+
+func (o mockFlushedObject) Close() error {
+	o.flusher.mtx.Lock()
+	o.flusher.open--
+	o.flusher.mtx.Unlock()
+	return o.flusher.closer.Close()
 }
 
 // mockIndexer implements the indexer interface, recording what it was asked to
-// index. Each index is reported at "index/" followed by the object path.
+// index. Each index is reported at "index/" followed by the object path. It is
+// safe for concurrent use.
 type mockIndexer struct {
+	mtx   sync.Mutex
 	objs  []*dataobj.Object
 	paths []string
 	// errs is consumed one entry per call so tests can drive retries. Once it
 	// is exhausted, indexing succeeds.
 	errs []error
+	// delay is how long each call sleeps before it indexes. In a synctest
+	// bubble, the sleep advances the fake clock.
+	delay time.Duration
 }
 
 func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
+	time.Sleep(m.delay)
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.objs = append(m.objs, obj)
 	m.paths = append(m.paths, objPath)
 	if len(m.errs) > 0 {
@@ -141,8 +186,9 @@ func (m *mockIndexer) Index(_ context.Context, obj *dataobj.Object, objPath stri
 }
 
 // mockTOCWriter implements the tocWriter interface, recording the entries it
-// was asked to write.
+// was asked to write. It is safe for concurrent use.
 type mockTOCWriter struct {
+	mtx     sync.Mutex
 	paths   []string
 	tenants []string
 	err     error
@@ -155,6 +201,8 @@ func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metas
 	if m.afterWrite != nil {
 		defer m.afterWrite()
 	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	if m.err != nil {
 		return m.err
 	}
