@@ -90,7 +90,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBAC         labelaccess.Config     `yaml:"lbac,omitempty" category:"experimental"`
+	LBAC         labelaccess.Config     `yaml:"lbac,omitempty"`
 	NoAuthTenant string                 `yaml:"no_auth_tenant,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
