@@ -152,6 +152,19 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 	}
 }
 
+func TestLoki_PatternIngesterTeeDependsOnTenantConfigs(t *testing.T) {
+	l := &Loki{
+		Cfg: Config{
+			Target: flagext.StringSliceCSV{Distributor},
+			Server: server.Config{
+				HTTPListenAddress: "3100",
+			},
+		},
+	}
+	require.NoError(t, l.setupModuleManager())
+	assert.Contains(t, l.ModuleManager.DependenciesForModule(PatternIngesterTee), TenantConfigs)
+}
+
 func getRandomPorts(n int) []int {
 	portListeners := []net.Listener{}
 	for i := 0; i < n; i++ {
