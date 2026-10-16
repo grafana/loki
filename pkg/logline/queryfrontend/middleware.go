@@ -434,9 +434,9 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
-// dryRunMetricReport reports whether hints fully cover every positive sample's lookback.
-// It doesn't check the final metric result. TotalEntries counts the positive steps whose
-// lookback ended at or before the ingester cutoff. A miss records that whole lookback.
+// dryRunMetricReport treats a positive sample as covered when any hint overlaps its lookback.
+// The hint may not be the line that produced the sample. TotalEntries counts the positive
+// steps whose lookback ended at or before the ingester cutoff. A miss records that whole lookback.
 func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
 	report := verification.Report{HintRanges: len(hints)}
 	// For now, we don't check absent_over_time for correctness
@@ -455,7 +455,7 @@ func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse,
 				continue
 			}
 			report.TotalEntries++
-			if !lookbackCovered(hints, winStart, winEnd) {
+			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
 				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
 					Start: winStart,
 					End:   winEnd,
@@ -476,29 +476,6 @@ func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 		return syntax.MatcherRange{}
 	}
 	return groups[0]
-}
-
-// lookbackCovered reports whether ranges cover every instant of [start, end].
-// ranges are sorted by start and overlapping ranges are already merged.
-func lookbackCovered(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
-	// zero-length window
-	if !end.After(start) {
-		return verification.TimestampCovered(ranges, start)
-	}
-	coveredUntil := start
-	for _, r := range ranges {
-		if !r.End.After(coveredUntil) {
-			continue
-		}
-		if r.Start.After(coveredUntil) {
-			return false
-		}
-		coveredUntil = r.End
-		if !coveredUntil.Before(end) {
-			return true
-		}
-	}
-	return false
 }
 
 func isAbsentOverTimeAgg(expr syntax.Expr) bool {

@@ -2336,7 +2336,7 @@ func TestDryRun_MetricRange_EmptyHintsMissPositiveStep(t *testing.T) {
 	require.NotContains(t, logLine, "non-Loki response")
 }
 
-func TestDryRun_MetricRange_PartialHintMissesLookback(t *testing.T) {
+func TestDryRun_MetricRange_PartialHintCoversLookback(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
 	hp := &mockHintProvider{
@@ -2361,7 +2361,41 @@ func TestDryRun_MetricRange_PartialHintMissesLookback(t *testing.T) {
 
 	logLine := findLogLine(logs.String(), "logline dry-run verification")
 	require.NotEmpty(t, logLine)
-	require.Contains(t, logLine, "correct=false", "a hint that covers only the start of the lookback is a miss")
+	require.Contains(t, logLine, "correct=true", "any hint in the lookback counts as covered")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=1")
+	require.Contains(t, logLine, "false_negatives=0")
+	require.NotContains(t, logLine, "false_negative_ranges=")
+}
+
+func TestDryRun_MetricRange_HintOutsideLookbackIsMiss(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-10 * time.Minute), End: now.Add(-6 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=false", "a hint outside the lookback leaves the sample uncovered")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=0")
 	require.Contains(t, logLine, "false_negatives=1")
 	require.Contains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
 		Start: now.Add(-5 * time.Minute),
