@@ -149,11 +149,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 
 			sp.metrics.inflightRequests.Inc()
 
-			ctx, queueSpan := tracer.Start(
-				httpgrpcutil.ExtractSpanFromRequest(ctx, request),
-				"querier_processor_runRequest",
-			)
-			defer queueSpan.End()
+			ctx = httpgrpcutil.ExtractSpanFromRequest(ctx, request)
 
 			logger := util_log.WithContext(ctx, sp.log)
 
