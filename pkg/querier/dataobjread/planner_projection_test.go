@@ -401,13 +401,14 @@ func TestNewProjectionPlan(t *testing.T) {
 		},
 	}
 
+	lines := []string{"", "boom", "ok", "a", "b", "ab", "c", "xbx", "a boom b", "boom secret", "x", `{"level":"error"}`, "level=error boom", "\x1b[31mboom\x1b[0m"}
+
 	// requirePushedFilterMatchesQuery checks that the pushed filter followed by the unpushed query
 	// gives the same samples and labels as the whole query. The unpushed extractor gets no line when
 	// the plan says nothing reads it, so a stage that still reads the line fails the check.
 	requirePushedFilterMatchesQuery := func(t *testing.T, expr syntax.SampleExpr, plan ProjectionPlan) {
 		t.Helper()
 
-		lines := []string{"", "boom", "ok", "a", "b", "ab", "c", "xbx", "a boom b", "boom secret", "x", `{"level":"error"}`, "level=error boom", "\x1b[31mboom\x1b[0m"}
 		metadata := []labels.Labels{
 			labels.EmptyLabels(),
 			labels.FromStrings("level", "error", "duration", "3s", "latency", "2s", "status", "500"),
@@ -501,6 +502,26 @@ func TestNewProjectionPlan(t *testing.T) {
 				for _, line := range test.wantRejectLines {
 					require.False(t, message.Keep([]byte(line)), "line %q should be dropped", line)
 				}
+			}
+
+			if len(predicates) > 0 && plan.lineFilter != nil {
+				message, ok := predicates[len(predicates)-1].(logs.LogMessageFilterRowPredicate)
+				require.True(t, ok, "want the message predicate last, got %T", predicates[len(predicates)-1])
+
+				var (
+					data    []byte
+					offsets = []int32{0}
+					want    []int32
+				)
+				for i, line := range lines {
+					data = append(data, line...)
+					offsets = append(offsets, int32(len(data)))
+					if message.Keep([]byte(line)) {
+						want = append(want, int32(i))
+					}
+				}
+				require.NotNil(t, message.KeepBatch)
+				require.Equal(t, want, message.KeepBatch(data, offsets, nil))
 			}
 
 			var sectionPredicates []string

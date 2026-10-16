@@ -237,6 +237,13 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 	if err := reader.SetPredicates(task.rowPredicates()); err != nil {
 		return err
 	}
+	// The returned records carry no line, so the reader can skip the copy of the lines that pass
+	// the line filter.
+	if !task.needReturningLine {
+		if err := reader.SetPredicateOnlyColumns(logs.ColumnTypeMessage); err != nil {
+			return err
+		}
+	}
 	if err := reader.Open(ctx); err != nil {
 		return err
 	}

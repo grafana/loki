@@ -252,7 +252,12 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 	// The message predicate goes last because it is the most expensive. It then runs only on the
 	// rows that the previous predicates did not filter out.
 	if p.lineFilter != nil {
-		predicates = append(predicates, logs.LogMessageFilterRowPredicate{Keep: p.lineFilter.Filter})
+		predicates = append(predicates, logs.LogMessageFilterRowPredicate{
+			Keep: p.lineFilter.Filter,
+			KeepBatch: func(data []byte, offsets []int32, dst []int32) []int32 {
+				return logqllog.FilterBatch(p.lineFilter, dst, logqllog.Lines{Data: data, Offsets: offsets})
+			},
+		})
 	}
 
 	return columns, metadataNames, predicates
