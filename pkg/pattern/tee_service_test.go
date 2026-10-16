@@ -11,8 +11,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -30,6 +33,7 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 	response := &logproto.PushResponse{}
 	client := &mockPoolClient{}
 	client.On("Push", mock.Anything, mock.Anything).Return(response, nil)
+	client.On("PushInternal", mock.Anything, mock.Anything).Return(response, nil)
 
 	replicationSet := ring.ReplicationSet{
 		Instances: []ring.InstanceDesc{
@@ -54,6 +58,7 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 		},
 		ringClient,
 		runtime.DefaultTenantConfigs(),
+		true,
 		"test",
 		nil,
 		log.NewNopLogger(),
@@ -189,12 +194,15 @@ func TestPatternTee_EmptyStream(t *testing.T) {
 }
 
 func TestPatternTee_MaxBufferedBytes(t *testing.T) {
-	// Reserve and release the flat size, including expanded shared metadata.
+	// Reserve and release the nested size, with shared metadata counted once.
 	keyed := func(s push.Stream) []distributor.KeyedStream {
 		return []distributor.KeyedStream{{HashKey: 123, Stream: *logproto.FromStream(s)}}
 	}
-	buffered := func(s push.Stream) teedStream {
+	nestedTeed := func(s logproto.InternalStreamAdapter) teedStream {
 		return teedStream{hashKey: 123, stream: s, size: s.Size()}
+	}
+	buffered := func(s push.Stream) teedStream {
+		return nestedTeed(*logproto.FromStream(s))
 	}
 
 	t.Run("queued rate shards own their entry slices", func(t *testing.T) {
@@ -212,15 +220,20 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 				tee, _ := getTestTee(t)
 				entries := []push.Entry{{Line: "kept"}, {Line: "other shard"}}
 				shard := push.Stream{Labels: tc.labels, Entries: entries[:1:1]}
-				tee.cfg.TeeConfig.MaxBufferedBytes = shard.Size()
-				tee.Duplicate(t.Context(), "test", keyed(shard), nil)
+				streams := keyed(shard)
+				source := streams[0].Stream // the distributor's copy
+				tee.cfg.TeeConfig.MaxBufferedBytes = buffered(shard).size
+				tee.Duplicate(t.Context(), "test", streams, nil)
 				require.Len(t, tee.buf["test"], 1)
 				queued := tee.buf["test"][0].stream
-				require.Equal(t, shard, queued)
+				require.Equal(t, buffered(shard).stream, queued)
+				queuedEntries := queued.ResourceLogs[0].ScopeLogs[0].Entries
 				if tc.owns {
-					require.NotSame(t, &entries[0], &queued.Entries[0])
+					require.NotSame(t, &entries[0], &queuedEntries[0])
+					// The distributor's stream still points at its original entries.
+					require.Same(t, &entries[0], &source.ResourceLogs[0].ScopeLogs[0].Entries[0])
 				} else {
-					require.Same(t, &entries[0], &queued.Entries[0])
+					require.Same(t, &entries[0], &queuedEntries[0])
 				}
 			})
 		}
@@ -248,14 +261,14 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 					{Timestamp: at.Add(3 * time.Second), Line: "no shared attributes"},
 				}}
 				streams := []distributor.KeyedStream{{HashKey: 123, Stream: nested}}
-				tee.cfg.TeeConfig.MaxBufferedBytes = want.Size() - 1
+				tee.cfg.TeeConfig.MaxBufferedBytes = nested.Size() - 1
 				tee.Duplicate(t.Context(), "test", streams, nil)
 				require.Empty(t, tee.buf)
 				require.Zero(t, tee.bufferedBytes)
 
-				tee.cfg.TeeConfig.MaxBufferedBytes = want.Size()
+				tee.cfg.TeeConfig.MaxBufferedBytes = nested.Size()
 				tee.Duplicate(t.Context(), "test", streams, nil)
-				require.Equal(t, []teedStream{buffered(want)}, tee.buf["test"])
+				require.Equal(t, []teedStream{nestedTeed(nested)}, tee.buf["test"])
 				tee.flush()
 				select {
 				case request := <-tee.flushQueue:
@@ -274,18 +287,19 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		tee, client := getTestTee(t)
 		tee.flushQueue = make(chan clientRequest, 1)
 		shard := push.Stream{Labels: `{foo="bar", __stream_shard__="0"}`, Entries: []push.Entry{{Line: "kept"}}}
-		tee.cfg.TeeConfig.MaxBufferedBytes = 2 * shard.Size()
+		size := buffered(shard).size
+		tee.cfg.TeeConfig.MaxBufferedBytes = 2 * size
 		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
 		tee.flush()
 		require.Len(t, tee.flushQueue, 1)
-		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+		require.Equal(t, int64(size), tee.bufferedBytes)
 
 		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
-		require.Equal(t, int64(2*shard.Size()), tee.bufferedBytes)
+		require.Equal(t, int64(2*size), tee.bufferedBytes)
 		tee.flush()
 		require.Empty(t, tee.buf)
 		require.Len(t, tee.flushQueue, 1)
-		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+		require.Equal(t, int64(size), tee.bufferedBytes)
 
 		tee.sendBatch(t.Context(), <-tee.flushQueue)
 		require.NotNil(t, client.req)
@@ -293,10 +307,10 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Zero(t, tee.bufferedBytes)
 		tee.Duplicate(t.Context(), "test", keyed(shard), nil)
 		require.Len(t, tee.buf["test"], 1)
-		require.Equal(t, int64(shard.Size()), tee.bufferedBytes)
+		require.Equal(t, int64(size), tee.bufferedBytes)
 	})
 
-	t.Run("shared metadata is included in the buffer limit and released after flush", func(t *testing.T) {
+	t.Run("shared metadata is counted once in the buffer limit and released after flush", func(t *testing.T) {
 		ctx := t.Context()
 		tee, client := getTestTee(t)
 		at := time.Now()
@@ -314,15 +328,15 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Greater(t, want.Size(), nested.Size())
 		streams := []distributor.KeyedStream{{HashKey: 123, Stream: nested}}
 
-		tee.cfg.TeeConfig.MaxBufferedBytes = want.Size() - 1
+		tee.cfg.TeeConfig.MaxBufferedBytes = nested.Size() - 1
 		tee.Duplicate(ctx, "test", streams, nil)
 		require.Empty(t, tee.buf)
 		require.Zero(t, tee.bufferedBytes)
 
-		tee.cfg.TeeConfig.MaxBufferedBytes = want.Size()
+		tee.cfg.TeeConfig.MaxBufferedBytes = nested.Size()
 		tee.Duplicate(ctx, "test", streams, nil)
-		require.Equal(t, int64(want.Size()), tee.bufferedBytes)
-		require.Equal(t, []teedStream{buffered(want)}, tee.buf["test"])
+		require.Equal(t, int64(nested.Size()), tee.bufferedBytes)
+		require.Equal(t, []teedStream{nestedTeed(nested)}, tee.buf["test"])
 
 		tee.flush()
 		select {
@@ -337,8 +351,8 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Zero(t, tee.bufferedBytes)
 
 		tee.Duplicate(ctx, "test", streams, nil)
-		require.Equal(t, int64(want.Size()), tee.bufferedBytes)
-		require.Equal(t, []teedStream{buffered(want)}, tee.buf["test"])
+		require.Equal(t, int64(nested.Size()), tee.bufferedBytes)
+		require.Equal(t, []teedStream{nestedTeed(nested)}, tee.buf["test"])
 	})
 
 	t.Run("limit is disabled when zero or negative", func(t *testing.T) {
@@ -462,4 +476,54 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Contains(t, tenantBuf, buffered(s4))
 	})
 
+}
+
+func TestPatternTee_PushFallback(t *testing.T) {
+	stream := push.Stream{Labels: `{foo="bar"}`, Entries: []push.Entry{{Timestamp: time.Now(), Line: "line"}}}
+
+	for _, tc := range []struct {
+		name           string
+		noPushInternal bool
+		internalErr    error
+		wantInternal   bool
+		wantFlatPush   bool
+		wantFallback   bool
+	}{
+		{name: "pattern ingester supports PushInternal", wantInternal: true},
+		{name: "pattern ingester predates PushInternal", internalErr: status.Error(codes.Unimplemented, "unknown method"), wantInternal: true, wantFlatPush: true, wantFallback: true},
+		// Only Unimplemented means the request was not processed.
+		{name: "other errors are not resent", internalErr: status.Error(codes.Unavailable, "unavailable"), wantInternal: true},
+		{name: "PushInternal disabled", noPushInternal: true, wantFlatPush: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tee, client := getTestTee(t)
+			tee.limits = &fakeLimits{} // keep the metrics fallback out of the way
+			tee.pushInternal = !tc.noPushInternal
+			client.ExpectedCalls = nil
+			client.On("PushInternal", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, tc.internalErr)
+			client.On("Push", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, nil)
+
+			tee.Duplicate(t.Context(), "test", []distributor.KeyedStream{{HashKey: 123, Stream: *logproto.FromStream(stream)}}, nil)
+			tee.flush()
+			tee.sendBatch(t.Context(), <-tee.flushQueue)
+
+			if tc.wantInternal {
+				client.AssertCalled(t, "PushInternal", mock.Anything, mock.Anything)
+			} else {
+				client.AssertNotCalled(t, "PushInternal", mock.Anything, mock.Anything)
+			}
+			if tc.wantFlatPush {
+				client.AssertCalled(t, "Push", mock.Anything, mock.Anything)
+			} else {
+				client.AssertNotCalled(t, "Push", mock.Anything, mock.Anything)
+			}
+			require.Equal(t, []push.Stream{stream}, client.req.Streams)
+
+			wantFallbacks := 0.0
+			if tc.wantFallback {
+				wantFallbacks = 1
+			}
+			require.Equal(t, wantFallbacks, testutil.ToFloat64(tee.metrics.pushFallbacks))
+		})
+	}
 }

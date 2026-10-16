@@ -410,14 +410,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 // scope attributes shared by their entries. It expands them on arrival and
 // handles them like Push.
 func (i *Ingester) PushInternal(ctx context.Context, req *logproto.InternalPushRequest) (*logproto.PushResponse, error) {
-	flat := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(req.Streams)),
-		Format:  req.Format,
-	}
-	for idx := range req.Streams {
-		flat.Streams[idx] = req.Streams[idx].FlatView()
-	}
-	return i.Push(ctx, flat)
+	return i.Push(ctx, req.FlatView())
 }
 
 func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {
