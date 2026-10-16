@@ -1265,6 +1265,18 @@ and the current are returned. A value of `defaults` returns the default configur
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
+## Show public configuration
+
+```bash
+GET /loki/api/v1/config/public
+```
+
+`/loki/api/v1/config/public` returns a fixed, operator-configured subset of `/config`, set with
+`-config.public-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
+such as through a datasource proxy. Empty by default, meaning the endpoint returns `{}`.
+
+In microservices mode, the `/loki/api/v1/config/public` endpoint is exposed by all components.
+
 ## List running services
 
 ```bash
