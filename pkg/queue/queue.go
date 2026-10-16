@@ -299,6 +299,16 @@ func (q *RequestQueue) GetConnectedConsumersMetric() float64 {
 	return float64(q.connectedConsumers.Load())
 }
 
+// GetUserQueueLength returns the number of pending requests for the given tenant.
+func (q *RequestQueue) GetUserQueueLength(tenant string) int {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+	if ptr, ok := q.queues.perUserQueueLen[tenant]; ok {
+		return *ptr
+	}
+	return 0
+}
+
 // contextCond is a *sync.Cond with Wait() method overridden to support context-based waiting.
 type contextCond struct {
 	*sync.Cond
