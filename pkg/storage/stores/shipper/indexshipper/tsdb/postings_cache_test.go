@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -19,49 +19,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
-
-type postingsTestCache struct {
-	entries  map[string][]byte
-	fetchErr error
-	storeErr error
-	fetches  int
-	stores   int
-	hits     int
-}
-
-func (c *postingsTestCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
-	c.stores++
-	if c.storeErr != nil {
-		return c.storeErr
-	}
-	if c.entries == nil {
-		c.entries = map[string][]byte{}
-	}
-	c.entries[keys[0]] = bufs[0]
-	return nil
-}
-
-func (c *postingsTestCache) Fetch(_ context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	c.fetches++
-	if c.fetchErr != nil {
-		return nil, nil, nil, c.fetchErr
-	}
-	buf, ok := c.entries[keys[0]]
-	if !ok {
-		return nil, nil, keys, nil
-	}
-	c.hits++
-	return keys, [][]byte{buf}, nil, nil
-}
-
-func (*postingsTestCache) Stop() {}
-
-func (*postingsTestCache) GetCacheType() stats.CacheType { return stats.IndexCache }
 
 func TestPostingsCacheCanonicalKey(t *testing.T) {
 	m1 := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
@@ -89,8 +50,7 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 		"tenant-a": {{labels: labels.FromStrings("app", "api"), fp: 1, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 11}}}},
 		"tenant-b": {{labels: labels.FromStrings("app", "api"), fp: 2, chunks: index.ChunkMetas{{MinTime: 0, MaxTime: 10, Checksum: 22}}}},
 	}, filepath.Join(root, "table"), time.Unix(1, 0))
-	backend := &postingsTestCache{}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	file, err := openShippableTSDBWithPostingsCache(path, index.MmapOptions{}, c, "prefix", root)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, file.Close()) })
@@ -100,75 +60,15 @@ func TestCommonMultiTenantPostingsCache(t *testing.T) {
 	require.NoError(t, err)
 	second, err := idx.GetChunkRefs(context.Background(), "tenant-a", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-
 	require.Equal(t, first, second)
-	require.Equal(t, 2, backend.fetches, "queries must fetch postings through the cache attached by the opener")
-	require.Equal(t, 1, backend.stores, "only the first query for each tenant should store postings")
-	require.Equal(t, 1, backend.hits, "the repeated query must hit cached postings")
 
-	_, err = idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
+	// The same matcher for another tenant must not be served from tenant-a's entry.
+	other, err := idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	require.Len(t, backend.entries, 2, "tenant matchers must produce separate cache entries")
-}
-
-func TestCachedPostingsFailuresRecomputeAndEmptyResultsCache(t *testing.T) {
-	backend := &postingsTestCache{fetchErr: errors.New("fetch")}
-	c := newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger())
-	called := 0
-	compute := func() (index.Postings, error) {
-		called++
-		return index.EmptyPostings(), nil
-	}
-	_, err := c.cachedPostings(context.Background(), "key", compute)
+	require.NotEqual(t, first, other, "tenants must not share postings")
+	otherAgain, err := idx.GetChunkRefs(context.Background(), "tenant-b", 0, 10, nil, nil, matcher)
 	require.NoError(t, err)
-	require.Equal(t, 1, called)
-	require.Empty(t, backend.entries)
-}
-
-func TestPostingsCodec(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		refs      []storage.SeriesRef
-		encoded   []byte
-		decodeKey string
-		encodeErr string
-		decodeErr string
-	}{
-		{name: "roundtrip", refs: []storage.SeriesRef{2, 7, 19}},
-		{name: "empty roundtrip"},
-		{name: "unsorted references", refs: []storage.SeriesRef{2, 1}, encodeErr: "not sorted"},
-		{name: "mismatched key", refs: []storage.SeriesRef{2, 7, 19}, decodeKey: "other", decodeErr: "key mismatch"},
-		{name: "invalid header", encoded: []byte{1, 2, 3}, decodeErr: "unsupported postings codec version"},
-		{name: "missing key length", encoded: []byte("v1"), decodeErr: "invalid postings cache key length"},
-		{name: "truncated key length", encoded: []byte("v1\x80"), decodeErr: "invalid postings cache key length"},
-		{name: "truncated key", encoded: []byte("v1\x04key"), decodeErr: "invalid postings cache key length"},
-		{name: "invalid compressed data", encoded: append([]byte("v1\x03key"), 0xff), decodeErr: "decompress postings"},
-		{name: "truncated delta", encoded: append([]byte("v1\x03key"), snappy.Encode(nil, []byte{0x80})...), decodeErr: "invalid postings delta varint"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			encoded := tc.encoded
-			if encoded == nil {
-				var err error
-				encoded, err = encodePostings("key", tc.refs)
-				if tc.encodeErr != "" {
-					require.ErrorContains(t, err, tc.encodeErr)
-					return
-				}
-				require.NoError(t, err)
-			}
-			key := tc.decodeKey
-			if key == "" {
-				key = "key"
-			}
-			decoded, err := decodePostings(key, encoded)
-			if tc.decodeErr != "" {
-				require.ErrorContains(t, err, tc.decodeErr)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tc.refs, decoded)
-		})
-	}
+	require.Equal(t, other, otherAgain)
 }
 
 type postingsReaderSpy struct {
@@ -201,7 +101,7 @@ func newPostingsReaderSpy(t *testing.T) *postingsReaderSpy {
 
 func TestTSDBIndexPostingsCacheSharesShards(t *testing.T) {
 	reader := newPostingsReaderSpy(t)
-	postingsCache := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	postingsCache := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	idx := &TSDBIndex{reader: reader, postingsCache: postingsCache, postingsID: "file"}
 	m := labels.MustNewMatcher(labels.MatchEqual, "app", "api")
 	low := index.NewShard(0, 2)
@@ -252,7 +152,7 @@ func TestTSDBIndexPostingsCacheDisabled(t *testing.T) {
 }
 
 func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
-	c := newPostingsCache(&postingsTestCache{}, "test", prometheus.NewRegistry(), log.NewNopLogger())
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 10})
 	called := 0
 	compute := func() (index.Postings, error) {
 		called++
@@ -261,7 +161,6 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 
 	_, err := c.cachedPostings(context.Background(), "key", compute)
 	require.NoError(t, err)
-
 	require.Equal(t, 1, called)
 
 	_, err = c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
@@ -269,12 +168,8 @@ func TestCachedPostingsAvoidsRecomputation(t *testing.T) {
 		return index.EmptyPostings(), nil
 	})
 	require.NoError(t, err)
-
-	require.NoError(t, err)
 	require.Equal(t, 1, called)
 }
-
-var _ cache.Cache = (*postingsTestCache)(nil)
 
 // Compare full query results, not just approximate candidate postings, because
 // the sampled offset boundaries intentionally include neighboring fingerprints.
@@ -294,14 +189,15 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, reader.Close()) })
 			baseline := NewTSDBIndex(reader)
-			backend := &postingsTestCache{}
-			candidate := NewTSDBIndex(reader)
-			candidate.setPostingsCache(newPostingsCache(backend, "test", prometheus.NewRegistry(), log.NewNopLogger()), "file")
+			spy := &postingsReaderSpy{IndexReader: reader}
+			candidate := NewTSDBIndex(spy)
+			pc := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+			candidate.setPostingsCache(pc, "file")
 			for _, selector := range []string{`{app="api"}`, `{group="1"}`, `{group!="1"}`, `{group=~"1|2"}`, `{group!~"1|2"}`, `{group=""}`, `{app="missing"}`} {
 				t.Run(selector, func(t *testing.T) {
 					matchers, err := syntax.ParseMatchers(selector, false)
 					require.NoError(t, err)
-					before := backend.stores
+					callsBefore := spy.calls
 					filters := []index.FingerprintFilter{nil}
 					for _, count := range []uint32{2, 4, 16} {
 						for shard := uint32(0); shard < count; shard++ {
@@ -328,10 +224,260 @@ func TestPostingsCacheShardsMatchUncachedReaders(t *testing.T) {
 						require.NoError(t, baseline.Volume(ctx, "tenant", 0, 10, wantVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.NoError(t, candidate.Volume(ctx, "tenant", 0, 10, gotVolume, filter, nil, nil, seriesvolume.Series, matchers...))
 						require.Equal(t, wantVolume.Volumes(), gotVolume.Volumes())
+						if filter == nil {
+							require.Greater(t, spy.calls, callsBefore, "the first query must read postings from the index")
+							callsBefore = spy.calls
+						}
 					}
-					require.Equal(t, before+1, backend.stores, "all shards and query operations must share one entry")
+					require.Equal(t, callsBefore, spy.calls, "all shards and query operations must share one cached postings list")
 				})
 			}
 		})
+	}
+}
+
+func newTestPostingsCache(t testing.TB, cfg cache.EmbeddedCacheConfig) *postingsCache {
+	t.Helper()
+	cfg.Enabled = true
+	c := newPostingsCache(cfg, "test-embedded-cache", nil, log.NewNopLogger())
+	require.NotNil(t, c)
+	t.Cleanup(c.Stop)
+	return c
+}
+
+func storePostings(ctx context.Context, t testing.TB, c *postingsCache, key string, refs []storage.SeriesRef) {
+	t.Helper()
+	require.NoError(t, c.cache.Store(ctx, []string{key}, [][]storage.SeriesRef{refs}))
+}
+
+func TestPostingsCacheIteratorsAdvanceIndependently(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	ctx := context.Background()
+	want := []storage.SeriesRef{3, 6, 9}
+	storePostings(ctx, t, c, "key", want)
+
+	// Two queries hit the same entry but have separate iterator positions.
+	first := c.fetchPostings(ctx, "key")
+	second := c.fetchPostings(ctx, "key")
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	require.True(t, first.Seek(6))
+	require.Equal(t, storage.SeriesRef(6), first.At())
+
+	// Seeking the first iterator must not skip values in the second.
+	all, err := index.ExpandPostings(second)
+	require.NoError(t, err)
+	require.Equal(t, want, all)
+
+	// Exhausting the second iterator must not exhaust the first.
+	require.True(t, first.Next())
+	require.Equal(t, storage.SeriesRef(9), first.At())
+	require.False(t, first.Next())
+
+	// Neither iterator may change the cached references.
+	stored, err := index.ExpandPostings(c.fetchPostings(ctx, "key"))
+	require.NoError(t, err)
+	require.Equal(t, []storage.SeriesRef{3, 6, 9}, stored)
+}
+
+func TestPostingsCacheEmptyResultIsAHit(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	computations := 0
+	compute := func() (index.Postings, error) {
+		computations++
+		return index.EmptyPostings(), nil
+	}
+	for range 3 {
+		p, err := c.cachedPostings(context.Background(), "no-matching-series", compute)
+		require.NoError(t, err)
+		require.NotNil(t, p)
+		require.False(t, p.Next(), "every query returns an empty iterator")
+		require.NoError(t, p.Err())
+	}
+	require.Equal(t, 1, computations, "only the first query should compute the empty result")
+}
+
+func TestPostingsCacheItemLimitAndRetainedIterator(t *testing.T) {
+	c := newPostingsCache(cache.EmbeddedCacheConfig{Enabled: true, MaxSizeItems: 1}, "limit", nil, log.NewNopLogger())
+	require.NotNil(t, c)
+	ctx := context.Background()
+	compute := func() (index.Postings, error) { return index.NewListPostings([]storage.SeriesRef{1, 2}), nil }
+	p, err := c.cachedPostings(ctx, "first", compute)
+	require.NoError(t, err)
+	_, err = c.cachedPostings(ctx, "second", compute)
+	require.NoError(t, err)
+	require.Nil(t, c.fetchPostings(ctx, "first"), "first should have been evicted due to max size of 1")
+	c.Stop()
+	refs, err := index.ExpandPostings(p)
+	require.NoError(t, err)
+	require.Equal(t, []storage.SeriesRef{1, 2}, refs, "eviction/shutdown must not mutate an outstanding iterator")
+}
+
+// Every concurrent miss must populate the cache: a burst of cold shards is the
+// workload the cache exists for, so population must not be dropped under contention.
+func TestPostingsCacheConcurrentMissesAllPopulate(t *testing.T) {
+	const misses = 64
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: misses})
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for n := range misses {
+		wg.Go(func() {
+			p, err := c.cachedPostings(ctx, fmt.Sprint("key-", n), func() (index.Postings, error) {
+				return index.NewListPostings([]storage.SeriesRef{storage.SeriesRef(n)}), nil
+			})
+			require.NoError(t, err)
+			refs, err := index.ExpandPostings(p)
+			require.NoError(t, err)
+			require.Equal(t, []storage.SeriesRef{storage.SeriesRef(n)}, refs)
+		})
+	}
+	wg.Wait()
+	for n := range misses {
+		require.NotNil(t, c.fetchPostings(ctx, fmt.Sprint("key-", n)), "key-%d must be cached", n)
+	}
+}
+
+func TestPostingsCacheOversizedResultIsNotCached(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+	// 200k references occupy 1.6 MB, more than the 1 MB budget.
+	refs := make([]storage.SeriesRef, 200_000)
+	for i := range refs {
+		refs[i] = storage.SeriesRef(i)
+	}
+	computations := 0
+	compute := func() (index.Postings, error) {
+		computations++
+		return index.NewListPostings(refs), nil
+	}
+	for range 2 {
+		p, err := c.cachedPostings(context.Background(), "huge", compute)
+		require.NoError(t, err)
+		got, err := index.ExpandPostings(p)
+		require.NoError(t, err)
+		require.Equal(t, refs, got, "the query must still receive the full result")
+	}
+	require.Equal(t, 2, computations, "an oversized result is recomputed on each query")
+	require.Nil(t, c.fetchPostings(context.Background(), "huge"))
+}
+
+func TestPostingsCacheCompactsStoredReferences(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeMB: 1})
+	ctx := context.Background()
+	// Build postings whose expansion grows by appending and so carries spare capacity.
+	var want []storage.SeriesRef
+	for i := range 1000 {
+		want = append(want, storage.SeriesRef(i*2))
+	}
+	p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
+		return index.NewListPostings(want), nil
+	})
+	require.NoError(t, err)
+	got, err := index.ExpandPostings(p)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+
+	_, values, _, err := c.cache.Fetch(ctx, []string{"key"})
+	require.NoError(t, err)
+	require.Len(t, values, 1)
+	require.Equal(t, want, values[0])
+	require.Equal(t, len(values[0]), cap(values[0]), "the cached array must not carry spare capacity")
+}
+
+func TestPostingsCacheTTL(t *testing.T) {
+	for _, ttl := range []time.Duration{0, time.Second} {
+		t.Run(fmt.Sprint(ttl), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				c := newPostingsCache(cache.EmbeddedCacheConfig{
+					Enabled: true, MaxSizeItems: 1, TTL: ttl, PurgeInterval: time.Second,
+				}, "ttl", nil, log.NewNopLogger())
+				defer c.Stop()
+				_, err := c.cachedPostings(context.Background(), "key", func() (index.Postings, error) {
+					return index.EmptyPostings(), nil
+				})
+				require.NoError(t, err)
+				time.Sleep(2 * time.Second)
+				synctest.Wait()
+				p := c.fetchPostings(context.Background(), "key")
+				if ttl == 0 {
+					require.NotNil(t, p, "zero TTL disables expiration")
+				} else {
+					require.Nil(t, p)
+				}
+			})
+		})
+	}
+}
+
+func TestConfiguredPostingsCacheDisabled(t *testing.T) {
+	for _, cfg := range []cache.EmbeddedCacheConfig{
+		{},
+		{MaxSizeMB: 1},
+		{Enabled: true},
+	} {
+		c := newPostingsCache(cfg, "disabled", nil, log.NewNopLogger())
+		require.Nil(t, c)
+	}
+}
+
+func TestPostingsCacheCancellation(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p, err := c.cachedPostings(ctx, "key", func() (index.Postings, error) {
+		cancel()
+		return index.EmptyPostings(), nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, p)
+	require.Nil(t, c.fetchPostings(context.Background(), "key"), "a canceled query must not populate the cache")
+}
+
+func BenchmarkPostingsCacheHit(b *testing.B) {
+	for _, n := range []int{1024, 100000} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			refs := make([]storage.SeriesRef, n)
+			for i := range refs {
+				refs[i] = storage.SeriesRef(i * 3)
+			}
+			ctx := context.Background()
+			c := newTestPostingsCache(b, cache.EmbeddedCacheConfig{MaxSizeMB: 16})
+			storePostings(ctx, b, c, "key", refs)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if c.fetchPostings(ctx, "key") == nil {
+					b.Fatal("expected cache hit")
+				}
+			}
+		})
+	}
+}
+
+func TestPostingsCacheCanceledQueryDoesNotCompute(t *testing.T) {
+	c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 1})
+	reader := &postingsReaderSpy{}
+	idx := NewTSDBIndex(reader)
+	idx.setPostingsCache(c, "file")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := idx.forPostings(ctx, nil, 0, 10, nil, func(index.Postings) error {
+		t.Error("canceled query must not invoke the callback")
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, reader.calls)
+}
+
+func TestPostingsCacheFailedComputationIsNotCached(t *testing.T) {
+	failure := errors.New("read failed")
+	for _, compute := range []func() (index.Postings, error){
+		func() (index.Postings, error) { return nil, failure },
+		func() (index.Postings, error) { return index.ErrPostings(failure), nil },
+	} {
+		c := newTestPostingsCache(t, cache.EmbeddedCacheConfig{MaxSizeItems: 2})
+		p, err := c.cachedPostings(context.Background(), "key", compute)
+		require.ErrorIs(t, err, failure)
+		require.Nil(t, p)
+		require.Nil(t, c.fetchPostings(context.Background(), "key"))
 	}
 }

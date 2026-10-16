@@ -1,68 +1,103 @@
 package tsdb
 
 import (
+	"container/list"
 	"context"
 	"encoding/binary"
-	"fmt"
+	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"golang.org/x/sync/singleflight"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-const postingsCodecVersion = "v1"
-
+// postingsCache stores immutable, decoded references in process. Iterators share
+// their backing arrays but maintain independent positions.
 type postingsCache struct {
-	cache.Cache
-	logger  log.Logger
-	metrics *postingsCacheMetrics
-	lookups singleflight.Group // Cache key to in-flight fetch/decode; completed results are not retained.
+	cache *cache.EmbeddedCache[string, []storage.SeriesRef]
+
+	fetchedKeys, hits prometheus.Counter
+	// Fetch samples are observed on each hit; store samples on each insertion.
+	fetchedSize, storedSize      prometheus.Observer
+	fetchDuration, storeDuration prometheus.Observer
 }
 
-type postingsLookup struct {
-	refs     []storage.SeriesRef // Immutable; each caller creates its own iterator.
-	hit      bool                // An empty postings list is still a hit.
-	populate bool
-}
-
-type postingsCacheMetrics struct {
-	storeFailures  prometheus.Counter
-	decodeFailures prometheus.Counter
-	encodeFailures prometheus.Counter
-}
-
-func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
-	return &postingsCache{Cache: c, logger: logger, metrics: newPostingsCacheMetrics(name, reg)}
-}
-
-func newPostingsCacheMetrics(name string, reg prometheus.Registerer) *postingsCacheMetrics {
-	return &postingsCacheMetrics{
-		storeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_store_failures_total",
-			Help:        "Total number of failed postings cache Store calls.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
-		decodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_decode_failures_total",
-			Help:        "Total number of cached postings payloads that failed to decode.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
-		encodeFailures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "loki_tsdb_postings_cache_encode_failures_total",
-			Help:        "Total number of postings payloads that failed to encode for the cache.",
-			ConstLabels: prometheus.Labels{"name": name},
-		}),
+func newPostingsCache(cfg cache.EmbeddedCacheConfig, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
+	if !cfg.Enabled {
+		return nil
 	}
+	embedded := cache.NewTypedEmbeddedCache[string, []storage.SeriesRef](
+		name, cfg, reg, logger, stats.IndexCache, postingsEntrySize, nil,
+	)
+	if embedded == nil {
+		return nil
+	}
+	// Metric names, labels and buckets match cache.Instrument so this cache
+	// appears on the same dashboards as every other cache.
+	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   constants.Loki,
+		Name:        "cache_value_size_bytes",
+		Help:        "Size of values in the cache.",
+		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method"})
+	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   constants.Loki,
+		Name:        "cache_request_duration_seconds",
+		Help:        "Total time spent in seconds doing cache requests.",
+		Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"method", "status_code"})
+	return &postingsCache{
+		cache: embedded,
+		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_fetched_keys",
+			Help:        "Total count of keys requested from cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_hits",
+			Help:        "Total count of keys found in cache.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+		fetchedSize:   valueSize.WithLabelValues("fetch"),
+		storedSize:    valueSize.WithLabelValues("store"),
+		fetchDuration: duration.WithLabelValues(name+".fetch", "200"),
+		storeDuration: duration.WithLabelValues(name+".store", "200"),
+	}
+}
+
+var (
+	// seriesRefSize is computed once so cache size observations only multiply lengths.
+	seriesRefSize = int(reflect.TypeFor[storage.SeriesRef]().Size())
+	// postingsEntryOverhead mirrors the embedded cache's own accounting for byte
+	// values: the entry struct, its list element, and the map slot pointing to it.
+	postingsEntryOverhead = reflect.TypeFor[cache.Entry[string, []storage.SeriesRef]]().Size() +
+		reflect.TypeFor[list.Element]().Size() +
+		reflect.TypeFor[*list.Element]().Size()
+)
+
+// postingsSize is the number of bytes occupied by the references in use.
+func postingsSize(refs []storage.SeriesRef) int {
+	return len(refs) * seriesRefSize
+}
+
+// postingsEntrySize accounts for the retained backing array, not just its used
+// length. This estimates per-entry memory, not Go allocator overhead.
+func postingsEntrySize(entry *cache.Entry[string, []storage.SeriesRef]) uint64 {
+	return uint64(postingsEntryOverhead) + uint64(len(entry.Key)) + uint64(cap(entry.Value)*seriesRefSize)
 }
 
 func objectIdentity(prefix, table, tenant, filename string) string {
@@ -117,69 +152,15 @@ func postingsKey(identity string, matchers []*labels.Matcher) string {
 	return encodeKeyParts("unsharded-v1", identity, string(canonicalMatchers))
 }
 
-func encodePostings(key string, refs []storage.SeriesRef) ([]byte, error) {
-	// Most deltas encode near one byte, so reserve 1.25 bytes per reference.
-	estimatedPostingsBytes := 5 * len(refs) / 4
-	payload := make([]byte, 0, estimatedPostingsBytes)
-	var previous storage.SeriesRef
-	for _, ref := range refs {
-		if ref < previous {
-			return nil, fmt.Errorf("postings references are not sorted: %d follows %d", ref, previous)
-		}
-		payload = binary.AppendUvarint(payload, uint64(ref-previous))
-		previous = ref
-	}
-	// Reserve the full output so Snappy can compress directly after the key.
-	capacity := len(postingsCodecVersion) + binary.MaxVarintLen64 + len(key) + snappy.MaxEncodedLen(len(payload))
-	encoded := make([]byte, capacity)
-	offset := copy(encoded, postingsCodecVersion)
-	offset += binary.PutUvarint(encoded[offset:], uint64(len(key)))
-	offset += copy(encoded[offset:], key)
-
-	compressed := snappy.Encode(encoded[offset:], payload)
-	return encoded[:offset+len(compressed)], nil
-}
-
-func decodePostings(key string, encoded []byte) ([]storage.SeriesRef, error) {
-	if !strings.HasPrefix(string(encoded), postingsCodecVersion) {
-		return nil, fmt.Errorf("unsupported postings codec version")
-	}
-	encoded = encoded[len(postingsCodecVersion):]
-	keyLen, n := binary.Uvarint(encoded)
-	if n <= 0 || keyLen > uint64(len(encoded)-n) {
-		return nil, fmt.Errorf("invalid postings cache key length")
-	}
-	encoded = encoded[n:]
-	if string(encoded[:keyLen]) != key {
-		return nil, fmt.Errorf("postings cache key mismatch")
-	}
-	payload, err := snappy.Decode(nil, encoded[keyLen:])
-	if err != nil {
-		return nil, fmt.Errorf("decompress postings: %w", err)
-	}
-	var refs []storage.SeriesRef
-	var previous storage.SeriesRef
-	for len(payload) > 0 {
-		delta, n := binary.Uvarint(payload)
-		if n <= 0 {
-			return nil, fmt.Errorf("invalid postings delta varint")
-		}
-		previous += storage.SeriesRef(delta)
-		refs = append(refs, previous)
-		payload = payload[n:]
-	}
-	return refs, nil
-}
-
+// cachedPostings returns the postings for key, computing and caching them on a
+// miss. The returned iterator and the cache share one read-only array.
 func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute func() (index.Postings, error)) (index.Postings, error) {
-	p, writeCache := c.fetchPostings(ctx, key)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if p != nil {
+	if p := c.fetchPostings(ctx, key); p != nil {
 		return p, nil
 	}
-
 	postings, err := compute()
 	if err != nil {
 		return nil, err
@@ -189,53 +170,63 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 		return nil, err
 	}
 	slices.Sort(refs)
-	if writeCache {
-		encoded, err := encodePostings(key, refs)
-		if err != nil {
-			c.metrics.encodeFailures.Inc()
-			level.Warn(c.logger).Log("msg", "failed to encode postings for cache", "err", err)
-			return index.NewListPostings(refs), nil
-		}
-		if err := c.Store(ctx, []string{cache.HashKey(key)}, [][]byte{encoded}); err != nil {
-			c.metrics.storeFailures.Inc()
-			level.Warn(c.logger).Log("msg", "failed to store postings in cache", "err", err)
-		}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+	refs = compactPostings(refs)
+	c.store(ctx, key, refs)
 	return index.NewListPostings(refs), nil
 }
 
-func (c *postingsCache) fetchPostings(ctx context.Context, key string) (p index.Postings, populate bool) {
-	if ctx.Err() != nil {
-		return nil, false
+// compactPostings returns refs in a backing array with no spare capacity.
+// ExpandPostings grows its result by appending, which can leave the array up to
+// twice as large as the data, and the cache charges the whole array against its
+// memory budget.
+func compactPostings(refs []storage.SeriesRef) []storage.SeriesRef {
+	if len(refs) == cap(refs) {
+		return refs
 	}
-	result := c.lookups.DoChan(key, func() (any, error) {
-		refs, hit, populate := c.fetchPostingsRefs(ctx, key)
-		return postingsLookup{refs: refs, hit: hit, populate: populate}, nil
-	})
-	select {
-	case <-ctx.Done():
-		return nil, false
-	case result := <-result:
-		lookup := result.Val.(postingsLookup)
-		if lookup.hit {
-			return index.NewListPostings(lookup.refs), false
-		}
-		return nil, lookup.populate
-	}
+	compact := make([]storage.SeriesRef, len(refs))
+	copy(compact, refs)
+	return compact
 }
 
-func (c *postingsCache) fetchPostingsRefs(ctx context.Context, key string) (refs []storage.SeriesRef, hit, populate bool) {
-	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
-	if err != nil {
-		return nil, false, false
+// fetchPostings returns an iterator over the cached references for key, or nil
+// on a miss. An empty value is a cached empty result, not a miss.
+func (c *postingsCache) fetchPostings(ctx context.Context, key string) index.Postings {
+	start := time.Now()
+	refs, hit := c.cache.Get(ctx, key)
+	elapsed := time.Since(start)
+	c.fetchDuration.Observe(elapsed.Seconds())
+	c.fetchedKeys.Inc()
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesRequested(stats.IndexCache, 1)
+	st.AddCacheDownloadTime(stats.IndexCache, elapsed)
+	if !hit {
+		return nil
 	}
-	if len(found) == 1 && len(bufs) == 1 {
-		refs, err := decodePostings(key, bufs[0])
-		if err == nil {
-			return refs, true, false
-		}
-		c.metrics.decodeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
-	}
-	return nil, false, true
+	size := postingsSize(refs)
+	c.hits.Inc()
+	c.fetchedSize.Observe(float64(size))
+	st.AddCacheEntriesFound(stats.IndexCache, 1)
+	st.AddCacheBytesRetrieved(stats.IndexCache, size)
+	return index.NewListPostings(refs)
+}
+
+// store caches refs for key. Results larger than the memory budget are rejected
+// by the embedded cache, which cannot otherwise fail to store.
+func (c *postingsCache) store(ctx context.Context, key string, refs []storage.SeriesRef) {
+	st := stats.FromContext(ctx)
+	st.AddCacheRequest(stats.IndexCache, 1)
+	st.AddCacheEntriesStored(stats.IndexCache, 1)
+	c.storedSize.Observe(float64(postingsSize(refs)))
+	start := time.Now()
+	_ = c.cache.Store(ctx, []string{key}, [][]storage.SeriesRef{refs})
+	c.storeDuration.Observe(time.Since(start).Seconds())
+}
+
+// Stop releases the cached references.
+func (c *postingsCache) Stop() {
+	c.cache.Stop()
 }

@@ -101,8 +101,8 @@ type Config struct {
 	IndexReaderMode          IndexReaderMode           `yaml:"index_reader_mode" category:"experimental"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
-	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
-	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
+	StreamingIndexMaxIdleFileHandles uint                      `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
+	PostingsCache                    cache.EmbeddedCacheConfig `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches decoded postings in memory for downloaded per-tenant TSDB index files."`
 
 	IngesterName           string
 	Mode                   Mode
@@ -115,7 +115,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
+	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "Experimental. ", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
