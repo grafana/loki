@@ -2287,7 +2287,7 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 			require.Contains(t, logLine, "total_entries=1")
 			require.Contains(t, logLine, "covered_entries=1")
 			require.Contains(t, logLine, "false_negatives=0")
-			require.NotContains(t, logLine, "false_negative_lookbacks=")
+			require.NotContains(t, logLine, "false_negative_ranges=")
 		})
 	}
 }
@@ -2328,7 +2328,7 @@ func TestDryRun_MetricRange_EmptyHintsMissPositiveStep(t *testing.T) {
 	require.Contains(t, logLine, "total_entries=1")
 	require.Contains(t, logLine, "covered_entries=0")
 	require.Contains(t, logLine, "false_negatives=1")
-	require.Contains(t, logLine, "false_negative_lookbacks=")
+	require.Contains(t, logLine, "false_negative_ranges=")
 	require.Contains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
 		Start: now.Add(-5 * time.Minute),
 		End:   now,

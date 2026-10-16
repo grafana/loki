@@ -15,9 +15,9 @@ type Report struct {
 	// FalseNegativeTimestamps records timestamps of entries not covered by any
 	// hint range. Only populated when the caller opts in via VerifyEntries.
 	FalseNegativeTimestamps []time.Time
-	// FalseNegativeLookbacks are metric lookbacks that hints did not fully cover.
+	// FalseNegativeRanges are metric lookbacks that hints did not fully cover.
 	// Each range is that step's whole lookback. Log checks leave this empty.
-	FalseNegativeLookbacks []hintprovider.HintTimeRange
+	FalseNegativeRanges []hintprovider.HintTimeRange
 	// FalsePositives counts hint ranges that contain no result entries.
 	// Only populated when CountFalsePositives is called.
 	FalsePositives int

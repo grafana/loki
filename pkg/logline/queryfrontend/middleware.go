@@ -434,15 +434,12 @@ func (h *loglinePrefetchHandler) shardPlanningDecision(result *hintPrefetchResul
 	return shardPlanningDecision{eligible: true, reason: "eligible", overlaps: overlaps}
 }
 
-// compareDryRunMetric reports whether hints fully cover every positive sample's lookback.
-// Full coverage does not necessarily mean the final metric result will be correct. This check
-// avoids re-running the metric query with hints. TotalEntries counts the positive steps whose
+// dryRunMetricReport reports whether hints fully cover every positive sample's lookback.
+// It doesn't check the final metric result. TotalEntries counts the positive steps whose
 // lookback ended at or before the ingester cutoff. A miss records that whole lookback.
-func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
+func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse, hints []hintprovider.HintTimeRange, eligibleEnd time.Time) verification.Report {
 	report := verification.Report{HintRanges: len(hints)}
-	// absent_over_time is not checked. A 1 is an empty window, and the miss is a
-	// step the matrix left out. This check does not walk the query's step grid,
-	// so the report stays empty and Correct() is true.
+	// For now, we don't check absent_over_time for correctness
 	if isAbsentOverTimeAgg(expr) || promResp == nil || promResp.Response == nil {
 		return report
 	}
@@ -453,16 +450,13 @@ func compareDryRunMetric(expr syntax.Expr, promResp *queryrange.LokiPromResponse
 				continue
 			}
 			step := time.UnixMilli(sample.TimestampMs)
-			// A sample reads the range and offset ending at this one step.
 			winStart, winEnd := group.Widen(step, step)
-			// Hint lookup stops at the ingester cutoff, so a lookback that extends past it
-			// counted lines the index was not asked to cover.
 			if !eligibleEnd.IsZero() && winEnd.After(eligibleEnd) {
 				continue
 			}
 			report.TotalEntries++
 			if !lookbackCovered(hints, winStart, winEnd) {
-				report.FalseNegativeLookbacks = append(report.FalseNegativeLookbacks, hintprovider.HintTimeRange{
+				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
 					Start: winStart,
 					End:   winEnd,
 				})
@@ -487,6 +481,7 @@ func metricMatcherGroup(expr syntax.Expr) syntax.MatcherRange {
 // lookbackCovered reports whether ranges cover every instant of [start, end].
 // ranges are sorted by start and overlapping ranges are already merged.
 func lookbackCovered(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	// zero-length window
 	if !end.After(start) {
 		return verification.TimestampCovered(ranges, start)
 	}
@@ -553,16 +548,16 @@ func logDryRunVerification(
 		"false_negatives", report.FalseNegatives,
 		"correct", correct,
 	)
-	if len(report.FalseNegativeLookbacks) > 0 {
+	if len(report.FalseNegativeRanges) > 0 {
 		logValues = append(logValues,
-			"false_negative_lookbacks", hintprovider.FormatHintRanges(report.FalseNegativeLookbacks),
+			"false_negative_ranges", hintprovider.FormatHintRanges(report.FalseNegativeRanges),
 		)
 	}
 	logValues = appendHintStats(logValues, lookup.stats)
 	level.Info(logger).Log(logValues...)
 }
 
-func verifyDryRunHints(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
+func dryRunLogReport(hintRanges []hintprovider.HintTimeRange, resp *queryrange.LokiResponse, eligibleEnd time.Time) verification.Report {
 	if resp == nil {
 		return verification.Report{HintRanges: len(hintRanges)}
 	}
@@ -852,10 +847,10 @@ func (h *loglinePrefetchHandler) doDryRun(
 	var report *verification.Report
 	switch r := resp.(type) {
 	case *queryrange.LokiPromResponse:
-		vr := compareDryRunMetric(expr, r, lookup.ranges, eligibleEnd)
+		vr := dryRunMetricReport(expr, r, lookup.ranges, eligibleEnd)
 		report = &vr
 	case *queryrange.LokiResponse:
-		vr := verifyDryRunHints(lookup.ranges, r, eligibleEnd)
+		vr := dryRunLogReport(lookup.ranges, r, eligibleEnd)
 		report = &vr
 	default:
 		level.Warn(logger).Log(
