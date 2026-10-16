@@ -25,6 +25,9 @@ const (
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
 	volumePath      = "/loki/api/v1/index/volume"
+
+	detectedFieldsPath      = "/loki/api/v1/detected_fields"
+	detectedFieldValuesPath = "/loki/api/v1/detected_field/%s/values"
 )
 
 // QueryClient contains the methods of the query API.
@@ -36,6 +39,7 @@ type QueryClient interface {
 	ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error)
 	Series(matchers []string, start, end time.Time) (*loghttp.SeriesResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration) (*loghttp.DetectedFieldsResponse, error)
 }
 
 var _ QueryClient = (*Client)(nil)
@@ -135,6 +139,33 @@ func (c *Client) GetVolume(query *volume.Query) (*loghttp.QueryResponse, error) 
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// GetDetectedFields uses the /api/v1/detected_fields endpoint to list the fields that Loki detects in the log lines
+// that match the query. It uses the /api/v1/detected_field/{name}/values endpoint to list the values of a field if the field name is set.
+func (c *Client) GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration) (*loghttp.DetectedFieldsResponse, error) {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("limit", int64(fieldLimit))
+	qsb.SetInt("line_limit", int64(lineLimit))
+	qsb.SetInt("start", start.UnixNano())
+	qsb.SetInt("end", end.UnixNano())
+	// The step is optional, so we only set it if provided,
+	// otherwise we leverage the API defaults.
+	if step != 0 {
+		qsb.SetString("step", step.String())
+	}
+
+	path := detectedFieldsPath
+	if fieldName != "" {
+		path = fmt.Sprintf(detectedFieldValuesPath, url.PathEscape(fieldName))
+	}
+
+	var r loghttp.DetectedFieldsResponse
+	if err := c.getJSON(path, qsb.Encode(), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 func (c *Client) doQuery(path, query string) (*loghttp.QueryResponse, error) {

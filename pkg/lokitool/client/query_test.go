@@ -210,3 +210,48 @@ func TestGetVolume(t *testing.T) {
 		require.False(t, params.Has("step"))
 	})
 }
+
+func TestGetDetectedFields(t *testing.T) {
+	start := time.Unix(1700000000, 0)
+
+	t.Run("fields", func(t *testing.T) {
+		srv, requests := newServer(t, http.StatusOK, `{"fields": [{"label": "level", "type": "string", "cardinality": 3}], "limit": 100}`)
+		c, err := New(Config{Address: srv.URL})
+		require.NoError(t, err)
+
+		resp, err := c.GetDetectedFields(`{app="foo"}`, "", 100, 1000, start, start.Add(time.Hour), 10*time.Second)
+		require.NoError(t, err)
+		require.Len(t, resp.Fields, 1)
+		require.Equal(t, "level", resp.Fields[0].Label)
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, "/loki/api/v1/detected_fields", got[0].Path)
+
+		params, err := url.ParseQuery(got[0].Query)
+		require.NoError(t, err)
+		require.Equal(t, `{app="foo"}`, params.Get("query"))
+		require.Equal(t, "100", params.Get("limit"))
+		require.Equal(t, "1000", params.Get("line_limit"))
+		require.Equal(t, "1700000000000000000", params.Get("start"))
+		require.Equal(t, "1700003600000000000", params.Get("end"))
+		require.Equal(t, "10s", params.Get("step"))
+	})
+
+	t.Run("values of a field", func(t *testing.T) {
+		srv, requests := newServer(t, http.StatusOK, `{"values": ["info", "error"], "limit": 100}`)
+		c, err := New(Config{Address: srv.URL})
+		require.NoError(t, err)
+
+		resp, err := c.GetDetectedFields(`{app="foo"}`, "http/status", 100, 1000, start, start.Add(time.Hour), 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{"info", "error"}, resp.Values)
+
+		got := requests()
+		require.Equal(t, "/loki/api/v1/detected_field/http%2Fstatus/values", got[0].Path)
+
+		params, err := url.ParseQuery(got[0].Query)
+		require.NoError(t, err)
+		require.False(t, params.Has("step"))
+	})
+}

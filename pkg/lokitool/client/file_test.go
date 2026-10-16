@@ -221,6 +221,13 @@ func TestFileClient_GetVolume(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+func TestFileClient_GetDetectedFields(t *testing.T) {
+	c := newEmptyClient(t)
+	resp, err := c.GetDetectedFields(`{foo="bar"}`, "", 100, 1000, time.Now(), time.Now(), 0)
+	require.ErrorIs(t, err, ErrNotSupported)
+	require.Nil(t, resp)
+}
+
 func newEmptyClient(t *testing.T) *FileClient {
 	t.Helper()
 	return NewFileClient(io.NopCloser(&bytes.Buffer{}), log.NewNopLogger())

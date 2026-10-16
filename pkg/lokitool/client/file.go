@@ -184,6 +184,10 @@ func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) 
 	return nil, ErrNotSupported
 }
 
+func (f *FileClient) GetDetectedFields(_, _ string, _, _ int, _, _ time.Time, _ time.Duration) (*loghttp.DetectedFieldsResponse, error) {
+	return nil, ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }
