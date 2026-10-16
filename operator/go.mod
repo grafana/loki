@@ -22,11 +22,11 @@ require (
 	github.com/prometheus/prometheus v0.314.0
 	github.com/stretchr/testify v1.12.1
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
-	k8s.io/api v0.37.0
-	k8s.io/apimachinery v0.37.0
-	k8s.io/apiserver v0.37.0
-	k8s.io/client-go v0.37.0
-	k8s.io/component-base v0.37.0
+	k8s.io/api v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/apiserver v0.37.1
+	k8s.io/client-go v0.37.1
+	k8s.io/component-base v0.37.1
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/yaml v1.6.0
@@ -39,7 +39,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
-	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/armon/go-metrics v0.7.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500 // indirect
@@ -136,7 +136,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/exporter-toolkit v0.20.0 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
-	github.com/prometheus/procfs v0.21.1 // indirect
+	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/redis/go-redis/v9 v9.23.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v6 v6.0.1 // indirect
@@ -152,7 +152,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.7.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
-	go.etcd.io/etcd/client/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/client/v3 v3.7.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.71.0 // indirect
 	go.opentelemetry.io/contrib/exporters/autoexport v0.71.0 // indirect
@@ -206,7 +206,7 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/apiextensions-apiserver v0.36.3 // indirect
+	k8s.io/apiextensions-apiserver v0.37.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
 	k8s.io/streaming v0.37.1 // indirect
@@ -229,5 +229,5 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 replace (
 	go.etcd.io/etcd/api/v3 => go.etcd.io/etcd/api/v3 v3.6.14
 	go.etcd.io/etcd/client/pkg/v3 => go.etcd.io/etcd/client/pkg/v3 v3.6.14
-	go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.6.14
+	go.etcd.io/etcd/client/v3 => go.etcd.io/etcd/client/v3 v3.7.2
 )
