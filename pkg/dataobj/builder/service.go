@@ -53,6 +53,13 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	const componentName = "dataobj-builder"
 	logger = log.With(logger, "component", componentName)
 
+	// Loki validates this config only when Kafka ingestion is enabled, so
+	// validate it here too. For example, a flush concurrency of 0 would block
+	// every flush.
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dataobj builder config: %w", err)
+	}
+
 	// Each instance consumes exactly one partition, taken from the ordinal
 	// suffix of its hostname (e.g. dataobj-builder-3 consumes partition 3),
 	// unless cfg.PartitionID overrides it. The hostname is also used as the
@@ -146,6 +153,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		indexer,
 		tocWriter,
 		partitionID,
+		cfg.FlushConcurrency,
 		logger,
 		reg,
 	)
