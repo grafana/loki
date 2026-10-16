@@ -37,6 +37,8 @@ type mockHintProvider struct {
 	hints        *hintprovider.Hints
 	err          error
 	calls        int
+	from         model.Time
+	through      model.Time
 	sawSkipCache bool
 	sawCancel    bool
 	delay        time.Duration
@@ -76,13 +78,14 @@ func (m *mockHintProvider) ProvideHints(
 	ctx context.Context,
 	_ string,
 	_ syntax.Expr,
-	_,
-	_ model.Time,
+	from, through model.Time,
 ) (*hintprovider.Hints, *hintprovider.QueryStats, error) {
 	stats := hintprovider.NewQueryStats()
 
 	m.mu.Lock()
 	m.calls++
+	m.from = from
+	m.through = through
 	hints := m.hints
 	err := m.err
 	m.sawSkipCache = hintprovider.SkipCache(ctx)
@@ -138,6 +141,12 @@ func (m *mockHintProvider) Calls() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.calls
+}
+
+func (m *mockHintProvider) Window() (model.Time, model.Time) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.from, m.through
 }
 
 func (m *mockHintProvider) SawSkipCache() bool {
@@ -503,6 +512,7 @@ func TestDryRun_VerifiesHintCoverage(t *testing.T) {
 	logLine := findLogLine(logs.String(), "logline dry-run verification")
 	require.NotEmpty(t, logLine)
 	require.Contains(t, logLine, "correct=true")
+	require.Contains(t, logLine, "query_type=filter")
 	require.Contains(t, logLine, "false_negatives=0")
 	require.Contains(t, logLine, "total_entries=1")
 	require.Contains(t, logLine, "query_timeout=false")
@@ -2517,6 +2527,367 @@ func TestEmptyLokiResponseMergesSafely(t *testing.T) {
 	require.Equal(t, uint32(loghttp.VersionV1), lokiMerged.Version, "version must match the original request")
 	require.Len(t, lokiMerged.Data.Result, 1, "real stream entries must survive the merge")
 	require.Len(t, lokiMerged.Data.Result[0].Entries, 2)
+}
+
+// Metric range queries are verified in dry-run from the matrix already returned
+// to the user. Hint lookup still uses the request bounds widened by the range
+// interval and offset, matching getQueryBytes. A positive sample is correct
+// when its lookback window overlaps a hint. Live mode and instant queries are unchanged.
+func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		interval time.Duration
+		offset   time.Duration
+	}{
+		{
+			name:     "sum of count_over_time",
+			query:    `sum(count_over_time({app="api"} |= "timeout" [5m]))`,
+			interval: 5 * time.Minute,
+		},
+		{
+			name:     "offset widens the start and shifts the end",
+			query:    `sum(count_over_time({app="api"} |= "timeout" [5m] offset 10m))`,
+			interval: 5 * time.Minute,
+			offset:   10 * time.Minute,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().Truncate(time.Millisecond)
+			reqStart := now.Add(-1 * time.Hour)
+			lookupFrom := reqStart.Add(-(tc.interval + tc.offset))
+			lookupThrough := now.Add(-tc.offset)
+
+			hp := &mockHintProvider{
+				hints: &hintprovider.Hints{
+					TimeRanges: []hintprovider.HintTimeRange{
+						{Start: lookupFrom, End: lookupThrough},
+					},
+				},
+			}
+
+			userResp := metricMatrixResponse(1, now)
+			var userReq *queryrange.LokiRequest
+			nextCalled := 0
+			next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				nextCalled++
+				time.Sleep(25 * time.Millisecond)
+				userReq = req.(*queryrange.LokiRequest)
+				return userResp, nil
+			})
+
+			var logs bytes.Buffer
+			handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+			req := newTestLokiRequest(tc.query, reqStart, now)
+			resp, err := handler.Do(testTenantContext(), req)
+			require.NoError(t, err)
+
+			require.Same(t, userResp, resp, "dry-run returns the unhinted result")
+			require.Equal(t, 1, nextCalled, "dry-run runs the query once")
+			require.NotNil(t, userReq)
+			require.Equal(t, reqStart, userReq.StartTs)
+			require.Equal(t, now, userReq.EndTs)
+			require.Empty(t, userReq.HintRanges)
+			require.Empty(t, req.HintRanges)
+
+			require.Equal(t, 1, hp.Calls())
+			gotFrom, gotThrough := hp.Window()
+			require.Equal(t, model.TimeFromUnixNano(lookupFrom.UnixNano()), gotFrom)
+			require.Equal(t, model.TimeFromUnixNano(lookupThrough.UnixNano()), gotThrough)
+
+			logLine := findLogLine(logs.String(), "logline dry-run verification")
+			require.NotEmpty(t, logLine)
+			require.Contains(t, logLine, "correct=true")
+			require.Contains(t, logLine, "query_type=metric")
+			require.Contains(t, logLine, "total_entries=1")
+			require.Contains(t, logLine, "covered_entries=1")
+			require.Contains(t, logLine, "false_negatives=0")
+			require.NotContains(t, logLine, "false_negative_ranges=")
+			summary := summarizeDryRunHints([]hintprovider.HintTimeRange{{Start: lookupFrom, End: lookupThrough}}, lookupFrom, lookupThrough, lookupThrough, logproto.FORWARD)
+			require.Contains(t, logLine, "hint_total_seconds="+summary.hintTotalSeconds, "the summary covers the widened lookup, including lookback before the request start")
+		})
+	}
+}
+
+func TestDryRun_MetricRange_EmptyHintsMissPositiveStep(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: nil},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		time.Sleep(25 * time.Millisecond)
+		lokiReq := req.(*queryrange.LokiRequest)
+		require.Empty(t, lokiReq.HintRanges)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+
+	require.Same(t, userResp, resp, "dry-run returns the unhinted result")
+	require.Equal(t, 1, nextCalled, "dry-run runs the query once")
+	require.Equal(t, 1, hp.Calls())
+	gotFrom, gotThrough := hp.Window()
+	require.Equal(t, model.TimeFromUnixNano(reqStart.Add(-5*time.Minute).UnixNano()), gotFrom)
+	require.Equal(t, model.TimeFromUnixNano(now.UnixNano()), gotThrough)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=false", "a positive sample whose lookback is uncovered is a miss")
+	require.Contains(t, logLine, "query_type=metric")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=0")
+	require.Contains(t, logLine, "false_negatives=1")
+	require.Contains(t, logLine, "false_negative_ranges=")
+	require.Contains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
+		Start: now.Add(-5 * time.Minute),
+		End:   now,
+	}}))
+	require.NotContains(t, logLine, "non-Loki response")
+}
+
+func TestDryRun_MetricRange_PartialHintCoversLookback(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-5 * time.Minute), End: now.Add(-4 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=true", "any hint in the lookback counts as covered")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=1")
+	require.Contains(t, logLine, "false_negatives=0")
+	require.NotContains(t, logLine, "false_negative_ranges=")
+}
+
+func TestDryRun_MetricRange_HintOutsideLookbackIsMiss(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-10 * time.Minute), End: now.Add(-6 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=false", "a hint outside the lookback leaves the sample uncovered")
+	require.Contains(t, logLine, "total_entries=1")
+	require.Contains(t, logLine, "covered_entries=0")
+	require.Contains(t, logLine, "false_negatives=1")
+	require.Contains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
+		Start: now.Add(-5 * time.Minute),
+		End:   now,
+	}}))
+}
+
+func TestDryRun_MetricRange_IngesterWindowSamplesExcluded(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-6 * time.Hour)
+	// Lookback ends before the 3h cutoff, so this step is checked.
+	storeStep := now.Add(-4 * time.Hour)
+	// Lookback ends after the cutoff, so this step is left out.
+	ingesterStep := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: nil},
+	}
+
+	userResp := &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result: []queryrangebase.SampleStream{{
+					Labels: []logproto.LabelAdapter{{Name: "app", Value: "api"}},
+					Samples: []logproto.LegacySample{
+						{TimestampMs: storeStep.UnixMilli(), Value: 1},
+						{TimestampMs: ingesterStep.UnixMilli(), Value: 1},
+					},
+				}},
+			},
+		},
+	}
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{
+		DryRun:               true,
+		NgramLength:          6,
+		QueryIngestersWithin: 3 * time.Hour,
+	}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+
+	_, gotThrough := hp.Window()
+	require.WithinDuration(t, now.Add(-3*time.Hour), gotThrough.Time(), 2*time.Second)
+
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=false")
+	require.Contains(t, logLine, "total_entries=1", "the ingester-window step is left out")
+	require.Contains(t, logLine, "covered_entries=0")
+	require.Contains(t, logLine, "false_negatives=1")
+	require.Contains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
+		Start: storeStep.Add(-5 * time.Minute),
+		End:   storeStep,
+	}}))
+	require.NotContains(t, logLine, hintprovider.FormatHintRanges([]hintprovider.HintTimeRange{{
+		Start: ingesterStep.Add(-5 * time.Minute),
+		End:   ingesterStep,
+	}}))
+}
+
+func TestDryRun_MetricRange_AbsentOverTimeSkipsOverlap(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{TimeRanges: nil},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		time.Sleep(25 * time.Millisecond)
+		return userResp, nil
+	})
+
+	var logs bytes.Buffer
+	handler := buildStackWithLogger(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), log.NewLogfmtLogger(&logs), next)
+	resp, err := handler.Do(testTenantContext(), newTestLokiRequest(`sum(absent_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now))
+	require.NoError(t, err)
+
+	require.Same(t, userResp, resp)
+	require.Equal(t, 1, nextCalled)
+	logLine := findLogLine(logs.String(), "logline dry-run verification")
+	require.NotEmpty(t, logLine)
+	require.Contains(t, logLine, "correct=true", "a positive absent_over_time sample means the window was empty")
+	require.Contains(t, logLine, "total_entries=0")
+	require.Contains(t, logLine, "false_negatives=0")
+}
+
+func TestDryRun_MetricRange_UnsupportedSkipsHintLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-30 * time.Minute), End: now.Add(-20 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	var got *queryrange.LokiRequest
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		got = req.(*queryrange.LokiRequest)
+		return userResp, nil
+	})
+
+	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), next)
+	req := newTestLokiRequest(
+		`sum(count_over_time({app="api"} |= "timeout" [5m])) / sum(count_over_time({app="api"} |= "database" [5m]))`,
+		now.Add(-1*time.Hour),
+		now,
+	)
+	resp, err := handler.Do(testTenantContext(), req)
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, nextCalled)
+	require.Empty(t, got.HintRanges)
+}
+
+func TestDryRun_MetricRange_LiveModeSkipsHintLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{
+				{Start: now.Add(-30 * time.Minute), End: now.Add(-20 * time.Minute)},
+			},
+		},
+	}
+
+	userResp := metricMatrixResponse(1, now)
+	var got *queryrange.LokiRequest
+	nextCalled := 0
+	next := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		nextCalled++
+		got = req.(*queryrange.LokiRequest)
+		return userResp, nil
+	})
+
+	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), next)
+	req := newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, now.Add(-1*time.Hour), now)
+	resp, err := handler.Do(testTenantContextWithLive(), req)
+	require.NoError(t, err)
+	require.Same(t, userResp, resp)
+	require.Equal(t, 0, hp.Calls())
+	require.Equal(t, 1, nextCalled)
+	require.Empty(t, got.HintRanges)
+}
+
+func metricMatrixResponse(value float64, ts time.Time) *queryrange.LokiPromResponse {
+	return &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result: []queryrangebase.SampleStream{
+					{
+						Labels:  []logproto.LabelAdapter{{Name: "app", Value: "api"}},
+						Samples: []logproto.LegacySample{{TimestampMs: ts.UnixMilli(), Value: value}},
+					},
+				},
+			},
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------
