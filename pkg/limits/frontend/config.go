@@ -22,6 +22,7 @@ type Config struct {
 	AcceptedStreamsCacheEnabled    bool                  `yaml:"accepted_streams_cache_enabled"`
 	AcceptedStreamsCacheTTL        time.Duration         `yaml:"accepted_streams_cache_ttl"`
 	AcceptedStreamsCacheTTLJitter  time.Duration         `yaml:"accepted_streams_cache_ttl_jitter"`
+	ShardCacheTTL                  time.Duration         `yaml:"shard_cache_ttl"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -55,13 +56,19 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.AcceptedStreamsCacheTTL,
 		"ingest-limits-frontend.accepted-streams-cache-ttl",
 		time.Minute,
-		"The TTL for the accepted streams cache.",
+		"The time to live (TTL) for the accepted streams cache.",
 	)
 	f.DurationVar(
 		&cfg.AcceptedStreamsCacheTTLJitter,
 		"ingest-limits-frontend.accepted-streams-cache-ttl-jitter",
 		15*time.Second,
 		"The jitter to add to the accepted streams cache.",
+	)
+	f.DurationVar(
+		&cfg.ShardCacheTTL,
+		"ingest-limits-frontend.shard-cache-ttl",
+		0,
+		"[Experimental]: The time to live (TTL) for caching CheckLimitsAndShard results per stream. Pushes arriving while an entry is cached are combined into a single backend request once it goes stale. 0 disables the cache.",
 	)
 }
 
@@ -81,6 +88,9 @@ func (cfg *Config) Validate() error {
 		if cfg.AcceptedStreamsCacheTTLJitter <= 0 {
 			return errors.New("accepted streams cache TTL jitter must be a positive number, or the cache must be disabled")
 		}
+	}
+	if cfg.ShardCacheTTL < 0 {
+		return errors.New("shard cache ttl must not be negative")
 	}
 	return nil
 }
