@@ -568,28 +568,9 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 		return
 	}
 
-	for _, pp := range r.opts.Predicates {
-		// If there is a predicate, primary columns are those used in the predicate.
-		WalkPredicate(pp, func(p Predicate) bool {
-			switch p := p.(type) {
-			case EqualPredicate:
-				process(p.Column)
-			case InPredicate:
-				process(p.Column)
-			case GreaterThanPredicate:
-				process(p.Column)
-			case LessThanPredicate:
-				process(p.Column)
-			case FuncPredicate:
-				process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-				// No columns to process.
-			default:
-				panic(fmt.Sprintf("dataset.RowReader.fillPrimaryMask: unsupported predicate type %T", p))
-			}
-
-			return true // Continue walking the Predicate.
-		})
+	// If there is a predicate, primary columns are those used in the predicate.
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, process)
 	}
 }
 
@@ -881,25 +862,7 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
 	columns := make(map[Column]struct{})
 
-	WalkPredicate(p, func(p Predicate) bool {
-		switch p := p.(type) {
-		case EqualPredicate:
-			columns[p.Column] = struct{}{}
-		case InPredicate:
-			columns[p.Column] = struct{}{}
-		case GreaterThanPredicate:
-			columns[p.Column] = struct{}{}
-		case LessThanPredicate:
-			columns[p.Column] = struct{}{}
-		case FuncPredicate:
-			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
-			// No columns to process.
-		default:
-			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
-		}
-		return true
-	})
+	WalkPredicateColumn(p, func(c Column) { columns[c] = struct{}{} })
 
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))

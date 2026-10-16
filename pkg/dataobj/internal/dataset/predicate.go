@@ -142,6 +142,32 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	fn(nil)
 }
 
+// WalkPredicateColumn calls fn with the column of every leaf predicate in p, in the depth-first
+// order of [WalkPredicate]. A column that several leaves read comes up once for each of them.
+//
+// WalkPredicateColumn panics on a predicate type it does not support.
+func WalkPredicateColumn(p Predicate, fn func(Column)) {
+	WalkPredicate(p, func(p Predicate) bool {
+		switch p := p.(type) {
+		case EqualPredicate:
+			fn(p.Column)
+		case InPredicate:
+			fn(p.Column)
+		case GreaterThanPredicate:
+			fn(p.Column)
+		case LessThanPredicate:
+			fn(p.Column)
+		case FuncPredicate:
+			fn(p.Column)
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
+			// No columns to process.
+		default:
+			panic(fmt.Sprintf("dataset.WalkPredicateColumn: unsupported predicate type %T", p))
+		}
+		return true
+	})
+}
+
 // ValueSet is a set of [Value]s of one physical type.
 //
 // The methods of a ValueSet are safe for concurrent use, unless the
