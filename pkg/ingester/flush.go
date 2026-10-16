@@ -141,13 +141,35 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	level.Debug(i.logger).Log("msg", "flush queues have drained")
 }
 
-// FlushHandler triggers a flush of all in memory chunks. Mainly used for local
-// testing. The flush is only enqueued, the request does not wait for it.
+// FlushHandler triggers a flush of all in memory chunks of all tenants. By
+// default the flush is only enqueued and the request returns without waiting
+// for it. The optional flush_index param is EXPERIMENTAL: if true, the request
+// waits for the chunks to be flushed and then also forces the in-memory index to
+// be shipped to object storage. A bare flush_index is true, an explicit value
+// is parsed as a bool.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
-	if err := i.flushStreams(r.Context(), "", nil, false); err != nil {
+	ctx := r.Context()
+	flushIndex, err := parseFlushIndex(r.URL.Query())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := i.flushStreams(ctx, "", nil, flushIndex); err != nil { // flushIndex implies synchronous
+		level.Error(i.logger).Log("msg", "failed flushing streams", "err", err)
 		http.Error(w, err.Error(), flushErrorStatus(err))
 		return
 	}
+
+	if flushIndex {
+		// Every chunk has been written by now, so the shipped index references them.
+		if err := i.store.FlushIndexes(ctx); err != nil {
+			level.Error(i.logger).Log("msg", "failed flushing index", "err", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -203,6 +225,20 @@ func flushErrorStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
+// parseFlushIndex parses the flush_index param. Absent is false, a bare
+// flush_index is true, and an explicit value is parsed as a bool.
+func parseFlushIndex(q url.Values) (bool, error) {
+	flushIndex := q.Has("flush_index")
+	if v := q.Get("flush_index"); v != "" {
+		var err error
+		flushIndex, err = strconv.ParseBool(v)
+		if err != nil {
+			return false, fmt.Errorf("invalid flush_index param: %w", err)
+		}
+	}
+	return flushIndex, nil
+}
+
 // parseFlushTenantParams parses and validates the query params of
 // FlushTenantHandler, returning the tenant, the stream matchers and whether to
 // flush the index.
@@ -219,13 +255,9 @@ func parseFlushTenantParams(q url.Values) (tenantID string, matchers []*labels.M
 		}
 	}
 
-	// A bare flush_index is true, an explicit value is parsed as a bool.
-	flushIndex = q.Has("flush_index")
-	if v := q.Get("flush_index"); v != "" {
-		flushIndex, err = strconv.ParseBool(v)
-		if err != nil {
-			return "", nil, false, fmt.Errorf("invalid flush_index param: %w", err)
-		}
+	flushIndex, err = parseFlushIndex(q)
+	if err != nil {
+		return "", nil, false, err
 	}
 
 	return tenantID, matchers, flushIndex, nil
@@ -236,10 +268,8 @@ type flushOp struct {
 	userID    string
 	fp        model.Fingerprint
 	immediate bool
-
-	// jobs are the synchronous flush requests waiting on this op. It is appended
-	// to by util.PriorityQueue.EnqueueOrMerge while the op is queued, and read by
-	// the flush worker after it dequeues the op, so it needs no other locking.
+	// jobs is a mechanism to report back resuls from the flush loop.
+	// flushJobs are created and added to flushOps by the handler endpoints when synchronous processing is required
 	jobs []*flushJob
 }
 

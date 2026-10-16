@@ -735,28 +735,81 @@ func TestFlushTenantHandler(t *testing.T) {
 }
 
 func TestFlushHandler(t *testing.T) {
-	store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
-	defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+	for _, tc := range []struct {
+		name  string
+		query string
 
-	for _, userID := range []string{"tenant-a", "tenant-b"} {
-		_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{
-			Streams: []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+		expectedStatusCode int
+		// expectedFlushed is whether the chunks of every tenant are flushed.
+		expectedFlushed bool
+		// expectedIndexFlushes is the number of forced index ships (FlushIndexes calls).
+		expectedIndexFlushes int32
+	}{
+		{
+			name:               "the index is not flushed by default",
+			expectedStatusCode: http.StatusNoContent,
+			expectedFlushed:    true,
+		},
+		{
+			name:                 "bare flush_index flushes the index",
+			query:                "flush_index",
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+			expectedIndexFlushes: 1,
+		},
+		{
+			name:                 "flush_index=true flushes the index",
+			query:                "flush_index=true",
+			expectedStatusCode:   http.StatusNoContent,
+			expectedFlushed:      true,
+			expectedIndexFlushes: 1,
+		},
+		{
+			name:               "flush_index=false does not flush the index",
+			query:              "flush_index=false",
+			expectedStatusCode: http.StatusNoContent,
+			expectedFlushed:    true,
+		},
+		{
+			name:               "invalid flush_index is a bad request",
+			query:              "flush_index=maybe",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			tenants := []string{"tenant-a", "tenant-b"}
+			for _, userID := range tenants {
+				_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{
+					Streams: []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+				})
+				require.NoError(t, err)
+			}
+
+			w := httptest.NewRecorder()
+			ing.FlushHandler(w, httptest.NewRequest(http.MethodPost, "/flush?"+tc.query, nil))
+			require.Equal(t, tc.expectedStatusCode, w.Code)
+
+			// Without flush_index the flush is only enqueued, so wait for the flush
+			// workers to drain it. With flush_index it is complete on return, which
+			// the exact assertion below also checks.
+			for _, userID := range tenants {
+				if tc.expectedFlushed && tc.expectedIndexFlushes == 0 {
+					require.Eventually(t, func() bool {
+						return len(flushedStreams(store, userID)) == 2
+					}, 5*time.Second, 10*time.Millisecond)
+				}
+				if tc.expectedFlushed {
+					require.ElementsMatch(t, []string{`{app="a"}`, `{app="b"}`}, flushedStreams(store, userID))
+				} else {
+					require.Empty(t, flushedStreams(store, userID))
+				}
+			}
+			require.Equal(t, tc.expectedIndexFlushes, store.flushIndexCalls.Load())
 		})
-		require.NoError(t, err)
 	}
-
-	w := httptest.NewRecorder()
-	ing.FlushHandler(w, httptest.NewRequest(http.MethodPost, "/flush", nil))
-	require.Equal(t, http.StatusNoContent, w.Code)
-
-	// The flush is only enqueued, so wait for the flush workers to drain it.
-	for _, userID := range []string{"tenant-a", "tenant-b"} {
-		require.Eventually(t, func() bool {
-			return len(flushedStreams(store, userID)) == 2
-		}, 5*time.Second, 10*time.Millisecond)
-		require.ElementsMatch(t, []string{`{app="a"}`, `{app="b"}`}, flushedStreams(store, userID))
-	}
-	require.Zero(t, store.flushIndexCalls.Load(), "/flush must not flush the index")
 }
 
 func TestFlushStreams(t *testing.T) {

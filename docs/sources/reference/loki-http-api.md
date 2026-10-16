@@ -1300,6 +1300,14 @@ POST /flush
 backing store. Mainly used for local testing. The flush is queued and the
 request returns without waiting for it to complete.
 
+**URL query parameters:**
+
+- `flush_index` (experimental):
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
+
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## Flush in-memory chunks for a tenant (experimental)
@@ -1316,9 +1324,6 @@ endpoint is synchronous: it returns once the chunks have been written to the
 backing store. This can take a long time, so set a generous client timeout when
 calling it.
 
-The tenant is a parameter, not the `X-Scope-OrgID` header, because the caller is
-an operator acting on a tenant rather than the tenant itself.
-
 **URL query parameters:**
 
 - `id=<tenant ID>`:
@@ -1331,6 +1336,7 @@ an operator acting on a tenant rather than the tenant itself.
   This makes the flushed chunks immediately referenceable, rather than waiting for the next periodic index rotation.
   The index is shared by all tenants on the ingester, so this is not tenant-scoped.
   If omitted, only chunks are flushed.
+  NOTE: If provided the endpoint blocks until all flushing behavior is complete.
 
 For example, `POST /flush/tenant?id=foo&matchers={app="bar"}&flush_index`.
 
