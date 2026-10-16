@@ -34,7 +34,7 @@ func TestOffsetCommittedDownscaleFunc(t *testing.T) {
 		)
 		require.NoError(t, err)
 		t.Cleanup(client.Close)
-		offsetReader := kafkav2.NewOffsetReader(client, testTopic)
+		offsetReader := kafkav2.NewOffsetReader(client, testTopic, log.NewNopLogger())
 		return client, newOffsetCommittedDownscaleFunc(offsetReader, testConsumerGroup, partition, log.NewNopLogger())
 	}
 

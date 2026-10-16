@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -69,29 +71,83 @@ type OffsetReader struct {
 	adm    *kadm.Client
 	client *kgo.Client
 	topic  string
+	logger log.Logger
 }
 
 // NewOffsetReader returns a new OffsetReader.
-func NewOffsetReader(client *kgo.Client, topic string) *OffsetReader {
+func NewOffsetReader(
+	client *kgo.Client,
+	topic string,
+	logger log.Logger,
+) *OffsetReader {
 	return &OffsetReader{
 		adm:    kadm.NewClient(client),
 		client: client,
 		topic:  topic,
+		logger: log.With(logger, "topic", topic),
 	}
 }
 
-// ResumeOffset returns the next offset for consumerGroup to consume from the
-// partition. It returns [OffsetStart] if the group has no committed offset for
+// LastCommittedOffset returns the last committed offset of consumerGroup for
 // the partition.
+func (r *OffsetReader) LastCommittedOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error) {
+	req := kmsg.NewPtrOffsetFetchRequest()
+	req.Group = consumerGroup
+	req.Topics = []kmsg.OffsetFetchRequestTopic{{
+		Topic:      r.topic,
+		Partitions: []int32{partition},
+	}}
+	resps := r.client.RequestSharded(ctx, req)
+	// Since we issued a request for only 1 partition, we expect exactly 1 response.
+	if expected, actual := 1, len(resps); actual != expected {
+		return 0, fmt.Errorf("unexpected number of responses: %d", len(resps))
+	}
+	// Ensure no error occurred.
+	res := resps[0]
+	if res.Err != nil {
+		return 0, res.Err
+	}
+	// Parse the response.
+	fetchRes, ok := res.Resp.(*kmsg.OffsetFetchResponse)
+	if !ok {
+		return 0, errors.New("unexpected response type")
+	}
+	// Check the group error before the partitions. A group error, such as
+	// GROUP_AUTHORIZATION_FAILED, comes with no partitions, and the check
+	// below would read it as a group that never committed.
+	if len(fetchRes.Groups) == 1 {
+		if err := groupError(fetchRes.Groups[0].ErrorCode); err != nil {
+			return 0, err
+		}
+	}
+	if len(fetchRes.Groups) != 1 ||
+		len(fetchRes.Groups[0].Topics) != 1 ||
+		len(fetchRes.Groups[0].Topics[0].Partitions) != 1 {
+		level.Debug(r.logger).Log(
+			"msg", "malformed response, setting to start offset",
+			"consumer_group", consumerGroup,
+		)
+		return OffsetStart, nil
+	}
+	partitionRes := fetchRes.Groups[0].Topics[0].Partitions[0]
+	if err := kerr.ErrorForCode(partitionRes.ErrorCode); err != nil {
+		return 0, err
+	}
+	return partitionRes.Offset, nil
+}
+
+// ResumeOffset returns the next offset for consumerGroup to consume from the
+// partition.
 func (r *OffsetReader) ResumeOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error) {
-	offsets, err := r.LastCommittedOffsets(ctx, map[int32]string{partition: consumerGroup})
+	lastCommittedOffset, err := r.LastCommittedOffset(ctx, consumerGroup, partition)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch last committed offset: %w", err)
 	}
-	if offsets[partition] < 0 {
-		return OffsetStart, nil
+	initialOffset := OffsetStart
+	if lastCommittedOffset >= 0 {
+		initialOffset = lastCommittedOffset + 1
 	}
-	return offsets[partition] + 1, nil
+	return initialOffset, nil
 }
 
 // StartOffset returns the offset of the oldest record that retention has not
@@ -181,35 +237,66 @@ func (r *OffsetReader) listedOffsets(listed kadm.ListedOffsets, err error) (map[
 
 // LastCommittedOffsets returns the last committed offset for each partition
 // in groups, keyed by partition. groups maps each partition to the consumer
-// group that consumes it.
+// group that consumes it. It sends one request per group coordinator.
 //
 // The offset is negative if the group has no committed offset for its
 // partition.
 func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, groups map[int32]string) (map[int32]int64, error) {
-	names := make([]string, 0, len(groups))
-	for _, group := range groups {
-		names = append(names, group)
-	}
-	fetched := r.adm.FetchManyOffsets(ctx, names...)
-
 	offsets := make(map[int32]int64, len(groups))
+	if len(groups) == 0 {
+		return offsets, nil
+	}
+	// Name the partitions of each group, as LastCommittedOffset does, rather
+	// than ask for every committed offset of the group. That keeps the load
+	// on the broker low.
+	partitions := make(map[string][]int32)
 	for partition, group := range groups {
 		offsets[partition] = OffsetStart
-		res, ok := fetched[group]
-		if !ok || errors.Is(res.Err, kerr.GroupIDNotFound) {
-			continue
+		partitions[group] = append(partitions[group], partition)
+	}
+	req := kmsg.NewPtrOffsetFetchRequest()
+	for group, groupPartitions := range partitions {
+		topic := kmsg.NewOffsetFetchRequestGroupTopic()
+		topic.Topic = r.topic
+		topic.Partitions = groupPartitions
+		reqGroup := kmsg.NewOffsetFetchRequestGroup()
+		reqGroup.Group = group
+		reqGroup.Topics = []kmsg.OffsetFetchRequestGroupTopic{topic}
+		req.Groups = append(req.Groups, reqGroup)
+	}
+
+	for _, shard := range r.client.RequestSharded(ctx, req) {
+		if shard.Err != nil {
+			return nil, shard.Err
 		}
-		if res.Err != nil {
-			return nil, fmt.Errorf("failed to fetch offsets of group %s: %w", group, res.Err)
-		}
-		committed, ok := res.Fetched.Lookup(r.topic, partition)
+		fetchRes, ok := shard.Resp.(*kmsg.OffsetFetchResponse)
 		if !ok {
-			continue
+			return nil, errors.New("unexpected response type")
 		}
-		if committed.Err != nil {
-			return nil, fmt.Errorf("failed to fetch offset of group %s: %w", group, committed.Err)
+		for _, group := range fetchRes.Groups {
+			if err := groupError(group.ErrorCode); err != nil {
+				return nil, fmt.Errorf("failed to fetch offsets of group %s: %w", group.Group, err)
+			}
+			for _, topic := range group.Topics {
+				for _, partitionRes := range topic.Partitions {
+					if err := kerr.ErrorForCode(partitionRes.ErrorCode); err != nil {
+						return nil, fmt.Errorf("failed to fetch offset of group %s: %w", group.Group, err)
+					}
+					offsets[partitionRes.Partition] = partitionRes.Offset
+				}
+			}
 		}
-		offsets[partition] = committed.At
 	}
 	return offsets, nil
+}
+
+// groupError returns the error for the error code of a group in an
+// OffsetFetch response. A group that does not exist has no committed offsets,
+// so GROUP_ID_NOT_FOUND is not an error.
+func groupError(code int16) error {
+	err := kerr.ErrorForCode(code)
+	if errors.Is(err, kerr.GroupIDNotFound) {
+		return nil
+	}
+	return err
 }
