@@ -427,6 +427,7 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 		Outcome:            "data_skipped",
 		HintStatus:         "ok",
 		HintLookupTime:     int64(100 * time.Millisecond),
+		HintWaitTime:       int64(60 * time.Millisecond),
 		HintRanges:         2,
 		HintRangesDuration: int64(30 * time.Minute),
 		PlannedChunks:      26,
@@ -459,7 +460,7 @@ func TestResult_Merge_LoglineStats(t *testing.T) {
 	res.Merge(narrowed)
 	res.Merge(Result{Logline: lookup})
 	// A second lookup-level value must not overwrite the first.
-	res.Merge(Result{Logline: &Logline{Outcome: "lookup_failed", HintStatus: "error", HintRanges: 5, IOBytes: 1}})
+	res.Merge(Result{Logline: &Logline{Outcome: "lookup_failed", HintStatus: "error", HintWaitTime: 1, HintRanges: 5, IOBytes: 1}})
 	res.Merge(Result{})
 
 	expected := *lookup

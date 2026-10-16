@@ -75,6 +75,9 @@ message Logline {
     (gogoproto.customname) = "IOWait",
     (gogoproto.jsontag) = "ioWait"
   ];
+  // Nanosecond wall time during which at least one sub-request was held
+  // waiting for the hint lookup. Overlapping waits count once.
+  int64 hintWaitTime = 14 [(gogoproto.jsontag) = "hintWaitTime"];
 }
 
 message Caches {

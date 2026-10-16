@@ -382,6 +382,7 @@ func (l *Logline) Merge(m Logline) {
 	keepFirst(&l.Outcome, m.Outcome)
 	keepFirst(&l.HintStatus, m.HintStatus)
 	keepFirst(&l.HintLookupTime, m.HintLookupTime)
+	keepFirst(&l.HintWaitTime, m.HintWaitTime)
 	keepFirst(&l.HintRanges, m.HintRanges)
 	keepFirst(&l.HintRangesDuration, m.HintRangesDuration)
 	keepFirst(&l.PlannedChunks, m.PlannedChunks)
