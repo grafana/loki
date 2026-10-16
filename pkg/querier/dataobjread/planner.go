@@ -245,15 +245,16 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	// would suppress pushdown this can keep.
 	columns, metadataNames, predicates := query.Projection.forStreams(labelNames)
 	return ReadTask{
-		objectPath:    descriptor.ObjectPath,
-		sectionIdx:    int(descriptor.SectionIdx),
-		streamIDs:     streamIDs,
-		streams:       streams,
-		columns:       columns,
-		metadataNames: metadataNames,
-		predicates:    predicates,
-		start:         query.Start,
-		end:           query.End,
+		objectPath:        descriptor.ObjectPath,
+		sectionIdx:        int(descriptor.SectionIdx),
+		streamIDs:         streamIDs,
+		streams:           streams,
+		columns:           columns,
+		metadataNames:     metadataNames,
+		predicates:        predicates,
+		needReturningLine: query.Projection.needReturningLine,
+		start:             query.Start,
+		end:               query.End,
 	}, true, nil
 }
 

@@ -29,13 +29,12 @@ type LokiStackStatusInfo struct {
 }
 
 const (
-	messageReady                           = "All components ready"
-	messageFailed                          = "One or more LokiStack components failed"
-	messagePending                         = "One or more LokiStack components pending on dependencies"
-	messageRunning                         = "All components are running, but some readiness checks are failing"
-	messageDegradedMissingNodes            = "Cluster contains no nodes matching the labels used for zone-awareness"
-	messageDegradedEmptyNodeLabel          = "No value for the labels used for zone-awareness"
-	messageWarningNeedsSchemaVersionUpdate = "The schema configuration does not contain the most recent schema version and needs an update"
+	messageReady                  = "All components ready"
+	messageFailed                 = "One or more LokiStack components failed"
+	messagePending                = "One or more LokiStack components pending on dependencies"
+	messageRunning                = "All components are running, but some readiness checks are failing"
+	messageDegradedMissingNodes   = "Cluster contains no nodes matching the labels used for zone-awareness"
+	messageDegradedEmptyNodeLabel = "No value for the labels used for zone-awareness"
 )
 
 var (
@@ -193,15 +192,6 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 
 func generateWarnings(stack *lokiv1.LokiStack) []metav1.Condition {
 	warnings := make([]metav1.Condition, 0, 2)
-	schemas := stack.Spec.Storage.Schemas
-
-	if len(schemas) > 0 && schemas[len(schemas)-1].Version != lokiv1.ObjectStorageSchemaV13 {
-		warnings = append(warnings, metav1.Condition{
-			Type:    string(lokiv1.ConditionWarning),
-			Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
-			Message: messageWarningNeedsSchemaVersionUpdate,
-		})
-	}
 
 	// Check if the ingester's replicas are less than or equal to the replication factor
 	rf := manifests.DefaultLokiStackSpec(stack.Spec.Size).Replication.Factor
