@@ -609,17 +609,17 @@ func TestParseFlushTenantParams(t *testing.T) {
 		expectedMatchers   string
 		expectedFlushIndex bool
 	}{
-		{name: "id only", query: "id=foo", expectedTenant: "foo"},
-		{name: "id and matchers", query: `id=foo&matchers={app="a"}`, expectedTenant: "foo", expectedMatchers: `{app="a"}`},
-		{name: "bare flush_index", query: "id=foo&flush_index", expectedTenant: "foo", expectedFlushIndex: true},
-		{name: "flush_index true", query: "id=foo&flush_index=true", expectedTenant: "foo", expectedFlushIndex: true},
-		{name: "flush_index false", query: "id=foo&flush_index=false", expectedTenant: "foo"},
-		{name: "all params", query: `id=foo&matchers={app="a"}&flush_index`, expectedTenant: "foo", expectedMatchers: `{app="a"}`, expectedFlushIndex: true},
-		{name: "no params", expectedErr: "the id param is required"},
-		{name: "empty id", query: "id=", expectedErr: "the id param is required"},
-		{name: "matchers without id", query: `matchers={app="a"}`, expectedErr: "the id param is required"},
-		{name: "invalid matchers", query: "id=foo&matchers=not-a-matcher", expectedErr: "invalid matchers param"},
-		{name: "invalid flush_index", query: "id=foo&flush_index=maybe", expectedErr: "invalid flush_index param"},
+		{name: "tenant only", query: "tenant=foo", expectedTenant: "foo"},
+		{name: "tenant and matchers", query: `tenant=foo&matchers={app="a"}`, expectedTenant: "foo", expectedMatchers: `{app="a"}`},
+		{name: "bare flush_index", query: "tenant=foo&flush_index", expectedTenant: "foo", expectedFlushIndex: true},
+		{name: "flush_index true", query: "tenant=foo&flush_index=true", expectedTenant: "foo", expectedFlushIndex: true},
+		{name: "flush_index false", query: "tenant=foo&flush_index=false", expectedTenant: "foo"},
+		{name: "all params", query: `tenant=foo&matchers={app="a"}&flush_index`, expectedTenant: "foo", expectedMatchers: `{app="a"}`, expectedFlushIndex: true},
+		{name: "no params", expectedErr: "the tenant param is required"},
+		{name: "empty tenant", query: "tenant=", expectedErr: "the tenant param is required"},
+		{name: "matchers without tenant", query: `matchers={app="a"}`, expectedErr: "the tenant param is required"},
+		{name: "invalid matchers", query: "tenant=foo&matchers=not-a-matcher", expectedErr: "invalid matchers param"},
+		{name: "invalid flush_index", query: "tenant=foo&flush_index=maybe", expectedErr: "invalid flush_index param"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			q, err := url.ParseQuery(tc.query)
@@ -663,7 +663,7 @@ func TestFlushTenantHandler(t *testing.T) {
 		{
 			name:                    "matchers scope flush to matching streams",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
-			query:                   "id=" + userID + "&matchers=" + url.QueryEscape(`{app="a"}`) + "&flush_index",
+			query:                   "tenant=" + userID + "&matchers=" + url.QueryEscape(`{app="a"}`) + "&flush_index",
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`},
 			expectedFlushes:         1,
@@ -671,7 +671,7 @@ func TestFlushTenantHandler(t *testing.T) {
 		{
 			name:                    "no matchers flushes the whole tenant",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
-			query:                   "id=" + userID + "&flush_index=true",
+			query:                   "tenant=" + userID + "&flush_index=true",
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
 			expectedFlushes:         1,
@@ -679,14 +679,14 @@ func TestFlushTenantHandler(t *testing.T) {
 		{
 			name:                    "the index is not flushed by default",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
-			query:                   "id=" + userID,
+			query:                   "tenant=" + userID,
 			expectedFlushStatusCode: http.StatusNoContent,
 			expectedStreams:         []string{`{app="a"}`},
 		},
 		{
 			name:                    "other tenants are not flushed",
 			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1)},
-			query:                   "id=other-tenant",
+			query:                   "tenant=other-tenant",
 			expectedFlushStatusCode: http.StatusNoContent,
 		},
 		{
@@ -696,12 +696,12 @@ func TestFlushTenantHandler(t *testing.T) {
 		},
 		{
 			name:                    "invalid matchers is a bad request",
-			query:                   "id=" + userID + "&matchers=not-a-matcher",
+			query:                   "tenant=" + userID + "&matchers=not-a-matcher",
 			expectedFlushStatusCode: http.StatusBadRequest,
 		},
 		{
 			name:                    "invalid flush_index is a bad request",
-			query:                   "id=" + userID + "&flush_index=maybe",
+			query:                   "tenant=" + userID + "&flush_index=maybe",
 			expectedFlushStatusCode: http.StatusBadRequest,
 		},
 	} {
@@ -1010,7 +1010,7 @@ func TestFlushRejectedWhenNotRunning(t *testing.T) {
 			require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
 			w = httptest.NewRecorder()
-			ing.FlushTenantHandler(w, httptest.NewRequest(http.MethodPost, "/flush/tenant?id="+userID+"&flush_index", nil))
+			ing.FlushTenantHandler(w, httptest.NewRequest(http.MethodPost, "/flush/tenant?tenant="+userID+"&flush_index", nil))
 			require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
 			require.Len(t, flushedStreams(store, userID), putsBefore, "a rejected flush must not flush anything")

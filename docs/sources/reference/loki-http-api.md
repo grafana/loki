@@ -1326,7 +1326,7 @@ calling it.
 
 **URL query parameters:**
 
-- `id=<tenant ID>`:
+- `tenant=<tenant ID>`:
   Required. The tenant to flush.
 - `matchers=<selector>`:
   Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
@@ -1338,7 +1338,7 @@ calling it.
   If omitted, only chunks are flushed.
   NOTE: If provided the endpoint blocks until all flushing behavior is complete.
 
-For example, `POST /flush/tenant?id=foo&matchers={app="bar"}&flush_index`.
+For example, `POST /flush/tenant?tenant=foo&matchers={app="bar"}&flush_index`.
 
 In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
 
@@ -1355,7 +1355,7 @@ waiting for the periodic resync (which re-lists through a cache that can take up
 to a minute to expire). It is the second step of making a freshly flushed index
 queryable across read nodes:
 
-1. `POST /flush/tenant?id=<tenant>&flush_index` on the ingester ships the new index to object storage.
+1. `POST /flush/tenant?tenant=<tenant>&flush_index` on the ingester ships the new index to object storage.
 1. `PUT /sync-indexes` on the index-gateway downloads it.
 1. `POST /loki/api/v1/cache/generation_numbers/increase` on the compactor
    invalidates any cached query results so the new data is reflected.

@@ -285,7 +285,7 @@ func (c *Client) Flush() error {
 // EXPERIMENTAL: this uses the experimental /flush/tenant endpoint.
 func (c *Client) FlushTenant(selector string) error {
 	params := url.Values{}
-	params.Set("id", c.instanceID)
+	params.Set("tenant", c.instanceID)
 	params.Set("flush_index", "true")
 	if selector != "" {
 		params.Set("matchers", selector)

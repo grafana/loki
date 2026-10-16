@@ -883,7 +883,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
 	)
-	// Tenant-scoped flush (experimental). The tenant is the "id" param rather than
+	// Tenant-scoped flush (experimental). The tenant is the "tenant" param rather than
 	// X-Scope-OrgID because the caller is an operator, so it carries no auth
 	// middleware, like /flush.
 	t.Server.HTTP.Methods("POST").Path("/flush/tenant").Handler(

@@ -173,11 +173,11 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// FlushTenantHandler is EXPERIMENTAL. It triggers a synchronous flush of the
-// in-memory chunks for a single tenant, optionally restricted to the streams
-// matching a LogQL stream selector. The params are:
+// FlushTenantHandler is EXPERIMENTAL. It triggers a flush of the in-memory chunks
+// for a single tenant, optionally restricted to the streams matching a LogQL
+// stream selector. The params are:
 //
-//   - id: the tenant to flush. Required. The tenant is a param, not the
+//   - tenant: the tenant to flush. Required. The tenant is a param, not the
 //     X-Scope-OrgID header, because the caller is an operator rather than the
 //     tenant.
 //   - matchers: a LogQL stream selector restricting the flush to the tenant's
@@ -243,9 +243,9 @@ func parseFlushIndex(q url.Values) (bool, error) {
 // FlushTenantHandler, returning the tenant, the stream matchers and whether to
 // flush the index.
 func parseFlushTenantParams(q url.Values) (tenantID string, matchers []*labels.Matcher, flushIndex bool, err error) {
-	tenantID = q.Get("id")
+	tenantID = q.Get("tenant")
 	if tenantID == "" {
-		return "", nil, false, errors.New("the id param is required")
+		return "", nil, false, errors.New("the tenant param is required")
 	}
 
 	if m := q.Get("matchers"); m != "" {
