@@ -50,6 +50,13 @@ const (
 	// sections logger.
 	duplicatesLogsPerSecond = 1
 	duplicatesLogsBurst     = 5
+
+	// indexPrefetchBytes is how many bytes Sections reads up front when it opens an index
+	// object. The section metadata of a compacted index object ends near byte 25,000, past
+	// the 16 KiB minimum window, so a smaller window needs a second request. Each open
+	// allocates the whole window, so a larger value costs memory and bandwidth for no fewer
+	// requests.
+	indexPrefetchBytes = 64 * 1024
 )
 
 var (
@@ -460,6 +467,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 				IndexPath:       indexEntry.Path,
 				SectionsRequest: req,
+				PrefetchBytes:   indexPrefetchBytes,
 			})
 			if err != nil {
 				return fmt.Errorf("get index sections reader: %w", err)
