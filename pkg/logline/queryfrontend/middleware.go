@@ -871,7 +871,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	hintSummary := summarizeDryRunHints(lookup.ranges, from, through, eligibleEnd, lokiReq.Direction)
+	hintSummary := summarizeDryRunHints(lookup.ranges, readStart, readEnd, eligibleEnd, lokiReq.Direction)
 	queryType, _ := logql.QueryType(expr)
 
 	// Hint lookup succeeded. If the query timed out we can still report

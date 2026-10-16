@@ -2605,6 +2605,8 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 			require.Contains(t, logLine, "covered_entries=1")
 			require.Contains(t, logLine, "false_negatives=0")
 			require.NotContains(t, logLine, "false_negative_ranges=")
+			summary := summarizeDryRunHints([]hintprovider.HintTimeRange{{Start: lookupFrom, End: lookupThrough}}, lookupFrom, lookupThrough, lookupThrough, logproto.FORWARD)
+			require.Contains(t, logLine, "hint_total_seconds="+summary.hintTotalSeconds, "the summary covers the widened lookup, including lookback before the request start")
 		})
 	}
 }
