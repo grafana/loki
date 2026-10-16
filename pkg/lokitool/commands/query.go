@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/lokitool/client"
 	"github.com/grafana/loki/v3/pkg/lokitool/output"
+	"github.com/grafana/loki/v3/pkg/lokitool/query"
 )
 
 // timestampFormatNames are the names of the formats of the --output-timestamp-format flag in the order of their documentation.
@@ -63,6 +64,7 @@ func (q *QueryCommand) Register(app *kingpin.Application) {
 	queryCmd.Flag("output", "Alias for --format.").Hidden().EnumVar(&q.Format, "default", "raw", "jsonl")
 
 	(&queryRangeCommand{QueryCommand: q}).register(queryCmd)
+	(&queryInstantCommand{QueryCommand: q}).register(queryCmd)
 }
 
 func (q *QueryCommand) stdout() io.Writer {
@@ -112,4 +114,16 @@ func parseTime(value string, defaultTime time.Time) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("unable to parse time: %w", err)
 	}
 	return t, nil
+}
+
+// registerEntryFlags registers the flags that select and print the log entries of a query.
+func registerEntryFlags(cmd *kingpin.CmdClause, q *query.Query) {
+	cmd.Flag("limit", "Limit on number of entries to print. Setting it to 0 will fetch all entries.").Default("30").IntVar(&q.Limit)
+	cmd.Flag("forward", "Scan forwards through logs.").BoolVar(&q.Forward)
+	cmd.Flag("no-labels", "Do not print any labels").BoolVar(&q.NoLabels)
+	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&q.IgnoreLabelsKey)
+	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
+	cmd.Flag("include-common-labels", "Include common labels in output for each log line.").BoolVar(&q.IncludeCommonLabels)
+	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
+	cmd.Flag("colored-output", "Show output with colored labels").BoolVar(&q.ColoredOutput)
 }

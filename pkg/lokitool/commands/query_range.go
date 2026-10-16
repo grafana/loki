@@ -136,7 +136,6 @@ func (c *queryRangeCommand) register(parent *kingpin.CmdClause) {
 	q := &c.query
 
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
-	cmd.Flag("limit", "Limit on number of entries to print. Setting it to 0 will fetch all entries.").Default("30").IntVar(&q.Limit)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&c.since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&c.from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&c.to)
@@ -149,13 +148,7 @@ func (c *queryRangeCommand) register(parent *kingpin.CmdClause) {
 	cmd.Flag("overwrite-completed-parts", "Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part file is already downloaded.").BoolVar(&q.OverwriteCompleted)
 	cmd.Flag("merge-parts", "Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.").BoolVar(&q.MergeParts)
 	cmd.Flag("keep-parts", "Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been read. This option will keep the part files.").BoolVar(&q.KeepParts)
-	cmd.Flag("forward", "Scan forwards through logs.").BoolVar(&q.Forward)
-	cmd.Flag("no-labels", "Do not print any labels").BoolVar(&q.NoLabels)
-	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&q.IgnoreLabelsKey)
-	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
-	cmd.Flag("include-common-labels", "Include common labels in output for each log line.").BoolVar(&q.IncludeCommonLabels)
-	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
-	cmd.Flag("colored-output", "Show output with colored labels").BoolVar(&q.ColoredOutput)
+	registerEntryFlags(cmd, q)
 }
 
 func (c *queryRangeCommand) run(_ *kingpin.ParseContext) error {
