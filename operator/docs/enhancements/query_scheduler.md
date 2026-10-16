@@ -12,6 +12,7 @@ see-also: []
 replaces: []
 superseded-by: []
 proof-of-concept: https://github.com/grafana/loki/compare/main...btaani:query-scheduler-poc-code?expand=1
+benchmark-results: https://github.com/observatorium/loki-benchmarks/commit/243a35c48e8945f0656f92b8dc87dd8ac03bd7bd#diff-75086a4821811b10c8fdf30ee0c5a5cec223e6cf0203684e1b0b2c574ef94655
 ---
 
 # Query Scheduler: V2 Frontend Architecture
