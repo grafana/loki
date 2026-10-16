@@ -1398,10 +1398,7 @@ dataobj:
     [partition_id: <int> | default = -1]
 
     # How often the builder that consumes partition 0 reads the offsets of every
-    # partition to refresh loki_dataobj_builder_required_replicas: the highest
-    # partition with unread records plus 1, and at least 1. Use it to scale the
-    # builders. It assumes that every builder derives its partition from its
-    # hostname.
+    # partition to refresh the loki_dataobj_builder_required_replicas metric.
     # CLI flag: -dataobj.builder.required-replicas-refresh-interval
     [required_replicas_refresh_interval: <duration> | default = 30s]
 

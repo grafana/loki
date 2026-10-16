@@ -32,8 +32,8 @@ type Config struct {
 	PartitionID int `yaml:"partition_id"`
 
 	// RequiredReplicasRefreshInterval is the time between two refreshes of
-	// loki_dataobj_builder_required_replicas. It also limits the time of one
-	// refresh. Only the builder that consumes partition 0 uses it.
+	// loki_dataobj_builder_required_replicas. Only the builder that consumes
+	// partition 0 uses it.
 	RequiredReplicasRefreshInterval time.Duration `yaml:"required_replicas_refresh_interval"`
 }
 
@@ -112,6 +112,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		&cfg.RequiredReplicasRefreshInterval,
 		prefix+"required-replicas-refresh-interval",
 		30*time.Second,
-		"How often the builder that consumes partition 0 reads the offsets of every partition to refresh loki_dataobj_builder_required_replicas: the highest partition with unread records plus 1, and at least 1. Use it to scale the builders. It assumes that every builder derives its partition from its hostname.",
+		"How often the builder that consumes partition 0 reads the offsets of every partition to refresh the loki_dataobj_builder_required_replicas metric.",
 	)
 }
