@@ -53,6 +53,14 @@ Enabling this option also changes the Kafka record format. Before enabling it, e
 
 Disabling this option restores expansion during parsing and the previous format for new Kafka writes. Consumers must remain on Loki 4.0 or later for as long as records written while the option was enabled remain in Kafka.
 
+### `shard_streams.enabled` can no longer be overwritten per tenant or policy
+
+The configuration option `shard_streams.enabled` has become a global-only setting: it can still be set in `limits_config` or on the command line, but a per-tenant override or a per-policy override is ignored.
+Other `shard_streams` settings, such as `desired_rate` and `time_sharding_enabled`, remain overridable per tenant and per policy as before.
+If you relied on disabling stream sharding for a specific tenant or policy while leaving it enabled globally, that tenant or policy is now sharded too.
+
+The `shard_streams.enabled` setting has been deprecated and may be completely removed in a future Loki release.
+
 ### Optional index gateway client request limits
 
 Index gateway clients support two experimental limits that are disabled by default, preserving the existing request limits.
