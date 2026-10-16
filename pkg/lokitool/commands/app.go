@@ -9,8 +9,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/grafana/loki/v3/pkg/lokitool/client"
-	// The old commands are replaced by their pkg/lokitool counterparts step by step.
-	tool "github.com/grafana/loki/v3/pkg/tool/commands"
 )
 
 // NewApplication returns the lokitool application with all commands registered.
@@ -27,7 +25,7 @@ func NewApplication() (*kingpin.Application, *GlobalFlags) {
 	new(VersionCommand).Register(app)
 	(&RuleCommand{ClientConfig: clientConfig}).Register(app)
 
-	new(tool.AuditCommand).Register(app)
+	new(AuditCommand).Register(app)
 
 	return app, global
 }
