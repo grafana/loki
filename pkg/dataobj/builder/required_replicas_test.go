@@ -227,6 +227,14 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		require.Zero(t, testutil.ToFloat64(r.metrics.lastRefresh))
 	})
 
+	t.Run("refreshes when the service starts", func(t *testing.T) {
+		_, client, r := newTestReporter(t, time.Minute)
+		produce(t, client, 1, 1)
+		require.NoError(t, services.StartAndAwaitRunning(testContext(t), r))
+		t.Cleanup(func() { require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r)) })
+		requireReplicas(t, r, 2)
+	})
+
 	t.Run("refreshes once every interval while the service runs", func(t *testing.T) {
 		_, client, r := newTestReporter(t, 10*time.Millisecond)
 		produce(t, client, 1, 1)

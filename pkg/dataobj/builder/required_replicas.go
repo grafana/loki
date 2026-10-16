@@ -46,7 +46,9 @@ func newRequiredReplicasReporter(
 		logger:                   logger,
 		metrics:                  newRequiredReplicasMetrics(reg),
 	}
-	r.Service = services.NewTimerService(interval, nil, r.iteration, nil).WithName("dataobj-builder-required-replicas-reporter")
+	// Refresh once at start too. Otherwise the gauge has no series until the
+	// first tick, and KEDA can read the missing series as 0.
+	r.Service = services.NewTimerService(interval, r.iteration, r.iteration, nil).WithName("dataobj-builder-required-replicas-reporter")
 	return r
 }
 

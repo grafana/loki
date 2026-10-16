@@ -173,20 +173,26 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, consumerGroup, partitionID, logger)
 
 	// Partition 0 always has a builder, so its builder reports how many
-	// builders the other partitions need.
+	// builders the other partitions need. It derives the consumer groups of
+	// the other builders from its own hostname. A partition override breaks
+	// that mapping, so a builder with an override does not report.
 	var reporter services.Service
 	if partitionID == 0 {
-		partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc(instanceID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
+		if cfg.PartitionID >= 0 {
+			level.Info(logger).Log("msg", "not reporting required replicas, because the partition ID is set in the config")
+		} else {
+			partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc(instanceID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
+			}
+			reporter = newRequiredReplicasReporter(
+				offsetReader,
+				partitionToConsumerGroup,
+				cfg.RequiredReplicasRefreshInterval,
+				logger,
+				reg,
+			)
 		}
-		reporter = newRequiredReplicasReporter(
-			offsetReader,
-			partitionToConsumerGroup,
-			cfg.RequiredReplicasRefreshInterval,
-			logger,
-			reg,
-		)
 	}
 	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, consumerGroup, logger), nil
 }

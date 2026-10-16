@@ -32,8 +32,8 @@ type Config struct {
 	PartitionID int `yaml:"partition_id"`
 
 	// RequiredReplicasRefreshInterval is the time between two refreshes of
-	// loki_dataobj_builder_required_replicas. Only the builder that consumes
-	// partition 0 uses it.
+	// loki_dataobj_builder_required_replicas. Only the builder that derives
+	// partition 0 from its hostname uses it.
 	RequiredReplicasRefreshInterval time.Duration `yaml:"required_replicas_refresh_interval"`
 }
 
