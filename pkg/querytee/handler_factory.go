@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/dskit/middleware"
 
@@ -31,6 +32,7 @@ type HandlerFactory struct {
 	splitLag                      time.Duration
 	splitRetentionDays            int64
 	addRoutingDecisionsToWarnings bool
+	v1OnlyMatchers                []*labels.Matcher
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
@@ -48,6 +50,7 @@ type HandlerFactoryConfig struct {
 	SplitLag                      time.Duration
 	SplitRetentionDays            int64
 	AddRoutingDecisionsToWarnings bool
+	V1OnlyMatchers                []*labels.Matcher
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
@@ -66,6 +69,7 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		splitLag:                      cfg.SplitLag,
 		splitRetentionDays:            cfg.SplitRetentionDays,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
+		v1OnlyMatchers:                cfg.V1OnlyMatchers,
 	}
 }
 
@@ -109,6 +113,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		SplitLag:                      f.splitLag,
 		SplitRetentionDays:            f.splitRetentionDays,
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
+		V1OnlyMatchers:                f.v1OnlyMatchers,
 	}, f.logger)
 
 	if err != nil {

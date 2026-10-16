@@ -22,7 +22,9 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
@@ -70,6 +72,13 @@ type RoutingConfig struct {
 	// as warnings to query responses. When enabled, responses will include
 	// warnings indicating which backend handled the query and how it was routed.
 	AddRoutingDecisionsToWarnings bool
+
+	// V1OnlySelector is a LogQL stream selector. Queries whose stream selector
+	// contains all of its matchers are always routed to the v1 backend only.
+	V1OnlySelector string
+
+	// V1OnlyMatchers is parsed from V1OnlySelector during validation.
+	V1OnlyMatchers []*labels.Matcher
 }
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
@@ -81,6 +90,7 @@ func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
 	f.Int64Var(&cfg.SplitRetentionDays, "routing.split-retention-days", 0, "Lifecycle of data objects in days. If set, data outside of retention period will not be available in v2 storage. When both split-start and split-retention-days are set, the more restrictive of the two will apply.")
 	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add routing decisions as warnings to query responses.")
+	f.StringVar(&cfg.V1OnlySelector, "routing.v1-only-selector", "", "LogQL stream selector, e.g. '{app=\"foo\"}'. Queries whose stream selector contains all of these matchers are always routed to the v1 backend only. Only equality matchers are allowed, and only queries using the exact same equality matchers are detected. Empty disables the feature.")
 }
 
 func (cfg *RoutingConfig) Validate() error {
@@ -92,6 +102,14 @@ func (cfg *RoutingConfig) Validate() error {
 
 	if cfg.SplitLag < 0 {
 		return fmt.Errorf("split lag must be >= 0")
+	}
+
+	if cfg.V1OnlySelector != "" {
+		matchers, err := engine.ParseV1OnlySelector(cfg.V1OnlySelector)
+		if err != nil {
+			return err
+		}
+		cfg.V1OnlyMatchers = matchers
 	}
 
 	return nil
@@ -393,6 +411,7 @@ func (p *Proxy) Start() error {
 			SplitLag:                      p.cfg.Routing.SplitLag,
 			SplitRetentionDays:            p.cfg.Routing.SplitRetentionDays,
 			AddRoutingDecisionsToWarnings: p.cfg.Routing.AddRoutingDecisionsToWarnings,
+			V1OnlyMatchers:                p.cfg.Routing.V1OnlyMatchers,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {

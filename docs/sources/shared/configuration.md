@@ -417,6 +417,13 @@ query_engine:
   # CLI flag: -query-engine.storage-retention-days
   [storage_retention_days: <int> | default = 0]
 
+  # Experimental: LogQL stream selector, e.g. '{app="foo"}'. Queries whose
+  # stream selector contains all of these matchers are always executed by the v1
+  # (chunks) engine. Only equality matchers are allowed, and only queries using
+  # the exact same equality matchers are detected. Empty disables the feature.
+  # CLI flag: -query-engine.v1-only-stream-selector
+  [v1_only_stream_selector: <string> | default = ""]
+
   # Enable routing of query splits in the query frontend to the next generation
   # engine when they fall within the configured time range.
   # CLI flag: -query-engine.enable-engine-router
