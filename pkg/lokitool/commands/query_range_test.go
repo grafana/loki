@@ -217,6 +217,25 @@ func TestQueryRangeStdin(t *testing.T) {
 	}
 }
 
+func TestQueryRangeStdinDoesNotLogQueryStatistics(t *testing.T) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	_, err = w.WriteString("level=info msg=started\nlevel=error msg=failed\n")
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	stdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = stdin })
+
+	stderr := captureStderr(t, func() {
+		out, err := runApplication(t, "query", "--stdin", "--format=raw", "range", `|= "error"`)
+		require.NoError(t, err)
+		require.Equal(t, "level=error msg=failed\n", out)
+	})
+	require.Empty(t, stderr)
+}
+
 func TestPrepareStdinQuery(t *testing.T) {
 	start := time.Date(2023, 11, 14, 22, 0, 0, 0, time.UTC)
 

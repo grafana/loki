@@ -83,7 +83,7 @@ func (q *QueryCommand) stdout() io.Writer {
 // newClient returns the client that executes the queries.
 func (q *QueryCommand) newClient() (client.QueryClient, error) {
 	if q.Stdin {
-		return client.NewFileClient(os.Stdin, newKitLogger()), nil
+		return client.NewFileClient(os.Stdin, newQueryEngineLogger()), nil
 	}
 	return client.New(*q.ClientConfig)
 }

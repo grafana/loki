@@ -15,12 +15,20 @@ import (
 // fields. Lines without a level are logged at info level.
 type kitLogger struct {
 	logger *log.Logger
+	// demoteInfo logs lines at info level at debug level.
+	demoteInfo bool
 }
 
 var _ kitlog.Logger = kitLogger{}
 
 func newKitLogger() kitlog.Logger {
 	return kitLogger{logger: log.StandardLogger()}
+}
+
+// newQueryEngineLogger returns a logger for the query engine. The engine logs
+// statistics about every query at info level, which are only relevant for debugging.
+func newQueryEngineLogger() kitlog.Logger {
+	return kitLogger{logger: log.StandardLogger(), demoteInfo: true}
 }
 
 // Log implements the go-kit Logger interface.
@@ -44,6 +52,10 @@ func (l kitLogger) Log(keyvals ...any) error {
 		default:
 			fields[key] = value
 		}
+	}
+
+	if l.demoteInfo && level == log.InfoLevel {
+		level = log.DebugLevel
 	}
 
 	l.logger.WithFields(fields).Log(level, msg)

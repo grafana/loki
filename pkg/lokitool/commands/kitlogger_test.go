@@ -60,4 +60,18 @@ func TestKitLogger(t *testing.T) {
 			require.Equal(t, tc.want+"\n", out.String())
 		})
 	}
+
+	t.Run("demote info", func(t *testing.T) {
+		l := kitLogger{logger: logger, demoteInfo: true}
+
+		out.Reset()
+		require.NoError(t, kitlevel.Info(l).Log("msg", "info message"))
+		require.NoError(t, l.Log("msg", "message without level"))
+		require.Equal(t, "level=debug msg=\"info message\"\nlevel=debug msg=\"message without level\"\n", out.String())
+
+		out.Reset()
+		require.NoError(t, kitlevel.Warn(l).Log("msg", "warn message"))
+		require.NoError(t, kitlevel.Error(l).Log("msg", "error message"))
+		require.Equal(t, "level=warning msg=\"warn message\"\nlevel=error msg=\"error message\"\n", out.String())
+	})
 }

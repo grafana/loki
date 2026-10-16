@@ -46,7 +46,7 @@ type GlobalFlags struct {
 // Register the global flags and the actions that apply them.
 func (g *GlobalFlags) Register(app *kingpin.Application) {
 	app.Flag("log.level", "Log level.").
-		Default("warning").
+		Default("info").
 		EnumVar(&g.LogLevel, "error", "warning", "info", "debug")
 	app.Flag("cpuprofile", "Write a CPU profile to this file.").StringVar(&g.CPUProfile)
 	app.Flag("memprofile", "Write a memory profile to this file when the command exits.").StringVar(&g.MemProfile)

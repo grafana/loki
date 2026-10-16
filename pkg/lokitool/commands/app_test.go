@@ -65,7 +65,7 @@ func TestGlobalFlags(t *testing.T) {
 
 		_, err := app.Parse([]string{"version"})
 		require.NoError(t, err)
-		require.Equal(t, log.WarnLevel, log.GetLevel())
+		require.Equal(t, log.InfoLevel, log.GetLevel())
 	})
 
 	t.Run("invalid log level", func(t *testing.T) {
