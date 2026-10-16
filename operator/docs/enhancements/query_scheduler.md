@@ -1,11 +1,12 @@
 ---
 title: query-scheduler-v2-frontend
+state: discussion  # One of: draft, discussion, published, committed, abandoned
 authors:
   - "@btaani"
 reviewers:
   - "@joaobravecoding @xperimental @cahartma"
 creation-date: 2026-09-29
-last-updated: 2026-09-29
+last-updated: 2026-10-16
 tracking-link: https://redhat.atlassian.net/browse/LOG-9664
 see-also: []
 replaces: []
@@ -44,8 +45,7 @@ Introducing the query-scheduler is proactive forward-compatibility. It positions
 
 ### Non-Goals
 
-- Separate ruler query pool: Loki docs recommend a dedicated query-frontend and querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query traffic. The operator currently shares a single pool for both. Introducing a separate ruler pool is a distinct enhancement.
-- Benchmarking the interaction between ruler and ad-hoc query load under shared scheduler capacity.
+- Separate ruler query pool: Loki docs recommend a dedicated query-frontend and querier pool for ruler queries so that rule evaluation is not starved by ad-hoc query traffic. The operator currently sets `ruler.evaluation.mode: local`, which means that the ruler doesn't depend on the query path.
 
 ## Proposal
 
@@ -157,7 +157,7 @@ The query-scheduler is stateless and can be deployed as a `Deployment`.
 #### Replication Factor
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
 
-Queries are not replicated. Each query goes to exactly one scheduler. Each querier goroutine is statically bound to one scheduler per stream with no dynamic load balancing.
+Queries are not replicated. Each query goes to exactly one scheduler. Each querier goroutine maintains a persistent connection to exactly one scheduler with no dynamic load balancing.
 
 Example: a `1x.small` LokiStack will have 2 of each component (4 CPUs per pod):
 `max_concurrent = 4` (we set this to be equal to # of CPU cores)
@@ -204,9 +204,6 @@ For clusters still on V1 (no scheduler deployed), the equivalent metrics for est
    **Investigation plan**: run the PoC branch against a realistic load profile (matching each supported t-shirt size) and record peak CPU and memory consumption of the scheduler pod. Use those measurements to set `Requests` values and derive sensible `Limits`.
 2. `max_outstanding_requests_per_tenant` default: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
 3. V1→V2 rollout impact: a rolling reconciliation is expected to be sufficient, but the upgrade path was not validated in this PoC. During the rollout, pending queries on pods being terminated will fail and require client-side retries. In case there's a large rules file, multiple rule evaluations may be disrupted simultaneously, causing gaps in alert evaluations and recording rule metrics.
-4. Does a separate ruler pool require a separate query-scheduler, or is one scheduler with prioritisation sufficient? With the current proposed design, all queries (ad-hoc or ruler) share the same scheduler queue. The scheduler's round-robin prevents contention between tenant queries but it doesn't differentiate between query classes within the same tenant. There are two possible solutions to isolate based on class:
-    - A second scheduler dedicated to the ruler pool.
-    - Priority queuing within the scheduler so ruler queries are dispatched ahead of non-ruler queries. Loki's scheduler already has a hierarchical queue (`max_queue_hierarchy_levels`, default 3) that places different query classes at different levels and round-robins across them, this is the Loki-native path toward per-class prioritisation without needing a second scheduler.
 
 ## Changes Needed
 - **PoC only, this will be fixed in the real implementation.** `tls_insecure_skip_verify: true` on querier outbound connections: when `GRPCEncryption` is enabled, the querier's `frontend_worker.grpc_client_config` is shared between two outbound connections, querier→scheduler and querier→frontend (result delivery). Both connections ultimately fail TLS because headless services return pod IPs directly, and the scheduler's cert has no IP SAN. Server-side mTLS is still enforced. The two fixes: make the scheduler gRPC service non-headless, and issue per-pod certificates for the query-frontend (requires cert manager changes).
