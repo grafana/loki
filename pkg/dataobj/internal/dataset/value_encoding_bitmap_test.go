@@ -67,12 +67,17 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 		data []byte
 	}{
 		{
-			name: "rle_missing_value",
-			data: []byte{0x02}, // rle run length 1, missing value
+			name: "missing_rle_payload",
+			// uvarint(8) value count header, with no RLE-encoded payload
+			// following it at all.
+			data: []byte{0x08},
 		},
 		{
-			name: "bitpack_missing_set",
-			data: []byte{0x81}, // bitpack header for 1 set, missing data byte
+			name: "truncated_rle_payload",
+			// uvarint(8) value count header, followed by a 4-byte RLE
+			// payload length prefix (little-endian 10) with no payload
+			// bytes following it.
+			data: []byte{0x08, 0x0A, 0x00, 0x00, 0x00},
 		},
 	}
 
@@ -91,7 +96,7 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 
 			bm, ok := res.(*columnar.Bool)
 			require.True(t, ok)
-			require.ErrorIs(t, err, io.EOF)
+			require.Error(t, err)
 			require.Zero(t, bm.Len())
 		})
 	}
@@ -261,6 +266,54 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 
 		b.ReportMetric(float64(cw.n), "encoded_bytes")
 	})
+}
+
+// Benchmark_bitmapDecoder_PartialRead measures the cost of reading only a
+// small prefix of a large page -- see Benchmark_deltaDecoder_PartialRead for
+// the general shape of the regression this guards against. A decoder that
+// decodes incrementally (a few packed bytes at a time, via
+// [rle.BooleanDecoder]) should cost roughly the same regardless of how large
+// the page is, since it only ever pulls as many packed bytes as needed to
+// satisfy the requested count.
+func Benchmark_bitmapDecoder_PartialRead(b *testing.B) {
+	readCounts := []int{64, 256}
+	pageSizes := []int{1 << 10, 1 << 14, 1 << 18}
+
+	for _, readCount := range readCounts {
+		for _, pageSize := range pageSizes {
+			b.Run(fmt.Sprintf("read=%d/pageSize=%d", readCount, pageSize), func(b *testing.B) {
+				var buf bytes.Buffer
+				enc := newBitmapEncoder(&buf)
+				rnd := rand.New(rand.NewSource(0))
+				for range pageSize {
+					val := Uint64Value(0)
+					if rnd.Intn(2) == 0 {
+						val = Uint64Value(1)
+					}
+					require.NoError(b, enc.Encode(val))
+				}
+				require.NoError(b, enc.Flush())
+				data := buf.Bytes()
+
+				dec := newBitmapDecoder(nil)
+				var alloc memory.Allocator
+
+				for b.Loop() {
+					alloc.Reset()
+					dec.Reset(data)
+
+					res, err := dec.Decode(&alloc, readCount)
+					if err != nil && !errors.Is(err, io.EOF) {
+						b.Fatalf("error decoding: %v", err)
+					}
+					bm := res.(*columnar.Bool)
+					if bm.Len() != readCount {
+						b.Fatalf("got %d values, want %d", bm.Len(), readCount)
+					}
+				}
+			})
+		}
+	}
 }
 
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {

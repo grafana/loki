@@ -23,6 +23,13 @@ type valueEncoder interface {
 	// fails or if value is an unsupported type.
 	Encode(value Value) error
 
+	// EstimatedSize returns an estimate, in uncompressed bytes, of the data
+	// that would be written to the underlying [streamio.Writer] if Flush were
+	// called right now. Implementations that buffer values until Flush (batch
+	// encodings) must track this cheaply as values are appended, since it's
+	// queried on every append to decide when a page is full.
+	EstimatedSize() int
+
 	// Flush encodes any buffered data and immediately writes it to the
 	// underlying [streamio.Writer]. Flush returns an error if encoding fails.
 	Flush() error

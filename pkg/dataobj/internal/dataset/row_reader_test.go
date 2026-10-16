@@ -1340,11 +1340,16 @@ func Test_RowReader_Stats(t *testing.T) {
 	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetReadCalls.Name()])
 	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetPrimaryColumns.Name()])
 	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetSecondaryColumns.Name()])
-	require.Equal(t, int64(5), obsMap[dataobj.StatDatasetPrimaryColumnPages.Name()])
-	require.Equal(t, int64(8), obsMap[dataobj.StatDatasetSecondaryColumnPages.Name()])
+	// Page counts (and, in turn, how many rows survive page-level pruning
+	// before per-row predicate evaluation) depend on how many bytes each
+	// encoding produces per value. birth_year (DELTA) and the presence
+	// bitmaps (BITMAP) still use parquet-go's encodings, which changes these
+	// from the values the original hand-rolled codecs produced.
+	require.Equal(t, int64(9), obsMap[dataobj.StatDatasetPrimaryColumnPages.Name()])
+	require.Equal(t, int64(9), obsMap[dataobj.StatDatasetSecondaryColumnPages.Name()])
 
 	require.Equal(t, int64(len(basicReaderTestData)), obsMap[dataobj.StatDatasetMaxRows.Name()])
-	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetRowsAfterPruning.Name()])
-	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetRowsAfterPruning.Name()])
+	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
 	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
 }

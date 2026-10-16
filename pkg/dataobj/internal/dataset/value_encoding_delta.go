@@ -1,8 +1,11 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
 	"io"
+
+	"github.com/parquet-go/parquet-go/encoding/delta"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -22,11 +25,21 @@ func init() {
 	)
 }
 
-// deltaEncoder encodes delta-encoded int64s. Values are encoded as varint,
-// with each subsequent value being the delta from the previous value.
+var deltaEncoding delta.BinaryPackedEncoding
+
+// deltaEncoder encodes int64s using the Parquet DELTA_BINARY_PACKED encoding
+// (github.com/parquet-go/parquet-go/encoding/delta), writing the full
+// encoded page to a [streamio.Writer] on Flush.
+//
+// Values are buffered in memory until Flush is called, since
+// DELTA_BINARY_PACKED operates on a full batch of values at once (splitting
+// them into blocks and mini-blocks to compute per-block minimum deltas and
+// bit widths) rather than incrementally.
 type deltaEncoder struct {
-	w    streamio.Writer
-	prev int64
+	w      streamio.Writer
+	values []int64
+
+	encoded []byte // Reused output buffer for Flush; see Flush for why reuse is safe.
 }
 
 var _ valueEncoder = (*deltaEncoder)(nil)
@@ -53,30 +66,66 @@ func (enc *deltaEncoder) Encode(v Value) error {
 	if v.Type() != datasetmd.PHYSICAL_TYPE_INT64 {
 		return fmt.Errorf("delta: invalid value type %v", v.Type())
 	}
-	iv := v.Int64()
-
-	delta := iv - enc.prev
-	enc.prev = iv
-	return streamio.WriteVarint(enc.w, delta)
+	enc.values = append(enc.values, v.Int64())
+	return nil
 }
 
-// Flush implements [valueEncoder]. It is a no-op for deltaEncoder.
+// EstimatedSize returns an estimate of the size of the DELTA_BINARY_PACKED-
+// encoded page if Flush were called right now.
+//
+// DELTA_BINARY_PACKED compresses well for monotonic/near-monotonic data, so
+// using the raw (unencoded) int64 size here is a deliberately conservative
+// over-estimate: it's safe to cut a page slightly earlier than necessary, but
+// not to let one grow far past its configured size hint.
+func (enc *deltaEncoder) EstimatedSize() int {
+	const int64Size = 8
+	return int64Size * len(enc.values)
+}
+
+// Flush encodes all buffered values using the DELTA_BINARY_PACKED encoding
+// and writes the result to the underlying [streamio.Writer].
 func (enc *deltaEncoder) Flush() error {
-	return nil
+	if len(enc.values) == 0 {
+		return nil
+	}
+
+	// enc.encoded retains whatever capacity it grew to on a previous page.
+	// Reusing it is safe because the result is written to enc.w and then
+	// discarded immediately below -- nothing retains it past this call, so
+	// unlike the decoders there's no cross-page aliasing concern.
+	encoded, err := deltaEncoding.EncodeInt64(enc.encoded[:0], enc.values)
+	if err != nil {
+		return fmt.Errorf("delta: encoding values: %w", err)
+	}
+	enc.encoded = encoded
+
+	n, err := enc.w.Write(encoded)
+	if n != len(encoded) {
+		return fmt.Errorf("short write; expected %d bytes, wrote %d", len(encoded), n)
+	}
+	return err
 }
 
 // Reset resets the encoder to its initial state.
 func (enc *deltaEncoder) Reset(w streamio.Writer) {
-	enc.prev = 0
 	enc.w = w
+	enc.values = enc.values[:0]
 }
 
-// deltaDecoder decodes delta-encoded numbers. Values are decoded as varint,
-// with each subsequent value being the delta from the previous value.
+// deltaDecoder decodes int64s encoded with the Parquet DELTA_BINARY_PACKED
+// encoding, a block at a time, using [binaryPackedDecoder]. Unlike a batch
+// decode of the whole page, this only decodes as many blocks as are needed
+// to satisfy each call to Decode, and resumes from where it left off on the
+// next one -- so a column that's only read in part (or whose page is read
+// across many small batches) doesn't pay to decode values it never uses.
+//
+// Decoding is deferred to the first call to Decode (rather than happening in
+// Reset) because [binaryPackedDecoder.reset] can fail on malformed input,
+// and [valueDecoder.Reset] has no error return to report that through.
 type deltaDecoder struct {
-	buf  []byte
-	off  int
-	prev int64
+	data    []byte
+	started bool
+	stream  binaryPackedDecoder
 }
 
 var _ valueDecoder = (*deltaDecoder)(nil)
@@ -102,46 +151,29 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 // [columnar.Int64] array obtained from the provided allocator. At the end of
 // the stream, Decode returns an [io.EOF].
 func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
-	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
-	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
-	// Resize must be used again before returning any data if the slice is not completely filled.
+	if !dec.started {
+		dec.started = true
+		if len(dec.data) > 0 {
+			if _, err := dec.stream.reset(dec.data); err != nil {
+				return nil, fmt.Errorf("delta: decoding values: %w", err)
+			}
+		}
+	}
+
 	valuesBuf := memory.NewBuffer[int64](alloc, count)
 	valuesBuf.Resize(count)
-	values := valuesBuf.Data()
 
-	// Shadow local variables to avoid the pointer indirection of referencing dec.buf and dec.prev.
-	var (
-		buf  []byte
-		prev int64
-		off  int
-	)
-	buf = dec.buf
-	prev = dec.prev
-	off = dec.off
-	defer func() { dec.buf = buf; dec.prev = prev; dec.off = off }()
-
-	// Check the invariant so the compiler can eliminate the bounds check when assigning to values[i].
-	if len(values) != count {
-		panic(fmt.Sprintf("invariant broken: values buffer has %d values, expected %d", len(values), count))
+	n, err := dec.stream.decodeInt64(valuesBuf.Data())
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("delta: decoding values: %w", err)
 	}
+	valuesBuf.Resize(n)
 
-	for i := range count {
-		delta, n := varint(buf[off:])
-		if n <= 0 {
-			valuesBuf.Resize(i)
-			return columnar.NewNumber[int64](values[:i], memory.Bitmap{}), io.EOF
-		}
-
-		off += n
-		prev += delta
-		values[i] = prev
-	}
-	return columnar.NewNumber[int64](values, memory.Bitmap{}), nil
+	return columnar.NewNumber[int64](valuesBuf.Data(), memory.Bitmap{}), err
 }
 
 // Reset resets the deltaDecoder to its initial state.
 func (dec *deltaDecoder) Reset(data []byte) {
-	dec.prev = 0
-	dec.off = 0
-	dec.buf = data
+	dec.data = data
+	dec.started = false
 }
