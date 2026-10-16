@@ -8,6 +8,7 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/grafana/loki/v3/pkg/lokitool/client"
 	// The old commands are replaced by their pkg/lokitool counterparts step by step.
 	tool "github.com/grafana/loki/v3/pkg/tool/commands"
 )
@@ -20,9 +21,12 @@ func NewApplication() (*kingpin.Application, *GlobalFlags) {
 	global := &GlobalFlags{}
 	global.Register(app)
 
-	new(VersionCommand).Register(app)
+	clientConfig := &client.Config{}
+	clientConfig.Register(app)
 
-	new(tool.RuleCommand).Register(app)
+	new(VersionCommand).Register(app)
+	(&RuleCommand{ClientConfig: clientConfig}).Register(app)
+
 	new(tool.AuditCommand).Register(app)
 
 	return app, global

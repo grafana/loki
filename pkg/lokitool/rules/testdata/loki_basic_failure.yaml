@@ -1,0 +1,12 @@
+groups:
+  # empty group name
+  - name:
+    interval: 0s
+    rules:
+      - alert: HighThroughputLogStreams
+        expr: sum by (cluster, job, pod) (rate({namespace=~"%s"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)
+        for: 2m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency

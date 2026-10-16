@@ -57,6 +57,9 @@ type Config struct {
 
 	// Headers are additional request headers in the format 'Header-Name: value'.
 	Headers []string
+
+	// UseLegacyRoutes selects the legacy routes (/api/prom/rules) of the ruler API.
+	UseLegacyRoutes bool
 }
 
 // stringSetting is a string setting that can be set through several flags and
@@ -164,27 +167,27 @@ func (c *Config) Register(app *kingpin.Application) {
 		s.register(app)
 	}
 
-	app.Flag("bearer-token-file", "Path to a file that contains the bearer token. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").
+	app.Flag("bearer-token-file", "Path to a file that contains the bearer token.").
 		Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&c.BearerTokenFile)
-	app.Flag("auth-header", "Name of the header that carries the credentials. Can also be set using LOKI_AUTH_HEADER env var.").
+	app.Flag("auth-header", "Name of the header that carries the credentials.").
 		Default(defaultAuthHeader).Envar("LOKI_AUTH_HEADER").StringVar(&c.AuthHeader)
-	app.Flag("tls-skip-verify", "Skip verification of the server certificate. Can also be set using LOKI_TLS_SKIP_VERIFY env var.").
+	app.Flag("tls-skip-verify", "Skip verification of the server certificate.").
 		Envar("LOKI_TLS_SKIP_VERIFY").BoolVar(&c.TLS.InsecureSkipVerify)
-	app.Flag("query-tags", "Value of the X-Query-Tags header. The value is part of the query statistics in the Loki logs. Can also be set using LOKI_QUERY_TAGS env var.").
+	app.Flag("query-tags", "Value of the X-Query-Tags header. The value is part of the query statistics in the Loki logs.").
 		Envar("LOKI_QUERY_TAGS").StringVar(&c.QueryTags)
-	app.Flag("nocache", "Send a Cache-Control: no-cache header. Can also be set using LOKI_NO_CACHE env var.").
+	app.Flag("nocache", "Send a Cache-Control: no-cache header.").
 		Envar("LOKI_NO_CACHE").BoolVar(&c.NoCache)
-	app.Flag("retries", "Number of times a request is retried when it fails. Can also be set using LOKI_CLIENT_RETRIES env var.").
+	app.Flag("retries", "Number of times a request is retried when it fails.").
 		Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&c.Retries)
-	app.Flag("min-backoff", "Minimum wait between retries in seconds. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.").
+	app.Flag("min-backoff", "Minimum wait between retries in seconds.").
 		Default("0").Envar("LOKI_CLIENT_MIN_BACKOFF").IntVar(&c.MinBackoff)
-	app.Flag("max-backoff", "Maximum wait between retries in seconds. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.").
+	app.Flag("max-backoff", "Maximum wait between retries in seconds.").
 		Default("0").Envar("LOKI_CLIENT_MAX_BACKOFF").IntVar(&c.MaxBackoff)
-	app.Flag("proxy-url", "HTTP or HTTPS proxy for all requests. Takes precedence over --envproxy. Can also be set using LOKI_HTTP_PROXY_URL env var.").
+	app.Flag("proxy-url", "HTTP or HTTPS proxy for all requests. Takes precedence over --envproxy.").
 		Envar("LOKI_HTTP_PROXY_URL").StringVar(&c.ProxyURL)
-	app.Flag("envproxy", "Use the proxy settings of the environment (HTTP_PROXY, HTTPS_PROXY, NO_PROXY). Can also be set using LOKI_ENV_PROXY env var.").
+	app.Flag("envproxy", "Use the proxy settings of the environment (HTTP_PROXY, HTTPS_PROXY, NO_PROXY).").
 		Default("true").Envar("LOKI_ENV_PROXY").BoolVar(&c.EnvProxy)
-	app.Flag("compress", "Request compression of responses. Can also be set using LOKI_HTTP_COMPRESSION env var.").
+	app.Flag("compress", "Request compression of responses.").
 		Envar("LOKI_HTTP_COMPRESSION").BoolVar(&c.Compress)
 	app.Flag("header", "Add a custom HTTP header to requests. Can be specified multiple times. Format: 'Header-Name: value'").
 		StringsVar(&c.Headers)
