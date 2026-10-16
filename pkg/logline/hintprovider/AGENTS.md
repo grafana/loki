@@ -86,3 +86,11 @@ Query-shape support and hint lookup for logline index lookups.
       separators.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.
+14. **A shared day lookup runs under the context of the caller that started it**
+    - Concurrent lookups of the same tenant, query and day share one delegate
+      call through singleflight.
+    - The query frontend cancels a lookup when its query returns first, which
+      ends the shared call for every caller. A caller that only joined it and
+      whose own context is still live retries, up to `maxSharedLookupAttempts`
+      times, and the retry runs under its own context. Retries are counted in
+      `logline_hint_cache_singleflight_retries_total`.

@@ -118,7 +118,8 @@ type Logline struct {
 	// Whether the index skipped data, or why it didn't: data_skipped,
 	// tiny_data_skipped, skip_ratio_unavailable, time_range_not_indexed,
 	// recent_data_only, unsupported_query, query_too_small,
-	// size_estimate_failed, lookup_failed, lookup_timeout or canceled.
+	// size_estimate_failed, lookup_failed, lookup_timeout,
+	// answered_before_lookup or canceled.
 	Outcome string `protobuf:"bytes,1,opt,name=outcome,proto3" json:"outcome"`
 	// How the hint lookup ended: ok, unsupported, error, canceled, incomplete or
 	// ingester_window. Empty when the query was skipped before the lookup.
