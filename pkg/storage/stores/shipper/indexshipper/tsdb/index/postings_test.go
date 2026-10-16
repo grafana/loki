@@ -486,6 +486,27 @@ func TestMergedPostingsKeepsErrorWhenAllInputsFail(t *testing.T) {
 	require.ErrorIs(t, p.Err(), errFail)
 }
 
+func TestMergedPostingsAllInputsEmpty(t *testing.T) {
+	inputs := func() []Postings {
+		exhausted := newListPostings(1, 2)
+		for exhausted.Next() {
+		}
+		return []Postings{newListPostings(), exhausted, EmptyPostings()}
+	}
+
+	t.Run("Next", func(t *testing.T) {
+		p := Merge(inputs()...)
+		require.False(t, p.Next())
+		require.NoError(t, p.Err())
+	})
+
+	t.Run("Seek", func(t *testing.T) {
+		p := Merge(inputs()...)
+		require.False(t, p.Seek(0))
+		require.NoError(t, p.Err())
+	})
+}
+
 func TestMergedPostingsSeek(t *testing.T) {
 	cases := []struct {
 		a, b []storage.SeriesRef
