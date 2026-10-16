@@ -24,6 +24,7 @@ func NewApplication() (*kingpin.Application, *GlobalFlags) {
 
 	new(VersionCommand).Register(app)
 	(&QueryCommand{ClientConfig: clientConfig}).Register(app)
+	(&DeleteCommand{ClientConfig: clientConfig}).Register(app)
 	new(FormatCommand).Register(app)
 	(&RuleCommand{ClientConfig: clientConfig}).Register(app)
 
