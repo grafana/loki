@@ -10,12 +10,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/dustin/go-humanize"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/functions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func castFn(operation types.UnaryOp) UnaryFunction {
-	return UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
+func castFn(operation types.UnaryOp) functions.UnaryFunction {
+	return functions.UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
 		sourceCol, ok := input.(*array.String)
 		if !ok {
 			return nil, fmt.Errorf("expected column to be of type string, got %T", input)

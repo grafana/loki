@@ -124,6 +124,12 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Validate expression types against the function signature
+			// catalog, so that expressions the executor cannot evaluate fail
+			// during planning instead of during execution.
+			if err := typeCheckPlan(p.plan); err != nil {
+				return nil, err
+			}
 			return p.plan, nil
 		}
 	}
