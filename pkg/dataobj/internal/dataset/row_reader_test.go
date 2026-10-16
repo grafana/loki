@@ -1,20 +1,24 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"math/rand"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -476,6 +480,202 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		require.NotEmpty(t, expected)
 		require.Equal(t, expected, convertToTestPersons(actualRows))
 	})
+
+	keepSome := func(line []byte) bool { return len(line) < 12 }
+	keepNone := func([]byte) bool { return false }
+	keepAll := func([]byte) bool { return true }
+
+	t.Run("batch func returns the rows of the row func for every batch size", func(t *testing.T) {
+		firsts := map[string]func(id Column) Predicate{
+			"dense": func(id Column) Predicate {
+				return GreaterThanPredicate{Column: id, Value: Int64Value(-1)}
+			},
+			"gappy": func(id Column) Predicate {
+				return FuncPredicate{Column: id, Keep: func(_ Column, v Value) bool { return v.Int64()%3 != 1 }}
+			},
+		}
+		keeps := map[string]func([]byte) bool{"some": keepSome, "none": keepNone, "all": keepAll}
+
+		for firstName, first := range firsts {
+			for keepName, keep := range keeps {
+				t.Run("returns the rows of the row func with "+firstName+" earlier rows when the batch func keeps "+keepName+" lines", func(t *testing.T) {
+					dset, columns := buildBatchTestDataset(t)
+					rowOpts := RowReaderOptions{
+						Dataset:    dset,
+						Columns:    columns,
+						Predicates: []Predicate{first(columns[0]), batchTestPredicate(columns[1], keep, false)},
+					}
+					batchOpts := rowOpts
+					batchOpts.Predicates = []Predicate{first(columns[0]), batchTestPredicate(columns[1], keep, true)}
+
+					for _, size := range []int{1, 2, 3, 7, 100} {
+						expected := readBatchTestRows(t, rowOpts, size)
+						if keepName != "none" {
+							require.NotEmpty(t, expected)
+						}
+						require.Equal(t, expected, readBatchTestRows(t, batchOpts, size), "batch size %d", size)
+					}
+				})
+			}
+		}
+	})
+
+	t.Run("predicate-only column returns a nil value", func(t *testing.T) {
+		for name, withBatch := range map[string]bool{"batch func": true, "row func": false} {
+			t.Run("returns nil values when a "+name+" reads the column", func(t *testing.T) {
+				dset, columns := buildBatchTestDataset(t)
+				opts := RowReaderOptions{
+					Dataset: dset,
+					Columns: columns,
+					Predicates: []Predicate{
+						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+						batchTestPredicate(columns[1], keepSome, withBatch),
+					},
+				}
+				expected := readBatchTestRows(t, opts, 3)
+				require.NotEmpty(t, expected)
+				for i := range expected {
+					expected[i].message = nilValueText
+				}
+
+				opts.PredicateOnlyColumns = []Column{columns[1]}
+				for _, size := range []int{1, 3, 100} {
+					require.Equal(t, expected, readBatchTestRows(t, opts, size), "batch size %d", size)
+				}
+			})
+		}
+
+		t.Run("returns nil values when the func is the first predicate", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+			opts := RowReaderOptions{
+				Dataset:    dset,
+				Columns:    columns,
+				Predicates: []Predicate{batchTestPredicate(columns[1], keepSome, true)},
+			}
+			expected := readBatchTestRows(t, opts, 3)
+			require.NotEmpty(t, expected)
+			for i := range expected {
+				expected[i].message = nilValueText
+			}
+
+			opts.PredicateOnlyColumns = []Column{columns[1]}
+			require.Equal(t, expected, readBatchTestRows(t, opts, 3))
+		})
+
+		t.Run("fails to open when the column is not in the columns", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+			r := NewRowReader(RowReaderOptions{
+				Dataset:              dset,
+				Columns:              []Column{columns[0], columns[2]},
+				Predicates:           []Predicate{GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)}},
+				PredicateOnlyColumns: []Column{columns[1]},
+			})
+			t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+			require.ErrorContains(t, r.Open(t.Context()), "not found")
+		})
+
+		t.Run("fails to open when no predicate reads the column", func(t *testing.T) {
+			dset, columns := buildBatchTestDataset(t)
+			r := NewRowReader(RowReaderOptions{
+				Dataset:              dset,
+				Columns:              columns,
+				Predicates:           []Predicate{GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)}},
+				PredicateOnlyColumns: []Column{columns[1]},
+			})
+			t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+			require.ErrorContains(t, r.Open(t.Context()), "not read by a predicate")
+		})
+	})
+
+	t.Run("batch func does not run for the first predicate", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicate := batchTestPredicate(columns[1], keepSome, false)
+		predicate.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for the first predicate")
+			return nil
+		}
+
+		opts := RowReaderOptions{Dataset: dset, Columns: columns, Predicates: []Predicate{predicate}}
+		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
+	})
+
+	t.Run("batch func does not run for a column that two predicates read", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		withBatch := batchTestPredicate(columns[1], keepSome, false)
+		withBatch.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for a column that another predicate reads")
+			return nil
+		}
+
+		opts := RowReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				withBatch,
+				batchTestPredicate(columns[1], keepAll, false),
+			},
+		}
+		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
+	})
+
+	t.Run("batch func that keeps an invalid index returns an error", func(t *testing.T) {
+		badIndexes := map[string]func(n int) []int32{
+			"a repeated index": func(int) []int32 { return []int32{0, 0} },
+			"a descending pair": func(n int) []int32 {
+				return []int32{int32(n - 1), 0}
+			},
+			"a negative index":      func(int) []int32 { return []int32{-1} },
+			"an index out of range": func(n int) []int32 { return []int32{int32(n)} },
+		}
+
+		for name, bad := range badIndexes {
+			t.Run(name, func(t *testing.T) {
+				dset, columns := buildBatchTestDataset(t)
+
+				var calls int
+				predicate := batchTestPredicate(columns[1], keepSome, false)
+				predicate.KeepBatch = func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+					calls++
+					if calls == 1 {
+						return dst
+					}
+					return append(dst, bad(values.Len())...)
+				}
+
+				r := NewRowReader(RowReaderOptions{
+					Dataset: dset,
+					Columns: columns,
+					Predicates: []Predicate{
+						GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+						predicate,
+					},
+				})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+				_, err := readDataset(r, 100)
+				require.ErrorContains(t, err, "want ascending indexes in range")
+			})
+		}
+	})
+
+	t.Run("batch func reports the same stats as the row func", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicates := func(withBatch bool) []Predicate {
+			return []Predicate{
+				FuncPredicate{Column: columns[0], Keep: func(_ Column, v Value) bool { return v.Int64()%3 != 1 }},
+				batchTestPredicate(columns[1], keepSome, withBatch),
+			}
+		}
+
+		rowStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, Columns: columns, Predicates: predicates(false)})
+		batchStats := readBatchTestStats(t, RowReaderOptions{Dataset: dset, Columns: columns, Predicates: predicates(true)})
+
+		require.NotZero(t, rowStats[dataobj.StatDatasetPrimaryRowBytes.Name()])
+		require.Equal(t, rowStats, batchStats)
+	})
 }
 
 func Test_RowReader_Reset(t *testing.T) {
@@ -546,6 +746,63 @@ func Test_RowReader_Reset(t *testing.T) {
 		require.NotEmpty(t, secondExpected)
 		require.NotEqual(t, firstExpected, secondExpected)
 		require.Equal(t, secondExpected, convertToTestPersons(secondRows))
+	})
+
+	t.Run("forgets the predicate-only columns after a reset without them", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		predicates := []Predicate{
+			GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+			batchTestPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
+		}
+		plainOpts := RowReaderOptions{Dataset: dset, Columns: columns, Predicates: predicates}
+		expected := readBatchTestRows(t, plainOpts, 3)
+		require.NotEmpty(t, expected)
+
+		predicateOnlyOpts := plainOpts
+		predicateOnlyOpts.PredicateOnlyColumns = []Column{columns[1]}
+		r := NewRowReader(predicateOnlyOpts)
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		for _, row := range readBatchTestRowsWith(t, r, 3) {
+			require.Equal(t, nilValueText, row.message)
+		}
+
+		r.Reset(plainOpts)
+		require.Equal(t, expected, readBatchTestRowsWith(t, r, 3))
+	})
+
+	t.Run("forgets the batch predicates after a reset with a different predicate set", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		batchOpts := RowReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				batchTestPredicate(columns[1], func(line []byte) bool { return len(line) < 12 }, true),
+			},
+		}
+		plainOpts := RowReaderOptions{
+			Dataset: dset,
+			Columns: columns,
+			Predicates: []Predicate{
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(-1)},
+				GreaterThanPredicate{Column: columns[0], Value: Int64Value(10)},
+			},
+		}
+		expectedPlain := readBatchTestRows(t, plainOpts, 3)
+		require.NotEmpty(t, expectedPlain)
+
+		r := NewRowReader(batchOpts)
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		first := readBatchTestRowsWith(t, r, 3)
+		require.NotEmpty(t, first)
+
+		r.Reset(plainOpts)
+		require.Equal(t, expectedPlain, readBatchTestRowsWith(t, r, 3))
+
+		r.Reset(batchOpts)
+		require.Equal(t, first, readBatchTestRowsWith(t, r, 3))
 	})
 }
 
@@ -851,6 +1108,139 @@ func encodeInt64Value(t *testing.T, v int64) []byte {
 	return data
 }
 
+const nilValueText = "<nil>"
+
+// batchTestRow is a row of the dataset of [buildBatchTestDataset]. The message of a row with a
+// nil message is [nilValueText].
+type batchTestRow struct {
+	id      int64
+	message string
+	extra   string
+}
+
+// buildBatchTestDataset returns a dataset with an id column, a message column and an extra
+// column, in this order. Every column has more than one page. The message column has null
+// values, empty values and values of different lengths.
+func buildBatchTestDataset(t *testing.T) (Dataset, []Column) {
+	t.Helper()
+
+	var (
+		ids      = buildInt64Column(t, "id")
+		messages = buildStringColumn(t, "message")
+		extras   = buildStringColumn(t, "extra")
+	)
+	for i := range 40 {
+		message := BinaryValue([]byte(fmt.Sprintf("line %d %s", i, strings.Repeat("x", i%9))))
+		switch {
+		case i%7 == 3:
+			message = Value{}
+		case i%5 == 0:
+			message = BinaryValue(nil)
+		}
+
+		require.NoError(t, ids.Append(i, Int64Value(int64(i))))
+		require.NoError(t, messages.Append(i, message))
+		require.NoError(t, extras.Append(i, BinaryValue([]byte(fmt.Sprintf("extra-%d", i)))))
+	}
+
+	var memColumns []*MemColumn
+	for _, b := range []*ColumnBuilder{ids, messages, extras} {
+		col, err := b.Flush()
+		require.NoError(t, err)
+		require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
+		memColumns = append(memColumns, col)
+	}
+
+	dset := FromMemory(memColumns)
+	columns, err := result.Collect(dset.ListColumns(t.Context()))
+	require.NoError(t, err)
+	return dset, columns
+}
+
+// batchTestPredicate returns a predicate on column that keeps the lines for which keep returns
+// true. A null value reads as an empty line. It sets KeepBatch only when withBatch is true.
+func batchTestPredicate(column Column, keep func(line []byte) bool, withBatch bool) FuncPredicate {
+	p := FuncPredicate{
+		Column: column,
+		Keep: func(_ Column, value Value) bool {
+			if value.IsNil() {
+				return keep(nil)
+			}
+			return keep(value.Binary())
+		},
+	}
+	if withBatch {
+		p.KeepBatch = func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+			for i := range values.Len() {
+				if keep(values.Get(i)) {
+					dst = append(dst, int32(i))
+				}
+			}
+			return dst
+		}
+	}
+	return p
+}
+
+func readBatchTestRows(t *testing.T, opts RowReaderOptions, batchSize int) []batchTestRow {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	return readBatchTestRowsWith(t, r, batchSize)
+}
+
+// readBatchTestRowsWith reads every row of r into one buffer that it reuses, so a value that a
+// read leaves in a row can reach the next read.
+func readBatchTestRowsWith(t *testing.T, r *RowReader, batchSize int) []batchTestRow {
+	t.Helper()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	var (
+		out []batchTestRow
+		buf = make([]Row, batchSize)
+	)
+	for {
+		n, err := r.Read(t.Context(), buf)
+		for _, row := range buf[:n] {
+			message := nilValueText
+			if !row.Values[1].IsNil() {
+				message = string(row.Values[1].Binary())
+			}
+			out = append(out, batchTestRow{
+				id:      row.Values[0].Int64(),
+				message: message,
+				extra:   string(row.Values[2].Binary()),
+			})
+		}
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		require.NoError(t, err)
+	}
+}
+
+func readBatchTestStats(t *testing.T, opts RowReaderOptions) map[string]int64 {
+	t.Helper()
+
+	r := NewRowReader(opts)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+	ctx, _ := xcap.NewCapture(t.Context(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
+	_, err := readDatasetWithContext(ctx, r, 7)
+	require.NoError(t, err)
+
+	stats := make(map[string]int64)
+	for _, obs := range region.Observations() {
+		stats[obs.Statistic.Name()] = obs.Value.(int64)
+	}
+	return stats
+}
+
 func BenchmarkReader(b *testing.B) {
 	generator := DatasetGenerator{
 		RowCount:     1_000_000,
@@ -902,32 +1292,91 @@ func BenchmarkReader(b *testing.B) {
 		Columns: cols,
 	}
 
+	readAll := func(b *testing.B, opts RowReaderOptions, batchSize int) {
+		b.ResetTimer()
+		b.ReportAllocs()
+
+		batch := make([]Row, batchSize)
+		for b.Loop() {
+			reader := NewRowReader(opts)
+			require.NoError(b, reader.Open(b.Context()))
+
+			var rowsRead int
+			for {
+				n, err := reader.Read(b.Context(), batch)
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
+				rowsRead += n
+			}
+			reader.Close()
+
+			b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
+		}
+	}
+
 	for _, rp := range readPatterns {
 		b.Run(rp.name, func(b *testing.B) {
-			b.ResetTimer()
-			b.ReportAllocs()
-
-			batch := make([]Row, rp.batchSize)
-			for b.Loop() {
-				reader := NewRowReader(opts)
-				require.NoError(b, reader.Open(context.Background()))
-
-				var rowsRead int
-				for {
-					n, err := reader.Read(context.Background(), batch)
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						b.Fatal(err)
-					}
-					rowsRead += n
-				}
-				reader.Close()
-
-				b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
-			}
+			readAll(b, opts, rp.batchSize)
 		})
+	}
+
+	// Each line is a random one of 100000 values. A value holds its number followed by x bytes.
+	// The needle "123x" is in the values whose number ends in 123, which is about 0.1% of the
+	// lines, and "x" is in every line.
+	filters := []struct {
+		name   string
+		needle []byte
+	}{
+		{name: "keeps-0.1-percent", needle: []byte("123x")},
+		{name: "keeps-all", needle: []byte("x")},
+	}
+	forms := []struct {
+		name          string
+		batch         bool
+		predicateOnly bool
+	}{
+		{name: "row"},
+		{name: "batch", batch: true},
+		{name: "batch-predicate-only", batch: true, predicateOnly: true},
+	}
+
+	for _, rp := range readPatterns {
+		for _, filter := range filters {
+			for _, form := range forms {
+				b.Run(rp.name+"/"+filter.name+"/"+form.name, func(b *testing.B) {
+					message := FuncPredicate{
+						Column: cols[2],
+						Keep: func(_ Column, value Value) bool {
+							return bytes.Contains(value.Binary(), filter.needle)
+						},
+					}
+					if form.batch {
+						message.KeepBatch = func(_ Column, values *columnar.UTF8, dst []int32) []int32 {
+							for i := range values.Len() {
+								if bytes.Contains(values.Get(i), filter.needle) {
+									dst = append(dst, int32(i))
+								}
+							}
+							return dst
+						}
+					}
+
+					filterOpts := opts
+					filterOpts.Predicates = []Predicate{
+						LessThanPredicate{Column: cols[1], Value: Int64Value(math.MaxInt64)},
+						message,
+					}
+					if form.predicateOnly {
+						filterOpts.PredicateOnlyColumns = []Column{cols[2]}
+					}
+					readAll(b, filterOpts, rp.batchSize)
+				})
+			}
+		}
 	}
 }
 

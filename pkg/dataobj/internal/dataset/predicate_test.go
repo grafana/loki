@@ -36,6 +36,39 @@ func TestIsConstPredicate(t *testing.T) {
 	}
 }
 
+func TestUsesColumn(t *testing.T) {
+	var (
+		a    = &dataset.MemColumn{}
+		b    = &dataset.MemColumn{}
+		onA  = dataset.EqualPredicate{Column: a, Value: dataset.Int64Value(1)}
+		onB  = dataset.FuncPredicate{Column: b}
+		both = dataset.AndPredicate{Left: onA, Right: dataset.NotPredicate{Inner: onB}}
+	)
+
+	for _, tc := range []struct {
+		name      string
+		predicate dataset.Predicate
+		column    dataset.Column
+		want      bool
+	}{
+		{"a leaf reads its column", onA, a, true},
+		{"a leaf does not read another column", onA, b, false},
+		{"a func predicate reads its column", onB, b, true},
+		{"an in predicate reads its column", dataset.InPredicate{Column: a}, a, true},
+		{"a greater than predicate reads its column", dataset.GreaterThanPredicate{Column: a}, a, true},
+		{"a less than predicate reads its column", dataset.LessThanPredicate{Column: a}, a, true},
+		{"an and reads the column of its left side", both, a, true},
+		{"an and reads the column of a not inside its right side", both, b, true},
+		{"an or reads the column of its right side", dataset.OrPredicate{Left: onA, Right: onB}, b, true},
+		{"a constant reads no column", dataset.TruePredicate{}, a, false},
+		{"a nil predicate reads no column", nil, a, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, dataset.UsesColumn(tc.predicate, tc.column))
+		})
+	}
+}
+
 func TestNewConstPredicate(t *testing.T) {
 	require.Equal(t, dataset.TruePredicate{}, dataset.NewConstPredicate(true))
 	require.Equal(t, dataset.FalsePredicate{}, dataset.NewConstPredicate(false))

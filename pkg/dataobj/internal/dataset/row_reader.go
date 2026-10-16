@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"slices"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
@@ -32,6 +34,14 @@ type RowReaderOptions struct {
 	// Expressions in Predicate may only reference columns in Columns.
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
+
+	// PredicateOnlyColumns are columns that the reader reads to run predicates but does not
+	// return: the Value of such a column in every returned Row is nil. The reader can then skip
+	// the copy of the values that pass a [FuncPredicate.KeepBatch] function.
+	//
+	// Each column must be in Columns, and a predicate must read it. Open returns an error
+	// otherwise.
+	PredicateOnlyColumns []Column
 
 	// PrefetchAllOnOpen controls when pages are downloaded.
 	//
@@ -63,6 +73,9 @@ type RowReader struct {
 	origColumnLookup     map[Column]int      // Find the index of a column in opts.Columns.
 	primaryColumnIndexes []int               // Indexes of primary columns in opts.Columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
+	batchPredicates      []*batchPredicate   // One per predicate, nil for a row by row predicate. Empty when none runs on arrays.
+	predicateOnlyIdxs    []int               // Indexes in opts.Columns of opts.PredicateOnlyColumns.
+	keepScratch          []int32             // Indexes that a batch predicate keeps, reused across reads.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -247,6 +260,21 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 
 	// sequentially apply the predicates.
 	for i, p := range r.opts.Predicates {
+		if i < len(r.batchPredicates) && r.batchPredicates[i] != nil {
+			bp := r.batchPredicates[i]
+			var err error
+			passCount, err = r.evalBatchPredicate(ctx, bp, s[:readSize], &primaryColumnBytes)
+			if err != nil {
+				return rowsRead, 0, err
+			}
+			if passCount == 0 {
+				// No rows passed the predicate, so we can stop early.
+				break
+			}
+			readSize = passCount
+			continue
+		}
+
 		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
 			// keep only columns that haven't been filled yet.
 			_, ok := filledColumns[c]
@@ -317,7 +345,61 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 	region.Record(dataobj.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
 	region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
+	// A predicate-only column can still hold a value in the rows. The row path reads it for the
+	// predicate, and the batch path leaves the value of an earlier read in a reused row. Zero it
+	// so the caller sees none.
+	for _, idx := range r.predicateOnlyIdxs {
+		for j := range passCount {
+			s[j].Values[idx].Zero()
+		}
+	}
+
 	return rowsRead, passCount, nil
+}
+
+// batchPredicate is a predicate that the reader tests on a run of values at once.
+type batchPredicate struct {
+	predicate FuncPredicate
+	index     int  // Index of the column of predicate in the values of a Row.
+	retain    bool // Whether the value of the column goes into the rows that pass.
+}
+
+// evalBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
+// passing rows to the front of rows and returns how many there are. It copies the value of a
+// passing row into the row only when the column is returned.
+func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, rows []Row, primaryColumnBytes *int64) (int, error) {
+	var (
+		pass = 0
+		keep = r.keepScratch
+	)
+	_, err := r.inner.readRuns(ctx, r.allColumns()[bp.index], rows, func(offset int, values *columnar.UTF8) error {
+		*primaryColumnBytes += int64(values.DataLen())
+
+		keep = bp.predicate.KeepBatch(bp.predicate.Column, values, keep[:0])
+		prev := int32(-1)
+		for _, k := range keep {
+			if k <= prev || int(k) >= values.Len() {
+				return fmt.Errorf("batch predicate kept index %d of %d values after index %d, want ascending indexes in range", k, values.Len(), prev)
+			}
+			prev = k
+
+			// Ascending indexes keep pass <= j. We move rows[j] to rows[pass] by *swapping* the
+			// rows. Copying would result in the Row.Values slice existing in two places in the
+			// buffer, which causes memory corruption when filling in rows.
+			j := offset + int(k)
+			rows[pass], rows[j] = rows[j], rows[pass]
+			if bp.retain {
+				copyUTF8Value(&rows[pass].Values[bp.index], values, int(k))
+			}
+			pass++
+		}
+		return nil
+	})
+	r.keepScratch = keep[:0]
+	if err != nil {
+		return 0, err
+	}
+	return pass, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
@@ -348,6 +430,74 @@ func (r *RowReader) compilePredicates() error {
 		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
 	return nil
+}
+
+// initBatchPredicates decides which predicates run on an array of values at once, and resolves
+// opts.PredicateOnlyColumns. It returns an error when a predicate-only column is not in the
+// columns, or when no predicate reads it. The caller must clear r.batchPredicates and
+// r.predicateOnlyIdxs first; Reset does this.
+//
+// A predicate runs on an array of values when all of these hold:
+//
+//   - It is a [FuncPredicate] with a KeepBatch function, and it is not inside an And, Or or Not
+//     predicate.
+//   - It is not the first predicate. The first predicate sets the row indexes.
+//   - Its column holds binary values.
+//   - No other predicate reads its column. The batch path fills the column only in the rows
+//     that pass, and not at all for a predicate-only column.
+func (r *RowReader) initBatchPredicates() error {
+	// Allocate nothing when no predicate needs this.
+	if len(r.opts.PredicateOnlyColumns) == 0 && !slices.ContainsFunc(r.opts.Predicates, hasKeepBatch) {
+		return nil
+	}
+
+	r.batchPredicates = slices.Grow(r.batchPredicates[:0], len(r.opts.Predicates))[:len(r.opts.Predicates)]
+
+	uses := make(map[Column]int)
+	for _, p := range r.opts.Predicates {
+		WalkPredicate(p, func(p Predicate) bool {
+			if c, ok := predicateColumn(p); ok {
+				uses[c]++
+			}
+			return true
+		})
+	}
+
+	predicateOnly := make(map[Column]struct{}, len(r.opts.PredicateOnlyColumns))
+	for _, c := range r.opts.PredicateOnlyColumns {
+		idx, ok := r.origColumnLookup[c]
+		if !ok {
+			return fmt.Errorf("predicate-only column %v not found in RowReader columns", c)
+		}
+		if uses[c] == 0 {
+			return fmt.Errorf("predicate-only column %v is not read by a predicate", c)
+		}
+		predicateOnly[c] = struct{}{}
+		r.predicateOnlyIdxs = append(r.predicateOnlyIdxs, idx)
+	}
+
+	for i, p := range r.opts.Predicates {
+		fp, ok := p.(FuncPredicate)
+		if i == 0 || !ok || fp.KeepBatch == nil || uses[fp.Column] != 1 {
+			continue
+		}
+		if fp.Column.ColumnDesc().Type.Physical != datasetmd.PHYSICAL_TYPE_BINARY {
+			continue
+		}
+
+		_, predOnly := predicateOnly[fp.Column]
+		r.batchPredicates[i] = &batchPredicate{
+			predicate: fp,
+			index:     r.origColumnLookup[fp.Column],
+			retain:    !predOnly,
+		}
+	}
+	return nil
+}
+
+func hasKeepBatch(p Predicate) bool {
+	fp, ok := p.(FuncPredicate)
+	return ok && fp.KeepBatch != nil
 }
 
 // buildMask returns an iterator that yields row ranges from full that are not
@@ -418,6 +568,8 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.ranges.Reset()
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
+	r.batchPredicates = sliceclear.Clear(r.batchPredicates)
+	r.predicateOnlyIdxs = r.predicateOnlyIdxs[:0]
 	r.ready = false
 }
 
@@ -429,6 +581,9 @@ func (r *RowReader) init(ctx context.Context) error {
 	// simplicity, other functions assume that the predicates are valid and can
 	// panic if they aren't.
 	if err := r.compilePredicates(); err != nil {
+		return err
+	}
+	if err := r.initBatchPredicates(); err != nil {
 		return err
 	}
 
