@@ -200,9 +200,7 @@ func (r *OffsetReader) listOffset(ctx context.Context, partition int32, timestam
 
 // TopicOffsetReader reads the offsets of many partitions of a topic at once.
 //
-// Each method sends one request per broker, not one request per partition.
-// StartOffsets and EndOffsets also send a metadata request to find the
-// partitions of the topic.
+// Each method sends one request per broker.
 type TopicOffsetReader struct {
 	adm   *kadm.Client
 	topic string
