@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -71,69 +69,26 @@ type OffsetReader struct {
 	adm    *kadm.Client
 	client *kgo.Client
 	topic  string
-	logger log.Logger
 }
 
 // NewOffsetReader returns a new OffsetReader.
-func NewOffsetReader(
-	client *kgo.Client,
-	topic string,
-	logger log.Logger,
-) *OffsetReader {
+func NewOffsetReader(client *kgo.Client, topic string) *OffsetReader {
 	return &OffsetReader{
 		adm:    kadm.NewClient(client),
 		client: client,
 		topic:  topic,
-		logger: log.With(logger, "topic", topic),
 	}
 }
 
 // LastCommittedOffset returns the last committed offset of consumerGroup for
-// the partition.
+// the partition. The offset is negative if the group has no committed offset
+// for the partition.
 func (r *OffsetReader) LastCommittedOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error) {
-	req := kmsg.NewPtrOffsetFetchRequest()
-	req.Group = consumerGroup
-	req.Topics = []kmsg.OffsetFetchRequestTopic{{
-		Topic:      r.topic,
-		Partitions: []int32{partition},
-	}}
-	resps := r.client.RequestSharded(ctx, req)
-	// Since we issued a request for only 1 partition, we expect exactly 1 response.
-	if expected, actual := 1, len(resps); actual != expected {
-		return 0, fmt.Errorf("unexpected number of responses: %d", len(resps))
-	}
-	// Ensure no error occurred.
-	res := resps[0]
-	if res.Err != nil {
-		return 0, res.Err
-	}
-	// Parse the response.
-	fetchRes, ok := res.Resp.(*kmsg.OffsetFetchResponse)
-	if !ok {
-		return 0, errors.New("unexpected response type")
-	}
-	// Check the group error before the partitions. A group error, such as
-	// GROUP_AUTHORIZATION_FAILED, comes with no partitions, and the check
-	// below would read it as a group that never committed.
-	if len(fetchRes.Groups) == 1 {
-		if err := groupError(fetchRes.Groups[0].ErrorCode); err != nil {
-			return 0, err
-		}
-	}
-	if len(fetchRes.Groups) != 1 ||
-		len(fetchRes.Groups[0].Topics) != 1 ||
-		len(fetchRes.Groups[0].Topics[0].Partitions) != 1 {
-		level.Debug(r.logger).Log(
-			"msg", "malformed response, setting to start offset",
-			"consumer_group", consumerGroup,
-		)
-		return OffsetStart, nil
-	}
-	partitionRes := fetchRes.Groups[0].Topics[0].Partitions[0]
-	if err := kerr.ErrorForCode(partitionRes.ErrorCode); err != nil {
+	offsets, err := r.LastCommittedOffsets(ctx, map[int32]string{partition: consumerGroup})
+	if err != nil {
 		return 0, err
 	}
-	return partitionRes.Offset, nil
+	return offsets[partition], nil
 }
 
 // ResumeOffset returns the next offset for consumerGroup to consume from the
@@ -246,9 +201,8 @@ func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, groups map[int3
 	if len(groups) == 0 {
 		return offsets, nil
 	}
-	// Name the partitions of each group, as LastCommittedOffset does, rather
-	// than ask for every committed offset of the group. That keeps the load
-	// on the broker low.
+	// Name the partitions of each group rather than ask for every committed
+	// offset of the group. That keeps the load on the broker low.
 	partitions := make(map[string][]int32)
 	for partition, group := range groups {
 		offsets[partition] = OffsetStart

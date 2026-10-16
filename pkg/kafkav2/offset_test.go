@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -102,7 +101,7 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 
 	t.Run("returns the start offset when the group never committed", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		offset, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
 		require.NoError(t, err)
 		require.Equal(t, OffsetStart, offset)
 	})
@@ -110,7 +109,7 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 	t.Run("returns the committed offset", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
 		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
-		offset, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
 		require.NoError(t, err)
 		require.Equal(t, int64(100), offset)
 	})
@@ -118,7 +117,7 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 	t.Run("requests only the given partition of the group", func(t *testing.T) {
 		cluster, client := newTestCluster(t, testTopic, 2)
 		requested := recordOffsetFetches(cluster)
-		_, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffset(t.Context(), testConsumerGroup, 1)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 1)
 		require.NoError(t, err)
 		require.Equal(t, map[string][]int32{testConsumerGroup: {1}}, requested())
 	})
@@ -126,7 +125,7 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 	t.Run("returns an error when the broker denies access to the group", func(t *testing.T) {
 		cluster, client := newTestCluster(t, testTopic, 1)
 		denyNextOffsetFetch(cluster)
-		_, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
 		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
 	})
 }
@@ -139,7 +138,7 @@ func TestOffsetReader_ResumeOffset(t *testing.T) {
 
 	t.Run("returns the start offset when the group never committed", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		offset, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
 		require.NoError(t, err)
 		require.Equal(t, OffsetStart, offset)
 	})
@@ -147,7 +146,7 @@ func TestOffsetReader_ResumeOffset(t *testing.T) {
 	t.Run("returns the offset after the committed offset", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
 		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
-		offset, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
 		require.NoError(t, err)
 		require.Equal(t, int64(101), offset)
 	})
@@ -155,7 +154,7 @@ func TestOffsetReader_ResumeOffset(t *testing.T) {
 	t.Run("returns an error when the broker denies access to the group", func(t *testing.T) {
 		cluster, client := newTestCluster(t, testTopic, 1)
 		denyNextOffsetFetch(cluster)
-		_, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		_, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
 		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
 	})
 }
@@ -168,7 +167,7 @@ func TestOffsetReader_EndOffset(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 	client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-	m := NewOffsetReader(client, testTopic, log.NewNopLogger())
+	m := NewOffsetReader(client, testTopic)
 
 	// The offset should be 0 as no records have been produced.
 	offset, err := m.EndOffset(ctx, 0)
@@ -209,7 +208,7 @@ func TestOffsetReader_StartOffset(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(cluster.Close)
 		client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-		return client, NewOffsetReader(client, testTopic, log.NewNopLogger())
+		return client, NewOffsetReader(client, testTopic)
 	}
 
 	produce := func(t *testing.T, client *kgo.Client, n int) {
@@ -282,7 +281,7 @@ func TestOffsetReader_StartOffsets(t *testing.T) {
 	t.Run("returns zero for each partition when no records were deleted", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 3)
 		produceTo(t, client, testTopic, 1, 3)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).StartOffsets(t.Context())
+		offsets, err := NewOffsetReader(client, testTopic).StartOffsets(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, map[int32]int64{0: 0, 1: 0, 2: 0}, offsets)
 	})
@@ -293,14 +292,14 @@ func TestOffsetReader_StartOffsets(t *testing.T) {
 		produceTo(t, client, testTopic, 2, 5)
 		deleteRecords(t, client, testTopic, 1, 2)
 		deleteRecords(t, client, testTopic, 2, 5)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).StartOffsets(t.Context())
+		offsets, err := NewOffsetReader(client, testTopic).StartOffsets(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, map[int32]int64{0: 0, 1: 2, 2: 5}, offsets)
 	})
 
 	t.Run("returns an error when the topic does not exist", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		_, err := NewOffsetReader(client, "other-topic", log.NewNopLogger()).StartOffsets(t.Context())
+		_, err := NewOffsetReader(client, "other-topic").StartOffsets(t.Context())
 		require.ErrorIs(t, err, kerr.UnknownTopicOrPartition)
 	})
 }
@@ -310,7 +309,7 @@ func TestOffsetReader_EndOffsets(t *testing.T) {
 
 	t.Run("returns zero for each partition when no records were produced", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 3)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).EndOffsets(t.Context())
+		offsets, err := NewOffsetReader(client, testTopic).EndOffsets(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, map[int32]int64{0: 0, 1: 0, 2: 0}, offsets)
 	})
@@ -319,14 +318,14 @@ func TestOffsetReader_EndOffsets(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 3)
 		produceTo(t, client, testTopic, 0, 1)
 		produceTo(t, client, testTopic, 2, 4)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).EndOffsets(t.Context())
+		offsets, err := NewOffsetReader(client, testTopic).EndOffsets(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, map[int32]int64{0: 1, 1: 0, 2: 4}, offsets)
 	})
 
 	t.Run("returns an error when the topic does not exist", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		_, err := NewOffsetReader(client, "other-topic", log.NewNopLogger()).EndOffsets(t.Context())
+		_, err := NewOffsetReader(client, "other-topic").EndOffsets(t.Context())
 		require.ErrorIs(t, err, kerr.UnknownTopicOrPartition)
 	})
 }
@@ -341,7 +340,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 
 	t.Run("returns an empty result when no groups are given", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), nil)
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), nil)
 		require.NoError(t, err)
 		require.Empty(t, offsets)
 	})
@@ -350,7 +349,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 3)
 		commit(t, client, "group-0", 0, 4)
 		commit(t, client, "group-2", 2, 0)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), map[int32]string{
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{
 			0: "group-0",
 			2: "group-2",
 		})
@@ -360,7 +359,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 
 	t.Run("returns a negative offset when the group never committed", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
 		require.NoError(t, err)
 		require.Len(t, offsets, 1)
 		require.Negative(t, offsets[0])
@@ -369,7 +368,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 	t.Run("returns a negative offset when the group committed only another partition", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 2)
 		commit(t, client, "group-0", 1, 4)
-		offsets, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
 		require.NoError(t, err)
 		require.Len(t, offsets, 1)
 		require.Negative(t, offsets[0])
@@ -378,7 +377,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 	t.Run("requests only the partition of each group", func(t *testing.T) {
 		cluster, client := newTestCluster(t, testTopic, 3)
 		requested := recordOffsetFetches(cluster)
-		_, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), map[int32]string{
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{
 			0: "group-0",
 			2: "group-2",
 		})
@@ -389,7 +388,7 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 	t.Run("returns an error when the broker denies access to a group", func(t *testing.T) {
 		cluster, client := newTestCluster(t, testTopic, 1)
 		denyNextOffsetFetch(cluster)
-		_, err := NewOffsetReader(client, testTopic, log.NewNopLogger()).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
+		_, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
 		require.ErrorIs(t, err, kerr.GroupAuthorizationFailed)
 	})
 }
