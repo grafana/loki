@@ -39,6 +39,22 @@ type (
 		// retain, modify, or append to it. Reads of one query can call the same Keep
 		// at the same time, so it must be safe for concurrent use.
 		Keep func(line []byte) bool
+
+		// KeepBatch is optional. It tests a batch of lines at once. The reader then skips the
+		// per-row call and the copy of each line that fails.
+		//
+		// Line i is data[offsets[i]:offsets[i+1]]. An entry with no message is an empty line.
+		// Lines have no separator, offsets can start after 0, and data can hold bytes that
+		// belong to no line.
+		//
+		// KeepBatch appends to dst the index of every line that Keep keeps, in ascending order
+		// with no repeat, and returns the result. It must give the same result as Keep on every
+		// line. The reader can call Keep instead.
+		//
+		// The arguments belong to the reader and are valid only during the call. KeepBatch must
+		// not retain data, offsets or dst, and must not modify data or offsets. Like Keep, it
+		// must be safe for concurrent use.
+		KeepBatch func(data []byte, offsets []int32, dst []int32) []int32
 	}
 
 	// A MetadataMatcherRowPredicate is a RowPredicate that requires a metadata
