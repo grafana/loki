@@ -1085,3 +1085,11 @@ func TestShardedPostingsNextDoesNotEscapeShard(t *testing.T) {
 		})
 	}
 }
+
+func TestNewMergedPostingsNoInputs(t *testing.T) {
+	for _, in := range [][]Postings{nil, {}} {
+		var p Postings
+		require.NotPanics(t, func() { p = newMergedPostings(in) })
+		require.Equal(t, EmptyPostings(), p)
+	}
+}

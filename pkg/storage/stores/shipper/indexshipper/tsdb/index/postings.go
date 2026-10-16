@@ -538,6 +538,9 @@ type mergedPostings struct {
 const mergedPostingsMaxVal = storage.SeriesRef(math.MaxUint64)
 
 func newMergedPostings(p []Postings) (m Postings) {
+	if len(p) == 0 {
+		return EmptyPostings()
+	}
 	lt := loser.New(p, mergedPostingsMaxVal)
 	// loser.New has called Next on every input, so any that failed up front
 	// have already reported their error.
