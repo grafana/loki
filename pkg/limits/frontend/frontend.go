@@ -193,9 +193,12 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	resp.Results = completeShardResults(resp.Results, req.Streams)
 	for _, res := range resp.Results {
 		f.metrics.checkLimitsAndShardShards.WithLabelValues(req.Tenant).Add(float64(res.Shards))
+		// ReasonFailed is the only non-decision that can reach here: the
+		// limits client drops a ReasonNotOwned result instead of returning
+		// it, and completeShardResults synthesizes ReasonFailed for a stream
+		// that no zone answered.
 		switch {
-		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
-			res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
+		case res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed):
 			f.metrics.checkLimitsAndShardFailed.WithLabelValues(req.Tenant).Inc()
 		case res.RejectReason != "":
 			f.metrics.checkLimitsAndShardRejected.WithLabelValues(req.Tenant).Inc()
