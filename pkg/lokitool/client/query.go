@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	json "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/lokitool/volume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -20,6 +24,7 @@ const (
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
+	volumePath      = "/loki/api/v1/index/volume"
 )
 
 // QueryClient contains the methods of the query API.
@@ -30,6 +35,7 @@ type QueryClient interface {
 	ListLabelNames(start, end time.Time) (*loghttp.LabelResponse, error)
 	ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error)
 	Series(matchers []string, start, end time.Time) (*loghttp.SeriesResponse, error)
+	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 }
 
 var _ QueryClient = (*Client)(nil)
@@ -106,6 +112,29 @@ func (c *Client) Series(matchers []string, start, end time.Time) (*loghttp.Serie
 		return nil, err
 	}
 	return &seriesResponse, nil
+}
+
+// GetVolume uses the /api/v1/index/volume endpoint to get the volume of the streams that match the query.
+func (c *Client) GetVolume(query *volume.Query) (*loghttp.QueryResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", query.Start.UnixNano())
+	params.SetInt("end", query.End.UnixNano())
+	params.SetString("query", query.QueryString)
+	params.SetString("limit", strconv.Itoa(query.Limit))
+
+	if len(query.TargetLabels) > 0 {
+		params.SetString("targetLabels", strings.Join(query.TargetLabels, ","))
+	}
+
+	if query.AggregateByLabels {
+		params.SetString("aggregateBy", seriesvolume.Labels)
+	}
+
+	var resp loghttp.QueryResponse
+	if err := c.getJSON(volumePath, params.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (c *Client) doQuery(path, query string) (*loghttp.QueryResponse, error) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/lokitool/volume"
 )
 
 const streamsResponse = `{
@@ -158,4 +159,54 @@ func TestSeries(t *testing.T) {
 	require.Equal(t, []string{`{app="foo"}`, `{app="bar"}`}, params["match"])
 	require.Equal(t, "1700000000000000000", params.Get("start"))
 	require.Equal(t, "1700003600000000000", params.Get("end"))
+}
+
+func TestGetVolume(t *testing.T) {
+	const response = `{"status": "success", "data": {"resultType": "vector", "result": [{"metric": {"app": "foo"}, "value": [1700000000, "1024"]}]}}`
+	start := time.Unix(1700000000, 0)
+
+	t.Run("all parameters", func(t *testing.T) {
+		srv, requests := newServer(t, http.StatusOK, response)
+		c, err := New(Config{Address: srv.URL})
+		require.NoError(t, err)
+
+		resp, err := c.GetVolume(&volume.Query{
+			QueryString:       `{app="foo"}`,
+			Start:             start,
+			End:               start.Add(time.Hour),
+			Limit:             5,
+			TargetLabels:      []string{"app", "env"},
+			AggregateByLabels: true,
+		})
+		require.NoError(t, err)
+		require.Equal(t, loghttp.ResultTypeVector, string(resp.Data.ResultType))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, "/loki/api/v1/index/volume", got[0].Path)
+
+		params, err := url.ParseQuery(got[0].Query)
+		require.NoError(t, err)
+		require.Equal(t, `{app="foo"}`, params.Get("query"))
+		require.Equal(t, "1700000000000000000", params.Get("start"))
+		require.Equal(t, "1700003600000000000", params.Get("end"))
+		require.Equal(t, "5", params.Get("limit"))
+		require.Equal(t, "app,env", params.Get("targetLabels"))
+		require.Equal(t, "labels", params.Get("aggregateBy"))
+	})
+
+	t.Run("optional parameters", func(t *testing.T) {
+		srv, requests := newServer(t, http.StatusOK, response)
+		c, err := New(Config{Address: srv.URL})
+		require.NoError(t, err)
+
+		_, err = c.GetVolume(&volume.Query{QueryString: `{app="foo"}`, Start: start, End: start.Add(time.Hour), Limit: 30})
+		require.NoError(t, err)
+
+		params, err := url.ParseQuery(requests()[0].Query)
+		require.NoError(t, err)
+		require.False(t, params.Has("targetLabels"))
+		require.False(t, params.Has("aggregateBy"))
+		require.False(t, params.Has("step"))
+	})
 }

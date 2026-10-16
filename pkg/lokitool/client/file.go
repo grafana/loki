@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/lokitool/volume"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -177,6 +178,10 @@ func (f *FileClient) Series(_ []string, _, _ time.Time) (*loghttp.SeriesResponse
 		Status: loghttp.QueryStatusSuccess,
 		Data:   []loghttp.LabelSet{lbs},
 	}, nil
+}
+
+func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	return nil, ErrNotSupported
 }
 
 type limiter struct {

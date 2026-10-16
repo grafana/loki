@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/lokitool/volume"
 )
 
 func TestFileClient_QueryRangeLogQueries(t *testing.T) {
@@ -211,6 +212,13 @@ func TestFileClient_Series(t *testing.T) {
 	}
 
 	assert.Equal(t, exp, got)
+}
+
+func TestFileClient_GetVolume(t *testing.T) {
+	c := newEmptyClient(t)
+	resp, err := c.GetVolume(&volume.Query{})
+	require.ErrorIs(t, err, ErrNotSupported)
+	require.Nil(t, resp)
 }
 
 func newEmptyClient(t *testing.T) *FileClient {
