@@ -89,7 +89,6 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 
 	g.Go(func() error {
 		if !a.shouldQueryIngesters(through, model.Now()) {
-			level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
 			return nil
 		}
 
@@ -99,8 +98,6 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 		if err == nil {
 			sp := trace.SpanFromContext(ctx)
 			sp.SetAttributes(attribute.Int("ingester-chunks-count", len(ingesterChunks)))
-
-			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		return err
 	})
@@ -230,7 +227,6 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(a.scfg, storeChunks, ingesterChunkIDs)
-	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
 
 	fetcherToChunksGroupIdx := make(map[*fetcher.Fetcher]int, len(fetchers))
 
