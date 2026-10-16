@@ -137,6 +137,7 @@ type Comparator struct {
 	cacheTestRunning bool
 	writeInterval    time.Duration
 	confirmAsync     bool
+	tailDisabled     bool
 	startTime        time.Time
 	sent             chan time.Time
 	recv             chan time.Time
@@ -160,7 +161,8 @@ func NewComparator(writer io.Writer,
 	sentChan chan time.Time,
 	receivedChan chan time.Time,
 	reader reader.LokiReader,
-	confirmAsync bool) *Comparator {
+	confirmAsync bool,
+	tailDisabled bool) *Comparator {
 	c := &Comparator{
 		w:                   writer,
 		entries:             []*time.Time{},
@@ -183,6 +185,7 @@ func NewComparator(writer io.Writer,
 		cacheTestRunning:    false,
 		writeInterval:       writeInterval,
 		confirmAsync:        confirmAsync,
+		tailDisabled:        tailDisabled,
 		startTime:           time.Now(),
 		sent:                sentChan,
 		recv:                receivedChan,
@@ -491,8 +494,12 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 		},
 		func(_ int, t *time.Time) {
 			missing = append(missing, t)
-			wsMissingEntries.Inc()
-			fmt.Fprintf(c.w, ErrEntryNotReceivedWs, t.UnixNano(), c.wait.Seconds())
+			// With the websocket tail disabled nothing is ever received that way, so every entry would
+			// be reported as a websocket failure. They are still confirmed with a query below.
+			if !c.tailDisabled {
+				wsMissingEntries.Inc()
+				fmt.Fprintf(c.w, ErrEntryNotReceivedWs, t.UnixNano(), c.wait.Seconds())
+			}
 		})
 
 	// Add the list of missing entries to the list for which we will attempt to query Loki for
@@ -526,9 +533,18 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 		c.missingMtx.Unlock()
 		return
 	}
-	start := *c.missingEntries[0]
+	// Entries can be sent out of order, so look for the oldest and the newest timestamp
+	// instead of assuming that the first and the last entry are those.
+	start, end := *c.missingEntries[0], *c.missingEntries[0]
+	for _, m := range c.missingEntries[1:] {
+		if m.Before(start) {
+			start = *m
+		}
+		if m.After(end) {
+			end = *m
+		}
+	}
 	start = start.Add(-10 * time.Second)
-	end := *c.missingEntries[len(c.missingEntries)-1]
 	end = end.Add(10 * time.Second)
 	c.missingMtx.Unlock()
 
@@ -545,8 +561,10 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 
 	// This is to help debug some missing log entries when queried,
 	// let's print exactly what we are missing and what Loki sent back
-	for _, r := range c.missingEntries {
-		fmt.Fprintf(c.w, DebugWebsocketMissingEntry, r.UnixNano())
+	if !c.tailDisabled {
+		for _, r := range c.missingEntries {
+			fmt.Fprintf(c.w, DebugWebsocketMissingEntry, r.UnixNano())
+		}
 	}
 	for _, r := range recvd {
 		fmt.Fprintf(c.w, DebugQueryResult, r.UnixNano())
@@ -559,7 +577,9 @@ func (c *Comparator) confirmMissing(currentTime time.Time) {
 			if (*m).Equal(r) {
 				// Entry was found in loki, this can be dropped from the list of missing
 				// which is done by NOT incrementing the output index k
-				fmt.Fprintf(c.w, DebugEntryFound, (*m).UnixNano(), currentTime.Sub(*m).Seconds())
+				if !c.tailDisabled {
+					fmt.Fprintf(c.w, DebugEntryFound, (*m).UnixNano(), currentTime.Sub(*m).Seconds())
+				}
 				found = true
 			}
 		}
