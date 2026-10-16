@@ -524,40 +524,56 @@ func Merge(its ...Postings) Postings {
 }
 
 type mergedPostings struct {
-	p   []Postings
 	h   *loser.Tree[storage.SeriesRef, Postings]
 	cur storage.SeriesRef
+	err error
 	// started is set by the first Next or Seek. newMergedPostings calls
 	// IsEmpty, which initializes the tree, so the first Next must return the
 	// tree's current winner instead of advancing past it.
 	started bool
 }
 
+// mergedPostingsMaxVal must be higher than all real values used in the tree.
+// The tree's winner has this value once every input is exhausted.
+const mergedPostingsMaxVal = storage.SeriesRef(math.MaxUint64)
+
 func newMergedPostings(p []Postings) (m Postings) {
-	const maxVal = storage.SeriesRef(math.MaxUint64) // This value must be higher than all real values used in the tree.
-	lt := loser.New(p, maxVal)
-	postings := &mergedPostings{p: p, h: lt}
-	if err := postings.Err(); err != nil {
-		return ErrPostings(err)
+	lt := loser.New(p, mergedPostingsMaxVal)
+	// loser.New has called Next on every input, so any that failed up front
+	// have already reported their error.
+	for _, it := range p {
+		if err := it.Err(); err != nil {
+			return ErrPostings(err)
+		}
 	}
 	if lt.IsEmpty() {
 		return EmptyPostings()
 	}
-	return postings
+	return &mergedPostings{h: lt}
 }
 
 func (it *mergedPostings) Next() bool {
+	if it.err != nil || it.h.At() == mergedPostingsMaxVal {
+		return false
+	}
 	if !it.started {
 		it.started = true
 		it.cur = it.h.At()
 		return true
 	}
 	for {
-		if !it.h.Next() {
+		w := it.h.Winner()
+		ok := w.Next()
+		if !ok && w.Err() != nil {
+			it.err = w.Err()
+			return false
+		}
+		it.h.Fix(!ok)
+		newItem := it.h.At()
+		if newItem == mergedPostingsMaxVal { // Optimisation - faster than it.h.IsEmpty()
 			return false
 		}
 		// Remove duplicate entries.
-		newItem := it.h.At()
 		if newItem != it.cur {
 			it.cur = newItem
 			return true
@@ -566,12 +582,20 @@ func (it *mergedPostings) Next() bool {
 }
 
 func (it *mergedPostings) Seek(id storage.SeriesRef) bool {
-	it.started = true
-	for !it.h.IsEmpty() && it.h.At() < id {
-		finished := !it.h.Winner().Seek(id)
-		it.h.Fix(finished)
+	if it.err != nil {
+		return false
 	}
-	if it.h.IsEmpty() {
+	it.started = true
+	for it.h.At() < id {
+		w := it.h.Winner()
+		ok := w.Seek(id)
+		if !ok && w.Err() != nil {
+			it.err = w.Err()
+			return false
+		}
+		it.h.Fix(!ok)
+	}
+	if it.h.At() == mergedPostingsMaxVal { // Optimisation - faster than it.h.IsEmpty()
 		return false
 	}
 	it.cur = it.h.At()
@@ -583,12 +607,7 @@ func (it *mergedPostings) At() storage.SeriesRef {
 }
 
 func (it *mergedPostings) Err() error {
-	for _, p := range it.p {
-		if err := p.Err(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return it.err
 }
 
 // Without returns a new postings list that contains all elements from the full list that
