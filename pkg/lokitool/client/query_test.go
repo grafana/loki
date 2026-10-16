@@ -101,3 +101,40 @@ func TestQueryRange(t *testing.T) {
 		require.ErrorContains(t, err, "400 Bad Request: parse error at line 1")
 	})
 }
+
+const labelsResponse = `{"status": "success", "data": ["app", "cluster"]}`
+
+func TestListLabelNames(t *testing.T) {
+	srv, requests := newServer(t, http.StatusOK, labelsResponse)
+	c, err := New(Config{Address: srv.URL})
+	require.NoError(t, err)
+
+	start := time.Unix(1700000000, 0)
+	resp, err := c.ListLabelNames(start, start.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, []string{"app", "cluster"}, resp.Data)
+
+	got := requests()
+	require.Len(t, got, 1)
+	require.Equal(t, "/loki/api/v1/labels", got[0].Path)
+
+	params, err := url.ParseQuery(got[0].Query)
+	require.NoError(t, err)
+	require.Equal(t, "1700000000000000000", params.Get("start"))
+	require.Equal(t, "1700003600000000000", params.Get("end"))
+}
+
+func TestListLabelValues(t *testing.T) {
+	srv, requests := newServer(t, http.StatusOK, labelsResponse)
+	c, err := New(Config{Address: srv.URL})
+	require.NoError(t, err)
+
+	start := time.Unix(1700000000, 0)
+	resp, err := c.ListLabelValues("my/label", start, start.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, []string{"app", "cluster"}, resp.Data)
+
+	got := requests()
+	require.Len(t, got, 1)
+	require.Equal(t, "/loki/api/v1/label/my%2Flabel/values", got[0].Path)
+}

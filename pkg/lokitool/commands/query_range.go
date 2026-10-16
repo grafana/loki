@@ -154,12 +154,8 @@ func (c *queryRangeCommand) register(parent *kingpin.CmdClause) {
 func (c *queryRangeCommand) run(_ *kingpin.ParseContext) error {
 	q := &c.query
 
-	now := time.Now()
 	var err error
-	if q.Start, err = parseTime(c.from, now.Add(-c.since)); err != nil {
-		return err
-	}
-	if q.End, err = parseTime(c.to, now); err != nil {
+	if q.Start, q.End, err = timeRange(c.since, c.from, c.to); err != nil {
 		return err
 	}
 

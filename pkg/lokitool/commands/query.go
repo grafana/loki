@@ -65,6 +65,7 @@ func (q *QueryCommand) Register(app *kingpin.Application) {
 
 	(&queryRangeCommand{QueryCommand: q}).register(queryCmd)
 	(&queryInstantCommand{QueryCommand: q}).register(queryCmd)
+	(&queryLabelsCommand{QueryCommand: q}).register(queryCmd)
 }
 
 func (q *QueryCommand) stdout() io.Writer {
@@ -126,4 +127,18 @@ func registerEntryFlags(cmd *kingpin.CmdClause, q *query.Query) {
 	cmd.Flag("include-common-labels", "Include common labels in output for each log line.").BoolVar(&q.IncludeCommonLabels)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("colored-output", "Show output with colored labels").BoolVar(&q.ColoredOutput)
+}
+
+// timeRange returns the start and end time of a query. The end time defaults to now and
+// the start time defaults to the duration since before the end time.
+func timeRange(since time.Duration, from, to string) (start, end time.Time, err error) {
+	now := time.Now()
+
+	if start, err = parseTime(from, now.Add(-since)); err != nil {
+		return start, end, err
+	}
+	if end, err = parseTime(to, now); err != nil {
+		return start, end, err
+	}
+	return start, end, nil
 }

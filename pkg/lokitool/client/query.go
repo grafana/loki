@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	json "github.com/json-iterator/go"
@@ -13,8 +15,10 @@ import (
 )
 
 const (
-	queryPath      = "/loki/api/v1/query"
-	queryRangePath = "/loki/api/v1/query_range"
+	queryPath       = "/loki/api/v1/query"
+	queryRangePath  = "/loki/api/v1/query_range"
+	labelsPath      = "/loki/api/v1/labels"
+	labelValuesPath = "/loki/api/v1/label/%s/values"
 )
 
 // QueryClient contains the methods of the query API.
@@ -22,6 +26,8 @@ const (
 type QueryClient interface {
 	Query(queryStr string, limit int, time time.Time, direction logproto.Direction) (*loghttp.QueryResponse, error)
 	QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration) (*loghttp.QueryResponse, error)
+	ListLabelNames(start, end time.Time) (*loghttp.LabelResponse, error)
+	ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error)
 }
 
 var _ QueryClient = (*Client)(nil)
@@ -57,6 +63,33 @@ func (c *Client) QueryRange(queryStr string, limit int, start, end time.Time, di
 	}
 
 	return c.doQuery(queryRangePath, params.Encode())
+}
+
+// ListLabelNames uses the /api/v1/label endpoint to list label names.
+func (c *Client) ListLabelNames(start, end time.Time) (*loghttp.LabelResponse, error) {
+	var labelResponse loghttp.LabelResponse
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+
+	if err := c.getJSON(labelsPath, params.Encode(), &labelResponse); err != nil {
+		return nil, err
+	}
+	return &labelResponse, nil
+}
+
+// ListLabelValues uses the /api/v1/label endpoint to list label values.
+func (c *Client) ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error) {
+	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
+	var labelResponse loghttp.LabelResponse
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+
+	if err := c.getJSON(path, params.Encode(), &labelResponse); err != nil {
+		return nil, err
+	}
+	return &labelResponse, nil
 }
 
 func (c *Client) doQuery(path, query string) (*loghttp.QueryResponse, error) {

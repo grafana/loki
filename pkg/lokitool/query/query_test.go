@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/lokitool/client"
 	"github.com/grafana/loki/v3/pkg/lokitool/output"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
@@ -395,6 +396,8 @@ func Test_batch(t *testing.T) {
 }
 
 type testQueryClient struct {
+	client.QueryClient
+
 	engine          *logql.QueryEngine
 	queryRangeCalls int
 	queryErr        error

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -139,6 +140,28 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 			Result:     value,
 			Statistics: result.Statistics,
 		},
+	}, nil
+}
+
+func (f *FileClient) ListLabelNames(_, _ time.Time) (*loghttp.LabelResponse, error) {
+	return &loghttp.LabelResponse{
+		Status: loghttp.QueryStatusSuccess,
+		Data:   f.labels,
+	}, nil
+}
+
+func (f *FileClient) ListLabelValues(name string, _, _ time.Time) (*loghttp.LabelResponse, error) {
+	// f.labels is sorted, so a binary search returns the index at which name
+	// would be inserted. The label only exists when that index is in range and
+	// the element there is an exact match.
+	i := sort.SearchStrings(f.labels, name)
+	if i >= len(f.labels) || f.labels[i] != name {
+		return &loghttp.LabelResponse{}, nil
+	}
+
+	return &loghttp.LabelResponse{
+		Status: loghttp.QueryStatusSuccess,
+		Data:   []string{f.labelValues[i]},
 	}, nil
 }
 
