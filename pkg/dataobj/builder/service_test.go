@@ -32,7 +32,7 @@ func TestNew(t *testing.T) {
 func TestService(t *testing.T) {
 	t.Run("fails with the processor error when the processor fails", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -47,7 +47,7 @@ func TestService(t *testing.T) {
 
 	t.Run("fails with the consumer error when the consumer fails", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -62,7 +62,7 @@ func TestService(t *testing.T) {
 
 	t.Run("terminates without error when stopped", func(t *testing.T) {
 		consumer, processor := newFakeSubservice("consumer"), newFakeSubservice("processor")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, nil, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -75,7 +75,7 @@ func TestService(t *testing.T) {
 
 	t.Run("runs the reporter until stopped", func(t *testing.T) {
 		consumer, processor, reporter := newFakeSubservice("consumer"), newFakeSubservice("processor"), newFakeSubservice("reporter")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 		require.Equal(t, services.Running, reporter.State())
@@ -86,7 +86,7 @@ func TestService(t *testing.T) {
 
 	t.Run("fails with the reporter error when the reporter fails", func(t *testing.T) {
 		consumer, processor, reporter := newFakeSubservice("consumer"), newFakeSubservice("processor"), newFakeSubservice("reporter")
-		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, nil, 0, log.NewNopLogger())
+		s := newService(consumer, fakeResumeOffsetReader{}, processor, reporter, nil, 0, "test-consumer-group", log.NewNopLogger())
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -137,6 +137,6 @@ func (f *fakeSubservice) SetInitialOffset(int64) error {
 
 type fakeResumeOffsetReader struct{}
 
-func (fakeResumeOffsetReader) ResumeOffset(context.Context, int32) (int64, error) {
+func (fakeResumeOffsetReader) ResumeOffset(context.Context, string, int32) (int64, error) {
 	return 0, nil
 }

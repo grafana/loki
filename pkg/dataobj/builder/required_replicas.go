@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,53 +22,48 @@ import (
 type requiredReplicasReporter struct {
 	services.Service
 
-	offsets       *kafkav2.TopicOffsetReader
-	consumerGroup func(partition int32) string
-	interval      time.Duration
-	logger        log.Logger
-	metrics       *requiredReplicasMetrics
+	offsets                  *kafkav2.OffsetReader
+	partitionToConsumerGroup func(partition int32) string
+	interval                 time.Duration
+	logger                   log.Logger
+	metrics                  *requiredReplicasMetrics
 }
 
 // newRequiredReplicasReporter returns a reporter that refreshes the gauge once
-// every interval. consumerGroup returns the consumer group of the builder
-// that consumes the given partition.
+// every interval. partitionToConsumerGroup returns the consumer group of the
+// builder that consumes the given partition.
 func newRequiredReplicasReporter(
-	offsets *kafkav2.TopicOffsetReader,
-	consumerGroup func(partition int32) string,
+	offsets *kafkav2.OffsetReader,
+	partitionToConsumerGroup func(partition int32) string,
 	interval time.Duration,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *requiredReplicasReporter {
 	r := &requiredReplicasReporter{
-		offsets:       offsets,
-		consumerGroup: consumerGroup,
-		interval:      interval,
-		logger:        logger,
-		metrics:       newRequiredReplicasMetrics(reg),
+		offsets:                  offsets,
+		partitionToConsumerGroup: partitionToConsumerGroup,
+		interval:                 interval,
+		logger:                   logger,
+		metrics:                  newRequiredReplicasMetrics(reg),
 	}
-	r.Service = services.NewBasicService(nil, r.running, nil).WithName("dataobj-builder-required-replicas-reporter")
+	r.Service = services.NewTimerService(interval, nil, r.iteration, nil).WithName("dataobj-builder-required-replicas-reporter")
 	return r
 }
 
-func (r *requiredReplicasReporter) running(ctx context.Context) error {
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
-	for {
-		if err := r.refresh(ctx); err != nil {
-			level.Warn(r.logger).Log("msg", "failed to refresh required replicas", "err", err)
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-		}
+// iteration refreshes the gauge. It never returns an error, because a failed
+// refresh must not stop the builder.
+func (r *requiredReplicasReporter) iteration(ctx context.Context) error {
+	if err := r.refresh(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		level.Warn(r.logger).Log("msg", "failed to refresh required replicas", "err", err)
 	}
+	return nil
 }
 
 // refresh reads the offsets of every partition and updates the gauge. It
 // leaves the gauge unchanged if it returns an error.
 func (r *requiredReplicasReporter) refresh(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, r.interval)
+	const minRefreshTimeout = time.Minute
+	ctx, cancel := context.WithTimeout(ctx, max(r.interval, minRefreshTimeout))
 	defer cancel()
 	start := time.Now()
 	replicas, err := r.readRequiredReplicas(ctx)
@@ -91,16 +87,17 @@ func (r *requiredReplicasReporter) readRequiredReplicas(ctx context.Context) (in
 	if err != nil {
 		return 0, fmt.Errorf("failed to list end offsets: %w", err)
 	}
-	// Fetch the committed offsets only for partitions that have records. The
-	// other partitions have no unread records, and most of the 1000 default
-	// partitions are empty.
+	// Fetch the committed offsets only for partitions that have records,
+	// because the topic can have many pre-created partitions that get none.
+	// The end offset is the offset after the last record, so a partition with
+	// one record at offset 0 has a start offset of 0 and an end offset of 1.
 	groups := make(map[int32]string)
 	for partition, endOffset := range endOffsets {
 		if endOffset > startOffsets[partition] {
-			groups[partition] = r.consumerGroup(partition)
+			groups[partition] = r.partitionToConsumerGroup(partition)
 		}
 	}
-	resumeOffsets, err := r.offsets.ResumeOffsets(ctx, groups)
+	lastCommittedOffsets, err := r.offsets.LastCommittedOffsets(ctx, groups)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch committed offsets: %w", err)
 	}
@@ -108,7 +105,9 @@ func (r *requiredReplicasReporter) readRequiredReplicas(ctx context.Context) (in
 	// would scale builder-0 away, and nothing would scale the builders back up.
 	replicas := int32(1)
 	for partition := range groups {
-		if recordsLeftToConsume(startOffsets[partition], endOffsets[partition], resumeOffsets[partition]) > 0 {
+		// Builders commit the offset of the last record they consumed.
+		resumeOffset := lastCommittedOffsets[partition] + 1
+		if recordsLeftToConsume(startOffsets[partition], endOffsets[partition], resumeOffset) > 0 {
 			replicas = max(replicas, partition+1)
 		}
 	}
@@ -116,17 +115,15 @@ func (r *requiredReplicasReporter) readRequiredReplicas(ctx context.Context) (in
 	return replicas, nil
 }
 
-// newConsumerGroupFunc returns a function that maps a partition to the
-// consumer group of the builder that consumes it.
+// newPartitionToConsumerGroupFunc returns a function that maps a partition to
+// the consumer group of the builder that consumes it.
 //
-// A builder uses its hostname as its consumer group. The hostname ends with
-// the partition of the builder, for example dataobj-builder-3. So the group of
-// partition p is instanceID with its partition replaced by p.
+// It expects that instanceID ends with "-N", e.g., "dataobj-builder-0"
 //
-// The function returns the wrong group for a builder that sets
-// Config.PartitionID. That builder keeps its hostname as its group, and the
-// hostname does not end with the partition.
-func newConsumerGroupFunc(instanceID string) (func(partition int32) string, error) {
+// f := newPartitionToConsumerGroupFunc("dataobj-builder-0")
+// f(1), _ == "dataobj-builder-1"
+// f(2), _ == "dataobj-builder-2"
+func newPartitionToConsumerGroupFunc(instanceID string) (func(partition int32) string, error) {
 	partition, err := partitionring.ExtractPartitionID(instanceID)
 	if err != nil {
 		return nil, err
@@ -142,11 +139,10 @@ func newConsumerGroupFunc(instanceID string) (func(partition int32) string, erro
 
 // recordsLeftToConsume returns the number of records of a partition that its
 // consumer group did not consume yet. resumeOffset is the next offset to
-// consume, or kafkav2.OffsetStart (-2) if the group never committed.
-//
-// The group consumes from the start offset if retention deleted the records
-// after its committed offset.
+// consume.
 func recordsLeftToConsume(startOffset, endOffset, resumeOffset int64) int64 {
+	// startOffset could be > resumeOffset if the records are removed from the
+	// partition due to retention before the consumer group processed and committed them.
 	nextOffsetToConsume := max(resumeOffset, startOffset)
 	return max(endOffset-nextOffsetToConsume, 0)
 }

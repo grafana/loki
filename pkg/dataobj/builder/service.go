@@ -35,7 +35,7 @@ type partitionConsumer interface {
 
 // A resumeOffsetReader allows mocking of [kafkav2.OffsetReader] in tests.
 type resumeOffsetReader interface {
-	ResumeOffset(ctx context.Context, partition int32) (int64, error)
+	ResumeOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error)
 }
 
 type Service struct {
@@ -43,6 +43,7 @@ type Service struct {
 	consumer           partitionConsumer
 	offsetReader       resumeOffsetReader
 	partition          int32
+	consumerGroup      string
 	processor          services.Service
 	reporter           services.Service
 	downscalePermitted downscalePermittedFunc
@@ -86,8 +87,9 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
-	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, instanceID)
+	consumerGroup := instanceID
+	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic)
+	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, consumerGroup)
 	records := make(chan *kgo.Record)
 	consumer := kafkav2.NewSinglePartitionConsumer(
 		readerClient,
@@ -168,29 +170,30 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		reg,
 	)
 
-	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
+	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, consumerGroup, partitionID, logger)
 
 	// Partition 0 always has a builder, so its builder reports how many
 	// builders the other partitions need.
 	var reporter services.Service
 	if partitionID == 0 {
-		consumerGroup, err := newConsumerGroupFunc(instanceID)
+		partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc(instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
 		}
 		reporter = newRequiredReplicasReporter(
-			kafkav2.NewTopicOffsetReader(readerClient, cfg.Topic),
-			consumerGroup,
+			offsetReader,
+			partitionToConsumerGroup,
 			cfg.RequiredReplicasRefreshInterval,
 			logger,
 			reg,
 		)
 	}
-	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, logger), nil
+	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, consumerGroup, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
 // partition, and reporter if it is not nil. It fails if any of them fails.
+// The consumer resumes from the last offset that consumerGroup committed.
 func newService(
 	consumer partitionConsumer,
 	offsetReader resumeOffsetReader,
@@ -198,12 +201,14 @@ func newService(
 	reporter services.Service,
 	downscalePermitted downscalePermittedFunc,
 	partition int32,
+	consumerGroup string,
 	logger log.Logger,
 ) *Service {
 	s := &Service{
 		consumer:           consumer,
 		offsetReader:       offsetReader,
 		partition:          partition,
+		consumerGroup:      consumerGroup,
 		processor:          processor,
 		reporter:           reporter,
 		downscalePermitted: downscalePermitted,
@@ -281,7 +286,7 @@ func (s *Service) initResumeOffset(ctx context.Context) error {
 	})
 	var lastErr error
 	for b.Ongoing() {
-		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.partition)
+		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.consumerGroup, s.partition)
 		if err == nil {
 			lastErr = s.consumer.SetInitialOffset(initialOffset)
 			break
