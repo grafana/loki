@@ -91,3 +91,27 @@ func (s *server) Requests() []request {
 	defer s.mu.Unlock()
 	return append([]request(nil), s.requests...)
 }
+
+// captureStderr returns what f printed to stderr.
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	stderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = stderr }()
+
+	out := make(chan string)
+	go func() {
+		b, _ := io.ReadAll(r)
+		out <- string(b)
+	}()
+
+	f()
+
+	require.NoError(t, w.Close())
+	os.Stderr = stderr
+	return <-out
+}

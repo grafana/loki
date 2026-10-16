@@ -23,6 +23,7 @@ func NewApplication() (*kingpin.Application, *GlobalFlags) {
 	clientConfig.Register(app)
 
 	new(VersionCommand).Register(app)
+	(&QueryCommand{ClientConfig: clientConfig}).Register(app)
 	(&RuleCommand{ClientConfig: clientConfig}).Register(app)
 
 	new(AuditCommand).Register(app)
