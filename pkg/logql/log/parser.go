@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 	"unsafe"
@@ -588,6 +589,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 	l.dec.Reset(line)
 	var current []byte
+scan:
 	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
 		if !ok {
@@ -620,26 +622,38 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
+		// One source field can feed several labels, as in
+		// `| logfmt lvl=level, severity=level`, so collect every expression that
+		// names this key rather than stopping at the first one.
+		ids := make([]string, 0, 1)
 		for id, orig := range keys {
 			if key == orig {
-				key = id
-				break
+				ids = append(ids, id)
 			}
 		}
+		if len(ids) == 0 {
+			ids = append(ids, key)
+		}
+		sort.Strings(ids)
 
-		if _, ok := l.expressions[key]; ok {
-			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
-				key = key + DuplicateSuffix
-				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+		for _, id := range ids {
+			if _, ok := l.expressions[id]; !ok {
+				continue
+			}
+
+			outKey := id
+			if lbs.BaseHas(outKey) || lbs.HasInCategory(outKey, StructuredMetadataLabel) {
+				outKey = outKey + DuplicateSuffix
+				if lbs.ParserLabelHints().Extracted(outKey) || !lbs.ParserLabelHints().ShouldExtract(outKey) {
 					// Don't extract duplicates if we don't have to
-					break
+					break scan
 				}
 			}
 
-			lbs.Set(ParsedLabel, key, string(val))
+			lbs.Set(ParsedLabel, outKey, string(val))
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
-				break
+				break scan
 			}
 		}
 	}
