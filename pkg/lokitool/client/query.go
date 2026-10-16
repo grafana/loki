@@ -19,6 +19,7 @@ const (
 	queryRangePath  = "/loki/api/v1/query_range"
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
+	seriesPath      = "/loki/api/v1/series"
 )
 
 // QueryClient contains the methods of the query API.
@@ -28,6 +29,7 @@ type QueryClient interface {
 	QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration) (*loghttp.QueryResponse, error)
 	ListLabelNames(start, end time.Time) (*loghttp.LabelResponse, error)
 	ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error)
+	Series(matchers []string, start, end time.Time) (*loghttp.SeriesResponse, error)
 }
 
 var _ QueryClient = (*Client)(nil)
@@ -90,6 +92,20 @@ func (c *Client) ListLabelValues(name string, start, end time.Time) (*loghttp.La
 		return nil, err
 	}
 	return &labelResponse, nil
+}
+
+// Series uses the /api/v1/series endpoint to list the streams that match the matchers.
+func (c *Client) Series(matchers []string, start, end time.Time) (*loghttp.SeriesResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetStringArray("match", matchers)
+
+	var seriesResponse loghttp.SeriesResponse
+	if err := c.getJSON(seriesPath, params.Encode(), &seriesResponse); err != nil {
+		return nil, err
+	}
+	return &seriesResponse, nil
 }
 
 func (c *Client) doQuery(path, query string) (*loghttp.QueryResponse, error) {

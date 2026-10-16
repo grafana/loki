@@ -66,6 +66,7 @@ func (q *QueryCommand) Register(app *kingpin.Application) {
 	(&queryRangeCommand{QueryCommand: q}).register(queryCmd)
 	(&queryInstantCommand{QueryCommand: q}).register(queryCmd)
 	(&queryLabelsCommand{QueryCommand: q}).register(queryCmd)
+	(&querySeriesCommand{QueryCommand: q}).register(queryCmd)
 }
 
 func (q *QueryCommand) stdout() io.Writer {

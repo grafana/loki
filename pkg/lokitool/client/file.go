@@ -165,6 +165,20 @@ func (f *FileClient) ListLabelValues(name string, _, _ time.Time) (*loghttp.Labe
 	}, nil
 }
 
+func (f *FileClient) Series(_ []string, _, _ time.Time) (*loghttp.SeriesResponse, error) {
+	m := min(len(f.labels), len(f.labelValues))
+
+	lbs := make(loghttp.LabelSet)
+	for i := 0; i < m; i++ {
+		lbs[f.labels[i]] = f.labelValues[i]
+	}
+
+	return &loghttp.SeriesResponse{
+		Status: loghttp.QueryStatusSuccess,
+		Data:   []loghttp.LabelSet{lbs},
+	}, nil
+}
+
 type limiter struct {
 	n int
 }

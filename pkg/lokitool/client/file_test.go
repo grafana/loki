@@ -198,6 +198,21 @@ func TestFileClient_ListLabelValues(t *testing.T) {
 	}
 }
 
+func TestFileClient_Series(t *testing.T) {
+	c := newEmptyClient(t)
+	got, err := c.Series(nil, time.Now(), time.Now())
+	require.NoError(t, err)
+
+	exp := &loghttp.SeriesResponse{
+		Data: []loghttp.LabelSet{
+			{defaultLabelKey: defaultLabelValue},
+		},
+		Status: loghttp.QueryStatusSuccess,
+	}
+
+	assert.Equal(t, exp, got)
+}
+
 func newEmptyClient(t *testing.T) *FileClient {
 	t.Helper()
 	return NewFileClient(io.NopCloser(&bytes.Buffer{}), log.NewNopLogger())

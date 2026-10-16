@@ -138,3 +138,24 @@ func TestListLabelValues(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, "/loki/api/v1/label/my%2Flabel/values", got[0].Path)
 }
+
+func TestSeries(t *testing.T) {
+	srv, requests := newServer(t, http.StatusOK, `{"status": "success", "data": [{"app": "foo", "env": "dev"}, {"app": "bar"}]}`)
+	c, err := New(Config{Address: srv.URL})
+	require.NoError(t, err)
+
+	start := time.Unix(1700000000, 0)
+	resp, err := c.Series([]string{`{app="foo"}`, `{app="bar"}`}, start, start.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, []loghttp.LabelSet{{"app": "foo", "env": "dev"}, {"app": "bar"}}, resp.Data)
+
+	got := requests()
+	require.Len(t, got, 1)
+	require.Equal(t, "/loki/api/v1/series", got[0].Path)
+
+	params, err := url.ParseQuery(got[0].Query)
+	require.NoError(t, err)
+	require.Equal(t, []string{`{app="foo"}`, `{app="bar"}`}, params["match"])
+	require.Equal(t, "1700000000000000000", params.Get("start"))
+	require.Equal(t, "1700003600000000000", params.Get("end"))
+}
