@@ -131,6 +131,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The token file is reread on every request, so transient read errors are retried at runtime.
+	// Fail fast here so a wrong path does not leave the canary retrying forever.
+	if *bearerTokenFile != "" {
+		if _, err := os.ReadFile(*bearerTokenFile); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Unable to read -bearer-token-file: %s\n", err)
+			os.Exit(1)
+		}
+	}
+
 	if *outOfOrderPercentage < 0 || *outOfOrderPercentage > 100 {
 		_, _ = fmt.Fprintf(os.Stderr, "Out of order percentage must be between 0 and 100\n")
 		os.Exit(1)

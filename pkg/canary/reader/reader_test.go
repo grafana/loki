@@ -2,6 +2,7 @@ package reader
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -215,58 +216,97 @@ func TestOTLPValidationTailAndQuery(t *testing.T) {
 	require.NoError(t, marshal.WriteTailResponseJSON(legacy.TailResponse{Streams: []logproto.Stream{stream}}, &tailBody, flags))
 	require.NoError(t, marshal.WriteQueryResponseJSON(logqlmodel.Streams{stream}, nil, stats.Result{}, &queryBody, flags))
 
-	requests := make(chan *http.Request, 2)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		requests <- req
-		switch req.URL.Path {
-		case "/loki/api/v1/tail":
-			upgrader := websocket.Upgrader{}
-			conn, err := upgrader.Upgrade(w, req, nil)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			defer conn.Close()
-			if err := conn.WriteMessage(websocket.TextMessage, tailBody.Bytes()); err != nil {
-				t.Error(err)
-				return
-			}
-			// Keep the websocket open until the reader stops.
-			_, _, _ = conn.ReadMessage()
-		case "/loki/api/v1/query_range":
-			_, _ = w.Write(queryBody.Bytes())
-		default:
-			http.NotFound(w, req)
-		}
-	}))
-	defer server.Close()
+	basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:password"))
+	for _, tc := range []struct {
+		name       string
+		user, pass string
+		// tailToken is written to the bearer token file before the tail connects and
+		// queryToken after, so the query has to pick up the rotated token.
+		tailToken, queryToken       string
+		wantTailAuth, wantQueryAuth string
+	}{
+		{
+			name:          "basic auth",
+			user:          "user",
+			pass:          "password",
+			wantTailAuth:  basicAuth,
+			wantQueryAuth: basicAuth,
+		},
+		{
+			name:          "bearer token",
+			tailToken:     "tail-token",
+			queryToken:    "query-token",
+			wantTailAuth:  "Bearer tail-token",
+			wantQueryAuth: "Bearer query-token",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := make(chan *http.Request, 2)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				requests <- req
+				switch req.URL.Path {
+				case "/loki/api/v1/tail":
+					upgrader := websocket.Upgrader{}
+					conn, err := upgrader.Upgrade(w, req, nil)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					defer conn.Close()
+					if err := conn.WriteMessage(websocket.TextMessage, tailBody.Bytes()); err != nil {
+						t.Error(err)
+						return
+					}
+					// Keep the websocket open until the reader stops.
+					_, _, _ = conn.ReadMessage()
+				case "/loki/api/v1/query_range":
+					_, _ = w.Write(queryBody.Bytes())
+				default:
+					http.NotFound(w, req)
+				}
+			}))
+			defer server.Close()
 
-	received := make(chan time.Time, 3)
-	before := testutil.ToFloat64(otlpValidationErrors)
-	r, err := NewReader(io.Discard, received, false, nil, "", "", "", strings.TrimPrefix(server.URL, "http://"), "",
-		"user", "password", "", "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true)
-	require.NoError(t, err)
-	defer r.Stop()
-	want := start.Add(2 * time.Nanosecond)
-	select {
-	case got := <-received:
-		require.Equal(t, want.UnixNano(), got.UnixNano())
-	case <-time.After(5 * time.Second):
-		t.Fatal("did not receive valid OTLP record from tail")
-	}
-	require.Empty(t, received)
-	got, err := r.Query(start, want.Add(time.Nanosecond))
-	require.NoError(t, err)
-	require.Equal(t, []time.Time{want}, got)
-	require.Equal(t, before+4, testutil.ToFloat64(otlpValidationErrors))
-	for i := 0; i < 2; i++ {
-		req := <-requests
-		require.Equal(t, string(httpreq.FlagCategorizeLabels), req.Header.Get(httpreq.LokiEncodingFlagsHeader))
-		require.Equal(t, "tenant", req.Header.Get("X-Scope-OrgID"))
-		user, password, ok := req.BasicAuth()
-		require.True(t, ok)
-		require.Equal(t, "user", user)
-		require.Equal(t, "password", password)
+			var tokenFile string
+			if tc.tailToken != "" {
+				tokenFile = filepath.Join(t.TempDir(), "token")
+				require.NoError(t, os.WriteFile(tokenFile, []byte(tc.tailToken+"\n"), 0o600))
+			}
+
+			received := make(chan time.Time, 3)
+			before := testutil.ToFloat64(otlpValidationErrors)
+			r, err := NewReader(io.Discard, received, false, nil, "", "", "", strings.TrimPrefix(server.URL, "http://"), "",
+				tc.user, tc.pass, tokenFile, "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true)
+			require.NoError(t, err)
+			defer r.Stop()
+			want := start.Add(2 * time.Nanosecond)
+			select {
+			case got := <-received:
+				require.Equal(t, want.UnixNano(), got.UnixNano())
+			case <-time.After(5 * time.Second):
+				t.Fatal("did not receive valid OTLP record from tail")
+			}
+			require.Empty(t, received)
+
+			if tokenFile != "" {
+				require.NoError(t, os.WriteFile(tokenFile, []byte(tc.queryToken+"\n"), 0o600))
+			}
+
+			got, err := r.Query(start, want.Add(time.Nanosecond))
+			require.NoError(t, err)
+			require.Equal(t, []time.Time{want}, got)
+			require.Equal(t, before+4, testutil.ToFloat64(otlpValidationErrors))
+			for _, wantReq := range []struct{ path, auth string }{
+				{"/loki/api/v1/tail", tc.wantTailAuth},
+				{"/loki/api/v1/query_range", tc.wantQueryAuth},
+			} {
+				req := <-requests
+				require.Equal(t, wantReq.path, req.URL.Path)
+				require.Equal(t, string(httpreq.FlagCategorizeLabels), req.Header.Get(httpreq.LokiEncodingFlagsHeader))
+				require.Equal(t, "tenant", req.Header.Get("X-Scope-OrgID"))
+				require.Equal(t, wantReq.auth, req.Header.Get("Authorization"))
+			}
+		})
 	}
 }
 
