@@ -64,7 +64,7 @@ func setDefaultNumberOfPartitionsForAutocreatedTopics(cfg kafka.Config, cl *kgo.
 	adm := kadm.NewClient(cl)
 
 	defaultNumberOfPartitions := fmt.Sprintf("%d", cfg.AutoCreateTopicDefaultPartitions)
-	_, err := adm.AlterBrokerConfigsState(context.Background(), []kadm.AlterConfig{
+	_, err := adm.AlterBrokerConfigs(context.Background(), []kadm.AlterConfig{
 		{
 			Op:    kadm.SetConfig,
 			Name:  "num.partitions",

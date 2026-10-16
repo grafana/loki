@@ -15,7 +15,8 @@ import (
 type Decoder struct {
 	// cursorDecoder remains valid if a cursor outlives a pooled Decoder.
 	cursorDecoder *DataDecoder
-	d             DataDecoder
+	d             *DataDecoder
+	ownedData     DataDecoder
 	offset        uint
 	nextOffset    uint
 	hasNextOffset bool
@@ -24,33 +25,40 @@ type Decoder struct {
 var decoderPool = sync.Pool{New: func() any { return new(Decoder) }}
 
 type decoderOptions struct {
-	// Intentionally empty for now. DecoderOption callbacks are still invoked so
-	// adding options in a future release is non-breaking.
+	stringCache bool
 }
 
 // DecoderOption configures a Decoder.
-//
-//nolint:revive // name follows existing library pattern (ReaderOption, NetworksOption)
 type DecoderOption func(*decoderOptions)
 
 // NewDecoder creates a new Decoder with the given DataDecoder, offset, and options.
 func NewDecoder(d DataDecoder, offset uint, options ...DecoderOption) *Decoder {
-	opts := decoderOptions{}
-	for _, option := range options {
-		option(&opts)
+	if len(options) > 0 {
+		var opts decoderOptions
+		for _, option := range options {
+			option(&opts)
+		}
+		if opts.stringCache && d.stringCache == nil {
+			d.stringCache = newStringCache()
+		}
 	}
 
-	decoder := &Decoder{
-		d:      d,
-		offset: offset,
-	}
-	decoder.cursorDecoder = &decoder.d
+	decoder := &Decoder{ownedData: d, offset: offset}
+	decoder.d = &decoder.ownedData
+	decoder.cursorDecoder = decoder.d
 	return decoder
+}
+
+// WithStringCache enables string caching without replacing an existing cache.
+func WithStringCache() DecoderOption {
+	return func(options *decoderOptions) {
+		options.stringCache = true
+	}
 }
 
 func acquireDecoder(d *DataDecoder, offset uint) *Decoder {
 	decoder := decoderPool.Get().(*Decoder)
-	*decoder = Decoder{d: *d, cursorDecoder: d, offset: offset}
+	*decoder = Decoder{d: d, cursorDecoder: d, offset: offset}
 	return decoder
 }
 
@@ -80,7 +88,7 @@ func (d *Decoder) ReadBool() (bool, error) {
 //
 // Returns an error if the database is malformed or if the pointed value is not a string.
 func (d *Decoder) ReadString() (string, error) {
-	value, newOffset, err := d.d.decodeStringValue(d.offset)
+	value, newOffset, err := d.dataDecoder().decodeStringValue(d.offset)
 	if err != nil {
 		return "", d.wrapError(err)
 	}
@@ -319,7 +327,7 @@ func (d *Decoder) ReadSlice() (iter.Seq[error], uint, error) {
 // The decoder will be positioned after the skipped value.
 func (d *Decoder) SkipValue() error {
 	// We can reuse the existing nextValueOffset logic by jumping to the next value
-	nextOffset, err := d.d.nextValueOffset(d.offset, 1)
+	nextOffset, err := d.dataDecoder().nextValueOffset(d.offset, 1)
 	if err != nil {
 		return d.wrapError(err)
 	}
@@ -331,7 +339,7 @@ func (d *Decoder) SkipValue() error {
 // This allows for look-ahead parsing similar to jsontext.Decoder.PeekKind().
 func (d *Decoder) PeekKind() (Kind, error) {
 	//nolint:dogsled // only the resolved kind matters here
-	kindNum, _, _, _, err := d.d.resolveCtrlData(
+	kindNum, _, _, _, err := d.dataDecoder().resolveCtrlData(
 		d.offset,
 	)
 	if err != nil {
@@ -345,26 +353,37 @@ func (d *Decoder) PeekKind() (Kind, error) {
 // pointer and returns the offset of the actual data. This ensures
 // that multiple pointers to the same data return the same offset, which
 // is important for caching purposes.
+// If resolution fails, it returns the original offset. Use Cursor.Offset to
+// retrieve resolution errors.
 func (d *Decoder) Offset() uint {
+	dataDecoder := d.dataDecoder()
 	// This intentionally does not use resolveCtrlData: Offset must return the
 	// resolved value's control-byte offset, not the post-control-byte payload
 	// offset used by read methods.
-	kindNum, size, ctrlEndOffset, err := d.d.decodeCtrlData(d.offset)
+	kindNum, size, ctrlEndOffset, err := dataDecoder.decodeCtrlData(d.offset)
 	if err != nil || kindNum != KindPointer {
 		return d.offset
 	}
 
-	pointer, _, err := d.d.decodePointer(size, ctrlEndOffset)
+	pointer, _, err := dataDecoder.decodePointer(size, ctrlEndOffset)
 	if err != nil {
 		// Return original offset to avoid breaking the public API.
 		// The caller will encounter the same error when they try to read.
 		return d.offset
 	}
-	kindNum, _, _, err = d.d.decodeCtrlData(pointer)
+	kindNum, _, _, err = dataDecoder.decodeCtrlData(pointer)
 	if err != nil || kindNum == KindPointer {
 		return d.offset
 	}
 	return pointer
+}
+
+func (d *Decoder) dataDecoder() *DataDecoder {
+	if d.d == nil {
+		d.d = &d.ownedData
+		d.cursorDecoder = d.d
+	}
+	return d.d
 }
 
 func (d *Decoder) finishMapAfterStop(keyEndOffset, remainingPairs uint) {
@@ -478,7 +497,7 @@ func unexpectedKindsErr(expectedKinds KindSet, actualKind Kind) error {
 }
 
 func (d *Decoder) decodeCtrlDataAndFollow(expectedKind Kind) (uint, uint, error) {
-	kindNum, size, dataOffset, nextOffset, err := d.d.resolveCtrlData(d.offset)
+	kindNum, size, dataOffset, nextOffset, err := d.dataDecoder().resolveCtrlData(d.offset)
 	if err != nil {
 		return 0, 0, err // Don't wrap here, let caller wrap
 	}

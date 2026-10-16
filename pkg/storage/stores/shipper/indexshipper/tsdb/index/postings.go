@@ -894,7 +894,8 @@ func (sp *ShardedPostings) Seek(v storage.SeriesRef) (res bool) {
 	if v < storage.SeriesRef(sp.minOffset) {
 		v = storage.SeriesRef(sp.minOffset)
 	}
-	return sp.p.Seek(v)
+	// Seek may jump beyond the shard when there are no more matching refs inside it.
+	return sp.p.Seek(v) && sp.p.At() < storage.SeriesRef(sp.maxOffset)
 }
 
 // At returns the value at the current iterator position.

@@ -62,6 +62,8 @@ const (
 	PostFilterers       = "post_filterers"
 	Range               = "range"
 	RangeAgg            = "range_agg"
+	LabelAgg            = "label_agg"
+	CountDistinctSketch = "count_distinct_sketch"
 	Raw                 = "raw"
 	RegexField          = "regex"
 	Replacement         = "replacement"
@@ -90,6 +92,10 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeVectorAgg(iter)
 	case RangeAgg:
 		return decodeRangeAgg(iter)
+	case LabelAgg:
+		return decodeLabelAgg(iter)
+	case CountDistinctSketch:
+		return decodeCountDistinctSketch(iter)
 	case Literal:
 		return decodeLiteral(iter)
 	case Vector:
@@ -200,6 +206,58 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 	v.VisitLogRange(e.Left)
 	v.WriteObjectEnd()
 
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitLabelAggregation(e *LabelAggregationExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(LabelAgg)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Op)
+	v.WriteString(e.Operation)
+
+	v.WriteMore()
+	v.WriteObjectField(Identifier)
+	v.WriteString(e.Label)
+
+	if e.Grouping != nil {
+		v.WriteMore()
+		v.WriteObjectField(GroupingField)
+		encodeGrouping(v.Stream, e.Grouping)
+	}
+
+	v.WriteMore()
+	v.WriteObjectField(Range)
+	v.VisitLogRange(e.Left)
+
+	v.WriteObjectEnd()
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitCountDistinctSketch(e *CountDistinctSketchExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(CountDistinctSketch)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Identifier)
+	v.WriteString(e.Label)
+
+	if e.Grouping != nil {
+		v.WriteMore()
+		v.WriteObjectField(GroupingField)
+		encodeGrouping(v.Stream, e.Grouping)
+	}
+
+	v.WriteMore()
+	v.WriteObjectField(Range)
+	v.VisitLogRange(e.Left)
+
+	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -711,6 +769,10 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 			expr, err = decodeVectorAgg(iter)
 		case RangeAgg:
 			expr, err = decodeRangeAgg(iter)
+		case LabelAgg:
+			expr, err = decodeLabelAgg(iter)
+		case CountDistinctSketch:
+			expr, err = decodeCountDistinctSketch(iter)
 		case Literal:
 			expr, err = decodeLiteral(iter)
 		case Vector:
@@ -848,6 +910,44 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 		case Params:
 			tmp := iter.ReadFloat64()
 			expr.Params = &tmp
+		case Range:
+			expr.Left, err = decodeLogRange(iter)
+		case GroupingField:
+			expr.Grouping, err = decodeGrouping(iter)
+		}
+	}
+
+	return expr, err
+}
+
+func decodeLabelAgg(iter *jsoniter.Iterator) (*LabelAggregationExpr, error) {
+	expr := &LabelAggregationExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Op:
+			expr.Operation = iter.ReadString()
+		case Identifier:
+			expr.Label = iter.ReadString()
+		case Range:
+			expr.Left, err = decodeLogRange(iter)
+		case GroupingField:
+			expr.Grouping, err = decodeGrouping(iter)
+		}
+	}
+
+	return expr, err
+}
+
+func decodeCountDistinctSketch(iter *jsoniter.Iterator) (*CountDistinctSketchExpr, error) {
+	expr := &CountDistinctSketchExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Identifier:
+			expr.Label = iter.ReadString()
 		case Range:
 			expr.Left, err = decodeLogRange(iter)
 		case GroupingField:

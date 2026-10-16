@@ -188,6 +188,71 @@ func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
 	}
 }
 
+type CountDistinctSketchAccumulator struct {
+	matrix CountDistinctSketchMatrix
+
+	stats    stats.Result
+	headers  map[string][]string
+	warnings map[string]struct{}
+}
+
+func newCountDistinctSketchAccumulator() *CountDistinctSketchAccumulator {
+	return &CountDistinctSketchAccumulator{
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
+	}
+}
+
+func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != CountDistinctSketchMatrixType {
+		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctSketchMatrixType)
+	}
+	data, ok := res.Data.(CountDistinctSketchMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctSketchMatrix)", res.Data)
+	}
+
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+	metadata.ExtendHeaders(a.headers, res.Headers)
+	for _, w := range res.Warnings {
+		a.warnings[w] = struct{}{}
+	}
+
+	if a.matrix == nil {
+		a.matrix = data
+		return nil
+	}
+
+	var err error
+	a.matrix, err = a.matrix.Merge(data)
+	return err
+}
+
+func (a *CountDistinctSketchAccumulator) Result() []logqlmodel.Result {
+	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
+	for name, vals := range a.headers {
+		headers = append(
+			headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+	warnings := slices.Sorted(maps.Keys(a.warnings))
+	return []logqlmodel.Result{
+		{
+			Data:       a.matrix,
+			Headers:    headers,
+			Warnings:   warnings,
+			Statistics: a.stats,
+		},
+	}
+}
+
 // heap impl for keeping only the top n results across m streams
 // importantly, AccumulatedStreams is _bounded_, so it will only
 // store the top `limit` results across all streams.
@@ -293,25 +358,15 @@ func (acc *AccumulatedStreams) Push(x any) {
 
 	if room := acc.limit - acc.count; room >= len(s.Entries) {
 		if i, ok := acc.Find(s.Labels); ok {
-			// stream already exists, append entries
-
-			// these are already guaranteed to be sorted
-			// Reasoning: we shard subrequests so each stream exists on only one
-			// shard. Therefore, the only time a stream should already exist
-			// is in successive splits, which are already guaranteed to be ordered
-			// and we can just append.
 			acc.appendTo(acc.streams[i], s)
-
 			return
 		}
 
-		// new stream
 		acc.addStream(s)
 		return
 	}
 
-	// there's not enough room for all the entries,
-	// so we need to
+	// there's not enough room for all the entries, so only the best ones are kept
 	acc.push(s)
 }
 
@@ -345,9 +400,14 @@ func (acc *AccumulatedStreams) push(s *logproto.Stream) {
 		}
 		return acc.less(s.Entries[i].Timestamp, worst)
 	})
+	// The first `room` entries are needed while the accumulator is not full,
+	// regardless of how they compare to the current worst entry: entries arrive
+	// best-first, so once they have been inserted, any later entry of this
+	// stream is worse than the new worst entry of the accumulator.
+	cutoff = max(cutoff, room)
 	s.Entries = s.Entries[:cutoff]
 
-	for i := 0; i < len(s.Entries) && acc.less(worst, s.Entries[i].Timestamp); i++ {
+	for i := 0; i < len(s.Entries) && (acc.count < acc.limit || acc.less(worst, s.Entries[i].Timestamp)); i++ {
 
 		// push one entry at a time
 		room = acc.limit - acc.count
@@ -381,14 +441,10 @@ func (acc *AccumulatedStreams) addStream(s *logproto.Stream) {
 	heap.Fix(acc, i)
 }
 
-// dst must already exist in acc
+// appendTo appends the entries of src to dst, which must already exist in acc.
+// Entries usually arrive in order, so they are appended as-is and dst is only
+// re-sorted when an out-of-order entry is seen.
 func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
-	// these are already guaranteed to be sorted
-	// Reasoning: we shard subrequests so each stream exists on only one
-	// shard. Therefore, the only time a stream should already exist
-	// is in successive splits, which are already guaranteed to be ordered
-	// and we can just append.
-
 	var needsSort bool
 	for _, e := range src.Entries {
 		// sort if order has broken

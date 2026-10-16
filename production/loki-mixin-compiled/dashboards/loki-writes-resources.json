@@ -48,6 +48,101 @@
                         },
                         "unit": "short"
                      },
+                     "overrides": [ ]
+                  },
+                  "id": 1,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"distributor\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
+                        "format": "time_series",
+                        "legendFormat": "{{job}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Running Pods",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "noValue": "No OOMs observed in time period 🎉",
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 2,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum(\n  increase(kube_pod_container_status_restarts_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"distributor\"}[$__rate_interval]) > 0\n  and on(pod)\n  kube_pod_container_status_last_terminated_reason{container=\"distributor\", reason=\"OOMKilled\"} == 1\n)\n",
+                        "format": "time_series",
+                        "legendFormat": "OOMs",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "OOMs",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
                      "overrides": [
                         {
                            "matcher": {
@@ -89,7 +184,7 @@
                         }
                      ]
                   },
-                  "id": 1,
+                  "id": 3,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -190,7 +285,7 @@
                         }
                      ]
                   },
-                  "id": 2,
+                  "id": 4,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -201,7 +296,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 4,
+                  "span": 6,
                   "targets": [
                      {
                         "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"distributor\"})",
@@ -252,7 +347,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 3,
+                  "id": 5,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -263,16 +358,16 @@
                         "sort": "none"
                      }
                   },
-                  "span": 4,
+                  "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/distributor\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/distributor\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -314,7 +409,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 4,
+                  "id": 6,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -325,19 +420,64 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (loki_ingester_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "{{pod}}",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "In-memory streams",
-                  "tooltip": {
-                     "sort": 2
+                  "title": "Running Pods",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "noValue": "No OOMs observed in time period 🎉",
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
                   },
+                  "id": 7,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 4,
+                  "targets": [
+                     {
+                        "expr": "sum(\n  increase(kube_pod_container_status_restarts_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"}[$__rate_interval]) > 0\n  and on(pod)\n  kube_pod_container_status_last_terminated_reason{container=~\"ingester|partition-ingester\", reason=\"OOMKilled\"} == 1\n)\n",
+                        "format": "time_series",
+                        "legendFormat": "OOMs",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "OOMs",
                   "type": "timeseries"
                },
                {
@@ -403,7 +543,7 @@
                         }
                      ]
                   },
-                  "id": 5,
+                  "id": 8,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -414,7 +554,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"}[$__rate_interval]))",
@@ -504,7 +644,7 @@
                         }
                      ]
                   },
-                  "id": 6,
+                  "id": 9,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -515,7 +655,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 6,
                   "targets": [
                      {
                         "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"})",
@@ -566,7 +706,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 7,
+                  "id": 10,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -577,16 +717,66 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
+                  "tooltip": {
+                     "sort": 2
+                  },
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 11,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 3,
+                  "targets": [
+                     {
+                        "expr": "sum by(pod) (loki_ingester_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester.*)\"})",
+                        "format": "time_series",
+                        "legendFormat": "{{pod}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "In-memory streams",
                   "tooltip": {
                      "sort": 2
                   },
@@ -616,7 +806,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 8,
+                  "id": 12,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -627,10 +817,10 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, pod, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -663,7 +853,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 9,
+                  "id": 13,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -674,10 +864,10 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, pod, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -710,7 +900,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 10,
+                  "id": 14,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -721,7 +911,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
                         "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(.*ingester.*).*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(.*ingester.*).*\"})",

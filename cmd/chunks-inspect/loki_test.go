@@ -16,17 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testCodecs = []compression.Codec{
-	compression.None,
-	compression.GZIP,
-	compression.LZ4_64k,
-	compression.LZ4_256k,
-	compression.LZ4_1M,
-	compression.LZ4_4M,
-	compression.Snappy,
-	compression.Flate,
-	compression.Zstd,
-}
+var testCodecs = compression.Codecs()
 
 var testFormats = []struct {
 	chunkFormat  byte

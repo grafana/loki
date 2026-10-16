@@ -8,6 +8,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"slices"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -146,10 +147,10 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 
 	readerOpts := dataset.RowReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-		Prefetch:   true,
+		Dataset:           dset,
+		Columns:           columns,
+		Predicates:        predicates,
+		PrefetchAllOnOpen: true,
 	}
 
 	if r.reader == nil {
@@ -210,14 +211,9 @@ func streamIDPredicate(ids iter.Seq[int64], dsetColumns []dataset.Column, actual
 		return dataset.FalsePredicate{}
 	}
 
-	var values []dataset.Value
-	for i := range ids {
-		values = append(values, dataset.Int64Value(i))
-	}
-
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		Values: dataset.NewInt64ValueSetOf(slices.Collect(ids)...),
 	}
 }
 

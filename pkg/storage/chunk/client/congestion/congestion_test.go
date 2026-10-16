@@ -4,12 +4,21 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewMetrics_DuplicateRegistration(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	cfg := Config{}
+
+	require.NotNil(t, NewMetrics("dup", cfg, reg))
+	require.NotNil(t, NewMetrics("dup", cfg, reg))
+}
+
 func TestZeroValueConstruction(t *testing.T) {
 	cfg := Config{}
-	m := NewMetrics(t.Name(), cfg)
+	m := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &NoopController{}, ctrl)
@@ -24,7 +33,7 @@ func TestAIMDConstruction(t *testing.T) {
 			Strategy: "aimd",
 		},
 	}
-	m := NewMetrics(t.Name(), cfg)
+	m := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &AIMDController{}, ctrl)
@@ -39,7 +48,7 @@ func TestRetrierConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	m := NewMetrics(t.Name(), cfg)
+	m := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &NoopController{}, ctrl)
@@ -57,13 +66,33 @@ func TestCombinedConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	m := NewMetrics(t.Name(), cfg)
+	m := NewMetrics(t.Name(), cfg, nil)
 	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &AIMDController{}, ctrl)
 	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
 	require.IsType(t, &NoopHedger{}, ctrl.getHedger())
 	m.Unregister()
+}
+
+func TestNoopControllerWrapIsPassThrough(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Retry: RetrierConfig{
+			Strategy: "limited",
+			Limit:    2,
+		},
+	}
+	m := NewMetrics(t.Name(), cfg, nil)
+	t.Cleanup(m.Unregister)
+
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
+	require.IsType(t, &NoopController{}, ctrl)
+	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
+
+	inner := newMockObjectClient(maxFailer{max: 0})
+	require.Same(t, inner, ctrl.Wrap(inner), "NoopController.Wrap must return the inner client unwrapped")
+
 }
 
 func TestHedgerConstruction(t *testing.T) {

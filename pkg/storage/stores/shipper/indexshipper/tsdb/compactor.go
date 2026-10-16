@@ -14,8 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -39,7 +37,7 @@ func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet co
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
-	indexFile, err := OpenShippableTSDB(path, indexshipper.IndexReaderModeMmap)
+	indexFile, err := OpenShippableTSDB(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +107,7 @@ func (t *tableCompactor) CompactTable() error {
 		}
 
 		downloadPaths[job] = downloadedAt
-		idx, err := OpenShippableTSDB(downloadedAt, indexshipper.IndexReaderModeMmap)
+		idx, err := OpenShippableTSDB(downloadedAt, tsdbindex.MmapOptions{})
 		if err != nil {
 			return err
 		}
@@ -233,7 +231,7 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 		}
 	}()
 
-	indexFile, err := OpenShippableTSDB(path, indexshipper.IndexReaderModeMmap)
+	indexFile, err := OpenShippableTSDB(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return err
 	}
@@ -482,7 +480,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, indexshipper.IndexReaderModeMmap)
+	return NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
 }
 
 func getUnsafeBytes(s string) []byte {

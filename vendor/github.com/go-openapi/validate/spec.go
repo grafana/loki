@@ -4,13 +4,10 @@
 package validate
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-openapi/analysis"
@@ -31,7 +28,6 @@ import (
 //
 //   - Proposal for enhancement: $ref should not have siblings
 //   - Proposal for enhancement: make sure documentation reflects all checks and warnings
-//   - Proposal for enhancement: check on discriminators
 //   - Proposal for enhancement: explicit message on unsupported keywords (better than "forbidden property"...)
 //   - Proposal for enhancement: full list of unresolved refs
 //   - Proposal for enhancement: validate numeric constraints (issue#581): this should be handled like defaults and examples
@@ -101,6 +97,17 @@ func (s *SpecValidator) Validate(data any) (*Result, *Result) {
 		errs.AddErrors(invalidDocumentMsg())
 		return errs, warnings // no point in continuing
 	}
+
+	// Validation expands what it walks - schemata, but also parameters, path items and responses -
+	// and expansion rewrites what it is given. Take one copy of the whole document here and work
+	// on that, so the caller gets back the document it handed over. Raw() still reads the bytes as
+	// they were authored, so the checks below that go through them are unaffected.
+	//
+	// Cloning here rather than per schema is what keeps the cost flat: a copy taken inside
+	// newSchemaValidator is paid again at every level of a recursive document.
+	raw := sd.Raw()
+	sd = sd.Pristine()
+	s.schemaOptions.ownSchemata = true
 	s.spec = sd
 	s.analyzer = analysis.New(sd.Spec())
 	// where each $ref sits, as authored: refs are reported against the
@@ -115,7 +122,7 @@ func (s *SpecValidator) Validate(data any) (*Result, *Result) {
 
 	// Raw spec unmarshalling errors
 	var obj any
-	if err := json.Unmarshal(sd.Raw(), &obj); err != nil {
+	if err := json.Unmarshal(raw, &obj); err != nil {
 		// NOTE: under normal conditions, the *load.Document has been already unmarshalled
 		// So this one is just a paranoid check on the behavior of the spec package
 		panic(InvalidDocumentError)
@@ -153,6 +160,9 @@ func (s *SpecValidator) Validate(data any) (*Result, *Result) {
 	errs.Merge(s.validateDuplicatePropertyNames()) // error -
 	errs.Merge(s.validateParameters())             // error -
 	errs.Merge(s.validateItems())                  // error -
+	errs.Merge(s.validateSecurityRequirements())   // error and warning
+	errs.Merge(s.validateDiscriminators())         // error -
+	errs.Merge(s.validateCollectionFormats())      // warning only
 
 	// Properties in required definition MUST validate their schema
 	// Properties SHOULD NOT be declared as both required and readOnly (warning)
@@ -190,7 +200,7 @@ func (s *SpecValidator) SetContinueOnErrors(c bool) {
 func (s *SpecValidator) validateNonEmptyPathParamNames() *Result {
 	res := validatorPools.results.Borrow()
 	if s.spec.Spec().Paths == nil {
-		// There is no Paths object: the document itself is what lacks it, so
+		// There is no Paths object: the document itself lacks it, so
 		// there is no node below it to point at
 		res.addErrorsAt(rootPath(), noValidPathMsg())
 
@@ -458,26 +468,7 @@ func (s *SpecValidator) validateItems() *Result {
 				}
 			}
 
-			type codedResponse struct {
-				code string
-				resp spec.Response
-			}
-			var responses []codedResponse
-			if op.Responses != nil {
-				if op.Responses.Default != nil {
-					responses = append(responses, codedResponse{code: jsonDefault, resp: *op.Responses.Default})
-				}
-				if op.Responses.StatusCodeResponses != nil {
-					for _, code := range sortedKeys(op.Responses.StatusCodeResponses) {
-						responses = append(responses, codedResponse{
-							code: strconv.Itoa(code),
-							resp: op.Responses.StatusCodeResponses[code],
-						})
-					}
-				}
-			}
-
-			for _, resp := range responses {
+			for _, resp := range responsesOf(op) {
 				at := responsePath(path, method, resp.code)
 				// Response headers with array
 				for _, hn := range sortedKeys(resp.resp.Headers) {
@@ -969,14 +960,15 @@ func (s *SpecValidator) expandedAnalyzer() *analysis.Spec {
 	return s.analyzer
 }
 
+// deepCloneSchema returns a copy of src that shares nothing with it.
+//
+// The copy goes through JSON, which is the form [spec.Schema] is defined by. gob drops any field
+// holding its zero value and flattens a pointer to what it points at, so a *float64 pointing at
+// 0 - "minimum": 0, which the JSON Schema meta-schema spells for every positiveInteger - came
+// back nil and the bound was lost. JSON is also the faster of the two on this model.
 func deepCloneSchema(src spec.Schema) (spec.Schema, error) {
-	var b bytes.Buffer
-	if err := gob.NewEncoder(&b).Encode(src); err != nil {
-		return spec.Schema{}, err
-	}
-
 	var dst spec.Schema
-	if err := gob.NewDecoder(&b).Decode(&dst); err != nil {
+	if err := jsonutils.FromDynamicJSON(src, &dst); err != nil {
 		return spec.Schema{}, err
 	}
 

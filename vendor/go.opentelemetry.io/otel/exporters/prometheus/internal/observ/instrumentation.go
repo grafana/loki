@@ -3,7 +3,7 @@
 
 // Package observ provides experimental observability instrumentation
 // for the prometheus exporter.
-package observ // import "go.opentelemetry.io/otel/exporters/prometheus/internal/observ"
+package observ
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus/internal"
 	"go.opentelemetry.io/otel/exporters/prometheus/internal/x"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
-	"go.opentelemetry.io/otel/semconv/v1.41.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/otelconv"
 )
 
 const (
@@ -76,10 +76,13 @@ func put[T any](p *sync.Pool, s *[]T) {
 	p.Put(s)
 }
 
+// ComponentName returns the component name for the exporter with the
+// provided ID.
 func ComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", ComponentType, id)
 }
 
+// Instrumentation is experimental instrumentation for the exporter.
 type Instrumentation struct {
 	inflightMetric     metric.Int64UpDownCounter
 	exportedMetric     metric.Int64Counter
@@ -90,6 +93,10 @@ type Instrumentation struct {
 	setOpt metric.MeasurementOption
 }
 
+// NewInstrumentation returns instrumentation for the exporter identified by
+// id.
+//
+// If the experimental observability is disabled, nil is returned.
 func NewInstrumentation(id int64) (*Instrumentation, error) {
 	if !x.Observability.Enabled() {
 		return nil, nil

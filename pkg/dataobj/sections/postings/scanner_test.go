@@ -228,7 +228,7 @@ func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledM
 func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.CompiledMatcher, filters []postings.CompiledMatcher, predicates []*labels.Matcher) func(*postings.Section) *postings.Scanner {
 	t.Helper()
 	return func(sec *postings.Section) *postings.Scanner {
-		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil)
+		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil, nil)
 		require.NoError(t, err)
 		require.NoError(t, readers.Open(ctx))
 		t.Cleanup(func() { require.NoError(t, readers.Close()) })
@@ -360,7 +360,7 @@ func TestScanner_MatcherHits_DuplicateNameRejected(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 	}
 	for _, sec := range secs {
-		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil)
+		_, err := postings.NewScannerReaders(sec, nil, nil, matchers, nil, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "duplicate equal-predicate name")
 	}
@@ -394,6 +394,76 @@ func TestScanner_MatcherHits_LabelNamesSinglePass(t *testing.T) {
 	}
 	require.Equal(t, map[string]struct{}{"env": {}, "app": {}}, got,
 		"both present label names resolve in one pass; absent name does not appear")
+}
+
+func TestScanner_MatcherHits_PredicateTypes(t *testing.T) {
+	ctx := context.Background()
+	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
+	secs, closer := buildLabelBloomSection(t,
+		[]labelPosting{{name: "provider", value: "idology", streamID: 1, obj: "/o", section: 0, minTs: 1, maxTs: 1}},
+		[]bloomPosting{{columnName: "trace_id", values: []string{"abc"}, streamID: 1, obj: "/o", section: 0}},
+	)
+	defer closer()
+
+	collect := func(t *testing.T, predicates []*labels.Matcher) (map[postings.PredicateValue]struct{}, map[string]struct{}) {
+		t.Helper()
+		bloom := make(map[postings.PredicateValue]struct{})
+		names := make(map[string]struct{})
+		for _, sec := range secs {
+			hits, ambiguous, err := scannerFactory(ctx, t, nil, nil, predicates)(sec).MatcherHits(ctx, predicates)
+			require.NoError(t, err)
+			for pv := range hits[ref] {
+				bloom[pv] = struct{}{}
+			}
+			for name := range ambiguous[ref] {
+				names[name] = struct{}{}
+			}
+		}
+		return bloom, names
+	}
+
+	t.Run("reports stream label names and no bloom hits when every predicate is non-equality", func(t *testing.T) {
+		bloom, names := collect(t, []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchRegexp, "provider", "idol.*"),
+			labels.MustNewMatcher(labels.MatchNotEqual, "trace_id", "zzz"),
+		})
+		require.Empty(t, bloom)
+		require.Equal(t, map[string]struct{}{"provider": {}}, names)
+	})
+
+	t.Run("does not attribute a bloom hit to a regex predicate sharing a bloom column name", func(t *testing.T) {
+		bloom, _ := collect(t, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "abc")})
+		require.Empty(t, bloom)
+	})
+
+	t.Run("reports bloom hits for equality predicates and label names for all predicates when types are mixed", func(t *testing.T) {
+		bloom, names := collect(t, []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc"),
+			labels.MustNewMatcher(labels.MatchNotRegexp, "provider", "oth.*"),
+		})
+		require.Equal(t, map[postings.PredicateValue]struct{}{{Name: "trace_id", Value: "abc"}: {}}, bloom)
+		require.Equal(t, map[string]struct{}{"provider": {}}, names)
+	})
+
+	t.Run("accepts predicates of different types that share a name", func(t *testing.T) {
+		for _, sec := range secs {
+			_, err := postings.NewScannerReaders(sec, nil, nil, []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc"),
+				labels.MustNewMatcher(labels.MatchRegexp, "trace_id", "a.*"),
+			}, nil, nil, nil)
+			require.NoError(t, err)
+		}
+	})
+
+	t.Run("accepts two non-equality predicates that share a name", func(t *testing.T) {
+		for _, sec := range secs {
+			_, err := postings.NewScannerReaders(sec, nil, nil, []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "provider", "a.*"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "provider", "b"),
+			}, nil, nil, nil)
+			require.NoError(t, err)
+		}
+	})
 }
 
 type labelPosting struct {
@@ -438,7 +508,7 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 		}
 	}
 	for _, bp := range bloomsIn {
-		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000)
+		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000, 0)
 		for _, v := range bp.values {
 			require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 				ObjectPath: bp.obj, SectionIndex: bp.section, ColumnName: bp.columnName,

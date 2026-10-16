@@ -36,7 +36,9 @@ func TestNewWriterClient(t *testing.T) {
 					Address:  addr,
 					ClientID: "writer",
 				},
-				WriteTimeout: time.Second,
+				WriteTimeout:                         time.Second,
+				ProducerMaxInflightRequestsPerBroker: 20,
+				ProducerLinger:                       50 * time.Millisecond,
 			},
 			wantErr: false,
 		},
@@ -47,10 +49,12 @@ func TestNewWriterClient(t *testing.T) {
 					Address:  addr,
 					ClientID: "writer",
 				},
-				Topic:        "abcd",
-				WriteTimeout: time.Second,
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("wrong wrong wrong"),
+				Topic:                                "abcd",
+				WriteTimeout:                         time.Second,
+				SASLUsername:                         "user",
+				SASLPassword:                         flagext.SecretWithValue("wrong wrong wrong"),
+				ProducerMaxInflightRequestsPerBroker: 20,
+				ProducerLinger:                       50 * time.Millisecond,
 			},
 			wantErr: true,
 		},
@@ -61,17 +65,19 @@ func TestNewWriterClient(t *testing.T) {
 					Address:  addr,
 					ClientID: "writer",
 				},
-				Topic:        "abcd",
-				WriteTimeout: time.Second,
-				SASLUsername: "wrong wrong wrong",
-				SASLPassword: flagext.SecretWithValue("password"),
+				Topic:                                "abcd",
+				WriteTimeout:                         time.Second,
+				SASLUsername:                         "wrong wrong wrong",
+				SASLPassword:                         flagext.SecretWithValue("password"),
+				ProducerMaxInflightRequestsPerBroker: 20,
+				ProducerLinger:                       50 * time.Millisecond,
 			},
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewWriterClient("test-client", tt.config, 10, log.NewNopLogger(), prometheus.NewRegistry())
+			client, err := NewWriterClient("test-client", tt.config, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			err = client.Ping(context.Background())
@@ -87,7 +93,7 @@ func TestNewWriterClient(t *testing.T) {
 func TestProducer(t *testing.T) {
 	t.Run("no records", func(t *testing.T) {
 		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
-		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		client, err := NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		producer := NewProducer("test-producer", client, 1024*1024, prometheus.NewRegistry())
@@ -98,7 +104,7 @@ func TestProducer(t *testing.T) {
 
 	t.Run("on context canceled", func(t *testing.T) {
 		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
-		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		client, err := NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		producer := NewProducer("test-producer", client, 1024*1024, prometheus.NewRegistry())
@@ -120,7 +126,7 @@ func TestProducer(t *testing.T) {
 
 	t.Run("records are failed if total exceeds buffer size", func(t *testing.T) {
 		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
-		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		client, err := NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 		require.NoError(t, err)
 
 		// Set a 1KB limit on buffered records.
@@ -153,7 +159,7 @@ func TestProducer(t *testing.T) {
 func TestProducerWithInterceptor(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 
-	client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	client, err := NewWriterClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	producer := NewProducer("test-producer", client, 1024*1024, prometheus.NewRegistry(),

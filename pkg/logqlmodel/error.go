@@ -19,10 +19,20 @@ var (
 	ErrUnsupportedSyntaxForInstantQuery = errors.New(
 		"log queries are not supported as an instant query type, please change your query to a range query type",
 	)
-	ErrorLabel         = "__error__"
-	PreserveErrorLabel = "__preserve_error__"
-	ErrorDetailsLabel  = "__error_details__"
+	ErrMaxQueryBytesRead   = errors.New("query would read too many bytes")
+	ErrQuerierTooManyBytes = errors.New("query too large to execute on a single querier")
+	ErrMaxQueryParallelism = errors.New("querying is disabled, please contact your Loki operator")
+	ErrMaxQueryLength      = errors.New("query time range exceeds the limit")
+	ErrMaxEntriesLimit     = errors.New("max entries limit per query exceeded")
+	ErrorLabel             = "__error__"
+	ErrorDetailsLabel      = "__error_details__"
 )
+
+// IsPipelineErrorLabel reports whether name is one of the labels the pipeline sets when a stage
+// fails.
+func IsPipelineErrorLabel(name string) bool {
+	return name == ErrorLabel || name == ErrorDetailsLabel
+}
 
 // ParseError is what is returned when we failed to parse.
 type ParseError struct {
@@ -72,7 +82,7 @@ func NewPipelineErr(metric labels.Labels) *PipelineError {
 
 func (e PipelineError) Error() string {
 	return fmt.Sprintf(
-		"pipeline error: '%s' for series: '%s'.\n"+
+		"pipeline error: '%s' for resulting series: '%s'.\n"+
 			"Use a label filter to intentionally skip this error. (e.g | __error__!=\"%s\").\n"+
 			"To skip all potential errors you can match empty errors.(e.g __error__=\"\")\n"+
 			"The label filter can also be specified after unwrap. (e.g | unwrap latency | __error__=\"\" )\n",

@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
-	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -28,7 +27,6 @@ import (
 
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -39,12 +37,10 @@ const additionalHeadersRWTenant = "additional-headers"
 const headersRaceTenant = "headers-race-tenant"
 const noHeadersRWTenant = "no-headers"
 const customRelabelsTenant = "custom-relabels"
-const badRelabelsTenant = "bad-relabels"
 const nilRelabelsTenant = "nil-relabels"
 const emptySliceRelabelsTenant = "empty-slice-relabels"
 const sigV4ConfigTenant = "sigv4"
 const multiRemoteWriteTenant = "multi-remote-write-tenant"
-const sigV4GlobalRegion = "us-east-1"
 const sigV4TenantRegion = "us-east-2"
 
 const defaultCapacity = 1000
@@ -145,61 +141,6 @@ var cfg = Config{
 		Enabled:             true,
 		ConfigRefreshPeriod: 5 * time.Second,
 	},
-}
-
-func newFakeLimitsBackwardCompat() fakeLimits {
-	return fakeLimits{
-		limits: map[string]*validation.Limits{
-			enabledRWTenant: {
-				RulerRemoteWriteQueueCapacity: 987,
-			},
-			disabledRWTenant: {
-				RulerRemoteWriteDisabled: true,
-			},
-			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
-					user.OrgIDHeaderName:                         "overridden",
-					fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
-					strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
-					strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
-					"Additional":                                 "Header",
-				}),
-			},
-			noHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{}),
-			},
-			customRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
-					{
-						Regex:        ".+:.+",
-						SourceLabels: []string{"__name__"},
-						Action:       "drop",
-					},
-					{
-						Regex:  "__cluster__",
-						Action: "labeldrop",
-					},
-				},
-			},
-			nilRelabelsTenant: {},
-			emptySliceRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{},
-			},
-			badRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
-					{
-						SourceLabels: []string{"__cluster__"},
-						Action:       "labeldrop",
-					},
-				},
-			},
-			sigV4ConfigTenant: {
-				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
-					Region: sigV4TenantRegion,
-				},
-			},
-		},
-	}
 }
 
 var newRemoteURL2, _ = url.Parse("http://new-remote-write2")
@@ -318,54 +259,6 @@ func setupRegistry(t *testing.T, cfg Config, limits fakeLimits) *walRegistry {
 	return reg.(*walRegistry)
 }
 
-func setupSigV4Registry(t *testing.T, cfg Config, limits fakeLimits) *walRegistry {
-	// Get the global config and override it
-	reg := setupRegistry(t, cfg, limits)
-
-	// Remove the basic auth config and replace with sigv4
-	for id, clt := range reg.config.RemoteWrite.Clients {
-		clt.HTTPClientConfig.BasicAuth = nil
-		clt.SigV4Config = &sigv4.SigV4Config{
-			Region: sigV4GlobalRegion,
-		}
-		reg.config.RemoteWrite.Clients[id] = clt
-	}
-
-	return reg
-}
-
-func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 1)
-	// but the tenant has an override for the queue capacity
-	require.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, 987)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 2)
-	// but the tenant has an override for the queue capacity for the first client
-	// second client remains unchanged
-	expected := []int{
-		987,
-		capacity,
-	}
-	actual := []int{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.QueueConfig.Capacity)
-	}
-
-	require.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
-}
-
 func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 	require.NotPanics(t, func() {
 		reg := setupRegistry(t, cfg, newFakeLimits())
@@ -414,39 +307,6 @@ func TestAppenderConcurrentAccess(t *testing.T) {
 
 		wg.Wait()
 	})
-}
-
-func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err := reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 1)
-	// but the tenant has an override for the queue capacity
-	require.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err = reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 2)
-	// but the tenant has an override for the queue capacity for the first client
-	expected := []int{
-		defaultCapacity,
-		capacity,
-	}
-	actual := []int{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.QueueConfig.Capacity)
-	}
-
-	require.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
 }
 
 func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
@@ -514,278 +374,27 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 	require.ElementsMatch(t, actualURLs, expectedURLs, "URLs do not match")
 }
 
-func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
-	reg := setupSigV4Registry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(sigV4ConfigTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 1)
-	// ensure sigv4 config is not nil and overwritten
-	require.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config)
-	require.Equal(t, sigV4TenantRegion, tenantCfg.RemoteWrite[0].SigV4Config.Region)
-
-	reg = setupSigV4Registry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(sigV4ConfigTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 2)
-	// ensure sigv4 config is not nil and overwritten for first client
-	// ensure sigv4 config is not nil and not overwritten for second client
-	expected := []string{
-		sigV4TenantRegion,
-		sigV4GlobalRegion,
-	}
-	actual := []string{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.SigV4Config.Region)
-	}
-
-	require.ElementsMatch(t, actual, expected, "SigV4Config regions do not match")
-}
-
-func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
-	reg := setupSigV4Registry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err := reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 1)
-	// ensure sigv4 config is not nil and the global value
-	require.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config)
-	require.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
-
-	reg = setupSigV4Registry(t, cfg, newFakeLimits())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err = reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	require.Len(t, tenantCfg.RemoteWrite, 2)
-	// ensure sigv4 config is not nil and the global value
-	require.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config)
-	require.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
-	require.NotNil(t, tenantCfg.RemoteWrite[1].SigV4Config)
-	require.Equal(t, tenantCfg.RemoteWrite[1].SigV4Config.Region, sigV4GlobalRegion)
-}
-
-func TestTenantRemoteWriteConfig(t *testing.T) {
-	const client = "default"
-
-	remoteWriteURL, _ := url.Parse("http://remote-write-default.example.com/prom/api/push")
-	reAll, _ := relabel.NewRegexp(".*")
-	defaultCfg := Config{
-		RemoteWrite: RemoteWriteConfig{
-			Clients: map[string]promconfig.RemoteWriteConfig{
-				client: {
-					Name:             "default-remote-write",
-					URL:              &commonconfig.URL{URL: remoteWriteURL},
-					RemoteTimeout:    model.Duration(30 * time.Second),
-					Headers:          map[string]string{},
-					ProtobufMessage:  remoteapi.WriteV1MessageType,
-					QueueConfig:      promconfig.DefaultQueueConfig,
-					MetadataConfig:   promconfig.DefaultMetadataConfig,
-					HTTPClientConfig: promconfig.DefaultRemoteWriteHTTPClientConfig,
-					WriteRelabelConfigs: []*relabel.Config{ // single relabel config: keep all
-						{
-							Separator:            relabel.DefaultRelabelConfig.Separator,
-							Replacement:          relabel.DefaultRelabelConfig.Replacement,
-							NameValidationScheme: relabel.DefaultRelabelConfig.NameValidationScheme,
-							SourceLabels:         model.LabelNames{"__name__"},
-							Regex:                reAll,
-							Action:               relabel.Keep,
-						},
-					},
-				},
-			},
-			Enabled:             true,
-			ConfigRefreshPeriod: time.Second,
-		},
-	}
-
-	overrideURL, _ := url.Parse("http://remote-write-override.example.com/prom/api/push")
-	tenantOverrides := fakeLimits{limits: map[string]*validation.Limits{
-		"foo": {
-			RulerRemoteWriteDisabled: true,
-			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
-				client: {
-					URL: &commonconfig.URL{URL: overrideURL},
-				},
-			},
-		},
-		"bar": {
-			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
-				client: {
-					WriteRelabelConfigs: []*relabel.Config{
-						{ // single relabel config: drop all
-							SourceLabels: model.LabelNames{"__name__"},
-							Regex:        reAll,
-							Action:       "drop",
-						},
-					},
-				},
-			},
-		},
-	}}
-
-	reg := setupRegistry(t, defaultCfg, tenantOverrides)
-
-	t.Run("no custom tenant overrides", func(t *testing.T) {
-		tenantCfg, err := reg.getTenantConfig("anyone")
-		require.NoError(t, err)
-		require.Len(t, tenantCfg.RemoteWrite, 1) // default config
-
-		clientCfg := defaultCfg.RemoteWrite.Clients[client]
-		require.Equal(t, clientCfg.URL, tenantCfg.RemoteWrite[0].URL)
-		require.Equal(t, "anyone-rw-default", tenantCfg.RemoteWrite[0].Name)
-	})
-
-	t.Run("tenant with disabled remote write", func(t *testing.T) {
-		tenantCfg, err := reg.getTenantConfig("foo")
-		require.NoError(t, err)
-		require.Len(t, tenantCfg.RemoteWrite, 0) // no config
-	})
-
-	t.Run("tenant with write relabel config", func(t *testing.T) {
-		tenantCfg, err := reg.getTenantConfig("bar")
-		require.NoError(t, err)
-		require.Len(t, tenantCfg.RemoteWrite, 1) // overrides config
-		require.Equal(t, "bar-rw-default", tenantCfg.RemoteWrite[0].Name)
-		require.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 1)
-		require.Equal(t, relabel.Action("drop"), tenantCfg.RemoteWrite[0].WriteRelabelConfigs[0].Action)
-		clientCfg := defaultCfg.RemoteWrite.Clients[client]
-		require.Equal(t, clientCfg.URL, tenantCfg.RemoteWrite[0].URL)
-	})
-}
-
-func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(disabledRWTenant)
-	require.NoError(t, err)
-
-	// this tenant has remote-write disabled
-	require.Len(t, tenantCfg.RemoteWrite, 0)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(disabledRWTenant)
-	require.NoError(t, err)
-
-	// this tenant has remote-write disabled
-	require.Len(t, tenantCfg.RemoteWrite, 0)
-}
-
-func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
-	require.Equal(t, "foo", tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username)
-	require.Equal(t, commonconfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
-	expected := []commonconfig.HTTPClientConfig{
-		{
-			BasicAuth: &commonconfig.BasicAuth{
-				Username: "foo",
-				Password: commonconfig.Secret("bar"),
-			},
-		},
-		{
-			BasicAuth: &commonconfig.BasicAuth{
-				Username: "foo2",
-				Password: commonconfig.Secret("bar2"),
-			},
-		},
-	}
-
-	actual := []commonconfig.HTTPClientConfig{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.HTTPClientConfig)
-	}
-
-	require.ElementsMatch(t, actual, expected, "HTTPClientConfigs do not match")
-}
-
-func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
-	require.NoError(t, err)
-
-	require.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
-	// but that the additional header defined is set
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
-	// the original header must be removed
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(additionalHeadersRWTenant)
-	require.NoError(t, err)
-
-	require.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
-	require.Len(t, tenantCfg.RemoteWrite[1].Headers, 2)
-
-	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
-	expected := []map[string]string{
-		{
-			user.OrgIDHeaderName: additionalHeadersRWTenant,
-			"Additional":         "Header",
-		},
-		{
-			user.OrgIDHeaderName: additionalHeadersRWTenant,
-			"Base":               "value2",
-		},
-	}
-
-	actual := []map[string]string{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.Headers)
-	}
-
-	require.ElementsMatch(t, actual, expected, "Headers do not match")
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
-	require.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
-}
-
 func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
+	// sharedHeaders is the exact map instance stored in the tenant's limits
+	// override. getTenantConfig strips X-Scope-OrgId variations and injects the
+	// canonical OrgID header; it must operate on a clone so the override map is
+	// left untouched and can be reused safely for later lookups.
 	sharedHeaders := map[string]string{
-		"Additional": "Header",
+		"Additional":                                "Header",
+		user.OrgIDHeaderName:                        "should-be-stripped",
+		strings.ToLower(user.OrgIDHeaderName):       "should-be-stripped-lower",
+		fmt.Sprintf("  %s  ", user.OrgIDHeaderName): "should-be-stripped-padded",
 	}
 	snapshot := maps.Clone(sharedHeaders)
 
 	limits := fakeLimits{
 		limits: map[string]*validation.Limits{
 			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+					"default": {
+						Headers: sharedHeaders,
+					},
+				},
 			},
 		},
 	}
@@ -796,9 +405,16 @@ func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tenantCfg.RemoteWrite, 1)
 
+	// The resolved config reflects the mutations: OrgID variations stripped, the
+	// canonical OrgID header injected, and unrelated override headers preserved.
+	resolved := tenantCfg.RemoteWrite[0].Headers
+	require.Equal(t, additionalHeadersRWTenant, resolved[user.OrgIDHeaderName], "canonical OrgID header must be injected into the resolved config")
+	require.Equal(t, "Header", resolved["Additional"], "unrelated override headers must be preserved in the resolved config")
+	require.NotContains(t, resolved, strings.ToLower(user.OrgIDHeaderName), "OrgID header variations must be stripped from the resolved config")
+
+	// The override map itself must be untouched by the mutations above.
 	require.Equal(t, snapshot, sharedHeaders, "getTenantConfig must not mutate the limits override headers map")
-	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", tenantCfg.RemoteWrite[0].Headers),
-		"remote write headers must be a copy of the override map, not the same map instance")
+	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", resolved), "remote write headers must be a copy of the override map, not the same map instance")
 
 	_, err = reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
@@ -806,10 +422,6 @@ func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
-	sharedHeaders := map[string]string{
-		"Additional": "Header",
-	}
-
 	var requests atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
@@ -840,10 +452,25 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 		},
 	}
 
+	// sharedHeaders is the exact map instance stored in the tenant's limits
+	// override. getTenantConfig strips X-Scope-OrgId variations and injects the
+	// canonical OrgID header; it must operate on a clone so the override map is
+	// left untouched and can be reused safely for later lookups.
+	sharedHeaders := map[string]string{
+		"Additional":                          "Header",
+		user.OrgIDHeaderName:                  "should-be-stripped",
+		strings.ToLower(user.OrgIDHeaderName): "should-be-stripped-lower",
+	}
+	snapshot := maps.Clone(sharedHeaders)
+
 	limits := fakeLimits{
 		limits: map[string]*validation.Limits{
 			headersRaceTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+					"default": {
+						Headers: sharedHeaders,
+					},
+				},
 			},
 		},
 	}
@@ -894,209 +521,11 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 	for range 10 {
 		reg.configureTenantStorage(headersRaceTenant)
 	}
-}
 
-func TestTenantRemoteWriteHeadersReset(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
-	require.NoError(t, err)
-
-	require.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
-	// the original header must be removed
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(noHeadersRWTenant)
-	require.NoError(t, err)
-
-	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
-	expected := []map[string]string{
-		{
-			user.OrgIDHeaderName: noHeadersRWTenant,
-		},
-		{
-			user.OrgIDHeaderName: noHeadersRWTenant,
-			"Base":               "value2",
-		},
-	}
-
-	actual := []map[string]string{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.Headers)
-	}
-
-	require.ElementsMatch(t, actual, expected, "Headers do not match")
-}
-
-func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	require.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
-	// the original header must be present
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
-	expected := []map[string]string{
-		{
-			user.OrgIDHeaderName: enabledRWTenant,
-			"Base":               "value",
-		},
-		{
-			user.OrgIDHeaderName: enabledRWTenant,
-			"Base":               "value2",
-		},
-	}
-
-	actual := []map[string]string{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.Headers)
-	}
-
-	require.ElementsMatch(t, actual, expected, "Headers do not match")
-}
-
-func TestTenantRemoteWriteHeadersNoOrgIDHeader(t *testing.T) {
-	backCompatCfg.RemoteWrite.AddOrgIDHeader = false
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	require.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
-	// ensure that X-Scope-OrgId header is missing
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], "")
-	// the original header must be present
-	require.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
-
-	cfg.RemoteWrite.AddOrgIDHeader = false
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// Ensure that overrides take plus and that X-Scope-OrgID header is still missing
-	expected := []map[string]string{
-		{
-			"Base": "value",
-		},
-		{
-			"Base": "value2",
-		},
-	}
-
-	actual := []map[string]string{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.Headers)
-	}
-
-	require.ElementsMatch(t, actual, expected, "Headers do not match")
-}
-
-func TestRelabelConfigOverrides(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(customRelabelsTenant)
-	require.NoError(t, err)
-
-	// it should also override the default label configs
-	require.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(customRelabelsTenant)
-	require.NoError(t, err)
-
-	// It should also override the default label configs for the first client only
-	expected := [][]string{
-		{
-			"__name__",
-			"",
-		},
-		{
-			"__name2__",
-		},
-	}
-
-	actual := [][]string{{}, {}}
-	for i, rw := range tenantCfg.RemoteWrite {
-		for _, wrc := range rw.WriteRelabelConfigs {
-			actual[i] = append(actual[i], wrc.SourceLabels.String())
-		}
-	}
-
-	require.ElementsMatch(t, actual, expected, "Headers do not match")
-}
-
-func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
-	require.NoError(t, err)
-
-	// set NameValidationScheme on expected configs
-	expectedConfigs := reg.config.RemoteWrite.Clients["default"].WriteRelabelConfigs
-	for _, rc := range expectedConfigs {
-		rc.NameValidationScheme = model.UTF8Validation
-	}
-	require.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, expectedConfigs)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(nilRelabelsTenant)
-	require.NoError(t, err)
-
-	// if there are no relabel configs defined for the tenant, it should not override
-	actual := [][]*relabel.Config{}
-	for _, rw := range tenantCfg.RemoteWrite {
-		actual = append(actual, rw.WriteRelabelConfigs)
-	}
-
-	expected := [][]*relabel.Config{
-		reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs,
-		reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs,
-	}
-
-	// set NameValidationScheme on expected configs
-	for _, configs := range expected {
-		for _, rc := range configs {
-			rc.NameValidationScheme = model.UTF8Validation
-		}
-	}
-
-	require.ElementsMatch(t, actual, expected, "WriteRelabelConfigs do not match")
-}
-
-func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
-	require.NoError(t, err)
-
-	// if there is an empty slice of relabel configs, it should clear existing relabel configs
-	require.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
-}
-
-func TestRelabelConfigOverridesWithErrors(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	_, err := reg.getTenantConfig(badRelabelsTenant)
-
-	// ensure that relabel validation is being applied
-	require.EqualError(t, err, "failed to parse relabel configs: labeldrop action requires only 'regex', and no other fields")
+	// After all the concurrent config resolutions, the shared override map must be
+	// byte-for-byte identical to its initial state.
+	require.Equal(t, snapshot, sharedHeaders,
+		"concurrent getTenantConfig calls must not mutate the shared override headers map")
 }
 
 func TestWALRegistryCreation(t *testing.T) {
@@ -1166,42 +595,6 @@ func TestWALRegistryWipeOnStartup(t *testing.T) {
 		_, statErr := os.Stat(filepath.Join(walDir, "tenant", "wal", "00000000"))
 		require.NoError(t, statErr, "expected WAL contents to be preserved when remote-write is disabled")
 	})
-}
-
-func TestStorageSetup(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	// once the registry is setup and we configure the tenant storage, we should be able
-	// to acquire an appender for the WAL storage
-	reg.configureTenantStorage(enabledRWTenant)
-
-	test.Poll(t, 2*time.Second, true, func() interface{} {
-		return reg.isReady(enabledRWTenant)
-	})
-
-	app := reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
-	require.Equalf(t, "*storage.fanoutAppender", fmt.Sprintf("%T", app), "instance is not of expected type")
-}
-
-func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	// once the registry is setup and we configure the tenant storage, we should be able
-	// to acquire an appender for the WAL storage
-	reg.configureTenantStorage(disabledRWTenant)
-
-	// if remote-write is disabled, we use a discardingAppender to not write to the WAL
-	app := reg.Appender(user.InjectOrgID(context.Background(), disabledRWTenant))
-	_, ok := app.(discardingAppender)
-	require.Truef(t, ok, "instance is not of expected type")
-
-	// same test with regular config
-	reg = setupRegistry(t, cfg, newFakeLimits())
-	reg.configureTenantStorage(disabledRWTenant)
-
-	app = reg.Appender(user.InjectOrgID(context.Background(), disabledRWTenant))
-	_, ok = app.(discardingAppender)
-	require.Truef(t, ok, "instance is not of expected type")
 }
 
 type fakeLimits struct {

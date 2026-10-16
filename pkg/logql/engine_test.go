@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -106,9 +106,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 						Start:    time.Unix(30, 0),
 						End:      time.Unix(60, 0),
 						Selector: `rate({app="foo"} | unwrap foo[30s])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
-						},
+						Plan:     testutil.MustPlan(`rate({app="foo"} | unwrap foo[30s])`),
 					},
 				},
 			},
@@ -132,9 +130,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
-					},
+					Plan:     testutil.MustPlan(`rate({app="foo"} | unwrap foo[30s])`),
 				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -157,9 +153,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate_counter({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
-					},
+					Plan:     testutil.MustPlan(`rate_counter({app="foo"} | unwrap foo[30s])`),
 				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -177,7 +171,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`, Plan: testutil.MustPlan(`rate_counter({app="foo"} | unwrap foo[30s])`)}},
 			},
 			// 15 samples match the window (30s, 60s]: t=46..60 with values 47..61, so the
 			// counter increases by 14 over a 14s sampled interval (avg 1s between samples).
@@ -232,7 +226,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`, Plan: testutil.MustPlan(`{app="foo"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
@@ -242,7 +236,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="food"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
+				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`, Plan: testutil.MustPlan(`{app="food"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
@@ -252,7 +246,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newBackwardStream(testSize, identity, `{app="fed"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`, Plan: testutil.MustPlan(`{app="fed"}`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
@@ -262,7 +256,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`, Plan: testutil.MustPlan(`{app="bar"}|="foo"|~".+bar"`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
@@ -272,7 +266,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newBackwardStream(testSize, identity, `{app="barf"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`, Plan: testutil.MustPlan(`{app="barf"}|="foo"|~".+bar"`)}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
@@ -339,6 +333,10 @@ func (s *storeSampleResult) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
+func (s *storeSampleResult) CountDistinctSketchVec() CountDistinctSketchVector {
+	return CountDistinctSketchVector{}
+}
+
 type statsQuerier struct{}
 
 func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
@@ -354,19 +352,41 @@ func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (it
 }
 
 func TestEngine_Stats(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	t.Run("records query exec time and decompressed bytes", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
-	queueTime := 2 * time.Nanosecond
+		queueTime := 2 * time.Nanosecond
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+		require.NoError(t, err)
+		q := eng.Query(params)
+
+		ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
+		require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	})
+
+	params, err := NewLiteralParams(`sum(count_over_time({foo="bar"}[1m]))`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
-	q := eng.Query(params)
 
-	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
-	require.NoError(t, err)
-	require.Equal(t, int64(1), r.Statistics.TotalDecompressedBytes())
-	require.Equal(t, queueTime.Seconds(), r.Statistics.Summary.QueueTime)
+	t.Run("records a timestamp-first query when the tenant does not enable stream-first", func(t *testing.T) {
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.TimestampFirstQueries)
+		require.Zero(t, r.Statistics.Summary.StreamFirstQueries)
+	})
+
+	t.Run("records a stream-first query when the tenant enables it", func(t *testing.T) {
+		limits := tenantStreamFirstLimits{fakeLimits: fakeLimits{maxSeries: NoLimits.maxSeries, timeout: NoLimits.timeout}, enabled: map[string]bool{"a": true}}
+		eng := NewEngine(EngineOpts{}, &statsQuerier{}, limits, log.NewNopLogger())
+		r, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "a"))
+		require.NoError(t, err)
+		require.Positive(t, r.Statistics.Summary.StreamFirstQueries)
+		require.Zero(t, r.Statistics.Summary.TimestampFirstQueries)
+	})
 }
 
 type metaQuerier struct{}
@@ -441,7 +461,7 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NewSortSampleIterator(e.samples()), nil
+	return iter.NewTimestampFirstSortSampleIterator(e.samples()), nil
 }
 
 func TestStepEvaluator_Error(t *testing.T) {
@@ -503,6 +523,30 @@ func TestStepEvaluator_Error(t *testing.T) {
 			require.Equal(t, tc.err, err)
 		})
 	}
+}
+
+func TestEngine_RangeAggEvaluator_UnparsableSeriesLabels(t *testing.T) {
+	samples := make([]logproto.Sample, 0, testSize)
+	for i := int64(0); i < testSize; i++ {
+		samples = append(samples, identity(i).Sample)
+	}
+	querier := &errorIteratorQuerier{
+		samples: func() []iter.SampleIterator {
+			return []iter.SampleIterator{
+				iter.NewSeriesIterator(logproto.Series{
+					Labels:  `{app="foo", badlabels=}`,
+					Samples: samples,
+				}),
+			}
+		},
+	}
+	eng := NewEngine(EngineOpts{}, querier, NoLimits, log.NewNopLogger())
+
+	params, err := NewLiteralParams(`count_over_time({app="foo"}[1m])`, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil, nil)
+	require.NoError(t, err)
+	q := eng.Query(params)
+	_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.Error(t, err)
 }
 
 func TestEngine_MaxSeries(t *testing.T) {
@@ -670,7 +714,7 @@ func TestHashingStability(t *testing.T) {
 		}
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
-		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, "200", statsResult, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 		return buf.String()
 	}
 
@@ -700,7 +744,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 	mock := &mockEvaluatorFactory{
 		SampleEvaluatorFunc(
-			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, bool) (StepEvaluator, error) {
 				return EmptyEvaluator[SampleVector]{value: nil}, nil
 			},
 		),
@@ -720,9 +764,9 @@ type mockEvaluatorFactory struct {
 	sampleEvalFunc SampleEvaluatorFunc
 }
 
-func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params, isRootExpr bool) (StepEvaluator, error) {
 	if m.sampleEvalFunc != nil {
-		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p)
+		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p, isRootExpr)
 	}
 	return nil, errors.New("unimplemented mock SampleEvaluatorFactory")
 }
@@ -772,9 +816,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
-				p.Plan = &plan.QueryPlan{
-					AST: syntax.MustParseExpr(p.Selector),
-				}
+				p.Plan = testutil.MustPlan(p.Selector)
 				streams[paramsID(p)] = streamsIn[i]
 			}
 		}
@@ -785,9 +827,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
 				if p.Plan == nil {
-					p.Plan = &plan.QueryPlan{
-						AST: syntax.MustParseExpr(p.Selector),
-					}
+					p.Plan = testutil.MustPlan(p.Selector)
 				}
 				series[paramsID(p)] = seriesIn[i]
 			}
@@ -821,7 +861,7 @@ func (q *querierRecorder) SelectSamples(
 ) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
-			return iter.NewMultiSeriesIterator(s), nil
+			return iter.NewTimestampFirstMultiSeriesIterator(s), nil
 		}
 	}
 	recordID := paramsID(p)
@@ -832,7 +872,7 @@ func (q *querierRecorder) SelectSamples(
 	if !ok {
 		return nil, fmt.Errorf("no series found for id: %s has: %+v", recordID, q.series)
 	}
-	return iter.NewMultiSeriesIterator(series), nil
+	return iter.NewTimestampFirstMultiSeriesIterator(series), nil
 }
 
 func paramsID(p interface{}) string {

@@ -68,6 +68,9 @@ func Test_writeError(t *testing.T) {
 		{"query error", storage_errors.ErrQueryMustContainMetricName, storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"wrapped query error", fmt.Errorf("wrapped: %w", storage_errors.ErrQueryMustContainMetricName), "wrapped: " + storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"multi mixed", util.MultiError{context.Canceled, context.DeadlineExceeded}, "2 errors: context canceled; context deadline exceeded", http.StatusInternalServerError},
+		{"multi httpgrpc client errors", util.MultiError{httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query"), httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query")}, "2 errors: rpc error: code = Code(400) desc = parse error: bad query; rpc error: code = Code(400) desc = parse error: bad query", http.StatusBadRequest},
+		{"multi httpgrpc server errors", util.MultiError{httpgrpc.Errorf(http.StatusInternalServerError, "server error"), httpgrpc.Errorf(http.StatusInternalServerError, "server error")}, "2 errors: rpc error: code = Code(500) desc = server error; rpc error: code = Code(500) desc = server error", http.StatusInternalServerError},
+		{"multi httpgrpc client error among untyped errors", util.MultiError{errors.New("unknown error"), httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query")}, "2 errors: unknown error; rpc error: code = Code(400) desc = parse error: bad query", http.StatusBadRequest},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()

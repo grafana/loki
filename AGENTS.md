@@ -50,6 +50,7 @@ make test-fuzz                                 # run fuzz tests
 - Always run Loki package tests `gotest -v ./pkg/...` before commiting
 - Focus on "why", rather than "what" in the commit message and PR description
 - Follow conventional commits format: `<type>(<scope>): Your change` (note the uppercase after colon)
+- Never approve, merge or enable auto-merge on Renovate PRs that touch `operator/**` — they risk breaking the operator build and are left for the operator maintainers to apply
 
 ## Documentation Standards
 

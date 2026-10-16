@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	dskit_metrics "github.com/grafana/dskit/metrics"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
@@ -16,9 +17,19 @@ var (
 	ErrInvalidMetricType = fmt.Errorf("invalid metric type")
 )
 
-func extractMetricFamily(name, metrics string) (*io_prometheus_client.MetricFamily, error) {
+// parseMetricFamilies parses the text exposition format into dskit's family map, which has helpers to
+// find and sum series.
+func parseMetricFamilies(metrics string) (dskit_metrics.MetricFamilyMap, error) {
 	parser := expfmt.NewTextParser(model.UTF8Validation)
-	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	families, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	if err != nil {
+		return nil, err
+	}
+	return dskit_metrics.MetricFamilyMap(families), nil
+}
+
+func extractMetricFamily(name, metrics string) (*io_prometheus_client.MetricFamily, error) {
+	mfs, err := parseMetricFamilies(metrics)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,38 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
+
+func TestConfigWithNamedStores_DisableRetries(t *testing.T) {
+	cfg := ConfigWithNamedStores{
+		Config: Config{
+			S3:  s3.Config{MaxRetries: 10},
+			GCS: gcs.Config{MaxRetries: 10},
+		},
+		NamedStores: NamedStores{
+			S3: map[string]NamedS3StorageConfig{
+				"named-s3": {MaxRetries: 10},
+			},
+			GCS: map[string]NamedGCSStorageConfig{
+				"named-gcs": {MaxRetries: 10},
+			},
+		},
+	}
+	require.NoError(t, cfg.NamedStores.populateStoreType())
+
+	require.NoError(t, cfg.DisableRetries(S3))
+	require.Equal(t, 1, cfg.S3.MaxRetries)
+
+	require.NoError(t, cfg.DisableRetries(GCS))
+	require.Equal(t, 1, cfg.GCS.MaxRetries)
+
+	require.NoError(t, cfg.DisableRetries("named-s3"))
+	require.Equal(t, 1, cfg.NamedStores.S3["named-s3"].MaxRetries)
+
+	require.NoError(t, cfg.DisableRetries("named-gcs"))
+	require.Equal(t, 1, cfg.NamedStores.GCS["named-gcs"].MaxRetries)
+}
 
 func TestNamedStores_populateStoreType(t *testing.T) {
 	t.Run("found duplicates", func(t *testing.T) {

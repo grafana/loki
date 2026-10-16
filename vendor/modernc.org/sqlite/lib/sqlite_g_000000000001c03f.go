@@ -118,6 +118,10 @@ const FASYNC = 64
 
 const FILENAME_MAX = 1024
 
+const FIOGETOWN = 1074030203
+
+const FIOSETOWN = 2147772028
+
 const FNDELAY = 4
 
 const FREAD = 1
@@ -135,6 +139,8 @@ const F_WRLCK = 3
 const HAVE_MREMAP = 0
 
 const IOCPARM_MASK = 8191
+
+const IOC_DIRMASK = 3758096384
 
 const LOCK_EX = 2
 
@@ -182,15 +188,19 @@ const O_TRUNC = 1024
 
 const PPPDISC = 5
 
-const RTLD_DEFAULT = -2
+const RTLD_DEFAULT = 18446744073709551614
 
-const RTLD_SELF = -3
+const RTLD_SELF = 18446744073709551613
 
 const SF_APPEND = 262144
 
 const SF_ARCHIVED = 65536
 
 const SF_IMMUTABLE = 131072
+
+const SIOCGPGRP = 1074033417
+
+const SIOCSPGRP = 2147775240
 
 const SLIPDISC = 4
 
@@ -199,6 +209,46 @@ const SQLITE_MAX_PATHLEN = 1024
 const S_BLKSIZE = 512
 
 const S_ISTXT = 512
+
+const TIOCCBRK = 536900730
+
+const TIOCCDTR = 536900728
+
+const TIOCCONS = 2147775586
+
+const TIOCDRAIN = 536900702
+
+const TIOCEXCL = 536900621
+
+const TIOCEXT = 2147775584
+
+const TIOCFLUSH = 2147775504
+
+const TIOCGETD = 1074033690
+
+const TIOCMBIC = 2147775595
+
+const TIOCMBIS = 2147775596
+
+const TIOCMGET = 1074033770
+
+const TIOCMSET = 2147775597
+
+const TIOCNOTTY = 536900721
+
+const TIOCNXCL = 536900622
+
+const TIOCPKT = 2147775600
+
+const TIOCSBRK = 536900731
+
+const TIOCSCTTY = 536900705
+
+const TIOCSDTR = 536900729
+
+const TIOCSETD = 2147775515
+
+const TIOCUCNTL = 2147775590
 
 type TSQLiteThread = struct {
 	FxTask   uintptr
@@ -223,6 +273,96 @@ const UF_SETTABLE = 65535
 const WINT_MAX = 2147483647
 
 const WINT_MIN = -2147483648
+
+// C documentation
+//
+//	/*
+//	** Open File Description (OFD) locks, F_OFD_SETLK & co., on Linux instead of
+//	** POSIX record locks. A POSIX lock belongs to the process and is dropped by
+//	** any close() of any descriptor of the file; an OFD lock belongs to the open
+//	** file description that placed it. See https://gitlab.com/cznic/sqlite/-/issues/255
+//	**
+//	** Opt-in, and process-wide by necessity: POSIX and OFD locks are different
+//	** owners even within one process, so all connections to a file must use the
+//	** same kind. Enabled by the environment variable MODERNC_SQLITE_OFD_LOCK
+//	** (any value but the empty string or one starting with "0"), which is read
+//	** once from sqlite3_os_init(), or by modernc_ofd_locking(1), which overrides
+//	** it. Both must happen before the first database file is opened.
+//	**
+//	** The kind of lock in use cannot change under a held lock - a POSIX F_UNLCK
+//	** does not release an OFD lock and vice versa - so from the first lock
+//	** attempt in the process until sqlite3_shutdown() the setting is frozen and
+//	** modernc_ofd_locking() refuses to change it.
+//	**
+//	** Kernels before 3.15 reject F_OFD_* with EINVAL: if the very first OFD
+//	** fcntl() fails that way the library falls back to POSIX locks for good.
+//	** Once an OFD fcntl() has succeeded the mode is fixed: a later EINVAL is
+//	** returned to the caller as the I/O error it is, because switching modes
+//	** while OFD locks are held would leave them behind.
+//	**
+//	** Database-file locks go through osFcntlOfd() rather than
+//	** osSetPosixAdvisoryLock(), which only the -shm locks still use; with
+//	** SQLITE_ENABLE_SETLK_TIMEOUT that would silently drop the blocking-lock
+//	** timeout for the database file, hence the tripwire.
+//	*/
+func Xmodernc_ofd_locking(tls *libc.TLS, onoff int32) (r int32) {
+	_ = onoff
+	return -int32(1)
+}
+
+// C documentation
+//
+//	/*
+//	** Shutdown the operating system interface.
+//	**
+//	** Some operating systems might need to do some cleanup in this routine,
+//	** to release dynamically allocated objects.  But not on unix.
+//	** This routine is a no-op for unix.
+//	*/
+func Xsqlite3_os_end(tls *libc.TLS) (r int32) {
+	_unixBigLock = uintptr(0)
+	return SQLITE_OK
+}
+
+/************** End of os_unix.c *********************************************/
+/************** Begin file os_win.c ******************************************/
+/*
+** 2004 May 22
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+******************************************************************************
+**
+** This file contains code that is specific to Windows.
+ */
+/* #include "sqliteInt.h" */
+
+/************** End of os_win.c **********************************************/
+/************** Begin file memdb.c *******************************************/
+/*
+** 2016-09-07
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+******************************************************************************
+**
+** This file implements an in-memory VFS. A database is held as a contiguous
+** block of memory.
+**
+** This file also implements interface sqlite3_serialize() and
+** sqlite3_deserialize().
+ */
+/* #include "sqliteInt.h" */
 
 const _CS_PATH = 1
 
@@ -257,6 +397,8 @@ const _POSIX_THREADS = 200112
 const _POSIX_THREAD_ATTR_STACKADDR = 200112
 
 const _POSIX_THREAD_ATTR_STACKSIZE = 200112
+
+const _POSIX_VDISABLE = 255
 
 const _QUAD_HIGHWORD = 1
 
@@ -316,9 +458,9 @@ const _SC_VERSION = 8
 
 const __WINT_MAX__ = 2147483647
 
-const __WINT_TYPE__ = 0
+const __WINT_TYPE__ = "int"
 
-const __volatile = 0
+const __volatile = "volatile"
 
 // C documentation
 //
@@ -508,6 +650,8 @@ func _unixShmBarrier(tls *libc.TLS, fd uintptr) {
 type daddr_t = Tdaddr_t
 
 type fixpt_t = Tfixpt_t
+
+const osFcntlOfd = "osFcntl"
 
 type rlim_t = Trlim_t
 

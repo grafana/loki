@@ -37,6 +37,8 @@ type Row struct {
 	UncompressedSize int64
 	MinTimestamp     int64 // unix nanos
 	MaxTimestamp     int64 // unix nanos
+	MinShardBucket   uint32
+	MaxShardBucket   uint32
 }
 
 // LabelEntry converts the Row to a [LabelEntry]. The caller should only call
@@ -52,6 +54,8 @@ func (r Row) LabelEntry() LabelEntry {
 		MinTimestamp:     r.MinTimestamp,
 		MaxTimestamp:     r.MaxTimestamp,
 		UncompressedSize: r.UncompressedSize,
+		MinShardBucket:   r.MinShardBucket,
+		MaxShardBucket:   r.MaxShardBucket,
 	}
 }
 
@@ -85,6 +89,8 @@ func (e LabelEntry) Row() Row {
 		MinTimestamp:     e.MinTimestamp,
 		MaxTimestamp:     e.MaxTimestamp,
 		UncompressedSize: e.UncompressedSize,
+		MinShardBucket:   e.MinShardBucket,
+		MaxShardBucket:   e.MaxShardBucket,
 	}
 }
 
@@ -178,6 +184,14 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Row {
 
 	if col := getColumn("max_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
 		result.MaxTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
+	}
+
+	if col := getColumn("min_shard_bucket.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.MinShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
+	}
+
+	if col := getColumn("max_shard_bucket.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.MaxShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
 	}
 
 	return result

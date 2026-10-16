@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ func TestResult(t *testing.T) {
 	stats.SetQueryReferencedStructuredMetadata()
 	stats.AddPipelineWrapperFilterdLines(1)
 	stats.AddWireBytesTransferred(42)
+	stats.AddChunkFetchFailures(5)
 
 	fakeIngesterQuery(ctx)
 	fakeIngesterQuery(ctx)
@@ -59,6 +61,7 @@ func TestResult(t *testing.T) {
 				ChunksDownloadTime:           time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 1,
+				ChunkFetchFailures:           5,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -199,6 +202,7 @@ func TestResult_Merge(t *testing.T) {
 				ChunksDownloadTime:           time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 2,
+				ChunkFetchFailures:           3,
 				Chunk: Chunk{
 					HeadChunkBytes:    10,
 					HeadChunkLines:    20,
@@ -264,6 +268,7 @@ func TestResult_Merge(t *testing.T) {
 				ChunksDownloadTime:           2 * time.Second.Nanoseconds(),
 				QueryReferencedStructured:    true,
 				PipelineWrapperFilteredLines: 4,
+				ChunkFetchFailures:           2 * 3,
 				Chunk: Chunk{
 					HeadChunkBytes:    2 * 10,
 					HeadChunkLines:    2 * 20,
@@ -360,6 +365,171 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
 }
 
+func TestContext_RecordDataobjSectionsResolutionTime(t *testing.T) {
+	resolutionTime := func(statsCtx *Context) time.Duration {
+		return statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime()
+	}
+
+	t.Run("it keeps the largest time it has seen", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+
+		statsCtx.RecordDataobjSectionsResolutionTime(5 * time.Millisecond)
+		statsCtx.RecordDataobjSectionsResolutionTime(9 * time.Millisecond)
+		statsCtx.RecordDataobjSectionsResolutionTime(2 * time.Millisecond)
+
+		require.Equal(t, 9*time.Millisecond, resolutionTime(statsCtx))
+	})
+
+	t.Run("it keeps the largest time when many goroutines record at once", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+
+		var wg sync.WaitGroup
+		for i := 1; i <= 100; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(i) * time.Millisecond)
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, 100*time.Millisecond, resolutionTime(statsCtx))
+	})
+
+	t.Run("it reports zero when no section was resolved", func(t *testing.T) {
+		statsCtx, _ := NewContext(context.Background())
+		require.Zero(t, resolutionTime(statsCtx))
+	})
+}
+
+func TestResultMerge_DataobjSectionsResolutionMaxTime(t *testing.T) {
+	resultWith := func(d time.Duration) Result {
+		return Result{Querier: Querier{Store: Store{Dataobj: Dataobj{SectionsResolutionMaxTime: int64(d)}}}}
+	}
+
+	t.Run("it keeps the larger of the two times instead of adding them", func(t *testing.T) {
+		merged := resultWith(5 * time.Millisecond)
+		merged.Merge(resultWith(8 * time.Millisecond))
+
+		require.Equal(t, 8*time.Millisecond, merged.DataobjSectionsResolutionMaxTime())
+	})
+
+	t.Run("a smaller merged time does not lower the larger one", func(t *testing.T) {
+		merged := resultWith(8 * time.Millisecond)
+		merged.Merge(resultWith(2 * time.Millisecond))
+
+		require.Equal(t, 8*time.Millisecond, merged.DataobjSectionsResolutionMaxTime())
+	})
+}
+
+func TestResult_Merge_LoglineStats(t *testing.T) {
+	lookup := &Logline{
+		Outcome:            "data_skipped",
+		HintStatus:         "ok",
+		HintLookupTime:     int64(100 * time.Millisecond),
+		HintRanges:         2,
+		HintRangesDuration: int64(30 * time.Minute),
+		PlannedChunks:      26,
+		ScannedChunks:      4,
+		ChunkFilterRatio:   0.85,
+		ObjectRequests:     12,
+		IOBytes:            2048,
+		IOWait:             int64(40 * time.Millisecond),
+	}
+	skipped := Result{
+		Index:   Index{ShardPlannedChunks: 10},
+		Logline: &Logline{SkippedRequests: 1},
+	}
+	narrowed := Result{
+		Index: Index{
+			ShardPlannedChunks:        8,
+			ShardPlannedChunksScanned: 2,
+		},
+		Logline:  &Logline{NarrowedRequests: 1},
+		Querier:  Querier{Store: Store{TotalChunksScanned: 2}},
+		Ingester: Ingester{TotalChunksMatched: 3, Store: Store{TotalChunksScanned: 1}},
+	}
+
+	var res Result
+	res.Merge(Result{})
+	require.Nil(t, res.Logline, "merging results without logline stats must not add them")
+
+	res.Merge(skipped)
+	res.Merge(narrowed)
+	res.Merge(narrowed)
+	res.Merge(Result{Logline: lookup})
+	// A second lookup-level value must not overwrite the first.
+	res.Merge(Result{Logline: &Logline{Outcome: "lookup_failed", HintStatus: "error", HintRanges: 5, IOBytes: 1}})
+	res.Merge(Result{})
+
+	expected := *lookup
+	expected.SkippedRequests = 1
+	expected.NarrowedRequests = 2
+	require.Equal(t, &expected, res.Logline)
+	require.Equal(t, int64(26), res.Index.ShardPlannedChunks)
+	require.Equal(t, int64(4), res.Index.ShardPlannedChunksScanned)
+	require.Equal(t, int64(12), res.TotalChunksScanned(), "querier and ingester store chunks plus ingester matches")
+
+	require.Equal(t, int64(1), skipped.Logline.SkippedRequests, "merging must not change the merged result")
+	require.Equal(t, int64(1), narrowed.Logline.NarrowedRequests, "merging must not change the merged result")
+}
+
+func TestResult_Merge_LoglineStatsDoesNotAlias(t *testing.T) {
+	src := Result{Logline: &Logline{SkippedRequests: 1}}
+
+	var res Result
+	res.Merge(src)
+	res.Logline.SkippedRequests++
+
+	require.Equal(t, int64(2), res.Logline.SkippedRequests)
+	require.Equal(t, int64(1), src.Logline.SkippedRequests)
+}
+
+func TestContext_LoglineStats(t *testing.T) {
+	statsCtx, ctx := NewContext(context.Background())
+	JoinResults(ctx, Result{Logline: &Logline{SkippedRequests: 1}})
+	JoinResults(ctx, Result{Logline: &Logline{NarrowedRequests: 2}})
+
+	res := statsCtx.Result(0, 0, 0)
+	require.Equal(t, &Logline{SkippedRequests: 1, NarrowedRequests: 2}, res.Logline)
+
+	// The returned result must not alias the context's own statistics.
+	res.Logline.SkippedRequests = 10
+	require.Equal(t, int64(1), statsCtx.Result(0, 0, 0).Logline.SkippedRequests)
+
+	statsCtx.Reset()
+	require.Nil(t, statsCtx.Result(0, 0, 0).Logline)
+}
+
+func TestIndex_ChunkFilterRatio(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		planned       int64
+		scanned       int64
+		expectedRatio float64
+		expectedOK    bool
+	}{
+		{name: "nothing planned", scanned: 5},
+		{name: "some chunks filtered", planned: 40, scanned: 10, expectedRatio: 0.75, expectedOK: true},
+		{name: "no chunks filtered", planned: 40, scanned: 40, expectedOK: true},
+		{name: "all chunks filtered", planned: 40, expectedRatio: 1, expectedOK: true},
+		{name: "more chunks scanned than planned", planned: 40, scanned: 50, expectedOK: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ratio, ok := Index{ShardPlannedChunks: tc.planned, ShardPlannedChunksScanned: tc.scanned}.ChunkFilterRatio()
+			require.Equal(t, tc.expectedOK, ok)
+			require.InDelta(t, tc.expectedRatio, ratio, 1e-9)
+		})
+	}
+}
+
+func TestContext_ChunksScanned(t *testing.T) {
+	statsCtx, _ := NewContext(context.Background())
+	statsCtx.AddChunksScanned(10)
+	statsCtx.AddChunksScanned(7)
+	require.Equal(t, int64(17), statsCtx.Result(0, 0, 0).TotalChunksScanned())
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)
@@ -369,6 +539,14 @@ func TestReset(t *testing.T) {
 	res = statsCtx.Result(0, 0, 0)
 	res.Summary.Subqueries = 0
 	require.Empty(t, res)
+}
+
+func TestTotalChunkFetchFailures(t *testing.T) {
+	r := Result{
+		Querier:  Querier{Store: Store{ChunkFetchFailures: 3}},
+		Ingester: Ingester{Store: Store{ChunkFetchFailures: 2}},
+	}
+	require.Equal(t, int64(5), r.TotalChunkFetchFailures())
 }
 
 func TestIngester(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +16,7 @@ func TestBloomAggregator_TimeRange(t *testing.T) {
 	require.True(t, gotMax.IsZero(), "empty aggregator max must be zero")
 
 	// Prepared but never observed: must NOT contribute a range.
-	a.PrepareColumn("/a", 0, "svc", 16)
+	a.PrepareColumn("/a", 0, "svc", 16, 0)
 	gotMin, gotMax = a.TimeRange()
 	require.True(t, gotMin.IsZero(), "prepared-but-unobserved min must be zero")
 	require.True(t, gotMax.IsZero(), "prepared-but-unobserved max must be zero")
@@ -34,11 +35,22 @@ func TestBloomAggregator_TimeRange(t *testing.T) {
 	require.True(t, gotMax.IsZero(), "after Reset max must be zero")
 }
 
+func TestBloomAggregator_PrepareColumn(t *testing.T) {
+	t.Run("sizes the bloom filter of a column with no estimated values for one value", func(t *testing.T) {
+		a := newBloomAggregator()
+		a.PrepareColumn("/a", 0, "svc", 0, 0)
+		require.NoError(t, a.Observe(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "", StreamID: 1, Timestamp: time.Unix(1, 0)}))
+
+		entry := a.entries[bloomPostingKey{objectPath: "/a", sectionIndex: 0, columnName: "svc"}]
+		require.Equal(t, bloom.NewWithEstimates(1, 1.0/128.0).K(), entry.bloomFilter.K())
+	})
+}
+
 func TestBloomAggregator_TimeRange_ObserveAtUnixEpoch(t *testing.T) {
 	a := newBloomAggregator()
 	epoch := time.Unix(0, 0).UTC()
 
-	a.PrepareColumn("/a", 0, "svc", 16)
+	a.PrepareColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, a.Observe(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: epoch}))
 
 	gotMin, gotMax := a.TimeRange()

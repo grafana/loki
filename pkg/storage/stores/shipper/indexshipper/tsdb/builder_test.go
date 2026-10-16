@@ -35,7 +35,7 @@ func Test_Build(t *testing.T) {
 		return context.Background(), builder, tmpDir
 	}
 
-	getReader := func(path string) index.Reader {
+	getReader := func(path string) *index.ByteSliceReader {
 		indexPath := fakeIdentifierPathForBounds(path, 1, 6) //default step is 1
 		files, err := filepath.Glob(indexPath)
 		require.NoError(t, err)

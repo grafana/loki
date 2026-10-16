@@ -1295,6 +1295,18 @@ func (m *Cluster) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		size, err := (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3
+		i--
+		dAtA[i] = 0xe2
+	}
 	if m.TransportSocketMatcher != nil {
 		if vtmsg, ok := interface{}(m.TransportSocketMatcher).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -3290,6 +3302,10 @@ func (m *Cluster) SizeVT() (n int) {
 		} else {
 			l = proto.Size(m.TransportSocketMatcher)
 		}
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.PerConnectionBufferHighWatermarkTimeout != nil {
+		l = (*durationpb.Duration)(m.PerConnectionBufferHighWatermarkTimeout).SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

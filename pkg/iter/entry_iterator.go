@@ -405,69 +405,88 @@ func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
 }
 
-type nonOverlappingIterator struct {
+type chainedIterator struct {
 	iterators []EntryIterator
 	curr      EntryIterator
+	err       error
 }
 
-// NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
-	return &nonOverlappingIterator{
+// NewChainedIterator returns an iterator that plays each given iterator to completion,
+// in order, before moving to the next. It makes no assumption about the time range each
+// iterator covers.
+//
+// Producing time-ordered output, if that is required, is the caller's job.
+func NewChainedIterator(iterators []EntryIterator) EntryIterator {
+	return &chainedIterator{
 		iterators: iterators,
 	}
 }
 
-func (i *nonOverlappingIterator) Next() bool {
+func (i *chainedIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
-		if len(i.iterators) == 0 {
-			if i.curr != nil {
-				i.curr.Close()
-			}
-			return false
-		}
 		if i.curr != nil {
+			// The current iterator stopped. If it failed, surface the error and stop:
+			// any error fails the query, so advancing would hide the failure as normal
+			// exhaustion and read remaining streams whose data the query discards.
+			if err := i.curr.Err(); err != nil {
+				i.err = err
+				return false
+			}
+			// A close error here is a cleanup failure, not a read failure. Reporting it
+			// as a read failure would be inaccurate.
 			i.curr.Close()
 		}
+
+		if len(i.iterators) == 0 {
+			return false
+		}
+
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 
 	return true
 }
 
-func (i *nonOverlappingIterator) At() logproto.Entry {
+func (i *chainedIterator) At() logproto.Entry {
 	return i.curr.At()
 }
 
-func (i *nonOverlappingIterator) Labels() string {
+func (i *chainedIterator) Labels() string {
 	if i.curr == nil {
 		return ""
 	}
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingIterator) StreamHash() uint64 {
+func (i *chainedIterator) StreamHash() uint64 {
 	if i.curr == nil {
 		return 0
 	}
 	return i.curr.StreamHash()
 }
 
-func (i *nonOverlappingIterator) Err() error {
-	if i.curr == nil {
-		return nil
-	}
-	return i.curr.Err()
+func (i *chainedIterator) Err() error {
+	return i.err
 }
 
-func (i *nonOverlappingIterator) Close() error {
+func (i *chainedIterator) Close() error {
+	// Close every iterator and keep all errors: Add ignores nil, so a clean close
+	// still returns nil.
+	var errs util.MultiError
 	if i.curr != nil {
-		i.curr.Close()
+		// If curr already failed, some implementations return that same read error
+		// from Close too. It was already surfaced through Err, so closing here is
+		// cleanup only: do not report it a second time as a close error.
+		if err := i.curr.Close(); err != nil && i.err == nil {
+			errs.Add(err)
+		}
 	}
 	for _, iter := range i.iterators {
-		iter.Close()
+		errs.Add(iter.Close())
 	}
 	i.iterators = nil
-	return nil
+
+	return errs.Err()
 }
 
 type timeRangedIterator struct {

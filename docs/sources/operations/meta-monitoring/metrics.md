@@ -2,7 +2,7 @@
 title: Key metrics for monitoring Loki
 menuTitle: Key Metrics
 description: Describes the most important Loki metrics for detecting negative trends and abnormal behavior.
-weight: 200
+weight: 500
 ---
 
 # Key metrics for monitoring Loki
@@ -24,7 +24,11 @@ Watch request failures first. A sustained increase in 5xx responses is usually t
 
 Key metric:
 
-- `loki_request_duration_seconds_count` (counter with labels including `status_code`, `job`, and `route`)
+- `loki_request_duration_seconds`, a histogram with the labels `method`, `route`, `status_code`, and `ws`. Use the `_count` and `_bucket` suffixes to derive request rate and latency percentiles.
+
+{{< admonition type="note" >}}
+`cluster`, `namespace`, and `job` in the example queries on this page come from your Prometheus scrape configuration, not from Loki itself. They are not labels on the metric.
+{{< /admonition >}}
 
 Example query:
 
@@ -45,7 +49,7 @@ Latency degradation can appear before hard failures. Track p99 for read and writ
 
 Key metric:
 
-- `loki_request_duration_seconds_bucket` (histogram buckets)
+- `loki_request_duration_seconds_bucket` (histogram buckets of the same metric described in [Request error rate](#request-error-rate))
 
 Example query:
 
@@ -56,7 +60,7 @@ histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[1m])) by 
 Abnormal behavior:
 
 - Rising p99 over time, especially in query-frontend and distributor paths.
-- The Loki mixin alert `LokiRequestLatency` fires when p99 exceeds 1 second for 15 minutes.
+- The Loki mixin alert `LokiRequestLatency` fires when p99 exceeds 1 second for 15 minutes. This alert excludes tail and scheduler routes, so the example query above can show a higher p99 than the alert reacts to.
 
 ## Panics
 
@@ -82,7 +86,7 @@ Discarded samples indicate data that Loki rejected or dropped. This is one of th
 
 Key metric:
 
-- `loki_discarded_samples_total`
+- `loki_discarded_samples_total` (counter with labels including `tenant` and `reason`, plus `retention_hours`, `policy`, and `format`)
 
 Example query:
 
@@ -122,8 +126,8 @@ time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_times
 
 Abnormal behavior:
 
-- More than one compactor running.
-- No successful compaction for multiple hours (the mixin alert threshold is 3 hours).
+- More than one compactor running. Only one compactor instance should run at a time. Running more than one can lead to data loss. The Loki mixin alert `LokiTooManyCompactorsRunning` fires when more than one compactor runs for 5 minutes.
+- No successful compaction for multiple hours. The mixin alert `LokiCompactorHasNotSuccessfullyRunCompaction` triggers when the last successful run is more than 3 hours old, and fires after that condition holds for 1 additional hour, so it takes about 4 hours in total to alert.
 
 ## Ingester health and flush behavior
 
@@ -132,6 +136,7 @@ Ingester pressure often appears as memory growth, poor chunk utilization, or flu
 Key metrics:
 
 - `loki_ingester_memory_streams`
+- `loki_ingester_memory_stream_shards`
 - `loki_ingester_memory_chunks`
 - `loki_ingester_flush_queue_length`
 - `loki_ingester_chunk_utilization`
@@ -140,6 +145,14 @@ Key metrics:
 Example queries:
 
 ```promql
+sum(loki_ingester_memory_streams{cluster="$cluster", namespace="$namespace"})
+```
+
+The share of in-memory streams that were created by stream sharding in the distributors:
+
+```promql
+sum(loki_ingester_memory_stream_shards{cluster="$cluster", namespace="$namespace"})
+/
 sum(loki_ingester_memory_streams{cluster="$cluster", namespace="$namespace"})
 ```
 
@@ -177,6 +190,40 @@ Abnormal behavior:
 - Sharp drops (possible data path interruption).
 - Unexpected spikes (possible overload or noisy tenants).
 
+## Kafka-based ingestion (experimental)
+
+{{< admonition type="note" >}}
+These metrics only apply if you've enabled [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/), an experimental write-path feature.
+{{< /admonition >}}
+
+**Key metrics:**
+
+- `loki_kafka_client_partition_reader_consumption_lag_seconds`: the single most important Kafka health signal. Growing lag means ingesters can't keep up with the rate at which the distributor produces records.
+- `loki_distributor_kafka_appends_total` (label `status`): produce success and failure rate. A rising failure rate means writes aren't reaching Kafka.
+- `loki_distributor_kafka_latency_seconds`: produce latency. A sustained increase points to Kafka broker pressure or network issues.
+- `loki_kafka_client_partition_reader_fetch_errors_total`: errors fetching records from Kafka brokers. This should stay near zero.
+
+**Example queries:**
+
+```promql
+# Consumption lag p99 by partition state
+histogram_quantile(0.99, sum(rate(loki_kafka_client_partition_reader_consumption_lag_seconds_bucket{phase="running", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (le, cluster, namespace))
+```
+
+```promql
+# Kafka produce error rate
+sum(rate(loki_distributor_kafka_appends_total{status="fail", cluster="$cluster", namespace="$namespace"}[$__rate_interval])) by (cluster, namespace)
+```
+
+**Abnormal behavior:**
+
+- Consumption lag growing over time (ingesters can't keep up with the produce rate).
+- Any sustained produce failures.
+- Rising produce latency (broker pressure, network issues, or too few partitions).
+- Fetch errors (broker unavailability or a protocol version mismatch).
+
+For a complete list of Kafka metrics, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/#monitoring-kafka-ingestion).
+
 ## Object store operations
 
 Object store latency and failures directly impact query and retention workflows.
@@ -201,6 +248,18 @@ Abnormal behavior:
 
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
+
+Connection metrics just for S3:
+
+- `net_conntrack_dialer_conn_attempted_total`
+- `net_conntrack_dialer_conn_established_total`
+- `net_conntrack_dialer_conn_failed_total`
+- `net_conntrack_dialer_conn_closed_total`
+
+Abnormal behavior:
+
+- Non-zero rate of failed connections.
+- High rate of closed connections under ordinary load.
 
 ## Resource and runtime health
 

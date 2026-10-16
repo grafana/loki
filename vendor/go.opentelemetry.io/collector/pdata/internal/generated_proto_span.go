@@ -19,22 +19,22 @@ import (
 // Span represents a single operation within a trace.
 // See Span definition in OTLP: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 type Span struct {
-	TraceState             string
-	Name                   string
-	Attributes             []KeyValue
-	Events                 []*SpanEvent
-	Links                  []*SpanLink
-	Status                 Status
-	StartTimeUnixNano      uint64
-	EndTimeUnixNano        uint64
-	Flags                  uint32
-	Kind                   SpanKind
-	DroppedAttributesCount uint32
-	DroppedEventsCount     uint32
-	DroppedLinksCount      uint32
 	TraceId                TraceID
 	SpanId                 SpanID
+	TraceState             string
 	ParentSpanId           SpanID
+	Flags                  uint32
+	Name                   string
+	Kind                   SpanKind
+	StartTimeUnixNano      uint64
+	EndTimeUnixNano        uint64
+	Attributes             []KeyValue
+	DroppedAttributesCount uint32
+	Events                 []*SpanEvent
+	DroppedEventsCount     uint32
+	Links                  []*SpanLink
+	DroppedLinksCount      uint32
+	Status                 Status
 }
 
 var (

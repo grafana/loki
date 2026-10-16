@@ -23,8 +23,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -357,9 +357,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(qs),
-				},
+				Plan:        testutil.MustPlan(qs),
 				CachingOptions: resultscache.CachingOptions{
 					Disabled: false,
 				},
@@ -378,9 +376,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(qs),
-				},
+				Plan:        testutil.MustPlan(qs),
 				CachingOptions: resultscache.CachingOptions{
 					Disabled: true,
 				},
@@ -407,6 +403,27 @@ func TestParamsToLokiRequest(t *testing.T) {
 			require.Equal(t, tc.expReq, req)
 		})
 	}
+}
+
+func TestParamsToLokiRequestPreservesHintRanges(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	hintRanges := []logproto.HintTimeRange{{
+		Start: start.Add(5 * time.Minute),
+		End:   start.Add(10 * time.Minute),
+	}}
+	req := &LokiRequest{
+		Query:      `{foo="bar"} |= "error"`,
+		StartTs:    start,
+		EndTs:      start.Add(time.Hour),
+		Plan:       testutil.MustPlan(`{foo="bar"} |= "error"`),
+		HintRanges: hintRanges,
+	}
+
+	params, err := ParamsFromRequest(req)
+	require.NoError(t, err)
+
+	got := ParamsToLokiRequest(params).(*LokiRequest)
+	require.Equal(t, hintRanges, got.HintRanges)
 }
 
 func TestInstanceDownstream(t *testing.T) {

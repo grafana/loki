@@ -67,6 +67,7 @@ type writer struct {
 	trackcount        int
 	caps              map[int]int
 	quickCaptureSlots []bool
+	ecma              bool
 }
 
 type dispatchInfo struct {
@@ -115,6 +116,7 @@ func (w *writer) codeFromTree(tree *RegexTree) (*Code, error) {
 		curChild int
 		capsize  int
 	)
+	w.ecma = tree.Options&ECMAScript != 0
 	// construct sparse capnum mapping if some numbers are unused
 
 	if tree.Capnumlist == nil || tree.Captop == len(tree.Capnumlist) {
@@ -209,13 +211,51 @@ func (w *writer) codeFromTree(tree *RegexTree) (*Code, error) {
 		TrackCount:        w.trackcount,
 		Caps:              w.caps,
 		Capsize:           capsize,
-		CaptureSlotInUse:  captureSlotsInUse(w.emitted, capsize),
+		CaptureSlotInUse:  captureSlotsInUse(tree.Root, capsize, w.caps),
 		FcPrefix:          fcPrefix,
 		BmPrefix:          bmPrefix,
 		Anchors:           getAnchors(tree),
 		RightToLeft:       rtl,
 		FindOptimizations: tree.FindOptimizations,
+		LeftContextRunes:  AnalyzeLeftContext(tree.Root),
 	}, nil
+}
+
+// AnalyzeLeftContext returns how many runes before a candidate start the matcher
+// may inspect. Slicing the input down to that candidate is legal only when no
+// opcode depends on the original search origin or unbounded left text.
+//
+//	 0  never looks left of the start position
+//	 1  one previous rune is enough for \b, or to keep ^/\A from seeing
+//	    the candidate as the original start (they test leftchars()==0)
+//	-1  do not slice: lookbehind, or \G (NtStart), which keys off textstart
+func AnalyzeLeftContext(n *RegexNode) int {
+	if n == nil {
+		return 0
+	}
+
+	need := 0
+	switch n.T {
+	case NtPosLook, NtNegLook:
+		if n.Options&RightToLeft != 0 {
+			return -1
+		}
+	case NtStart:
+		return -1
+	case NtBol, NtBeginning, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+		need = 1
+	}
+
+	for _, child := range n.Children {
+		childNeed := AnalyzeLeftContext(child)
+		if childNeed < 0 {
+			return -1
+		}
+		if childNeed > need {
+			need = childNeed
+		}
+	}
+	return need
 }
 
 // The main RegexCode generator. It does a depth-first walk
@@ -235,6 +275,13 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 
 	switch nodetype {
 	case NtConcatenate | BeforeChild, NtConcatenate | AfterChild, NtEmpty:
+
+	case NtResetCapture:
+		slot := w.mapCapnum(node.M)
+		if w.quickCaptureSlots != nil && !w.quickCaptureSlots[slot] {
+			break
+		}
+		w.emit1(ResetCapture, slot)
 
 	case NtAlternate | BeforeChild:
 		if sets, leaders, _, ok := w.getDispatchCandidates(node); ok {
@@ -331,7 +378,10 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 
 	case NtLoop | BeforeChild, NtLazyloop | BeforeChild:
 
-		if node.N < math.MaxInt32 || node.M > 1 {
+		// Counted loops distinguish required iterations from optional ones
+		// for RepeatMatcher's empty-iteration rejection (ECMAScript 2025
+		// §22.2.2.3.1, step 2.2), even when the upper bound is unbounded.
+		if node.N < math.MaxInt32 || node.M > 1 || w.ecma {
 			if node.M == 0 {
 				w.emit1(Nullcount, 0)
 			} else {
@@ -354,7 +404,7 @@ func (w *writer) emitFragment(nodetype NodeType, node *RegexNode, curIndex int) 
 		startJumpPos := w.curPos()
 		lazy := InstOp(nodetype - (NtLoop | AfterChild))
 
-		if node.N < math.MaxInt32 || node.M > 1 {
+		if node.N < math.MaxInt32 || node.M > 1 || w.ecma {
 			if node.N == math.MaxInt32 {
 				w.emit2(Branchcount+lazy, w.popInt(), math.MaxInt32)
 			} else {

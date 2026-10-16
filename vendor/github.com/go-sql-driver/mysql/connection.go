@@ -384,7 +384,9 @@ func (mc *mysqlConn) interpolateParams(query string, args []driver.Value) (strin
 						buf = append(buf, '\'')
 					}
 				case json.RawMessage:
-					if noBackslashEscapes {
+					if v == nil {
+						buf = append(buf, "NULL"...)
+					} else if noBackslashEscapes {
 						buf = escapeBytesQuotes(buf, v, false)
 					} else {
 						buf = escapeBytesBackslash(buf, v, false)

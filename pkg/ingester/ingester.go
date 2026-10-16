@@ -134,7 +134,7 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
-	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled."`
 
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
@@ -166,7 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
-	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "Deprecated: use the per-tenant limit -limits.delegate-stream-limits-enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {
@@ -1174,7 +1174,26 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		attribute.String("end", req.End.String()),
 	))
 
+	// Close whatever it holds at return time. A bare defer would bind it.Close to the in-memory
+	// iterator. Nothing would then close the merge below, which owns the store iterator.
+	defer func() {
+		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	}()
+
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		// Both sources usually agree on a stream's identity, so the merge deduplicates a stream
+		// this ingester still holds in memory against its flushed copy. See sampleStream.hash
+		// for what the two report, and when they diverge.
+		var newMergeIterator func(context.Context, []iter.SampleIterator) iter.SampleIterator
+		switch req.Order {
+		case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+			newMergeIterator = iter.NewTimestampFirstMergeSampleIterator
+		case logproto.SAMPLE_ORDER_BY_STREAM:
+			newMergeIterator = iter.NewStreamFirstMergeSampleIterator
+		default:
+			return fmt.Errorf("unknown sample order %v", req.Order)
+		}
+
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start:    start,
 			End:      end,
@@ -1182,19 +1201,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
 			Plan:     req.Plan,
+			Order:    req.Order,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		it = newMergeIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
-	return sendSampleBatches(ctx, it, queryServer)
+	return sendSampleBatches(ctx, it, queryServer, req.Order)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is `tsdb`.
@@ -1380,7 +1397,6 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
-		var parsed syntax.Expr
 
 		groups := []string{""}
 		if len(req.Groups) != 0 {
@@ -1388,6 +1404,7 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		}
 
 		for _, group := range groups {
+			var parsed syntax.Expr
 			if group != "" {
 				parsed, err = syntax.ParseExpr(group)
 				if err != nil {

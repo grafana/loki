@@ -78,6 +78,20 @@ func TestClone(t *testing.T) {
 			require.Equal(t, expr.Pretty(0), actual.Pretty(0))
 		})
 	}
+
+	t.Run("adds no line filter when the clone builds a pipeline the original already built", func(t *testing.T) {
+		expr, err := ParseLogSelector(`{app="foo"} |= "a" | line_format "x" |= "b" | json |= "c"`, true)
+		require.NoError(t, err)
+		_, err = expr.Pipeline()
+		require.NoError(t, err)
+
+		actual, err := Clone[LogSelectorExpr](expr)
+		require.NoError(t, err)
+		_, err = actual.Pipeline()
+		require.NoError(t, err)
+
+		require.Equal(t, expr.String(), actual.String())
+	})
 }
 
 func TestCloneStringLabelFilter(t *testing.T) {

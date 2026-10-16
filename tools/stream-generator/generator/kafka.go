@@ -88,9 +88,11 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			startTime := time.Now()
 
+			flat := stream.Stream.FlatView()
+
 			// Calculate log size from actual entries
 			var logSize uint64
-			for _, entry := range stream.Stream.Entries {
+			for _, entry := range flat.Entries {
 				logSize += uint64(len(entry.Line))
 			}
 
@@ -161,12 +163,8 @@ func (s *Generator) getFrontendClient() (*frontend_client.Client, error) {
 }
 
 func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*client.Producer, error) {
-	// Create a new Kafka client with writer configuration
-	// Using same settings as distributor for max inflight requests
-	maxInflightProduceRequests := 20
-
 	// Create the Kafka client
-	kafkaClient, err := client.NewWriterClient("stream-generator", cfg, maxInflightProduceRequests, logger, reg)
+	kafkaClient, err := client.NewWriterClient("stream-generator", cfg, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}

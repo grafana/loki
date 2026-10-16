@@ -9,7 +9,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -38,7 +37,9 @@ type RangeVectorIterator interface {
 	Error() error
 }
 
-func newRangeVectorIterator(
+// newTimestampFirstRangeVectorIterator returns a range-vector iterator. The input
+// iterator must return samples in global timestamp order.
+func newTimestampFirstRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
@@ -96,9 +97,13 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+	err                                  error
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
+	if r.err != nil {
+		return false
+	}
 	// slides the range window to the next position
 	r.current = r.current + r.step
 	if r.current > r.end {
@@ -109,7 +114,7 @@ func (r *batchRangeVectorIterator) Next() bool {
 	// load samples
 	r.popBack(rangeStart)
 	r.load(rangeStart, rangeEnd)
-	return true
+	return r.err == nil
 }
 
 func (r *batchRangeVectorIterator) Close() error {
@@ -117,6 +122,9 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -165,10 +173,10 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
-					continue
+					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
+					return
 				}
 				r.metrics[lbs] = metric
 			}
@@ -504,9 +512,13 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	err                                  error
 }
 
 func (r *streamRangeVectorIterator) Next() bool {
+	if r.err != nil {
+		return false
+	}
 	// slides the range window to the next position
 	r.current = r.current + r.step
 	if r.current > r.end {
@@ -519,7 +531,7 @@ func (r *streamRangeVectorIterator) Next() bool {
 	r.windowRangeAgg = make(map[string]RangeStreamingAgg, 0)
 	r.metrics = map[string]labels.Labels{}
 	r.load(rangeStart, rangeEnd)
-	return true
+	return r.err == nil
 }
 
 func (r *streamRangeVectorIterator) Close() error {
@@ -527,6 +539,9 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -550,10 +565,10 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
-					continue
+					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
+					return
 				}
 				r.metrics[lbs] = metric
 			}

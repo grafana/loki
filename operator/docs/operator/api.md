@@ -1873,6 +1873,9 @@ certificates is missing.</p>
 <td><p>ReasonMissingObjectStorageSecret when the required secret to store logs to object
 storage is missing.</p>
 </td>
+</tr><tr><td><p>&#34;MissingPassthroughConfiguration&#34;</p></td>
+<td><p>ReasonMissingPassthroughConfiguration when the passthrough configuration is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingRulerSecret&#34;</p></td>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
@@ -3067,9 +3070,11 @@ used with the Loki cluster.</p>
 </thead>
 <tbody><tr><td><p>&#34;v11&#34;</p></td>
 <td><p>ObjectStorageSchemaV11 when using v11 for the storage schema</p>
+<p>Deprecated: ObjectStorageSchemaV11 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.</p>
 </td>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
+<p>Deprecated: ObjectStorageSchemaV12 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.</p>
 </td>
 </tr><tr><td><p>&#34;v13&#34;</p></td>
 <td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>
@@ -3194,7 +3199,6 @@ storage bucket to persist logs by the ingester component.</p>
 </em>
 </td>
 <td>
-<em>(Optional)</em>
 <p>Schemas for reading and writing logs.</p>
 </td>
 </tr>

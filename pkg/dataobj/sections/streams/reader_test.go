@@ -51,7 +51,7 @@ func TestReader(t *testing.T) {
 		},
 	}
 
-	sec := buildStreamsSection(t, 1, 0)
+	sec := buildTestStreamsSection(t, 1, 0)
 
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:    sec.Columns(),
@@ -68,7 +68,7 @@ func TestReader(t *testing.T) {
 }
 
 func TestReader_ReadBeforeOpen(t *testing.T) {
-	sec := buildStreamsSection(t, 1, 0)
+	sec := buildTestStreamsSection(t, 1, 0)
 
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:   sec.Columns(),
@@ -94,7 +94,7 @@ func TestReader_Predicate(t *testing.T) {
 		},
 	}
 
-	sec := buildStreamsSection(t, 1, 0)
+	sec := buildTestStreamsSection(t, 1, 0)
 
 	appLabel := sec.Columns()[5]
 	require.Equal(t, "app", appLabel.Name)
@@ -133,7 +133,7 @@ func TestReader_InPredicate(t *testing.T) {
 		},
 	}
 
-	sec := buildStreamsSection(t, 1, 0)
+	sec := buildTestStreamsSection(t, 1, 0)
 
 	streamID := sec.Columns()[0]
 	require.Equal(t, "", streamID.Name)
@@ -176,7 +176,7 @@ func TestReader_ColumnSubset(t *testing.T) {
 		},
 	}
 
-	sec := buildStreamsSection(t, 1, 0)
+	sec := buildTestStreamsSection(t, 1, 0)
 
 	var (
 		streamID = sec.Columns()[0]

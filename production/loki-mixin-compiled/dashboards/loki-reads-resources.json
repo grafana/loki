@@ -64,9 +64,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"query-frontend\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"query-frontend\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -89,6 +89,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -360,13 +361,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-frontend\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-frontend\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -422,9 +423,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"query-scheduler\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"query-scheduler\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -447,6 +448,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -718,13 +720,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-scheduler\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-scheduler\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -780,9 +782,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -805,6 +807,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -1076,13 +1079,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/querier\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/querier\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1279,9 +1282,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -1304,6 +1307,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -1575,13 +1579,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/index-gateway\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/index-gateway\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1778,9 +1782,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -1803,6 +1807,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -2074,13 +2079,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/bloom-gateway\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/bloom-gateway\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2277,9 +2282,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -2302,6 +2307,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -2573,13 +2579,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester|partition-ingester).*\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(.*ingester|partition-ingester).*\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2635,9 +2641,9 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count(up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"ruler\"})",
+                        "expr": "label_replace(count by (job) (up{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"ruler\"}), \"job\", \"$1\", \"job\", \".*/(.*)\")",
                         "format": "time_series",
-                        "legendFormat": "pods",
+                        "legendFormat": "{{job}}",
                         "legendLink": null
                      }
                   ],
@@ -2660,6 +2666,7 @@
                               "mode": "none"
                            }
                         },
+                        "noValue": "No OOMs observed in time period 🎉",
                         "thresholds": {
                            "mode": "absolute",
                            "steps": [ ]
@@ -2931,13 +2938,13 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
+                        "expr": "sum by(pod) (go_memstats_heap_alloc_bytes{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap inuse)",
+                  "title": "Memory (go heap alloc)",
                   "tooltip": {
                      "sort": 2
                   },

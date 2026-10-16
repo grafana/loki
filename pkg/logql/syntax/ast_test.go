@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -538,6 +539,27 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
 		},
 		{
+			`{app="foo"} |= ip("127.0.0.0/8") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"req from 127.0.0.2 ok", true}, {"req from 8.8.8.8 ok", false}},
+		},
+		{
+			`{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"from 10.5.3.2", true}, {"from 192.168.1.1", true}, {"from 8.8.8.8", false}},
+		},
+		{
+			`{app="foo"} |= "special" or ip("10.0.0.0/8") or "special2"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"has special", true}, {"from 10.5.3.2", true}, {"has special2", true}, {"nothing relevant", false}},
+		},
+		{
 			`{app="foo"} != ip("127.0.0.1") or "foo"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -599,6 +621,20 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"\\", false}, {"|", true}},
+		},
+		{
+			`{app="foo"} | decolorize |= "duration=3"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\x1b[36mduration=\x1b[0m3.62", true}, {"duration=3.62", true}, {"\x1b[36mduration=\x1b[0m4.21", false}},
+		},
+		{
+			`{app="foo"} | decolorize |~ "\\[36m"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\x1b[36mduration=\x1b[0m3.62", false}, {"[36m", true}},
 		},
 	} {
 		t.Run(tt.q, func(t *testing.T) {
@@ -722,6 +758,26 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
 			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+			out: `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "baz" or ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+			out: `{app="foo"} |= "baz" or ip("10.0.0.0/8") or ip("192.168.0.0/16")`,
+		},
+		{
+			in:  `{app="foo"} |= "baz" or ip("10.0.0.0/8") or "qux"`,
+			out: `{app="foo"} |= "baz" or ip("10.0.0.0/8") or "qux"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or ip("172.16.0.0/12") or "baz"`,
+			out: `{app="foo"} |= ip("10.0.0.0/8") or ip("192.168.0.0/16") or ip("172.16.0.0/12") or "baz"`,
+		},
+		{
+			in:  `{app="foo"} != ip("10.0.0.0/8") or ip("192.168.0.0/16") or "baz"`,
+			out: `{app="foo"} != ip("10.0.0.0/8") != ip("192.168.0.0/16") != "baz"`,
 		},
 		{
 			in:  `{app="foo"} |> "foo <_> baz" or "foo <_>"`,
@@ -948,7 +1004,7 @@ func mustNewPatternParser(p string) log.Stage {
 	return r
 }
 
-func Test_canInjectVectorGrouping(t *testing.T) {
+func Test_CanInjectVectorGrouping(t *testing.T) {
 	tests := []struct {
 		vecOp   string
 		rangeOp string
@@ -977,8 +1033,8 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.vecOp+"_"+tt.rangeOp, func(t *testing.T) {
-			if got := canInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
-				t.Errorf("canInjectVectorGrouping() = %v, want %v", got, tt.want)
+			if got := CanInjectVectorGrouping(tt.vecOp, tt.rangeOp); got != tt.want {
+				t.Errorf("CanInjectVectorGrouping() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1021,6 +1077,16 @@ func TestFilterReordering(t *testing.T) {
 		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
 	})
 
+	t.Run("it makes sure line filters after decolorize stay after decolorize", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "foo" | decolorize |= "bar" | logfmt |= "baz"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 4)
+		require.Equal(t, `|= "foo" | decolorize |= "bar" |= "baz" | logfmt`, MultiStageExpr(stages).String())
+	})
+
 	t.Run("it makes sure label filter order is kept", func(t *testing.T) {
 		logExpr := `{container_name="app"} | bar="next" |= "foo" | logfmt |="bar" |="baz" | line_format "{{.foo}}" |="1" |="2" | logfmt |="3"`
 		l, err := ParseExpr(logExpr)
@@ -1049,6 +1115,320 @@ func TestFilterReordering(t *testing.T) {
 		stages := l.(*PipelineExpr).MultiStages.reorderStages()
 		require.Len(t, stages, 2)
 		require.Equal(t, `| json | bar="next"`, MultiStageExpr(stages).String())
+	})
+}
+
+func TestMultiStageExpr_PushableLineFilters_WithoutPushableLineFilters(t *testing.T) {
+	tests := map[string]struct {
+		query string
+
+		// wantNil is true when no line filter qualifies.
+		wantNil bool
+
+		wantKeep, wantDrop []string
+
+		// wantRest is the printed form of the stages WithoutPushableLineFilters returns.
+		wantRest string
+	}{
+		"a leading filter keeps the lines that match and drops the rest": {
+			query:    `{app="x"} |= "a"`,
+			wantKeep: []string{"a", "xay"},
+			wantDrop: []string{"", "b"},
+		},
+		"chained filters apply as an and": {
+			query:    `{app="x"} |= "a" |= "b"`,
+			wantKeep: []string{"ab", "xbxa"},
+			wantDrop: []string{"a", "b", ""},
+		},
+		"a not-equal filter drops the lines that match": {
+			query:    `{app="x"} != "a"`,
+			wantKeep: []string{"b", ""},
+			wantDrop: []string{"a", "xay"},
+		},
+		"an or chain of equal filters keeps a line that matches any operand": {
+			query:    `{app="x"} |= "a" or "b"`,
+			wantKeep: []string{"a", "b", "xay"},
+			wantDrop: []string{"c", ""},
+		},
+		"an or chain of not-equal filters drops a line that matches any operand": {
+			query:    `{app="x"} != "a" or "b"`,
+			wantKeep: []string{"c", ""},
+			wantDrop: []string{"a", "b"},
+		},
+		"a regexp filter keeps the lines that match": {
+			query:    `{app="x"} |~ "a.c"`,
+			wantKeep: []string{"abc", "xaxcx"},
+			wantDrop: []string{"ac", ""},
+		},
+		"a case-insensitive regexp filter ignores the case": {
+			query:    `{app="x"} |~ "(?i)abc"`,
+			wantKeep: []string{"abc", "xABCx"},
+			wantDrop: []string{"ab", ""},
+		},
+		"a negated regexp filter drops the lines that match": {
+			query:    `{app="x"} !~ "a.c"`,
+			wantKeep: []string{"ac", ""},
+			wantDrop: []string{"abc"},
+		},
+		"a pattern filter keeps the lines that match": {
+			query:    `{app="x"} |> "<_> e"`,
+			wantKeep: []string{"x e", "abc e"},
+			wantDrop: []string{"e", ""},
+		},
+		"a negated pattern filter drops the lines that match": {
+			query:    `{app="x"} !> "<_> e"`,
+			wantKeep: []string{"e", ""},
+			wantDrop: []string{"x e"},
+		},
+		"an ip filter keeps the lines that hold an address in the range": {
+			query:    `{app="x"} |= ip("10.0.0.0/8")`,
+			wantKeep: []string{"from 10.1.2.3", "10.255.255.255"},
+			wantDrop: []string{"from 192.168.0.1", ""},
+		},
+		"a negated ip filter drops the lines that hold an address in the range": {
+			query:    `{app="x"} != ip("10.0.0.0/8")`,
+			wantKeep: []string{"from 192.168.0.1", ""},
+			wantDrop: []string{"from 10.1.2.3"},
+		},
+		"a filter after a parser is included": {
+			query:    `{app="x"} | json |= "a"`,
+			wantRest: `| json`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"a filter after a label filter is included": {
+			query:    `{app="x"} | level="x" |= "a"`,
+			wantRest: `| level="x"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"a filter after label_format is included": {
+			query:    `{app="x"} | label_format k=level |= "a"`,
+			wantRest: `| label_format k=level`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+		"filters on both sides of a parser apply as an and": {
+			query:    `{app="x"} |= "a" | json |= "b"`,
+			wantRest: `| json`,
+			wantKeep: []string{"ab"},
+			wantDrop: []string{"a", "b"},
+		},
+		"chained filters on both sides of a parser apply as an and": {
+			query:    `{app="x"} |= "a" |= "b" | json |= "c"`,
+			wantRest: `| json`,
+			wantKeep: []string{"abc", "cba"},
+			wantDrop: []string{"ab", "ac", "bc", ""},
+		},
+		"filters on both sides of a label filter apply as an and": {
+			query:    `{app="x"} |= "a" | level="x" |= "b"`,
+			wantRest: `| level="x"`,
+			wantKeep: []string{"ab"},
+			wantDrop: []string{"a", "b"},
+		},
+		"an or chain before a parser and a filter after it apply as an and": {
+			query:    `{app="x"} |= "a" or "b" | json != "c"`,
+			wantRest: `| json`,
+			wantKeep: []string{"a", "b", "xay"},
+			wantDrop: []string{"ac", "bc", "c", ""},
+		},
+		"a filter before a line_format is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | line_format "{{.app}}" |= "b"`,
+			wantRest: `| line_format "{{.app}}" |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter before a decolorize is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | decolorize |= "b"`,
+			wantRest: `| decolorize |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter before an unpack is included and a filter after it is not": {
+			query:    `{app="x"} |= "a" | unpack |= "b"`,
+			wantRest: `| unpack |= "b"`,
+			wantKeep: []string{"a", "ab"},
+			wantDrop: []string{"b"},
+		},
+		"a filter directly after a line_format is not included": {
+			query:    `{app="x"} | line_format "{{.app}}" |= "b"`,
+			wantRest: `| line_format "{{.app}}" |= "b"`,
+			wantNil:  true,
+		},
+		"a filter directly after a decolorize is not included": {
+			query:    `{app="x"} | decolorize != "b"`,
+			wantRest: `| decolorize != "b"`,
+			wantNil:  true,
+		},
+		"a filter directly after an unpack is not included": {
+			query:    `{app="x"} | unpack |= "b"`,
+			wantRest: `| unpack |= "b"`,
+			wantNil:  true,
+		},
+		"a pipeline with no line filter has none": {
+			query:    `{app="x"} | json | level="x"`,
+			wantRest: `| json | level="x"`,
+			wantNil:  true,
+		},
+		"an empty-string filter keeps every line, so it is not returned": {
+			query:   `{app="x"} |= ""`,
+			wantNil: true,
+		},
+		"an empty-string filter next to a real one adds nothing": {
+			query:    `{app="x"} |= "" |= "a"`,
+			wantKeep: []string{"a"},
+			wantDrop: []string{"b"},
+		},
+	}
+
+	var (
+		// contractLines run through the original stages, and through the filter followed by the stages
+		// WithoutPushableLineFilters returns. Each case adds its keep and drop lines.
+		contractLines = []string{"", "a", "b", "c", "ab", "ac", "bc", "abc", "cba", "xay", "level=x a", `{"a":"x"}`, "from 10.1.2.3", "x e"}
+		streamLabels  = labels.FromStrings("app", "x")
+		metadata      = labels.FromStrings("level", "x")
+	)
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			for _, rewritten := range []bool{false, true} {
+				expr, err := ParseLogSelector(test.query, true)
+				require.NoError(t, err)
+				stages := expr.(*PipelineExpr).MultiStages
+
+				if rewritten {
+					_, err = stages.Pipeline()
+					require.NoError(t, err)
+				}
+
+				pushableFilter, err := stages.PushableLineFilters()
+				require.NoError(t, err)
+				rest, err := stages.WithoutPushableLineFilters()
+				require.NoError(t, err)
+				require.Equal(t, test.wantRest, rest.String(), "AST rewritten by Pipeline: %v", rewritten)
+
+				if test.wantNil {
+					require.Nil(t, pushableFilter, "AST rewritten by Pipeline: %v", rewritten)
+				} else {
+					require.NotNil(t, pushableFilter, "AST rewritten by Pipeline: %v", rewritten)
+					for _, line := range test.wantKeep {
+						require.True(t, pushableFilter.Filter([]byte(line)), "line %q should pass, AST rewritten by Pipeline: %v", line, rewritten)
+					}
+					for _, line := range test.wantDrop {
+						require.False(t, pushableFilter.Filter([]byte(line)), "line %q should not pass, AST rewritten by Pipeline: %v", line, rewritten)
+					}
+				}
+
+				// The filter and the rest stages, applied in order, must match the original pipeline on
+				// every line. Compare the keep or drop decision, the output line and the labels.
+				originalPipeline, err := stages.Pipeline()
+				require.NoError(t, err)
+				restPipeline, err := rest.Pipeline()
+				require.NoError(t, err)
+				originalStreamPipeline := originalPipeline.ForStream(streamLabels)
+				restStreamPipeline := restPipeline.ForStream(streamLabels)
+
+				for _, line := range slices.Concat(contractLines, test.wantKeep, test.wantDrop) {
+					wantLine, wantLabels, wantOK := originalStreamPipeline.Process(0, []byte(line), metadata)
+
+					gotOK := pushableFilter == nil || pushableFilter.Filter([]byte(line))
+					var gotLine []byte
+					var gotLabels log.LabelsResult
+					if gotOK {
+						gotLine, gotLabels, gotOK = restStreamPipeline.Process(0, []byte(line), metadata)
+					}
+
+					require.Equal(t, wantOK, gotOK, "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+					if wantOK {
+						require.Equal(t, string(wantLine), string(gotLine), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+						require.Equal(t, wantLabels.String(), gotLabels.String(), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("returns an error for a filter that cannot be built", func(t *testing.T) {
+		stages := MultiStageExpr{&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a", Op: "unknown"}}}
+
+		filter, err := stages.PushableLineFilters()
+		require.Error(t, err)
+		require.Nil(t, filter)
+	})
+
+	t.Run("returns an error for a stage that cannot be built", func(t *testing.T) {
+		stages := MultiStageExpr{
+			&LineFmtExpr{Value: "{{"},
+			&LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "a"}},
+		}
+
+		filter, err := stages.PushableLineFilters()
+		require.Error(t, err)
+		require.Nil(t, filter)
+
+		rest, err := stages.WithoutPushableLineFilters()
+		require.Error(t, err)
+		require.Nil(t, rest)
+	})
+}
+
+func TestWithoutPushableLineFilters(t *testing.T) {
+	parse := func(t *testing.T, query string) SampleExpr {
+		t.Helper()
+		expr, err := ParseSampleExpr(query)
+		require.NoError(t, err)
+		return expr
+	}
+
+	t.Run("returns nil when the expression has no pipeline", func(t *testing.T) {
+		got, err := WithoutPushableLineFilters(parse(t, `count_over_time({app="a"}[1m])`))
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("returns nil when the pipeline has no line filter to remove", func(t *testing.T) {
+		got, err := WithoutPushableLineFilters(parse(t, `count_over_time({app="a"} | line_format "x" |= "a" [1m])`))
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("returns a copy without the pushable line filters and leaves the original unchanged", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} |= "a" | line_format "x" |= "b" | json |= "c" [1m]))`)
+		original := expr.String()
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		require.Equal(t, parse(t, `sum(count_over_time({app="a"} | line_format "x" |= "b" | json |= "c" [1m]))`).String(), got.String())
+
+		_, err = got.Extractor()
+		require.NoError(t, err)
+		require.Equal(t, original, expr.String())
+	})
+
+	t.Run("removes the line filters from an expression whose extractor was already built", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} | json |= "a" [1m]))`)
+		_, err := expr.Extractor()
+		require.NoError(t, err)
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		require.Equal(t, parse(t, `sum(count_over_time({app="a"} | json [1m]))`).String(), got.String())
+	})
+
+	t.Run("keeps each remaining line filter once in an expression whose extractor was already built", func(t *testing.T) {
+		expr := parse(t, `sum(count_over_time({app="a"} |= "a" | line_format "x" |= "b" | json |= "c" [1m]))`)
+		_, err := expr.Extractor()
+		require.NoError(t, err)
+
+		got, err := WithoutPushableLineFilters(expr)
+		require.NoError(t, err)
+		_, err = got.Extractor()
+		require.NoError(t, err)
+
+		want := parse(t, `sum(count_over_time({app="a"} | line_format "x" |= "b" | json |= "c" [1m]))`)
+		_, err = want.Extractor()
+		require.NoError(t, err)
+		require.Equal(t, want.String(), got.String())
 	})
 }
 
@@ -1092,6 +1472,18 @@ func TestLogSelectorExprHasFilter(t *testing.T) {
 		`{foo="bar"} != ""`:                  true,
 		`{foo="bar"} | lbl="notempty"`:       true,
 		`{foo="bar"} |= "" | lbl="notempty"`: true,
+
+		`{foo="bar"} |= "notempty" |= ""`:            true,
+		`{foo="bar"} |~ "notempty" |= "" |= ""`:      true,
+		`{foo="bar"} |= "notempty" |= "" | json`:     true,
+		`{foo="bar"} |= "" or ""`:                    false,
+		`{foo="bar"} |= "" or "" |= ""`:              false,
+		`{foo="bar"} |= "" or "notempty"`:            true,
+		`{foo="bar"} |= "notempty" or ""`:            true,
+		`{foo="bar"} |= "" or "" or "notempty"`:      true,
+		`{foo="bar"} |= "" or "notempty" |= ""`:      true,
+		`{foo="bar"} |= "" |= "" or "notempty"`:      true,
+		`{foo="bar"} |= "" or ip("127.0.0.1") |= ""`: true,
 	} {
 		expr, err := ParseExpr(query)
 		require.NoError(t, err)

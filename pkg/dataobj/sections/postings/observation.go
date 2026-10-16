@@ -11,7 +11,7 @@ import "time"
 type LabelObservation struct {
 	// ObjectPath is the path of the data object that originated this posting.
 	ObjectPath string
-	// ShardBuckets is the number of shard buckets used by ObjectPath.
+	// ShardBuckets is the total number of shard buckets used by ObjectPath.
 	ShardBuckets int64
 	// SectionIndex is the index of the logs section within ObjectPath.
 	SectionIndex int64
@@ -27,6 +27,8 @@ type LabelObservation struct {
 	// produced the observation. It is summed across all observations in the
 	// aggregated posting.
 	UncompressedSize int64
+	// The shard bucket associated with the log stream being observed.
+	ShardBucket uint32
 }
 
 // BloomObservation describes a single observation of a bloom posting (a

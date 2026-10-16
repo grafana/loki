@@ -23,8 +23,9 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
@@ -102,14 +103,25 @@ type Config struct {
 	// Required for compaction tasks; may be nil for query-only workers.
 	ScratchStore scratch.Store
 
-	// IndexobjCfg is the builder config for index objects.
+	// IndexobjCfg is the builder config for compacted index objects.
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg is the builder config for compacted log objects
+	// Required for compaction tasks; may be nil for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
+	// UploaderCfg controls object key generation for compacted log objects.
+	UploaderCfg uploader.Config
+	// BuilderMetrics is shared by logs object builders across worker tasks.
+	BuilderMetrics *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
-	LogMergeObserver   executor.LogMergeObserver
+
+	// NewLogMergeObserver returns the LogMerge observer for each thread.
+	// Optional; nil disables observation.
+	NewLogMergeObserver executor.NewLogMergeObserverFunc
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -156,6 +168,9 @@ func New(config Config) (*Worker, error) {
 	}
 	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
 		return nil, errors.New("at least one of scheduler address or lookup address is required")
+	}
+	if config.BuilderMetrics == nil {
+		config.BuilderMetrics = logsobj.NewBuilderMetrics()
 	}
 
 	numThreads := config.NumThreads
@@ -204,6 +219,10 @@ func (w *Worker) run(ctx context.Context) error {
 	// Spin up worker threads.
 	var threads []*thread
 	for i := range w.numThreads {
+		var logMergeObserver executor.LogMergeObserver
+		if w.config.NewLogMergeObserver != nil {
+			logMergeObserver = w.config.NewLogMergeObserver(i)
+		}
 		t := &thread{
 			BatchSize:      w.config.BatchSize,
 			PrefetchBytes:  w.config.PrefetchBytes,
@@ -215,9 +234,12 @@ func (w *Worker) run(ctx context.Context) error {
 			TaskCaches:     w.taskCaches,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
+			LogsobjCfg:     w.config.LogsobjCfg,
+			UploaderCfg:    w.config.UploaderCfg,
+			BuilderMetrics: w.config.BuilderMetrics,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
-			LogMergeObserver:   w.config.LogMergeObserver,
+			LogMergeObserver:   logMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

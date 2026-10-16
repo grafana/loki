@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -284,6 +285,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		Limit:    100,
 		Start:    time.Unix(0, 0),
 		End:      time.Unix(10, 0),
+		Plan:     testutil.MustPlan(`{foo="bar",bar="baz1"}`),
 	}, &result)
 	require.NoError(t, err)
 	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.

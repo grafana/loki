@@ -22,7 +22,7 @@ format: ensure-gofumpt
 	find . -name \*.go | xargs ./bin/gofumpt -extra -w
 
 .PHONY: generate
-generate: ensure-goderive ensure-goyacc
+generate: ensure-goderive ensure-gofumpt ensure-goyacc
 	PATH=$$PATH:$(shell pwd)/bin ${GO} generate ./...
 
 .PHONY: install-tools
@@ -32,7 +32,7 @@ install-tools: ensure-goderive ensure-gofumpt ensure-golangci-lint ensure-goyacc
 ensure-goderive:
 	if [ ! -x bin/goderive ] ; then \
 		mkdir -p bin ; \
-		GOBIN=$(shell pwd)/bin ${GO} install "github.com/awalterschulze/goderive@latest" ; \
+		GOBIN=$(shell pwd)/bin ${GO} install "awalterschulze.org/go/goderive@latest" ; \
 	fi
 
 .PHONY: ensure-gofumpt
@@ -45,7 +45,7 @@ ensure-gofumpt:
 .PHONY: ensure-golangci-lint
 ensure-golangci-lint:
 	if [ ! -x bin/golangci-lint ] || ( ./bin/golangci-lint --version | grep -Fqv "version ${GOLANGCI_LINT_VERSION}" ) ; then \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- v${GOLANGCI_LINT_VERSION} ; \
+		curl -sSfL https://golangci-lint.run/install.sh | sh -s -- v${GOLANGCI_LINT_VERSION} ; \
 	fi
 
 .PHONY: ensure-goyacc

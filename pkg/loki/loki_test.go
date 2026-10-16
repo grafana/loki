@@ -177,7 +177,10 @@ func getRandomPorts(n int) []int {
 }
 
 func TestLoki_CustomRunOptsBehavior(t *testing.T) {
-	t.Parallel()
+	// Loki.Run registers process-wide collectors on DefaultRegisterer.
+	// Isolate it so -count>1 does not panic on the second iteration.
+	prepareGlobalMetricsRegistry(t)
+
 	// Set an overall test timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

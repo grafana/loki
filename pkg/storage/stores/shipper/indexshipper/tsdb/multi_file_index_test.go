@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -162,4 +163,31 @@ func TestMultiIndex(t *testing.T) {
 
 		require.Equal(t, expected, xs)
 	})
+}
+
+// Concurrent queries stamp the same filterer onto shared child indexes.
+func TestMultiIndex_ConcurrentChunkFilterer(t *testing.T) {
+	dir := t.TempDir()
+	file := BuildIndex(t, dir, []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar"}`),
+			Chunks: []index.ChunkMeta{
+				{MinTime: 0, MaxTime: 10, Checksum: 1},
+			},
+		},
+	})
+	idx := NewMultiIndex(IndexSlice{file, file})
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			idx.SetChunkFilterer(&filterAll{})
+			_, err := idx.GetChunkRefs(context.Background(), "fake", 0, 10, nil, nil, matcher)
+			require.NoError(t, err)
+		}()
+	}
+	wg.Wait()
 }

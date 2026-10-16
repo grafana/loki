@@ -43,21 +43,62 @@ eval instant at 60s count_over_time({app="a"} | logfmt [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+# logfmt() label-expression form resolves the same clashes the same way.
+eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+
+# logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+
+eval select from 0 to 30s forward {app="a"} | drop name | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+eval select from 0 to 30s forward {app="a"} | logfmt | drop name
+  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+# A label re-added after the drop is a parsed label, not a stream label: logfmt neither renames
+# around it nor overwrites it, exactly as for a stream that never had the label.
+eval select from 0 to 30s forward {app="a"} | drop name | label_format name="x" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="x"]
+# Grouping sees the parsed label added after the drop, matching the full label output.
+eval instant at 10s sum by (name) (count_over_time({app="a"} | drop name | logfmt [1m]))
+  {name="parsed"} 1
+
+# logfmt() with a line key that ends in `_extracted`.
+clear
+load
+  {app="a", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
+  {app="b", k="s"}     "k_extracted=pext k=p" @ 20s [repeat every 20s for 3]
+  {app="noise", k="s"} "k=p"                  @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app=~"a|b"} | logfmt [1m])
+  {app="a", k="s", k_extracted="pext"} 3
+  {app="b", k="s", k_extracted="pext"} 3
+eval range from 40s to 60s step 20s count_over_time({app=~"a|b"} | logfmt [1m])   # overlapping
+  {app="a", k="s", k_extracted="pext"} 2 3
+  {app="b", k="s", k_extracted="pext"} 2 3
+eval instant at 60s sum by (app, k_extracted) (count_over_time({app=~"a|b"} | logfmt [1m]))
+  {app="a", k_extracted="pext"} 3
+  {app="b", k_extracted="pext"} 3
 
 # logfmt() partially malformed line: the parser keeps the valid pairs and drops the bad one, or
 # fails the whole line under --strict.
 clear
 load
-  {app="a"} `good=1 bad="unterminated` @ 20s [repeat every 20s for 3]
+  {app="a"} `good=1 bad="unterminated` @ 20s [repeat every 20s for 3] [metadata env="prod"]
   {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | logfmt [1m])
-  {app="a", good="1"} 3
+  {app="a", good="1", env="prod"} 3
 eval instant at 60s count_over_time({app="a"} | logfmt --strict [1m])
   expect fail msg: LogfmtParserErr
 # A __error__ filter drops the failing line.
 eval instant at 60s count_over_time({app="a"} | logfmt --strict | __error__="" [1m])
   expect empty
+# Structured metadata is attached before any parser runs, so it survives on the errored line: a
+# filter on it still matches, and the error still reaches the result.
+eval instant at 60s count_over_time({app="a"} | logfmt --strict | env="prod" [1m])
+  expect fail msg: LogfmtParserErr
 
 # logfmt() with label expressions.
 clear
@@ -113,6 +154,21 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
 eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])  # overlapping
   {app="a", level="stream", level_extracted="parsed", a_b="1", dup="first"} 2 3
 
+# json() clashing labels keep the loser under `<name>_extracted`, following the base-name
+# precedence stream > metadata > parsed (the same for every parser).
+clear
+load
+  {app="a", sl="s", sm="s", tri="s"} `{"sl":"p","md":"p","tri":"p"}` @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="noise"} `{"x":1}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+# json()'s label-expression form resolves the same clashes the same way.
+eval instant at 60s count_over_time({app="a"} | json sl, md, sm, tri [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+
 # json() malformed line: the query fails, unless a __error__ filter drops the bad line.
 clear
 load
@@ -125,6 +181,104 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
   expect fail msg: JSONParserErr
 eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
   {app="a", ok="1"} 2
+# A malformed line outside the range vector duration cannot fail the query.
+# (40s,60s] excludes the line at 40s, and (20s,40s] includes it.
+eval instant at 60s count_over_time({app="a"} | json [20s])
+  {app="a", ok="1"} 1
+eval instant at 40s count_over_time({app="a"} | json [20s])
+  expect fail msg: JSONParserErr
+eval select from 0 to 60s forward {app="a"} | json | __error__!=""
+  {app="a"} `broken` @ 40s [parsed __error__="JSONParserErr" __error_details__="Value looks like object, but can't find closing '}' symbol"]
+
+# json() parsing error, that an __error__ filter, keeps in the result the series with the grouped labels
+# plus the labels that report the error.
+clear
+load
+  {app="a", pod="p1"} `{"ok":1}` @ 20s [metadata n="5" unrelated="u1"] # "unrelated" metadata is never named by a query
+  {app="a", pod="p2"} `{`        @ 40s [metadata n="7" unrelated="u2"] # malformed
+  {app="a", pod="p2"} `{`        @ 50s [metadata n="9" unrelated="u9"] # malformed, other metadata
+  {app="c", pod="p3"} `{`        @ 40s [metadata n="9" __preserve_error__="true"] # malformed
+  {app="noise", pod="p4"} `{"ok":1}` @ 20s [metadata n="9" unrelated="u3"]
+
+eval instant at 60s first_over_time({app="a"} | json | unwrap n [1m]) by (pod)
+  expect fail msg: JSONParserErr
+eval instant at 60s first_over_time({app="a"} | json | __error__="" | unwrap n [1m]) by (pod)
+  {pod="p1"} 5
+eval instant at 60s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 7
+eval range from 20s to 60s step 20s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by (pod) # overlapping
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} _ 7 7
+# by() keeps no label of its own, so the kept sample reports only the error labels.
+eval instant at 60s first_over_time({app="a"} | json | __error__="JSONParserErr" | unwrap n [1m]) by ()
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error"} 7
+# A clean line and an errored line in one result.
+eval instant at 60s first_over_time({app="a"} | json | __error__!="zzz" | unwrap n [1m]) by (pod)
+  {pod="p1"} 5
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 7
+# pod="p2" errored lines (2) differ only in metadata, which the grouping drops, so they form one series.
+eval instant at 60s sum by (pod) (first_over_time({app="a"} | json | __error__!="" | unwrap n [1m]) by (pod))
+  {pod="p2"} 7
+# Structured metadata named __preserve_error__ is an ordinary field: it cannot keep the errored
+# line by itself, only a __error__ filter in the query can.
+eval instant at 60s first_over_time({app="c"} | json | unwrap n [1m]) by (pod)
+  expect fail msg: JSONParserErr
+eval instant at 60s first_over_time({app="c"} | json | __error__!="" | unwrap n [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p3"} 9
+eval range from 40s to 80s step 20s first_over_time({app="c"} | json | __error__!="" | unwrap n [1m]) by (pod) # overlapping
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p3"} 9 9 9
+eval instant at 60s sum without (pod) (count_over_time({app="c"} | json | __error__!="" [1m]))
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", __preserve_error__="true", app="c", n="9"} 1
+# by() and without() on the vector aggregation without __error__ filter report the error.
+eval instant at 60s sum by () (count_over_time({app="a"} | json | n!="9" [1m]))
+  expect fail msg: JSONParserErr
+eval instant at 60s sum without (pod) (count_over_time({app="a"} | json | n!="9" [1m]))
+  expect fail msg: JSONParserErr
+# by() and without() on the range aggregation without __error__ filter report the error.
+eval instant at 60s first_over_time({app="a"} | json | unwrap n [1m]) by ()
+  expect fail msg: JSONParserErr
+eval instant at 60s first_over_time({app="a"} | json | unwrap n [1m]) without (pod)
+  expect fail msg: JSONParserErr
+# The __error__ filter decides on its own, so every grouping reports the same lines. Loki pushes the
+# outer grouping into the extractor for sum() only, so each shape runs twice: sum() and max() must
+# agree on whether the query runs, whatever their values.
+eval instant at 60s sum by (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {pod="p2"} 2
+eval instant at 60s max by (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {pod="p2"} 1
+eval range from 40s to 60s step 20s sum by (pod) (count_over_time({app="a"} | json | __error__!="" [1m])) # overlapping
+  {pod="p2"} 1 2
+eval range from 40s to 60s step 20s max by (pod) (count_over_time({app="a"} | json | __error__!="" [1m])) # overlapping
+  {pod="p2"} 1 1
+eval instant at 60s sum (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {} 2
+eval instant at 60s max (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {} 1
+eval instant at 60s sum without (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", app="a", n="7", unrelated="u2"} 1
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", app="a", n="9", unrelated="u9"} 1
+eval instant at 60s max without (pod) (count_over_time({app="a"} | json | __error__!="" [1m]))
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", app="a", n="7", unrelated="u2"} 1
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", app="a", n="9", unrelated="u9"} 1
+# A __error__ filter after the unwrap.
+eval instant at 60s first_over_time({app="a"} | json | unwrap n | __error__!="" [1m]) by (pod)
+  {__error__="JSONParserErr", __error_details__="Malformed JSON error", pod="p2"} 7
+
+# json() error replaced by the unwrap conversion error.
+clear
+load
+  {app="a", pod="p1"} `{"v":10}` @ 20s [metadata n="10"]
+  {app="a", pod="p1"} `{`        @ 40s [metadata n="abc"] # fails json(), then fails the conversion
+  {app="noise", pod="p2"} `{`    @ 40s [metadata n="abc"]
+
+# A failed unwrap conversion generates a sample value of 0 when errored lines are preserved by using __error__ filter.
+eval instant at 60s first_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]) by (pod)
+  {pod="p1"} 10
+  {__error__="SampleExtractionErr", __error_details__="strconv.ParseFloat: parsing \"abc\": invalid syntax", pod="p1"} 0
+eval instant at 60s min (avg_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]))
+  {} 0
+# Counting the number of series should match.
+eval instant at 60s count by (pod) (sum_over_time({app="a"} | json | __error__=~".*" | unwrap n [1m]))
+  {pod="p1"} 2
 
 # json() with label expressions:
 # - `user.id` reads a nested field.
@@ -182,6 +336,18 @@ eval instant at 60s count_over_time({app="a"} | regexp `(?P<x>.)(?P<x>.)` [1m])
 eval instant at 60s count_over_time({app="a"} | regexp `(` [1m])
   expect fail msg: error parsing regexp
 
+# regexp() clashing labels keep the loser under `<name>_extracted`, following the base-name
+# precedence stream > metadata > parsed (the same for every parser).
+clear
+load
+  {app="a", sl="s", sm="s", tri="s"} "p p p" @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="noise"} "y" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | regexp `(?P<sl>\S+) (?P<md>\S+) (?P<tri>\S+)` [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | regexp `(?P<sl>\S+) (?P<md>\S+) (?P<tri>\S+)` [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+
 # pattern()
 clear
 load
@@ -214,6 +380,18 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | pattern `<method
 eval instant at 60s count_over_time({app="a"} | pattern `no captures here` [1m])
   expect fail msg: at least one capture is required
 
+# pattern() clashing labels keep the loser under `<name>_extracted`, following the base-name
+# precedence stream > metadata > parsed (the same for every parser).
+clear
+load
+  {app="a", sl="s", sm="s", tri="s"} "p p p" @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="noise"} "y" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | pattern `<sl> <md> <tri>` [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | pattern `<sl> <md> <tri>` [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+
 # unpack() promotes the string fields of a json line to labels. It skips a non-string field (num) and
 # the reserved `_entry` key, whose value replaces the log line instead of becoming a label.
 clear
@@ -242,6 +420,19 @@ eval instant at 60s count_over_time({app="a"} | unpack | logfmt [1m])
   {app="a", lvl="stream", lvl_extracted="packed", code="42"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack | logfmt [1m])  # overlapping
   {app="a", lvl="stream", lvl_extracted="packed", code="42"} 2 3
+
+# unpack() clashing labels keep the loser under `<name>_extracted`, following the base-name
+# precedence stream > metadata > parsed (the same for every parser). unpack() only promotes
+# fields when the line carries the reserved `_entry` key, so the fixture needs one.
+clear
+load
+  {app="a", sl="s", sm="s", tri="s"} `{"sl":"p","md":"p","tri":"p","_entry":"x"}` @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | unpack [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
 
 # unpack() fails on a non-json line; a __error__ filter drops it.
 clear

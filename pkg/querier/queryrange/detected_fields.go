@@ -187,7 +187,7 @@ func makeDownstreamRequest(
 	}
 
 	if err := validateMaxEntriesLimits(ctx, req.LineLimit, limits); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		return nil, err
 	}
 
 	if err := validateMatchers(ctx, limits, expr.Matchers()); err != nil {
@@ -397,8 +397,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	parsed := make(map[string][]string, len(origParsed))
 	for lbl, values := range origParsed {
-		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
-			lbl == logqlmodel.PreserveErrorLabel {
+		if logqlmodel.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 
@@ -445,8 +444,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
-		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
-			lbl == logqlmodel.PreserveErrorLabel {
+		if logqlmodel.IsPipelineErrorLabel(lbl) {
 			continue
 		}
 		vals := make([]string, 0, len(values))

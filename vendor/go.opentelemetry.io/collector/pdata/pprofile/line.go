@@ -29,14 +29,14 @@ func (l Line) Equal(val Line) bool {
 
 // switchDictionary updates the Line, switching its indices from one
 // dictionary to another.
-func (l Line) switchDictionary(src, dst ProfilesDictionary) error {
+func (l Line) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	if l.FunctionIndex() > 0 {
 		if src.FunctionTable().Len() <= int(l.FunctionIndex()) {
 			return fmt.Errorf("invalid function index %d", l.FunctionIndex())
 		}
 
 		fn := src.FunctionTable().At(int(l.FunctionIndex()))
-		idx, err := SetFunction(dst.FunctionTable(), fn)
+		idx, err := mi.setFunction(dst.FunctionTable(), fn)
 		if err != nil {
 			return fmt.Errorf("couldn't set function: %w", err)
 		}

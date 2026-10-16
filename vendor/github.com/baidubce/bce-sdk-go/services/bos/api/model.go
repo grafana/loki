@@ -38,8 +38,9 @@ type BucketSummaryType struct {
 
 // ListBucketsResult defines the result structure of ListBuckets api.
 type ListBucketsResult struct {
-	Owner   OwnerType           `json:"owner"`
-	Buckets []BucketSummaryType `json:"buckets"`
+	ResponseCommon `json:"-"`
+	Owner          OwnerType           `json:"owner"`
+	Buckets        []BucketSummaryType `json:"buckets"`
 }
 
 // ListObjectsArgs defines the optional arguments for ListObjects api.
@@ -77,6 +78,7 @@ type PutBucketArgs struct {
 
 // ListObjectsResult defines the result structure of ListObjects api.
 type ListObjectsResult struct {
+	ResponseCommon      `json:"-"`
 	Name                string              `json:"name"`
 	Prefix              string              `json:"prefix"`
 	Delimiter           string              `json:"delimiter"`
@@ -147,6 +149,7 @@ type PutBucketAclArgs struct {
 
 // GetBucketAclResult defines the result structure of getting bucket acl.
 type GetBucketAclResult struct {
+	ResponseCommon    `json:"-"`
 	AccessControlList []GrantType  `json:"accessControlList"`
 	Owner             AclOwnerType `json:"owner"`
 }
@@ -159,9 +162,10 @@ type PutBucketLoggingArgs struct {
 
 // GetBucketLoggingResult defines the result structure for getting bucket logging.
 type GetBucketLoggingResult struct {
-	Status       string `json:"status"`
-	TargetBucket string `json:"targetBucket,omitempty"`
-	TargetPrefix string `json:"targetPrefix,omitempty"`
+	ResponseCommon `json:"-"`
+	Status         string `json:"status"`
+	TargetBucket   string `json:"targetBucket,omitempty"`
+	TargetPrefix   string `json:"targetPrefix,omitempty"`
 }
 
 // LifecycleConditionTimeType defines the structure of time condition
@@ -210,7 +214,8 @@ type PutBucketLifecycleArgs struct {
 
 // GetBucketLifecycleResult defines the lifecycle result structure for getting
 type GetBucketLifecycleResult struct {
-	Rule []LifecycleRuleType `json:"rule"`
+	ResponseCommon `json:"-"`
+	Rule           []LifecycleRuleType `json:"rule"`
 }
 
 type StorageClassType struct {
@@ -226,6 +231,7 @@ type BucketReplicationDescriptor struct {
 
 // BucketReplicationType defines the data structure for Put and Get of bucket replication
 type BucketReplicationType struct {
+	ResponseCommon     `json:"-"`
 	Id                 string                       `json:"id"`
 	Status             string                       `json:"status"`
 	Resource           []string                     `json:"resource"`
@@ -242,11 +248,13 @@ type GetBucketReplicationResult BucketReplicationType
 
 // ListBucketReplicationResult defines output result for replication conf list
 type ListBucketReplicationResult struct {
-	Rules []BucketReplicationType `json:"rules"`
+	ResponseCommon `json:"-"`
+	Rules          []BucketReplicationType `json:"rules"`
 }
 
 // GetBucketReplicationProgressResult defines output result for replication process
 type GetBucketReplicationProgressResult struct {
+	ResponseCommon            `json:"-"`
 	Status                    string  `json:"status"`
 	HistoryReplicationPercent float64 `json:"historyReplicationPercent"`
 	LatestReplicationTime     string  `json:"latestReplicationTime"`
@@ -259,8 +267,9 @@ type BucketEncryptionType struct {
 
 // BucketStaticWebsiteType defines the data structure for Put and Get of bucket static website
 type BucketStaticWebsiteType struct {
-	Index    string `json:"index"`
-	NotFound string `json:"notFound"`
+	ResponseCommon `json:"-"`
+	Index          string `json:"index"`
+	NotFound       string `json:"notFound"`
 }
 
 type PutBucketStaticWebsiteArgs BucketStaticWebsiteType
@@ -281,6 +290,7 @@ type PutBucketCorsArgs struct {
 
 // GetBucketCorsResult defines the data structure of getting bucket CORS result
 type GetBucketCorsResult struct {
+	ResponseCommon    `json:"-"`
 	CorsConfiguration []BucketCORSType `json:"corsConfiguration"`
 }
 
@@ -291,6 +301,7 @@ type CopyrightProtectionType struct {
 
 // ObjectAclType defines the data structure for Put and Get object acl API
 type ObjectAclType struct {
+	ResponseCommon    `json:"-"`
 	AccessControlList []GrantType `json:"accessControlList"`
 }
 
@@ -340,6 +351,7 @@ type OptionsObjectArgs struct {
 }
 
 type OptionsObjectResult struct {
+	ResponseCommon   `json:"-"`
 	AllowCredentials bool
 	AllowHeaders     []string
 	AllowMethods     []string
@@ -405,12 +417,15 @@ type PutObjectResult struct {
 }
 
 type PostObjectResult struct {
-	ETag         string
-	ContentMD5   string
-	ContentCrc32 string
+	ResponseCommon `json:"-"`
+	ETag           string
+	ContentMD5     string
+	ContentCrc32   string
 }
 
 // CopyObjectResult defines the result json structure for the copy object api.
+// It does not embed ResponseCommon because it already carries a RequestId of its own,
+// which the embedded field would silently shadow. See setResponseCommon in response_common.go.
 type CopyObjectResult struct {
 	LastModified string `json:"lastModified"`
 	ETag         string `json:"eTag"`
@@ -418,6 +433,8 @@ type CopyObjectResult struct {
 	Code         string `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
 	RequestId    string `json:"requestId,omitempty"`
+	DebugId      string `json:"-"`
+	StatusCode   int    `json:"-"`
 }
 
 type ObjectMeta struct {
@@ -461,17 +478,20 @@ type GetObjectArgs struct {
 // GetObjectResult defines the result data of the get object api.
 type GetObjectResult struct {
 	ObjectMeta
-	Body io.ReadCloser
+	ResponseCommon `json:"-"`
+	Body           io.ReadCloser
 }
 
 // GetObjectMetaResult defines the result data of the get object meta api.
 type GetObjectMetaResult struct {
 	ObjectMeta
+	ResponseCommon `json:"-"`
 }
 
 // SelectObjectResult defines the result data of the select object api.
 type SelectObjectResult struct {
-	Body io.ReadCloser
+	ResponseCommon `json:"-"`
+	Body           io.ReadCloser
 }
 
 // selectObject request args
@@ -536,11 +556,15 @@ type FetchObjectArgs struct {
 }
 
 // FetchObjectResult defines the result json structure for the fetch object api.
+// Its RequestId comes from the response body, so ResponseCommon is not embedded here
+// either. See setResponseCommon in response_common.go.
 type FetchObjectResult struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	RequestId string `json:"requestId"`
-	JobId     string `json:"jobId"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
+	RequestId  string `json:"requestId"`
+	JobId      string `json:"jobId"`
+	DebugId    string `json:"-"`
+	StatusCode int    `json:"-"`
 }
 
 // AppendObjectArgs defines the optional arguments structure for appending object.
@@ -565,6 +589,7 @@ type AppendObjectArgs struct {
 
 // AppendObjectResult defines the result data structure for appending object.
 type AppendObjectResult struct {
+	ResponseCommon   `json:"-"`
 	ContentMD5       string
 	NextAppendOffset int64
 	ContentCrc32     string
@@ -592,7 +617,8 @@ type DeleteObjectResult struct {
 
 // DeleteMultipleObjectsResult defines the result structure for deleting multiple objects.
 type DeleteMultipleObjectsResult struct {
-	Errors []DeleteObjectResult `json:"errors"`
+	ResponseCommon `json:"-"`
+	Errors         []DeleteObjectResult `json:"errors"`
 }
 
 // InitiateMultipartUploadArgs defines the input arguments to initiate a multipart upload.
@@ -615,9 +641,10 @@ type InitiateMultipartUploadArgs struct {
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.
 type InitiateMultipartUploadResult struct {
-	Bucket   string `json:"bucket"`
-	Key      string `json:"key"`
-	UploadId string `json:"uploadId"`
+	ResponseCommon `json:"-"`
+	Bucket         string `json:"bucket"`
+	Key            string `json:"key"`
+	UploadId       string `json:"uploadId"`
 }
 
 // UploadPartArgs defines the optinoal argumets for uploading part.
@@ -674,6 +701,7 @@ type CompleteMultipartUploadArgs struct {
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
 type CompleteMultipartUploadResult struct {
+	ResponseCommon   `json:"-"`
 	Location         string `json:"location"`
 	Bucket           string `json:"bucket"`
 	Key              string `json:"key"`
@@ -699,6 +727,7 @@ type ListPartType struct {
 
 // ListPartsResult defines the parts info result from ListParts.
 type ListPartsResult struct {
+	ResponseCommon       `json:"-"`
 	Bucket               string         `json:"bucket"`
 	Key                  string         `json:"key"`
 	UploadId             string         `json:"uploadId"`
@@ -730,6 +759,7 @@ type ListMultipartUploadsType struct {
 
 // ListMultipartUploadsResult defines the multipart uploads result structure.
 type ListMultipartUploadsResult struct {
+	ResponseCommon `json:"-"`
 	Bucket         string                     `json:"bucket"`
 	CommonPrefixes []PrefixType               `json:"commonPrefixes"`
 	Delimiter      string                     `json:"delimiter"`
@@ -747,7 +777,8 @@ type ArchiveRestoreArgs struct {
 }
 
 type GetBucketTrashResult struct {
-	TrashDir string `json:"trashDir"`
+	ResponseCommon `json:"-"`
+	TrashDir       string `json:"trashDir"`
 }
 
 type PutBucketTrashReq struct {
@@ -755,7 +786,8 @@ type PutBucketTrashReq struct {
 }
 
 type PutBucketNotificationReq struct {
-	Notifications []PutBucketNotificationSt `json:"notifications"`
+	ResponseCommon `json:"-"`
+	Notifications  []PutBucketNotificationSt `json:"notifications"`
 }
 
 type EncryptionKey struct {
@@ -816,6 +848,7 @@ type HeaderPair struct {
 }
 
 type PutBucketMirrorArgs struct {
+	ResponseCommon               `json:"-"`
 	BucketMirroringConfiguration []MirrorConfigurationRule `json:"bucketMirroringConfiguration"`
 }
 
@@ -829,7 +862,8 @@ type Tag struct {
 }
 
 type GetBucketTagResult struct {
-	Tags []BucketTag `json:"tag"`
+	ResponseCommon `json:"-"`
+	Tags           []BucketTag `json:"tag"`
 }
 
 type BucketTag struct {
@@ -842,6 +876,8 @@ type BosContext struct {
 	Ctx             context.Context // for each request
 	ApiVersion      string          // "v1", "v2"
 	EnableCalcMd5   bool
+	// the fallback metadata sink for the api functions taking no options
+	ResponseCommon *ResponseCommon
 }
 
 func newDefaultBosContext() *BosContext {
@@ -891,7 +927,8 @@ type BosShareResBody struct {
 }
 
 type BucketVersioningArgs struct {
-	Status string `json:"status"`
+	ResponseCommon `json:"-"`
+	Status         string `json:"status"`
 }
 
 type InventoryDestination struct {
@@ -911,19 +948,23 @@ type BucketInventoryRule struct {
 }
 
 type PutBucketInventoryArgs struct {
-	Rule BucketInventoryRule
+	ResponseCommon `json:"-"`
+	Rule           BucketInventoryRule
 }
 
 type ListBucketInventoryResult struct {
-	RuleList []BucketInventoryRule `json:"inventoryRuleList"`
+	ResponseCommon `json:"-"`
+	RuleList       []BucketInventoryRule `json:"inventoryRuleList"`
 }
 
 type BucketQuotaArgs struct {
+	ResponseCommon       `json:"-"`
 	MaxObjectCount       int64 `json:"maxObjectCount"`
 	MaxCapacityMegaBytes int64 `json:"maxCapacityMegaBytes"`
 }
 
 type RequestPaymentArgs struct {
+	ResponseCommon `json:"-"`
 	RequestPayment string `json:"requestPayment"`
 }
 
@@ -936,6 +977,7 @@ type ExtendBucketObjectLockArgs struct {
 }
 
 type BucketObjectLockResult struct {
+	ResponseCommon `json:"-"`
 	LockStatus     string `json:"lockStatus"`
 	CreateDate     int64  `json:"createDate"`
 	ExpirationDate int64  `json:"expirationDate"`
@@ -943,6 +985,7 @@ type BucketObjectLockResult struct {
 }
 
 type UserQuotaArgs struct {
+	ResponseCommon       `json:"-"`
 	MaxBucketCount       int64 `json:"maxBucketCount"`
 	MaxCapacityMegaBytes int64 `json:"maxCapacityMegaBytes"`
 }

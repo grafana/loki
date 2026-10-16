@@ -15,6 +15,7 @@ type KindSet = decoder.KindSet
 // Decoder provides stateful methods for decoding MMDB data:
 //
 //	func (*Decoder) Cursor() Cursor
+//	func (*Decoder) CursorAt(uint) Cursor
 //	func (*Decoder) Advance(Cursor) error
 //	func (*Decoder) ReadBool() (bool, error)
 //	func (*Decoder) ReadString() (string, error)
@@ -32,20 +33,27 @@ type KindSet = decoder.KindSet
 //	func (*Decoder) PeekKind() (Kind, error)
 //	func (*Decoder) Offset() uint
 //
-// Cursor returns a cursor at the decoder's current value. Advance accepts only
-// a proven successor of that value, such as one returned by a successful cursor
-// scalar read or completed container traversal. ReadBytes and keys yielded by
-// ReadMap are read-only slices that alias the decoder input; copy their contents
-// before retaining or modifying them.
+// Cursor returns a cursor at the decoder's current value. CursorAt returns a
+// cursor at an offset in the same input buffer without changing that position.
+// The cursors share the decoder's cache and validate their offsets when read.
+// Independent cursors can be read concurrently while the buffer remains valid
+// and unchanged. Advance checks decoder identity and the successor's recorded
+// origin. Successors from MapReader.End rely on correct caller-counted traversal.
+// Cursor.Map tracks the outer traversal but still relies on correct successors
+// from nested MapReader traversal.
+//
+// ReadBytes and keys yielded by ReadMap are read-only slices that alias the
+// decoder input; copy their contents before retaining or modifying them.
 type Decoder = decoder.Decoder
 
-// Cursor identifies a value in MMDB data and allows a decoder to return a
-// proven successor without rescanning that value. Its zero value is invalid.
-// Successful scalar reads, Skip, Unmarshal, and UnmarshalCursor return a proven
-// successor for the complete input value; container iterators require those
-// successors to advance safely. ReadMapKey instead returns a cursor positioned
-// at the corresponding map value. Obtain an initial cursor from
-// NewDecoder(...).Cursor().
+// Cursor identifies a value in MMDB data. Its zero value is invalid.
+// Successful scalar reads, Skip, and Unmarshal return the successor of the
+// complete input value. UnmarshalCursor checks its callback's returned decoder
+// identity and recorded origin. Container iterators check these properties for
+// each value successor without rescanning the value. ReadMapKey instead returns
+// a cursor positioned at the corresponding map value. Obtain an initial cursor from
+// Decoder.Cursor or Decoder.CursorAt. MapReader.End records the map origin but
+// relies on the caller to supply its correct end cursor.
 //
 // Cursors obtained during maxminddb.Reader decoding remain backed by that
 // Reader. This includes cursors passed to CursorUnmarshaler or returned by
@@ -54,12 +62,21 @@ type Decoder = decoder.Decoder
 // None may be used after or concurrently with the Reader's Close method.
 // Cursors obtained from NewDecoder are backed by its caller-provided buffer.
 //
+// Cursor traversal is caller-managed. This includes cursors supplied to custom
+// unmarshalers during Reader decoding and cursors obtained from NewDecoder.
+// Code that drives a cursor over an untrusted database is responsible for
+// sharing one aggregate per-record work budget across nested traversal. It
+// should bound recursion, iteration, repeated pointer targets, allocation, and
+// produced string or byte payloads.
+//
 // Cursor provides these operations:
 //
+//	func (Cursor) Offset() (uint, error)
 //	func (Cursor) Kind() (Kind, error)
 //	func (Cursor) Skip() (Cursor, error)
 //	func (Cursor) ReadBool() (bool, Cursor, error)
 //	func (Cursor) ReadString() (string, Cursor, error)
+//	func (Cursor) ReadStringMaxSize(uint64) (string, Cursor, error)
 //	func (Cursor) ReadBytes() ([]byte, Cursor, error)
 //	func (Cursor) ReadFloat32() (float32, Cursor, error)
 //	func (Cursor) ReadFloat64() (float64, Cursor, error)
@@ -71,9 +88,17 @@ type Decoder = decoder.Decoder
 //	func (Cursor) Map() (MapCursor, error)
 //	func (Cursor) MapReader() (MapReader, error)
 //	func (Cursor) Slice() (SliceCursor, error)
+//	func (Cursor) SliceMaxSize(uint64) (SliceCursor, error)
+//	func (Cursor) CheckMaxSize(expected KindSet, maximum uint64) error
 //	func (Cursor) ReadMapKey() ([]byte, Cursor, error)
 //	func (Cursor) Unmarshal(Unmarshaler) (Cursor, error)
 //	func (Cursor) UnmarshalCursor(CursorUnmarshaler) (Cursor, error)
+//
+// Offset returns the current value's control-byte offset without consuming it.
+// It resolves one pointer so callers can cache values by offset within one
+// database. It returns an error for a zero cursor, malformed control data, or a
+// pointer that cannot be resolved, including a pointer-to-pointer chain.
+// Successful resolution does not validate the value's payload.
 //
 // Kind resolves a valid pointer and reports its target kind without consuming
 // the cursor.
@@ -85,9 +110,15 @@ type Decoder = decoder.Decoder
 //
 // ReadBytes and ReadMapKey return slices that alias the decoder's input buffer.
 // They must not be modified and should be copied before being retained. Other
-// scalar results do not alias the input. Unmarshal and UnmarshalCursor reject
-// nil implementations. UnmarshalCursor validates its callback's returned
-// successor; legacy Unmarshal derives a successor by rescanning the value.
+// scalar results do not alias the input. ReadStringMaxSize and SliceMaxSize
+// combine a size check with their corresponding operation. CheckMaxSize
+// supports maps, slices, strings, and bytes; expected must include every kind
+// accepted by the immediately following decode. Kinds not in expected are left
+// unchecked so the subsequent typed read can report its usual mismatch. For
+// example, a []byte decoder that accepts both Bytes and Slice must include both.
+// Unmarshal and UnmarshalCursor reject nil implementations.
+// UnmarshalCursor validates its callback's returned successor; legacy
+// Unmarshal derives a successor by rescanning the value.
 type Cursor = decoder.Cursor
 
 // MapReader provides counted map traversal. Its zero value is invalid.
@@ -107,11 +138,12 @@ type Cursor = decoder.Cursor
 // End; for an empty map, pass First directly. The caller is responsible for
 // supplying the cursor after exactly Len entries. End checks decoder identity
 // and that nonempty traversal produced a read successor, but it cannot verify
-// map membership or the iteration count.
+// map membership or the iteration count. Cursor.Map tracks the outer traversal
+// but still relies on correct successors from nested MapReader traversal.
 type MapReader = decoder.MapReader
 
-// MapCursor incrementally reads a map using proven value successors. Its zero
-// value is invalid; obtain one by calling Cursor.Map.
+// MapCursor incrementally reads a map and tracks its remaining entries. Its
+// zero value is invalid; obtain one by calling Cursor.Map.
 //
 //	func (*MapCursor) Size() uint
 //	func (*MapCursor) Next(Cursor) ([]byte, Cursor, bool)
@@ -122,11 +154,13 @@ type MapReader = decoder.MapReader
 // to each later call. Each returned key aliases the decoder input and follows
 // the same ownership rules as Cursor.ReadMapKey. After Next returns false, call
 // End to report iteration errors and obtain the map successor. Size returns the
-// entry count validated when the map was opened.
+// entry count validated when the map was opened. Next checks each successor's
+// decoder identity and recorded origin. It cannot verify nested caller-counted
+// MapReader traversal, and End relies on the supplied value successors.
 type MapCursor = decoder.MapCursor
 
-// SliceCursor incrementally reads a slice using proven value successors. Its
-// zero value is invalid; obtain one by calling Cursor.Slice.
+// SliceCursor incrementally reads a slice and tracks its remaining elements.
+// Its zero value is invalid; obtain one by calling Cursor.Slice.
 //
 //	func (*SliceCursor) Size() (uint, error)
 //	func (*SliceCursor) SizeForCapacity(int) (size uint, ok bool)
@@ -139,7 +173,9 @@ type MapCursor = decoder.MapCursor
 // allocation or retrieve the iterator error. Pass a zero Cursor to the first
 // Next call and the decoded element's successor to each later call. After Next
 // returns false, call End to report iteration errors and obtain the slice
-// successor.
+// successor. Next checks each successor's decoder identity and recorded origin.
+// It cannot verify nested caller-counted MapReader traversal, and End relies on
+// the supplied value successors.
 type SliceCursor = decoder.SliceCursor
 
 // UnexpectedKindError is returned when a decoder operation encounters an MMDB
@@ -157,9 +193,32 @@ type DecoderOption = decoder.DecoderOption
 
 // NewDecoder creates a new Decoder with the given buffer, offset, and options.
 // Error messages include contextual offset information.
+//
+// By default, the decoder does not cache strings. Repeated string reads may
+// allocate new strings. Use WithStringCache for a decoder that repeatedly reads
+// the same strings. Cursors supplied by maxminddb.Reader share the Reader's
+// caching policy.
+//
+// This low-level decoder is caller-managed. Unlike reflection decoding into a
+// dynamically shaped result, it does not apply an expansion budget. Code that
+// drives it over untrusted data is responsible for bounding recursion,
+// iteration, and allocation.
 func NewDecoder(buffer []byte, offset uint, options ...DecoderOption) *Decoder {
-	d := decoder.NewDataDecoder(buffer)
+	d := decoder.NewDataDecoderWithoutStringCache(buffer)
 	return decoder.NewDecoder(d, offset, options...)
+}
+
+// WithStringCache enables a string cache shared by the decoder and its cursors,
+// including those returned by CursorAt. Separate NewDecoder calls do not share
+// caches. The input buffer must remain unchanged while the decoder or any of
+// its cursors are in use because cache keys identify offsets in that buffer.
+//
+// Strings from 2 through 100 bytes are eligible. On 64-bit systems, the table
+// allocates 72 KiB on the first eligible string read. Cached strings retain
+// additional memory. This can reduce allocations for repeated reads, but
+// increases setup cost for short-lived decoders.
+func WithStringCache() DecoderOption {
+	return decoder.WithStringCache()
 }
 
 // NewKindSet returns a set containing kinds.

@@ -72,6 +72,8 @@ type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
 	duplicateLogBytesTotal *prometheus.CounterVec
 	streamsOwnershipCheck  prometheus.Histogram
+
+	instance *instanceMetrics
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -339,5 +341,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "duplicate_log_bytes_total",
 			Help:      "The total number of bytes that were discarded for duplicate log lines.",
 		}, []string{"tenant"}),
+
+		instance: newInstanceMetrics(r),
 	}
 }

@@ -1,6 +1,6 @@
-## How to Contribute
+# How to Contribute
 
-👍🎉 First of all, thank you for your interest in Axiom-node! We'd love to accept your patches and contributions! 🎉👍
+👍🎉 First of all, thank you for your interest in hyperloglog! We'd love to accept your patches and contributions! 🎉👍
 
 This project accepts contributions. In order to contribute, you should pay attention to a few guidelines:
 
@@ -12,13 +12,17 @@ When reporting a bug, please try and provide as much context as possible such as
 
 ## Setup
 
-[Fork](https://github.com/axiomhq/hyperloglog.git), then clone this repository:
+[Fork](https://github.com/axiomhq/hyperloglog/fork), then clone this repository:
 
 ```
-git clone https://github.com/axiomhq/hyperloglog.git
+git clone https://github.com/<your-username>/hyperloglog.git
 cd hyperloglog
-cd demo 
-go run hyperloglog_demo.go 
+
+# Run formatting, linting, tests, and a build
+make ci
+
+# Run examples (see output demonstrating library usage)
+go test -run Example -v
 ```
 
 ## Submitting Modifications
@@ -27,12 +31,12 @@ go run hyperloglog_demo.go
 
 2. Follow the normal process of [forking](https://docs.github.com/en/free-pro-team@latest/github/getting-started-with-github/fork-a-repo) the project, and setup a new branch to work in. It's important that each group of changes be done in separate branches in order to ensure that a pull request only includes the commits related to that bug or feature.
 
-3. Go makes it very simple to ensure properly formatted code, so always run `go fmt` on your code before committing it.
+3. Run `make ci` before committing. Use `make fmt` to apply Go formatting.
 
-4. Do your best to have [well-formated commit messages](https://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html)
+4. Do your best to have [well-formatted commit messages](https://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html)
 for each change. This provides consistency throughout the project and ensures that commit messages are able to be formatted properly by various git tools.
 
-5. Finally, push the commits to your fork and submit a [pull request](https://docs.github.com/en/free-pro-team@latest/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request)
+5. Finally, push the commits to your fork and submit a [pull request](https://docs.github.com/en/free-pro-team@latest/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request).
 
 ### Once you've filed the PR:
 

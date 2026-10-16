@@ -20,11 +20,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/loser"
@@ -295,12 +297,12 @@ func TestMerge_ClosesAllSequencesOnEarlyStop(t *testing.T) {
 	ctx := context.Background()
 
 	// Create tracking sequences
-	seq1 := newTrackingSequence(newTestSequence(
+	seq1 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 		intRecord{Key: 5, Val: "e"},
 	))
-	seq2 := newTrackingSequence(newTestSequence(
+	seq2 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 		intRecord{Key: 6, Val: "f"},
@@ -335,10 +337,10 @@ func TestMerge_ClosesAllSequencesOnReadError(t *testing.T) {
 
 	// Create a sequence that returns an error
 	errorSeq := &errorSequence[intRecord]{}
-	trackingErrorSeq := newTrackingSequence(errorSeq)
+	trackingErrorSeq := newTrackingSequence[intRecord](errorSeq)
 
 	// Create a normal tracking sequence
-	trackingNormalSeq := newTrackingSequence(newTestSequence(
+	trackingNormalSeq := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 	))
 
@@ -367,11 +369,11 @@ func TestMerge_ClosesAllSequencesOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create tracking sequences
-	seq1 := newTrackingSequence(newTestSequence(
+	seq1 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 	))
-	seq2 := newTrackingSequence(newTestSequence(
+	seq2 := newTrackingSequence[intRecord](newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 	))
@@ -464,8 +466,8 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Verify an artifact was produced and contains both section kinds.
-	require.Len(t, artifacts, 1, "merge must produce exactly one artifact")
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	exists, err := bucket.Exists(ctx, outputPath)
 	require.NoError(t, err)
@@ -538,8 +540,8 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 	require.NoError(t, err, "merge should succeed despite legacy sections")
 
 	// Verify the output exists.
-	require.Len(t, artifacts, 1, "merge must produce exactly one artifact")
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	exists, err := bucket.Exists(ctx, outputPath)
 	require.NoError(t, err)
@@ -573,50 +575,38 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 
 // buildSourceWithLegacySections builds a dataobj containing streams, pointers,
 // stats, and postings sections (all four section types), then uploads it.
-// This simulates a first-generation index object from indexobj.Builder.
+// This simulates an index object from before the index builder stopped
+// writing pointers sections.
 func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	ctx := context.Background()
-
-	// Use the indexobj.Builder from the observation API to create a full object.
-	// This produces objects with the full set of section types: streams, pointers,
-	// pointers (index pointers), stats, postings.
-	cfg := logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		MaxPageRows:             10000,
-		TargetObjectSize:        1 << 22, // 4 MiB
-		TargetSectionSize:       1 << 21, // 2 MiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	}
-
-	builder, err := indexobj.NewBuilder(cfg, nil)
-	require.NoError(t, err, "failed to create indexobj.Builder")
-
-	// Append a stream to get a streams section.
 	ts := time.Unix(0, 1_000_000)
-	_, err = builder.AppendStream(tenant, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "service", Value: "api"}),
-		MinTimestamp:     ts,
-		MaxTimestamp:     ts.Add(time.Second),
-		Rows:             10,
+
+	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), 2048, 10000, streams.DefaultShardLayout())
+	streamsBuilder.SetTenant(tenant)
+	streamID := streamsBuilder.Record(labels.New(labels.Label{Name: "service", Value: "api"}), ts, 1000)
+
+	pointersBuilder := pointers.NewBuilder(nil, 2048, 10000)
+	pointersBuilder.SetTenant(tenant)
+	pointersBuilder.ObserveStream("log-A", 0, 1, streamID, ts, 100)
+
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 10000))
+	statsBuilder.SetTenant(tenant)
+	statsBuilder.Append(stats.Stat{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		ShardBucket:      16,
+		SortSchema:       "label:service",
+		Labels:           map[string]string{"service": "api"},
+		MinTimestamp:     ts.UnixNano(),
+		MaxTimestamp:     ts.Add(time.Second).UnixNano(),
+		RowCount:         10,
 		UncompressedSize: 1000,
 	})
-	require.NoError(t, err, "failed to append stream")
 
-	// Observe a log line to get a pointers section.
-	err = builder.ObserveLogLine(tenant, "log-A", 0, 1, 1, ts, 100)
-	require.NoError(t, err, "failed to observe log line")
-
-	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
-		map[string]string{"service": "api"},
-		ts, ts.Add(time.Second), 10, 1000)
-	require.NoError(t, err, "failed to append stat")
-
-	// Observe a label posting to get a postings section.
-	builder.ObserveLabelPosting(tenant, postings.LabelObservation{
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant(tenant)
+	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
 		ColumnName:       "service",
@@ -624,14 +614,19 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		StreamID:         1,
 		Timestamp:        ts,
 		UncompressedSize: 100,
+		ShardBuckets:     16,
 	})
 
-	// Flush the builder to create the object.
-	obj, closer, err := builder.Flush()
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(streamsBuilder))
+	require.NoError(t, objBuilder.Append(pointersBuilder))
+	require.NoError(t, objBuilder.Append(statsBuilder))
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err, "failed to flush builder")
 	defer closer.Close()
 
-	// Upload to bucket.
 	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
 }
 
@@ -716,18 +711,25 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 
+	testBuilderCfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 21, // 2 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}
+
 	return &Context{
-		bucket:       bucket,
-		scratchStore: scratch.NewMemory(),
-		indexobjCfg: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			MaxPageRows:             10000,
-			TargetObjectSize:        1 << 22, // 4 MiB
-			TargetSectionSize:       1 << 21, // 2 MiB
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
-		logger: log.NewNopLogger(),
+		bucket:         bucket,
+		scratchStore:   scratch.NewMemory(),
+		indexobjCfg:    testBuilderCfg,
+		logsobjCfg:     testBuilderCfg,
+		uploaderCfg:    uploader.Config{SHAPrefixSize: 2},
+		builderMetrics: logsobj.NewBuilderMetrics(),
+
+		logMergeObserver: nopLogMergeObserver{},
+		logger:           log.NewNopLogger(),
 	}
 }
 
@@ -879,8 +881,8 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readAllPostingsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1001,8 +1003,8 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Read and verify output.
 	rows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
@@ -1098,8 +1100,8 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1177,8 +1179,8 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Verify output contains both kinds.
 	exists, err := bucket.Exists(ctx, outputPath)
@@ -1261,8 +1263,8 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
@@ -1297,10 +1299,8 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 
 	execCtx := newTestExecutorContext(t, bucket)
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
-	require.NoError(t, err)
-
-	// Empty input produces no artifact.
-	require.Len(t, artifacts, 0, "empty input should produce no artifact")
+	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty)
+	require.Nil(t, artifacts)
 }
 
 // TestStatsRowReader_DottedLabelNames tests that label names containing dots
@@ -1527,8 +1527,8 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 	artifacts, err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	require.Len(t, artifacts, 1)
-	outputPath := artifacts[0].Path
+	require.NoError(t, artifacts.Validate())
+	outputPath := artifacts.Path
 
 	// Only the target tenant's rows must appear: 2 sources × 3 rows = 6.
 	statsRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
@@ -1596,12 +1596,12 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.NotNil(t, resultRec, "result record must not be nil")
 
 	// Read the artifacts from the record.
-	artifacts, err := v2.ReadResultRecord(resultRec)
-	require.NoError(t, err)
-	require.Len(t, artifacts, 1, "result record must contain exactly one artifact")
+	var artifacts v2.ResultArtifact
+	require.NoError(t, artifacts.FromRecordBatch(resultRec))
+	require.NoError(t, artifacts.Validate())
 
 	// Verify the artifact path matches the content-hash naming scheme.
-	path := artifacts[0].Path
+	path := artifacts.Path
 	require.True(t, strings.HasPrefix(path, "indexes/tenants/"+tenant+"/"),
 		"artifact path must start with indexes/tenants/<tenant>/, got %q", path)
 
@@ -1623,4 +1623,40 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	}
 	require.True(t, sawPostings, "output must contain a postings section")
 	require.True(t, sawStats, "output must contain a stats section")
+}
+
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+type recordingIndexMergeObserver struct {
+	tenants                            []string
+	compressedSizes, uncompressedSizes []int64
+}
+
+func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.tenants = append(o.tenants, tenant)
+	o.compressedSizes = append(o.compressedSizes, compressedBytes)
+	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
+	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+		ctx := context.Background()
+		bucket := objstore.NewInMemBucket()
+		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		artifact, err := execCtx.doIndexMerge(ctx, &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1",
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		attrs, err := bucket.Attributes(ctx, artifact.Path)
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-1"}, observer.tenants)
+		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
+		require.Len(t, observer.uncompressedSizes, 1)
+		require.Positive(t, observer.uncompressedSizes[0])
+	})
 }

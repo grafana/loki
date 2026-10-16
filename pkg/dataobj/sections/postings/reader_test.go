@@ -72,6 +72,8 @@ func TestReader_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(100), row["uncompressed_size.int64"])
 	require.Equal(t, ts.UTC(), row["min_timestamp.timestamp"])
 	require.Equal(t, ts.UTC(), row["max_timestamp.timestamp"])
+	require.Equal(t, int64(0), row["min_shard_bucket.int64"])
+	require.Equal(t, int64(0), row["max_shard_bucket.int64"])
 }
 
 // readTable drains a Reader into an arrow.Table, mirroring the helper in

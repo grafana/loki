@@ -26,7 +26,7 @@ func buildTestSection(t *testing.T) ([]*postings.Section, func()) {
 		ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod",
 		StreamID: 1, Timestamp: ts, UncompressedSize: 100,
 	})
-	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000)
+	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000, 0)
 	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath: "/obj", SectionIndex: 0, ColumnName: "trace_id",
 		StreamID: 2, Timestamp: ts, UncompressedSize: 200,

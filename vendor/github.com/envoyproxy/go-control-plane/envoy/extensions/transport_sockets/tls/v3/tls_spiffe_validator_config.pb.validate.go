@@ -275,6 +275,8 @@ func (m *SPIFFECertValidatorConfig_TrustDomain) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for WorkloadTrustDomain
+
 	if len(errors) > 0 {
 		return SPIFFECertValidatorConfig_TrustDomainMultiError(errors)
 	}

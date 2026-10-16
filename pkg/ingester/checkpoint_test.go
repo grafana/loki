@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -39,6 +40,7 @@ func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time,
 		Limit:    100,
 		Start:    start,
 		End:      end,
+		Plan:     testutil.MustPlan(`{foo="bar"}`),
 	}, &result)
 
 	ln := int(end.Sub(start) / time.Second)

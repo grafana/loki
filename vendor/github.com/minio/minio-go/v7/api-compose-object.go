@@ -386,6 +386,7 @@ func (c *Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, des
 		return p, err
 	}
 	p.PartNumber, p.ETag = partID, cpObjRes.ETag
+	cpObjRes.setChecksums(&p)
 	return p, nil
 }
 
@@ -424,6 +425,7 @@ func (c *Client) uploadPartCopy(ctx context.Context, bucket, object, uploadID st
 		return p, err
 	}
 	p.PartNumber, p.ETag = partNumber, cpObjRes.ETag
+	cpObjRes.setChecksums(&p)
 	return p, nil
 }
 
@@ -529,6 +531,19 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 		userTags = dst.UserTags
 	} else {
 		userTags = srcObjectInfos[0].UserTags
+	}
+
+	// Set the requested checksum algorithm on the multipart upload.
+	if dst.ChecksumType.IsSet() {
+		meta := make(map[string]string, len(userMeta)+2)
+		for k, v := range userMeta {
+			meta[k] = v
+		}
+		meta[amzChecksumAlgo] = dst.ChecksumType.String()
+		if dst.ChecksumType.FullObjectRequested() {
+			meta[amzChecksumMode] = ChecksumFullObjectMode.String()
+		}
+		userMeta = meta
 	}
 
 	uploadID, err := c.newUploadID(ctx, dst.Bucket, dst.Object, PutObjectOptions{

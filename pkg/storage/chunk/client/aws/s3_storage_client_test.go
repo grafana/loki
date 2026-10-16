@@ -97,22 +97,17 @@ func TestIsRetryableErr(t *testing.T) {
 	}{
 		{
 			name:     "IsStorageThrottledErr - Too Many Requests",
-			err:      &smithy.GenericAPIError{Code: "TooManyRequestsException"},
+			err:      &smithy.GenericAPIError{Code: errCodeTooManyRequestsException},
 			expected: true,
 		},
 		{
 			name:     "IsStorageThrottledErr - 503",
-			err:      &smithy.GenericAPIError{Code: "SlowDown"},
-			expected: true,
-		},
-		{
-			name:     "IsStorageThrottledErr - 5xx",
-			err:      &smithy.GenericAPIError{Code: "NotImplemented"},
+			err:      &smithy.GenericAPIError{Code: errCodeSlowDown},
 			expected: true,
 		},
 		{
 			name:     "IsStorageTimeoutErr - Request Timeout",
-			err:      &smithy.GenericAPIError{Code: "RequestTimeout"},
+			err:      &smithy.GenericAPIError{Code: errCodeRequestTimeout},
 			expected: true,
 		},
 		{

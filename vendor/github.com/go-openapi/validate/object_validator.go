@@ -375,7 +375,7 @@ func (o *objectValidator) validatePropertiesSchema(val map[string]any, res *Resu
 		}
 
 		// located on the object that lacks the property: the property itself
-		// has no node to point at, and the object is what has to be amended
+		// has no node to point at, and the object has to be amended
 		res.addErrorsAt(o.Path, errors.Required(o.Path.child(k).dotted(), o.In, v))
 	}
 }

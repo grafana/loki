@@ -73,8 +73,9 @@ func newBloomAggregator() *bloomAggregator {
 
 // PrepareColumn initializes the bloom filter for a specific column. Must be
 // called before any Observe calls for the given (objectPath, sectionIndex,
-// columnName) combination.
-func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint) {
+// columnName) combination. shardBuckets is stored on the entry immediately so
+// a prepared-but-unobserved column still records the object's shard factor.
+func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint, shardBuckets int64) {
 	key := bloomPostingKey{
 		objectPath:   objectPath,
 		sectionIndex: sectionIndex,
@@ -87,9 +88,13 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 
 	entry := &bloomPostingEntry{
 		ObjectPath:   objectPath,
+		ShardBuckets: shardBuckets,
 		SectionIndex: sectionIndex,
 		ColumnName:   columnName,
-		bloomFilter:  bloom.NewWithEstimates(estimatedCardinality, 1.0/128.0),
+		// A column whose values are all empty has an estimated cardinality of 0. The filter must be
+		// sized for at least one value. For 0 values, bloom.EstimateParameters computes the number
+		// of hash functions as 0/0, and on amd64 the NaN converts to 2^63, so every Add never ends.
+		bloomFilter:  bloom.NewWithEstimates(max(estimatedCardinality, 1), 1.0/128.0),
 		bitmap:       memory.NewBitmap(nil, 0),
 		MinTimestamp: math.MaxInt64,
 		MaxTimestamp: math.MinInt64,

@@ -194,6 +194,12 @@ func (c cmdable) GetDel(ctx context.Context, key string) *StringCmd {
 // (including redis.Nil when the key does not exist) via Err(). If buf is too
 // small to hold the value, Err() returns a "buffer too small" error.
 //
+// Nothing is ever written past len(buf). When len(buf) >= value length + 2,
+// the read takes a fast path that pulls the payload and the protocol's
+// trailing CRLF in a single socket read, using the two bytes after the
+// payload as scratch — size buffers with 2 spare bytes to opt in (see
+// example/zerocopy-buffer).
+//
 // This command opts out of automatic retries because partial data from a
 // failed attempt would already be sitting in the caller's buffer.
 func (c cmdable) GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd {
@@ -458,6 +464,7 @@ func (c cmdable) MSetEX(ctx context.Context, args MSetEXArgs, values ...interfac
 	}
 
 	cmd := NewIntCmd(ctx, cmdArgs...)
+	cmd.SetFirstKeyPos(2)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -509,7 +516,8 @@ type SetArgs struct {
 	MatchDigest uint64
 
 	// Zero `TTL` or `Expiration` means that the key has no expiration time.
-	TTL      time.Duration
+	TTL time.Duration
+	// ExpireAt is sent as EXAT, or as PXAT when it has millisecond precision.
 	ExpireAt time.Time
 
 	// When Get is true, the command returns the old value stored at key, or nil when key did not exist.
@@ -531,7 +539,11 @@ func (c cmdable) SetArgs(ctx context.Context, key string, value interface{}, a S
 	}
 
 	if !a.ExpireAt.IsZero() {
-		args = append(args, "exat", a.ExpireAt.Unix())
+		if a.ExpireAt.Nanosecond() >= int(time.Millisecond) {
+			args = append(args, "pxat", a.ExpireAt.UnixMilli())
+		} else {
+			args = append(args, "exat", a.ExpireAt.Unix())
+		}
 	}
 	if a.TTL > 0 {
 		if usePrecise(a.TTL) {

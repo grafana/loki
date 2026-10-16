@@ -18,6 +18,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -26,18 +27,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
-	QueryTypeMetric  = "metric"
-	QueryTypeFilter  = "filter"
-	QueryTypeLimited = "limited"
-	QueryTypeLabels  = "labels"
-	QueryTypeSeries  = "series"
-	QueryTypeStats   = "stats"
-	QueryTypeShards  = "shards"
-	QueryTypeVolume  = "volume"
+	QueryTypeMetric       = "metric"
+	QueryTypeFilter       = "filter"
+	QueryTypeLimited      = "limited"
+	QueryTypeLabels       = "labels"
+	QueryTypeSeries       = "series"
+	QueryTypeStats        = "stats"
+	QueryTypeLoglineIndex = "logline_index"
+	QueryTypeShards       = "shards"
+	QueryTypeVolume       = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -100,6 +103,16 @@ var (
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
 	}, []string{"status_code", "type", "range"})
+	chunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_chunk_fetch_failures_total",
+		Help:      "Total count of chunks that failed to be fetched while executing LogQL queries.",
+	}, []string{"status_code", "type", "range"})
+	queriesWithChunkFetchFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_queries_with_chunk_fetch_failures_total",
+		Help:      "Total count of LogQL queries that had at least one chunk fetch failure.",
+	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_ingester_sent_lines_total",
@@ -119,6 +132,7 @@ func RecordRangeAndInstantQueryMetrics(
 	status string,
 	stats logql_stats.Result,
 	result promql_parser.Value,
+	err error,
 ) {
 	var (
 		logger        = fixLogger(ctx, log)
@@ -129,9 +143,9 @@ func RecordRangeAndInstantQueryMetrics(
 		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
 
-	queryType, err := QueryType(p.GetExpression())
-	if err != nil {
-		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+	queryType, queryTypeErr := QueryType(p.GetExpression())
+	if queryTypeErr != nil {
+		level.Warn(logger).Log("msg", "error parsing query type", "err", queryTypeErr)
 	}
 
 	// datasample queries are executed with limited roundtripper
@@ -195,10 +209,13 @@ func RecordRangeAndInstantQueryMetrics(
 		"post_filter_lines", stats.Summary.TotalPostFilterLines,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
+		"dataobj_sections_resolution_max_time", stats.DataobjSectionsResolutionMaxTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"stream_first_queries", stats.Summary.StreamFirstQueries,
+		"timestamp_first_queries", stats.Summary.TimestampFirstQueries,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
@@ -252,11 +269,14 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
+		"chunk_fetch_failures", stats.TotalChunkFetchFailures(),
 	}...)
 
 	if stats.Summary.EstimatedQueryBytes > 0 {
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
+
+	logValues = appendLoglineStats(logValues, stats)
 
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
@@ -303,6 +323,11 @@ func RecordRangeAndInstantQueryMetrics(
 		}
 	}
 
+	if err != nil {
+		category, reason := server.ClassifyFailure(err)
+		logValues = append(logValues, "err", err, "failure_category", category, "failure_reason", reason)
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -331,6 +356,10 @@ func RecordRangeAndInstantQueryMetrics(
 	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
+	if failures := stats.TotalChunkFetchFailures(); failures > 0 {
+		chunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Add(float64(failures))
+		queriesWithChunkFetchFailuresTotal.WithLabelValues(status, queryType, rt).Inc()
+	}
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
@@ -488,6 +517,89 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
+	level.Info(logger).Log(logValues...)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
+}
+
+// appendLoglineStats adds the logline index fields for queries that went
+// through the logline query-frontend middleware.
+func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []interface{} {
+	l := stats.Logline
+	if l == nil {
+		return logValues
+	}
+	logValues = append(logValues, "logline_outcome", l.Outcome)
+	// A query skipped before the hint lookup has no other logline stats.
+	if l.HintStatus == "" {
+		return logValues
+	}
+
+	logValues = append(logValues,
+		"logline_hint_status", l.HintStatus,
+		"logline_hint_lookup_time", time.Duration(l.HintLookupTime),
+		"logline_hint_ranges", l.HintRanges,
+		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
+		"logline_skipped_requests", l.SkippedRequests,
+		"logline_narrowed_requests", l.NarrowedRequests,
+		"logline_object_requests", l.ObjectRequests,
+		"logline_io_bytes", util.HumanizeBytes(uint64(l.IOBytes)),
+		"logline_io_wait", time.Duration(l.IOWait),
+		"shard_planned_chunks", l.PlannedChunks,
+		"logline_scanned_chunks", l.ScannedChunks,
+	)
+	// Missing when no split went through shard planning, for example when the
+	// results cache answered the whole query.
+	if l.PlannedChunks > 0 {
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", l.ChunkFilterRatio))
+	}
+	return logValues
+}
+
+func RecordLoglineIndexQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	query string,
+	status string,
+	stats logql_stats.Result,
+	hintStats *logproto.HintQueryStats,
+) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeLoglineIndex
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	logValues := make([]interface{}, 0, 15)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+	if hintStats != nil {
+		logValues = append(logValues,
+			"logline_object_requests", hintStats.ObjectStorageRequests,
+			"logline_io_bytes", util.HumanizeBytes(uint64(hintStats.TotalIOBytes)),
+			"logline_io_wait", hintStats.TotalIOWait,
+		)
+	}
 	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

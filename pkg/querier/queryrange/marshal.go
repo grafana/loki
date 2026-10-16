@@ -145,6 +145,13 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, err
+	case logql.CountDistinctSketchMatrix:
+		r, err := data.ToProto()
+		return &CountDistinctSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -222,6 +229,17 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Warnings:   r.Warnings,
 			Statistics: r.Statistics,
 		}, nil
+	case *CountDistinctSketchResponse:
+		matrix, err := logql.CountDistinctSketchMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode count distinct matrix: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
@@ -239,6 +257,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.Labels, nil
 	case *QueryResponse_Stats:
 		return concrete.Stats, nil
+	case *QueryResponse_Hints:
+		return concrete.Hints, nil
 	case *QueryResponse_ShardsResponse:
 		return concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
@@ -259,6 +279,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedFields, nil
 	case *QueryResponse_CountMinSketches:
 		return concrete.CountMinSketches, nil
+	case *QueryResponse_CountDistinctSketches:
+		return concrete.CountDistinctSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -286,6 +308,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *LoglineIndexResponse:
+		p.Response = &QueryResponse_Hints{response}
 	case *VolumeResponse:
 		p.Response = &QueryResponse_Volume{response}
 	case *TopKSketchesResponse:
@@ -302,6 +326,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedFields{response}
 	case *CountMinSketchResponse:
 		p.Response = &QueryResponse_CountMinSketches{response}
+	case *CountDistinctSketchResponse:
+		p.Response = &QueryResponse_CountDistinctSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -334,6 +360,11 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 	// Add disable wrappers
 	if disableWrappers, ok := req.Metadata[httpreq.LokiDisablePipelineWrappersHeader]; ok {
 		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disableWrappers)
+	}
+
+	// Add response encoding flags
+	if encodingFlags, ok := req.Metadata[httpreq.LokiEncodingFlagsHeader]; ok {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
 	// Add limits
@@ -379,6 +410,8 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
+	case *QueryRequest_Hints:
+		return concrete.Hints, ctx, nil
 	case *QueryRequest_ShardsRequest:
 		return concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
@@ -426,6 +459,8 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
 	case *logproto.IndexStatsRequest:
 		result.Request = &QueryRequest_Stats{Stats: req}
+	case *logproto.LoglineIndexRequest:
+		result.Request = &QueryRequest_Hints{Hints: req}
 	case *logproto.VolumeRequest:
 		result.Request = &QueryRequest_Volume{Volume: req}
 	case *LokiInstantRequest:
@@ -460,6 +495,12 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	disableWrappers := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
 	if disableWrappers != "" {
 		result.Metadata[httpreq.LokiDisablePipelineWrappersHeader] = disableWrappers
+	}
+
+	// Keep response encoding flags
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
+	if encodingFlags != "" {
+		result.Metadata[httpreq.LokiEncodingFlagsHeader] = encodingFlags
 	}
 
 	// Add limits

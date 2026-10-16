@@ -3,7 +3,6 @@ package streams
 import (
 	"errors"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -39,7 +38,8 @@ type Stream struct {
 	// Total number of log records in the stream.
 	Rows int
 
-	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
+	// ShardBucket is the bucket that the builder's [ShardLayout] assigned
+	// to Labels, in [0, Buckets()).
 	ShardBucket int64
 }
 
@@ -54,10 +54,6 @@ func (s *Stream) Reset() {
 	s.Rows = 0
 }
 
-const shardFactor = 32
-
-var shardBits = int(math.Log2(shardFactor))
-
 var streamPool = sync.Pool{
 	New: func() interface{} {
 		return &Stream{}
@@ -69,6 +65,7 @@ type Builder struct {
 	metrics      *Metrics
 	pageSize     int
 	pageRowCount int
+	shardLayout  ShardLayout
 	lastID       atomic.Int64
 	lookup       map[uint64][]*Stream
 
@@ -88,9 +85,10 @@ type Builder struct {
 	ordered []*Stream
 }
 
-// NewBuilder creates a new sterams section builder. The pageSize argument
-// specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
+// NewBuilder creates a new streams section builder. pageSize is the target
+// page size in bytes. shardLayout selects the shard bucket of each stream
+// that the builder adds.
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int, shardLayout ShardLayout) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
@@ -98,6 +96,7 @@ func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 		metrics:      metrics,
 		pageSize:     pageSize,
 		pageRowCount: pageRowCount,
+		shardLayout:  shardLayout,
 		lookup:       make(map[uint64][]*Stream, 1024),
 		ordered:      make([]*Stream, 0, 1024),
 	}
@@ -223,12 +222,6 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-// ShardBucket returns the physical shard bucket for streamLabels.
-func ShardBucket(streamLabels labels.Labels) uint64 {
-	fp := labels.StableHash(streamLabels)
-	return fp >> (64 - shardBits)
-}
-
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	streamLabels.Range(func(l labels.Label) {
 		b.currentLabelsSize += len(l.Value)
@@ -237,8 +230,8 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
-	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 	newStream.Labels = streamLabels
+	newStream.ShardBucket = int64(b.shardLayout.BucketFromHash(hash))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)

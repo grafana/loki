@@ -137,6 +137,16 @@ func newMockRuleStore(rules map[string]rulespb.RuleGroupList) *mockRuleStore {
 	}
 }
 
+// cloneMockRules copies a fixture map so Delete/Set in one test does not
+// empty the package-level data used by later tests or -count iterations.
+func cloneMockRules(rules map[string]rulespb.RuleGroupList) map[string]rulespb.RuleGroupList {
+	cloned := make(map[string]rulespb.RuleGroupList, len(rules))
+	for user, groups := range rules {
+		cloned[user] = append(rulespb.RuleGroupList(nil), groups...)
+	}
+	return cloned
+}
+
 func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

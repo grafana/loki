@@ -27,12 +27,16 @@ func (n *NoopRetrier) withLogger(log.Logger) Retrier { return n }
 // LimitedRetrier executes the initial request plus a configurable limit of subsequent retries.
 // limit=0 is equivalent to NoopRetrier
 type LimitedRetrier struct {
-	limit  int
-	logger log.Logger
+	limit   int
+	logger  log.Logger
+	metrics *Metrics
 }
 
-func NewLimitedRetrier(cfg Config) *LimitedRetrier {
-	return &LimitedRetrier{limit: cfg.Retry.Limit}
+func NewLimitedRetrier(cfg Config, metrics *Metrics) *LimitedRetrier {
+	return &LimitedRetrier{
+		limit:   cfg.Retry.Limit,
+		metrics: metrics,
+	}
 }
 
 func (l *LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error) {
@@ -44,6 +48,7 @@ func (l *LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, on
 		if err != nil {
 			if !isRetryable(err) {
 				if !errors.Is(err, context.Canceled) {
+					l.metrics.nonRetryableErrors.Inc()
 					level.Debug(l.logger).Log("msg", "store error is not retryable", "err", err)
 				}
 				return rc, sz, err

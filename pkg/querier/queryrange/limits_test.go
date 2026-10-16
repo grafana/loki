@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"regexp"
 	"sync"
@@ -18,11 +19,11 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -30,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 func TestLimits(t *testing.T) {
@@ -166,9 +168,7 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
-		},
+		Plan:      testutil.MustPlan(`rate({app="foo"} |= "foo"[1m])`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -394,6 +394,117 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	require.Error(t, err)
 }
 
+// requireSentinelClassification asserts the contract every in-process rejection
+// keeps: the sentinel survives to the classifier, and wrapping it in changed
+// neither the status nor the message the client is served.
+func requireSentinelClassification(t *testing.T, err error, sentinel error, wantCategory, wantReason string, wantStatus int, wantMessage string) {
+	t.Helper()
+
+	require.ErrorIs(t, err, sentinel)
+
+	category, reason := server.ClassifyFailure(err)
+	require.Equal(t, wantCategory, category)
+	require.Equal(t, wantReason, reason)
+
+	status, clientErr := server.ClientHTTPStatusAndError(err)
+	require.Equal(t, wantStatus, status)
+	require.Equal(t, wantMessage, clientErr.Error())
+}
+
+// Test_MaxQueryParallelismDisableClassification pins the classification of the
+// 429 the frontend returns when a tenant has no query parallelism left.
+func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	// The queryData value statsHTTPMiddleware installs marks this as a real user
+	// query, which is what makes the failed-query usage line eligible.
+	data := &queryData{}
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
+
+	query := `{app="foo"} |= "bar"`
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiRequest{Query: query, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
+	require.Error(t, err)
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+
+	// Rejected before the wrapped middleware chain runs, but still reported.
+	line := lines.only(t)
+	requireFailedQueryUsageShape(t, line)
+	require.Equal(t, query, line["query"])
+	require.Equal(t, fmt.Sprint(util.HashedQuery(query)), line["query_hash"])
+	require.Equal(t, logql.QueryTypeFilter, line["query_type"])
+	require.Equal(t, string(logql.RangeType), line["range_type"])
+	require.Equal(t, time.Hour.String(), line["length"])
+	require.Equal(t, "429", line["status"])
+	require.Equal(t, "0B", line["total_bytes"])
+	require.Equal(t, server.FailureThrottled, line["failure_category"])
+	require.Equal(t, "max_query_parallelism", line["failure_reason"])
+	require.Equal(t, "foo", line["org_id"])
+	require.Equal(t, countBefore+1, failedQueryUsageCount(t, server.FailureThrottled))
+	require.False(t, data.recorded)
+}
+
+// Test_MaxQueryParallelismNoUsageLineForMetadataQuery pins the type gate on the
+// pre-chain path: series queries also go through NewLimitedRoundTripper, but
+// they carry no query usage bytes, so they get no line.
+func Test_MaxQueryParallelismNoUsageLineForMetadataQuery(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, &queryData{}), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
+
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiSeriesRequest{Match: []string{`{app="foo"}`}, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+	require.Empty(t, lines.all())
+	require.Equal(t, countBefore, failedQueryUsageCount(t, server.FailureThrottled))
+}
+
+// Test_MaxQueryLengthClassification drives the real limitsMiddleware, where
+// max_query_length is enforced, and pins the classification of its rejection.
+func Test_MaxQueryLengthClassification(t *testing.T) {
+	called := false
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		called = true
+		return nil, nil
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	_, err := NewLimitsMiddleware(fakeLimits{maxQueryLength: 24 * time.Hour}).Wrap(h).Do(ctx, &LokiRequest{
+		Query:   `{app="foo"}`,
+		StartTs: testTime.Add(-48 * time.Hour),
+		EndTs:   testTime,
+		Path:    "/loki/api/v1/query_range",
+	})
+	require.Error(t, err)
+	require.False(t, called)
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryLength,
+		server.FailureLimit, "max_query_length",
+		http.StatusBadRequest, "the query time range exceeds the limit (query length: 48h0m0s, limit: 1d)")
+}
+
 func Test_MaxQueryLookBack(t *testing.T) {
 	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
@@ -413,9 +524,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
-		},
+		Plan:      testutil.MustPlan(`{app="foo"} |= "foo"`),
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -639,14 +748,6 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 func Test_MaxQuerySize(t *testing.T) {
 	const statsBytes = 1000
 
-	schemas := []config.PeriodConfig{
-		{
-			// TSDB -> Time -2 days
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
-
 	for _, tc := range []struct {
 		desc       string
 		query      string
@@ -746,16 +847,14 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
 			_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
@@ -775,12 +874,6 @@ func Test_MaxQuerySize(t *testing.T) {
 func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	// a sentinal query value to control when our mock stats handler returns context stats
 	ctxSentinal := `{context="true"}`
-	schemas := []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.IndexTypeTSDB,
-		},
-	}
 
 	for _, tc := range []struct {
 		desc              string
@@ -877,9 +970,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(tc.query),
-				},
+				Plan:      testutil.MustPlan(tc.query),
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
@@ -893,7 +984,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 			}
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, fakeLimits{
+				NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{
 					maxQueryBytesRead: tc.limit,
 				}, statsHandler),
 			}
@@ -937,11 +1028,11 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}{
 		{
 			desc:       "QuerySizeLimiter",
-			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerySizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 		{
 			desc:       "QuerierSizeLimiter",
-			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerierSizeLimiterMiddleware(engineOpts, util_log.Logger, lim, statsHandler),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

@@ -61,6 +61,22 @@ func NewSchemaValidator(schema *spec.Schema, rootSchema any, root string, format
 		o(opts)
 	}
 
+	// the caller still owns this schema, and validation expands what it walks: work on a copy,
+	// once, here - every validator below this one is then free to expand in place
+	if !opts.ownSchemata && schema != nil {
+		cloned, err := deepCloneSchema(*schema)
+		if err != nil {
+			panic(invalidSchemaProvidedMsg(err).Error())
+		}
+
+		if rootSchema == schema {
+			rootSchema = &cloned
+		}
+
+		schema = &cloned
+		opts.ownSchemata = true
+	}
+
 	return newSchemaValidator(schema, rootSchema, rootPathFromString(root), formats, opts)
 }
 

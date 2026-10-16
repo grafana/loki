@@ -189,6 +189,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 			CacheTTL:          time.Hour,
 			ResyncInterval:    time.Hour,
 			QueryReadyNumDays: 7,
+			IndexReaderMode:   indexshipper.DefaultIndexReaderMode,
 		},
 	}, config.ChunkStoreConfig{}, config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -214,7 +215,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 
 	quer, err := querier.New(querier.Config{
 		QueryStoreOnly: true,
-	}, store, nil, overrides, deletion.NewNoOpDeleteRequestsClient(), glog.NewLogfmtLogger(os.Stderr))
+	}, store, nil, nil, overrides, deletion.NewNoOpDeleteRequestsClient(), glog.NewLogfmtLogger(os.Stderr), nil, 0, 0)
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}

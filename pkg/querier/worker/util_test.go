@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -37,6 +38,17 @@ func (e grpcStatusErr) Error() string { return e.err.Error() }
 func (e grpcStatusErr) Unwrap() error { return e.err }
 func (e grpcStatusErr) GRPCStatus() *grpcstatus.Status {
 	return grpcstatus.New(e.code, e.err.Error())
+}
+
+// fanOutError models errors coming back from more than one target of a
+// fanned-out request, similar to [iter.mergeEntryIterator] when more than
+// one iterator returns an error.
+func fanOutError(n int, err error) error {
+	var errs util.MultiError
+	for range n {
+		errs.Add(err)
+	}
+	return errs.Err()
 }
 
 func TestHandleQueryRequest(t *testing.T) {
@@ -81,6 +93,25 @@ func TestHandleQueryRequest(t *testing.T) {
 			err:    context.Canceled,
 			errMsg: "cancelled by the client",
 			code:   server.StatusClientClosedRequest,
+		},
+		"client error reported by every ingester": {
+			err:    fanOutError(3, httpgrpc.Errorf(http.StatusBadRequest, "parse error: invalid template for label 'message'")),
+			errMsg: "3 errors: rpc error: code = Code(400) desc = parse error: invalid template for label 'message'",
+			code:   http.StatusBadRequest,
+		},
+		"server error reported by every ingester": {
+			err:    fanOutError(3, httpgrpc.Errorf(http.StatusInternalServerError, "something broke")),
+			errMsg: "3 errors: rpc error: code = Code(500) desc = something broke",
+			code:   http.StatusInternalServerError,
+		},
+		"client error alongside a server error": {
+			// One target rejecting the request is enough to make retrying futile.
+			err: util.MultiError{
+				httpgrpc.Errorf(http.StatusInternalServerError, "something broke"),
+				httpgrpc.Errorf(http.StatusBadRequest, "parse error: bad query"),
+			}.Err(),
+			errMsg: "parse error: bad query",
+			code:   http.StatusBadRequest,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

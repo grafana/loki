@@ -9,4 +9,4 @@
 // format for OpenTelemetry that is supported with any stability or
 // compatibility guarantees. If these are needed features, please use the OTLP
 // exporter instead.
-package stdoutmetric // import "go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+package stdoutmetric

@@ -15,6 +15,81 @@ type Tkey_t = int64
 // C documentation
 //
 //	/*
+//	** Initialize the operating system interface.
+//	**
+//	** This routine registers all VFS implementations for unix-like operating
+//	** systems.  This routine, and the sqlite3_os_end() routine that follows,
+//	** should be the only routines in this file that are visible from other
+//	** files.
+//	**
+//	** This routine is called once during SQLite initialization and by a
+//	** single thread.  The memory allocation and mutex subsystems have not
+//	** necessarily been initialized when this routine is called, and so they
+//	** should not be used.
+//	*/
+func Xsqlite3_os_init(tls *libc.TLS) (r int32) {
+	var i uint32
+	_ = i
+	/* Double-check that the aSyscall[] array has been constructed
+	 ** correctly.  See ticket [bb3a86e890c8e96ab] */
+	/* Settle POSIX vs OFD locking before any file can be opened */
+	/* Register all VFSes defined in the aVfs[] array */
+	i = uint32(0)
+	for {
+		if !(uint64(i) < libc.Uint64FromInt64(672)/libc.Uint64FromInt64(168)) {
+			break
+		}
+		Xsqlite3_vfs_register(tls, uintptr(unsafe.Pointer(&_aVfs))+uintptr(i)*168, libc.BoolInt32(i == uint32(0)))
+		goto _1
+	_1:
+		;
+		i = i + 1
+	}
+	_unixBigLock = _sqlite3MutexAlloc(tls, int32(SQLITE_MUTEX_STATIC_VFS1))
+	/* Validate lock assumptions */
+	/* Number of available locks */
+	/* Start of locking area */
+	/* Locks:
+	 **    WRITE       UNIX_SHM_BASE      120
+	 **    CKPT        UNIX_SHM_BASE+1    121
+	 **    RECOVER     UNIX_SHM_BASE+2    122
+	 **    READ-0      UNIX_SHM_BASE+3    123
+	 **    READ-1      UNIX_SHM_BASE+4    124
+	 **    READ-2      UNIX_SHM_BASE+5    125
+	 **    READ-3      UNIX_SHM_BASE+6    126
+	 **    READ-4      UNIX_SHM_BASE+7    127
+	 **    DMS         UNIX_SHM_BASE+8    128
+	 */
+	/* Byte offset of the deadman-switch */
+	/* Initialize temp file dir array. */
+	_unixTempFileInit(tls)
+	return SQLITE_OK
+}
+
+/*
+ ** The following macro defines an initializer for an sqlite3_vfs object.
+ ** The name of the VFS is NAME.  The pAppData is a pointer to a pointer
+ ** to the "finder" function.  (pAppData is a pointer to a pointer because
+ ** silly C90 rules prohibit a void* from being cast to a function pointer
+ ** and so we have to go through the intermediate pointer to avoid problems
+ ** when compiling with -pedantic-errors on GCC.)
+ **
+ ** The FINDER parameter to this macro is the name of the pointer to the
+ ** finder-function.  The finder-function returns a pointer to the
+ ** sqlite_io_methods object that implements the desired locking
+ ** behaviors.  See the division above that contains the IOMETHODS
+ ** macro for addition information on finder-functions.
+ **
+ ** Most finders simply return a pointer to a fixed sqlite3_io_methods
+ ** object.  But the "autolockIoFinder" available on MacOSX does a little
+ ** more than that; it looks at the filesystem type that hosts the
+ ** database file and tries to choose an locking method appropriate for
+ ** that filesystem time.
+ */
+
+// C documentation
+//
+//	/*
 //	** Change the lock state for a shared-memory segment.
 //	**
 //	** Note that the relationship between SHARED and EXCLUSIVE locks is a little

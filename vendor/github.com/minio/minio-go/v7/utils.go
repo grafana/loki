@@ -33,6 +33,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -63,7 +64,7 @@ func amzExpirationToExpiryDateRuleID(expiration string) (time.Time, string) {
 	return time.Time{}, ""
 }
 
-var restoreRegex = regexp.MustCompile(`ongoing-request="(.*?)"(, expiry-date="(.*?)")?`)
+var restoreRegex = regexp.MustCompile(`ongoing-request="(.*?)"(, ?expiry-date="(.*?)")?`)
 
 func amzRestoreToStruct(restore string) (ongoing bool, expTime time.Time, err error) {
 	matches := restoreRegex.FindStringSubmatch(restore)
@@ -105,8 +106,32 @@ func sumMD5Base64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
 }
 
-// getEndpointURL - construct a new endpoint.
+// getEndpointURL - construct a new endpoint from a host[:port] endpoint
+// or an http(s):// URL whose scheme agrees with the secure option.
 func getEndpointURL(endpoint string, secure bool) (*url.URL, error) {
+	// An endpoint that already carries a scheme is parsed directly instead
+	// of prefixing another scheme. It must agree with the secure option
+	// since signing and transport behavior are derived from that option.
+	// A "://" preceded by a path, query, or fragment delimiter is endpoint
+	// data rather than a scheme, so such endpoints keep the scheme-less path.
+	if i := strings.Index(endpoint, "://"); i == 0 || (i > 0 && !strings.ContainsAny(endpoint[:i], "/?#")) {
+		scheme := strings.ToLower(endpoint[:i])
+		if scheme != "http" && scheme != "https" {
+			return nil, errInvalidArgument("Endpoint url scheme \"" + scheme + "\" is unsupported; use http or https or omit the scheme.")
+		}
+		endpointURL, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, err
+		}
+		if secure != (endpointURL.Scheme == "https") {
+			return nil, errInvalidArgument("Endpoint url scheme \"" + endpointURL.Scheme + "\" conflicts with the secure option; remove the scheme from the endpoint or align the secure option.")
+		}
+		if err := isValidEndpointURL(*endpointURL); err != nil {
+			return nil, err
+		}
+		return endpointURL, nil
+	}
+
 	// If secure is false, use 'http' scheme.
 	scheme := "https"
 	if !secure {
@@ -199,6 +224,9 @@ func isValidExpiry(expires time.Duration) error {
 	return nil
 }
 
+// amzMetaPrefix is the canonical prefix of S3 user metadata headers.
+const amzMetaPrefix = "X-Amz-Meta-"
+
 // Extract only necessary metadata header key/values by
 // filtering them out with a list of custom header keys.
 func extractObjMetadata(header http.Header) http.Header {
@@ -215,7 +243,7 @@ func extractObjMetadata(header http.Header) http.Header {
 		"X-Amz-Website-Redirect-Location",
 		"X-Amz-Server-Side-Encryption",
 		"X-Amz-Tagging-Count",
-		"X-Amz-Meta-",
+		amzMetaPrefix,
 		"X-Minio-Meta-",
 		// Add new headers to be preserved.
 		// if you add new headers here, please extend
@@ -230,7 +258,7 @@ func extractObjMetadata(header http.Header) http.Header {
 				continue
 			}
 			found = true
-			if prefix == "X-Amz-Meta-" || prefix == "X-Minio-Meta-" {
+			if prefix == amzMetaPrefix || prefix == "X-Minio-Meta-" {
 				for index, val := range v {
 					if strings.HasPrefix(val, "=?") {
 						decoder := mime.WordDecoder{}
@@ -249,8 +277,29 @@ func extractObjMetadata(header http.Header) http.Header {
 	return filteredHeader
 }
 
+// stripUserMetadata converts the raw <UserMetadata> element of MinIO list
+// responses into the keyed form StatObject and GetObject return in
+// ObjectInfo.UserMetadata: only "X-Amz-Meta-*" entries are kept, with the
+// prefix stripped and values passed through verbatim (list responses carry
+// the stored values, so no decoding applies). Returns nil if raw contains
+// no user metadata.
+func stripUserMetadata(raw StringMap) StringMap {
+	var stripped StringMap
+	for k, v := range raw {
+		k = textproto.CanonicalMIMEHeaderKey(k)
+		if !strings.HasPrefix(k, amzMetaPrefix) {
+			continue
+		}
+		if stripped == nil {
+			stripped = make(StringMap, len(raw))
+		}
+		stripped[strings.TrimPrefix(k, amzMetaPrefix)] = v
+	}
+	return stripped
+}
+
 const (
-	// RFC 7231#section-7.1.1.1 timetamp format. e.g Tue, 29 Apr 2014 18:30:38 GMT
+	// RFC 7231#section-7.1.1.1 timestamp format. e.g Tue, 29 Apr 2014 18:30:38 GMT
 	rfc822TimeFormat                           = "Mon, 2 Jan 2006 15:04:05 GMT"
 	rfc822TimeFormatSingleDigitDay             = "Mon, _2 Jan 2006 15:04:05 GMT"
 	rfc822TimeFormatSingleDigitDayTwoDigitYear = "Mon, _2 Jan 06 15:04:05 GMT"
@@ -351,8 +400,8 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 	metadata := extractObjMetadata(h)
 	userMetadata := make(map[string]string)
 	for k, v := range metadata {
-		if strings.HasPrefix(k, "X-Amz-Meta-") {
-			userMetadata[strings.TrimPrefix(k, "X-Amz-Meta-")] = v[0]
+		if strings.HasPrefix(k, amzMetaPrefix) {
+			userMetadata[strings.TrimPrefix(k, amzMetaPrefix)] = v[0]
 		}
 	}
 
@@ -412,6 +461,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		// following function filters out a list of standard set of keys
 		// which are not part of object metadata.
 		Metadata:     metadata,
+		Headers:      h,
 		UserMetadata: userMetadata,
 		UserTags:     userTags.ToMap(),
 		UserTagCount: tagCount,

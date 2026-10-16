@@ -8,11 +8,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
-func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder) *table {
+func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder, dropDuplicates bool) *table {
 	sortRecords(records, sortOrder)
 
 	buf.Reset()
@@ -26,11 +27,13 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 	var prev Record
 	row := 0
 	for _, record := range records {
-		if equalRecords(prev, record) {
-			// Skip equal records
-			continue
+		if dropDuplicates {
+			if equalRecords(prev, record) {
+				// Skip equal records
+				continue
+			}
+			prev = record
 		}
-		prev = record
 
 		// Append only fails if given out-of-order data, where the provided row
 		// number is less than the previous row number. That can't happen here, so
@@ -74,8 +77,10 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 			}
 			return reverseOrderIfEqual(cmp.Compare(a.StreamID, b.StreamID))
 		case SortSchemaASC:
-			// Sort by [schema sort key ASC, streamID ASC, timestamp DESC].
-			if res := cmp.Compare(a.SortKey, b.SortKey); res != 0 {
+			// Sort by [shard_bucket ASC, schema sort key ASC, stream hash ASC, streamID ASC, timestamp DESC].
+			aSort := streams.SortKey{ShardBucket: a.ShardBucket, SchemaKey: a.SchemaKey, Hash: a.StreamHash}
+			bSort := streams.SortKey{ShardBucket: b.ShardBucket, SchemaKey: b.SchemaKey, Hash: b.StreamHash}
+			if res := aSort.Compare(bSort); res != 0 {
 				return res
 			}
 			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
@@ -95,10 +100,6 @@ func reverseOrderIfEqual(res int) int {
 	}
 	return -1
 }
-
-// SortRecords sorts records in place by sortOrder. For SortSchemaASC each
-// record's SortKey must be set before calling.
-func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
 
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {

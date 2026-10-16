@@ -264,13 +264,19 @@ func (cfg *Config) FormatDSN() string {
 	}
 
 	// [protocol[(address)]]
-	if len(cfg.Net) > 0 {
-		buf.WriteString(cfg.Net)
-		if len(cfg.Addr) > 0 {
-			buf.WriteByte('(')
-			buf.WriteString(cfg.Addr)
-			buf.WriteByte(')')
+	if len(cfg.Addr) > 0 {
+		net := cfg.Net
+		if net == "" {
+			net = "tcp"
 		}
+		buf.WriteString(net)
+		buf.WriteByte('(')
+		buf.WriteString(cfg.Addr)
+		buf.WriteByte(')')
+	} else if cfg.Net != "" && cfg.Net != "tcp" {
+		// Preserve an explicit non-default protocol when there's no
+		// address, so e.g. Net="unix" still round-trips.
+		buf.WriteString(cfg.Net)
 	}
 
 	// /dbname

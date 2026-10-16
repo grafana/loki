@@ -85,7 +85,9 @@ func (c *ClusterClient) executeOnAllNodes(ctx context.Context, cmd Cmder, policy
 		return err
 	}
 
-	nodes := append(state.Masters, state.Slaves...)
+	nodes := make([]*clusterNode, 0, len(state.Masters)+len(state.Slaves))
+	nodes = append(nodes, state.Masters...)
+	nodes = append(nodes, state.Slaves...)
 	if len(nodes) == 0 {
 		return errClusterNoNodes
 	}
@@ -494,10 +496,14 @@ func (c *ClusterClient) pickArbitraryNode(ctx context.Context) *clusterNode {
 		return nil
 	}
 
-	allNodes := append(state.Masters, state.Slaves...)
-
-	idx := c.opt.ShardPicker.Next(len(allNodes))
-	return allNodes[idx]
+	// Index into masters+slaves without materializing a combined slice.
+	// append(state.Masters, state.Slaves...) writes into the shared snapshot's
+	// spare capacity and races other routers, so pick directly.
+	idx := c.opt.ShardPicker.Next(len(state.Masters) + len(state.Slaves))
+	if idx < len(state.Masters) {
+		return state.Masters[idx]
+	}
+	return state.Slaves[idx-len(state.Masters)]
 }
 
 // hasKeys checks if a command operates on keys
@@ -964,7 +970,7 @@ func (c *ClusterClient) setCommandValue(cmd Cmder, value interface{}) error {
 // setCommandValueReflection is a fallback function that uses reflection
 func (c *ClusterClient) setCommandValueReflection(cmd Cmder, value interface{}) error {
 	cmdValue := reflect.ValueOf(cmd)
-	if cmdValue.Kind() != reflect.Ptr || cmdValue.IsNil() {
+	if cmdValue.Kind() != reflect.Pointer || cmdValue.IsNil() {
 		return errInvalidCmdPointer
 	}
 

@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
@@ -39,6 +40,11 @@ var (
 		Namespace: "loki_canary",
 		Name:      "ws_pings_total",
 		Help:      "counts every time the websocket receives a ping message",
+	})
+	otlpValidationErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "otlp_validation_errors_total",
+		Help:      "counts returned log entries with missing or mismatched OTLP canary attributes, including repeated observations",
 	})
 	userAgent = fmt.Sprintf("loki-canary/%s", build.Version)
 )
@@ -54,6 +60,7 @@ type Reader struct {
 	clientTLSConfig *tls.Config
 	caFile          string
 	addr            string
+	pathPrefix      string
 	user            string
 	pass            string
 	tenantID        string
@@ -71,6 +78,7 @@ type Reader struct {
 	done            chan struct{}
 	queryAppend     string
 	labelSelector   string
+	validateOTLP    bool
 }
 
 func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
@@ -89,8 +97,13 @@ func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, erro
 }
 
 func (r *Reader) buildMetricQuery(queryRange string) string {
-	if r.queryAppend != "" {
-		return fmt.Sprintf("count_over_time(%s %s[%s])", r.labelSelector, r.queryAppend, queryRange)
+	queryAppend := r.queryAppend
+	if r.validateOTLP {
+		// The per-record attribute must not create a series for each timestamp.
+		queryAppend = strings.TrimSpace(queryAppend + " | drop canary_timestamp")
+	}
+	if queryAppend != "" {
+		return fmt.Sprintf("count_over_time(%s %s[%s])", r.labelSelector, queryAppend, queryRange)
 	}
 	return fmt.Sprintf("count_over_time(%s[%s])", r.labelSelector, queryRange)
 }
@@ -101,6 +114,7 @@ func NewReader(writer io.Writer,
 	tlsConfig *tls.Config,
 	caFile, certFile, keyFile string,
 	address string,
+	pathPrefix string,
 	user string,
 	pass string,
 	tenantID string,
@@ -112,8 +126,14 @@ func NewReader(writer io.Writer,
 	interval time.Duration,
 	queryAppend string,
 	labels string,
+	validateOTLP bool,
 ) (*Reader, error) {
 	h := http.Header{}
+	if validateOTLP {
+		// Keep structured metadata separate from stream labels for validation
+		// on both the websocket and historical query responses.
+		h.Set(httpreq.LokiEncodingFlagsHeader, string(httpreq.FlagCategorizeLabels))
+	}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
@@ -155,12 +175,18 @@ func NewReader(writer io.Writer,
 		return nil, err
 	}
 
+	prefix, err := url.JoinPath(pathPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path prefix %q: %w", pathPrefix, err)
+	}
+
 	rd := Reader{
 		header:          h,
 		useTLS:          useTLS,
 		clientTLSConfig: tlsConfig,
 		caFile:          caFile,
 		addr:            address,
+		pathPrefix:      prefix,
 		user:            user,
 		pass:            pass,
 		tenantID:        tenantID,
@@ -176,6 +202,7 @@ func NewReader(writer io.Writer,
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
 		labelSelector:   labelSel,
+		validateOTLP:    validateOTLP,
 	}
 
 	go rd.run()
@@ -218,14 +245,21 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query")
+	if err != nil {
+		return 0, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query",
+		Path:   queryPath,
 		RawQuery: "query=" + url.QueryEscape(r.buildMetricQuery(queryRange)) +
 			fmt.Sprintf("&time=%d", now.UnixNano()) +
 			"&limit=1000",
 	}
+
 	fmt.Fprintf(r.w, "Querying loki for metric count with query: %v, cache: %v\n", u.String(), cache)
 
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
@@ -312,10 +346,16 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.useTLS {
 		scheme = "https"
 	}
+
+	queryRangePath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/query_range")
+	if err != nil {
+		return nil, err
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
-		Path:   "/loki/api/v1/query_range",
+		Path:   queryRangePath,
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
 			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)) +
 			"&limit=1000",
@@ -330,12 +370,7 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 		return nil, err
 	}
 
-	if r.user != "" {
-		req.SetBasicAuth(r.user, r.pass)
-	}
-	if r.tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", r.tenantID)
-	}
+	req.Header = r.header.Clone()
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := r.httpClient.Do(req)
@@ -372,9 +407,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	case logqlmodel.ValueTypeStreams:
 		for _, stream := range value.(loghttp.Streams) {
 			for _, entry := range stream.Entries {
-				ts, err := parseResponse(&entry)
+				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				tss = append(tss, *ts)
@@ -439,9 +474,9 @@ func (r *Reader) run() {
 		}
 		for _, stream := range tailResponse.Streams {
 			for _, entry := range stream.Entries {
-				ts, err := parseResponse(&entry)
+				ts, err := r.parseResponse(&entry)
 				if err != nil {
-					fmt.Fprint(r.w, err)
+					fmt.Fprintln(r.w, err)
 					continue
 				}
 				r.recv <- *ts
@@ -478,10 +513,17 @@ func (r *Reader) closeAndReconnect() {
 		if r.useTLS {
 			scheme = "wss"
 		}
+
+		tailPath, err := url.JoinPath(r.pathPrefix, "/loki/api/v1/tail")
+		if err != nil {
+			fmt.Fprintf(r.w, "failed to build tail URL: %v\n", err)
+			return
+		}
+
 		u := url.URL{
 			Scheme:   scheme,
 			Host:     r.addr,
-			Path:     "/loki/api/v1/tail",
+			Path:     tailPath,
 			RawQuery: "query=" + url.QueryEscape(fmt.Sprintf("%s %v", r.labelSelector, r.queryAppend)),
 		}
 
@@ -520,7 +562,7 @@ func (r *Reader) webSocketDialer() *websocket.Dialer {
 	}
 }
 
-func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
+func (r *Reader) parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	sp := strings.Split(entry.Line, " ")
 	if len(sp) != 2 {
 		return nil, errors.Errorf("received invalid entry: %s", entry.Line)
@@ -528,6 +570,13 @@ func parseResponse(entry *loghttp.Entry) (*time.Time, error) {
 	ts, err := strconv.ParseInt(sp[0], 10, 64)
 	if err != nil {
 		return nil, errors.Errorf("failed to parse timestamp: %s", sp[0])
+	}
+	if r.validateOTLP {
+		want := strconv.FormatInt(ts, 10)
+		if got := entry.StructuredMetadata.Get("canary_timestamp"); got != want {
+			otlpValidationErrors.Inc()
+			return nil, fmt.Errorf("otlp attribute validation failed for entry %s: canary_timestamp=%q, expected %q", sp[0], got, want)
+		}
 	}
 	t := time.Unix(0, ts)
 	return &t, nil

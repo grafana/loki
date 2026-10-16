@@ -66,6 +66,16 @@ func (q *TestQuery) GetStoreChunks() *logproto.ChunkRefGroup {
 	panic("unimplemented")
 }
 
+// GetHintRanges implements logql.Params.
+func (q *TestQuery) GetHintRanges() []logproto.HintTimeRange {
+	return nil
+}
+
+// GetDataObjOptions implements logql.Params.
+func (q *TestQuery) GetDataObjOptions() *logproto.DataObjOptions {
+	return nil
+}
+
 // Interval implements logql.Params.
 func (q *TestQuery) Interval() time.Duration {
 	panic("unimplemented")

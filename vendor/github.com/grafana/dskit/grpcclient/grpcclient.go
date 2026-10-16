@@ -23,6 +23,9 @@ import (
 // grpcWithChainUnaryInterceptor helps to ensure that the requested order of interceptors is preserved.
 var grpcWithChainUnaryInterceptor = grpc.WithChainUnaryInterceptor
 
+// clusterUnaryClientInterceptor lets tests identify the interceptor DialOption appends.
+var clusterUnaryClientInterceptor = middleware.ClusterUnaryClientInterceptor
+
 // Config for a gRPC client.
 type Config struct {
 	MaxRecvMsgSize  int     `yaml:"max_recv_msg_size" category:"advanced"`
@@ -55,9 +58,6 @@ type Config struct {
 	CustomCompressors []string `yaml:"-"`
 
 	ClusterValidation clusterutil.ClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
-
-	// clusterUnaryClientInterceptor is needed for testing purposes.
-	clusterUnaryClientInterceptor grpc.UnaryClientInterceptor `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -158,8 +158,8 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	// to wrap the real call.
 	if cfg.ClusterValidation.Label != "" {
 		// For client side, we use the primary label as our cluster identity
-		cfg.clusterUnaryClientInterceptor = middleware.ClusterUnaryClientInterceptor(cfg.ClusterValidation.Label, invalidClusterValidationReporter)
-		unaryClientInterceptors = append(unaryClientInterceptors, cfg.clusterUnaryClientInterceptor)
+		unaryClientInterceptors = append(unaryClientInterceptors,
+			clusterUnaryClientInterceptor(cfg.ClusterValidation.Label, invalidClusterValidationReporter))
 	}
 
 	if cfg.ConnectTimeout > 0 {

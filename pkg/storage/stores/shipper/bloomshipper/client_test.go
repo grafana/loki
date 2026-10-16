@@ -21,17 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
-var supportedCompressions = []compression.Codec{
-	compression.None,
-	compression.GZIP,
-	compression.Snappy,
-	compression.LZ4_64k,
-	compression.LZ4_256k,
-	compression.LZ4_1M,
-	compression.LZ4_4M,
-	compression.Flate,
-	compression.Zstd,
-}
+var supportedCompressions = compression.Codecs()
 
 func parseTime(s string) model.Time {
 	t, err := time.Parse("2006-01-02 15:04", s)

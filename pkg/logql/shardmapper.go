@@ -10,35 +10,37 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
-	ShardLastOverTime     = "last_over_time"
-	ShardFirstOverTime    = "first_over_time"
-	ShardQuantileOverTime = "quantile_over_time"
-	SupportApproxTopk     = "approx_topk"
+	ShardLastOverTime          = "last_over_time"
+	ShardFirstOverTime         = "first_over_time"
+	ShardQuantileOverTime      = "quantile_over_time"
+	SupportApproxTopk          = "approx_topk"
+	SupportApproxCountDistinct = "approx_count_distinct"
 )
 
 type ShardMapper struct {
-	shards                   ShardingStrategy
-	metrics                  *MapperMetrics
-	quantileOverTimeSharding bool
-	lastOverTimeSharding     bool
-	firstOverTimeSharding    bool
-	approxTopkSupport        bool
+	shards                     ShardingStrategy
+	metrics                    *MapperMetrics
+	quantileOverTimeSharding   bool
+	lastOverTimeSharding       bool
+	firstOverTimeSharding      bool
+	approxTopkSupport          bool
+	approxCountDistinctSupport bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
 	mapper := ShardMapper{
-		shards:                   strategy,
-		metrics:                  metrics,
-		quantileOverTimeSharding: false,
-		lastOverTimeSharding:     false,
-		firstOverTimeSharding:    false,
-		approxTopkSupport:        false,
+		shards:                     strategy,
+		metrics:                    metrics,
+		quantileOverTimeSharding:   false,
+		lastOverTimeSharding:       false,
+		firstOverTimeSharding:      false,
+		approxTopkSupport:          false,
+		approxCountDistinctSupport: false,
 	}
 	for _, a := range shardAggregation {
 		switch a {
@@ -50,6 +52,8 @@ func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggr
 			mapper.firstOverTimeSharding = true
 		case SupportApproxTopk:
 			mapper.approxTopkSupport = true
+		case SupportApproxCountDistinct:
+			mapper.approxCountDistinctSupport = true
 		}
 	}
 
@@ -101,6 +105,8 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
+	case *syntax.LabelAggregationExpr:
+		return m.mapLabelAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
 		return m.mapBinOpExpr(e, r, topLevel)
 	default:
@@ -313,7 +319,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}, bytesPerShard, nil
 		case syntax.OpTypeApproxTopK:
 			if !m.approxTopkSupport {
-				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations")
+				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -querier.shard-aggregations or the per-tenant shard_aggregations runtime config")
 			}
 
 			return m.mapApproxTopk(expr, false)
@@ -389,6 +395,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	if shards == 0 || forceNoShard {
 		return &syntax.VectorAggregationExpr{
 			Left: &CountMinSketchEvalExpr{
+				operation: syntax.OpTypeApproxTopK,
 				downstreams: []DownstreamSampleExpr{{
 					SampleExpr: countMinSketchExpr,
 				}},
@@ -414,6 +421,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	}
 
 	sharded := &CountMinSketchEvalExpr{
+		operation:   syntax.OpTypeApproxTopK,
 		downstreams: downstreams,
 	}
 
@@ -422,6 +430,43 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 		Grouping:  expr.Grouping,
 		Operation: syntax.OpTypeTopK,
 		Params:    expr.Params,
+	}, bytesPerShard, nil
+}
+
+func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
+	if !m.approxCountDistinctSupport {
+		return noOp(expr, m.shards.Resolver())
+	}
+
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(shards) == 0 {
+		// with no shards, we don't need to send sketches over the network. Instead the downstream tasks derive the estimate and send it back directly.
+		return noOp(expr, m.shards.Resolver())
+	}
+
+	// approx_count_distinct(field, range) by (g) ->
+	// CountDistinctSketchEval(
+	//   CountDistinctSketchMerge(
+	//     CountDistinctSketch(field, range)[shard=0] ++ ...
+	//   )
+	// )
+	sketchExpr := syntax.NewCountDistinctSketchFromLabelAggregation(expr)
+	downstreams := make([]DownstreamSampleExpr, 0, len(shards))
+	for i := range shards {
+		downstreams = append(downstreams, DownstreamSampleExpr{
+			shard:      &shards[i],
+			SampleExpr: sketchExpr,
+		})
+	}
+	r.Add(len(shards), MetricsKey)
+
+	return &CountDistinctSketchEvalExpr{
+		mergeExpr: &CountDistinctSketchMergeExpr{
+			downstreams: downstreams,
+		},
 	}, bytesPerShard, nil
 }
 
@@ -503,7 +548,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		// divided by a count_over_time(). The count leg cannot reproduce a
 		// post filter on __error__, because only the unwrap conversion sets that
 		// label and the count_over_time() doesn't support unwrap.
-		if hasUnwrapPostFiltersOnError(expr.Left) {
+		if expr.Left.HasUnwrapPostFilterOnErrorLabel() {
 			return noOp(expr, m.shards.Resolver())
 		}
 
@@ -637,8 +682,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeFirstOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
 		if !m.lastOverTimeSharding {
@@ -668,8 +714,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeLastOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	default:
 		// don't shard if there's not an appropriate optimization
@@ -742,18 +789,4 @@ func convertUnwrapToLabelFilters(r *syntax.LogRangeExpr) (*syntax.LogRangeExpr, 
 		return nil, fmt.Errorf("unsupported log selector type %T", out.Left)
 	}
 	return out, nil
-}
-
-func hasUnwrapPostFiltersOnError(r *syntax.LogRangeExpr) bool {
-	if r.Unwrap == nil {
-		return false
-	}
-	for _, f := range r.Unwrap.PostFilters {
-		for _, name := range f.RequiredLabelNames() {
-			if name == logqlmodel.ErrorLabel || name == logqlmodel.ErrorDetailsLabel {
-				return true
-			}
-		}
-	}
-	return false
 }

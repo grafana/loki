@@ -57,6 +57,13 @@ type Config struct {
 	SeriesCacheConfig            SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
 	CacheLabelResults            bool                     `yaml:"cache_label_results"`
 	LabelsCacheConfig            LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
+
+	// DataObjEnabled and DataObjStorageLag mirror -dataobj.enabled and -dataobj.storage-lag.
+	DataObjEnabled    bool          `yaml:"-"`
+	DataObjStorageLag time.Duration `yaml:"-"`
+
+	// now overrides time.Now in tests. A nil now means time.Now.
+	now func() time.Time
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -211,7 +218,7 @@ func NewMiddleware(
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache, cacheGenNumLoader, retentionEnabled, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -449,7 +456,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+				// Rejected before the middleware chain, so the line is emitted here.
+				logFailedQueryUsageForRejection(ctx, req, err)
+				return nil, err
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
@@ -500,6 +509,13 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
+	case *logproto.LoglineIndexRequest:
+		logQueryExecution(ctx, logger,
+			"type", "logline_index",
+			"query", op.Expr,
+			"length", op.Through.Sub(op.From),
+		)
+		return r.next.Do(ctx, req)
 	case *logproto.ShardsRequest:
 		logQueryExecution(ctx, logger,
 			"type", "shards",
@@ -613,7 +629,7 @@ func getOperation(path string) string {
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
-func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	var cacheMiddleware base.Middleware
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewLogResultCache(
@@ -624,6 +640,8 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 				return !r.GetCachingOptions().Disabled
 			},
 			NewDefaultLogCacheKeyGenerator(limits, cfg.Transformer),
+			cacheGenNumLoader,
+			retentionEnabled,
 			metrics.LogResultCacheMetrics,
 		)
 		if err != nil {
@@ -645,7 +663,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		}
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
@@ -671,18 +689,18 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -740,13 +758,13 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					// Too many shards on limited queries results in slowing down this type of query
 					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
 					32, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}
@@ -996,14 +1014,14 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 		)
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
 		// as they are expected to be handled by the new engine handler.
 		chunksEngineMWs := []base.Middleware{
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(limits, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(cfg, limits, iqo), metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
@@ -1021,11 +1039,11 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		} else {
@@ -1034,7 +1052,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 			// TODO: also add for v2 splits?
 			chunksEngineMWs = append(chunksEngineMWs,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
 			)
 		}
 
@@ -1044,6 +1062,12 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
+
+		// Keep the dataobj eligibility middleware last. It must judge the sub-queries that the queriers receive.
+		chunksEngineMWs = append(chunksEngineMWs,
+			base.InstrumentMiddleware("dataobj_eligibility", metrics.InstrumentMiddlewareMetrics),
+			newDataObjEligibilityMiddleware(cfg, limits, metrics.DataObjMetrics),
+		)
 
 		// route query range supported by v2 engine to the new engine handler.
 		if routerConfig.Enabled && !disableEngineRouter {
@@ -1129,8 +1153,8 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
+			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
+			NewSplitByRangeMiddleware(log, cfg, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}
 
 		if cfg.CacheInstantMetricResults {
@@ -1149,11 +1173,11 @@ func NewInstantMetricTripperware(
 					engineOpts,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.shardMapper,
+					cfg,
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
 					retryNextHandler,
-					cfg.ShardAggregations,
 				),
 			)
 		}
@@ -1165,6 +1189,13 @@ func NewInstantMetricTripperware(
 				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
+
+		// Keep the dataobj eligibility middleware last. It must judge the sub-queries that the queriers receive.
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			base.InstrumentMiddleware("dataobj_eligibility", metrics.InstrumentMiddlewareMetrics),
+			newDataObjEligibilityMiddleware(cfg, limits, metrics.DataObjMetrics),
+		)
 
 		if len(queryRangeMiddleware) > 0 {
 			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)

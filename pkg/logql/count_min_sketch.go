@@ -48,6 +48,10 @@ func (v CountMinSketchVector) CountMinSketchVec() CountMinSketchVector {
 	return v
 }
 
+func (CountMinSketchVector) CountDistinctSketchVec() CountDistinctSketchVector {
+	return CountDistinctSketchVector{}
+}
+
 func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSketchVector, error) {
 	// The underlying CMS implementation already merges the HLL sketches that are part of that structure.
 	err := v.F.Merge(right.F)
@@ -282,10 +286,18 @@ func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator,
 	}
 
 	if GetRangeType(params) != InstantType {
-		return nil, fmt.Errorf("count min sketches are only supported on instant queries")
+		return nil, errCountMinSketchInstantOnly("")
 	}
 
 	return vec, nil
+}
+
+func errCountMinSketchInstantOnly(op string) error {
+	const msg = "count min sketches are only supported on instant queries"
+	if op == "" {
+		return fmt.Errorf("%s", msg)
+	}
+	return fmt.Errorf("%s error: %s", op, msg)
 }
 
 func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *syntax.VectorAggregationExpr, maxLabels int) (*countMinSketchVectorAggEvaluator, error) {
@@ -394,12 +406,15 @@ type CountMinSketchEvalStepEvaluator struct {
 	nextEvFactory SampleEvaluatorFactory
 	expr          *CountMinSketchEvalExpr
 	params        Params
+
+	exhausted bool
+	err       error
+	closeErr  error
 }
 
 func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
-	// The count-min sketch is only supported for instant queries.
 	if GetRangeType(params) != InstantType {
-		return nil, fmt.Errorf("count min sketches are only supported on instant queries")
+		return nil, errCountMinSketchInstantOnly(expr.operation)
 	}
 	return &CountMinSketchEvalStepEvaluator{
 		ctx:           ctx,
@@ -409,14 +424,27 @@ func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory Sampl
 	}, nil
 }
 
+// Next computes the single step of a CountMinSketchEvalExpr.
+//
+// Only the first call computes it. Every later call returns false and does
+// no work. Count min sketches only support instant queries, so there is
+// only one step to compute.
 func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
-	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
-	if err != nil {
+	if e.exhausted {
 		return false, 0, CountMinSketchVector{}
 	}
+	e.exhausted = true
+
+	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params, false)
+	if err != nil {
+		e.err = err
+		return false, 0, CountMinSketchVector{}
+	}
+	defer func() { e.closeErr = nextEv.Close() }()
 
 	ok, _, results := nextEv.Next()
-	if !ok {
+	e.err = nextEv.Error()
+	if !ok || e.err != nil {
 		return false, 0, CountMinSketchVector{}
 	}
 
@@ -426,8 +454,8 @@ func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
 	return handler.Next()
 }
 
-func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
+func (e *CountMinSketchEvalStepEvaluator) Close() error { return e.closeErr }
 
-func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
+func (e *CountMinSketchEvalStepEvaluator) Error() error { return e.err }
 
 func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}

@@ -94,9 +94,9 @@ func Test_mergeTables(t *testing.T) {
 			var buf tableBuffer
 
 			// Build tables with sort strategy
-			tableA := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableA, strategy.sortOrder)
-			tableB := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableB, strategy.sortOrder)
-			tableC := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableC, strategy.sortOrder)
+			tableA := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableA, strategy.sortOrder, true)
+			tableB := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableB, strategy.sortOrder, true)
+			tableC := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableC, strategy.sortOrder, true)
 
 			// TableC should have been initially deduped by buildTable
 			require.Equal(t, tableC.Timestamp.Desc.RowsCount, 2)
@@ -157,9 +157,9 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			name:      "SortSchemaASC_basic",
 			sortOrder: SortSchemaASC,
 			input: []Record{
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("A")},
-				{Timestamp: t2, SortKey: "app-b", Line: []byte("B")},
-				{Timestamp: t3, SortKey: "app-c", Line: []byte("C")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t2, SchemaKey: "app-b", Line: []byte("B")},
+				{Timestamp: t3, SchemaKey: "app-c", Line: []byte("C")},
 			},
 			expectedLineOrder: []string{"A", "B", "C"},
 		},
@@ -168,9 +168,9 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			name:      "SortSchemaASC_equalSortKeys",
 			sortOrder: SortSchemaASC,
 			input: []Record{
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("A")},
-				{Timestamp: t2, SortKey: "app-a", Line: []byte("B")},
-				{Timestamp: t3, SortKey: "app-a", Line: []byte("C")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t2, SchemaKey: "app-a", Line: []byte("B")},
+				{Timestamp: t3, SchemaKey: "app-a", Line: []byte("C")},
 			},
 			expectedLineOrder: []string{"C", "B", "A"},
 		},
@@ -179,23 +179,43 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			name:      "SortSchemaASC_equalSortKeysUsesStreamID",
 			sortOrder: SortSchemaASC,
 			input: []Record{
-				{StreamID: 15, Timestamp: t1, SortKey: "app-b", Line: []byte("A")},
-				{StreamID: 15, Timestamp: t3, SortKey: "app-a", Line: []byte("B")},
-				{StreamID: 15, Timestamp: t1, SortKey: "app-a", Line: []byte("C")},
-				{StreamID: 10, Timestamp: t2, SortKey: "app-a", Line: []byte("D")},
-				{StreamID: 20, Timestamp: t1, SortKey: "app-b", Line: []byte("E")},
-				{StreamID: 20, Timestamp: t1, SortKey: "app-a", Line: []byte("F")},
+				{StreamID: 15, Timestamp: t1, SchemaKey: "app-b", Line: []byte("A")},
+				{StreamID: 15, Timestamp: t3, SchemaKey: "app-a", Line: []byte("B")},
+				{StreamID: 15, Timestamp: t1, SchemaKey: "app-a", Line: []byte("C")},
+				{StreamID: 10, Timestamp: t2, SchemaKey: "app-a", Line: []byte("D")},
+				{StreamID: 20, Timestamp: t1, SchemaKey: "app-b", Line: []byte("E")},
+				{StreamID: 20, Timestamp: t1, SchemaKey: "app-a", Line: []byte("F")},
 			},
 			expectedLineOrder: []string{"D", "B", "C", "F", "A", "E"},
+		},
+		{
+			// Shard bucket precedes the tenant sort-schema key.
+			name:      "SortSchemaASC_shardPrecedesSortKey",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 1, SchemaKey: "app-a", Line: []byte("A")},
+				{ShardBucket: 0, SchemaKey: "app-z", Line: []byte("Z")},
+			},
+			expectedLineOrder: []string{"Z", "A"},
+		},
+		{
+			// Stream hash precedes stream ID within the same shard and sort key.
+			name:      "SortSchemaASC_hashPrecedesStreamID",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{ShardBucket: 0, SchemaKey: "app-a", StreamHash: 2, StreamID: 1, Timestamp: t1, Line: []byte("later-hash")},
+				{ShardBucket: 0, SchemaKey: "app-a", StreamHash: 1, StreamID: 9, Timestamp: t1, Line: []byte("earlier-hash")},
+			},
+			expectedLineOrder: []string{"earlier-hash", "later-hash"},
 		},
 		{
 			// SortSchemaASC with equal timestamps uses primary ordering
 			name:      "SortSchemaASC_equalTimestamps",
 			sortOrder: SortSchemaASC,
 			input: []Record{
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("A")},
-				{Timestamp: t1, SortKey: "app-b", Line: []byte("B")},
-				{Timestamp: t1, SortKey: "app-c", Line: []byte("C")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t1, SchemaKey: "app-b", Line: []byte("B")},
+				{Timestamp: t1, SchemaKey: "app-c", Line: []byte("C")},
 			},
 			expectedLineOrder: []string{"A", "B", "C"},
 		},
@@ -204,9 +224,9 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			name:      "SortSchemaASC_equalSortKeysAndTimestamps",
 			sortOrder: SortSchemaASC,
 			input: []Record{
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("A")},
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("B")},
-				{Timestamp: t1, SortKey: "app-a", Line: []byte("C")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("A")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("B")},
+				{Timestamp: t1, SchemaKey: "app-a", Line: []byte("C")},
 			},
 			expectedLineOrder: []string{"C", "B", "A"},
 		},
@@ -323,7 +343,7 @@ func Test_table_backfillMetadata(t *testing.T) {
 		{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("msg3"), Metadata: labels.FromStrings("env", "prod")}, // Missing service and version
 		{StreamID: 4, Timestamp: time.Unix(4, 0), Line: []byte("msg4"), Metadata: labels.FromStrings("env", "dev")},  // Missing service and version
 	}
-	table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records, SortTimestampDESC)
+	table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records, SortTimestampDESC, true)
 
 	// All metadata columns should have the same row count due to backfill
 	expectedRows := len(records)

@@ -12,7 +12,7 @@ const MS_INVALIDATE = 2
 
 type Tpthread_t = uintptr
 
-const __restrict = 0
+const __restrict = "restrict"
 
 // C documentation
 //

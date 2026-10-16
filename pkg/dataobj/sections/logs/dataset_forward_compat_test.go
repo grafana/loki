@@ -40,9 +40,9 @@ func TestMakeColumnarDataset_ForwardCompatUnknownColumn(t *testing.T) {
 	require.NoError(t, err)
 
 	r := dataset.NewRowReader(dataset.RowReaderOptions{
-		Dataset:  dset,
-		Columns:  columns,
-		Prefetch: true,
+		Dataset:           dset,
+		Columns:           columns,
+		PrefetchAllOnOpen: true,
 	})
 	defer r.Close()
 	require.NoError(t, r.Open(t.Context()))

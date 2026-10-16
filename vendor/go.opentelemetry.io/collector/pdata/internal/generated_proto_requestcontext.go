@@ -67,9 +67,9 @@ func (m *RequestContext) GetUnix() *UnixAddr {
 }
 
 type RequestContext struct {
-	ClientAddress  any
 	SpanContext    *SpanContext
 	ClientMetadata []KeyValue
+	ClientAddress  any
 }
 
 var (

@@ -146,6 +146,220 @@ func TestFormat_VectorAggregation(t *testing.T) {
 	}
 }
 
+func TestFormat_LabelAggregation(t *testing.T) {
+	orig := MaxCharsPerLine
+	t.Cleanup(func() { MaxCharsPerLine = orig })
+
+	cases := []struct {
+		name     string
+		in       string
+		maxChars int
+		exp      string
+	}{
+		{
+			name:     "approx_count_distinct",
+			in:       `approx_count_distinct(mac, {job="loki", instance="localhost"}|logfmt[1m]) by (version)`,
+			maxChars: 20,
+			exp: `approx_count_distinct(
+  mac,
+  {job="loki", instance="localhost"}
+    | logfmt [1m]
+) by (version)`,
+		},
+		{
+			name:     "approx_count_distinct_ungrouped",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 20,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+)`,
+		},
+		{
+			name:     "approx_count_distinct_empty_by",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 20,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+		{
+			name:     "compact omitted grouping uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name:     "compact empty by uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name:     "compact by labels uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d]) by (version)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			MaxCharsPerLine = c.maxChars
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			require.Equal(t, c.exp, Prettify(expr))
+		})
+	}
+}
+
+func TestLabelAggregationExpr_String(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "omitted grouping",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name: "empty by",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name: "by labels",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d]) by (version)`,
+		},
+		{
+			name: "pipeline offset and multiple labels",
+			in:   `approx_count_distinct(mac, {foo="bar"} | json [1h] offset 5m) by (version, region)`,
+			want: `approx_count_distinct(mac,{foo="bar"} | json[1h] offset 5m0s) by (version,region)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			require.Equal(t, c.want, expr.String())
+		})
+	}
+}
+
+func TestFormat_CountDistinctSketch(t *testing.T) {
+	orig := MaxCharsPerLine
+	t.Cleanup(func() { MaxCharsPerLine = orig })
+
+	cases := []struct {
+		name     string
+		in       string
+		maxChars int
+		exp      string
+	}{
+		{
+			name:     "by labels",
+			in:       `approx_count_distinct(mac, {job="loki", instance="localhost"}|json[1h]) by (version)`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
+  mac,
+  {job="loki", instance="localhost"}
+    | json [1h]
+) by (version)`,
+		},
+		{
+			name:     "omitted grouping",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
+  mac,
+  {foo="bar"} [1d]
+)`,
+		},
+		{
+			name:     "empty by",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+		{
+			name:     "compact omitted grouping uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name:     "compact empty by uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name:     "compact by labels uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by (version)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			MaxCharsPerLine = c.maxChars
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			labelAgg, ok := expr.(*LabelAggregationExpr)
+			require.True(t, ok)
+			require.Equal(t, c.exp, Prettify(NewCountDistinctSketchFromLabelAggregation(labelAgg)))
+		})
+	}
+}
+
+func TestCountDistinctSketchExpr_String(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "omitted grouping",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name: "empty by",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name: "by labels",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by (version)`,
+		},
+		{
+			name: "pipeline offset and multiple labels",
+			in:   `approx_count_distinct(mac, {foo="bar"} | json [1h] offset 5m) by (version, region)`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"} | json[1h] offset 5m0s) by (version,region)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			labelAgg, ok := expr.(*LabelAggregationExpr)
+			require.True(t, ok)
+			require.Equal(t, c.want, NewCountDistinctSketchFromLabelAggregation(labelAgg).String())
+		})
+	}
+}
+
 func TestFormat_LabelReplace(t *testing.T) {
 	MaxCharsPerLine = 20
 

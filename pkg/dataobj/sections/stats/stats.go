@@ -90,16 +90,17 @@ func CheckSection(section *dataobj.Section) bool {
 }
 
 // Stat represents a single row in the stats section.
+// A row contains information about a single sortable bucket: (Shard, Tenant Sort Schema)
 type Stat struct {
 	ObjectPath       string
 	SectionIndex     int64
+	ShardBucket      uint32
 	SortSchema       string
 	Labels           map[string]string // Label values keyed by sort schema key name
 	MinTimestamp     int64             // UnixNano
 	MaxTimestamp     int64             // UnixNano
 	RowCount         int64
 	UncompressedSize int64
-	ShardBucket      uint32
 }
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.

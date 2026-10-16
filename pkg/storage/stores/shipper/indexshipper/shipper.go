@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/uploads"
 )
 
@@ -57,15 +59,15 @@ const (
 	IndexReaderModeMmap IndexReaderMode = "mmap"
 	// IndexReaderModeStream serves reads via schedulable file I/O so the
 	// runtime can observe blocking.
-	// It is not yet fully implemented and currently delegates calls to a
-	// mmap reader under the hood.
-	// Over time its implementation will be fleshed out until it no longer
-	// depends on the mmap implementation.
 	IndexReaderModeStream IndexReaderMode = "stream"
 )
 
 // DefaultIndexReaderMode is the mode used when none is configured.
 const DefaultIndexReaderMode = IndexReaderModeMmap
+
+// DefaultStreamingIndexMaxIdleFileHandles is the number of idle file handles
+// the stream reader keeps per index file when none is configured.
+const DefaultStreamingIndexMaxIdleFileHandles = tsdbindex.DefaultMaxIdleFileHandles
 
 type Index interface {
 	Close() error
@@ -99,8 +101,8 @@ type Config struct {
 	IndexReaderMode          IndexReaderMode           `yaml:"index_reader_mode" category:"experimental"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
-	// Temporary experimental feature
-	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
+	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
+	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
 
 	IngesterName           string
 	Mode                   Mode
@@ -113,8 +115,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
-	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -125,6 +127,22 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
 	f.StringVar((*string)(&cfg.IndexReaderMode), prefix+"shipper.index-reader-mode", string(DefaultIndexReaderMode),
 		"Experimental. Implementation used to read TSDB index files off disk. Supported values: mmap (memory-map the file, the historical default) or stream (experimental, not yet fully implemented).")
+	f.UintVar(&cfg.StreamingIndexMaxIdleFileHandles, prefix+"shipper.streaming-index-max-idle-file-handles", DefaultStreamingIndexMaxIdleFileHandles,
+		"Experimental. Number of idle file handles the stream index reader keeps open per index file. "+
+			"Only applies when -shipper.index-reader-mode=stream. "+
+			"Set to 0 to disable pooling.")
+}
+
+// IndexReaderOptions translates the flat, user-facing config into the reader options it describes.
+func (cfg *Config) IndexReaderOptions() (tsdbindex.ReaderOptions, error) {
+	switch cfg.IndexReaderMode {
+	case IndexReaderModeStream:
+		return tsdbindex.StreamOptions{MaxIdleFileHandles: cfg.StreamingIndexMaxIdleFileHandles}, nil
+	case IndexReaderModeMmap:
+		return tsdbindex.MmapOptions{}, nil
+	default:
+		return nil, fmt.Errorf("invalid shipper.index-reader-mode %q, must be one of mmap|stream", cfg.IndexReaderMode)
+	}
 }
 
 func (cfg *Config) Validate() error {
@@ -133,14 +151,16 @@ func (cfg *Config) Validate() error {
 		cfg.Mode = ModeReadWrite
 	}
 
-	switch cfg.IndexReaderMode {
-	case IndexReaderModeMmap, IndexReaderModeStream:
-	default:
-		return fmt.Errorf("invalid shipper.index-reader-mode %q, must be one of mmap|stream", cfg.IndexReaderMode)
+	if _, err := cfg.IndexReaderOptions(); err != nil {
+		return err
 	}
 
 	if cfg.DownloadTimeout <= 0 {
 		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
+	}
+
+	if err := cfg.IndexGatewayClientConfig.Validate(); err != nil {
+		return fmt.Errorf("shipper.index-gateway-client: %w", err)
 	}
 
 	return nil

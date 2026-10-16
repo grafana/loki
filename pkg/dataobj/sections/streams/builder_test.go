@@ -22,13 +22,16 @@ func Test(t *testing.T) {
 	}
 
 	tt := []ent{
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0), 10},
-		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0), 20},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0), 15},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0).UTC(), 10},
+		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0).UTC(), 20},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0).UTC(), 15},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC(), 5},
+		// Zero uncompressed size must survive decode into a reused Stream;
+		// decodeRow skips zero cells, so it has to Reset first.
+		{labels.FromStrings("cluster", "test", "app", "empty"), time.Unix(1, 0), 0},
 	}
 
-	tracker := streams.NewBuilder(nil, 1024, 0)
+	tracker := streams.NewBuilder(nil, 1024, 0, streams.DefaultShardLayout())
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
@@ -41,20 +44,29 @@ func Test(t *testing.T) {
 		{
 			ID:               1,
 			Labels:           labels.FromStrings("cluster", "test", "app", "foo"),
-			MinTimestamp:     time.Unix(9, 0),
-			MaxTimestamp:     time.Unix(15, 0),
+			MinTimestamp:     time.Unix(9, 0).UTC(),
+			MaxTimestamp:     time.Unix(15, 0).UTC(),
 			Rows:             3,
 			UncompressedSize: 30,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "foo"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "foo"))),
 		},
 		{
 			ID:               2,
 			Labels:           labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"),
-			MinTimestamp:     time.Unix(100, 0),
-			MaxTimestamp:     time.Unix(100, 0),
+			MinTimestamp:     time.Unix(100, 0).UTC(),
+			MaxTimestamp:     time.Unix(100, 0).UTC(),
 			Rows:             1,
 			UncompressedSize: 20,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
+		},
+		{
+			ID:               3,
+			Labels:           labels.FromStrings("cluster", "test", "app", "empty"),
+			MinTimestamp:     time.Unix(1, 0).UTC(),
+			MaxTimestamp:     time.Unix(1, 0).UTC(),
+			Rows:             1,
+			UncompressedSize: 0,
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "empty"))),
 		},
 	}
 

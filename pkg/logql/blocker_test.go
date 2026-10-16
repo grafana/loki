@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -216,6 +217,70 @@ func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestEngine_BlockedQueries_EmptyPatternLogging(t *testing.T) {
+	const query = `topk(1,rate(({app=~"foo|bar"})[1m]))`
+
+	for _, test := range []struct {
+		name           string
+		blocked        *validation.BlockedQuery
+		expectWarnMsg  string
+		expectNoWarnOf string
+	}{
+		{
+			name: "omit warning when empty pattern does not match type",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeLimited},
+			},
+			expectNoWarnOf: "query blocker matched with",
+		},
+		{
+			name: "warn when empty pattern blocks query",
+			blocked: &validation.BlockedQuery{
+				Types: []string{QueryTypeMetric},
+			},
+			expectWarnMsg: "query blocker matched with empty pattern policy",
+		},
+		{
+			name: "warn when explicit catch-all does not match type",
+			blocked: &validation.BlockedQuery{
+				Pattern: ".*",
+				Regex:   true,
+				Types:   []string{QueryTypeLimited},
+			},
+			expectWarnMsg: "query blocker matched with regex policy",
+		},
+		{
+			name: "warn with exact match policy for exact pattern",
+			blocked: &validation.BlockedQuery{
+				Pattern: query,
+			},
+			expectWarnMsg: "query blocker matched with exact match policy",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			limits := &fakeLimits{
+				maxSeries:      10,
+				blockedQueries: []*validation.BlockedQuery{test.blocked},
+			}
+			eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewLogfmtLogger(&buf))
+
+			params, err := NewLiteralParams(query, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+
+			_, _ = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			logs := buf.String()
+			if test.expectWarnMsg != "" {
+				require.Contains(t, logs, test.expectWarnMsg)
+			}
+			if test.expectNoWarnOf != "" {
+				require.NotContains(t, logs, test.expectNoWarnOf)
+			}
+		})
+	}
 }
 
 func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
