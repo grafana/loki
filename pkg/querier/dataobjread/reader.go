@@ -32,7 +32,7 @@ const (
 	DefaultReadBatchSize = 1024
 )
 
-// LogRecord is one decoded log line with the identity the sample layer needs.
+// LogRecord is one decoded log entry with the identity the sample layer needs.
 type LogRecord struct {
 	streamHash   uint64
 	streamLabels labels.Labels
@@ -40,11 +40,12 @@ type LogRecord struct {
 	// timestamp is nanoseconds since the Unix epoch.
 	timestamp int64
 
+	// line is nil when nothing reads the line after the read, and for an empty line.
 	line     []byte
 	metadata labels.Labels
 }
 
-// LogReader runs a read plan and yields decoded log lines in batches.
+// LogReader runs a read plan and yields decoded log records in batches.
 //
 // One row reader scans each planned section, matching all of its streams together and reading
 // only the planned columns. The planner rejects a section it was given twice, so no section is

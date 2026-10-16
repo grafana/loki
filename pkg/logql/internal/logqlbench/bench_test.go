@@ -133,6 +133,13 @@ var queries = []benchQuery{
 		streamFirstSupported: true,
 	},
 	{
+		// Every fixture line starts with "level=info", so the filter keeps all of them.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "level=info" [24h]))`, selectorAll),
+		description:          "high input, low output, line filter that keeps every line",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
 		expr:                 fmt.Sprintf("count_over_time(%s[24h])", selectorMedium),
 		description:          "medium input, medium output",
 		instant:              true,

@@ -143,11 +143,6 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if extractor == nil {
 		return iter.NoopSampleIterator, nil
 	}
-	extractor, err = deletion.SetupExtractor(req, extractor)
-	if err != nil {
-		return nil, err
-	}
-
 	selector, err := expr.Selector()
 	if err != nil {
 		return nil, err
@@ -164,7 +159,22 @@ func (s *DataObjStore) SelectSamples(ctx context.Context, req logql.SelectSample
 	if err != nil {
 		return nil, err
 	}
+
 	projection, err := dataobjread.NewProjectionPlan(expr, deletes)
+	if err != nil {
+		return nil, err
+	}
+
+	// The underlying reader applies the pushable line filters, so here we just have to apply
+	// the remaining pipeline stages (if any).
+	if unpushed := projection.UnpushedExpr(); unpushed != nil {
+		extractor, err = unpushed.Extractor()
+		if err != nil {
+			return nil, fmt.Errorf("building the extractor of %q: %w", unpushed, err)
+		}
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}

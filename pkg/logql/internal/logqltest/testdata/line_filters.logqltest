@@ -28,6 +28,35 @@ eval instant at 60s sum(count_over_time({app="a"} != "err" [1m]))
 eval instant at 60s sum(count_over_time({app="a"} |= "err" | line_format "{{.app}}" |= "a" [1m]))
   {} 3
 
+# |= with a metadata filter and with a parser: a line must pass every filter.
+clear
+load
+  {app="a"} "boom code=500" @ 20s [repeat every 20s for 4] [metadata lvl="error"]
+  {app="a"} "boom code=200" @ 30s [repeat every 20s for 2] [metadata lvl="error"]
+  {app="a"} "boom code=500" @ 35s                          [metadata lvl="warn"]
+  {app="a"} "calm code=500" @ 45s                          [metadata lvl="error"]
+  {app="b"} "boom code=200" @ 25s [repeat every 30s for 2] [metadata lvl="error"]
+  {app="b"} "boom code=500" @ 35s                          [metadata lvl="error"]
+  {app="b"} "boom code=500" @ 40s                          [metadata lvl="warn"]
+  {app="b"} "calm code=500" @ 50s                          [metadata lvl="error"]
+
+eval instant at 60s sum(count_over_time({app=~"a|b"} |= "boom" | lvl="error" [1m]))
+  {} 8
+eval instant at 60s sum(count_over_time({app=~"a|b"} | lvl="error" |= "boom" [1m]))
+  {} 8
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} |= "boom" | lvl="error" [1m]))
+  {app="a"} 5
+  {app="b"} 3
+eval instant at 60s sum by (app) (count_over_time({app=~"a|b"} | lvl="error" |= "boom" [1m]))
+  {app="a"} 5
+  {app="b"} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app=~"a|b"} |= "boom" | lvl="error" [1m])) # overlapping
+  {} 5 8
+eval instant at 60s sum(count_over_time({app=~"a|b"} |= "boom" | logfmt | code="500" [1m]))
+  {} 6
+eval instant at 60s sum by (code) (count_over_time({app=~"a|b"} |= "boom" | logfmt | code="500" [1m]))
+  {code="500"} 6
+
 # |~ / !~ (regexp match)
 clear
 load
