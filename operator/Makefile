@@ -350,10 +350,8 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 	sed -i 's/+newline/\n/' $@
 
 .PHONY: web-dependencies
-.ONESHELL:
 web-dependencies: ## Install dependencies needed for website build
-	cd website
-	npm ci
+	cd website && npm ci
 
 .PHONY: web
 web: docs web-dependencies ## Run production build of the loki-operator.dev website
