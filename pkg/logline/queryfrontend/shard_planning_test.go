@@ -167,9 +167,10 @@ func TestShardPlanning_NarrowSingleHintRerunsWithQueryLimitsOverride(t *testing.
 func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	hintRange := hintprovider.HintTimeRange{Start: now.Add(-35 * time.Minute), End: now.Add(-30 * time.Minute)}
+	release := make(chan struct{})
 	hp := &mockHintProvider{
-		hints: &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
-		delay: 50 * time.Millisecond,
+		hints:   &hintprovider.Hints{TimeRanges: []hintprovider.HintTimeRange{hintRange}},
+		release: release,
 	}
 
 	// The provisional query goes through the filter too, but its querier call
@@ -181,9 +182,17 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 		}
 		return emptyStreamResponse(), nil
 	})
-	filterMW := NewLoglineFilterMiddleware(time.Second, newTestMetrics(), nil)
-	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, newTestMetrics(), nil)
-	handler := prefetchMW.Wrap(filterMW.Wrap(querier))
+	metrics := newTestMetrics()
+	filtered := NewLoglineFilterMiddleware(time.Second, metrics, nil).Wrap(querier)
+	// Hints arrive only once the provisional query's sub-request waits for them.
+	releaseOnceWaiting := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if !shardPlanningRerunGuardFromContext(ctx) {
+			go releaseWhenWaiting(hintPrefetchFromContext(ctx), 1, release)
+		}
+		return filtered.Do(ctx, req)
+	})
+	prefetchMW := prefetchMiddlewareForTest(hp, defaultShardPlanningTestConfig(), mockLimits{}, metrics, nil)
+	handler := prefetchMW.Wrap(releaseOnceWaiting)
 	req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-1*time.Hour), now)
 
 	resp, err := handler.Do(testTenantContextWithLive(), req)
@@ -192,6 +201,9 @@ func TestShardPlanning_RerunStatsExcludeCanceledProvisionalQuery(t *testing.T) {
 	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
 	require.Equal(t, hintStatusOK, loglineStats.HintStatus)
 	require.Equal(t, int64(1), loglineStats.NarrowedRequests, "only the rerun's sub-request counts")
+	require.Positive(t, loglineStats.HintWaitTime, "the provisional query's sub-request waited for the lookup")
+	count, _ := hintWaitObservations(t, metrics, hintStatusOK)
+	require.Equal(t, uint64(1), count, "the provisional query and the rerun share one observation")
 }
 
 func TestShardPlanning_ZeroOverlapsRerunsAndFilterReturnsEmptyResponse(t *testing.T) {

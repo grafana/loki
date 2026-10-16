@@ -2986,7 +2986,7 @@ func Test_codec_EncodeResponse_LoglineStats(t *testing.T) {
 		require.ElementsMatch(t, []string{
 			"outcome", "hintStatus", "hintLookupTime", "hintRanges", "hintRangesDuration",
 			"skippedRequests", "narrowedRequests", "plannedChunks", "scannedChunks",
-			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait",
+			"chunkFilterRatio", "objectRequests", "ioBytes", "ioWait", "hintWaitTime",
 		}, slices.Collect(maps.Keys(logline)), "every field is written, including zeros")
 		require.Equal(t, "tiny_data_skipped", logline["outcome"])
 		require.Equal(t, 40.0, logline["plannedChunks"])

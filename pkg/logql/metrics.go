@@ -538,6 +538,7 @@ func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []int
 	logValues = append(logValues,
 		"logline_hint_status", l.HintStatus,
 		"logline_hint_lookup_time", time.Duration(l.HintLookupTime),
+		"logline_hint_wait_time", time.Duration(l.HintWaitTime),
 		"logline_hint_ranges", l.HintRanges,
 		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
 		"logline_skipped_requests", l.SkippedRequests,

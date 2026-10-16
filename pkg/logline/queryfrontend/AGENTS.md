@@ -52,6 +52,32 @@ is always passed through. The `ingesterCutoff` is computed from
 If the async hint lookup doesn't complete within `HintTimeout` (default 15s), the
 filter middleware falls back to passthrough — it does not block or fail the query.
 
+The timeout applies to each sub-request, not to the lookup. A live lookup keeps
+running, so sub-requests that reach the filter in a later wave wait up to
+`HintTimeout` again.
+
+### Hint wait
+
+The hint wait is the wall time during which at least one sub-request was held at the
+filter for the lookup. It is the latency Logline adds by holding sub-requests, which
+isn't all of the latency Logline adds: it leaves out the index-stats call that checks
+the byte threshold and the re-planning after a shard-planning rerun. The filter runs
+once per split and shard sub-request, and those wait in parallel and in waves, so
+`waitTracker` records the union of their wait intervals rather than the sum.
+
+The prefetch middleware reports the wait once per live query that starts a hint
+lookup: on the response as `Logline.HintWaitTime` (`logline_hint_wait_time` on the
+`metrics.go` line) and in the `logline_query_frontend_hint_wait_seconds` histogram.
+The histogram also counts failed queries, and records a zero when the hints were ready
+before any sub-request needed them. Dry-run queries and queries skipped before the
+lookup aren't observed.
+
+The histogram's `status` label is the hint status when the query returns, not whether
+a sub-request timed out. `incomplete` includes queries that the results cache answered
+before the lookup finished, with a zero wait. `ok` includes queries whose sub-requests
+timed out, if the lookup finished before the query did. A timed-out wait shows up as a
+wait of at least `HintTimeout`.
+
 ### Query stats
 
 Logline stats travel on the response `Statistics.Logline`, not on counters on the
@@ -63,7 +89,7 @@ Use `Statistics.LoglineStats()` to set fields.
 The filter adds the skipped and narrowed counts to the response it returns, so the split
 and shard merges sum them and discarded responses (retries, a canceled provisional query)
 drop them. The prefetch middleware adds the rest to the final response: the lookup
-status, time and ranges, the lookup's object storage I/O, copies of
+status, time and ranges, the hint wait time, the lookup's object storage I/O, copies of
 `Index.ShardPlannedChunks` and `Index.ShardPlannedChunksScanned`, the chunk filter ratio,
 and the outcome. `Logline.Merge` sums the two counts and keeps the first value of every
 other field.
@@ -93,7 +119,7 @@ why it didn't:
 | `integration.go` | `WrapMiddleware` / `WrapMiddlewareWithStore` — builds and composes the full stack |
 | `config.go` | `Config`, the `logline.query` section: enable switch, parallelism, timeouts, cache settings |
 | `limits/definitions.go` | The per-tenant `Limits` interface |
-| `metrics.go` | Prometheus metrics for hint provider duration, ranges returned, passthrough/skip/narrow counts |
+| `metrics.go` | Prometheus metrics for hint provider duration, hint wait, ranges returned, passthrough/skip/narrow counts |
 
 ## Running tests
 
