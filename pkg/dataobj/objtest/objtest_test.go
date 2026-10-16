@@ -66,3 +66,34 @@ func TestWithTargetSectionSize(t *testing.T) {
 		require.Equal(t, 1, logsSectionsPerObject(t))
 	})
 }
+
+func TestBuilderClose(t *testing.T) {
+	t.Run("indexes logs whose time range crosses a ToC window boundary", func(t *testing.T) {
+		boundary := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+		require.Equal(t, boundary, boundary.Truncate(metastore.MetastoreWindowSize))
+
+		builder := NewBuilder(t)
+		ctx := user.InjectOrgID(t.Context(), Tenant)
+		builder.Append(ctx, logproto.Stream{
+			Labels: `{app="boundary"}`,
+			Entries: []push.Entry{
+				{Timestamp: boundary.Add(-time.Minute), Line: "before"},
+				{Timestamp: boundary.Add(time.Minute), Line: "after"},
+			},
+		})
+		builder.Close()
+
+		for _, window := range []struct{ start, end time.Time }{
+			{boundary.Add(-time.Hour), boundary.Add(-time.Second)},
+			{boundary.Add(time.Second), boundary.Add(time.Hour)},
+		} {
+			resp, err := builder.Metastore().Sections(ctx, metastore.SectionsRequest{
+				Start:    window.start,
+				End:      window.end,
+				Matchers: syntax.MustParseLogSelector(`{app="boundary"}`, true).Matchers(),
+			})
+			require.NoError(t, err)
+			require.NotEmpty(t, resp.Sections, "no section for %s to %s", window.start, window.end)
+		}
+	})
+}

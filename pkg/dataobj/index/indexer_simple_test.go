@@ -18,10 +18,10 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -57,49 +57,45 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		idx, _ := newTestSimpleIndexer(t, bucket)
 
 		const objPath = "objects/test"
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), objPath)
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 1), objPath)
 		require.NoError(t, err)
 
 		require.Contains(t, bucket.Objects(), res.Path)
 		require.Len(t, bucket.Objects(), 1, "one index object per data object")
 
-		// The ranges are what the caller records in the Table of Contents, so
-		// they must describe the data object: both of its tenants, the span of
-		// the fixture's entries, and the size of the index just uploaded.
-		require.Len(t, res.TimeRanges, 2)
-		require.ElementsMatch(t, []string{"tenant-0", "tenant-1"}, tenantsOf(res.TimeRanges))
-		for _, tr := range res.TimeRanges {
-			require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
-			require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
-			require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
-			require.Positive(t, tr.UncompressedLogsSize)
-		}
+		// The range is what the caller records in the Table of Contents, so it
+		// must describe the data object: its tenant and the span of the
+		// fixture's entries.
+		tr := res.TimeRange
+		require.Equal(t, "tenant-0", tr.Tenant)
+		require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
+		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding a streams and a pointers section for each tenant.
+		// holding postings, and no streams or pointers section.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, 2, idxObj.Sections().Count(streams.CheckSection))
-		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 2)
-
-		// Every stream of the data object is recorded, per tenant.
-		for _, tenant := range []string{"tenant-0", "tenant-1"} {
-			require.ElementsMatch(t, []string{
-				`{app="bar", cluster="test", env="dev"}`,
-				`{app="foo", cluster="test", env="prod"}`,
-			}, indexedStreams(t, idxObj, tenant), "tenant %s", tenant)
-		}
+		require.GreaterOrEqual(t, idxObj.Sections().Count(postings.CheckSection), 1)
+		require.Zero(t, idxObj.Sections().Count(streams.CheckSection))
+		require.Zero(t, idxObj.Sections().Count(pointers.CheckSection))
 
 		// The index points back at the data object it was built from.
-		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
 	})
 
-	t.Run("should index every tenant in the data object", func(t *testing.T) {
-		idx, _ := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, reg := newTestSimpleIndexer(t, bucket)
 
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 3), "objects/test")
-		require.NoError(t, err)
-		require.Len(t, res.TimeRanges, 3)
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), "objects/test")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.Empty(t, res.Path)
+		require.Empty(t, bucket.Objects(), "a rejected index must not be uploaded")
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_indexobj_appends_total Total number of appends
+		# TYPE loki_indexobj_appends_total counter
+		loki_indexobj_appends_total 0
+		`), "loki_indexobj_appends_total"))
 	})
 
 	t.Run("should propagate an upload failure", func(t *testing.T) {
@@ -212,7 +208,7 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 	// Build the objects up front: the fixtures are not concurrency-safe.
 	objs := make([]*dataobj.Object, objects)
 	for i := range objs {
-		objs[i] = createTestLogObject(t, i+1)
+		objs[i] = createTestLogObject(t, 1)
 	}
 
 	var wg sync.WaitGroup
@@ -227,11 +223,13 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 
 	require.NoError(t, errors.Join(errs...))
 
-	// Each data object gets its own index, covering only its own tenants.
+	// Each data object gets its own index, pointing only at that object.
 	paths := make(map[string]struct{}, objects)
 	for i, res := range results {
 		require.NotEmpty(t, res.Path)
-		require.Len(t, res.TimeRanges, i+1)
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedObjectPaths(t, idxObj))
 		paths[res.Path] = struct{}{}
 	}
 	require.Len(t, paths, objects)
@@ -298,73 +296,13 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
-func tenantsOf(ranges []multitenancy.TimeRange) []string {
-	tenants := make([]string, 0, len(ranges))
-	for _, tr := range ranges {
-		tenants = append(tenants, tr.Tenant)
-	}
-	return tenants
-}
-
-// indexedStreams returns the label sets the index object records for tenant.
-func indexedStreams(t *testing.T, obj *dataobj.Object, tenant string) []string {
-	t.Helper()
-
-	var got []string
-	for _, section := range obj.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		sec, err := streams.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := streams.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]streams.Stream, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, stream := range buf[:n] {
-				got = append(got, stream.Labels.String())
-			}
-		}
-	}
-	return got
-}
-
-// indexedPointerPaths returns the distinct data object paths the index points at.
-func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
+// indexedObjectPaths returns the distinct data object paths the stats sections point at.
+func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
 	seen := make(map[string]struct{})
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		sec, err := pointers.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := pointers.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]pointers.SectionPointer, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				seen[pointer.Path] = struct{}{}
-			}
-		}
+	for _, row := range readAllStatsRows(t, obj) {
+		seen[row["object_path.utf8"].(string)] = struct{}{}
 	}
 
 	paths := make([]string, 0, len(seen))

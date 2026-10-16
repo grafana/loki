@@ -115,7 +115,7 @@ func TestStreamFirstChunkPreloader(t *testing.T) {
 		gate0 := make(chan struct{})
 		done := make(chan uint32, 2)
 		fetchFn := func(_ context.Context, _ config.SchemaConfig, batch []*LazyChunk) error {
-			cs := batch[0].Chunk.ChunkRef.Checksum
+			cs := batch[0].Chunk.Checksum
 			if cs == 1 { // batch 0 blocks until released
 				<-gate0
 			}
@@ -130,9 +130,9 @@ func TestStreamFirstChunkPreloader(t *testing.T) {
 		require.Equal(t, uint32(1), requireReceive(t, done, "batch 0 to complete")) // batch 0 completes second
 
 		require.True(t, p.Next())
-		require.Equal(t, uint32(1), p.At()[0].Chunk.ChunkRef.Checksum) // delivered batch 0 first
+		require.Equal(t, uint32(1), p.At()[0].Chunk.Checksum) // delivered batch 0 first
 		require.True(t, p.Next())
-		require.Equal(t, uint32(2), p.At()[0].Chunk.ChunkRef.Checksum) // then batch 1
+		require.Equal(t, uint32(2), p.At()[0].Chunk.Checksum) // then batch 1
 		require.False(t, p.Next())
 		require.NoError(t, p.Err())
 	})
@@ -206,7 +206,7 @@ func TestStreamFirstChunkPreloader(t *testing.T) {
 		defer release() // let the worker return even if an assertion below fails first
 		var calledChecksums []uint32
 		fetchFn := func(_ context.Context, _ config.SchemaConfig, batch []*LazyChunk) error {
-			cs := batch[0].Chunk.ChunkRef.Checksum
+			cs := batch[0].Chunk.Checksum
 			calledChecksums = append(calledChecksums, cs)
 			if cs == 3 { // batch 2 (checksum 3) fails
 				close(reachedFailingBatch)
@@ -238,7 +238,7 @@ func TestStreamFirstChunkPreloader(t *testing.T) {
 		releaseFailing := make(chan struct{})
 		laterBatchDone := make(chan struct{})
 		fetchFn := func(_ context.Context, _ config.SchemaConfig, batch []*LazyChunk) error {
-			if batch[0].Chunk.ChunkRef.Checksum == 1 {
+			if batch[0].Chunk.Checksum == 1 {
 				<-releaseFailing
 				return boom
 			}
@@ -329,7 +329,7 @@ func mkRefChunks(n int) []*LazyChunk {
 	out := make([]*LazyChunk, n)
 	for i := range out {
 		c := &LazyChunk{}
-		c.Chunk.ChunkRef.Checksum = uint32(i + 1)
+		c.Chunk.Checksum = uint32(i + 1)
 		out[i] = c
 	}
 	return out

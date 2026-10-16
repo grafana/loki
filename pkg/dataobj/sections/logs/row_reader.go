@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"maps"
+	"slices"
 	"strconv"
 	"unsafe"
 
@@ -109,10 +110,11 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 //
 // The field of a column that is not read comes back as its zero value.
 //
-// The columns a stream match or a predicate needs are read whether or not they are listed,
-// because a predicate that finds no column reduces to "drop every row". A column added
-// that way is decoded into the [Record] as well, so a pushed-down metadata predicate makes
-// its key visible even when the caller did not project it.
+// The reader reads the columns a stream match or a predicate needs, even when the caller does
+// not list them. A column added that way is decoded into the [Record] as well.
+//
+// When the section holds no such column, a metadata or message predicate evaluates against the
+// empty value.
 //
 // When SetProjectedColumns is not called, every recognized column is read.
 //
@@ -367,15 +369,12 @@ func (r *RowReader) Close() error {
 }
 
 func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*Column) dataset.Predicate {
-	var values []dataset.Value
-	for i := range ids {
-		values = append(values, dataset.Int64Value(i))
-	}
+	members := slices.Collect(ids)
 
 	// No IDs means no stream filter at all. Decide that before looking the column up, so an
 	// unmatched read does not depend on whether the column was projected: reading the whole
 	// section without projecting the stream ID would otherwise drop every row.
-	if len(values) == 0 {
+	if len(members) == 0 {
 		return nil
 	}
 
@@ -386,9 +385,14 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
+	// A logs section keeps the rows of one stream together, so consecutive rows usually share
+	// a stream ID and the memoized set skips most map lookups.
+	//
+	// A memoized set is not safe for concurrent use. Each call builds a new set, and the
+	// reader that owns the predicate uses it on one goroutine.
 	return dataset.InPredicate{
 		Column: streamIDColumn,
-		Values: dataset.NewInt64ValueSet(values),
+		Values: dataset.NewMemoizedInt64ValueSetOf(members...),
 	}
 }
 
@@ -428,17 +432,17 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 			return col.Type == ColumnTypeMessage
 		})
 		if messageColumn == nil {
-			return dataset.FalsePredicate{}
+			// The section holds no message column, so every row reads as an empty line.
+			return dataset.NewConstPredicate(p.Keep(nil))
 		}
 
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.PHYSICAL_TYPE_BINARY {
-					// To handle older dataobjs that still use string type for message column. This can be removed in future.
-					return p.Keep(value.Binary())
+				// A nil value reads as an empty line.
+				if value.IsNil() {
+					return p.Keep(nil)
 				}
-
 				return p.Keep(value.Binary())
 			},
 		}

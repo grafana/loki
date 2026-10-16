@@ -284,6 +284,12 @@ func (cfg *cfg) validate() error {
 		}
 	}
 
+	// Brokers reject an empty transactional id with INVALID_REQUEST at
+	// InitProducerID; catch it here where the error can say why.
+	if cfg.txnID != nil && *cfg.txnID == "" {
+		return errors.New("invalid empty transactional id")
+	}
+
 	i64lt := func(l, r int64) (bool, string) { return l < r, "less" }
 	i64gt := func(l, r int64) (bool, string) { return l > r, "larger" }
 
@@ -1560,7 +1566,7 @@ func FetchMaxPartitionBytes(b int32) ConsumerOpt {
 //
 // Negative values imply unlimited concurrent fetches (bounded by the number of
 // brokers in the cluster). A value of 0 means that a single fetch is allowed
-// ONLY when you poll - there is no fetch buffering.
+// only when you poll - there is no fetch buffering.
 func MaxConcurrentFetches(n int) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.maxConcurrentFetches = n }}
 }
@@ -1610,13 +1616,13 @@ func ConsumeStartOffset(offset Offset) ConsumerOpt {
 // earliest offset. If using this option, it is strongly recommended to also
 // set ConsumeStartOffset.
 //
-// This option is *only* used if a consumer seeds OffsetOutOfRange on the
-// *first* fetch of a partition. If the consumer has consumed the partition at
-// all and sees the error, it will automatically reset to the first offset
-// after the timestamp of the last successfully consumed offset. If data loss
-// occurred such that even the last successfully consumed offset is lost, the
-// client automatically resets to the new current end offset. If you want to
-// disable offset resetting entirely, you can use [NoResetOffset].
+// This option is *only* used if a consumer sees OffsetOutOfRange before it
+// has consumed anything from a partition. Once a partition has been consumed,
+// OffsetOutOfRange resets to the nearest offset that still exists: the log
+// start if the consumer fell below it, otherwise the first offset at or after
+// the last consumed record's timestamp, never ahead of where the consumer
+// was, and never past the log end. If you want to disable offset resetting
+// entirely, you can use [NoResetOffset].
 //
 // If you use an exact or relative offsets and the offset ends up out of range,
 // the client chooses the nearest of either the log start offset or the log end
@@ -1718,6 +1724,16 @@ func ConsumePartitions(partitions map[string]map[int32]Offset) ConsumerOpt {
 // ConsumeRegex sets the client to parse all topics passed to ConsumeTopics as
 // regular expressions. You can further use ConsumeExcludeTopics to exclude
 // topics that would match any ConsumeTopics regex.
+//
+// A regular expression matches anywhere in a topic name, the same as Go's
+// MatchString: "foo" matches "foo", "foobar", and "barfoo". Anchor with ^ and
+// $ to match an entire name. A regex client never consumes internal topics
+// such as __consumer_offsets; consume those from a client without
+// ConsumeRegex. The one exception to this is the next-gen consumer group
+// protocol, where if you don't use ConsumeExcludeTopics, the broker resolves
+// the regex and may include internal topics. ConsumeExcludeTopics forces
+// client-side regex evaluation because the next-gen protocol does not yet
+// support exclude regexes.
 //
 // When consuming via regex, every metadata request loads *all* topics, so that
 // all topics can be passed to any regular expressions. Every topic is
@@ -1926,6 +1942,13 @@ func ShareAckCallback(fn func(*Client, ShareAckResults)) GroupOpt {
 // Note that if you opt into cooperative-sticky rebalancing, cooperative group
 // balancing is incompatible with eager (classical) rebalancing and requires a
 // careful rollout strategy (see KIP-429).
+//
+// If you use both cooperative and eager balancers, the group runs
+// cooperatively only if all members support cooperative balancing: an
+// eager-only member joining downgrades the whole group to eager. On
+// downgrade, the client revokes all partitions and re-consumes from
+// committed offsets, which can result in duplicates. It is not recommended
+// to downgrade once a group is cooperative.
 func Balancers(balancers ...GroupBalancer) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.balancers = balancers }}
 }

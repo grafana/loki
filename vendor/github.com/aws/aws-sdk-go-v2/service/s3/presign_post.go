@@ -272,7 +272,6 @@ func (c presignPostConverter) ConvertToPresignMiddleware(stack *middleware.Stack
 	stack.Build.Remove("UserAgent")
 	stack.Finalize.Remove((*acceptencodingcust.DisableGzip)(nil).ID())
 	stack.Finalize.Remove((*retry.Attempt)(nil).ID())
-	stack.Finalize.Remove((*retry.MetricsHeader)(nil).ID())
 	stack.Deserialize.Clear()
 
 	if err := stack.Finalize.Insert(&presignContextPolyfillMiddleware{}, "Signing", middleware.Before); err != nil {

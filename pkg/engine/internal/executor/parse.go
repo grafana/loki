@@ -208,12 +208,12 @@ func buildErrorColumns(input *array.String, errType, errDetails string) ([]strin
 	}
 
 	return []string{
-			semconv.ColumnIdentError.ShortName(),
-			semconv.ColumnIdentErrorDetails.ShortName(),
-		}, []arrow.Array{
-			errBuilder.NewArray(),
-			errDetailsBuilder.NewArray(),
-		}
+		semconv.ColumnIdentError.ShortName(),
+		semconv.ColumnIdentErrorDetails.ShortName(),
+	}, []arrow.Array{
+		errBuilder.NewArray(),
+		errDetailsBuilder.NewArray(),
+	}
 }
 
 func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {

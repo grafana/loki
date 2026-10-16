@@ -4,7 +4,7 @@
 
 This package integrates the **logline index** into **Loki's query-range pipeline**. It
 injects two middlewares around Loki's existing `queryrangebase` middleware stack to skip
-or narrow time intervals that the logline index proves contain no matching log lines.
+or attach hint ranges for time intervals that the logline index proves contain no matching log lines.
 
 ## Architecture: Two-layer middleware
 
@@ -20,10 +20,10 @@ or narrow time intervals that the logline index proves contain no matching log l
    below the results cache. For each interval sub-request, it consults the prefetched
    hints to either:
    - **Skip** the interval entirely (return empty response) if no hint ranges overlap
-   - **Narrow** to at most k envelopes (k = ceil(interval/15m), cap 8) by cutting
-     the largest inter-hint gaps. One `next.Do` per envelope; intra-group gaps
-     are scanned so nearby hints do not refetch the same chunk.
-   - **Pass through** if the interval is in the ingester window, or on error/timeout
+   - **Forward** one request with the clipped raw hint ranges attached. Request bounds
+     stay the split interval. Queriers use the ranges to skip storage work.
+   - **Pass through** if the interval is in the ingester window, is covered only by a
+     pre-min-date sentinel, or on error/timeout
 
 ## Key integration points
 
@@ -51,6 +51,39 @@ is always passed through. The `ingesterCutoff` is computed from
 
 If the async hint lookup doesn't complete within `HintTimeout` (default 15s), the
 filter middleware falls back to passthrough — it does not block or fail the query.
+
+### Query stats
+
+Logline stats travel on the response `Statistics.Logline`, not on counters on the
+prefetch result. They reach the frontend `metrics.go` line as `logline_*` fields and the
+HTTP response as `data.stats.logline`. `Statistics.Logline` is a pointer that is nil for
+queries that didn't go through this middleware, so the JSON key is left out for them.
+Use `Statistics.LoglineStats()` to set fields.
+
+The filter adds the skipped and narrowed counts to the response it returns, so the split
+and shard merges sum them and discarded responses (retries, a canceled provisional query)
+drop them. The prefetch middleware adds the rest to the final response: the lookup
+status, time and ranges, the lookup's object storage I/O, copies of
+`Index.ShardPlannedChunks` and `Index.ShardPlannedChunksScanned`, the chunk filter ratio,
+and the outcome. `Logline.Merge` sums the two counts and keeps the first value of every
+other field.
+
+The chunk filter ratio compares `Index.ShardPlannedChunks`, the chunks shard planning
+estimated, with `Index.ShardPlannedChunksScanned`, the chunks scanned for the same
+requests (`Store.TotalChunksScanned` plus ingester matches). The shard middleware records
+both per split, so splits that bypass shard planning count toward neither.
+
+`loglineOutcome` sets `Logline.Outcome`, which tells whether the index skipped data or
+why it didn't:
+
+1. The three early skips in the prefetch handler record `unsupported_query`,
+   `size_estimate_failed` and `query_too_small`, in live mode only.
+2. A lookup that didn't end `ok` maps to `unsupported_query`, `lookup_failed`,
+   `lookup_timeout`, `canceled` or `recent_data_only`.
+3. Without shard planning, the outcome is `skip_ratio_unavailable`.
+4. If no sub-request was skipped or narrowed, it is `time_range_not_indexed`.
+5. A ratio below `tinyDataSkippedRatio` (0.25) is `tiny_data_skipped`, and anything else
+   is `data_skipped`.
 
 ## Files
 

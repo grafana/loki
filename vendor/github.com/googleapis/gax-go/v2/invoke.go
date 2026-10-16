@@ -92,8 +92,10 @@ func invoke(ctx context.Context, call APICall, settings CallSettings, sp sleeper
 
 	metricsEnabled := IsFeatureEnabled("METRICS")
 	tracingEnabled := IsFeatureEnabled("TRACING")
+	loggingEnabled := IsFeatureEnabled("LOGGING")
 
-	if metricsEnabled || tracingEnabled {
+	retryCount := 0
+	if metricsEnabled || tracingEnabled || loggingEnabled {
 		var start time.Time
 		if metricsEnabled {
 			start = time.Now()
@@ -108,6 +110,9 @@ func invoke(ctx context.Context, call APICall, settings CallSettings, sp sleeper
 		}
 
 		defer func() {
+			if !metricsEnabled && !tracingEnabled && err == nil {
+				return
+			}
 			errInfo := ExtractTelemetryErrorInfo(ctx, err)
 			if metricsEnabled {
 				recordMetricWithInfo(ctx, settings, time.Since(start), &errInfo)
@@ -115,10 +120,12 @@ func invoke(ctx context.Context, call APICall, settings CallSettings, sp sleeper
 			if tracingEnabled {
 				endSpan(ctx, span, &errInfo, err)
 			}
+			if loggingEnabled && err != nil {
+				recordActionableLog(ctx, settings.clientLogging, &errInfo, retryCount, err)
+			}
 		}()
 	}
 
-	retryCount := 0
 	for {
 		ctxToUse := ctx
 		if tracingEnabled {

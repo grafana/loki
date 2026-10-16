@@ -68,9 +68,16 @@ type producer struct {
 	// production.
 	onBatchPromiseBroadcast func(moreQueued bool)
 
-	txnMu   xsync.Mutex
-	inTxn   bool
-	tx890p2 atomic.Bool
+	txnMu xsync.Mutex
+	inTxn bool
+	// endUnconfirmed, guarded by txnMu, is set when an attempted EndTxn
+	// outcome is unconfirmed (transport error, retries exhausted, or
+	// UNKNOWN_SERVER_ERROR). EndTransaction restores the transaction
+	// state it consumed so the documented TryAbort retry can heal via
+	// producer id reload; this flag tells the retry that the reload is
+	// the abort and no EndTxn should be sent.
+	endUnconfirmed bool
+	tx890p2        atomic.Bool
 
 	// producedInTxn is set when a record is buffered within the current
 	// transaction and reset by BeginTransaction. EndTransaction consults
@@ -230,7 +237,7 @@ func (p *producer) purgeTopics(topics []string) {
 	p.topicsMu.Lock()
 	defer p.topicsMu.Unlock()
 
-	// We sweep unknown-topic waiters AND store the cleaned topics map
+	// We sweep unknown-topic waiters and store the cleaned topics map
 	// while unknownTopicsMu is held. The store must not happen after the
 	// mu is released: partitionsForTopicProduce re-checks the topic's
 	// presence in p.topics under this mu before (re)creating an
@@ -803,7 +810,7 @@ start:
 	}
 
 	// We broadcast per batch, not per record (waking blocked producers on
-	// every record forces tiny one-record batches; see ead18d3c) - but
+	// every record forces tiny one-record batches) - but
 	// also not once per ring drain: while pre-buffer failure promises keep
 	// arriving from other goroutines, this loop never observes an empty
 	// ring and never exits, and a deferred-to-exit broadcast would starve
@@ -1135,9 +1142,9 @@ func (cl *Client) doInitProducerID(ctxFn func() context.Context, lastID int64, l
 		// doWithConcurrentTransactions retries in place: the
 		// coordinator replies with it while still completing (or
 		// fence-aborting) a previous transaction for this
-		// transactional ID. Notably, taking over a crashed
-		// incarnation's ongoing transaction ALWAYS receives it at
-		// least once: the broker internally aborts the old
+		// transactional ID. Taking over a crashed incarnation's
+		// ongoing transaction always receives it at least once: the
+		// broker internally aborts the old
 		// transaction and tells us to retry. Surfacing the error
 		// instead would bubble a routine, transient condition up as a
 		// BeginTransaction failure. All other response error codes

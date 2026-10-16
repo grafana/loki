@@ -24,6 +24,8 @@ const FNONBLOCK = 4
 
 const MAP_COPY = 2
 
+const TIOCSTAT = 536900709
+
 const _CS_POSIX_V6_ILP32_OFF32_CFLAGS = 2
 
 const _CS_POSIX_V6_ILP32_OFF32_LDFLAGS = 3
@@ -130,13 +132,25 @@ const __CLANG_ATOMIC_WCHAR_T_LOCK_FREE = 2
 
 const __CONSTANT_CFSTRINGS__ = 1
 
-const __DBL_DENORM_MIN__ = 0
+const __DBL_DENORM_MIN__ = 5e-324
 
-const __DBL_EPSILON__ = 0
+const __DBL_EPSILON__ = 2.220446049250313e-16
 
-const __DBL_MAX__ = 0
+const __DBL_MAX__ = 1.7976931348623157e+308
 
-const __DBL_NORM_MAX__ = 0
+const __DBL_MIN__ = 2.2250738585072014e-308
+
+const __DBL_NORM_MAX__ = 1.7976931348623157e+308
+
+const __FLT_DENORM_MIN__ = 1.40129846e-45
+
+const __FLT_EPSILON__ = 1.1920929e-07
+
+const __FLT_MAX__ = 3.40282347e+38
+
+const __FLT_MIN__ = 1.17549435e-38
+
+const __FLT_NORM_MAX__ = 3.40282347e+38
 
 const __FPCLASS_NEGINF = 4
 
@@ -168,23 +182,21 @@ const __INT16_FMTd__ = "hd"
 
 const __INT16_FMTi__ = "hi"
 
-const __INT16_TYPE__ = 0
+const __INT16_TYPE__ = "short"
 
 const __INT32_FMTd__ = "d"
 
 const __INT32_FMTi__ = "i"
 
-const __INT64_C_SUFFIX__ = 0
-
 const __INT8_FMTd__ = "hhd"
 
 const __INT8_FMTi__ = "hhi"
 
-const __INTMAX_C_SUFFIX__ = 0
-
 const __INT_FAST16_FMTd__ = "hd"
 
 const __INT_FAST16_FMTi__ = "hi"
+
+const __INT_FAST16_TYPE__ = "short"
 
 const __INT_FAST32_FMTd__ = "d"
 
@@ -198,7 +210,7 @@ const __INT_LEAST16_FMTd__ = "hd"
 
 const __INT_LEAST16_FMTi__ = "hi"
 
-const __INT_LEAST16_TYPE__ = 0
+const __INT_LEAST16_TYPE__ = "short"
 
 const __INT_LEAST32_FMTd__ = "d"
 
@@ -240,7 +252,7 @@ const __UINT16_FMTu__ = "hu"
 
 const __UINT16_FMTx__ = "hx"
 
-const __UINT32_C_SUFFIX__ = 0
+const __UINT32_C_SUFFIX__ = "U"
 
 const __UINT32_FMTX__ = "X"
 
@@ -250,8 +262,6 @@ const __UINT32_FMTu__ = "u"
 
 const __UINT32_FMTx__ = "x"
 
-const __UINT64_C_SUFFIX__ = 0
-
 const __UINT8_FMTX__ = "hhX"
 
 const __UINT8_FMTo__ = "hho"
@@ -259,8 +269,6 @@ const __UINT8_FMTo__ = "hho"
 const __UINT8_FMTu__ = "hhu"
 
 const __UINT8_FMTx__ = "hhx"
-
-const __UINTMAX_C_SUFFIX__ = 0
 
 const __UINTMAX_WIDTH__ = 64
 

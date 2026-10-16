@@ -66,11 +66,10 @@ var (
 		return &http.Client{
 			Transport: &http.Transport{
 				Proxy: ieproxy.GetProxyFunc(),
-				Dial: (&net.Dialer{
+				DialContext: (&net.Dialer{
 					Timeout:   30 * time.Second,
 					KeepAlive: 30 * time.Second,
-					DualStack: true,
-				}).Dial,
+				}).DialContext,
 				MaxIdleConns:           200,
 				MaxIdleConnsPerHost:    200,
 				IdleConnTimeout:        90 * time.Second,

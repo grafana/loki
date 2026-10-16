@@ -25,15 +25,22 @@ import (
 // reporting the content-hash path.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		arts, err := c.doIndexMerge(ctx, node)
+		artifact, err := c.doIndexMerge(ctx, node)
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
+		if artifact == nil {
+			return errorPipeline(ctx, errors.New("IndexMerge: missing result artifact"))
+		}
+		rec, err := artifact.ToRecordBatch(memory.DefaultAllocator)
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return NewBufferedPipeline(rec)
 	}, nil)
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (*v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
 		return nil, errors.New("no object store bucket configured")
@@ -61,56 +68,56 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
-	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
-	// uncompressed pre-encoding size used for the output_bytes_uncompressed
-	// histogram observation below.
-	uncompressedBytes := int64(builder.GetEstimatedSize())
+	artifact, compressedBytes, uncompressedBytes, err := c.uploadIndex(ctx, node.Tenant, builder)
+	if err != nil {
+		return nil, fmt.Errorf("index merge output: %w", err)
+	}
+	if c.indexMergeObserver != nil {
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, compressedBytes, uncompressedBytes)
+	}
+	return artifact, nil
+}
 
-	// Flush builder and upload result
+// uploadIndex flushes builder and uploads the index object to a content-hash
+// path. It returns the artifact for the uploaded object and the object's
+// compressed and uncompressed sizes in bytes.
+func (c *Context) uploadIndex(ctx context.Context, tenant string, builder *indexobj.MergeBuilder) (artifact *v2.ResultArtifact, compressedBytes, uncompressedBytes int64, err error) {
+	// Read the size before Flush, because Flush resets the builder.
+	uncompressedBytes = int64(builder.GetEstimatedSize())
+
 	obj, closer, err := builder.Flush()
 	if err != nil {
-		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Empty builder produces no artifact.
-			return nil, nil
-		}
-		return nil, fmt.Errorf("flushing builder: %w", err)
+		return nil, 0, 0, fmt.Errorf("flushing index: %w", err)
 	}
 
-	// Compute content-hash path and upload
 	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return nil, errors.Join(err, closer.Close())
+		return nil, 0, 0, errors.Join(err, closer.Close())
 	}
-	path, hashErr := v2.CompactedIndexPath(node.Tenant, pathReader)
+	path, hashErr := v2.CompactedIndexPath(tenant, pathReader)
 	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
 		hashErr = cerr
 	}
 	if hashErr != nil {
-		return nil, errors.Join(hashErr, closer.Close())
+		return nil, 0, 0, errors.Join(hashErr, closer.Close())
 	}
 
+	compressedBytes = obj.Size()
 	uploadReader, err := obj.Reader(ctx)
 	if err != nil {
-		return nil, errors.Join(err, closer.Close())
+		return nil, 0, 0, errors.Join(err, closer.Close())
 	}
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
-		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
+		return nil, 0, 0, errors.Join(fmt.Errorf("uploading index %q: %w", path, err), uploadReader.Close(), closer.Close())
 	}
 	if err := uploadReader.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("closing upload reader: %w", err), closer.Close())
-	}
-
-	// Observe output sizes once the upload has succeeded. obj.Size() reflects
-	// the encoded/compressed bytes that just got written.
-	if c.indexMergeObserver != nil {
-		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
+		return nil, 0, 0, errors.Join(fmt.Errorf("closing upload reader for index %q: %w", path, err), closer.Close())
 	}
 
 	if err := closer.Close(); err != nil {
-		return nil, fmt.Errorf("closing merged index: %w", err)
+		return nil, 0, 0, fmt.Errorf("closing index %q: %w", path, err)
 	}
-
-	return []v2.ResultArtifact{{Path: path}}, nil
+	return &v2.ResultArtifact{Path: path}, compressedBytes, uncompressedBytes, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable

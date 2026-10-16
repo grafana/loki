@@ -63,8 +63,6 @@ type Deps struct {
 	ResultsCache cache.Config
 	// QueryIngestersWithin is querier.query_ingesters_within.
 	QueryIngestersWithin time.Duration
-	// QuerySplitDuration is the global limits_config.split_queries_by_interval.
-	QuerySplitDuration time.Duration
 }
 
 type identityMiddleware struct{}
@@ -111,7 +109,7 @@ func WrapMiddleware(
 		deps.ObjectStore,
 		storeCfg,
 		logger,
-		reg,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "query-frontend"}, reg),
 	)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create logline index store: %w", err)
@@ -139,19 +137,10 @@ func WrapMiddleware(
 		})
 	}
 
-	storeSvc := services.NewBasicService(
-		func(ctx context.Context) error {
-			return indexStore.StartPolling(ctx)
-		},
-		func(ctx context.Context) error {
-			<-ctx.Done()
-			return nil
-		},
-		func(_ error) error {
-			cleanup()
-			return nil
-		},
-	)
+	storeSvc := store.NewPollingService(indexStore, "", func(_ error) error {
+		cleanup()
+		return nil
+	})
 
 	return wrapped, storeSvc, cleanup, nil
 }
@@ -187,9 +176,10 @@ func WrapMiddlewareWithStore(
 		indexStore,
 		cfg.NgramLength,
 		cfg.MaxHintParallel,
-		metrics.ObserveQueryMultipleTermBatches,
+		nil,
 		logger,
-		reg,
+		// QF should not have a metadata cache
+		nil,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create hint provider: %w", err)
@@ -219,15 +209,11 @@ func WrapMiddlewareWithStore(
 		}
 	}
 
-	hp := hintprovider.NewCachingHintProvider(baseHintProvider, hintCache, reg)
 	if cfg.QueryIngestersWithin == 0 {
 		cfg.QueryIngestersWithin = deps.QueryIngestersWithin
 	}
-	if cfg.QuerySplitDuration == 0 {
-		cfg.QuerySplitDuration = deps.QuerySplitDuration
-	}
 
-	prefetchMW := NewLoglinePrefetchMiddleware(hp, cfg, limits, metrics, logger)
+	prefetchMW := NewLoglinePrefetchMiddleware(baseHintProvider, hintCache, cfg, limits, metrics, logger, reg)
 	filterMW := NewLoglineFilterMiddleware(cfg.HintTimeout, metrics, logger)
 
 	if existing == nil {

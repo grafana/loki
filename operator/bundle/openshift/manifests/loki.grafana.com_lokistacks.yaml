@@ -817,9 +817,6 @@ spec:
                   to store logs.
                 properties:
                   schemas:
-                    default:
-                    - effectiveDate: "2020-10-11"
-                      version: v11
                     description: Schemas for reading and writing logs.
                     items:
                       description: ObjectStorageSchema defines a schema version and
@@ -899,6 +896,7 @@ spec:
                     - caName
                     type: object
                 required:
+                - schemas
                 - secret
                 type: object
               storageClassName:

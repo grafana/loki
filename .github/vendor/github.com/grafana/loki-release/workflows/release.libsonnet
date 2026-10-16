@@ -363,6 +363,9 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
 
         echo "Checking if branch already exists: $BRANCH_NAME"
 
+        # explicitly authenticate with the github app identity
+        git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
+
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
@@ -370,16 +373,13 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
-          
+
           # Create branch from the tag
           git fetch --tags
           git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
-
-          # explicity set the github app token to override the release branch protection
-          git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
-          
+
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi

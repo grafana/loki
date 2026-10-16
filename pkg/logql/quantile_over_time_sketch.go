@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -151,34 +150,35 @@ func ProbabilisticQuantileMatrixFromProto(proto *logproto.QuantileSketchMatrix) 
 type QuantileSketchStepEvaluator struct {
 	iter RangeVectorIterator
 
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
+	// so a kept errored sample does not fail the query.
+	keepsErroredLines bool
+
 	err error
 }
 
 func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.err != nil {
+		return false, 0, ProbabilisticQuantileVector{}
+	}
+
 	next := e.iter.Next()
-	if !next {
+	e.err = e.iter.Error()
+	if !next || e.err != nil {
 		return false, 0, ProbabilisticQuantileVector{}
 	}
 	ts, r := e.iter.At()
 	vec := r.QuantileSketchVec()
-	for _, s := range vec {
-		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
-			e.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, ProbabilisticQuantileVector{}
-		}
+	if err := pipelineErr(e.keepsErroredLines, vec, func(s ProbabilisticQuantileSample) labels.Labels { return s.Metric }); err != nil {
+		e.err = err
+		return false, 0, ProbabilisticQuantileVector{}
 	}
 	return true, ts, vec
 }
 
 func (e *QuantileSketchStepEvaluator) Close() error { return e.iter.Close() }
 
-func (e *QuantileSketchStepEvaluator) Error() error {
-	if e.err != nil {
-		return e.err
-	}
-	return e.iter.Error()
-}
+func (e *QuantileSketchStepEvaluator) Error() error { return e.err }
 
 func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 	parent.Child("QuantileSketch")
@@ -338,8 +338,13 @@ func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64)
 }
 
 func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.err != nil {
+		return false, 0, SampleVector{}
+	}
+
 	ok, ts, r := e.inner.Next()
-	if !ok {
+	e.err = e.inner.Error()
+	if !ok || e.err != nil {
 		return false, 0, SampleVector{}
 	}
 	quantileSketchVec := r.QuantileSketchVec()
@@ -360,9 +365,9 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 		}
 	}
 
-	return ok, ts, SampleVector(vec)
+	return true, ts, SampleVector(vec)
 }
 
-func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
+func (e *QuantileSketchVectorStepEvaluator) Close() error { return e.inner.Close() }
 
 func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }

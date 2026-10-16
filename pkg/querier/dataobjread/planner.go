@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -70,17 +71,22 @@ func (p *Planner) Plan(ctx context.Context, query QueryParams) *TaskIterator {
 		}()
 
 		resolved, err := p.metastore.Sections(ctx, metastore.SectionsRequest{
-			Start:      query.Start,
-			End:        query.End,
-			Matchers:   query.Matchers,
-			Predicates: query.Projection.sectionPredicates(),
+			Start:            query.Start,
+			End:              query.End,
+			Matchers:         query.Matchers,
+			Predicates:       query.Projection.sectionPredicates(),
+			ShardBucketRange: query.Shard.metastoreBucketRange(),
 		})
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
 			return
 		}
 
-		if err := p.planObjects(ctx, resolved.Sections, query, tasks); err != nil {
+		// The object opens and streams reads below get a root region of their own. Without one their
+		// requests and bytes run outside any region and go uncounted. The metastore opened its own
+		// root region in Sections above.
+		planCtx, _ := xcap.StartRegion(ctx, regionStreamsReader)
+		if err := p.planObjects(planCtx, resolved.Sections, query, tasks); err != nil {
 			it.setErr(err)
 		}
 	}()
@@ -142,10 +148,10 @@ func (p *Planner) planObject(ctx context.Context, path string, descriptors metas
 		return nil, err
 	}
 
-	// One task per section. The metastore concatenates the descriptors of every index object
-	// without merging across them, so two index objects describing one section would plan it
-	// twice and emit every one of its rows twice. Check before the streams read below, which
-	// costs a round trip to object storage.
+	// One task per section. The metastore drops duplicate sections, so a repeated section index
+	// means a bug upstream. Fail the query then, because planning a section twice emits each of
+	// its rows twice. Check before the streams read below, which costs a round trip to object
+	// storage.
 	planned := make(map[int64]struct{}, len(descriptors))
 	for _, descriptor := range descriptors {
 		if _, repeated := planned[descriptor.SectionIdx]; repeated {
@@ -239,15 +245,16 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	// would suppress pushdown this can keep.
 	columns, metadataNames, predicates := query.Projection.forStreams(labelNames)
 	return ReadTask{
-		objectPath:    descriptor.ObjectPath,
-		sectionIdx:    int(descriptor.SectionIdx),
-		streamIDs:     streamIDs,
-		streams:       streams,
-		columns:       columns,
-		metadataNames: metadataNames,
-		predicates:    predicates,
-		start:         query.Start,
-		end:           query.End,
+		objectPath:        descriptor.ObjectPath,
+		sectionIdx:        int(descriptor.SectionIdx),
+		streamIDs:         streamIDs,
+		streams:           streams,
+		columns:           columns,
+		metadataNames:     metadataNames,
+		predicates:        predicates,
+		needReturningLine: query.Projection.needReturningLine,
+		start:             query.Start,
+		end:               query.End,
 	}, true, nil
 }
 
@@ -258,7 +265,7 @@ func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *Q
 	}
 
 	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
-	// streams.ShardFactor. Any other shard maps to a range that covers streams outside it, so
+	// streams.DefaultShardBuckets. Any other shard maps to a range that covers streams outside it, so
 	// the stream hash still has to be checked.
 	if shard != nil && !shard.resolvesExactly() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {
