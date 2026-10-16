@@ -74,7 +74,7 @@ func (f *FileReader) Reset() error {
 // spans bytes on both sides of the cursor. Anything else drops the window, so
 // the next access preads at the right place.
 func (f *FileReader) ResetAt(off int) error {
-	if off > f.length {
+	if off < 0 || off > f.length {
 		return ErrInvalidSize
 	}
 
@@ -165,6 +165,10 @@ func (f *FileReader) Peek(n int) ([]byte, error) {
 }
 
 func (f *FileReader) Read(n int) ([]byte, error) {
+	if n < 0 {
+		return nil, ErrInvalidSize
+	}
+
 	b := make([]byte, n)
 
 	err := f.ReadInto(b)
