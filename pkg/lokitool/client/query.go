@@ -24,6 +24,7 @@ const (
 	labelsPath      = "/loki/api/v1/labels"
 	labelValuesPath = "/loki/api/v1/label/%s/values"
 	seriesPath      = "/loki/api/v1/series"
+	statsPath       = "/loki/api/v1/index/stats"
 	volumePath      = "/loki/api/v1/index/volume"
 
 	detectedFieldsPath      = "/loki/api/v1/detected_fields"
@@ -38,6 +39,7 @@ type QueryClient interface {
 	ListLabelNames(start, end time.Time) (*loghttp.LabelResponse, error)
 	ListLabelValues(name string, start, end time.Time) (*loghttp.LabelResponse, error)
 	Series(matchers []string, start, end time.Time) (*loghttp.SeriesResponse, error)
+	GetStats(queryStr string, start, end time.Time) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration) (*loghttp.DetectedFieldsResponse, error)
 }
@@ -116,6 +118,20 @@ func (c *Client) Series(matchers []string, start, end time.Time) (*loghttp.Serie
 		return nil, err
 	}
 	return &seriesResponse, nil
+}
+
+// GetStats uses the /api/v1/index/stats endpoint to get statistics about the data of the streams that match the query.
+func (c *Client) GetStats(queryStr string, start, end time.Time) (*logproto.IndexStatsResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+
+	var statsResponse logproto.IndexStatsResponse
+	if err := c.getJSON(statsPath, params.Encode(), &statsResponse); err != nil {
+		return nil, err
+	}
+	return &statsResponse, nil
 }
 
 // GetVolume uses the /api/v1/index/volume endpoint to get the volume of the streams that match the query.

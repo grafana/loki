@@ -228,6 +228,13 @@ func TestFileClient_GetDetectedFields(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+func TestFileClient_GetStats(t *testing.T) {
+	c := newEmptyClient(t)
+	resp, err := c.GetStats(`{foo="bar"}`, time.Now(), time.Now())
+	require.ErrorIs(t, err, ErrNotSupported)
+	require.Nil(t, resp)
+}
+
 func newEmptyClient(t *testing.T) *FileClient {
 	t.Helper()
 	return NewFileClient(io.NopCloser(&bytes.Buffer{}), log.NewNopLogger())

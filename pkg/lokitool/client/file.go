@@ -180,6 +180,10 @@ func (f *FileClient) Series(_ []string, _, _ time.Time) (*loghttp.SeriesResponse
 	}, nil
 }
 
+func (f *FileClient) GetStats(_ string, _, _ time.Time) (*logproto.IndexStatsResponse, error) {
+	return nil, ErrNotSupported
+}
+
 func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	return nil, ErrNotSupported
 }

@@ -255,3 +255,27 @@ func TestGetDetectedFields(t *testing.T) {
 		require.False(t, params.Has("step"))
 	})
 }
+
+func TestGetStats(t *testing.T) {
+	srv, requests := newServer(t, http.StatusOK, `{"streams": 2, "chunks": 10, "bytes": 2048, "entries": 100}`)
+	c, err := New(Config{Address: srv.URL})
+	require.NoError(t, err)
+
+	start := time.Unix(1700000000, 0)
+	resp, err := c.GetStats(`{app="foo"}`, start, start.Add(time.Hour))
+	require.NoError(t, err)
+	require.EqualValues(t, 2, resp.Streams)
+	require.EqualValues(t, 10, resp.Chunks)
+	require.EqualValues(t, 2048, resp.Bytes)
+	require.EqualValues(t, 100, resp.Entries)
+
+	got := requests()
+	require.Len(t, got, 1)
+	require.Equal(t, "/loki/api/v1/index/stats", got[0].Path)
+
+	params, err := url.ParseQuery(got[0].Query)
+	require.NoError(t, err)
+	require.Equal(t, `{app="foo"}`, params.Get("query"))
+	require.Equal(t, "1700000000000000000", params.Get("start"))
+	require.Equal(t, "1700003600000000000", params.Get("end"))
+}
