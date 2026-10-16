@@ -90,7 +90,7 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 			return resp.Results, nil
 		},
 		func(res *proto.ExceedsLimitsResult) uint64 { return res.StreamHash },
-		func(*proto.ExceedsLimitsResult) bool { return true },
+		func(*proto.ExceedsLimitsResult) bool { return false },
 	)
 	unanswered, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doFanout)
 	if err != nil {
@@ -137,7 +137,7 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 		// retried against the next zone rather than counted as failed while a
 		// healthy zone was never tried.
 		func(res *proto.StreamShardResult) bool {
-			return res.GetStats().GetShardDecisionContext() != uint32(limits.ReasonNotOwned)
+			return res.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned)
 		},
 	)
 	if _, err := r.exhaustAllZones(ctx, req.Tenant, req.Streams, doFanout); err != nil {
@@ -150,9 +150,9 @@ func (r *ringLimitsClient) CheckLimitsAndShard(ctx context.Context, req *proto.C
 // consuming a partition for the given streams, appending the results of all
 // instances in the zone to responses.
 //
-// shouldFallbackToNextZone decides which results count as an answer to their stream.
-// Results it rejects are left out of responses, and the streams they belong
-// to, identified with resultStreamHash, are reported as unanswered so that
+// shouldFallbackToNextZone reports whether a result carries no decision about
+// its stream. Such results are left out of responses, and their streams,
+// identified with resultStreamHash, are reported as unanswered so that
 // [ringLimitsClient.exhaustAllZones] retries them against the next zone.
 func newFanout[Req, Resp any](
 	r *ringLimitsClient,
@@ -195,7 +195,7 @@ func newFanout[Req, Resp any](
 		notAnswered := make(map[uint64]struct{})
 		for r := range responseCh {
 			for _, res := range r {
-				if shouldFallbackToNextZone(res) {
+				if !shouldFallbackToNextZone(res) {
 					*responses = append(*responses, res)
 				} else {
 					notAnswered[resultStreamHash(res)] = struct{}{}
