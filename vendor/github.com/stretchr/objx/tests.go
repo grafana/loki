@@ -8,7 +8,7 @@ func (m Map) Has(selector string) bool {
 	if m == nil {
 		return false
 	}
-	_, ok := access(m, selector, nil, false)
+	_, ok := access(m, selector, nil, actionGet)
 	return ok
 }
 
