@@ -16,6 +16,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	logline_query_limits "github.com/grafana/loki/v3/pkg/logline/queryfrontend/limits"
@@ -42,6 +43,7 @@ type mockHintProvider struct {
 	delay        time.Duration
 	release      chan struct{} // when set, ProvideHints blocks until it is closed
 	stats        *hintprovider.QueryStats
+	minDate      time.Time
 }
 
 // mockLimits is the limits_config view the middleware reads. A tenant without
@@ -150,6 +152,12 @@ func (m *mockHintProvider) SawCancel() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sawCancel
+}
+
+func (m *mockHintProvider) MinDate() time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.minDate
 }
 
 func newTestMetrics() *Metrics {
@@ -1982,6 +1990,242 @@ func TestPrefetchFilter_24hQueryWith3hIngesterWindow(t *testing.T) {
 	}
 	require.True(t, hasHinted, "should have hinted sub-request")
 	require.True(t, hasIngester, "should have ingester passthrough")
+}
+
+func TestPrefetchFilter_PassthroughIntervalsDoNotWaitForLookup(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	minDate := now.Add(-20 * time.Hour)
+
+	for _, tc := range []struct {
+		name       string
+		start, end time.Time
+		reason     string
+	}{
+		{name: "ingester window", start: now.Add(-1 * time.Hour), end: now, reason: "ingester_window"},
+		{name: "straddles the ingester cutoff", start: now.Add(-4 * time.Hour), end: now.Add(-2 * time.Hour), reason: "ingester_window"},
+		{name: "before min date", start: now.Add(-30 * time.Hour), end: minDate, reason: "pre_min_date"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{}, delay: time.Minute, minDate: minDate}
+			metrics := newTestMetrics()
+			prefetchMW := prefetchMiddlewareForTest(hp, Config{QueryIngestersWithin: 3 * time.Hour}, mockLimits{}, metrics, nil)
+			filterMW := NewLoglineFilterMiddleware(time.Minute, metrics, nil)
+
+			var gotHints []logproto.HintTimeRange
+			querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				gotHints = req.(*queryrange.LokiRequest).HintRanges
+				return emptyStreamResponse(), nil
+			})
+			// Stands in for SplitByInterval sending a single interval.
+			splitSim := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				return filterMW.Wrap(querier).Do(ctx, req.WithStartEnd(tc.start, tc.end))
+			})
+			handler := prefetchMW.Wrap(splitSim)
+			req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-30*time.Hour), now)
+
+			type result struct {
+				resp queryrangebase.Response
+				err  error
+			}
+			done := make(chan result, 1)
+			go func() {
+				resp, err := handler.Do(testTenantContextWithLive(), req)
+				done <- result{resp: resp, err: err}
+			}()
+			var res result
+			select {
+			case res = <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the sub-request waited for the hint lookup")
+			}
+			require.NoError(t, res.err)
+			require.Empty(t, gotHints)
+			require.Equal(t, 1.0, testutil.ToFloat64(metrics.passthroughSubRequests.WithLabelValues(tc.reason)))
+
+			loglineStats := res.resp.(*queryrange.LokiResponse).Statistics.Logline
+			require.Equal(t, hintStatusIncomplete, loglineStats.HintStatus)
+			require.Equal(t, outcomeAnsweredBeforeLookup, loglineStats.Outcome)
+			require.Eventually(t, hp.SawCancel, 5*time.Second, 10*time.Millisecond, "the lookup should stop once the query returns")
+		})
+	}
+}
+
+func TestPrefetchFilter_LimitReachedInPassthroughInterval(t *testing.T) {
+	// A query whose first interval fills the limit returns without waiting for
+	// the lookup when that interval passes through, and the interval that was
+	// waiting for the lookup is canceled, as SplitByInterval does.
+	now := time.Now().Truncate(time.Millisecond)
+	minDate := now.Add(-20 * time.Hour)
+
+	for _, tc := range []struct {
+		name                 string
+		direction            logproto.Direction
+		answered, waiting    [2]time.Time
+		passthroughReason    string
+		queryStart, queryEnd time.Time
+	}{
+		{
+			name:              "backward query answered from the ingester window",
+			direction:         logproto.BACKWARD,
+			answered:          [2]time.Time{now.Add(-1 * time.Hour), now},
+			waiting:           [2]time.Time{now.Add(-6 * time.Hour), now.Add(-4 * time.Hour)},
+			passthroughReason: "ingester_window",
+			queryStart:        now.Add(-6 * time.Hour),
+			queryEnd:          now,
+		},
+		{
+			name:              "forward query answered before the index min date",
+			direction:         logproto.FORWARD,
+			answered:          [2]time.Time{now.Add(-30 * time.Hour), now.Add(-24 * time.Hour)},
+			waiting:           [2]time.Time{now.Add(-12 * time.Hour), now.Add(-10 * time.Hour)},
+			passthroughReason: "pre_min_date",
+			queryStart:        now.Add(-30 * time.Hour),
+			queryEnd:          now.Add(-10 * time.Hour),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := &mockHintProvider{hints: &hintprovider.Hints{}, delay: time.Minute, minDate: minDate}
+			metrics := newTestMetrics()
+			prefetchMW := prefetchMiddlewareForTest(hp, Config{QueryIngestersWithin: 3 * time.Hour}, mockLimits{}, metrics, nil)
+			filterMW := NewLoglineFilterMiddleware(5*time.Second, metrics, nil)
+
+			var querierCalls atomic.Int64
+			querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				querierCalls.Add(1)
+				return streamResponseWithEntries(logproto.Entry{Timestamp: req.GetEnd().Add(-time.Minute), Line: "needle"}), nil
+			})
+			// Shard planning runs this on another goroutine, so it records the
+			// waiting interval's error for the test to check.
+			var waitingErr error
+			splitSim := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				ctx, cancel := context.WithCancel(ctx)
+				defer cancel()
+				filtered := filterMW.Wrap(querier)
+				waiting := make(chan error, 1)
+				go func() {
+					_, err := filtered.Do(ctx, req.WithStartEnd(tc.waiting[0], tc.waiting[1]))
+					waiting <- err
+				}()
+				resp, err := filtered.Do(ctx, req.WithStartEnd(tc.answered[0], tc.answered[1]))
+				cancel()
+				waitingErr = <-waiting
+				return resp, err
+			})
+			handler := prefetchMW.Wrap(splitSim)
+
+			req := newTestLokiRequest(`{job="test"} |= "needle"`, tc.queryStart, tc.queryEnd)
+			req.Direction = tc.direction
+			resp, err := handler.Do(testTenantContextWithLive(), req)
+			require.NoError(t, err)
+			require.Equal(t, int64(1), resp.(*queryrange.LokiResponse).Count())
+			require.ErrorIs(t, waitingErr, context.Canceled)
+			require.Equal(t, int64(1), querierCalls.Load(), "only the pass-through interval reaches a querier")
+			require.Equal(t, 1.0, testutil.ToFloat64(metrics.passthroughSubRequests.WithLabelValues(tc.passthroughReason)))
+			require.Equal(t, outcomeAnsweredBeforeLookup, resp.(*queryrange.LokiResponse).Statistics.Logline.Outcome)
+
+			require.Eventually(t, func() bool {
+				return testutil.ToFloat64(metrics.hintLookupsCanceled) == 1
+			}, 5*time.Second, 10*time.Millisecond, "the lookup should stop once the query returns")
+			var m dto.Metric
+			require.NoError(t, metrics.hintProviderDuration.Write(&m))
+			require.Zero(t, m.GetHistogram().GetSampleCount(), "a canceled lookup has no lookup duration")
+		})
+	}
+}
+
+func TestPrefetchFilter_LookupErrorDoesNotRelabelPassthroughIntervals(t *testing.T) {
+	// The ingester-window interval doesn't wait for the lookup, so it counts as
+	// an ingester-window pass-through even when the lookup fails. Only the
+	// interval that waited counts as an error pass-through.
+	now := time.Now().Truncate(time.Millisecond)
+	hp := &mockHintProvider{err: errors.New("index unavailable")}
+	metrics := newTestMetrics()
+	prefetchMW := prefetchMiddlewareForTest(hp, Config{QueryIngestersWithin: 3 * time.Hour}, mockLimits{}, metrics, nil)
+	filterMW := NewLoglineFilterMiddleware(5*time.Second, metrics, nil)
+
+	var querierCalls atomic.Int64
+	var gotHints atomic.Int64
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		querierCalls.Inc()
+		gotHints.Add(int64(len(req.(*queryrange.LokiRequest).HintRanges)))
+		return emptyStreamResponse(), nil
+	})
+	splitSim := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		filtered := filterMW.Wrap(querier)
+		if _, err := filtered.Do(ctx, req.WithStartEnd(now.Add(-6*time.Hour), now.Add(-4*time.Hour))); err != nil {
+			return nil, err
+		}
+		return filtered.Do(ctx, req.WithStartEnd(now.Add(-1*time.Hour), now))
+	})
+	handler := prefetchMW.Wrap(splitSim)
+
+	resp, err := handler.Do(testTenantContextWithLive(), newTestLokiRequest(`{job="test"} |= "needle"`, now.Add(-6*time.Hour), now))
+	require.NoError(t, err)
+	require.Equal(t, int64(2), querierCalls.Load())
+	require.Zero(t, gotHints.Load())
+	require.Equal(t, 1.0, testutil.ToFloat64(metrics.passthroughSubRequests.WithLabelValues("ingester_window")))
+	require.Equal(t, 1.0, testutil.ToFloat64(metrics.hintPassthrough.WithLabelValues("error")))
+
+	loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
+	require.Equal(t, hintStatusError, loglineStats.HintStatus)
+	require.Equal(t, outcomeLookupFailed, loglineStats.Outcome)
+}
+
+func TestPrefetchFilter_PreMinDateOnly_SkipsLookup(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		shardPlanning ShardPlanningConfig
+	}{
+		{name: "shard planning disabled"},
+		{
+			name:          "shard planning enabled",
+			shardPlanning: ShardPlanningConfig{Enabled: true, MinTimeReductionRatio: defaultShardPlanningMinReductionRatio},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().Truncate(time.Millisecond)
+			hp := &mockHintProvider{minDate: now.Add(-24 * time.Hour)}
+
+			var nextCalled, nextCanceled atomic.Int64
+			var gotHints []logproto.HintTimeRange
+			next := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				nextCalled.Inc()
+				gotHints = req.(*queryrange.LokiRequest).HintRanges
+				// Long enough for shard planning to see the finished lookup
+				// before the query returns.
+				select {
+				case <-time.After(50 * time.Millisecond):
+				case <-ctx.Done():
+					nextCanceled.Inc()
+					return nil, ctx.Err()
+				}
+				resp := emptyStreamResponse()
+				resp.Statistics.Index.ShardPlannedChunks = 40
+				resp.Statistics.Index.ShardPlannedChunksScanned = 40
+				return resp, nil
+			})
+			metrics := newTestMetrics()
+			handler := buildStack(hp, Config{RequireOptInHeader: true, ShardPlanning: tc.shardPlanning}, metrics, next)
+			req := newTestLokiRequest(`{job="test"} |= "error"`, now.Add(-48*time.Hour), now.Add(-30*time.Hour))
+			resp, err := handler.Do(testTenantContextWithLive(), req)
+			require.NoError(t, err)
+			require.Equal(t, int64(1), nextCalled.Load(), "the query must not be rerun")
+			require.Zero(t, nextCanceled.Load())
+			require.Empty(t, gotHints)
+			require.Equal(t, 0, hp.Calls(), "nothing in the query is indexed")
+			require.Equal(t, 1.0, testutil.ToFloat64(metrics.passthroughSubRequests.WithLabelValues("pre_min_date")))
+			if tc.shardPlanning.Enabled {
+				require.Equal(t, 1.0, testutil.ToFloat64(metrics.shardPlanningTotal.WithLabelValues("fallback", "passthrough_range")))
+				require.Zero(t, testutil.ToFloat64(metrics.shardPlanningTotal.WithLabelValues("cancel_then_rerun", "eligible")))
+			}
+
+			loglineStats := resp.(*queryrange.LokiResponse).Statistics.Logline
+			require.Equal(t, hintStatusOK, loglineStats.HintStatus)
+			require.Equal(t, int64(1), loglineStats.HintRanges, "the pre-min-date range the lookup would have returned")
+			require.Zero(t, loglineStats.HintRangesDuration)
+			require.Equal(t, outcomeTimeRangeNotIndexed, loglineStats.Outcome)
+		})
+	}
 }
 
 func TestPrefetchFilter_LoglineStatsAcrossSkipNarrowPassthrough(t *testing.T) {
