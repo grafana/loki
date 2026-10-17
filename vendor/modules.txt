@@ -1976,7 +1976,7 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20261011100332-faecfb24eb49
+# golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
 ## explicit; go 1.26.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
