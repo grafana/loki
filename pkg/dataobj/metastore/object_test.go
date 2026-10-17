@@ -132,6 +132,39 @@ func (b *getRecordingBucket) tocReads() []string {
 	return out
 }
 
+type rangeRead struct {
+	name   string
+	offset int64
+	length int64
+}
+
+// rangeRecordingBucket records every ranged read, in call order.
+type rangeRecordingBucket struct {
+	objstore.Bucket
+
+	mtx   sync.Mutex
+	reads []rangeRead
+}
+
+func (b *rangeRecordingBucket) GetRange(ctx context.Context, name string, offset, length int64) (io.ReadCloser, error) {
+	b.mtx.Lock()
+	b.reads = append(b.reads, rangeRead{name: name, offset: offset, length: length})
+	b.mtx.Unlock()
+	return b.Bucket.GetRange(ctx, name, offset, length)
+}
+
+func (b *rangeRecordingBucket) readsOf(name string) []rangeRead {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	var out []rangeRead
+	for _, read := range b.reads {
+		if read.name == name {
+			out = append(out, read)
+		}
+	}
+	return out
+}
+
 func TestObjectMetastore_ReadsOnlyQueriedTenantToCs(t *testing.T) {
 	const (
 		tenantA = "tenant-a"
@@ -335,6 +368,52 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestObjectMetastore_Sections_IndexPrefetch(t *testing.T) {
+	t.Run("opens an index object with a first read of 64 KiB", func(t *testing.T) {
+		ctx := user.InjectOrgID(t.Context(), tenantID)
+
+		builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
+			TargetPageSize:          1024 * 1024,
+			TargetObjectSize:        10 * 1024 * 1024,
+			TargetSectionSize:       128,
+			BufferSize:              1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		}, nil, indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, err)
+
+		lbls, err := syntax.ParseLabels(testStreams[1].Labels)
+		require.NoError(t, err)
+		observeLabelPostings(builder, "test-path", 1, 0, lbls, now, 0)
+
+		timeRanges := []dataobj.TimeRange{builder.TimeRange()}
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+
+		bucket := &rangeRecordingBucket{Bucket: objstore.NewInMemBucket()}
+
+		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+		path, err := up.Upload(ctx, obj)
+		require.NoError(t, err)
+
+		tocWriter := NewTableOfContentsWriter(bucket, DefaultTocWriterBackoffConfig, DefaultTocBuilderConfig, log.NewNopLogger(), NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
+		require.NoError(t, writeTimeRanges(ctx, tocWriter, path, timeRanges))
+
+		resp, err := newTestObjectMetastore(bucket).Sections(ctx, SectionsRequest{
+			Start:    now.Add(-time.Hour),
+			End:      now.Add(time.Hour),
+			Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Sections, 1)
+
+		reads := bucket.readsOf(path)
+		require.NotEmpty(t, reads)
+		require.Equal(t, rangeRead{name: path, offset: 0, length: 64 * 1024}, reads[0])
+	})
 }
 
 func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
