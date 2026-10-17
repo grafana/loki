@@ -218,6 +218,11 @@ func (s *stream) Push(
 	}
 
 	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
+	if isReplay {
+		// Counters may start above zero after stream recreation. Preserve the
+		// persisted counter for checkpoint deduplication and subsequent writes.
+		s.entryCt = max(s.entryCt, counter)
+	}
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
