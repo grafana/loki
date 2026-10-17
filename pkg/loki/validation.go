@@ -11,6 +11,11 @@ import (
 )
 
 func validateSchemaRequirements(c *Config) []error {
+	// This error would have already been caught in the SchemaConfig.Validate() function
+	if len(c.SchemaConfig.Configs) == 0 {
+		return []error{}
+	}
+
 	var errs []error
 	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)
 
