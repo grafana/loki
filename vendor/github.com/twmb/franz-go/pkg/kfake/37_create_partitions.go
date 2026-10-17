@@ -33,7 +33,14 @@ func (c *Cluster) handleCreatePartitions(creq *clientReq) (kmsg.Response, error)
 		return nil, err
 	}
 
+	// A fault can answer a topic before the work runs. The work's own
+	// answer for that topic must not add an entry or replace the code.
+	answered := make(map[string]int)
 	donet := func(t string, errCode int16) *kmsg.CreatePartitionsResponseTopic {
+		if i, ok := answered[t]; ok {
+			return &resp.Topics[i]
+		}
+		answered[t] = len(resp.Topics)
 		st := kmsg.NewCreatePartitionsResponseTopic()
 		st.Topic = t
 		st.ErrorCode = errCode
@@ -67,9 +74,11 @@ func (c *Cluster) handleCreatePartitions(creq *clientReq) (kmsg.Response, error)
 	}
 
 	for _, rt := range req.Topics {
-		if !c.allowedACL(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationAlter) {
-			donet(rt.Topic, kerr.TopicAuthorizationFailed.Code)
-			continue
+		if e := c.deny(creq, rt.Topic, kmsg.ACLResourceTypeTopic, kmsg.ACLOperationAlter, faultKey{topic: rt.Topic}); e != nil {
+			donet(rt.Topic, e.Code)
+			if creq.skipsWork(e) { // a timed-out create still adds the partitions
+				continue
+			}
 		}
 		t, ok := c.data.tps.gett(rt.Topic)
 		if !ok {
@@ -125,15 +134,14 @@ func (c *Cluster) handleCreatePartitions(creq *clientReq) (kmsg.Response, error)
 					}
 					pd := c.data.tps.mkp(rt.Topic, partNum, func() *partData {
 						return &partData{
-							p:               partNum,
-							dir:             defLogDir,
-							maxTimestampSeg: -1,
-							maxTimestampIdx: -1,
-							leader:          leader,
-							followers:       followers,
-							watch:           make(map[*watchFetch]struct{}),
-							shareWatch:      make(map[*watchShareFetch]struct{}),
-							createdAt:       time.Now(),
+							p:          partNum,
+							dir:        defLogDir,
+							leader:     leader,
+							followers:  followers,
+							watch:      make(map[*watchFetch]struct{}),
+							shareWatch: make(map[*watchShareFetch]struct{}),
+							createdAt:  time.Now(),
+							rolledAt:   time.Now(),
 						}
 					})
 					pd.t = rt.Topic
