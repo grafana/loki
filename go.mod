@@ -108,7 +108,7 @@ require (
 	github.com/spf13/afero v1.15.0
 	github.com/stretchr/testify v1.12.1
 	github.com/thanos-io/objstore v0.0.0-20261009124658-72d3b9ff63af
-	github.com/tjhop/slog-gokit v0.2.0
+	github.com/tjhop/slog-gokit v0.2.2
 	github.com/twmb/franz-go v1.21.7
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
