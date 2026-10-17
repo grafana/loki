@@ -262,8 +262,7 @@ message Store {
   ];
 
   // Total number of chunks that failed to be fetched or decoded for the query,
-  // counted even when propagateChunkFetchErrors tolerated the failure instead
-  // of failing the query outright.
+  // which always fails the query outright.
   int64 chunkFetchFailures = 15 [(gogoproto.jsontag) = "chunkFetchFailures"];
 
   // Chunk refs left to read after time and logline hint filtering. Unlike
