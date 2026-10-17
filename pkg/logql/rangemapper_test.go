@@ -1809,6 +1809,40 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			)`,
 			3,
 		},
+		// The vector aggregation must not be pushed down into the downstream
+		// queries when a label_replace sits in between: the label_replace has to
+		// be evaluated exactly once, on a label set that still holds its source
+		// label.
+		{
+			`sum by (x) (label_replace(count_over_time({app="foo"}[3m]), "x", "$1", "a", "(.*)"))`,
+			`sum by (x) (
+				label_replace(
+					sum without () (
+						downstream<count_over_time({app="foo"} [1m] offset 2m0s), shard=<nil>>
+						++ downstream<count_over_time({app="foo"} [1m] offset 1m0s), shard=<nil>>
+						++ downstream<count_over_time({app="foo"} [1m]), shard=<nil>>
+					),
+					"x", "$1", "a", "(.*)"
+				)
+			)`,
+			3,
+		},
+		{
+			`sum by (x) (label_replace(rate({app="foo"}[3m]), "x", "$1", "a", "(.*)"))`,
+			`sum by (x) (
+				label_replace(
+					(
+						sum without () (
+							downstream<count_over_time({app="foo"} [1m] offset 2m0s), shard=<nil>>
+							++ downstream<count_over_time({app="foo"} [1m] offset 1m0s), shard=<nil>>
+							++ downstream<count_over_time({app="foo"} [1m]), shard=<nil>>
+						)
+					/ 180),
+					"x", "$1", "a", "(.*)"
+				)
+			)`,
+			3,
+		},
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			t.Parallel()
