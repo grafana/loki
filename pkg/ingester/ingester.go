@@ -77,10 +77,14 @@ const (
 	PartitionRingName = "ingester-partitions"
 )
 
-// ErrReadOnly is returned when the ingester is shutting down and a push was
-// attempted.
 var (
+	// ErrReadOnly is returned when the ingester is shutting down and a push was
+	// attempted.
 	ErrReadOnly = errors.New("Ingester is shutting down")
+
+	// ErrDiskThrottled is returned when a push was attempted while WAL disk usage
+	// is above the configured threshold (-ingester.wal-disk-full-threshold).
+	ErrDiskThrottled = errors.New("Ingester is rejecting writes: WAL disk usage exceeded threshold")
 
 	compressionStats   = analytics.NewString("ingester_compression")
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
@@ -1010,7 +1014,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 	// Check if disk is too full and throttle writes if needed
 	if i.wal.IsDiskThrottled() {
-		return nil, ErrReadOnly
+		return nil, ErrDiskThrottled
 	}
 
 	// Set profiling tags
