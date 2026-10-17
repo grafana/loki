@@ -1710,10 +1710,10 @@ go.opentelemetry.io/collector/pdata/xpdata/xhash
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.68.0
+# go.opentelemetry.io/collector/processor v1.69.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor
-# go.opentelemetry.io/collector/processor/xprocessor v0.162.0
+# go.opentelemetry.io/collector/processor/xprocessor v0.163.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/processor/xprocessor
 # go.opentelemetry.io/contrib/bridges/prometheus v0.72.0
