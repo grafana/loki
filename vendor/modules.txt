@@ -1703,7 +1703,7 @@ go.opentelemetry.io/collector/pdata/ptrace
 # go.opentelemetry.io/collector/pdata/pprofile v0.163.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/pprofile
-# go.opentelemetry.io/collector/pdata/xpdata v0.162.0
+# go.opentelemetry.io/collector/pdata/xpdata v0.163.0
 ## explicit; go 1.26.0
 go.opentelemetry.io/collector/pdata/xpdata/xhash
 # go.opentelemetry.io/collector/pipeline v1.68.0
