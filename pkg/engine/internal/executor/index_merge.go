@@ -185,7 +185,8 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 				}
 				statsSeen++
 				group.stats = append(group.stats, sec)
-				// default: skip silently (streams/pointers/indexPointers etc.)
+			default:
+				return nil, fmt.Errorf("merging source index %q: unknown section %q", path, sec)
 			}
 		}
 		if len(group.postings) > 0 || len(group.stats) > 0 {
