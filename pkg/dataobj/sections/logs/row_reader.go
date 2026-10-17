@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 )
 
 // RowReader reads the set of logs from an [Object].
@@ -31,6 +32,8 @@ type RowReader struct {
 	projMetadata map[string]struct{}
 
 	buf []dataset.Row
+
+	reserver readbudget.Reserver
 
 	reader *dataset.RowReader
 
@@ -56,7 +59,8 @@ func NewRowReader(sec *Section) *RowReader {
 // Open initializes RowReader resources.
 //
 // Open must be called before [RowReader.Read]. Open is safe to call multiple
-// times. Open is a no-op when the reader has no section.
+// times. Open is a no-op when the reader has no section. Open blocks while the
+// reserver has no room for the section pages, and fails if ctx ends first.
 func (r *RowReader) Open(ctx context.Context) error {
 	if r.sec == nil || r.ready {
 		return nil
@@ -101,6 +105,23 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 	}
 
 	r.predicates = p
+	return nil
+}
+
+// SetReserver sets the reserver that Open uses for the compressed bytes of the section pages. Open
+// reserves the bytes before it downloads any page, and waits until the reserver has room. The
+// reader releases the bytes of a page when a Read begins at a row after the page ends, and the rest
+// on Close or Reset.
+//
+// A nil reserver reserves nothing. This is the default.
+//
+// SetReserver may only be called before reading begins or after a call to [RowReader.Reset].
+func (r *RowReader) SetReserver(reserver readbudget.Reserver) error {
+	if r.ready {
+		return fmt.Errorf("cannot change reserver after reading has started")
+	}
+
+	r.reserver = reserver
 	return nil
 }
 
@@ -233,6 +254,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		Columns:           datasetColumns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
+		Reserver:          r.reserver,
 	}
 
 	if r.reader == nil {
@@ -336,7 +358,8 @@ func projectColumns(datasetColumns []dataset.Column, sectionColumns []*Column, t
 // Reset resets the RowReader with a new Section to read from. Reset allows
 // reusing a RowReader without allocating a new one.
 //
-// Any set predicate, stream match and column projection are cleared when Reset is called.
+// Any set predicate, stream match, column projection and reserver are cleared when Reset is called.
+// Reset also releases the bytes that the reader reserved and drops its cached pages.
 //
 // Reset may be called with a nil section to clear the RowReader without needing a new one.
 func (r *RowReader) Reset(sec *Section) {
@@ -345,6 +368,7 @@ func (r *RowReader) Reset(sec *Section) {
 
 	clear(r.matchIDs)
 	r.predicates = nil
+	r.reserver = nil
 
 	r.projected = false
 	clear(r.projTypes)
@@ -355,8 +379,12 @@ func (r *RowReader) Reset(sec *Section) {
 		r.symbols.Reset()
 	}
 
-	// We leave r.reader as-is to avoid reallocating; it'll be reset on the first
-	// call to Open.
+	// We keep r.reader to avoid reallocating. Resetting it with no options returns its reserved
+	// bytes and drops its pages even when the caller did not close it. Open resets it again with
+	// the real options.
+	if r.reader != nil {
+		r.reader.Reset(dataset.RowReaderOptions{})
+	}
 }
 
 // Close closes the RowReader and releases any resources it holds. Closed

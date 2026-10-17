@@ -4,6 +4,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/builder"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -26,6 +28,10 @@ type Config struct {
 	StorageBucketPrefix string        `yaml:"storage_bucket_prefix"`
 	Enabled             bool          `yaml:"enabled"`
 	StorageLag          time.Duration `yaml:"storage_lag" category:"experimental"`
+
+	// QueryReadBudget limits the compressed bytes that the section reads of one query request hold
+	// in memory at once. Zero means no limit.
+	QueryReadBudget flagext.Bytes `yaml:"query_read_budget" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -51,6 +57,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"dataobj.storage-lag",
 		3*time.Hour,
 		"Delay after which data objects hold all the data.",
+	)
+	f.Var(
+		&cfg.QueryReadBudget,
+		"dataobj.query-read-budget",
+		"Experimental: limit on the compressed bytes of data object sections that one query request holds in memory at once. It applies to metric queries that a querier reads from data objects. A section read waits until its bytes fit. A section larger than the limit runs alone. A lower limit uses less memory and slows the query. The limit counts compressed page bytes only, so the memory of a query is larger than the limit. Each query request has its own limit, and a split or sharded query sends many requests. 0 means no limit.",
 	)
 }
 

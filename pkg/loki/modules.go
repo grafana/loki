@@ -598,6 +598,8 @@ func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
 		}
 
+		storeOpts = append(storeOpts, querier.WithDataObjReadBudget(int64(t.Cfg.DataObj.QueryReadBudget)))
+
 		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
 			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
 			if err != nil {

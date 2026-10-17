@@ -2,11 +2,13 @@ package dataobjread
 
 import (
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -49,6 +51,9 @@ type Metrics struct {
 	fetchedCompressedBytes    *prometheus.CounterVec
 	objectStoreRequests       *prometheus.CounterVec
 	objectStoreRequestsFailed *prometheus.CounterVec
+
+	readBudgetWaitSeconds prometheus.Counter
+	sectionReservedBytes  prometheus.Histogram
 }
 
 // NewMetrics registers the read path's metrics on reg.
@@ -60,7 +65,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		}),
 		taskScanSeconds: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_read_task_scan_seconds_total",
-			Help: "Total time data-object section readers spent scanning logs sections.",
+			Help: "Total time data-object section readers spent scanning logs sections, including the time they waited for the read budget.",
 		}),
 		fetchedCompressedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_querier_dataobj_fetched_compressed_bytes_total",
@@ -74,6 +79,15 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "loki_querier_dataobj_object_store_requests_failed_total",
 			Help: "Object-store requests that failed for data-object queries, by read-path component and operation (attributes, get, get_range). A request for an object that does not exist (not found) or a canceled request is not a failure. Every failed request is also counted in loki_querier_dataobj_object_store_requests_total.",
 		}, []string{"component", "operation"}),
+		readBudgetWaitSeconds: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_querier_dataobj_read_budget_wait_seconds_total",
+			Help: "Total time data-object section reads waited for room in the read budget of their query, including the wait of reads that gave up when their query ended. It stays at zero while the budget is off.",
+		}),
+		sectionReservedBytes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_querier_dataobj_section_reserved_bytes",
+			Help:    "Compressed bytes that a data-object section read reserved from the read budget of its query before it downloaded them. It has no observations while the budget is off.",
+			Buckets: prometheus.ExponentialBuckets(1<<16, 4, 7),
+		}),
 	}
 
 	// Create every series at 0, so rate and increase see the first increment of a series.
@@ -86,6 +100,29 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 
 	return m
+}
+
+var _ readbudget.Observer = (*Metrics)(nil)
+
+// Admitted records one reservation that a read budget admitted, with its bytes and the time it
+// waited. It is safe for concurrent use. A nil Metrics records nothing.
+func (m *Metrics) Admitted(bytes int64, waited time.Duration) {
+	if m == nil {
+		return
+	}
+
+	m.sectionReservedBytes.Observe(float64(bytes))
+	m.readBudgetWaitSeconds.Add(waited.Seconds())
+}
+
+// Withdrawn records the time that a reservation waited before its context ended. The wait counts
+// toward the same total as an admitted wait, so a query that times out in the budget shows it.
+func (m *Metrics) Withdrawn(waited time.Duration) {
+	if m == nil {
+		return
+	}
+
+	m.readBudgetWaitSeconds.Add(waited.Seconds())
 }
 
 // Record adds the object-store requests and downloaded bytes of a finished query to the

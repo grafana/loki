@@ -2,12 +2,14 @@ package dataset
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -84,8 +86,16 @@ import (
 // Some unused secondary pages may still be downloaded if there was space in
 // the batch before a mask was added.
 //
-// Cached pages before the read range are cleared when a new uncached page is
-// requested.
+// Cached pages before the read range are cleared when the read range moves and
+// when a new uncached page is requested.
+//
+// # Reserved bytes
+//
+// When the downloader has a reserver, [rowReaderDownloader.Prefetch] reserves the
+// compressed size of every page it downloads. A prefetch has no download target,
+// so it downloads every page in the dataset ranges and no later download needs a
+// reservation. Clearing a page releases its [PageDesc.CompressedSize]. Close
+// releases the rest.
 type rowReaderDownloader struct {
 	inner Dataset
 
@@ -102,6 +112,20 @@ type rowReaderDownloader struct {
 	// It can be used to efficiently read pages from object storage in batches
 	// without downloading an entire section at once.
 	targetCompressedBytes int
+
+	// reserver reserves the bytes that [rowReaderDownloader.Prefetch] downloads. It is nil when
+	// the downloader reserves nothing.
+	reserver readbudget.Reserver
+
+	// lease holds the reserved bytes of the prefetched pages. It is nil when the downloader has no
+	// reserver, before Prefetch reserves, and after Close. gc releases the bytes of each page it
+	// clears. Close releases the rest.
+	//
+	// ReadPage can load a page outside the prefetch, for example through its fallback. Nobody
+	// reserves that page. Clearing it releases bytes held for other pages, so the lease can hold
+	// less than the cached pages. The lease releases no more than it holds, so the budget never
+	// goes negative.
+	lease *readbudget.Lease
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
@@ -143,13 +167,47 @@ func newRowReaderDownloader(dset Dataset) *rowReaderDownloader {
 }
 
 // Prefetch will download an initial batch of pages.
+//
+// When the downloader has a reserver, Prefetch first reserves the compressed size of the batch. It
+// blocks until the reserver admits the bytes, and downloads no page before then. If the reservation
+// fails, Prefetch downloads nothing and returns the error.
 func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
 	oldReadRange := dl.readRange
 	defer func() { dl.readRange = oldReadRange }()
 
 	// Temporarily set the read range to the entire dataset to ensure that we download everything.
 	dl.readRange = rangeset.Range{Start: 0, End: math.MaxUint64}
-	return dl.downloadBatch(ctx, nil)
+
+	batch, err := dl.buildDownloadBatch(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := dl.reserve(ctx, batch); err != nil {
+		return err
+	}
+	return dl.download(ctx, batch)
+}
+
+// reserve blocks until the reserver admits the compressed size of the batch. gc releases the same
+// size, page by page.
+func (dl *rowReaderDownloader) reserve(ctx context.Context, batch []*readerPage) error {
+	if dl.reserver == nil {
+		return nil
+	}
+
+	var bytes int64
+	for _, page := range batch {
+		bytes += int64(page.PageDesc().CompressedSize)
+	}
+
+	lease, err := dl.reserver.Reserve(ctx, bytes)
+	if err != nil {
+		return fmt.Errorf("reserving %d bytes for the prefetch: %w", bytes, err)
+	}
+
+	dl.lease.Close()
+	dl.lease = lease
+	return nil
 }
 
 // AddColumn adds a column to the rowReaderDownloader. This should be called
@@ -180,10 +238,15 @@ func (dl *rowReaderDownloader) SetDatasetRanges(r rangeset.Set) {
 // to prioritize which pages to download in a batch. Pages that end before this
 // range are never included in a batch.
 //
-// This method clears any previously set mask.
+// This method clears any previously set mask. It also clears the cached pages
+// that end before r, and releases their bytes from the lease.
 func (dl *rowReaderDownloader) SetReadRange(r rangeset.Range) {
 	dl.readRange = r
 	dl.rangeMask.Reset()
+
+	// Clear the passed pages here, not only before a download. After a prefetch the reader
+	// downloads nothing more, so no later download would clear them before Close.
+	dl.gc()
 }
 
 // Mask marks a subset of the current read range as excluded. Mask may be
@@ -224,20 +287,33 @@ func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
 	return nil
 }
 
+// gc clears the pages that end before the read range, and releases their bytes from the lease.
+//
+// A column that the read has not advanced can still hold the page it last opened. The reader can
+// keep one page per idle column in memory after the lease released its bytes.
+func (dl *rowReaderDownloader) gc() {
+	var freed int64
+	for _, col := range dl.allColumns {
+		freed += col.(*readerColumn).GC()
+	}
+	dl.lease.Release(freed)
+}
+
 // downloadBatch downloads a batch of pages from the inner dataset.
 func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *readerPage) error {
-	for _, col := range dl.allColumns {
-		// Garbage collect any unused pages; this prevents them from being included
-		// in the batchSize calculation and also allows them to be freed by the GC.
-		col := col.(*readerColumn)
-		col.GC()
-	}
+	// Clear the pages the read has passed. This keeps them out of the batch size, lets the Go
+	// garbage collector free them, and releases their reserved bytes.
+	dl.gc()
 
 	batch, err := dl.buildDownloadBatch(ctx, requestor)
 	if err != nil {
 		return err
 	}
+	return dl.download(ctx, batch)
+}
 
+// download reads the pages of the batch from the inner dataset into the cache.
+func (dl *rowReaderDownloader) download(ctx context.Context, batch []*readerPage) error {
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		for _, page := range batch {
 			if page.column.primary {
@@ -493,7 +569,24 @@ func (dl *rowReaderDownloader) iterP3Pages(ctx context.Context, primary bool) re
 	})
 }
 
+// Close drops the cached pages and closes the lease. It is safe to call more than once. It keeps
+// the reserver, and Reset clears it.
+func (dl *rowReaderDownloader) Close() {
+	for _, col := range dl.allColumns {
+		for _, page := range col.(*readerColumn).pages {
+			page.data = nil
+		}
+	}
+
+	dl.lease.Close()
+	dl.lease = nil
+}
+
+// Reset closes the downloader and clears its reserver, so set the reserver after Reset.
 func (dl *rowReaderDownloader) Reset(dset Dataset) {
+	dl.Close()
+	dl.reserver = nil
+
 	dl.inner = dset
 
 	dl.readRange = rangeset.Range{}
@@ -517,6 +610,12 @@ type readerColumn struct {
 	primary bool // Whether this column is a primary column.
 
 	pages []*readerPage
+
+	// gcNext is the index of the first page that GC has not passed. GC runs on every Read, so a scan
+	// from the first page each time would cost one visit per page. GC passes a page even if it holds
+	// no data, because no batch includes a page that ends before the read range. The read range only
+	// moves forward, so GC never visits a page twice.
+	gcNext int
 }
 
 var _ Column = (*readerColumn)(nil)
@@ -569,13 +668,23 @@ func (col *readerColumn) processPages(pages Pages) {
 }
 
 // GC garbage collects cached data from pages which will no longer be read: any
-// page which ends before the read row range of the downloader.
+// page which ends before the read row range of the downloader. It returns the
+// compressed size of the cached pages it cleared.
 //
 // Using the minimum read row range permits failed calls to [RowReader.Read] to be
 // retried without needing to redownload the pages involved in that call.
-func (col *readerColumn) GC() {
-	for _, page := range col.pages {
-		if page.rows.End <= col.dl.readRange.Start {
+func (col *readerColumn) GC() int64 {
+	var freed int64
+
+	for col.gcNext < len(col.pages) {
+		page := col.pages[col.gcNext]
+		if page.rows.End > col.dl.readRange.Start {
+			break
+		}
+
+		if page.data != nil {
+			freed += int64(page.PageDesc().CompressedSize)
+
 			// This page is entirely before the read range. We can clear it.
 			//
 			// TODO(rfratto): should this be released back to some kind of pool that
@@ -583,7 +692,10 @@ func (col *readerColumn) GC() {
 			// downloaded?
 			page.data = nil
 		}
+		col.gcNext++
 	}
+
+	return freed
 }
 
 // Size returns the total byte size of all cached pages in col.
