@@ -268,15 +268,17 @@ func (c *flushCommitterImpl) commit(ctx context.Context, offset int64) error {
 }
 
 func (c *flushCommitterImpl) observeResult(duration time.Duration, err error) {
-	var result string
+	c.duration.WithLabelValues(resultOf(err)).Observe(duration.Seconds())
+}
+
+// resultOf returns the result label value for an operation that returned err.
+func resultOf(err error) string {
 	switch {
 	case err == nil:
-		result = resultOK
+		return resultOK
 	case errors.Is(err, context.Canceled):
-		result = resultCancelled
+		return resultCancelled
 	default:
-		result = resultError
+		return resultError
 	}
-
-	c.duration.WithLabelValues(result).Observe(duration.Seconds())
 }

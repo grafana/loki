@@ -58,3 +58,40 @@ func (m *metrics) setConsumptionLag(d time.Duration) {
 	secs := float64(d.Seconds())
 	m.consumptionLag.Set(secs)
 }
+
+// requiredReplicasMetrics are the metrics of a requiredReplicasReporter.
+type requiredReplicasMetrics struct {
+	// requiredReplicas has no labels. It is a vector because a vector exports
+	// no series until the first Set, so a restart never exports a false 0.
+	requiredReplicas *prometheus.GaugeVec
+	lastRefresh      prometheus.Gauge
+	refreshDuration  *prometheus.HistogramVec
+}
+
+func newRequiredReplicasMetrics(reg prometheus.Registerer) *requiredReplicasMetrics {
+	m := &requiredReplicasMetrics{
+		requiredReplicas: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_builder_required_replicas",
+			Help: "The number of builder replicas needed to consume every partition with unread records: the highest such partition plus 1, or 1 if there is none. The value stays the same while refreshes fail.",
+		}, nil),
+		lastRefresh: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_builder_required_replicas_last_refresh_timestamp_seconds",
+			Help: "The Unix time of the last successful refresh of loki_dataobj_builder_required_replicas.",
+		}),
+		refreshDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "loki_dataobj_builder_required_replicas_refresh_duration_seconds",
+			Help:                            "Time taken to read the offsets of every partition and refresh loki_dataobj_builder_required_replicas.",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{"result"}),
+	}
+
+	// Report the results from the start, so that a rate over failures reads
+	// as zero rather than going missing until the first one happens.
+	m.refreshDuration.WithLabelValues(resultOK)
+	m.refreshDuration.WithLabelValues(resultError)
+	m.refreshDuration.WithLabelValues(resultCancelled)
+	return m
+}
