@@ -344,7 +344,7 @@ require (
 	go.opentelemetry.io/collector/pdata/pprofile v0.163.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.163.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.69.0 // indirect
-	go.opentelemetry.io/collector/processor v1.68.0 // indirect
+	go.opentelemetry.io/collector/processor v1.69.0 // indirect
 	go.opentelemetry.io/collector/processor/xprocessor v0.162.0 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.72.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.47.0 // indirect
