@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,38 @@ func TestLogReader(t *testing.T) {
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
 		require.ElementsMatch(t, want, lines)
+	})
+
+	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
+		var (
+			entries []push.Entry
+			want    []int64
+		)
+		for i := range 25 {
+			line := fmt.Sprintf("line-%d", i)
+			entries = append(entries, entry(t, i+1, line))
+			if strings.Contains(line, "1") {
+				want = append(want, at(i+1).UnixNano())
+			}
+		}
+		require.NotEmpty(t, want)
+
+		fixture := newReaderFixtureFor(t, `count_over_time({app=~".+"} |= "1" [1m])`, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		for _, task := range fixture.tasks {
+			require.False(t, task.needReturningLine)
+		}
+
+		for _, batchSize := range []int{1, 4, DefaultReadBatchSize} {
+			reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
+
+			var timestamps []int64
+			for reader.Next() {
+				timestamps = append(timestamps, reader.At().timestamp)
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+			require.ElementsMatch(t, want, timestamps, "batch size %d", batchSize)
+		}
 	})
 
 	t.Run("a task naming a section the object does not hold fails the read", func(t *testing.T) {
@@ -339,13 +372,20 @@ type readerFixture struct {
 func newReaderFixture(t *testing.T, streams ...logproto.Stream) readerFixture {
 	t.Helper()
 
+	// bytes_over_time projects the message column, which the reader tests need: the line is the
+	// one field the row reader hands back out of a reused buffer.
+	return newReaderFixtureFor(t, `bytes_over_time({app=~".+"}[1m])`, streams...)
+}
+
+// newReaderFixtureFor plans the read of query over streams.
+func newReaderFixtureFor(t *testing.T, query string, streams ...logproto.Stream) readerFixture {
+	t.Helper()
+
 	fixture := newObjectsFixture(t, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)
 
-	// bytes_over_time projects the message column, which the reader tests need: the line is the
-	// one field the row reader hands back out of a reused buffer.
-	expr, err := syntax.ParseSampleExpr(`bytes_over_time({app=~".+"}[1m])`)
+	expr, err := syntax.ParseSampleExpr(query)
 	require.NoError(t, err)
 	projection, err := NewProjectionPlan(expr, nil)
 	require.NoError(t, err)

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"unsafe"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].
@@ -71,6 +73,27 @@ type (
 		//
 		// If Keep returns true, the row is kept.
 		Keep func(column Column, value Value) bool
+
+		// KeepBatch is optional. It tests an array of values of a binary column at once.
+		// It appends to dst the index in values of every value that Keep keeps, in ascending
+		// order with no repeat, and returns the result. values holds a null value as an empty
+		// value.
+		//
+		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
+		// for a null value, so Keep must treat a nil and an empty value alike.
+		//
+		// The reader calls KeepBatch instead of Keep when all of these hold:
+		//
+		//   - The predicate is in the list of predicates, not inside an And, Or or Not.
+		//   - The predicate is not the first one.
+		//   - The column holds binary values.
+		//   - No other predicate reads the column.
+		//
+		// Otherwise the reader calls Keep. One read of rows can call KeepBatch many times.
+		//
+		// KeepBatch must not retain values or dst after the call, and must not modify values. It
+		// must be safe for concurrent use.
+		KeepBatch func(column Column, values *columnar.UTF8, dst []int32) []int32
 	}
 )
 
@@ -105,6 +128,36 @@ func (InPredicate) isPredicate()          {}
 func (GreaterThanPredicate) isPredicate() {}
 func (LessThanPredicate) isPredicate()    {}
 func (FuncPredicate) isPredicate()        {}
+
+// predicateColumn returns the column that p reads. It returns false when p is not a predicate on
+// one column.
+func predicateColumn(p Predicate) (Column, bool) {
+	switch p := p.(type) {
+	case EqualPredicate:
+		return p.Column, true
+	case InPredicate:
+		return p.Column, true
+	case GreaterThanPredicate:
+		return p.Column, true
+	case LessThanPredicate:
+		return p.Column, true
+	case FuncPredicate:
+		return p.Column, true
+	}
+	return nil, false
+}
+
+// UsesColumn reports whether p reads column.
+func UsesColumn(p Predicate, column Column) bool {
+	var found bool
+	WalkPredicate(p, func(p Predicate) bool {
+		if c, ok := predicateColumn(p); ok && c == column {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively

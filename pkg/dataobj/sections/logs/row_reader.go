@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -29,6 +30,10 @@ type RowReader struct {
 	projected    bool
 	projTypes    map[ColumnType]struct{}
 	projMetadata map[string]struct{}
+
+	// predicateOnly are the column types that the reader reads for a predicate and leaves out of
+	// the Record.
+	predicateOnly map[ColumnType]struct{}
 
 	buf []dataset.Row
 
@@ -111,7 +116,8 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 // The field of a column that is not read comes back as its zero value.
 //
 // The reader reads the columns a stream match or a predicate needs, even when the caller does
-// not list them. A column added that way is decoded into the [Record] as well.
+// not list them. A column added that way is decoded into the [Record] as well, unless
+// [RowReader.SetPredicateOnlyColumns] lists its type.
 //
 // When the section holds no such column, a metadata or message predicate evaluates against the
 // empty value.
@@ -140,6 +146,31 @@ func (r *RowReader) SetProjectedColumns(types []ColumnType, metadataNames []stri
 		r.projMetadata[name] = struct{}{}
 	}
 	r.projected = true
+	return nil
+}
+
+// SetPredicateOnlyColumns makes the reader read the given column types for the predicates and
+// leave them out of the [Record]. The field of such a column comes back as its zero value. A
+// type that no predicate reads has no effect. A call replaces the types of an earlier call.
+//
+// The setting takes precedence over [RowReader.SetProjectedColumns]: a type that both list is read
+// for the predicates and not decoded.
+//
+// For [ColumnTypeMessage], the reader skips the copy of the lines that pass when one predicate
+// reads the message, that predicate has a KeepBatch function, and it runs after another
+// predicate. In other cases the reader copies the lines and then drops them.
+//
+// SetPredicateOnlyColumns may only be called before reading begins or after a call to
+// [RowReader.Reset].
+func (r *RowReader) SetPredicateOnlyColumns(types ...ColumnType) error {
+	if r.ready {
+		return fmt.Errorf("cannot change predicate-only columns after reading has started")
+	}
+
+	r.predicateOnly = make(map[ColumnType]struct{}, len(types))
+	for _, t := range types {
+		r.predicateOnly[t] = struct{}{}
+	}
 	return nil
 }
 
@@ -228,11 +259,19 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		predicates = append(predicates, p)
 	}
 
+	var predicateOnly []dataset.Column
+	for i, col := range sectionColumns {
+		if _, ok := r.predicateOnly[col.Type]; ok && predicatesUseColumn(predicates, datasetColumns[i]) {
+			predicateOnly = append(predicateOnly, datasetColumns[i])
+		}
+	}
+
 	readerOpts := dataset.RowReaderOptions{
-		Dataset:           dset,
-		Columns:           datasetColumns,
-		Predicates:        predicates,
-		PrefetchAllOnOpen: true,
+		Dataset:              dset,
+		Columns:              datasetColumns,
+		Predicates:           predicates,
+		PredicateOnlyColumns: predicateOnly,
+		PrefetchAllOnOpen:    true,
 	}
 
 	if r.reader == nil {
@@ -253,6 +292,12 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	r.projSectionColumns = sectionColumns
 	r.ready = true
 	return nil
+}
+
+func predicatesUseColumn(predicates []dataset.Predicate, column dataset.Column) bool {
+	return slices.ContainsFunc(predicates, func(p dataset.Predicate) bool {
+		return dataset.UsesColumn(p, column)
+	})
 }
 
 // projectionColumns returns the column types and metadata names to read: the caller's
@@ -336,7 +381,8 @@ func projectColumns(datasetColumns []dataset.Column, sectionColumns []*Column, t
 // Reset resets the RowReader with a new Section to read from. Reset allows
 // reusing a RowReader without allocating a new one.
 //
-// Any set predicate, stream match and column projection are cleared when Reset is called.
+// Any set predicate, stream match, column projection and predicate-only column are cleared when
+// Reset is called.
 //
 // Reset may be called with a nil section to clear the RowReader without needing a new one.
 func (r *RowReader) Reset(sec *Section) {
@@ -350,6 +396,7 @@ func (r *RowReader) Reset(sec *Section) {
 	clear(r.projTypes)
 	clear(r.projMetadata)
 	r.projSectionColumns = nil
+	clear(r.predicateOnly)
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -436,7 +483,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 			return dataset.NewConstPredicate(p.Keep(nil))
 		}
 
-		return dataset.FuncPredicate{
+		fp := dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				// A nil value reads as an empty line.
@@ -446,6 +493,12 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 				return p.Keep(value.Binary())
 			},
 		}
+		if p.KeepBatch != nil {
+			fp.KeepBatch = func(_ dataset.Column, values *columnar.UTF8, dst []int32) []int32 {
+				return p.KeepBatch(values.Data(), values.Offsets(), dst)
+			}
+		}
+		return fp
 
 	case MetadataMatcherRowPredicate:
 		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {

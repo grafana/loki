@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
@@ -163,6 +164,62 @@ func Test_basicReader_Fill(t *testing.T) {
 		require.Equal(t, expectedPerson.firstName, string(row.Values[0].Binary()),
 			"firstName mismatch at index %d", row.Index)
 	}
+}
+
+func Test_basicReader_readRuns(t *testing.T) {
+	columns := buildTestColumns(t)
+	require.Len(t, columns, 4)
+
+	br := newBasicRowReader(columns)
+	defer br.Close()
+
+	t.Run("visits the values of every run without writing them into the rows", func(t *testing.T) {
+		rows := []Row{{Index: 1}, {Index: 2}, {Index: 3}, {Index: 6}, {Index: 8}, {Index: 9}}
+
+		var (
+			actual  = make([]string, len(rows))
+			visited = make([]int, len(rows))
+		)
+		n, err := br.readRuns(t.Context(), columns[0], rows, func(offset int, values *columnar.UTF8) error {
+			for i := range values.Len() {
+				actual[offset+i] = string(values.Get(i))
+				visited[offset+i]++
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, len(rows), n)
+
+		var expected []string
+		for _, row := range rows {
+			expected = append(expected, basicReaderTestData[row.Index].firstName)
+			require.Nil(t, row.Values)
+		}
+		require.Equal(t, expected, actual)
+		require.Equal(t, []int{1, 1, 1, 1, 1, 1}, visited)
+	})
+
+	t.Run("returns an error when a run reaches past the last row of the column", func(t *testing.T) {
+		rows := []Row{{Index: 1}, {Index: len(basicReaderTestData) + 5}}
+
+		_, err := br.readRuns(t.Context(), columns[0], rows, func(int, *columnar.UTF8) error { return nil })
+		require.Error(t, err)
+	})
+
+	t.Run("returns an error for a column that does not hold binary values", func(t *testing.T) {
+		rows := []Row{{Index: 1}, {Index: 2}}
+
+		_, err := br.readRuns(t.Context(), columns[3], rows, func(int, *columnar.UTF8) error { return nil })
+		require.ErrorContains(t, err, "want UTF-8")
+	})
+
+	t.Run("returns the error of visit", func(t *testing.T) {
+		rows := []Row{{Index: 1}, {Index: 2}}
+		errVisit := errors.New("visit failed")
+
+		_, err := br.readRuns(t.Context(), columns[0], rows, func(int, *columnar.UTF8) error { return errVisit })
+		require.ErrorIs(t, err, errVisit)
+	})
 }
 
 func Test_partitionRows(t *testing.T) {

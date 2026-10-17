@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -22,6 +23,10 @@ type basicRowReader struct {
 	columnLookup map[Column]int // Index into columns and readers
 
 	alloc memory.Allocator
+
+	// pieceAlloc is a child of alloc. It holds the arrays that readRuns reads for one run of
+	// rows. readRuns frees it after each run, which returns its regions to alloc.
+	pieceAlloc *memory.Allocator
 
 	nextRow int64
 }
@@ -232,6 +237,66 @@ func (pr *basicRowReader) fill(ctx context.Context, columns []Column, s []Row) (
 		startRow += int64(maxRead)
 	}
 
+	return n, nil
+}
+
+// readRuns reads one column for the rows in s and passes the values to visit, without copying
+// them into the rows. A run is a group of rows with consecutive indexes. readRuns reads each run
+// on its own, as [basicRowReader.Fill] does.
+//
+// visit receives the array of values that one page holds for a run, and the position in s of the
+// first row that the array covers. The arrays of a run come in order. visit must not keep an
+// array past the call. visit can reorder the rows of s before the end of that array, but must not
+// touch the rows after it.
+//
+// s[i].Index must be set. The column must hold binary values, or readRuns returns an error.
+// Unlike Fill, readRuns reports a column that ends before the last row of s as an error, not as
+// [io.EOF]. readRuns returns the number of rows visited. It does not advance the offset of the
+// basicRowReader.
+func (pr *basicRowReader) readRuns(ctx context.Context, column Column, s []Row, visit func(offset int, values *columnar.UTF8) error) (n int, err error) {
+	columnIndex, ok := pr.columnLookup[column]
+	if !ok {
+		return 0, fmt.Errorf("column %v is not owned by basicRowReader", column)
+	}
+	r := pr.readers[columnIndex]
+
+	if pr.pieceAlloc == nil {
+		pr.pieceAlloc = memory.NewAllocator(&pr.alloc)
+	}
+
+	for partition := range partitionRows(s) {
+		if _, err := r.Seek(int64(partition[0].Index), io.SeekStart); err != nil {
+			return n, fmt.Errorf("seeking to row %d in column %d: %w", partition[0].Index, columnIndex, err)
+		}
+
+		// Reclaim what earlier reads on alloc left behind, so pieceAlloc can reuse the memory.
+		pr.alloc.Reclaim()
+
+		var (
+			covered  int
+			visitErr error
+		)
+		err := r.readPieces(ctx, pr.pieceAlloc, len(partition), func(arr columnar.Array) error {
+			values, ok := arr.(*columnar.UTF8)
+			if !ok {
+				return fmt.Errorf("column %d returned %T, want UTF-8", columnIndex, arr)
+			}
+			visitErr = visit(n+covered, values)
+			covered += values.Len()
+			return visitErr
+		})
+		pr.pieceAlloc.Free()
+
+		n += covered
+		if visitErr != nil {
+			return n, visitErr
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return n, fmt.Errorf("reading column %d: %w", columnIndex, err)
+		} else if covered != len(partition) {
+			return n, fmt.Errorf("reading column %d: got %d values, expected %d", columnIndex, covered, len(partition))
+		}
+	}
 	return n, nil
 }
 

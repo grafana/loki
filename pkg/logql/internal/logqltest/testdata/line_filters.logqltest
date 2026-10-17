@@ -253,3 +253,54 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |= "error" |= "s
 # A positive and a negative filter combine: keep error lines that are not status=500.
 eval instant at 60s count_over_time({app="a"} |= "error" != "status=500" [1m])
   {app="a"} 2
+
+# |= / != on lines that sit next to each other in storage. In either reading direction, "rorxx"
+# and an "xxer" line spell "error" across the line boundary. No single line holds "error".
+clear
+load
+  {app="a"} "an error here" @ 10s
+  {app="a"} "xxer"          @ 20s
+  {app="a"} "rorxx"         @ 30s
+  {app="a"} "xxer"          @ 40s
+  {app="a"} "an error here" @ 50s
+
+eval instant at 60s sum(count_over_time({app="a"} |= "error" [1m]))
+  {} 2
+eval range from 40s to 80s step 20s sum(count_over_time({app="a"} |= "error" [1m]))   # overlapping
+  {} 1 2 1
+eval range from 60s to 180s step 120s sum(count_over_time({app="a"} |= "error" [1m])) # non-overlapping
+  {} 2 _
+eval instant at 60s sum(count_over_time({app="a"} != "error" [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} |= "error" or "xxer" [1m]))
+  {} 4
+eval instant at 60s sum(count_over_time({app="a"} |= "error" |= "here" [1m]))
+  {} 2
+
+# An empty line does not hold the literal, so it passes a != filter.
+clear
+load
+  {app="a"} "ok"    @ 10s
+  {app="a"} ""      @ 20s
+  {app="a"} "error" @ 30s
+  {app="a"} ""      @ 40s
+  {app="a"} ""      @ 50s
+
+eval instant at 60s sum(count_over_time({app="a"} |= "error" [1m]))
+  {} 1
+eval instant at 60s sum(count_over_time({app="a"} != "error" [1m]))
+  {} 4
+
+# A filter that keeps no line, and a case-insensitive literal.
+clear
+load
+  {app="a"} "Error: disk full" @ 20s
+  {app="a"} "ERROR: timeout"   @ 30s
+  {app="a"} "all fine"         @ 40s
+
+eval instant at 60s sum(count_over_time({app="a"} |~ "(?i)error" [1m]))
+  {} 2
+eval instant at 60s sum(count_over_time({app="a"} |= "no line holds this" [1m]))
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} != "fine" != "Error" != "ERROR" [1m]))
+  expect empty
