@@ -79,7 +79,13 @@ func runTaskSummary(t *testing.T, node physical.Node) string {
 	}
 
 	_, capture := xcap.NewCapture(context.Background(), nil)
-	wf.printTaskSummary(task, TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture}, false)
+	summary := pendingSummary{
+		result:         TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture},
+		operatorType:   taskOperatorType(task),
+		isScanTask:     isScanTask(task),
+		isPostingsScan: isPostingsScanTask(task),
+	}
+	wf.printTaskSummary(task, summary, false)
 
 	return buf.String()
 }

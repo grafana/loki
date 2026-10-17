@@ -237,3 +237,24 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 	t.region.Record(schedulerstat.TaskFinishTime.Observe(now.UnixNano()))
 	t.region.End()
 }
+
+// releaseTerminalResources drops the scheduler's references to the task's
+// large, no-longer-needed state after it has produced a terminal result and
+// its result notification has been dispatched.
+//
+// releaseTerminalResources must only be called with the task already holding a
+// terminal result, after the result notification has been queued, while
+// [Scheduler.resourcesMut] is held.
+func (t *task) releaseTerminalResources() {
+	// capture and region are only ever accessed under [Scheduler.resourcesMut],
+	// which the caller holds.
+	t.capture = nil
+	t.region = nil
+
+	// result is guarded by t.mut.
+	t.mut.Lock()
+	if t.result != nil {
+		t.result.Capture = nil
+	}
+	t.mut.Unlock()
+}

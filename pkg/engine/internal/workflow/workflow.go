@@ -449,16 +449,28 @@ func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskRes
 // result for every task implies every summary and finish time is present.
 // wf.tasksMut must be held.
 func (wf *Workflow) recordTaskResult(task *Task, result TaskResult) {
-	summary := pendingSummary{result: result}
-	if result.Capture == nil {
-		wf.taskResults[task] = summary
-		return
-	}
+	summary := pendingSummary{
+		result: result,
 
-	if finish, ok := xcap.TryValue[int64](result.Capture, schedulerstat.TaskFinishTime); ok {
-		summary.taskFinishNanos = finish
+		// Capture the fragment-derived summary fields now, while the fragment is
+		// still available, so we can release it below.
+		operatorType:   taskOperatorType(task),
+		isScanTask:     isScanTask(task),
+		isPostingsScan: isPostingsScanTask(task),
+	}
+	if result.Capture != nil {
+		if finish, ok := xcap.TryValue[int64](result.Capture, schedulerstat.TaskFinishTime); ok {
+			summary.taskFinishNanos = finish
+		}
 	}
 	wf.taskResults[task] = summary
+
+	// The task has a terminal result, so its physical plan fragment and any
+	// pre-fetched cached-source buffers are no longer needed. The write is
+	// safe under tasksMut: the only other reader of these fields on a live
+	// workflow is Fprint, which takes tasksMut.RLock.
+	task.Fragment = nil
+	task.CachedSources = nil
 }
 
 func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
