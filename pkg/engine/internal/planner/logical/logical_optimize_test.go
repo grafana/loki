@@ -155,6 +155,118 @@ RETURN %14
 	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
 }
 
+// Test_simplifyRegexPass_LabelRegexIsAnchored verifies the fix for the same
+// bug as Test_LabelRegexFilterIsAnchored in pkg/logql/log/filter_test.go
+// (grafana/loki#23892), but for this engine's simplifyRegexConcat /
+// simplifyRegexConcatAlternates. A one-sided open-ended regex against a
+// non-message column (label / parsed field / structured metadata) must not
+// be simplified into an unanchored "contains" check (MATCH_STR), since that
+// would incorrectly match values like "value-al-suffix" for a filter meant
+// to match the whole value against "al.*". Message-column ("line") regex
+// filters are unaffected, since MATCH_STR against builtin.message already
+// has "contains" semantics by design.
+func Test_simplifyRegexPass_LabelRegexIsAnchored(t *testing.T) {
+	params, err := logql.NewLiteralParams(
+		`{job="loki"} | foo=~"al.*"`,
+		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+		0 /* step */, 0, /* duration */
+		logproto.BACKWARD,
+		1000,
+		[]string{"0_of_1"},
+		nil,
+	)
+	require.NoError(t, err)
+
+	p, err := BuildPlan(context.Background(), params)
+	require.NoError(t, err)
+	require.NoError(t, Optimize(p), "optimization should not fail")
+
+	actual := p.String()
+	require.NotContains(t, actual, "MATCH_STR ambiguous.foo",
+		"label regex filter with one-sided open-ended pattern must not simplify to an unanchored contains check:\n%s", actual)
+	require.Contains(t, actual, `MATCH_RE ambiguous.foo "^(?:(?-s:al.*))$"`,
+		"label regex filter with one-sided open-ended pattern must fall back to a fully anchored regexp:\n%s", actual)
+}
+
+// Test_simplifyRegexPass_LabelConcatAlternatesAreAnchored covers the
+// concat-alternates arm of the same bug (grafana/loki#23892): a literal
+// followed by an alternation, such as `b(ar|)`, which is handled by
+// simplifyRegexConcatAlternates rather than by the plain-literal path. For a
+// non-message column those alternates must become whole-value equality checks,
+// and any pattern that reintroduces an open end (`b(ar|.*)`) must fall back to
+// an anchored regexp instead.
+func Test_simplifyRegexPass_LabelConcatAlternatesAreAnchored(t *testing.T) {
+	planFor := func(t *testing.T, query string) string {
+		t.Helper()
+
+		params, err := logql.NewLiteralParams(
+			query,
+			time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+			time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+			0 /* step */, 0, /* duration */
+			logproto.BACKWARD,
+			1000,
+			[]string{"0_of_1"},
+			nil,
+		)
+		require.NoError(t, err)
+
+		p, err := BuildPlan(context.Background(), params)
+		require.NoError(t, err)
+		require.NoError(t, Optimize(p), "optimization should not fail")
+
+		return p.String()
+	}
+
+	t.Run("fully anchored alternates become equality checks", func(t *testing.T) {
+		actual := planFor(t, `{job="loki"} | foo=~"b(ar|)"`)
+		require.NotContains(t, actual, "MATCH_STR ambiguous.foo",
+			"label concat-alternates must not simplify to unanchored contains checks:\n%s", actual)
+		require.Contains(t, actual, `EQ ambiguous.foo "bar"`, "actual plan:\n%s", actual)
+		require.Contains(t, actual, `EQ ambiguous.foo "b"`, "actual plan:\n%s", actual)
+	})
+
+	t.Run("open-ended alternates fall back to an anchored regexp", func(t *testing.T) {
+		actual := planFor(t, `{job="loki"} | foo=~"b(ar|.*)"`)
+		require.NotContains(t, actual, "MATCH_STR ambiguous.foo",
+			"open-ended label concat-alternates must not simplify to unanchored contains checks:\n%s", actual)
+		require.Contains(t, actual, "MATCH_RE ambiguous.foo", "actual plan:\n%s", actual)
+	})
+
+	t.Run("message column still simplifies to contains", func(t *testing.T) {
+		actual := planFor(t, `{job="loki"} |~ "b(ar|)"`)
+		require.Contains(t, actual, `MATCH_STR builtin.message "bar"`, "actual plan:\n%s", actual)
+		require.Contains(t, actual, `MATCH_STR builtin.message "b"`, "actual plan:\n%s", actual)
+	})
+}
+
+// Test_simplifyRegexPass_MessageRegexStillSimplifies is a regression check
+// that ensures the fix above doesn't affect message-column ("line") regex
+// filters, which are correctly simplified to a substring check regardless
+// of whether the pattern is open-ended on one or both sides.
+func Test_simplifyRegexPass_MessageRegexStillSimplifies(t *testing.T) {
+	params, err := logql.NewLiteralParams(
+		`{job="loki"} |~ "al.*"`,
+		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+		0 /* step */, 0, /* duration */
+		logproto.BACKWARD,
+		1000,
+		[]string{"0_of_1"},
+		nil,
+	)
+	require.NoError(t, err)
+
+	p, err := BuildPlan(context.Background(), params)
+	require.NoError(t, err)
+	require.NoError(t, Optimize(p), "optimization should not fail")
+
+	actual := p.String()
+	require.Contains(t, actual, `MATCH_STR builtin.message "al"`,
+		"message regex filter should still simplify to a substring check:\n%s", actual)
+}
+
 func Test_simplifyRegexPass_Negate(t *testing.T) {
 	params, err := logql.NewLiteralParams(
 		`{job="loki"} !~ "foo|bar"`,

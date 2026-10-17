@@ -118,6 +118,56 @@ func Test_SimplifiedRegex(t *testing.T) {
 	}
 }
 
+// Test_LabelRegexFilterIsAnchored reproduces grafana/loki#23892: a pipeline label
+// filter regex (isLabel=true) must match the whole label value, exactly like a
+// fully anchored `^(?:...)$` regexp, even when the pattern is one-sided such as
+// `foo.*` or `.*foo`. Prior to the fix, `simplifyConcat` always produced a plain
+// contains filter for such patterns, which incorrectly matched substrings.
+func Test_LabelRegexFilterIsAnchored(t *testing.T) {
+	values := []string{"alpha", "prealpha", "alphabet", "beta", "al", "", "bar", "baz", "xbar", "barx", "b", "bz"}
+
+	for _, test := range []struct {
+		re string
+	}{
+		// affected by the bug: one-sided patterns must be fully anchored.
+		{"al.*"},
+		{".*al"},
+		{"(?i)AL.*"},
+		{"(?i).*AL"},
+		// not affected, per the issue: already anchored / substring-equivalent.
+		{"al"},
+		{"al|beta"},
+		{".*al.*"},
+		{"pre.*ha"},
+		{"al[a-z]*"},
+		// concat-alternates: the regexp parser factors a common prefix out of an
+		// alternation (`bar|baz` becomes `ba(r|z)`), which reaches
+		// simplifyConcatAlternate rather than simplifyAlternate.
+		{"bar|baz"},
+		{"(?i)BAR|BAZ"},
+		{"ba(r|z).*"},
+		{".*ba(r|z)"},
+		{"b(ar|)"},
+		{"b(ar|.*)"},
+		{"b(ar.*|z)"},
+	} {
+		t.Run(test.re, func(t *testing.T) {
+			// The always-anchored fallback filter is the ground truth for label semantics.
+			anchored, err := newRegexpFilter("^(?:"+test.re+")$", test.re, true)
+			require.NoError(t, err)
+
+			simplified, err := parseRegexpFilter(test.re, true, true)
+			require.NoError(t, err)
+
+			for _, v := range values {
+				want := anchored.Filter([]byte(v))
+				got := simplified.Filter([]byte(v))
+				require.Equal(t, want, got, "pattern %q value %q: anchored=%v simplified=%v", test.re, v, want, got)
+			}
+		})
+	}
+}
+
 func allunicode() string {
 	var b []byte
 	for i := 0x00; i < 0x10FFFF; i++ {
