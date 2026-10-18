@@ -118,7 +118,7 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 	}
 
 	opts := BuilderOptions{
-		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
+		PageSizeHint: 310, // Slightly larger than 3 strings per page (100 bytes each, plus a small length prefix and presence-bitmap estimate).
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
@@ -181,7 +181,7 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 	}
 
 	opts := BuilderOptions{
-		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
+		PageSizeHint: 310, // Slightly larger than 3 strings per page (100 bytes each, plus a small length prefix and presence-bitmap estimate).
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,

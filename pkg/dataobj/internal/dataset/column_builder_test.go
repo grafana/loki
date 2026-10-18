@@ -55,7 +55,7 @@ func TestColumnBuilder_Append(t *testing.T) {
 			rowIndex:        9,
 			value:           binaryValue(1),
 			wantErr:         nil,
-			expPages:        1, // only 1 page, because 9 NULL rows do not count anything towards estimated size and therefore no page is explicitly flushed
+			expPages:        2, // 9 NULL rows (~3 bytes of packed presence bits) already exceed the tiny size hint, so the non-NULL row starts a second page
 		},
 		{
 			name:            "first not NULL row exceeds max row count",
