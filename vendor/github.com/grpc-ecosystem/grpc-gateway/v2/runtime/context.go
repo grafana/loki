@@ -162,6 +162,16 @@ func annotateContext(ctx context.Context, mux *ServeMux, req *http.Request, rpcM
 				pairs = append(pairs, "authorization", val)
 			}
 			if h, ok := mux.incomingHeaderMatcher(key); ok {
+				// The gateway derives x-forwarded-host and x-forwarded-for below from
+				// the trusted request (Host / X-Forwarded-* / RemoteAddr), and backends
+				// rely on those metadata keys for client host/IP decisions. Refuse a
+				// forwarded header that the matcher strips into one of them (e.g.
+				// Grpc-Metadata-X-Forwarded-For) so a client cannot slip a spoofed value
+				// in ahead of the gateway-set one.
+				if strings.EqualFold(h, xForwardedFor) || strings.EqualFold(h, xForwardedHost) {
+					grpclog.Errorf("HTTP header %q maps to gateway-reserved metadata key %q; skipping", key, h)
+					continue
+				}
 				if !isValidGRPCMetadataKey(h) {
 					grpclog.Errorf("HTTP header name %q is not valid as gRPC metadata key; skipping", h)
 					continue
