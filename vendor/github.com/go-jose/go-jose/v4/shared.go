@@ -297,9 +297,10 @@ func (parsed rawHeader) getEPK() (*JSONWebKey, error) {
 	if v == nil {
 		return nil, nil
 	}
-	var epk *JSONWebKey
-	err := json.Unmarshal(*v, &epk)
-	if err != nil {
+	// RFC 7518 Section 4.6.1.1: the "epk" header is the ephemeral public key
+	// of the originator. Reject private key material before parsing it.
+	epk := new(JSONWebKey)
+	if err := epk.unmarshalJSON(*v, false); err != nil {
 		return nil, err
 	}
 	return epk, nil
@@ -323,20 +324,6 @@ func (parsed rawHeader) getIV() (*byteBuffer, error) {
 // getTag extracts parsed "tag" from the raw JSON.
 func (parsed rawHeader) getTag() (*byteBuffer, error) {
 	return parsed.getByteBuffer(headerTag)
-}
-
-// getJWK extracts parsed "jwk" from the raw JSON.
-func (parsed rawHeader) getJWK() (*JSONWebKey, error) {
-	v := parsed[headerJWK]
-	if v == nil {
-		return nil, nil
-	}
-	var jwk *JSONWebKey
-	err := json.Unmarshal(*v, &jwk)
-	if err != nil {
-		return nil, err
-	}
-	return jwk, nil
 }
 
 // getCritical extracts parsed "crit" from the raw JSON. If omitted, it
@@ -424,10 +411,14 @@ func (parsed rawHeader) sanitized() (h Header, err error) {
 		}
 		switch k {
 		case headerJWK:
-			var jwk *JSONWebKey
-			err = json.Unmarshal(*v, &jwk)
+			// RFC 7515 Section 4.1.3 and RFC 7516 Section 4.1.5: the "jwk"
+			// header is the public key that corresponds to the key used to
+			// sign the JWS or encrypt the JWE. Reject private key material
+			// before parsing it.
+			jwk := new(JSONWebKey)
+			err = jwk.unmarshalJSON(*v, false)
 			if err != nil {
-				err = fmt.Errorf("failed to unmarshal JWK: %v: %#v", err, string(*v))
+				err = fmt.Errorf("failed to unmarshal JWK: %w", err)
 				return
 			}
 			h.JSONWebKey = jwk
