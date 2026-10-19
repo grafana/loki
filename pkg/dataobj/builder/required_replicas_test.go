@@ -40,7 +40,7 @@ func TestRequiredReplicasReporter(t *testing.T) {
 		partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc("dataobj-builder-0")
 		require.NoError(t, err)
 		r := newRequiredReplicasReporter(
-			kafkav2.NewOffsetReader(client, testTopic, log.NewNopLogger()),
+			kafkav2.NewOffsetReader(client, testTopic),
 			partitionToConsumerGroup,
 			interval,
 			log.NewNopLogger(),
