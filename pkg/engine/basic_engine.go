@@ -31,10 +31,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// ErrNotSupported is the public sentinel callers branch on (querier fallback,
-// HTTP 501). The canonical definition lives in the internal errors package so
-// it can be returned from inner packages such as the physical planner; this
-// re-export keeps the existing public surface stable.
+// ErrNotSupported is the public sentinel callers branch on (HTTP 501). The
+// canonical definition lives in the internal errors package so it can be
+// returned from inner packages such as the physical planner; this re-export
+// keeps the existing public surface stable.
 var ErrNotSupported = internalerrors.ErrNotSupported
 
 // NewBasic creates a new instance of the basic query engine that implements the
