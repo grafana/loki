@@ -126,11 +126,14 @@ type mockFlusher struct {
 	// onFlush, if set, runs before each flush returns. It runs without the
 	// lock, so it must be safe for concurrent use.
 	onFlush func()
+	// builders holds the flushed builders in the order their flushes started.
+	builders []builder
 }
 
-func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (m *mockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.mtx.Lock()
 	m.flushes++
+	m.builders = append(m.builders, b)
 	path := fmt.Sprintf("object_%03d", m.flushes)
 	m.open++
 	m.maxOpen = max(m.maxOpen, m.open)

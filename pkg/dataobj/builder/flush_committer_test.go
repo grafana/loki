@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -416,7 +417,39 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 		require.Equal(t, []int64{7}, flush.offsets.offsets)
 		require.Len(t, flush.bucket.tocPaths(), len(tenants))
 	})
+
+	t.Run("should start the largest builder first and keep the order of builders of equal size", func(t *testing.T) {
+		var (
+			flusher        = &mockFlusher{obj: &dataobj.Object{}}
+			committer      = &mockCommitter{}
+			flushCommitter = newFlushCommitter(flusher, committer, &mockIndexer{}, &mockTOCWriter{}, 0, 1, log.NewNopLogger(), prometheus.NewRegistry())
+
+			small     = &fixedSizeBuilder{size: 10}
+			largeA    = &fixedSizeBuilder{size: 30}
+			medium    = &fixedSizeBuilder{size: 20}
+			largeB    = &fixedSizeBuilder{size: 30}
+			given     = []builder{small, largeA, medium, largeB}
+			givenCopy = slices.Clone(given)
+		)
+
+		require.NoError(t, flushCommitter.Flush(t.Context(), given, "test", 7))
+		require.Equal(t, []builder{largeA, largeB, medium, small}, flusher.builders)
+		require.Equal(t, givenCopy, given)
+		require.Equal(t, []int64{7}, committer.offsets)
+	})
 }
+
+// fixedSizeBuilder is a builder with a fixed estimated size and no records.
+// It supports only the calls that the flush committer makes with a
+// [mockFlusher]. Any other call panics on the nil embedded builder.
+type fixedSizeBuilder struct {
+	builder
+	size int
+}
+
+func (b *fixedSizeBuilder) GetEstimatedSize() int { return b.size }
+
+func (b *fixedSizeBuilder) GetEarliestRecordTime() time.Time { return time.Time{} }
 
 // blockingIndexer fails to index the object at failPath. Every other call
 // blocks until its context is done.

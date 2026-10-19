@@ -1,10 +1,12 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log"
@@ -146,14 +148,14 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 // not yet started. flushAll returns that first failure, not the cancellation
 // errors that it causes in the other builders.
 //
-// flushAll takes the builders in the order given, but builders in progress
-// can run and finish in any order. This is safe because a ToC is an unordered
-// set of index pointers, and the ToC writer is safe for concurrent use. The
-// caller commits the offset only after flushAll returns.
+// flushAll starts the builders largest first, but builders in progress can
+// run and finish in any order. This is safe because a ToC is an unordered set
+// of index pointers, and the ToC writer is safe for concurrent use. The caller
+// commits the offset only after flushAll returns.
 func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.concurrency)
-	for _, b := range builders {
+	for _, b := range largestFirst(builders) {
 		g.Go(func() error {
 			// Skip the builder if the flush was canceled or another builder
 			// failed while this one waited for a slot. builder.Flush takes no
@@ -166,6 +168,33 @@ func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, r
 		})
 	}
 	return g.Wait()
+}
+
+// largestFirst returns a copy of builders, sorted by estimated size from
+// largest to smallest. Builders of equal size keep their order.
+//
+// One large builder can take most of a flush. With a flush concurrency of 2
+// or more, a large builder that starts first runs beside the small builders.
+// A large builder that starts last runs after them, so the flush also takes
+// the time of the small builders.
+func largestFirst(builders []builder) []builder {
+	type sizedBuilder struct {
+		builder builder
+		size    int
+	}
+	sized := make([]sizedBuilder, len(builders))
+	for i, b := range builders {
+		sized[i] = sizedBuilder{builder: b, size: b.GetEstimatedSize()}
+	}
+	slices.SortStableFunc(sized, func(a, b sizedBuilder) int {
+		return cmp.Compare(b.size, a.size)
+	})
+
+	ordered := make([]builder, len(sized))
+	for i, s := range sized {
+		ordered[i] = s.builder
+	}
+	return ordered
 }
 
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {
