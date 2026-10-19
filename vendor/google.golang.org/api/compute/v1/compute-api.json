@@ -5197,6 +5197,18 @@
               "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
               "required": true,
               "type": "string"
+            },
+            "view": {
+              "enum": [
+                "BASIC",
+                "FULL"
+              ],
+              "enumDescriptions": [
+                "The default view of a ForwardingRule, which includes the basic fields.",
+                "The full view, including the ForwardingRule.`attached_extensions` field."
+              ],
+              "location": "query",
+              "type": "string"
             }
           },
           "path": "projects/{project}/regions/{region}/forwardingRules/{forwardingRule}",
@@ -6171,6 +6183,18 @@
               "location": "path",
               "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
               "required": true,
+              "type": "string"
+            },
+            "view": {
+              "enum": [
+                "BASIC",
+                "FULL"
+              ],
+              "enumDescriptions": [
+                "The default view of a ForwardingRule, which includes the basic fields.",
+                "The full view, including the ForwardingRule.`attached_extensions` field."
+              ],
+              "location": "query",
               "type": "string"
             }
           },
@@ -37971,6 +37995,51 @@
     },
     "rollouts": {
       "methods": {
+        "advance": {
+          "description": "Advances a Rollout to the next wave, or completes it if no waves remain.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/advance",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.advance",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "currentWaveNumber": {
+              "description": "Required. Wave number of the current wave.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to advance.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/advance",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
         "cancel": {
           "description": "Cancels a Rollout.",
           "flatPath": "projects/{project}/global/rollouts/{rollout}",
@@ -38142,6 +38211,94 @@
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/compute",
             "https://www.googleapis.com/auth/compute.readonly"
+          ]
+        },
+        "pause": {
+          "description": "Pauses a Rollout.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/pause",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.pause",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "etag": {
+              "description": "The etag of the Rollout.\nIf this is provided, the request will only succeed if the etag matches\nthe current etag of the Rollout.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to pause.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/pause",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
+        "resume": {
+          "description": "Resumes a Rollout.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/resume",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.resume",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "etag": {
+              "description": "The etag of the Rollout.\nIf this is provided, the request will only succeed if the etag matches\nthe current etag of the Rollout.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to resume.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/resume",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
           ]
         }
       }
@@ -47746,7 +47903,7 @@
       }
     }
   },
-  "revision": "20260422",
+  "revision": "20260625",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AWSV4Signature": {
@@ -49571,7 +49728,6 @@
           "type": "string"
         },
         "diskType": {
-          "description": "Specifies the disk type to use to create the instance. If not specified,\nthe default is pd-standard, specified using the full URL.\nFor example:\n\nhttps://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/pd-standard\n\n\nFor a full list of acceptable values, seePersistent disk\ntypes. If you specify this field when creating a VM, you can provide\neither the full or partial URL. For example, the following values are\nvalid:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/diskType \n   - projects/project/zones/zone/diskTypes/diskType \n   - zones/zone/diskTypes/diskType\n\n\nIf you specify this field when creating or updating an instance template\nor all-instances configuration, specify the type of the disk, not the\nURL. For example: pd-standard.",
           "type": "string"
         },
         "enableConfidentialCompute": {
@@ -50368,7 +50524,7 @@
             "Do not automatically scale the MIG in or out.\nThe recommended_size field contains the size of MIG that would be set if\nthe actuation mode was enabled.",
             "Automatically scale the MIG in and out according to the policy.",
             "Automatically create VMs according to the policy, but do not scale\nthe MIG in.",
-            "Automatically create VMs according to the policy, but do not scale\nthe MIG in."
+            "Automatically create VMs according to the policy, but do not scale\nthe MIG in.\nIt's recommended to use ONLY_SCALE_OUT instead of ONLY_UP."
           ],
           "type": "string"
         },
@@ -52758,6 +52914,20 @@
           "description": "Denotes whether to enable logging for the load balancer\ntraffic served by this backend service. The default value is false.",
           "type": "boolean"
         },
+        "loggingHttpRequestHeaders": {
+          "description": "The list of request headers that will be logged to Stackdriver.",
+          "items": {
+            "$ref": "BackendServiceLogConfigLoggingHttpHeader"
+          },
+          "type": "array"
+        },
+        "loggingHttpResponseHeaders": {
+          "description": "The list of response headers that will be logged to Stackdriver.",
+          "items": {
+            "$ref": "BackendServiceLogConfigLoggingHttpHeader"
+          },
+          "type": "array"
+        },
         "optionalFields": {
           "description": "This field can only be specified if logging is enabled for this backend\nservice and \"logConfig.optionalMode\" was set to CUSTOM. Contains a list\nof optional fields you want to include in the logs. For example:\nserverInstance, serverGkeDetails.cluster,\nserverGkeDetails.pod.podNamespace",
           "items": {
@@ -52783,6 +52953,17 @@
           "description": "This field can only be specified if logging is enabled for this backend\nservice. The value of the field must be in [0, 1]. This configures the\nsampling rate of requests to the load balancer where 1.0 means all logged\nrequests are reported and 0.0 means no logged requests are reported. The\ndefault value is 1.0.",
           "format": "float",
           "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "BackendServiceLogConfigLoggingHttpHeader": {
+      "description": "Determines which HTTP headers will be logged to Stackdriver.",
+      "id": "BackendServiceLogConfigLoggingHttpHeader",
+      "properties": {
+        "headerName": {
+          "description": "The name of the header to be logged.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -55156,12 +55337,14 @@
         "confidentialInstanceType": {
           "description": "Defines the type of technology used by the confidential instance.",
           "enum": [
+            "CCA",
             "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED",
             "SEV",
             "SEV_SNP",
             "TDX"
           ],
           "enumDescriptions": [
+            "Arm Confidential Compute Architecture.",
             "No type specified. Do not use this value.",
             "AMD Secure Encrypted Virtualization.",
             "AMD Secure Encrypted Virtualization - Secure Nested Paging.",
@@ -55584,6 +55767,57 @@
         },
         "year": {
           "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without\na year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "DateTime": {
+      "description": "Represents civil time (or occasionally physical time).\n\nThis type can represent a civil time in one of a few possible ways:\n\n * When utc_offset is set and time_zone is unset: a civil time on a calendar\n   day with a particular offset from UTC.\n * When time_zone is set and utc_offset is unset: a civil time on a calendar\n   day in a particular time zone.\n * When neither time_zone nor utc_offset is set: a civil time on a calendar\n   day in local time.\n\nThe date is relative to the Proleptic Gregorian Calendar.\n\nIf year, month, or day are 0, the DateTime is considered not to have a\nspecific year, month, or day respectively.\n\nThis type may also be used to represent a physical time if all the date and\ntime fields are set and either case of the `time_offset` oneof is set.\nConsider using `Timestamp` message for physical time instead. If your use\ncase also would like to store the user's timezone, that can be done in\nanother field.\n\nThis type is more flexible than some applications may want. Make sure to\ndocument and validate your application's limitations.",
+      "id": "DateTime",
+      "properties": {
+        "day": {
+          "description": "Optional. Day of month. Must be from 1 to 31 and valid for the year and\nmonth, or 0 if specifying a datetime without a day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "hours": {
+          "description": "Optional. Hours of day in 24 hour format. Should be from 0 to 23, defaults\nto 0 (midnight). An API may choose to allow the value \"24:00:00\" for\nscenarios like business closing time.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "minutes": {
+          "description": "Optional. Minutes of hour of day. Must be from 0 to 59, defaults to 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Optional. Month of year. Must be from 1 to 12, or 0 if specifying a\ndatetime without a month.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "nanos": {
+          "description": "Optional. Fractions of seconds in nanoseconds. Must be from 0 to\n999,999,999, defaults to 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "Optional. Seconds of minutes of the time. Must normally be from 0 to 59,\ndefaults to 0. An API may allow the value 60 if it allows leap-seconds.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "timeZone": {
+          "$ref": "TimeZone",
+          "description": "Time zone."
+        },
+        "utcOffset": {
+          "description": "UTC offset. Must be whole seconds, between -18 hours and +18 hours.\nFor example, a UTC offset of -4:00 would be represented as\n{ seconds: -14400 }.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "year": {
+          "description": "Optional. Year of date. Must be from 1 to 9999, or 0 if specifying a\ndatetime without a year.",
           "format": "int32",
           "type": "integer"
         }
@@ -58580,6 +58814,13 @@
           "description": "A fully-qualified URL of a SecurityProfile resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions.",
           "type": "string"
         },
+        "targetForwardingRules": {
+          "description": "A list of forwarding rules to which this rule applies.\nThis field allows you to control which load balancers get this rule.\nFor example, the following are valid values:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/global/forwardingRules/forwardingRule\n     - https://www.googleapis.com/compute/v1/projects/project/regions/region/forwardingRules/forwardingRule\n     - projects/project/global/\n     forwardingRules/forwardingRule\n     - projects/project/regions/region/forwardingRules/\n     forwardingRule",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "targetResources": {
           "description": "A list of network resource URLs to which this rule applies.  This field\nallows you to control which network's VMs get this rule.  If this field\nis left blank, all VMs within the organization will receive the rule.",
           "items": {
@@ -58600,6 +58841,18 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "targetType": {
+          "description": "Target types of the firewall policy rule.\nDefault value is INSTANCES.",
+          "enum": [
+            "INSTANCES",
+            "INTERNAL_MANAGED_LB"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
         },
         "tlsInspect": {
           "description": "Boolean flag indicating if the traffic should be TLS decrypted.\nCan be set only if action = 'apply_security_profile_group' and cannot\nbe set for other actions.",
@@ -58906,6 +59159,14 @@
         "allowPscGlobalAccess": {
           "description": "This is used in PSC consumer ForwardingRule to control whether the PSC\nendpoint can be accessed from another region.",
           "type": "boolean"
+        },
+        "attachedExtensions": {
+          "description": "Output only. [Output Only]. The extensions that are attached to this ForwardingRule.",
+          "items": {
+            "$ref": "ForwardingRuleAttachedExtension"
+          },
+          "readOnly": true,
+          "type": "array"
         },
         "backendService": {
           "description": "Identifies the backend service to which the forwarding rule sends traffic.\nRequired for internal and external passthrough Network Load Balancers;\nmust be omitted for all other load balancer types.",
@@ -59295,6 +59556,18 @@
             }
           },
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ForwardingRuleAttachedExtension": {
+      "description": "Reference to an extension resource that is attached to this ForwardingRule.",
+      "id": "ForwardingRuleAttachedExtension",
+      "properties": {
+        "reference": {
+          "description": "Output only. The resource name.",
+          "readOnly": true,
+          "type": "string"
         }
       },
       "type": "object"
@@ -61560,6 +61833,7 @@
           "description": "The ID of a supported feature. To add multiple values, use commas to\nseparate values. Set to one or more of the following values:\n   \n   - VIRTIO_SCSI_MULTIQUEUE\n   - WINDOWS\n   - MULTI_IP_SUBNET\n   - UEFI_COMPATIBLE\n   - GVNIC\n   - SEV_CAPABLE\n   - SUSPEND_RESUME_COMPATIBLE\n   - SEV_LIVE_MIGRATABLE_V2\n   - SEV_SNP_CAPABLE\n   - TDX_CAPABLE\n   - IDPF\n   - SNP_SVSM_CAPABLE\n   - CCA_CAPABLE\n\n\nFor more information, see\nEnabling guest operating system features.",
           "enum": [
             "BARE_METAL_LINUX_COMPATIBLE",
+            "CCA_CAPABLE",
             "FEATURE_TYPE_UNSPECIFIED",
             "GVNIC",
             "IDPF",
@@ -61576,6 +61850,7 @@
             "WINDOWS"
           ],
           "enumDescriptions": [
+            "",
             "",
             "",
             "",
@@ -66938,14 +67213,14 @@
       "id": "InstanceGroupManagerInstanceLifecyclePolicy",
       "properties": {
         "defaultActionOnFailure": {
-          "description": "The action that a MIG performs on a failed or an unhealthy VM.\nA VM is marked as unhealthy when the application running on that\nVM fails a health check.\nValid values are \n   \n   - REPAIR (default): MIG automatically repairs a failed or\n   an unhealthy VM by recreating it. For more information, see About\n   repairing VMs in a MIG.\n   - DO_NOTHING: MIG does not repair a failed or an unhealthy\n   VM.",
+          "description": "The action that a MIG performs on a failed VM. If the value of the\nonFailedHealthCheck field is `DEFAULT_ACTION`, then the same action also\napplies to the VMs on which your application fails a health check.\nValid values are \n   \n   - REPAIR (default): MIG automatically repairs a failed VM\n   by recreating it. For more information, see About\n   repairing VMs in a MIG.\n   - DO_NOTHING: MIG does not repair a failed VM.",
           "enum": [
             "DO_NOTHING",
             "REPAIR"
           ],
           "enumDescriptions": [
-            "MIG does not repair a failed or an unhealthy VM.",
-            "(Default) MIG automatically repairs a failed or an unhealthy\nVM by recreating it. For more information, see About\nrepairing VMs in a MIG."
+            "MIG does not repair a failed VM.",
+            "(default): MIG automatically repairs a failed VM by recreating it.\nFor more information, see About\nrepairing VMs in a MIG."
           ],
           "type": "string"
         },
@@ -66972,6 +67247,29 @@
             "(Default) MIG uses the same action configured for\ninstanceLifecyclePolicy.defaultActionOnFailure field.",
             "MIG doesn't repair an unhealthy VM.",
             "MIG automatically repairs an unhealthy VM by recreating it."
+          ],
+          "type": "string"
+        },
+        "onRepair": {
+          "$ref": "InstanceGroupManagerInstanceLifecyclePolicyOnRepair",
+          "description": "Configuration for VM repairs in the MIG."
+        }
+      },
+      "type": "object"
+    },
+    "InstanceGroupManagerInstanceLifecyclePolicyOnRepair": {
+      "description": "Configuration for VM repairs in the MIG.",
+      "id": "InstanceGroupManagerInstanceLifecyclePolicyOnRepair",
+      "properties": {
+        "allowChangingZone": {
+          "description": "Specifies whether the MIG can change a VM's zone during a repair.\nValid values are:\n   \n   - NO (default): MIG cannot change a VM's zone during a\n   repair.\n   - YES: MIG can select a different zone for the VM during\n   a repair.",
+          "enum": [
+            "NO",
+            "YES"
+          ],
+          "enumDescriptions": [
+            "[Default] MIG cannot change a VM's zone during a repair.",
+            "MIG can select a different zone for the VM during a repair."
           ],
           "type": "string"
         }
@@ -69260,16 +69558,16 @@
       "properties": {
         "error": {
           "$ref": "InstanceManagedByIgmErrorManagedInstanceError",
-          "description": "Output only. [Output Only] Contents of the error.",
+          "description": "Output only. Contents of the error.",
           "readOnly": true
         },
         "instanceActionDetails": {
           "$ref": "InstanceManagedByIgmErrorInstanceActionDetails",
-          "description": "Output only. [Output Only] Details of the instance action that triggered this error.\nMay be null, if the error was not caused by an action on an instance.\nThis field is optional.",
+          "description": "Output only. Details of the instance action that triggered this error.\nMay be null, if the error was not caused by an action on an instance.\nThis field is optional.",
           "readOnly": true
         },
         "timestamp": {
-          "description": "Output only. [Output Only] The time that this error occurred.\nThis value is in RFC3339 text format.",
+          "description": "Output only. The time that this error occurred. This value is in RFC3339 text format.",
           "readOnly": true,
           "type": "string"
         }
@@ -69280,7 +69578,7 @@
       "id": "InstanceManagedByIgmErrorInstanceActionDetails",
       "properties": {
         "action": {
-          "description": "Output only. [Output Only] Action that managed instance group was executing on\nthe instance when the error occurred. Possible values:",
+          "description": "Output only. Action that managed instance group was executing on the instance when the\nerror occurred. Possible values:",
           "enum": [
             "ABANDONING",
             "CREATING",
@@ -69315,13 +69613,13 @@
           "type": "string"
         },
         "instance": {
-          "description": "Output only. [Output Only] The URL of the instance.\nThe URL can be set even if the instance has not yet been created.",
+          "description": "Output only. The URL of the instance. The URL can be set even if the instance has not\nyet been created.",
           "readOnly": true,
           "type": "string"
         },
         "version": {
           "$ref": "ManagedInstanceVersion",
-          "description": "Output only. [Output Only] Version this instance was created from, or was being\ncreated from, but the creation failed. Corresponds to one of the versions\nthat were set on the Instance Group Manager resource at the time this\ninstance was being created.",
+          "description": "Output only. Version this instance was created from, or was being\ncreated from, but the creation failed. Corresponds to one of the versions\nthat were set on the Instance Group Manager resource at the time this\ninstance was being created.",
           "readOnly": true
         }
       },
@@ -69331,12 +69629,12 @@
       "id": "InstanceManagedByIgmErrorManagedInstanceError",
       "properties": {
         "code": {
-          "description": "Output only. [Output Only] Error code.",
+          "description": "Output only. Error code.",
           "readOnly": true,
           "type": "string"
         },
         "message": {
-          "description": "Output only. [Output Only] Error message.",
+          "description": "Output only. Error message.",
           "readOnly": true,
           "type": "string"
         }
@@ -71394,6 +71692,11 @@
         },
         "description": {
           "description": "An optional description of this resource. Provide this property when you\ncreate the resource.",
+          "type": "string"
+        },
+        "effectiveLocation": {
+          "description": "Output only. URL of the InterconnectLocation object that represents where\nthis connection is to be provisioned. By default it will be the same as the\nlocation field.",
+          "readOnly": true,
           "type": "string"
         },
         "expectedOutages": {
@@ -78407,7 +78710,7 @@
           "type": "string"
         },
         "network": {
-          "description": "The URL of the network to which all network endpoints in the NEG belong.\nUses default project network if unspecified.",
+          "description": "The URL of the network to which all network endpoints in the NEG belong.\nFor networkEndpointType GCE_VM_IP_PORT,GCE_VM_IP_PORTMAP or NON_GCP_PRIVATE_IP_PORT,\nif this field is not specified, a default network will be used.\nThis field cannot be set for NEGs with networkEndpointType set toSERVERLESS or PRIVATE_SERVICE_CONNECT and for\nglobal NEGs.\nFor all other network endpoint types, this field is required.",
           "type": "string"
         },
         "networkEndpointType": {
@@ -79419,6 +79722,13 @@
         },
         "aliasIpRanges": {
           "description": "An array of alias IP ranges for this network interface.\nYou can only specify this field for network interfaces in VPC networks.",
+          "items": {
+            "$ref": "AliasIpRange"
+          },
+          "type": "array"
+        },
+        "aliasIpv6Ranges": {
+          "description": "An array of alias IPv6 ranges for this network interface.\nYou can only specify this field for network interfaces in VPC networks.",
           "items": {
             "$ref": "AliasIpRange"
           },
@@ -85242,6 +85552,54 @@
             "The per-instance configuration has been deleted, but the deletion is not\nyet applied."
           ],
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PeriodicPartialMaintenanceSchedule": {
+      "description": "The periodic partial maintenance schedule includes 52 weeks worth of\nmaintenance windows.\nLINT.IfChange(PeriodicPartialMaintenanceSchedule)",
+      "id": "PeriodicPartialMaintenanceSchedule",
+      "properties": {
+        "subType": {
+          "description": "The maintenance type in which the zone is during the given window.",
+          "enum": [
+            "MAINTENANCE_SUBTYPE_UNSPECIFIED",
+            "MAINTENANCE_TYPE_CUSTOMER_MAINTENANCE",
+            "MAINTENANCE_TYPE_DISRUPTIVE_UPGRADE",
+            "MAINTENANCE_TYPE_STABLE",
+            "MAINTENANCE_TYPE_TRANSITION"
+          ],
+          "enumDescriptions": [
+            "Default value.",
+            "A dedicated window for customers to perform their own maintenance. This\noften runs concurrently with a DISRUPTIVE_UPGRADE.",
+            "For disruptive updates, including host machine kernel or firmware\nupgrades.",
+            "A post-maintenance window for customers to conduct final testing and\nperformance validation before resuming full business operations.",
+            "For preliminary, non-disruptive tasks such as key rotations."
+          ],
+          "type": "string"
+        },
+        "targetResource": {
+          "description": "The target resource that the maintenance window is for.\nFor example, \"projects/my-project/zones/us-central1-a\".",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "MAINTENANCE_TYPE_UNSPECIFIED",
+            "PRIVATE_ZONE_MAINTENANCE"
+          ],
+          "enumDescriptions": [
+            "Default value.",
+            "The zone is in a private maintenance window."
+          ],
+          "type": "string"
+        },
+        "windowEndTime": {
+          "$ref": "DateTime",
+          "description": "The end civil timestamp of the window (not inclusive).\nThis contains a time zone."
+        },
+        "windowStartTime": {
+          "$ref": "DateTime",
+          "description": "The start civil timestamp of the window.\nThis contains a time zone."
         }
       },
       "type": "object"
@@ -92284,6 +92642,11 @@
       "description": "Represents the physical host topology of the host on which the VM is\nrunning.",
       "id": "ResourceStatusPhysicalHostTopology",
       "properties": {
+        "additionalAttributes": {
+          "$ref": "ResourceStatusPhysicalHostTopologyAdditionalAttributes",
+          "description": "Output only. [Output Only] Additional location information of the running instance.",
+          "readOnly": true
+        },
         "block": {
           "description": "[Output Only] The ID of the block in which the running instance is\nlocated. Instances within the same block experience low network latency.",
           "type": "string"
@@ -92299,6 +92662,21 @@
         "subblock": {
           "description": "[Output Only] The ID of the sub-block in which the running instance is\nlocated. Instances in the same sub-block experience lower network latency\nthan instances in the same block.",
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceStatusPhysicalHostTopologyAdditionalAttributes": {
+      "description": "Additional location information of the running instance.",
+      "id": "ResourceStatusPhysicalHostTopologyAdditionalAttributes",
+      "properties": {
+        "acceleratorTopologyIds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Output only. The IDs of the accelerator topologies the instance belongs to. For\nexample\nThe key will be topologies like \"4x4\", \"2x2x2\" and the value will be\nthe location ID of the topologies.",
+          "readOnly": true,
+          "type": "object"
         }
       },
       "type": "object"
@@ -92375,6 +92753,16 @@
         "name": {
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?`\nwhich means the first character must be a lowercase letter, and all\nfollowing characters must be a dash, lowercase letter, or digit, except\nthe last character, which cannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "pauseTime": {
+          "description": "Output only. The timestamp at which the Rollout was paused.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "resumeTime": {
+          "description": "Output only. The timestamp at which the Rollout was resumed.",
+          "readOnly": true,
           "type": "string"
         },
         "rolloutEntity": {
@@ -93796,6 +94184,10 @@
           },
           "type": "array"
         },
+        "nccGateway": {
+          "description": "URI of the ncc_gateway to which this router associated.",
+          "type": "string"
+        },
         "network": {
           "annotations": {
             "required": [
@@ -94536,6 +94928,12 @@
           },
           "type": "array"
         },
+        "effectiveTcpTimeWaitTimeoutSec": {
+          "description": "Output only. Effective timeout (in seconds) for TCP connections that are in TIME_WAIT\nstate. This value is equal to tcp_time_wait_timeout_sec.\nIf tcp_time_wait_timeout_sec isn't set, the effective timeout is 30s or\n120s. The field is output only.",
+          "format": "int32",
+          "readOnly": true,
+          "type": "integer"
+        },
         "enableDynamicPortAllocation": {
           "description": "Enable Dynamic Port Allocation.\n\n\nIf not specified, it is disabled by default.\n\n\nIf set to true,\n   \n   - Dynamic Port Allocation will be enabled on this NAT\n   config.\n   - enableEndpointIndependentMapping cannot be set to true.\n   - If minPorts is set, minPortsPerVm must be set to a\n   power of two greater than or equal to 32. If minPortsPerVm is not set, a\n   minimum of 32 ports will be allocated to a VM from this NAT\n   config.",
           "type": "boolean"
@@ -94855,6 +95253,10 @@
             "$ref": "RouterStatusNatStatus"
           },
           "type": "array"
+        },
+        "nccGateway": {
+          "description": "URI of the ncc_gateway to which this router associated.",
+          "type": "string"
         },
         "network": {
           "description": "URI of the network to which this router belongs.",
@@ -96680,6 +97082,35 @@
     "SecurityPolicyDdosProtectionConfig": {
       "id": "SecurityPolicyDdosProtectionConfig",
       "properties": {
+        "ddosAdaptiveProtection": {
+          "enum": [
+            "DDOS_ADAPTIVE_PROTECTION_UNSPECIFIED",
+            "DISABLED",
+            "ENABLED",
+            "PREVIEW",
+            "UNSPECIFIED_ADAPTIVE_PROTECTION"
+          ],
+          "enumDeprecated": [
+            false,
+            false,
+            false,
+            false,
+            true
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "ddosImpactedBaselineThreshold": {
+          "description": "DDoS Protection for Network Load Balancers (and VMs with public IPs)\nbuilds DDoS mitigations that minimize collateral damage. It quantifies\nthis as the fraction of a non-abuse baseline that's inadvertently\nblocked.\n\nRules whose collateral damage exceeds ddosImpactedBaselineThreshold will\nnot be deployed. Using a lower value will prioritize keeping collateral\ndamage low, possibly at the cost of its effectiveness in rate limiting\nsome or all of the attack. It should typically be unset, so Advanced DDoS\n(and Adaptive Protection) uses the best mitigation it can find. Setting\nthe threshold is advised if there are logs for false positive detections\nwith high collateral damage, and will cause Advanced DDoS to attempt to\nfind a less aggressive rule that satisfies the constraint. If a suitable\nrule cannot be found, the system falls back to either no mitigation for\nsmaller attacks or broader network throttles for larger ones.",
+          "format": "float",
+          "type": "number"
+        },
         "ddosProtection": {
           "enum": [
             "ADVANCED",
@@ -97560,6 +97991,11 @@
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first\ncharacter must be a lowercase letter, and all following characters must\nbe a dash, lowercase letter, or digit, except the last character, which\ncannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
           "type": "string"
+        },
+        "natIpsPerEndpoint": {
+          "description": "The number of NAT IP addresses to be allocated per connected endpoint.\nIf not specified, the default value is 1.",
+          "format": "uint32",
+          "type": "integer"
         },
         "natSubnets": {
           "description": "An array of URLs where each entry is the URL of a subnet provided\nby the service producer to use for NAT in this service attachment.",
@@ -98563,7 +98999,7 @@
           "type": "string"
         },
         "storageBytesStatus": {
-          "description": "Output only. [Output Only] An indicator whether storageBytes is in a\nstable state or it is being adjusted as a result of shared storage\nreallocation. This status can either be UPDATING, meaning\nthe size of the snapshot is being updated, or UP_TO_DATE,\nmeaning the size of the snapshot is up-to-date.",
+          "description": "Output only. [Deprecated] Instead, check the storageBytes field. After\nsnapshot creation, the storageBytesStatus field is alwaysUP_TO_DATE.\n[Output Only] An indicator whether storageBytes is in a\nstable state or it is being adjusted as a result of shared storage\nreallocation. This status can either be unset, meaning the snapshot is\nbeing created, or UP_TO_DATE, meaning the size of the snapshot\nis up-to-date.",
           "enum": [
             "UPDATING",
             "UP_TO_DATE"
@@ -105927,6 +106363,22 @@
           "readOnly": true,
           "type": "string"
         },
+        "loadBalancingScheme": {
+          "description": "Specifies the type of load balancing scheme used by this target proxy.",
+          "enum": [
+            "EXTERNAL",
+            "EXTERNAL_MANAGED",
+            "INTERNAL_MANAGED",
+            "LOAD_BALANCING_SCHEME_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
         "name": {
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first\ncharacter must be a lowercase letter, and all following characters must\nbe a dash, lowercase letter, or digit, except the last character, which\ncannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
@@ -106927,6 +107379,21 @@
             "type": "string"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TimeZone": {
+      "description": "Represents a time zone from the\n[IANA Time Zone Database](https://www.iana.org/time-zones).",
+      "id": "TimeZone",
+      "properties": {
+        "id": {
+          "description": "IANA Time Zone Database time zone. For example \"America/New_York\".",
+          "type": "string"
+        },
+        "version": {
+          "description": "Optional. IANA Time Zone Database version number. For example \"2019a\".",
+          "type": "string"
         }
       },
       "type": "object"
@@ -111010,6 +111477,10 @@
           "description": "[Output Only] Full URL reference to the region which hosts the zone.",
           "type": "string"
         },
+        "resourceStatus": {
+          "$ref": "ZoneResourceStatus",
+          "readOnly": true
+        },
         "selfLink": {
           "description": "[Output Only] Server-defined URL for the resource.",
           "type": "string"
@@ -111187,6 +111658,20 @@
             }
           },
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ZoneResourceStatus": {
+      "id": "ZoneResourceStatus",
+      "properties": {
+        "upcomingMaintenances": {
+          "description": "Output only. [Output Only] The upcoming maintenance schedule.",
+          "items": {
+            "$ref": "PeriodicPartialMaintenanceSchedule"
+          },
+          "readOnly": true,
+          "type": "array"
         }
       },
       "type": "object"
