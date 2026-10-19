@@ -1534,11 +1534,12 @@ func Test_RowReader_Stats(t *testing.T) {
 }
 
 func Test_RowReader_PrimaryStats(t *testing.T) {
-	const (
-		int64Bytes = 8
-		// Total size in bytes of the first names in basicReaderTestData.
-		allNameBytes = 44
-	)
+	const int64Bytes = 8
+
+	var allNameBytes int64
+	for _, p := range basicReaderTestData {
+		allNameBytes += int64(len(p.firstName))
+	}
 
 	for _, tc := range []struct {
 		name       string
@@ -1680,7 +1681,7 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 	})
 }
 
-func Test_RowReader_StreamRelevantRows(t *testing.T) {
+func Test_RowReader_StatStreamRelevantRows(t *testing.T) {
 	keepMessagesWithOddNumber := func(c Column) Predicate {
 		return FuncPredicate{Column: c, Keep: func(_ Column, v Value) bool { return v.Binary()[1]%2 == 1 }}
 	}
@@ -1764,13 +1765,15 @@ func readWithStats(t *testing.T, r *RowReader, batchSize int) ([]Row, map[string
 
 // readIndexes reads the open reader r until io.EOF. It returns the Index of every row it read.
 // nextBuffer returns the buffer for each Read.
-//
-// The loop has a bound, so a Read that never returns io.EOF fails the test instead of hanging it.
 func readIndexes(ctx context.Context, t *testing.T, r *RowReader, nextBuffer func() []Row) []int {
 	t.Helper()
 
+	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
+	// of hanging it. It is far above what any caller needs.
+	const maxReadAttempts = 100
+
 	var indexes []int
-	for range 10 {
+	for range maxReadAttempts {
 		buf := nextBuffer()
 		n, err := r.Read(ctx, buf)
 		for _, row := range buf[:n] {
