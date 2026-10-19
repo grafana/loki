@@ -731,7 +731,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
 					}}}
 				},
-				keep: func(p testPerson) bool { return !(p.birthYear > 1982 || p.middleName != "") },
+				keep: func(p testPerson) bool { return p.birthYear <= 1982 && p.middleName == "" },
 			},
 			{
 				name:      "when the projected column is also read and no secondary column is left",
@@ -2302,7 +2302,7 @@ type failingOnceDataset struct {
 func (d *failingOnceDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[PageData] {
 	if !d.failed {
 		d.failed = true
-		return result.Iter(func(yield func(PageData) bool) error { return errors.New("failed to read pages") })
+		return result.Iter(func(func(PageData) bool) error { return errors.New("failed to read pages") })
 	}
 	return d.Dataset.ReadPages(ctx, pages)
 }
