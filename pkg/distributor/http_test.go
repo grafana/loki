@@ -371,8 +371,8 @@ func TestOTLPPushHandlerAttributeExpansion(t *testing.T) {
 		kafkaEnabled  bool
 		status        int
 	}{
-		{name: "accepted", metadataSize: 1024, metadataCount: 10, status: http.StatusNoContent},
-		{name: "accepted with Kafka and ingesters", metadataSize: 1024, metadataCount: 10, kafkaEnabled: true, status: http.StatusNoContent},
+		{name: "accepted", metadataSize: 1024, metadataCount: 10, status: http.StatusOK},
+		{name: "accepted with Kafka and ingesters", metadataSize: 1024, metadataCount: 10, kafkaEnabled: true, status: http.StatusOK},
 		{name: "shared metadata exceeds size limit", metadataSize: 14, metadataCount: 10, status: http.StatusBadRequest},
 		{name: "shared metadata exceeds count limit", metadataSize: 1024, metadataCount: 2, status: http.StatusBadRequest},
 	} {
@@ -428,7 +428,7 @@ func TestOTLPPushHandlerAttributeExpansion(t *testing.T) {
 				require.Equal(t, tc.status, response.Code, response.Body.String())
 
 				// if the push is expected to fail, ingesters should not receive any data
-				if tc.status != http.StatusNoContent {
+				if tc.status != http.StatusOK {
 					require.Nil(t, ing.Peek())
 					return
 				}
@@ -509,9 +509,9 @@ func TestOTLPPushHandlerValidation(t *testing.T) {
 	}{
 		{name: "empty request", status: http.StatusUnprocessableEntity},
 		{name: "resource with no logs", service: "svc", status: http.StatusUnprocessableEntity},
-		{name: "valid", service: "svc", records: []record{{route: "ok"}}, status: http.StatusNoContent, accepted: []int{0}},
+		{name: "valid", service: "svc", records: []record{{route: "ok"}}, status: http.StatusOK, accepted: []int{0}},
 		{name: "non UTF-8 log label value", service: "svc", records: []record{{route: "\xff"}}, status: http.StatusUnprocessableEntity},
-		{name: "mixed UTF-8 and non UTF-8 log label values", service: "svc", records: []record{{route: "ok"}, {route: "\xff"}}, status: http.StatusNoContent, accepted: []int{0}},
+		{name: "mixed UTF-8 and non UTF-8 log label values", service: "svc", records: []record{{route: "ok"}, {route: "\xff"}}, status: http.StatusOK, accepted: []int{0}},
 		{name: "non UTF-8 resource label value", service: "\xff", records: []record{{route: "ok"}}, status: http.StatusUnprocessableEntity},
 		{name: "resource label value exceeds limit", service: "toolong", records: []record{{route: "ok"}}, maxValueLength: 4, status: http.StatusBadRequest},
 		{name: "all log label values exceed limit", service: "svc", records: []record{{route: "toolong"}}, maxValueLength: 4, status: http.StatusBadRequest},
