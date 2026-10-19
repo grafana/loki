@@ -285,3 +285,23 @@ func TestNewPartitionToConsumerGroupFunc(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestRecordsLeftToConsume(t *testing.T) {
+	for _, tc := range []struct {
+		name                                 string
+		startOffset, endOffset, resumeOffset int64
+		expected                             int64
+	}{
+		{name: "returns zero when the partition has no records", startOffset: 0, endOffset: 0, resumeOffset: 0, expected: 0},
+		{name: "returns zero when the group consumed the last record", startOffset: 0, endOffset: 5, resumeOffset: 5, expected: 0},
+		{name: "returns every record when the group never consumed any", startOffset: 0, endOffset: 5, resumeOffset: 0, expected: 5},
+		{name: "returns the records after the resume offset", startOffset: 0, endOffset: 5, resumeOffset: 3, expected: 2},
+		{name: "returns zero when retention deleted every record the group did not consume", startOffset: 5, endOffset: 5, resumeOffset: 2, expected: 0},
+		{name: "returns the records after the start offset when it is above the resume offset", startOffset: 3, endOffset: 5, resumeOffset: 1, expected: 2},
+		{name: "returns zero when the resume offset is past the end offset", startOffset: 0, endOffset: 5, resumeOffset: 101, expected: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, recordsLeftToConsume(tc.startOffset, tc.endOffset, tc.resumeOffset))
+		})
+	}
+}

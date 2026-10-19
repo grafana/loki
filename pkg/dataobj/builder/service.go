@@ -46,7 +46,6 @@ type Service struct {
 	consumerGroup      string
 	processor          services.Service
 	reporter           services.Service
-	downscalePermitted downscalePermittedFunc
 	logger             log.Logger
 	subservicesWatcher *services.FailureWatcher
 }
@@ -170,8 +169,6 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		reg,
 	)
 
-	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, consumerGroup, partitionID, logger)
-
 	// Partition 0 always has a builder, so its builder reports how many
 	// builders the other partitions need. It derives the consumer groups of
 	// the other builders from its own hostname. A partition override breaks
@@ -194,7 +191,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 			)
 		}
 	}
-	return newService(consumer, offsetReader, processor, reporter, downscalePermitted, partitionID, consumerGroup, logger), nil
+	return newService(consumer, offsetReader, processor, reporter, partitionID, consumerGroup, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
@@ -205,7 +202,6 @@ func newService(
 	offsetReader resumeOffsetReader,
 	processor services.Service,
 	reporter services.Service,
-	downscalePermitted downscalePermittedFunc,
 	partition int32,
 	consumerGroup string,
 	logger log.Logger,
@@ -217,7 +213,6 @@ func newService(
 		consumerGroup:      consumerGroup,
 		processor:          processor,
 		reporter:           reporter,
-		downscalePermitted: downscalePermitted,
 		logger:             logger,
 		subservicesWatcher: services.NewFailureWatcher(),
 	}
