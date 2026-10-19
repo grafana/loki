@@ -256,10 +256,7 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 
 	// Use ReadColumns for the first predicate, not Fill. ReadColumns sets Row.Index, which Fill
 	// needs.
-	columns, idxs, err := r.predicateColumns(r.opts.Predicates[0], func(Column) bool { return true })
-	if err != nil {
-		return 0, 0, err
-	}
+	columns, idxs := r.predicateColumns(r.opts.Predicates[0], func(Column) bool { return true })
 
 	rowsRead, err := r.inner.ReadColumns(ctx, columns, s[:readSize])
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -318,14 +315,11 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 // reads each column forward, and the page mask of the secondary columns needs ascending indexes.
 // The order of the other rows is undefined.
 func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled compiledPredicate, rows []Row, filledColumns map[Column]struct{}) (int, int64, error) {
-	columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
+	columns, idxs := r.predicateColumns(p, func(c Column) bool {
 		// keep only columns that haven't been filled yet.
 		_, ok := filledColumns[c]
 		return !ok
 	})
-	if err != nil {
-		return 0, 0, err
-	}
 
 	if len(columns) > 0 {
 		count, err := r.inner.Fill(ctx, columns, rows)
@@ -899,7 +893,7 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 	return
 }
 
-func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
+func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int) {
 	columns := make(map[Column]struct{})
 
 	WalkPredicateColumn(p, func(c Column) { columns[c] = struct{}{} })
@@ -921,7 +915,7 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 		ret = append(ret, c)
 	}
 
-	return ret, idxs, nil
+	return ret, idxs
 }
 
 func isStreamIDPredicate(p Predicate) bool {
