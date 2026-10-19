@@ -15,30 +15,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// errFlushNotRunning is returned when a flush is requested while the ingester is
-// not running: its flush queues don't exist before startup completes and are
-// closed during shutdown, where the shutdown flush owns flushing.
+// errFlushNotRunning is returned when a flush is requested while the ingester is not running.
 var errFlushNotRunning = errors.New("ingester is not running")
 
-// flushQueueIndex returns the index of the flush queue that owns a stream. A
-// stream is always flushed by the same queue, and each queue has a single
-// worker, so only one flush op operates on a stream at a time.
+// flushQueueIndex returns the index of the flush queue that owns a stream.
 func (i *Ingester) flushQueueIndex(fp model.Fingerprint) int {
 	return int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 }
 
-// flushStreams force flushes the in-memory chunks of the streams matching
-// matchers. An empty tenantID flushes all tenants. An empty matcher set matches
-// all of a tenant's streams.
-//
-// In asynchronous mode it enqueues an immediate flushOp per stream and returns.
-// In synchronous mode it does the same, but attaches a flushJob to each op and
-// waits for the job to complete. If an op for a stream is already queued the job
-// is attached to it instead of enqueueing a duplicate.
-//
-// It returns errFlushNotRunning or ErrReadOnly if the ingester is not running or
-// is shutting down. Otherwise it returns the first flush error, or the context's
-// error if ctx ends first, in which case the enqueued ops still run.
+// flushStreams enqueues flushOps given the passed parameters. It can be
+// scoped to a single tenant or a subset of streams via the matchers. If
+// these parameters are empty it enqueues flushOps for all streams and all tenants.
+// If synchronous it will block until all flushOps are processed otherwise
+// it returns immediately.
 func (i *Ingester) flushStreams(ctx context.Context, tenantID string, matchers []*labels.Matcher, synchronous bool) error {
 	if i.State() != services.Running {
 		return errFlushNotRunning
@@ -72,7 +61,7 @@ func (i *Ingester) flushStreams(ctx context.Context, tenantID string, matchers [
 	for _, inst := range instances {
 		var enqueued int
 		if err := inst.forMatchingStreams(ctx, time.Now(), matchers, nil, func(s *stream) error {
-			op := newForcedFlushOp(inst, s)
+			op := newImmediateFlushOp(inst, s)
 			if op == nil {
 				return nil
 			}
@@ -109,9 +98,9 @@ func (i *Ingester) flushStreams(ctx context.Context, tenantID string, matchers [
 	return job.wait(ctx)
 }
 
-// newForcedFlushOp returns an immediate flushOp for a stream, or nil if the
+// newImmediateFlushOp returns an immediate flushOp for a stream, or nil if the
 // stream has no chunks to flush.
-func newForcedFlushOp(inst *instance, s *stream) *flushOp {
+func newImmediateFlushOp(inst *instance, s *stream) *flushOp {
 	s.chunkMtx.RLock()
 	defer s.chunkMtx.RUnlock()
 	if len(s.chunks) == 0 {

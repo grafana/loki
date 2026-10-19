@@ -264,7 +264,8 @@ type Ingester struct {
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
+	// pick a queue, so a stream is always flushed by the same
+	// queue and only one flush op operates on it at a time.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
