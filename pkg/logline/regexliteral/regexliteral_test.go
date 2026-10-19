@@ -12,9 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 )
 
-func TestRequired(t *testing.T) {
+func TestLiterals(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		pattern string
@@ -30,15 +31,15 @@ func TestRequired(t *testing.T) {
 		{"wildcard wrapped", `.*2254266819291842746.*`, []string{"2254266819291842746"}},
 		{"leading space kept", `.* 2254266819291842746.*`, []string{" 2254266819291842746"}},
 		{"dot all", `(?s).*needle.*`, []string{"needle"}},
-		{"two runs", `.*kubelet.*error_code=500123.*`, []string{"kubelet", "error_code=500123"}},
-		{"char class splits", `request_id=[0-9a-f]+ status=timeout`, []string{"request_id=", " status=timeout"}},
-		{"digit class splits", `foo\d+barbazqux`, []string{"foo", "barbazqux"}},
-		{"single dot splits", `data.ase`, []string{"data", "ase"}},
+		{"two runs", `.*kubelet.*error_code=500123.*`, []string{"error_code=500123", "kubelet"}},
+		{"char class splits", `request_id=[0-9a-f]+ status=timeout`, []string{" status=timeout", "request_id="}},
+		{"digit class splits", `foo\d+barbazqux`, []string{"barbazqux", "foo"}},
+		{"single dot splits", `data.ase`, []string{"ase", "data"}},
 		{"duplicates removed", `abcdef.*abcdef`, []string{"abcdef"}},
 		{"contained removed", `abcdef.*xabcdefy`, []string{"xabcdefy"}},
 
 		// Anchors are zero-width, so the literals on both sides join.
-		{"anchored both ends", `^start_of.*end$`, []string{"start_of", "end"}},
+		{"anchored both ends", `^start_of.*end$`, []string{"end", "start_of"}},
 		{"anchor inside", `abc$\ndef`, []string{"abc\ndef"}},
 		{"word boundary inside", `abc\bdef`, []string{"abcdef"}},
 		{"multiline anchors", `(?m)^level=error$`, []string{"level=error"}},
@@ -46,23 +47,27 @@ func TestRequired(t *testing.T) {
 		// Captures are transparent.
 		{"capture", `abc(def)ghi`, []string{"abcdefghi"}},
 		{"nested captures", `((abc)(def))`, []string{"abcdef"}},
-		{"capture with wildcard", `x(abc.*def)y`, []string{"xabc", "defy"}},
+		{"capture with wildcard", `x(abc.*def)y`, []string{"defy", "xabc"}},
 
-		// Repeats. Simplify expands counted repeats into literals and optional tails.
+		// Repeats. The first min copies join the left, the last copy joins the right.
 		{"counted repeat", `(abc){2}`, []string{"abcabc"}},
-		{"counted range", `(abc){2,3}x`, []string{"abcabc", "x"}},
-		{"plus joins both sides", `x(abcdef)+ghi`, []string{"xabcdef", "abcdefghi"}},
+		{"counted range", `(abc){2,3}x`, []string{"abcabc", "abcx"}},
+		{"plus joins both sides", `x(abcdef)+ghi`, []string{"abcdefghi", "xabcdef"}},
 		{"plus on a concat", `(abc.*def)+ghi`, []string{"abc", "def", "ghi"}},
 		{"plus on single rune", `ab+cd`, []string{"ab", "bcd"}},
 		{"optional", `x(?:abcdef)?y`, []string{"x", "y"}},
 		{"star", `(abcdef)*`, nil},
 
-		// Alternation contributes nothing, but the text around it does.
+		// Alternation contributes only what every branch shares, but the text
+		// around it does.
 		{"alternation", `foo|bar`, nil},
 		{"alternation with suffix", `(foo|bar)bazqux`, []string{"bazqux"}},
 		// Parse factors the common prefix, which becomes a required literal.
 		{"factored prefix", `abcdefgh|abcdefxy`, []string{"abcdef"}},
 		{"alternation then literal", `(GET|POST) /api`, []string{" /api"}},
+		// Literals shared by every branch are required.
+		{"shared branch literal", `a.*xyz|b.*xyz`, []string{"xyz"}},
+		{"shared branch literal then suffix", `(foo.*bar|baz.*bar)qux`, []string{"bar", "qux"}},
 
 		// Case folding. Literals keep the parser's canonical form, uppercase for ASCII.
 		{"case-insensitive", `(?i)ERROR TIMEOUT`, []string{"ERROR TIMEOUT"}},
@@ -81,15 +86,158 @@ func TestRequired(t *testing.T) {
 		{"invalid", `(`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Required(tc.pattern))
+			require.Equal(t, tc.want, Literals(tc.pattern))
 		})
 	}
+}
+
+func TestNeedles(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		pattern         string
+		maxConjunctions int
+		want            string
+	}{
+		// Alternation.
+		{"alternation", `foo|bar`, 64, `{"bar"} or {"foo"}`},
+		{"alternation joined to a suffix", `(GET|POST) /api/users`, 64, `{"GET /api/users"} or {"POST /api/users"}`},
+		{"alternation joined to a prefix", `user_id=(123456|789012)`, 64, `{"user_id=123456"} or {"user_id=789012"}`},
+		{"factored into a class", `error_code=500|error_code=503`, 64, `{"error_code=500"} or {"error_code=503"}`},
+		{"alternation on both sides", `(GET|PUT) /api (ok|fail)`, 64, `{"GET /api fail"} or {"GET /api ok"} or {"PUT /api fail"} or {"PUT /api ok"}`},
+		{"single letters become a class", `(a|b)xyz(c|d)`, 64, `{"AxyzC"} or {"AxyzD"} or {"BxyzC"} or {"BxyzD"}`},
+		{"case-insensitive", `(?i)timeout|error`, 64, `{"ERROR"} or {"TIMEOUT"}`},
+		{"case-insensitive letter in a class", `(?i)status=ok`, 64, `{"STATUS=OK"}`},
+
+		// Optional parts.
+		{"optional rune", `colou?r`, 64, `{"color"} or {"colour"}`},
+		{"optional suffix absorbs", `errors?`, 64, `{"error"}`},
+		{"optional prefix absorbs", `x?abc`, 64, `{"abc"}`},
+
+		// Repeats.
+		{"plus on an alternation", `(abc|def)+ghi`, 64, `{"abcghi"} or {"defghi"}`},
+		{"plus on a literal", `x(abcdef)+ghi`, 64, `{"abcdefghi", "xabcdef"}`},
+
+		// Small classes become exact sets. Large ones split the run.
+		{"small class", `id=[0-3]x`, 64, `{"id=0x"} or {"id=1x"} or {"id=2x"} or {"id=3x"}`},
+		{"class letters uppercased", `[ab]cd`, 64, `{"Acd"} or {"Bcd"}`},
+		{"large class splits", `request_id=[0-9a-f]+ status=timeout`, 64, `{" status=timeout", "request_id="}`},
+
+		// A run that would grow past maxExact is split.
+		// Here the first 16 strings are flushed and the run restarts at the
+		// third class. With 16 conjunctions the product with them collapses.
+		{"run split", `[0-3][0-3][0-3]x`, 16, `{"0x"} or {"1x"} or {"2x"} or {"3x"}`},
+
+		// Non-exact alternation, each branch walked on its own.
+		{"wildcard branches", `abc.*def|xyz.*uvw`, 64, `{"abc", "def"} or {"uvw", "xyz"}`},
+		{"branch with nothing required", `abc|.*`, 64, "TRUE"},
+		{"empty branch", `abc|`, 64, "TRUE"},
+		{"alternation next to required text", `kubelet.*(abc.*|def.*)`, 64, `{"abc", "kubelet"} or {"def", "kubelet"}`},
+
+		// maxConjunctions. Exact sets are capped at it, so the plain text next
+		// to an alternation survives a low maxConjunctions.
+		{"one conjunction keeps the plain literal", `(a|b)verylongliteral`, 1, `{"verylongliteral"}`},
+		{"two conjunctions collapse to shared text", `(a|b|c)xyz`, 2, `{"xyz"}`},
+		{"one conjunction without required text", `foo|bar`, 1, "TRUE"},
+
+		// Nothing required.
+		{"star", `(abcdef)*`, 64, "TRUE"},
+		{"class only", `[a-z]+`, 64, "TRUE"},
+		{"empty pattern", ``, 64, "TRUE"},
+		{"invalid", `(`, 64, "TRUE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, Needles(tc.pattern, tc.maxConjunctions).Prune().String())
+		})
+	}
+}
+
+// For random patterns and random lines they match, some conjunction must have
+// every n-gram of every literal emitted by the index for that line, for every
+// index version and at every maxConjunctions. Otherwise a lookup would miss the line.
+func TestNeedles_NoFalseNegatives(t *testing.T) {
+	maxConjunctionss := []int{1, 4, 64}
+	rng := rand.New(rand.NewSource(1))
+	checked, alternatives := 0, 0
+	for range 20000 {
+		pattern := randomPattern(rng, 3)
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			continue
+		}
+		exprs := make([]needle.Expr, len(maxConjunctionss))
+		allTrue := true
+		for i, maxConjunctions := range maxConjunctionss {
+			exprs[i] = Needles(pattern, maxConjunctions)
+			require.LessOrEqual(t, len(exprs[i].Conjunctions()), maxConjunctions)
+			allTrue = allTrue && exprs[i].IsTrue()
+		}
+		if allTrue {
+			continue
+		}
+		parsed, err := syntax.Parse(pattern, syntax.Perl)
+		require.NoError(t, err)
+
+		for range 4 {
+			var sb strings.Builder
+			sb.WriteString(randomText(rng))
+			generateMatch(rng, parsed, &sb)
+			sb.WriteString(randomText(rng))
+			line := sb.String()
+			// Generation ignores anchors, so let the engine decide.
+			if !re.MatchString(line) {
+				continue
+			}
+			checked++
+			if len(exprs[len(exprs)-1].Conjunctions()) > 1 {
+				alternatives++
+			}
+			for _, version := range logline.AllVersions() {
+				for n := 1; n <= 6; n++ {
+					indexed := map[string]struct{}{}
+					for _, term := range terms(t, version, n, line) {
+						indexed[term] = struct{}{}
+					}
+					for i, e := range exprs {
+						if !satisfiesSome(t, version, n, e, indexed) {
+							t.Fatalf("false negative: version=%s n=%d maxConjunctions=%d pattern=%q line=%q needles=%v",
+								version, n, maxConjunctionss[i], pattern, line, e)
+						}
+					}
+				}
+			}
+		}
+	}
+	require.Greater(t, checked, 1000)
+	require.Greater(t, alternatives, 10000)
+}
+
+// satisfiesSome reports whether every term of some conjunction of e is
+// indexed.
+func satisfiesSome(t *testing.T, version string, n int, e needle.Expr, indexed map[string]struct{}) bool {
+	t.Helper()
+	if e.IsTrue() {
+		return true
+	}
+	for _, conj := range e.Conjunctions() {
+		all := true
+		for _, lit := range conj {
+			for _, term := range terms(t, version, n, lit) {
+				if !isIndexed(indexed, term) {
+					all = false
+				}
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
 }
 
 // For random patterns and random lines they match, every n-gram of every
 // literal must be one the index emits for that line, for every index version.
 // Otherwise a lookup would miss the line.
-func TestRequired_NoFalseNegatives(t *testing.T) {
+func TestLiterals_NoFalseNegatives(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 	checked := 0
 	for range 20000 {
@@ -98,7 +246,7 @@ func TestRequired_NoFalseNegatives(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		literals := Required(pattern)
+		literals := Literals(pattern)
 		if len(literals) == 0 {
 			continue
 		}
@@ -157,6 +305,20 @@ func isIndexed(indexed map[string]struct{}, term string) bool {
 	return ok
 }
 
+func terms(t *testing.T, version string, n int, s string) []string {
+	t.Helper()
+	extract, err := logline.ExtractorForVersion(version)
+	require.NoError(t, err)
+	format, err := logline.FormatterForVersion(version)
+	require.NoError(t, err)
+
+	var out []string
+	for _, key := range extract(n, s, nil, nil, nil) {
+		out = append(out, format(key, n))
+	}
+	return out
+}
+
 var (
 	atoms    = []string{"a", "b", "k", "s", "K", "S", "x", "1", "2", "9", "_", "-", ".", " ", ":", "é", "\u212A", "\u017F", "\u0130"}
 	textPool = []rune{'a', 'k', 's', 'Z', '0', '7', '_', '-', ' ', ',', '"', '\\', '\n', 'é', '\u212A', '\u017F', '\u0130', '\uFFFD'}
@@ -182,7 +344,7 @@ func randomPattern(rng *rand.Rand, depth int) string {
 	case 0:
 		return randomPattern(rng, depth-1) + "|" + randomPattern(rng, depth-1)
 	case 1:
-		quantifiers := []string{"*", "+", "?", "{2}", "{1,3}", "{0,2}"}
+		quantifiers := []string{"*", "+", "?", "{2}", "{1,3}", "{0,2}", "{2,}"}
 		return "(" + randomPattern(rng, depth-1) + ")" + quantifiers[rng.Intn(len(quantifiers))]
 	case 2:
 		return "(?i)" + randomPattern(rng, depth-1)
@@ -201,7 +363,7 @@ func randomPattern(rng *rand.Rand, depth int) string {
 
 // generateMatch appends a string re probably matches. Case-folded literals
 // pick any rune of the fold orbit, except that an ASCII rune never becomes a
-// non-ASCII one such as U+212A or U+017F. Required accepts missing those.
+// non-ASCII one such as U+212A or U+017F. Literals accepts missing those.
 func generateMatch(rng *rand.Rand, re *syntax.Regexp, sb *strings.Builder) {
 	switch re.Op {
 	case syntax.OpLiteral:
