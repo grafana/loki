@@ -4,6 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -63,6 +69,29 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
+
+	// Cancel-and-rerun no longer reads these. Keep them so existing
+	// deployments still start, and remove them in a follow-up.
+	const shardPlanningDeprecated = "Deprecated: cancel-and-rerun has been removed. This flag is ignored and will be removed in a future release."
+	f.Var(deprecatedBoolFlag{name: prefix + ".shard-planning.enabled", logger: util_log.Logger}, prefix+".shard-planning.enabled", shardPlanningDeprecated)
+	flagext.DeprecatedFlag(f, prefix+".shard-planning.min-time-reduction-ratio", shardPlanningDeprecated, util_log.Logger)
+}
+
+// deprecatedBoolFlag accepts a boolean flag and ignores the value.
+// IsBoolFlag preserves the bare -flag form, which a plain DeprecatedFlag rejects.
+type deprecatedBoolFlag struct {
+	name   string
+	logger log.Logger
+}
+
+func (deprecatedBoolFlag) String() string { return "deprecated" }
+
+func (deprecatedBoolFlag) IsBoolFlag() bool { return true }
+
+func (d deprecatedBoolFlag) Set(string) error {
+	level.Warn(d.logger).Log("msg", "flag disabled", "flag", d.name)
+	flagext.DeprecatedFlagsUsed.Inc()
+	return nil
 }
 
 // Validate checks constraints and applies defaults for zero-valued fields.
