@@ -88,7 +88,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	}
 
 	consumerGroup := instanceID
-	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic)
+	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, logger)
 	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, consumerGroup)
 	records := make(chan *kgo.Record)
 	consumer := kafkav2.NewSinglePartitionConsumer(
