@@ -70,6 +70,18 @@ type Runner struct {
 
 	operator syntax.InstOp
 	codepos  int
+
+	// landmarkCore and landmarkCandidate come from the last required landmark
+	// chain search in this scan, and landmarkCore is -1 before it. A search
+	// from a later position up to landmarkCore would return the larger of that
+	// position and landmarkCandidate.
+	landmarkCore      int
+	landmarkCandidate int
+	// landmarks holds what the required landmark searches learned about
+	// Runtext. Scans of the same Runtext between getRunner and putRunner
+	// start where earlier ones ended, so they keep it. FindNextMatch moves it
+	// to the match it returns and back.
+	landmarks *requiredLandmarkState
 }
 
 // run searches for matches and can continue from the previous match.
@@ -106,6 +118,11 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 	r.ignoreTimeout = (time.Duration(math.MaxInt64) == timeout)
 	r.debug = r.re.Debug()
 	r.Runtextstart = textstart
+	// putRunner clears Runtext, so another call keeps landmarks only if
+	// FindNextMatch sets them.
+	if r.landmarks != nil && (len(r.Runtext) != len(rt) || len(rt) == 0 || &r.Runtext[0] != &rt[0]) {
+		r.resetRequiredLandmarkSearches()
+	}
 	r.Runtext = rt
 	r.Runtextend = len(rt)
 	// Some internal callers use quick match tidying while still consuming
@@ -121,6 +138,7 @@ func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, prev
 	}
 
 	r.Runtextpos = candidate
+	r.landmarkCore = -1
 
 	// setup our scanner functions
 	findFirstChar := r.re.findFirstChar
@@ -1873,8 +1891,16 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 		return false
 	}
 
+	if r.Runtextpos <= r.landmarkCore {
+		if candidate := max(r.Runtextpos, r.landmarkCandidate); hasRequiredLengthAt(r, candidate) {
+			r.Runtextpos = candidate
+			return true
+		}
+	}
+	searches := r.requiredLandmarkSearches(chain)
+
 	for searchStart := r.Runtextpos; searchStart <= latestPossibleStart(r); {
-		first, ok := findNextRequiredLandmarkRunes(r.Runtext, searchStart, r.Runtextend, chain.Landmarks[0])
+		first, ok := searches[0].next(r.Runtext, searchStart, r.Runtextend, chain.Landmarks[0])
 		if !ok {
 			r.Runtextpos = r.Runtextend
 			return false
@@ -1882,7 +1908,7 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 
 		nextStart := first.End
 		for i := 1; i < len(chain.Landmarks); i++ {
-			landmark, ok := findNextRequiredLandmarkRunes(r.Runtext, nextStart, r.Runtextend, chain.Landmarks[i])
+			landmark, ok := searches[i].next(r.Runtext, nextStart, r.Runtextend, chain.Landmarks[i])
 			if !ok {
 				r.Runtextpos = r.Runtextend
 				return false
@@ -1890,15 +1916,13 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 			nextStart = landmark.End
 		}
 
-		candidate := first.Start
-		if candidate < r.Runtextpos {
-			candidate = r.Runtextpos
-		}
+		candidate := requiredLandmarkStart(r, chain, first.CoreStart, searches[0].alternatives)
 		for candidate > r.Runtextpos && chain.LeadingLoopSet.Contains(r.Runtext[candidate-1]) {
 			candidate--
 		}
 		if hasRequiredLengthAt(r, candidate) {
 			r.Runtextpos = candidate
+			r.landmarkCore, r.landmarkCandidate = first.CoreStart, candidate
 			return true
 		}
 
@@ -1909,61 +1933,413 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 	return false
 }
 
+// requiredLandmarkState holds what the searches for chain's landmarks learned
+// about one input.
+type requiredLandmarkState struct {
+	chain    *syntax.RequiredLandmarkChain
+	searches []requiredLandmarkSearch
+}
+
+// requiredLandmarkSearches returns the search state of chain's landmarks.
+func (r *Runner) requiredLandmarkSearches(chain *syntax.RequiredLandmarkChain) []requiredLandmarkSearch {
+	if r.landmarks == nil || r.landmarks.chain != chain {
+		searches := make([]requiredLandmarkSearch, len(chain.Landmarks))
+		for i, landmark := range chain.Landmarks {
+			searches[i].alternatives = make([]requiredLandmarkCursor, len(landmark.Alternatives))
+		}
+		r.landmarks = &requiredLandmarkState{chain: chain, searches: searches}
+	}
+	return r.landmarks.searches
+}
+
+// resetRequiredLandmarkSearches discards everything learned about Runtext.
+func (r *Runner) resetRequiredLandmarkSearches() {
+	for i := range r.landmarks.searches {
+		s := &r.landmarks.searches[i]
+		s.last, s.found = requiredLandmarkMatch{}, false
+		for j := range s.alternatives {
+			s.alternatives[j] = requiredLandmarkCursor{prefix: s.alternatives[j].prefix}
+		}
+	}
+}
+
 type requiredLandmarkMatch struct {
-	Start     int
 	CoreStart int
 	End       int
 }
 
-func findNextRequiredLandmarkRunes(input []rune, startAt, endAt int, landmark syntax.RequiredLandmark) (requiredLandmarkMatch, bool) {
-	for i := startAt; i < endAt; i++ {
-		for _, alt := range landmark.Alternatives {
-			if match, ok := requiredLandmarkAlternativeMatch(input, i, endAt, alt); ok {
-				return match, true
+// requiredLandmarkSearch finds the cores of one landmark. Calls must pass the
+// same input, endAt and landmark and must not decrease startAt, so each
+// cursor only moves forward. A call makes O(1) calls to each cursor per start
+// it passes, so the calls on one input read O(n) runes per alternative.
+type requiredLandmarkSearch struct {
+	// last is the last core found, if found. It is also the result of a
+	// call from any position up to last.CoreStart.
+	last         requiredLandmarkMatch
+	found        bool
+	alternatives []requiredLandmarkCursor
+}
+
+// next returns the first core at or after startAt. Its End holds for
+// whichever alternative the VM uses, at this core or a later one.
+func (s *requiredLandmarkSearch) next(input []rune, startAt, endAt int, landmark syntax.RequiredLandmark) (requiredLandmarkMatch, bool) {
+	if s.found && startAt <= s.last.CoreStart {
+		return s.last, true
+	}
+	for i := startAt; i < endAt; {
+		// Let the cursors read up to about twice as far from startAt as i,
+		// so that each reads many runes per call.
+		limit := endAt
+		if i-startAt < endAt-i {
+			limit = i + (i - startAt) + 1
+		}
+		// After this pass no alternative has a core in [i, first). Unless
+		// first is limit, one has a core at first or cannot rule one out
+		// yet. found is the alternative with a core at first, if no earlier
+		// one is still open there.
+		first, found := limit, -1
+		var match requiredLandmarkMatch
+		for j := 0; j < len(landmark.Alternatives) && first > i; j++ {
+			c := &s.alternatives[j]
+			if m, ok := c.find(input, i, endAt, first, first, &landmark.Alternatives[j]); ok {
+				match, first, found = m, m.CoreStart, j
+			} else if u := c.undecided(endAt); u < first {
+				first, found = u, -1
 			}
 		}
+		if first == limit {
+			i = limit
+			continue
+		}
+		// Unless found is set, test the alternatives at first in order,
+		// reading as far as each needs. No alternative has a core in
+		// [startAt, first), so these reads decide the earliest remaining start.
+		for j := 0; j < len(landmark.Alternatives) && found < 0; j++ {
+			if m, ok := s.alternatives[j].find(input, first, endAt, first+1, endAt, &landmark.Alternatives[j]); ok {
+				match, found = m, j
+			}
+		}
+		if found < 0 {
+			i = first + 1
+			continue
+		}
+		match = s.bound(input, landmark, found, match)
+		// The last End also holds here, since this core is later. Keeping
+		// the larger one keeps the next landmark's startAt from decreasing.
+		if s.found {
+			match.End = max(match.End, s.last.End)
+		}
+		s.last, s.found = match, true
+		return match, true
 	}
 	return requiredLandmarkMatch{}, false
 }
 
-func requiredLandmarkAlternativeMatch(input []rune, start, endAt int, alt syntax.RequiredLandmarkAlternative) (requiredLandmarkMatch, bool) {
-	if alt.RequireWhitespaceBefore &&
-		(start == 0 || alt.LeadingWhitespaceSet == nil || !alt.LeadingWhitespaceSet.Contains(input[start-1])) {
-		return requiredLandmarkMatch{}, false
+// bound lowers match.End so that it holds for every alternative. Another
+// alternative can end before End only if its core starts before End, so End
+// drops to the earliest end that such a start allows.
+func (s *requiredLandmarkSearch) bound(input []rune, landmark syntax.RequiredLandmark, found int, match requiredLandmarkMatch) requiredLandmarkMatch {
+	for j := range landmark.Alternatives {
+		if j == found {
+			continue
+		}
+		alt := &landmark.Alternatives[j]
+		minLength := alt.MinRepeat
+		if len(alt.Literal) > 0 {
+			minLength = len(alt.Literal)
+		}
+		c := &s.alternatives[j]
+		c.first = max(c.first, match.CoreStart)
+		// minLength can be close to MaxInt32, so first+minLength can overflow
+		// int on 32-bit platforms.
+		for minLength < match.End-c.first {
+			ch := input[c.first]
+			if (len(alt.Literal) > 0 && ch == alt.Literal[0]) || (alt.Set != nil && alt.Set.Contains(ch)) {
+				match.End = c.first + minLength
+				break
+			}
+			c.first++
+		}
 	}
+	return match
+}
 
-	var end int
+// requiredLandmarkCursor finds the cores of one landmark alternative. Calls
+// to find and reachable must pass the same input, endAt and alternative and
+// must not decrease their start. It keeps what it has read, so its calls on
+// one input read O(n) runes plus O(1) per call, whatever the repeat counts
+// and literal lengths.
+type requiredLandmarkCursor struct {
+	// prefix is the KMP failure function of a literal core. It depends only
+	// on the alternative.
+	prefix []int
+
+	// For a set core, pos is the next start to test. For a literal core, it
+	// is the next rune to read, and the matched runes before it are the
+	// longest proper prefix of the literal there that starts at or after the
+	// last startAt. Neither is used once exhausted.
+	pos, matched int
+	// core is the first core at or after the last startAt, if found. If
+	// exhausted, there is none.
+	core             requiredLandmarkMatch
+	found, exhausted bool
+
+	// The runes from the current start to setEnd are in Set. The runes from
+	// the current start plus MinRepeat to trailingEnd are not in
+	// TrailingWhitespaceSet.
+	setEnd, trailingEnd int
+
+	// For bound: no rune from the last core to first can start this
+	// alternative.
+	first int
+
+	// For reachable: the runes from the last pos to leadingEnd are in
+	// LeadingWhitespaceSet, and the rune at leadingEnd, if any, is not.
+	leadingEnd int
+}
+
+// find returns the first core that starts in [startAt, limit). It reads past
+// limit only to finish a core that starts before limit, and reads no rune at
+// or past readEnd other than the one after a literal core. If a start before
+// the first core needs such runes, find returns no core and leaves that start
+// for a later call. Unlike startAt, limit and readEnd can decrease between
+// calls.
+func (c *requiredLandmarkCursor) find(input []rune, startAt, endAt, limit, readEnd int, alt *syntax.RequiredLandmarkAlternative) (requiredLandmarkMatch, bool) {
+	if c.exhausted || c.found && startAt <= c.core.CoreStart {
+		return c.core, c.found && c.core.CoreStart < limit
+	}
+	c.found = false
+	if c.pos < startAt {
+		c.pos, c.matched = startAt, 0
+	}
 	if len(alt.Literal) > 0 {
-		if start+len(alt.Literal) > endAt || !helpers.StartsWith(input[start:], alt.Literal) {
-			return requiredLandmarkMatch{}, false
-		}
-		end = start + len(alt.Literal)
-	} else if alt.Set != nil && alt.MinRepeat > 0 {
-		end = start
-		maxRepeat := alt.MaxRepeat
-		if maxRepeat <= 0 {
-			maxRepeat = alt.MinRepeat
-		}
-		for end < endAt && end-start < maxRepeat && alt.Set.Contains(input[end]) {
-			end++
-		}
-		if end-start < alt.MinRepeat {
-			return requiredLandmarkMatch{}, false
-		}
+		c.findLiteral(input, startAt, endAt, limit, readEnd, alt)
 	} else {
-		return requiredLandmarkMatch{}, false
+		c.findSet(input, endAt, limit, readEnd, alt)
 	}
+	if !c.found && c.pos >= endAt {
+		c.exhausted = true
+	}
+	return c.core, c.found
+}
 
-	if alt.RequireWhitespaceAfter &&
-		(end >= endAt || alt.TrailingWhitespaceSet == nil || !alt.TrailingWhitespaceSet.Contains(input[end])) {
-		return requiredLandmarkMatch{}, false
+// undecided returns the first start in [startAt, limit) that the last call to
+// find, which found no core, left for a later one, or a start at or past limit
+// if there is none.
+func (c *requiredLandmarkCursor) undecided(endAt int) int {
+	if c.exhausted {
+		return endAt
 	}
+	return c.pos - c.matched
+}
 
-	matchStart := start
-	for matchStart > 0 && alt.LeadingWhitespaceSet != nil && alt.LeadingWhitespaceSet.Contains(input[matchStart-1]) {
-		matchStart--
+func (c *requiredLandmarkCursor) findLiteral(input []rune, startAt, endAt, limit, readEnd int, alt *syntax.RequiredLandmarkAlternative) {
+	literal := alt.Literal
+	if c.prefix == nil {
+		c.prefix = make([]int, len(literal))
+		for i, k := 1, 0; i < len(literal); i++ {
+			for k > 0 && literal[i] != literal[k] {
+				k = c.prefix[k-1]
+			}
+			if literal[i] == literal[k] {
+				k++
+			}
+			c.prefix[i] = k
+		}
 	}
-	return requiredLandmarkMatch{Start: matchStart, CoreStart: start, End: end}, true
+	// A match that starts before startAt cannot be a core. Keep the shorter
+	// ones within it that start at or after startAt.
+	for c.matched > 0 && c.pos-c.matched < startAt {
+		c.matched = c.prefix[c.matched-1]
+	}
+	// Stop once the matched prefix starts at or past limit.
+	for c.pos < readEnd && c.pos-c.matched < limit {
+		r := input[c.pos]
+		for c.matched > 0 && r != literal[c.matched] {
+			c.matched = c.prefix[c.matched-1]
+		}
+		if r == literal[c.matched] {
+			c.matched++
+		}
+		c.pos++
+		if c.matched < len(literal) {
+			continue
+		}
+		start := c.pos - len(literal)
+		c.matched = c.prefix[len(literal)-1]
+		if (!alt.RequireWhitespaceBefore || start > 0 && alt.LeadingWhitespaceSet.Contains(input[start-1])) &&
+			(!alt.RequireWhitespaceAfter || c.pos < endAt && alt.TrailingWhitespaceSet.Contains(input[c.pos])) {
+			c.core, c.found = requiredLandmarkMatch{CoreStart: start, End: c.pos}, true
+			return
+		}
+	}
+	if c.pos-c.matched > endAt-len(literal) {
+		// No start that is left fits.
+		c.pos = endAt
+	}
+}
+
+// findSet looks for the shortest core at each start. The VM can backtrack a
+// longer one, so a longer core could pass the whitespace required after it or
+// the start of the next landmark.
+func (c *requiredLandmarkCursor) findSet(input []rune, endAt, limit, readEnd int, alt *syntax.RequiredLandmarkAlternative) {
+	for c.pos < limit {
+		start := c.pos
+		// Test the fit first, so that the cursor stops even if no later start
+		// follows whitespace. MinRepeat can be close to MaxInt32, so
+		// start+MinRepeat can overflow int on 32-bit platforms.
+		if alt.MinRepeat > endAt-start {
+			c.pos = endAt
+			return
+		}
+		if alt.RequireWhitespaceBefore && (start == 0 || !alt.LeadingWhitespaceSet.Contains(input[start-1])) {
+			c.pos++
+			continue
+		}
+		if c.setEnd < start {
+			c.setEnd = start
+		}
+		end := start + alt.MinRepeat
+		if alt.RequireWhitespaceAfter {
+			end = max(end, c.trailingEnd)
+			for end < readEnd && end-start <= alt.MaxRepeat && c.extendSet(input, end, alt) && !alt.TrailingWhitespaceSet.Contains(input[end]) {
+				end++
+			}
+			c.trailingEnd = end
+			if end-start > alt.MaxRepeat {
+				// No start before this one can reach whitespace either.
+				c.pos = end - alt.MaxRepeat
+				continue
+			}
+			if end >= endAt {
+				c.pos = endAt
+				return
+			}
+		}
+		if !c.extendSet(input, min(end, readEnd), alt) {
+			// The set run ends too early for every start up to its end.
+			c.pos = c.setEnd + 1
+			continue
+		}
+		// Deciding this start needs the runes from readEnd on.
+		if end > readEnd || end == readEnd && alt.RequireWhitespaceAfter {
+			return
+		}
+		c.pos = start + 1
+		c.core, c.found = requiredLandmarkMatch{CoreStart: start, End: end}, true
+		return
+	}
+}
+
+// extendSet reports whether the runes from the current start to end are in
+// Set. It reads only as far as end.
+func (c *requiredLandmarkCursor) extendSet(input []rune, end int, alt *syntax.RequiredLandmarkAlternative) bool {
+	for c.setEnd < end {
+		if !alt.Set.Contains(input[c.setEnd]) {
+			break
+		}
+		c.setEnd++
+	}
+	return c.setEnd >= end
+}
+
+// reachable reports whether alt's core starts at pos or right after a run of
+// alt's leading whitespace from pos.
+func (c *requiredLandmarkCursor) reachable(input []rune, pos, endAt int, alt *syntax.RequiredLandmarkAlternative) bool {
+	if c.leadingEnd <= pos {
+		c.leadingEnd = pos
+		for c.leadingEnd < endAt && alt.LeadingWhitespaceSet.Contains(input[c.leadingEnd]) {
+			c.leadingEnd++
+		}
+	}
+	_, ok := c.find(input, pos, endAt, min(c.leadingEnd+1, endAt), endAt, alt)
+	return ok
+}
+
+// requiredLandmarkStart returns a position, not before Runtextpos, that is at
+// or before the start of any match whose first landmark core starts at or
+// after core, once LeadingLoopSet is rewound from it. An alternative's leading
+// whitespace can start such a match before core only if the chain's anchors
+// hold where the alternative starts, and the alternative's core starts at
+// core or right after a run of that whitespace from core.
+func requiredLandmarkStart(r *Runner, chain *syntax.RequiredLandmarkChain, core int, cursors []requiredLandmarkCursor) int {
+	input, minStart := r.Runtext, r.Runtextpos
+	landmark := chain.Landmarks[0]
+	anchored := len(chain.Anchors) > 0
+	start := core
+	for j := range landmark.Alternatives {
+		if start == minStart {
+			break
+		}
+		alt := &landmark.Alternatives[j]
+		ws := alt.LeadingWhitespaceSet
+		if ws == nil {
+			continue
+		}
+		// Rewind only to just before start at first. An alternative that
+		// cannot get there needs no more work.
+		altStart := core
+		for altStart >= start && altStart > minStart && ws.Contains(input[altStart-1]) {
+			altStart--
+		}
+		if altStart >= start {
+			continue
+		}
+		// Without anchors, test reachable before the rest of the rewind, so
+		// that a failure skips it. With anchors, rewind first: they can fail
+		// at every start the rewind reaches, and then reachable need not read
+		// ahead.
+		if !anchored && !cursors[j].reachable(input, core, r.Runtextend, alt) {
+			continue
+		}
+		for altStart > minStart && ws.Contains(input[altStart-1]) {
+			altStart--
+		}
+		for altStart < start && !requiredLandmarkAnchorsHold(r, chain.Anchors, altStart) {
+			altStart++
+		}
+		if altStart < start && (!anchored || cursors[j].reachable(input, core, r.Runtextend, alt)) {
+			start = altStart
+		}
+	}
+	return start
+}
+
+// requiredLandmarkAnchorsHold reports whether the VM would pass every anchor
+// at pos.
+func requiredLandmarkAnchorsHold(r *Runner, anchors []syntax.NodeType, pos int) bool {
+	for _, anchor := range anchors {
+		ok := true
+		switch anchor {
+		case syntax.NtBol:
+			ok = pos == 0 || r.Runtext[pos-1] == '\n'
+		case syntax.NtEol:
+			ok = pos == r.Runtextend || r.Runtext[pos] == '\n'
+		case syntax.NtBoundary:
+			ok = r.IsBoundary(pos)
+		case syntax.NtNonboundary:
+			ok = !r.IsBoundary(pos)
+		case syntax.NtECMABoundary:
+			ok = r.IsECMABoundary(pos)
+		case syntax.NtNonECMABoundary:
+			ok = !r.IsECMABoundary(pos)
+		case syntax.NtBeginning:
+			ok = pos == 0
+		case syntax.NtStart:
+			ok = pos == r.Runtextstart
+		case syntax.NtEndZ:
+			// RE2 and ECMAScript allow only the end. Otherwise a final '\n'
+			// may follow.
+			rest := r.Runtextend - pos
+			ok = rest == 0 || rest == 1 && r.re.options&(RE2|ECMAScript) == 0 && r.Runtext[pos] == '\n'
+		case syntax.NtEnd:
+			ok = pos == r.Runtextend
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func indexOfLiteralAfterLoop(r *Runner, literal *syntax.LiteralAfterLoop, searchStart int) int {
