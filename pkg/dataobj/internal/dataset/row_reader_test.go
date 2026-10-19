@@ -597,8 +597,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 
 				var indexes []int
 				stats := runAndCollectStats(t, func(ctx context.Context) {
-					require.NoError(t, r.Open(ctx))
-					indexes = readIndexes(ctx, t, r, func() []Row { return make([]Row, batchSize) })
+					_, indexes = readValuesAndIndexes(ctx, t, r, batchSize)
 				})
 
 				require.Equal(t, []int{0, 2, 4, 6}, indexes)
@@ -802,7 +801,8 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 						}
 						require.NotEmpty(t, want)
 
-						require.Equal(t, want, readValuesWithReusedBuffer(t, r, batchSize))
+						values, _ := readValuesAndIndexes(t.Context(), t, r, batchSize)
+						require.Equal(t, want, values)
 					})
 				}
 			})
@@ -2023,13 +2023,9 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				// Reuse the buffer without clearing it. Rows past the last row read keep the values of
-				// the previous batch.
-				buf := make([]Row, 5)
 				var indexes []int
 				stats := runAndCollectStats(t, func(ctx context.Context) {
-					require.NoError(t, r.Open(ctx))
-					indexes = readIndexes(ctx, t, r, func() []Row { return buf })
+					_, indexes = readValuesAndIndexes(ctx, t, r, 5)
 				})
 
 				require.Equal(t, tc.wantRows, indexes)
@@ -2132,7 +2128,8 @@ func Test_RowReader_Open(t *testing.T) {
 			}
 		}
 		require.NotEmpty(t, want)
-		require.Equal(t, want, readValuesWithReusedBuffer(t, r, 2))
+		values, _ := readValuesAndIndexes(t.Context(), t, r, 2)
+		require.Equal(t, want, values)
 	})
 
 	t.Run("returns an error when a predicate reads a nil column", func(t *testing.T) {
@@ -2155,54 +2152,38 @@ func Test_RowReader_Open(t *testing.T) {
 	})
 }
 
-// readIndexes reads the open reader r until io.EOF. It returns the Index of every row it read.
-// nextBuffer returns the buffer for each Read.
-func readIndexes(ctx context.Context, t *testing.T, r *RowReader, nextBuffer func() []Row) []int {
+// readValuesAndIndexes opens r and reads it until io.EOF, with one buffer of batchSize rows. It
+// returns the values of every row, as strings, and the Index of every row.
+//
+// The helper never clears the buffer, so a row past the last one that Read returned keeps the
+// values of the previous batch.
+func readValuesAndIndexes(ctx context.Context, t *testing.T, r *RowReader, batchSize int) ([][]string, []int) {
 	t.Helper()
+
+	require.NoError(t, r.Open(ctx))
 
 	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
 	// of hanging it. It is far above what any caller needs.
 	const maxReadAttempts = 100
 
-	var indexes []int
+	var (
+		values  [][]string
+		indexes []int
+	)
+	buf := make([]Row, batchSize)
 	for range maxReadAttempts {
-		buf := nextBuffer()
 		n, err := r.Read(ctx, buf)
 		for _, row := range buf[:n] {
 			indexes = append(indexes, row.Index)
-		}
 
-		if errors.Is(err, io.EOF) {
-			require.Zero(t, n)
-			return indexes
-		}
-		require.NoError(t, err)
-	}
-	t.Fatal("Read did not return io.EOF")
-	return nil
-}
-
-// readValuesWithReusedBuffer opens r and reads it until io.EOF, with one buffer of batchSize rows
-// that it never clears. It returns the values of every row, as strings.
-func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]string {
-	t.Helper()
-
-	require.NoError(t, r.Open(t.Context()))
-
-	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
-	// of hanging it. It is far above what any caller needs.
-	const maxReadAttempts = 100
-
-	var values [][]string
-	buf := make([]Row, batchSize)
-	for range maxReadAttempts {
-		n, err := r.Read(t.Context(), buf)
-		for _, row := range buf[:n] {
 			strs := make([]string, 0, len(row.Values))
 			for _, v := range row.Values {
-				if v.Type() == datasetmd.PHYSICAL_TYPE_INT64 {
+				switch {
+				case v.IsNil():
+					strs = append(strs, "NULL")
+				case v.Type() == datasetmd.PHYSICAL_TYPE_INT64:
 					strs = append(strs, strconv.FormatInt(v.Int64(), 10))
-				} else {
+				default:
 					strs = append(strs, string(v.Binary()))
 				}
 			}
@@ -2210,12 +2191,13 @@ func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]s
 		}
 
 		if errors.Is(err, io.EOF) {
-			return values
+			require.Zero(t, n)
+			return values, indexes
 		}
 		require.NoError(t, err)
 	}
 	t.Fatal("Read did not return io.EOF")
-	return nil
+	return nil, nil
 }
 
 // runAndCollectStats calls f with a context that records the xcap stats of a reader. It returns
