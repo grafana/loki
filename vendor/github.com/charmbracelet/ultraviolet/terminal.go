@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -190,14 +191,28 @@ func (t *Terminal) Start() error {
 	}
 
 	// input loop
+	//
+	// The loop holds its own reference to the reader for its lifetime. Stop
+	// sets t.pr to nil, and a loop that reads the field on every iteration
+	// can evaluate it after that has happened and dereference nil. Cancel
+	// and Close on the reader are what stop this loop; nilling the field is
+	// only bookkeeping for a later Start.
+	pr := t.pr
 	t.errg.Go(func() error {
 		for {
-			n, err := t.pr.Read(t.buf)
+			n, err := pr.Read(t.buf)
 			if err != nil {
 				return fmt.Errorf("reading terminal input: %w", err)
 			}
+			// Hand the event loop its own copy. t.buf is reused by the
+			// next Read, and the receiver only copies out of the slice
+			// after the send has completed, so sending t.buf[:n] lets
+			// one read's bytes be overwritten by the next before they
+			// have been consumed.
+			data := make([]byte, n)
+			copy(data, t.buf[:n])
 			select {
-			case bufc <- t.buf[:n]:
+			case bufc <- data:
 			case <-t.donec:
 				return nil
 			}
@@ -208,6 +223,7 @@ func (t *Terminal) Start() error {
 	sendEvents := func(buf []byte, expired bool) int {
 		n, events := evs.scanEvents(buf, expired)
 		for _, ev := range events {
+			t.handleEvent(ev)
 			t.SendEvent(ev)
 		}
 		return n
@@ -290,11 +306,35 @@ func (t *Terminal) Start() error {
 
 	// Restore any previous screen state.
 	t.scr.Restore()
+	// Query whether the terminal supports Unicode core mode (DEC mode 2027) so
+	// we can negotiate grapheme-cluster width. The response is handled in the
+	// event loop.
+	t.scr.requestGraphemeWidth()
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("failed to flush terminal screen: %w", err)
 	}
 
 	return nil
+}
+
+// handleEvent reacts to internal events before they are forwarded to the
+// application. It negotiates Unicode core mode (DEC mode 2027): when the
+// terminal reports the mode is in a settable or active state, it enables
+// grapheme-cluster width so wide-glyph measurement matches the terminal. The
+// event is still forwarded to the application.
+//
+// The mode is only enabled for settable/active states (mode set, reset but
+// settable, or permanently set). It is explicitly not enabled when the mode is
+// not recognized or permanently reset, since those terminals cannot honor it.
+// Enabling goes through the screen's locked write path so it cannot race with
+// the application's Render/Flush.
+func (t *Terminal) handleEvent(ev Event) {
+	if mr, ok := ev.(ModeReportEvent); ok {
+		if mr.Mode == ansi.ModeUnicodeCore &&
+			(mr.Value.IsSet() || mr.Value == ansi.ModeReset) {
+			t.scr.enableGraphemeWidth()
+		}
+	}
 }
 
 // Wait waits for the terminal event loop to exit and returns any error that

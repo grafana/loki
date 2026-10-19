@@ -562,6 +562,13 @@ func (e ClipboardEvent) Clipboard() ClipboardSelection {
 	return e.Selection
 }
 
+// ProgramStatusSupportEvent is emitted when the terminal replies to a Program
+// Status Protocol (OSC 7501) feature detection query, meaning the terminal
+// supports the protocol.
+//
+// See: https://www.superlogical.com/rex/docs/build/program-status
+type ProgramStatusSupportEvent struct{}
+
 // ignoredEvent represents a sequence event that is ignored by the terminal
 // reader. This is used to ignore certain sequences that can be canceled.
 type ignoredEvent string

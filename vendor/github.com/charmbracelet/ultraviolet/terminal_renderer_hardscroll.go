@@ -110,6 +110,11 @@ func (s *TerminalRenderer) scrolln(newbuf *RenderBuffer, n, top, bot, maxY int) 
 
 	s.scrollBuffer(s.curbuf, n, top, bot, blank)
 
+	// Every row in the range moved, whether or not the application drew into
+	// it. A row the scroll already put in the right place costs a comparison
+	// and no output, which is the whole point of scrolling in hardware.
+	s.damage(top, bot-top+1)
+
 	// shift hash values too, they can be reused
 	s.scrollOldhash(n, top, bot)
 
@@ -142,25 +147,6 @@ func (s *TerminalRenderer) scrollBuffer(b *RenderBuffer, n, top, bot int, blank 
 		}
 		for line := bot; line > limit && line >= 0 && line >= top; line-- {
 			b.FillArea(blank, Rect(0, line, b.Width(), 1))
-		}
-	}
-
-	s.touchLine(b, top, bot-top+1, true)
-}
-
-// touchLine marks the line as touched.
-func (s *TerminalRenderer) touchLine(newbuf *RenderBuffer, y, n int, changed bool) {
-	height := newbuf.Height()
-	if n < 0 || y < 0 || y >= height || newbuf.Touched == nil || len(newbuf.Touched) < height {
-		return // Nothing to touch
-	}
-
-	width := newbuf.Width()
-	for i := y; i < y+n && i < height && i < len(newbuf.Touched); i++ {
-		if changed {
-			newbuf.TouchLine(0, i, width)
-		} else {
-			newbuf.Touched[i] = nil
 		}
 	}
 }
