@@ -661,141 +661,116 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 	})
 
 	t.Run("returns only the projected columns when a predicate reads other columns", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
 		nonEmptyMiddleName := func(_ Column, v Value) bool { return len(v.Binary()) > 0 }
 
 		for _, tc := range []struct {
 			name       string
-			projected  []int
-			predicates func(c []Column) []Predicate
-			keep       func(p testPerson) bool
+			projected  []Column
+			predicates []Predicate
+			wantKeep   func(p testPerson) bool
 		}{
 			{
-				name:      "when the first predicate reads one",
-				projected: []int{2, 0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 },
+				name:       "when the first predicate reads one",
+				projected:  []Column{columns[2], columns[0]},
+				predicates: []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+				wantKeep:   func(p testPerson) bool { return p.birthYear > 1982 },
 			},
 			{
 				name:      "when a later predicate reads one",
-				projected: []int{2, 0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{
-						FuncPredicate{Column: c[0], Keep: func(_ Column, v Value) bool { return len(v.Binary()) > 3 }},
-						GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-					}
+				projected: []Column{columns[2], columns[0]},
+				predicates: []Predicate{
+					FuncPredicate{Column: columns[0], Keep: func(_ Column, v Value) bool { return len(v.Binary()) > 3 }},
+					GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
 				},
-				keep: func(p testPerson) bool { return len(p.firstName) > 3 && p.birthYear > 1982 },
+				wantKeep: func(p testPerson) bool { return len(p.firstName) > 3 && p.birthYear > 1982 },
 			},
 			{
 				name:      "when each of two predicates reads its own",
-				projected: []int{0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{
-						GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-						FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
-					}
+				projected: []Column{columns[0]},
+				predicates: []Predicate{
+					GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
+					FuncPredicate{Column: columns[1], Keep: nonEmptyMiddleName},
 				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+				wantKeep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
 			},
 			{
 				name:      "when an and predicate reads two",
-				projected: []int{0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{AndPredicate{
-						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
-					}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+				projected: []Column{columns[0]},
+				predicates: []Predicate{AndPredicate{
+					Left:  GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
+					Right: FuncPredicate{Column: columns[1], Keep: nonEmptyMiddleName},
+				}},
+				wantKeep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
 			},
 			{
 				name:      "when an or predicate reads two",
-				projected: []int{0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{OrPredicate{
-						Left:  LessThanPredicate{Column: c[3], Value: Int64Value(1976)},
-						Right: EqualPredicate{Column: c[1], Value: BinaryValue([]byte("Grace"))},
-					}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear < 1976 || p.middleName == "Grace" },
+				projected: []Column{columns[0]},
+				predicates: []Predicate{OrPredicate{
+					Left:  LessThanPredicate{Column: columns[3], Value: Int64Value(1976)},
+					Right: EqualPredicate{Column: columns[1], Value: BinaryValue([]byte("Grace"))},
+				}},
+				wantKeep: func(p testPerson) bool { return p.birthYear < 1976 || p.middleName == "Grace" },
 			},
 			{
 				name:      "when a not predicate reads two",
-				projected: []int{0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{NotPredicate{Inner: OrPredicate{
-						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
-					}}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear <= 1982 && p.middleName == "" },
+				projected: []Column{columns[0]},
+				predicates: []Predicate{NotPredicate{Inner: OrPredicate{
+					Left:  GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
+					Right: FuncPredicate{Column: columns[1], Keep: nonEmptyMiddleName},
+				}}},
+				wantKeep: func(p testPerson) bool { return p.birthYear <= 1982 && p.middleName == "" },
 			},
 			{
 				name:      "when the projected column is also read and no secondary column is left",
-				projected: []int{3},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{AndPredicate{
-						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
-					}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+				projected: []Column{columns[3]},
+				predicates: []Predicate{AndPredicate{
+					Left:  GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
+					Right: FuncPredicate{Column: columns[1], Keep: nonEmptyMiddleName},
+				}},
+				wantKeep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
 			},
 			{
 				name:      "when two projected columns and two non-projected columns are read",
-				projected: []int{2, 0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{
-						GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
-						FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
-					}
+				projected: []Column{columns[2], columns[0]},
+				predicates: []Predicate{
+					GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)},
+					FuncPredicate{Column: columns[1], Keep: nonEmptyMiddleName},
 				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+				wantKeep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
 			},
 			{
-				name:      "when the projection lists a column twice",
-				projected: []int{0, 0},
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 },
+				name:       "when the projection lists a column twice",
+				projected:  []Column{columns[0], columns[0]},
+				predicates: []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+				wantKeep:   func(p testPerson) bool { return p.birthYear > 1982 },
 			},
 			{
-				name:      "when the projection is empty",
-				projected: nil,
-				predicates: func(c []Column) []Predicate {
-					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
-				},
-				keep: func(p testPerson) bool { return p.birthYear > 1982 },
+				name:       "when the projection is empty",
+				projected:  nil,
+				predicates: []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+				wantKeep:   func(p testPerson) bool { return p.birthYear > 1982 },
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				for _, batchSize := range []int{1, 2, 3, 20} {
 					t.Run(fmt.Sprintf("with a batch size of %d", batchSize), func(t *testing.T) {
-						dset, columns := buildTestDataset(t)
-
-						projected := make([]Column, 0, len(tc.projected))
-						for _, i := range tc.projected {
-							projected = append(projected, columns[i])
-						}
 						r := NewRowReader(RowReaderOptions{
 							Dataset:          dset,
-							ProjectedColumns: projected,
-							Predicates:       tc.predicates(columns),
+							ProjectedColumns: tc.projected,
+							Predicates:       tc.predicates,
 						})
 						t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 						var want [][]string
 						for _, p := range basicReaderTestData {
-							if !tc.keep(p) {
+							if !tc.wantKeep(p) {
 								continue
 							}
 							all := []string{p.firstName, p.middleName, p.lastName, strconv.FormatInt(p.birthYear, 10)}
 							row := make([]string, 0, len(tc.projected))
-							for _, i := range tc.projected {
-								row = append(row, all[i])
+							for _, c := range tc.projected {
+								row = append(row, all[slices.Index(columns, c)])
 							}
 							want = append(want, row)
 						}
