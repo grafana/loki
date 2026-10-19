@@ -120,7 +120,8 @@ func (w *WriteResponse) Stats() WriteResponseStats {
 	return w.WriteResponseStats
 }
 
-// SetStatusCode sets the HTTP status code for the response. http.StatusNoContent is the default unless 5xx is set.
+// SetStatusCode sets the HTTP status code for the response. http.StatusNoContent is the default.
+// If Store returns an error, a status code below 400 is replaced with http.StatusInternalServerError.
 func (w *WriteResponse) SetStatusCode(code int) {
 	w.statusCode = code
 }
