@@ -6,12 +6,12 @@ weight:
 ---
 
 # Use label-based access control with Loki
-<!-- TODO - Need to check release version. -->
+<!-- TODO - Need to check if experimental? -->
 {{< admonition type="note" >}}
 This feature is generally available from v4.0. For the latest releases, refer to the [Release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/).
 {{< /admonition >}}
 
-Label-based access control (LBAC) restricts the logs a tenant can query to those that match one or more [Prometheus label selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-series-selectors). You associate a set of selectors with a tenant, and queries from that tenant only return data from log streams that match at least one of the selectors. Because the selectors are combined with OR, this corresponds to [disjunctive normal form](https://en.wikipedia.org/wiki/Disjunctive_normal_form), which lets you express any required policy.
+Label-based access control (LBAC) restricts the logs a tenant can query to those that match one or more [Prometheus label selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-series-selectors). You associate a set of selectors with a tenant, and queries from that tenant only return data from log streams that match at least one of the selectors. Because selectors can be combined into "OR" groups, where each group is a list of things joined by "AND" you can express any required policy. For example, `(A and B and C) or (D and E) or (F)`.
 
 LBAC builds on Loki's multi-tenancy: policies are scoped per tenant, so you must run Loki in multi-tenant mode. For more information, refer to the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.
 
@@ -130,7 +130,7 @@ The selector is a standard label matcher set such as `{env="dev"}`, URL-encoded 
 X-Prom-Label-Policy: tenant1:%7Benv%3D%22dev%22%7D
 ```
 
-To associate multiple selectors with a tenant, set multiple values. You can either repeat the header or separate the encoded policies with a comma (`,`). The selectors are combined with `OR`: a stream is returned if it matches any one of them.
+To associate multiple selectors with a tenant, set multiple values. You can either repeat the header or separate the encoded policies with a comma (`,`). The selectors are combined with `OR` into groups where each group is a list of things joined by `AND`: a stream is returned if any of the streams matches any one of the selector groups.  For example, a policy written `{a='true', b='true, c='true'} OR {x='true', y='true'}` reads as `{a='true' AND b='true'AND c='true'} OR {x='true'AND y='true'}`.
 
 ## Exclude a label
 
