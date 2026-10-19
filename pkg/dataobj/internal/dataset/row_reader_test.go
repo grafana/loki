@@ -661,21 +661,26 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		require.ErrorContains(t, err, "failed to fill rows: expected 10, got 7")
 	})
 
-	t.Run("returns only the projected columns when a predicate reads another column", func(t *testing.T) {
+	t.Run("returns only the projected columns when a predicate reads other columns", func(t *testing.T) {
+		nonEmptyMiddleName := func(_ Column, v Value) bool { return len(v.Binary()) > 0 }
+
 		for _, tc := range []struct {
 			name       string
+			projected  []int
 			predicates func(c []Column) []Predicate
 			keep       func(p testPerson) bool
 		}{
 			{
-				name: "when the first predicate reads it",
+				name:      "when the first predicate reads one",
+				projected: []int{2, 0},
 				predicates: func(c []Column) []Predicate {
 					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
 				},
 				keep: func(p testPerson) bool { return p.birthYear > 1982 },
 			},
 			{
-				name: "when a later predicate reads it",
+				name:      "when a later predicate reads one",
+				projected: []int{2, 0},
 				predicates: func(c []Column) []Predicate {
 					return []Predicate{
 						FuncPredicate{Column: c[0], Keep: func(_ Column, v Value) bool { return len(v.Binary()) > 3 }},
@@ -684,76 +689,271 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				},
 				keep: func(p testPerson) bool { return len(p.firstName) > 3 && p.birthYear > 1982 },
 			},
+			{
+				name:      "when each of two predicates reads its own",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{
+						GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
+						FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+			},
+			{
+				name:      "when an and predicate reads two",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{AndPredicate{
+						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
+						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+			},
+			{
+				name:      "when an or predicate reads two",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{OrPredicate{
+						Left:  LessThanPredicate{Column: c[3], Value: Int64Value(1976)},
+						Right: EqualPredicate{Column: c[1], Value: BinaryValue([]byte("Grace"))},
+					}}
+				},
+				keep: func(p testPerson) bool { return p.birthYear < 1976 || p.middleName == "Grace" },
+			},
+			{
+				name:      "when a not predicate reads two",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{NotPredicate{Inner: OrPredicate{
+						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
+						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}}}
+				},
+				keep: func(p testPerson) bool { return !(p.birthYear > 1982 || p.middleName != "") },
+			},
+			{
+				name:      "when the projected column is also read and no secondary column is left",
+				projected: []int{3},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{AndPredicate{
+						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
+						Right: FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+			},
+			{
+				name:      "when two projected columns and two non-projected columns are read",
+				projected: []int{2, 0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{
+						GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)},
+						FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 && p.middleName != "" },
+			},
+			{
+				name:      "when the projection lists a column twice",
+				projected: []int{0, 0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 },
+			},
+			{
+				name:      "when the projection is empty",
+				projected: nil,
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1982)}}
+				},
+				keep: func(p testPerson) bool { return p.birthYear > 1982 },
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				dset, columns := buildTestDataset(t)
+				for _, batchSize := range []int{1, 2, 3, 20} {
+					t.Run(fmt.Sprintf("with a batch size of %d", batchSize), func(t *testing.T) {
+						dset, columns := buildTestDataset(t)
 
-				// The projection lists the last name before the first name, and omits the birth year.
-				r := NewRowReader(RowReaderOptions{
-					Dataset:          dset,
-					ProjectedColumns: []Column{columns[2], columns[0]},
-					Predicates:       tc.predicates(columns),
-				})
-				t.Cleanup(func() { require.NoError(t, r.Close()) })
+						projected := make([]Column, 0, len(tc.projected))
+						for _, i := range tc.projected {
+							projected = append(projected, columns[i])
+						}
+						r := NewRowReader(RowReaderOptions{
+							Dataset:          dset,
+							ProjectedColumns: projected,
+							Predicates:       tc.predicates(columns),
+						})
+						t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				rows, err := readDataset(r, 3)
-				require.NoError(t, err)
+						var want [][]string
+						for _, p := range basicReaderTestData {
+							if !tc.keep(p) {
+								continue
+							}
+							all := []string{p.firstName, p.middleName, p.lastName, strconv.FormatInt(p.birthYear, 10)}
+							row := make([]string, 0, len(tc.projected))
+							for _, i := range tc.projected {
+								row = append(row, all[i])
+							}
+							want = append(want, row)
+						}
+						require.NotEmpty(t, want)
 
-				var got, want [][2]string
-				for _, row := range rows {
-					require.Len(t, row.Values, 2)
-					got = append(got, [2]string{string(row.Values[0].Binary()), string(row.Values[1].Binary())})
+						require.Equal(t, want, readValuesWithReusedBuffer(t, r, batchSize))
+					})
 				}
-				for _, p := range basicReaderTestData {
-					if tc.keep(p) {
-						want = append(want, [2]string{p.lastName, p.firstName})
-					}
-				}
-				require.NotEmpty(t, want)
-				require.Equal(t, want, got)
 			})
 		}
 	})
 
-	t.Run("returns the same rows when the buffer is reused between reads", func(t *testing.T) {
+	t.Run("returns the rows read before a failed fill with only the projected columns", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
+
+		// The last page of the first names holds row 9 only. Rows 0 and 9 are the only ones born in
+		// 1980 or 1981, so the fill of the first names reads row 0 and then fails on row 9.
+		dset.(memDataset)[0].Pages[3].Data = PageData("not a page")
 
 		r := NewRowReader(RowReaderOptions{
 			Dataset:          dset,
 			ProjectedColumns: []Column{columns[0]},
-			Predicates:       []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+			Predicates: []Predicate{
+				FuncPredicate{Column: columns[3], Keep: func(_ Column, v Value) bool { return v.Int64() == 1980 || v.Int64() == 1981 }},
+			},
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 		require.NoError(t, r.Open(t.Context()))
 
-		// The loop has a bound, so a Read that never returns io.EOF fails the test instead of
-		// hanging it. The buffer is never cleared.
-		var got []string
-		buf := make([]Row, 2)
-		for range 100 {
-			n, err := r.Read(t.Context(), buf)
-			for _, row := range buf[:n] {
-				require.Len(t, row.Values, 1)
-				got = append(got, string(row.Values[0].Binary()))
-			}
-
-			if errors.Is(err, io.EOF) {
-				var want []string
-				for _, p := range basicReaderTestData {
-					if p.birthYear > 1982 {
-						want = append(want, p.firstName)
-					}
-				}
-				require.NotEmpty(t, want)
-				require.Equal(t, want, got)
-				return
-			}
-			require.NoError(t, err)
-		}
-		t.Fatal("Read did not return io.EOF")
+		buf := make([]Row, 10)
+		n, err := r.Read(t.Context(), buf)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, io.EOF)
+		require.Equal(t, 1, n)
+		require.Len(t, buf[0].Values, 1)
 	})
 
-	t.Run("reads a column that only a predicate reads as a primary column", func(t *testing.T) {
+	t.Run("returns the rows read before a short fill with only the projected columns", func(t *testing.T) {
+		firstNames := buildStringColumn(t, "first_name")
+		years := buildInt64Column(t, "birth_year")
+		for i, p := range basicReaderTestData {
+			require.NoError(t, years.Append(i, Int64Value(p.birthYear)))
+			if i < 5 {
+				require.NoError(t, firstNames.Append(i, BinaryValue([]byte(p.firstName))))
+			}
+		}
+
+		var memColumns []*MemColumn
+		for _, builder := range []*ColumnBuilder{firstNames, years} {
+			col, err := builder.Flush()
+			require.NoError(t, err)
+			memColumns = append(memColumns, col)
+		}
+		dset := FromMemory(memColumns)
+		columns, err := result.Collect(dset.ListColumns(t.Context()))
+		require.NoError(t, err)
+
+		r := NewRowReader(RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[0]},
+			Predicates:       []Predicate{GreaterThanPredicate{Column: columns[1], Value: Int64Value(0)}},
+		})
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+		require.NoError(t, r.Open(t.Context()))
+
+		buf := make([]Row, 10)
+		n, err := r.Read(t.Context(), buf)
+		require.ErrorContains(t, err, "failed to fill rows: expected 10, got 5")
+		require.Equal(t, 5, n)
+		for _, row := range buf[:n] {
+			require.Len(t, row.Values, 1)
+		}
+	})
+
+	t.Run("counts the columns that predicates read as primary columns", func(t *testing.T) {
+		nonEmptyMiddleName := func(_ Column, v Value) bool { return len(v.Binary()) > 0 }
+
+		for _, tc := range []struct {
+			name          string
+			projected     []int
+			predicates    func(c []Column) []Predicate
+			wantPrimary   int64
+			wantSecondary int64
+		}{
+			{
+				name:      "for a column that only one predicate reads",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1980)}}
+				},
+				wantPrimary:   1,
+				wantSecondary: 1,
+			},
+			{
+				name:      "for a column that two predicates read",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{
+						GreaterThanPredicate{Column: c[3], Value: Int64Value(1980)},
+						LessThanPredicate{Column: c[3], Value: Int64Value(1990)},
+					}
+				},
+				wantPrimary:   1,
+				wantSecondary: 1,
+			},
+			{
+				name:      "for a column that one predicate reads twice",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{AndPredicate{
+						Left:  GreaterThanPredicate{Column: c[3], Value: Int64Value(1980)},
+						Right: LessThanPredicate{Column: c[3], Value: Int64Value(1990)},
+					}}
+				},
+				wantPrimary:   1,
+				wantSecondary: 1,
+			},
+			{
+				name:      "for a projected column that a predicate reads",
+				projected: []int{3, 0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{GreaterThanPredicate{Column: c[3], Value: Int64Value(1980)}}
+				},
+				wantPrimary:   1,
+				wantSecondary: 1,
+			},
+			{
+				name:      "for two columns that only predicates read",
+				projected: []int{0},
+				predicates: func(c []Column) []Predicate {
+					return []Predicate{
+						GreaterThanPredicate{Column: c[3], Value: Int64Value(1980)},
+						FuncPredicate{Column: c[1], Keep: nonEmptyMiddleName},
+					}
+				},
+				wantPrimary:   2,
+				wantSecondary: 1,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				dset, columns := buildTestDataset(t)
+
+				projected := make([]Column, 0, len(tc.projected))
+				for _, i := range tc.projected {
+					projected = append(projected, columns[i])
+				}
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: projected, Predicates: tc.predicates(columns)})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+				stats := collectStats(t, r, 3)
+				require.Equal(t, tc.wantPrimary, stats[dataobj.StatDatasetPrimaryColumns.Name()])
+				require.Equal(t, tc.wantSecondary, stats[dataobj.StatDatasetSecondaryColumns.Name()])
+			})
+		}
+	})
+
+	t.Run("counts the bytes of a column that only a predicate reads as primary bytes", func(t *testing.T) {
 		dset, columns := buildTestDataset(t)
 
 		r := NewRowReader(RowReaderOptions{
@@ -763,19 +963,32 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		ctx, _ := xcap.NewCapture(t.Context(), nil)
-		ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-		defer region.End()
+		stats := collectStats(t, r, 3)
 
-		_, err := readDatasetWithContext(ctx, r, 3)
-		require.NoError(t, err)
-
-		stats := make(map[string]int64)
-		for _, obs := range region.Observations() {
-			stats[obs.Statistic.Name()] = obs.Value.(int64)
+		var wantSecondaryBytes int64
+		for _, p := range basicReaderTestData {
+			if p.birthYear > 1982 {
+				wantSecondaryBytes += int64(len(p.firstName))
+			}
 		}
-		require.Equal(t, int64(1), stats[dataobj.StatDatasetPrimaryColumns.Name()])
-		require.Equal(t, int64(1), stats[dataobj.StatDatasetSecondaryColumns.Name()])
+		const int64Bytes = 8
+		require.Equal(t, wantSecondaryBytes, stats[dataobj.StatDatasetSecondaryRowBytes.Name()])
+		require.Equal(t, int64Bytes*stats[dataobj.StatDatasetPrimaryRowsRead.Name()], stats[dataobj.StatDatasetPrimaryRowBytes.Name()])
+	})
+
+	t.Run("prunes the pages of a column that only a predicate reads", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		r := NewRowReader(RowReaderOptions{
+			Dataset:          dset,
+			ProjectedColumns: []Column{columns[2]},
+			Predicates:       []Predicate{EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("Henry"))}},
+		})
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		stats := collectStats(t, r, 3)
+		require.Positive(t, stats[dataobj.StatDatasetPagesPruned.Name()])
+		require.Less(t, stats[dataobj.StatDatasetRowsAfterPruning.Name()], stats[dataobj.StatDatasetMaxRows.Name()])
 	})
 }
 
@@ -1089,9 +1302,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			})
 			defer r.Close()
 
-			// Initialize downloader
-			r.initColumns()
-			require.NoError(t, r.initDownloader(ctx))
+			require.NoError(t, r.Open(ctx))
 
 			got, err := r.buildPredicateRanges(ctx, tc.predicate)
 			require.NoError(t, err)
@@ -2036,4 +2247,117 @@ func memDatasetOf(t *testing.T, builders ...*ColumnBuilder) (Dataset, []Column) 
 	columns, err := result.Collect(dset.ListColumns(t.Context()))
 	require.NoError(t, err)
 	return dset, columns
+}
+
+func Test_RowReader_Open(t *testing.T) {
+	t.Run("returns only the projected columns when Open runs again after it failed", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		r := NewRowReader(RowReaderOptions{
+			Dataset:           &failingOnceDataset{Dataset: dset},
+			ProjectedColumns:  []Column{columns[0]},
+			Predicates:        []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+			PrefetchAllOnOpen: true,
+		})
+		t.Cleanup(func() { _ = r.Close() })
+
+		require.Error(t, r.Open(t.Context()))
+
+		var want [][]string
+		for _, p := range basicReaderTestData {
+			if p.birthYear > 1982 {
+				want = append(want, []string{p.firstName})
+			}
+		}
+		require.NotEmpty(t, want)
+		require.Equal(t, want, readValuesWithReusedBuffer(t, r, 2))
+	})
+
+	t.Run("returns an error when a predicate reads a nil column", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			predicate Predicate
+		}{
+			{"for a greater than predicate", GreaterThanPredicate{Value: Int64Value(1)}},
+			{"for an in predicate", InPredicate{Values: NewInt64ValueSetOf(1)}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				dset, columns := buildTestDataset(t)
+
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+				require.ErrorContains(t, r.Open(t.Context()), "nil column")
+			})
+		}
+	})
+}
+
+// failingOnceDataset is a Dataset whose first ReadPages call fails.
+type failingOnceDataset struct {
+	Dataset
+	failed bool
+}
+
+func (d *failingOnceDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[PageData] {
+	if !d.failed {
+		d.failed = true
+		return result.Iter(func(yield func(PageData) bool) error { return errors.New("failed to read pages") })
+	}
+	return d.Dataset.ReadPages(ctx, pages)
+}
+
+// readValuesWithReusedBuffer opens r and reads it until io.EOF, with one buffer of batchSize rows
+// that it never clears. It returns the values of every row, as strings.
+func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]string {
+	t.Helper()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
+	// of hanging it. It is far above what any caller needs.
+	const maxReadAttempts = 100
+
+	var values [][]string
+	buf := make([]Row, batchSize)
+	for range maxReadAttempts {
+		n, err := r.Read(t.Context(), buf)
+		for _, row := range buf[:n] {
+			strs := make([]string, 0, len(row.Values))
+			for _, v := range row.Values {
+				if v.Type() == datasetmd.PHYSICAL_TYPE_INT64 {
+					strs = append(strs, strconv.FormatInt(v.Int64(), 10))
+				} else {
+					strs = append(strs, string(v.Binary()))
+				}
+			}
+			values = append(values, strs)
+		}
+
+		if errors.Is(err, io.EOF) {
+			return values
+		}
+		require.NoError(t, err)
+	}
+	t.Fatal("Read did not return io.EOF")
+	return nil
+}
+
+// collectStats reads every row of r in batches and returns the stats that the reader recorded, by
+// name.
+func collectStats(t *testing.T, r *RowReader, batchSize int) map[string]int64 {
+	t.Helper()
+
+	ctx, _ := xcap.NewCapture(t.Context(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
+	_, err := readDatasetWithContext(ctx, r, batchSize)
+	require.NoError(t, err)
+
+	stats := make(map[string]int64)
+	for _, obs := range region.Observations() {
+		stats[obs.Statistic.Name()] = obs.Value.(int64)
+	}
+	return stats
 }

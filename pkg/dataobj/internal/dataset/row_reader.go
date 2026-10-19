@@ -29,6 +29,9 @@ type RowReaderOptions struct {
 	// Predicates filter the data returned by a RowReader. Predicates are
 	// optional; if nil, all rows from ProjectedColumns are returned.
 	//
+	// Each column that a predicate reads must be in Dataset. It does not need to be in
+	// ProjectedColumns.
+	//
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
@@ -60,8 +63,8 @@ type RowReader struct {
 	ready bool // ready is true if the RowReader has been initialized.
 
 	columns              []Column            // opts.ProjectedColumns, then the columns that only predicates read.
-	projectedColumns     []Column            // The first columns of columns: the ones a Row holds when Read returns it.
-	origColumnLookup     map[Column]int      // Find the index of a column in columns.
+	projectedColumns     []Column            // Prefix of columns: the columns that Read keeps in Row.Values.
+	columnsLookup        map[Column]int      // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
 	primaryColumnIndexes []int               // Indexes of primary columns in columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
 
@@ -127,8 +130,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	// If a predicate is defined, primary columns are those used in the
 	// predicate, and secondary columns are those not used in the predicate. If
 	// there isn't a predicate, all columns are primary and no columns are
-	// secondary. A predicate can read a column that is not projected. That
-	// column is primary, and the rows that Read returns do not hold it.
+	// secondary. A column that only a predicate reads is primary, and Read cuts
+	// it off the rows it returns.
 	//
 	// This approach means that one call to Read may return 0, nil if the
 	// predicate filters out all rows, even if there are more rows in the dataset
@@ -210,8 +213,10 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 
 		count, err := r.inner.Fill(ctx, secondary, s[:passCount])
 		if err != nil && !errors.Is(err, io.EOF) {
+			r.trimToProjectedColumns(s[:count])
 			return count, err
 		} else if count != passCount {
+			r.trimToProjectedColumns(s[:count])
 			return count, fmt.Errorf("failed to fill rows: expected %d, got %d", passCount, count)
 		}
 
@@ -224,18 +229,25 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 		region.Record(dataobj.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
-	// The values of the columns that only predicates read sit after the projected values. Cut them
-	// off. They stay in the capacity of Row.Values, so the next read reuses them.
-	if len(r.columns) > len(r.projectedColumns) {
-		for i := range passCount {
-			s[i].Values = s[i].Values[:len(r.projectedColumns)]
-		}
-	}
+	// Cut after the stats above, which index Row.Values by position in r.columns.
+	r.trimToProjectedColumns(s[:passCount])
 
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
 	r.row += int64(rowsRead)
 	return passCount, nil
+}
+
+// trimToProjectedColumns cuts the values of the columns that only predicates read off the end of
+// Row.Values for each of rows. The capacity of Row.Values keeps them, so a Read into the same Row
+// reuses their memory.
+func (r *RowReader) trimToProjectedColumns(rows []Row) {
+	if len(r.columns) == len(r.projectedColumns) {
+		return
+	}
+	for i := range rows {
+		rows[i].Values = rows[i].Values[:len(r.projectedColumns)]
+	}
 }
 
 // readAndFilterPrimaryColumns reads the primary columns from the dataset
@@ -385,42 +397,13 @@ func (r *RowReader) alignRow() (uint64, error) {
 	return nextRow, nil
 }
 
-// initColumns sets r.columns to the projected columns followed by the columns that only
-// predicates read, sets r.projectedColumns to the projected ones, and fills r.origColumnLookup
-// with the position of each column. The caller must clear r.columns, r.projectedColumns and
-// r.origColumnLookup first; Reset does this.
-//
-// The projected columns come first, so the position of a projected column in a Row is its
-// position in r.opts.ProjectedColumns.
-func (r *RowReader) initColumns() {
-	if r.origColumnLookup == nil {
-		r.origColumnLookup = make(map[Column]int, len(r.opts.ProjectedColumns))
-	}
-
-	for _, c := range r.opts.ProjectedColumns {
-		r.origColumnLookup[c] = len(r.columns)
-		r.columns = append(r.columns, c)
-	}
-	projected := len(r.columns)
-
-	for _, p := range r.opts.Predicates {
-		WalkPredicateColumn(p, func(c Column) {
-			if _, ok := r.origColumnLookup[c]; !ok {
-				r.origColumnLookup[c] = len(r.columns)
-				r.columns = append(r.columns, c)
-			}
-		})
-	}
-
-	r.projectedColumns = r.columns[:projected]
-}
-
 // compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
-// references resolved to Row value indexes. It returns an error if a predicate cannot be
-// compiled. The caller must clear r.compiledPredicates first; Reset does this.
+// references resolved to Row value indexes. It returns an error if a predicate column is missing
+// from r.columnsLookup. initColumns adds every predicate column, so this error means a bug in
+// the reader.
 func (r *RowReader) compilePredicates() error {
 	for _, p := range r.opts.Predicates {
-		cp, err := compilePredicate(p, r.origColumnLookup)
+		cp, err := compilePredicate(p, r.columnsLookup)
 		if err != nil {
 			return err
 		}
@@ -485,28 +468,36 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	// retrieve page info. We'll defer this work to an init function. This also
 	// unfortunately means that we might not reset page readers until the first
 	// call to Open.
-	clear(r.origColumnLookup)
-	r.columns = sliceclear.Clear(r.columns)
-	r.projectedColumns = nil
+	r.clearInitState()
 
 	r.row = 0
 	r.ranges.Reset()
+	r.ready = false
+}
+
+// clearInitState clears the state that init builds from the options. Reset calls it, and so does
+// init, so an Open that runs again after a failed Open starts from a clean state.
+func (r *RowReader) clearInitState() {
+	clear(r.columnsLookup)
+	r.columns = sliceclear.Clear(r.columns)
+	r.projectedColumns = nil
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
-	r.ready = false
 }
 
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
 
-	// r.initColumns must be called first, because r.compilePredicates looks columns up in the
-	// lookup that it fills.
-	r.initColumns()
+	r.clearInitState()
 
-	// r.compilePredicates must be called before initializing anything else; for
-	// simplicity, other functions assume that the predicates are valid and can
-	// panic if they aren't.
+	// r.compilePredicates reads the lookup that r.initColumns fills, so call r.initColumns first.
+	if err := r.initColumns(); err != nil {
+		return err
+	}
+
+	// Compile the predicates before any other step. Other functions assume that the predicates
+	// are valid and can panic if they are not.
 	if err := r.compilePredicates(); err != nil {
 		return err
 	}
@@ -525,6 +516,43 @@ func (r *RowReader) init(ctx context.Context) error {
 	}
 
 	r.ready = true
+	return nil
+}
+
+// initColumns fills r.columns, r.projectedColumns and r.columnsLookup. It returns an error if a
+// predicate reads a nil column.
+//
+// r.columns holds the projected columns, then the columns that only predicates read. The projected
+// columns come first, so Read can drop the other values by cutting the end of Row.Values. A Row
+// keeps the order of r.opts.ProjectedColumns.
+func (r *RowReader) initColumns() error {
+	if r.columnsLookup == nil {
+		r.columnsLookup = make(map[Column]int, len(r.opts.ProjectedColumns))
+	}
+
+	for _, c := range r.opts.ProjectedColumns {
+		r.columnsLookup[c] = len(r.columns)
+		r.columns = append(r.columns, c)
+	}
+	projected := len(r.columns)
+
+	var err error
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) {
+			switch _, ok := r.columnsLookup[c]; {
+			case c == nil:
+				err = errors.New("predicate reads a nil column")
+			case !ok:
+				r.columnsLookup[c] = len(r.columns)
+				r.columns = append(r.columns, c)
+			}
+		})
+	}
+	if err != nil {
+		return err
+	}
+
+	r.projectedColumns = r.columns[:projected]
 	return nil
 }
 
@@ -551,7 +579,7 @@ func (r *RowReader) secondaryColumns() []Column {
 }
 
 // initDownloader initializes the reader's [rowReaderDownloader]. initDownloader is
-// always used to reduce the number of conditions.
+// always used to reduce the number of conditions. It reads r.columns, so call initColumns first.
 func (r *RowReader) initDownloader(ctx context.Context) error {
 	// The downloader is initialized in three steps:
 	//
@@ -630,7 +658,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 
 func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 	process := func(c Column) {
-		idx, ok := r.origColumnLookup[c]
+		idx, ok := r.columnsLookup[c]
 		if !ok {
 			// This shouldn't be reachable: initColumns adds every column that a predicate
 			// reads to r.columns.
@@ -805,7 +833,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 // true for each page in a column.
 func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
-	if idx, ok := r.origColumnLookup[c]; ok {
+	if idx, ok := r.columnsLookup[c]; ok {
 		c = r.allColumns()[idx]
 	} else {
 		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
@@ -946,7 +974,7 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
-		idx, ok := r.origColumnLookup[c]
+		idx, ok := r.columnsLookup[c]
 		if !ok {
 			panic(fmt.Errorf("predicateColumns: column %v not found in RowReader columns", c))
 		}

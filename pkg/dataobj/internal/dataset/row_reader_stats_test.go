@@ -67,10 +67,8 @@ func TestBuildColumnPredicateRanges_ReportsPageStats(t *testing.T) {
 			})
 			defer r.Close()
 
-			// initDownloader builds the predicate ranges once per predicate, which
-			// is the same path the reader uses in production.
-			r.initColumns()
-			require.NoError(t, r.initDownloader(ctx))
+			// Open builds the predicate ranges once per predicate.
+			require.NoError(t, r.Open(ctx))
 
 			require.Len(t, tracker.calls, 1, "tracker is notified once per column predicate")
 			require.Equal(t, "number", tracker.calls[0].logical)
@@ -95,8 +93,7 @@ func TestBuildColumnPredicateRanges_NilStatsTracker(t *testing.T) {
 	defer r.Close()
 
 	require.NotPanics(t, func() {
-		r.initColumns()
-		require.NoError(t, r.initDownloader(ctx))
+		require.NoError(t, r.Open(ctx))
 	})
 }
 
