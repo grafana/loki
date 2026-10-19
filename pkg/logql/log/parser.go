@@ -255,7 +255,7 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 // Hints implements Stage.
 func (j *JSONParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -370,7 +370,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (r *RegexpParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -466,7 +466,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (l *LogfmtParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
@@ -520,7 +520,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 // Hints implements Stage.
 func (l *PatternParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -654,7 +654,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 // Hints implements Stage.
 func (l *LogfmtExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -766,7 +766,7 @@ func isValidJSONStart(data []byte) bool {
 
 // Hints implements Stage.
 func (j *JSONExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -789,7 +789,14 @@ func NewUnpackParser() *UnpackParser {
 
 // Hints implements Stage.
 func (u *UnpackParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It turns the string-valued fields of a packed object into labels. It sets __error__ when
+		// the line is not a JSON object.
+		CanModifyLabels: true,
+		// It replaces the line with the _entry value when the line carries one. It leaves the line
+		// alone when the query needs no parsed label.
+		CanModifyLine: true,
+	}
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }

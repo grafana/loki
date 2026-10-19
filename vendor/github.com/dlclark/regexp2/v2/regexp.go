@@ -424,12 +424,28 @@ func (m *stringByteMapper) byteIndex(runeIndex int) int {
 
 // FindNextMatch returns the next match in the same input string as the match parameter.
 // Will return nil if there is no next match or if given a nil match.
+// It can reuse what earlier calls read of the input, so a rune slice input
+// must not change between them.
 func (re *Regexp) FindNextMatch(m *Match) (*Match, error) {
 	if m == nil {
 		return nil, nil
 	}
 
-	return re.run(false, m.textpos, m.RuneLength, m.text.runes, m.text)
+	runner := re.getRunner()
+	defer re.putRunner(runner)
+	landmarkChain := re.code != nil && re.code.FindOptimizations != nil && re.code.FindOptimizations.FindMode == syntax.RequiredLandmarkChain_LeftToRight
+	// Continue the required landmark searches that found m, so that iterating
+	// reads the input once. Only one call can take them; other calls, and
+	// calls on older matches or copies, start new ones.
+	if landmarkChain && m.text.landmarkMatch.CompareAndSwap(m, nil) {
+		runner.landmarks, runner.Runtext = m.landmarks, m.text.runes
+	}
+	next, err := runner.scan(m.text.runes, m.text, m.textpos, m.textpos, m.RuneLength, false, re.MatchTimeout)
+	if landmarkChain && next != nil && runner.landmarks != nil {
+		next.landmarks, runner.landmarks = runner.landmarks, nil
+		m.text.landmarkMatch.Store(next)
+	}
+	return next, err
 }
 
 // MatchString return true if the string matches the regex

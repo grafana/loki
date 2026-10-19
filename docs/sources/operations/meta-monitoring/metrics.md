@@ -249,6 +249,18 @@ Abnormal behavior:
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
 
+Connection metrics just for S3:
+
+- `net_conntrack_dialer_conn_attempted_total`
+- `net_conntrack_dialer_conn_established_total`
+- `net_conntrack_dialer_conn_failed_total`
+- `net_conntrack_dialer_conn_closed_total`
+
+Abnormal behavior:
+
+- Non-zero rate of failed connections.
+- High rate of closed connections under ordinary load.
+
 ## Resource and runtime health
 
 Resource pressure can explain or predict service degradation before alert thresholds are crossed.

@@ -995,6 +995,12 @@ func (n *RegexNode) canBeMadeAtomic(subsequent *RegexNode, iterateNullableSubseq
 			return false
 		}
 
+		// The Multi and end anchor checks below assume left-to-right matching.
+		if n.Options&RightToLeft != 0 &&
+			(subsequent.T == NtMulti || subsequent.T == NtEnd || subsequent.T == NtEndZ || subsequent.T == NtEol) {
+			return false
+		}
+
 		// If the successor is an alternation, all of its children need to be evaluated, since any of them
 		// could come after this node.  If any of them fail the optimization, then the whole node fails.
 		// This applies to expression conditionals as well, as long as they have both a yes and a no branch (if there's
@@ -1069,7 +1075,7 @@ func (n *RegexNode) canBeMadeAtomic(subsequent *RegexNode, iterateNullableSubseq
 			}
 
 			if (subsequent.IsOneloopFamily() && subsequent.M == 0 && !n.Set.CharIn(subsequent.Ch)) ||
-				(subsequent.IsSetloopFamily() && subsequent.M == 0 && subsequent.Set.MayOverlap(n.Set)) ||
+				(subsequent.IsSetloopFamily() && subsequent.M == 0 && !subsequent.Set.MayOverlap(n.Set)) ||
 				(subsequent.T == NtBoundary && n.M > 0 && (n.Set.Equals(WordClass()) || n.Set.Equals(DigitClass()))) ||
 				(subsequent.T == NtNonboundary && n.M > 0 && (n.Set.Equals(NotWordClass()) || n.Set.Equals(NotDigitClass()))) ||
 				(subsequent.T == NtECMABoundary && n.M > 0 && (n.Set.Equals(ECMAWordClass()) || n.Set.Equals(ECMADigitClass()))) ||
@@ -1634,7 +1640,9 @@ func (n *RegexNode) reduceConcatenationWithAdjacentLoops() {
 					next++
 					continue
 				}
-			} else if (currentNode.T == NtOneloop || currentNode.T == NtOnelazy) && nextNode.T == NtMulti && currentNode.Ch == nextNode.Str[0] {
+			} else if (currentNode.T == NtOneloop || currentNode.T == NtOnelazy) && nextNode.T == NtMulti &&
+				nextNode.Options&RightToLeft == 0 && // RTL multi nodes don't have their text reversed
+				currentNode.Ch == nextNode.Str[0] {
 				// Coalescing a loop with a subsequent string
 				// Determine how many of the multi's characters can be combined.
 				// We already checked for the first, so we know it's at least one.

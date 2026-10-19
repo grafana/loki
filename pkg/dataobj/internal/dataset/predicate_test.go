@@ -36,6 +36,52 @@ func TestIsConstPredicate(t *testing.T) {
 	}
 }
 
+func TestWalkPredicateColumn(t *testing.T) {
+	var (
+		a   = &dataset.MemColumn{}
+		b   = &dataset.MemColumn{}
+		onA = dataset.EqualPredicate{Column: a, Value: dataset.Int64Value(1)}
+		onB = dataset.FuncPredicate{Column: b}
+	)
+
+	collect := func(p dataset.Predicate) []dataset.Column {
+		var got []dataset.Column
+		dataset.WalkPredicateColumn(p, func(c dataset.Column) { got = append(got, c) })
+		return got
+	}
+
+	for _, tc := range []struct {
+		name      string
+		predicate dataset.Predicate
+		want      []dataset.Column
+	}{
+		{"visits the column of an equal predicate", onA, []dataset.Column{a}},
+		{"visits the column of a func predicate", onB, []dataset.Column{b}},
+		{"visits the column of an in predicate", dataset.InPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a greater than predicate", dataset.GreaterThanPredicate{Column: a}, []dataset.Column{a}},
+		{"visits the column of a less than predicate", dataset.LessThanPredicate{Column: a}, []dataset.Column{a}},
+		{"visits both sides of an and and the inside of a not in depth-first order", dataset.AndPredicate{Left: onA, Right: dataset.NotPredicate{Inner: onB}}, []dataset.Column{a, b}},
+		{"visits both sides of an or", dataset.OrPredicate{Left: onB, Right: onA}, []dataset.Column{b, a}},
+		{"visits a column once for each leaf that reads it", dataset.AndPredicate{Left: onA, Right: onA}, []dataset.Column{a, a}},
+		{"visits no column for a true predicate", dataset.TruePredicate{}, nil},
+		{"visits no column for a false predicate", dataset.FalsePredicate{}, nil},
+		{"visits no column for a nil predicate", nil, nil},
+		{"skips a nil side of an and", dataset.AndPredicate{Right: onA}, []dataset.Column{a}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, collect(tc.predicate))
+		})
+	}
+
+	t.Run("panics on an unsupported predicate type", func(t *testing.T) {
+		// Embedding gives the type the unexported method of the interface without being one of
+		// the predicate types the walker knows.
+		type unsupportedPredicate struct{ dataset.TruePredicate }
+
+		require.Panics(t, func() { collect(unsupportedPredicate{}) })
+	})
+}
+
 func TestNewConstPredicate(t *testing.T) {
 	require.Equal(t, dataset.TruePredicate{}, dataset.NewConstPredicate(true))
 	require.Equal(t, dataset.FalsePredicate{}, dataset.NewConstPredicate(false))

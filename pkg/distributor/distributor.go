@@ -1435,11 +1435,9 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
 			shardCounts[i] = 0
 		case !ok,
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
-			// No usable answer: there was none, the service could not check the
-			// stream, or the instance that answered does not own its
-			// partition. Comparing it would report agreement or disagreement
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed):
+			// No usable answer: there was none, or the service could not check
+			// the stream. Comparing it would report agreement or disagreement
 			// that does not exist.
 			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()

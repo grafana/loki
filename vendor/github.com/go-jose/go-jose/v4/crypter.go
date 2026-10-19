@@ -428,6 +428,13 @@ func (ctx *genericEncrypter) Options() EncrypterOptions {
 	}
 }
 
+func validateContentEncryptionKeySize(cek []byte, cipher contentCipher) error {
+	if len(cek) != cipher.keySize() {
+		return ErrInvalidKeySize
+	}
+	return nil
+}
+
 // Decrypt and validate the object and return the plaintext. This
 // function does not support multi-recipient. If you desire multi-recipient
 // decryption use DecryptMulti instead.
@@ -492,6 +499,10 @@ func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) 
 	recipientHeaders := obj.mergedHeaders(&recipient)
 
 	cek, err := decrypter.decryptKey(recipientHeaders, &recipient, generator)
+	if err != nil {
+		return nil, ErrCryptoFailure
+	}
+	err = validateContentEncryptionKeySize(cek, cipher)
 	if err != nil {
 		return nil, ErrCryptoFailure
 	}
@@ -569,6 +580,10 @@ func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Heade
 
 		var cek []byte
 		cek, err = decrypter.decryptKey(recipientHeaders, &recipient, generator)
+		if err != nil {
+			continue
+		}
+		err = validateContentEncryptionKeySize(cek, cipher)
 		if err != nil {
 			continue
 		}

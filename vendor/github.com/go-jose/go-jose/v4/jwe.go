@@ -202,15 +202,6 @@ func (parsed *rawJSONWebEncryption) sanitized(
 		}
 	}
 
-	// Note: this must be called _after_ we parse the protected header,
-	// otherwise fields from the protected header will not get picked up.
-	var err error
-	mergedHeaders := obj.mergedHeaders(nil)
-	obj.Header, err = mergedHeaders.sanitized()
-	if err != nil {
-		return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize merged headers: %v (%v)", err, mergedHeaders)
-	}
-
 	if len(parsed.Recipients) == 0 {
 		obj.recipients = []recipientInfo{
 			{
@@ -262,6 +253,15 @@ func (parsed *rawJSONWebEncryption) sanitized(
 		if err != nil {
 			return nil, fmt.Errorf("go-jose/go-jose: unprotected header: %s", err)
 		}
+	}
+
+	// Note: this must be called _after_ we parse the protected header,
+	// otherwise fields from the protected header will not get picked up.
+	mergedHeaders := obj.mergedHeaders(nil)
+	var err error
+	obj.Header, err = mergedHeaders.sanitized()
+	if err != nil {
+		return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize merged headers: %w", err)
 	}
 
 	obj.iv = parsed.Iv.bytes()

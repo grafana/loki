@@ -245,15 +245,16 @@ func (p *Planner) planSection(descriptor *metastore.DataobjSectionDescriptor, st
 	// would suppress pushdown this can keep.
 	columns, metadataNames, predicates := query.Projection.forStreams(labelNames)
 	return ReadTask{
-		objectPath:    descriptor.ObjectPath,
-		sectionIdx:    int(descriptor.SectionIdx),
-		streamIDs:     streamIDs,
-		streams:       streams,
-		columns:       columns,
-		metadataNames: metadataNames,
-		predicates:    predicates,
-		start:         query.Start,
-		end:           query.End,
+		objectPath:        descriptor.ObjectPath,
+		sectionIdx:        int(descriptor.SectionIdx),
+		streamIDs:         streamIDs,
+		streams:           streams,
+		columns:           columns,
+		metadataNames:     metadataNames,
+		predicates:        predicates,
+		needReturningLine: query.Projection.needReturningLine,
+		start:             query.Start,
+		end:               query.End,
 	}, true, nil
 }
 
@@ -264,7 +265,7 @@ func (p *Planner) admits(streamLabels labels.Labels, streamHash uint64, shard *Q
 	}
 
 	// The bucket range resolves a shard exactly only for a power-of-two shard of at most
-	// streams.ShardFactor. Any other shard maps to a range that covers streams outside it, so
+	// streams.DefaultShardBuckets. Any other shard maps to a range that covers streams outside it, so
 	// the stream hash still has to be checked.
 	if shard != nil && !shard.resolvesExactly() {
 		if !shard.assignment.Match(model.Fingerprint(streamHash)) {

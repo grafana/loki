@@ -290,8 +290,9 @@ func TestStatsCollectorMiddleware_RecordsStatsAddedAfterCollection(t *testing.T)
 
 	// Middlewares outside the tripperware, such as the logline hint prefetch,
 	// attach stats to the response after StatsCollectorMiddleware returns.
-	resp.(*LokiResponse).Statistics.Index.LoglineHintStatus = "ok"
-	require.Equal(t, "ok", data.statistics.Index.LoglineHintStatus)
+	resp.(*LokiResponse).Statistics.LoglineStats().HintStatus = "ok"
+	require.NotNil(t, data.statistics.Logline)
+	require.Equal(t, "ok", data.statistics.Logline.HintStatus)
 }
 
 func TestStatsCollectorMiddleware_DoesNotOverwriteLargerEstimatedQueryBytes(t *testing.T) {

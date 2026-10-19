@@ -314,6 +314,8 @@ In this mode the engine attempts to match the [regex engine](https://tc39.es/ecm
 
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
 
+Without `Unicode`, escapes such as `\a`, `\e`, `\A`, `\G`, `\Z`, and `\z` match their literal letters. A control escape `\c` requires an ASCII letter; inside a character class, digits and `_` are also accepted, with character value modulo 32. Otherwise the backslash is literal and `c` and the following syntax are parsed normally: `\c*` matches a backslash followed by zero or more `c` characters, and `[\c]` matches either a backslash or `c`. `Escape` emits `\x07` for BEL so that its output also preserves that character in ECMAScript mode.
+
 Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
 
 With `ECMAScript|Unicode`, property escapes use the exact names and aliases allowed by [ECMA-262](https://tc39.es/ecma262/multipage/text-processing.html#sec-runtime-semantics-unicodematchproperty-p):

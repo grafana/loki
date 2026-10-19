@@ -280,7 +280,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics))
 	})
 
-	t.Run("a line-filter query served by data objects returns the matching stream and reports the second-stage statistics because it reads the line column", func(t *testing.T) {
+	t.Run("a line-filter query served by data objects returns the matching stream and reports no second-stage bytes because the line column is read first and the fixture holds no other column", func(t *testing.T) {
 		resp, err := cliFrontend.RunQuery(ctx, `sum by (job, app) (count_over_time({job="dataobjit"} |= "a" [1h]))`)
 		require.NoError(t, err)
 
@@ -291,8 +291,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		dataobjStats := resp.Data.Statistics.Querier.Store.Dataobj
 		require.Positive(t, dataobjStats.PrePredicateDecompressedRows)
 		require.Positive(t, dataobjStats.PrePredicateDecompressedBytes)
-		require.Positive(t, dataobjStats.PostPredicateDecompressedBytes)
-		require.Positive(t, dataobjStats.PostFilterRows)
+		require.Zero(t, dataobjStats.PostPredicateDecompressedBytes)
 		require.Positive(t, dataobjStats.SectionsResolutionMaxTime)
 	})
 

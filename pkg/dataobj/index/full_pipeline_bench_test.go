@@ -74,10 +74,10 @@ func BenchmarkFullPostingsPipeline(b *testing.B) {
 					b.Fatal(err)
 				}
 
-				if err := labelCalc.Flush(context.Background(), calcCtx); err != nil {
+				if err := labelCalc.Flush(context.Background(), calcCtx, builder); err != nil {
 					b.Fatal(err)
 				}
-				if err := colCalc.Flush(context.Background(), calcCtx); err != nil {
+				if err := colCalc.Flush(context.Background(), calcCtx, builder); err != nil {
 					b.Fatal(err)
 				}
 
