@@ -951,11 +951,6 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 
 	ctx = withHintPrefetch(ctx, result)
 	defer h.observeHintWait(result)
-	// One request. The filter attaches hint ranges for queriers to apply.
-	// Cancel-and-rerun (a provisional query, then a power_of_two restart when
-	// hints narrowed the range) is gone: sampled re-runs were a latency wash,
-	// the canceled request made Logline queries harder to trace, and querier
-	// hint ranges make a second shard plan unnecessary.
 	resp, err := h.next.Do(ctx, req)
 	if err != nil {
 		return resp, err
