@@ -86,7 +86,7 @@ require (
 	github.com/google/cel-go v0.32.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/grafana/dskit v0.0.0-20260209132809-8d1c6d34bb5a // indirect
+	github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053 // indirect
 	github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654 // indirect
 	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 // indirect
 	github.com/grafana/loki/pkg/push v0.4.0 // indirect
