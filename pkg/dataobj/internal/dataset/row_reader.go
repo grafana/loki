@@ -106,7 +106,7 @@ func (r *RowReader) Open(ctx context.Context) error {
 // Dataset, Read returns 0, [io.EOF].
 //
 // Read returns an error if [RowReader.Open] was not called first.
-func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
+func (r *RowReader) Read(ctx context.Context, s []Row) (passCount int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -146,6 +146,10 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	// calls to [RowReader.Read] while permitting the buffer to be as big as
 	// possible on each call.
 
+	// Trim the rows on every return path. The deferred call runs after the stats below, which
+	// index Row.Values by position in r.columns.
+	defer func() { r.trimToProjectedColumns(s[:passCount]) }()
+
 	row, err := r.alignRow()
 	if err != nil {
 		return 0, err
@@ -168,10 +172,7 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	}
 	r.dl.SetReadRange(readRange)
 
-	var (
-		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
-		passCount int // tracks how many rows passed the predicate
-	)
+	var rowsRead int // tracks max rows accessed to move the [r.row] cursor
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
@@ -213,10 +214,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 
 		count, err := r.inner.Fill(ctx, secondary, s[:passCount])
 		if err != nil && !errors.Is(err, io.EOF) {
-			r.trimToProjectedColumns(s[:count])
 			return count, err
 		} else if count != passCount {
-			r.trimToProjectedColumns(s[:count])
 			return count, fmt.Errorf("failed to fill rows: expected %d, got %d", passCount, count)
 		}
 
@@ -228,9 +227,6 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 		region.Record(dataobj.StatDatasetSecondaryRowsRead.Observe(int64(count)))
 		region.Record(dataobj.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
-
-	// Cut after the stats above, which index Row.Values by position in r.columns.
-	r.trimToProjectedColumns(s[:passCount])
 
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
@@ -475,8 +471,7 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.ready = false
 }
 
-// clearInitState clears the state that init builds from the options. Reset calls it, and so does
-// init, so an Open that runs again after a failed Open starts from a clean state.
+// clearInitState clears the state that init builds from the options.
 func (r *RowReader) clearInitState() {
 	clear(r.columnsLookup)
 	r.columns = sliceclear.Clear(r.columns)
@@ -489,6 +484,7 @@ func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
 
+	// A failed Open leaves its state behind. Clear it, so that an Open that runs again starts clean.
 	r.clearInitState()
 
 	// r.compilePredicates reads the lookup that r.initColumns fills, so call r.initColumns first.
