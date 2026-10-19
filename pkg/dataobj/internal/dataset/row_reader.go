@@ -19,17 +19,16 @@ import (
 type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
-	// Columns to read from the Dataset. It is invalid to provide a Column that
-	// is not in Dataset.
+	// ProjectedColumns are the columns that a RowReader returns. Row.Values holds one Value per
+	// projected column, in this order. It is invalid to provide a Column that is not in Dataset.
 	//
-	// The set of Columns can include columns not used in Predicate; such columns
-	// are considered non-predicate columns.
-	Columns []Column
+	// A predicate can read a column that is not projected. The reader reads that column to run
+	// the predicate, and leaves it out of the rows it returns.
+	ProjectedColumns []Column
 
 	// Predicates filter the data returned by a RowReader. Predicates are
-	// optional; if nil, all rows from Columns are returned.
+	// optional; if nil, all rows from ProjectedColumns are returned.
 	//
-	// Expressions in Predicate may only reference columns in Columns.
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
@@ -60,8 +59,10 @@ type RowReader struct {
 	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
-	origColumnLookup     map[Column]int      // Find the index of a column in opts.Columns.
-	primaryColumnIndexes []int               // Indexes of primary columns in opts.Columns.
+	columns              []Column            // opts.ProjectedColumns, then the columns that only predicates read.
+	projectedColumns     []Column            // The first columns of columns: the ones a Row holds when Read returns it.
+	origColumnLookup     map[Column]int      // Find the index of a column in columns.
+	primaryColumnIndexes []int               // Indexes of primary columns in columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
@@ -126,7 +127,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	// If a predicate is defined, primary columns are those used in the
 	// predicate, and secondary columns are those not used in the predicate. If
 	// there isn't a predicate, all columns are primary and no columns are
-	// secondary.
+	// secondary. A predicate can read a column that is not projected. That
+	// column is primary, and the rows that Read returns do not hold it.
 	//
 	// This approach means that one call to Read may return 0, nil if the
 	// predicate filters out all rows, even if there are more rows in the dataset
@@ -220,6 +222,14 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 
 		region.Record(dataobj.StatDatasetSecondaryRowsRead.Observe(int64(count)))
 		region.Record(dataobj.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
+	}
+
+	// The values of the columns that only predicates read sit after the projected values. Cut them
+	// off. They stay in the capacity of Row.Values, so the next read reuses them.
+	if len(r.columns) > len(r.projectedColumns) {
+		for i := range passCount {
+			s[i].Values = s[i].Values[:len(r.projectedColumns)]
+		}
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -375,10 +385,39 @@ func (r *RowReader) alignRow() (uint64, error) {
 	return nextRow, nil
 }
 
+// initColumns sets r.columns to the projected columns followed by the columns that only
+// predicates read, sets r.projectedColumns to the projected ones, and fills r.origColumnLookup
+// with the position of each column. The caller must clear r.columns, r.projectedColumns and
+// r.origColumnLookup first; Reset does this.
+//
+// The projected columns come first, so the position of a projected column in a Row is its
+// position in r.opts.ProjectedColumns.
+func (r *RowReader) initColumns() {
+	if r.origColumnLookup == nil {
+		r.origColumnLookup = make(map[Column]int, len(r.opts.ProjectedColumns))
+	}
+
+	for _, c := range r.opts.ProjectedColumns {
+		r.origColumnLookup[c] = len(r.columns)
+		r.columns = append(r.columns, c)
+	}
+	projected := len(r.columns)
+
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) {
+			if _, ok := r.origColumnLookup[c]; !ok {
+				r.origColumnLookup[c] = len(r.columns)
+				r.columns = append(r.columns, c)
+			}
+		})
+	}
+
+	r.projectedColumns = r.columns[:projected]
+}
+
 // compilePredicates compiles each of r.opts.Predicates into a [compiledPredicate] with column
-// references resolved to Row value indexes. It returns an error if a predicate references a
-// column absent from [RowReaderOptions]. The caller must clear r.compiledPredicates first;
-// Reset does this.
+// references resolved to Row value indexes. It returns an error if a predicate cannot be
+// compiled. The caller must clear r.compiledPredicates first; Reset does this.
 func (r *RowReader) compilePredicates() error {
 	for _, p := range r.opts.Predicates {
 		cp, err := compilePredicate(p, r.origColumnLookup)
@@ -446,13 +485,9 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	// retrieve page info. We'll defer this work to an init function. This also
 	// unfortunately means that we might not reset page readers until the first
 	// call to Open.
-	if r.origColumnLookup == nil {
-		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
-	}
 	clear(r.origColumnLookup)
-	for i, c := range opts.Columns {
-		r.origColumnLookup[c] = i
-	}
+	r.columns = sliceclear.Clear(r.columns)
+	r.projectedColumns = nil
 
 	r.row = 0
 	r.ranges.Reset()
@@ -464,6 +499,10 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
+
+	// r.initColumns must be called first, because r.compilePredicates looks columns up in the
+	// lookup that it fills.
+	r.initColumns()
 
 	// r.compilePredicates must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicates are valid and can
@@ -533,10 +572,10 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.targetCompressedBytes = 0
 	}
 
-	mask := bitmask.New(len(r.opts.Columns))
+	mask := bitmask.New(len(r.columns))
 	r.fillPrimaryMask(mask)
 
-	for i, column := range r.opts.Columns {
+	for i, column := range r.columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
@@ -593,8 +632,8 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 	process := func(c Column) {
 		idx, ok := r.origColumnLookup[c]
 		if !ok {
-			// This shouldn't be reachable: before we initialize anything we ensure
-			// that all columns in the predicate are available in r.opts.Columns.
+			// This shouldn't be reachable: initColumns adds every column that a predicate
+			// reads to r.columns.
 			panic("fillPrimaryMask: column not found")
 		}
 		mask.Set(idx)
@@ -602,7 +641,7 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 
 	// If there's no predicate, all columns are primary.
 	if len(r.opts.Predicates) == 0 {
-		for _, c := range r.opts.Columns {
+		for _, c := range r.columns {
 			process(c)
 		}
 		return
@@ -678,7 +717,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
-		// We use r.dl.AllColumns instead of r.opts.Columns because the downloader
+		// We use r.dl.AllColumns instead of r.columns because the downloader
 		// will cache metadata.
 		var rowsCount uint64
 		for _, column := range r.allColumns() {

@@ -60,15 +60,16 @@ func TestBuildColumnPredicateRanges_ReportsPageStats(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tracker := &recordingStatsTracker{}
 			r := NewRowReader(RowReaderOptions{
-				Dataset:      ds,
-				Columns:      cols,
-				Predicates:   []Predicate{tc.predicate},
-				StatsTracker: tracker,
+				Dataset:          ds,
+				ProjectedColumns: cols,
+				Predicates:       []Predicate{tc.predicate},
+				StatsTracker:     tracker,
 			})
 			defer r.Close()
 
 			// initDownloader builds the predicate ranges once per predicate, which
 			// is the same path the reader uses in production.
+			r.initColumns()
 			require.NoError(t, r.initDownloader(ctx))
 
 			require.Len(t, tracker.calls, 1, "tracker is notified once per column predicate")
@@ -86,14 +87,15 @@ func TestBuildColumnPredicateRanges_NilStatsTracker(t *testing.T) {
 	ds, cols := buildSingleColumnStatsDataset(t)
 
 	r := NewRowReader(RowReaderOptions{
-		Dataset:    ds,
-		Columns:    cols,
-		Predicates: []Predicate{EqualPredicate{Column: cols[0], Value: Int64Value(50)}},
+		Dataset:          ds,
+		ProjectedColumns: cols,
+		Predicates:       []Predicate{EqualPredicate{Column: cols[0], Value: Int64Value(50)}},
 		// StatsTracker intentionally left nil.
 	})
 	defer r.Close()
 
 	require.NotPanics(t, func() {
+		r.initColumns()
 		require.NoError(t, r.initDownloader(ctx))
 	})
 }

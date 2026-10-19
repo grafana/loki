@@ -230,7 +230,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           datasetColumns,
+		ProjectedColumns:  datasetColumns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
 	}
