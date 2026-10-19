@@ -52,7 +52,7 @@ type volumeBoundaryPart struct {
 
 // Bucket times are offsets from the base time. Loki reports the
 // offset-adjusted evaluation timestamp at millisecond precision, so a request
-// at 60s with offset 1ns yields a sample timestamp of 59.999s.
+// at 60s with offset 1ns yields a sample timestamp of 60s.
 type volumeBoundaryBucket struct {
 	Time   string             `json:"time"`
 	Counts map[string]float64 `json:"counts"`

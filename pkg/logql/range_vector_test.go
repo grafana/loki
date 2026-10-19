@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -8,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -728,4 +731,94 @@ func quantilesClose(want, got, epsilon float64) bool {
 		return true
 	}
 	return diff/math.Max(math.Abs(want), math.Abs(got)) <= epsilon
+}
+
+// subMillisecondOffsets are range vector offsets for which the offset-adjusted
+// evaluation time is not a whole number of milliseconds. The logs volume
+// queries built by the Grafana Loki datasource use `offset 1ns`.
+var subMillisecondOffsets = []string{"1ns", "999µs", "1ms", "1s"}
+
+func offsetTestEngine(shards int) *QueryEngine {
+	streams := randomStreams(20, 130, shards, []string{"a"}, true)
+	return NewEngine(EngineOpts{}, NewMockQuerier(shards, streams), NoLimits, log.NewNopLogger())
+}
+
+func offsetTestParams(t *testing.T, query string, step time.Duration) Params {
+	t.Helper()
+	start := time.Unix(0, 0).Add(2 * time.Minute)
+	params, err := NewLiteralParams(query, start, start.Add(3*time.Minute), step, 0, logproto.FORWARD, 100, nil, nil)
+	require.NoError(t, err)
+	return params
+}
+
+// TestRangeVectorSampleTimestampWithOffset covers the sample timestamp of a
+// range aggregation with an offset. Loki reports the evaluation (step) time,
+// as Prometheus does, so a sub-millisecond offset must not shift the sample
+// back by a whole millisecond when the offset is truncated separately from
+// the step time.
+func TestRangeVectorSampleTimestampWithOffset(t *testing.T) {
+	engine := offsetTestEngine(2)
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	for _, offset := range subMillisecondOffsets {
+		t.Run(offset, func(t *testing.T) {
+			params := offsetTestParams(t, fmt.Sprintf(`sum(count_over_time({a=~".+"}[1m] offset %s))`, offset), time.Minute)
+			res, err := engine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+
+			matrix, ok := res.Data.(promql.Matrix)
+			require.True(t, ok, "expected a matrix, got %T", res.Data)
+			require.NotEmpty(t, matrix)
+			steps := map[int64]bool{}
+			for ts := params.Start(); !ts.After(params.End()); ts = ts.Add(params.Step()) {
+				steps[ts.UnixMilli()] = true
+			}
+			// Steps without log lines have no sample, so only check that
+			// the samples that exist sit on the step grid.
+			for _, sample := range matrix[0].Floats {
+				require.True(t, steps[sample.T], "sample timestamp %d is not a step timestamp", sample.T)
+			}
+		})
+	}
+}
+
+// TestShardedOffsetEquivalence checks that sharding a query with an offset does
+// not change its result. The downstream (per-shard) samples are matched
+// against the outer step timestamps, so a timestamp mismatch drops them and
+// the sharded result comes back empty.
+func TestShardedOffsetEquivalence(t *testing.T) {
+	const shards = 2
+	engine := offsetTestEngine(shards)
+	sharded := NewDownstreamEngine(EngineOpts{}, MockDownstreamer{engine}, NoLimits, log.NewNopLogger())
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	for _, offset := range subMillisecondOffsets {
+		t.Run(offset, func(t *testing.T) {
+			params := offsetTestParams(t, fmt.Sprintf(`sum(count_over_time({a=~".+"}[1m] offset %s))`, offset), time.Minute)
+			_, _, mapped, err := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(shards)), nilShardMetrics, nil).Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			unsharded, err := engine.Query(params).Exec(ctx)
+			require.NoError(t, err)
+			shardedRes, err := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
+			require.NoError(t, err)
+
+			require.NotEmpty(t, unsharded.Data)
+			// Compare values only: the unsharded timestamps are asserted above.
+			require.Equal(t, sampleValues(t, unsharded.Data), sampleValues(t, shardedRes.Data))
+		})
+	}
+}
+
+func sampleValues(t *testing.T, data interface{}) []float64 {
+	t.Helper()
+	matrix, ok := data.(promql.Matrix)
+	require.True(t, ok, "expected a matrix, got %T", data)
+	var values []float64
+	for _, series := range matrix {
+		for _, sample := range series.Floats {
+			values = append(values, sample.F)
+		}
+	}
+	return values
 }

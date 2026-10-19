@@ -117,7 +117,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {
                 "info": 3,
                 "warn": 1
@@ -133,7 +133,7 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -141,7 +141,7 @@
               }
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -158,7 +158,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "209999ms",
+              "time": "210000ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -269,14 +269,14 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {
                 "info": 3,
                 "warn": 1
               }
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -284,7 +284,7 @@
               }
             },
             {
-              "time": "239999ms",
+              "time": "240000ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -395,14 +395,14 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {
                 "info": 3,
                 "warn": 1
               }
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -419,7 +419,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "209999ms",
+              "time": "210000ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -545,7 +545,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {
                 "info": 3,
                 "warn": 1
@@ -561,7 +561,7 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -569,7 +569,7 @@
               }
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -577,7 +577,7 @@
               }
             },
             {
-              "time": "239999ms",
+              "time": "240000ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -657,7 +657,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "38999ms",
+              "time": "39000ms",
               "counts": {
                 "info": 3,
                 "warn": 2
@@ -752,7 +752,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {
                 "info": 3,
                 "warn": 1
@@ -768,7 +768,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "60999ms",
+              "time": "61000ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -848,7 +848,7 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {
                 "info": 3,
                 "warn": 2
@@ -1048,7 +1048,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "199ms",
+              "time": "200ms",
               "counts": {
                 "info": 3,
                 "warn": 1
@@ -1064,7 +1064,7 @@
           "step": "100ms",
           "expected": [
             {
-              "time": "299ms",
+              "time": "300ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1072,7 +1072,7 @@
               }
             },
             {
-              "time": "399ms",
+              "time": "400ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1080,7 +1080,7 @@
               }
             },
             {
-              "time": "499ms",
+              "time": "500ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1088,7 +1088,7 @@
               }
             },
             {
-              "time": "599ms",
+              "time": "600ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1096,7 +1096,7 @@
               }
             },
             {
-              "time": "699ms",
+              "time": "700ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1104,7 +1104,7 @@
               }
             },
             {
-              "time": "799ms",
+              "time": "800ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1112,7 +1112,7 @@
               }
             },
             {
-              "time": "899ms",
+              "time": "900ms",
               "counts": {
                 "info": 1,
                 "warn": 1,
@@ -1129,7 +1129,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "988ms",
+              "time": "989ms",
               "counts": {
                 "info": 1,
                 "warn": 2,
@@ -1209,7 +1209,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "60s",
+              "time": "60001ms",
               "counts": {
                 "info": 3,
                 "warn": 2
@@ -1252,7 +1252,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {
                 "info": 2
               }
@@ -1267,11 +1267,11 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {}
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {}
             }
           ]
@@ -1284,7 +1284,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "209999ms",
+              "time": "210000ms",
               "counts": {}
             }
           ]
@@ -1317,7 +1317,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {}
             }
           ]
@@ -1330,11 +1330,11 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {}
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {}
             }
           ]
@@ -1347,7 +1347,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "209999ms",
+              "time": "210000ms",
               "counts": {}
             }
           ]
@@ -1385,7 +1385,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "59999ms",
+              "time": "60000ms",
               "counts": {}
             }
           ]
@@ -1398,11 +1398,11 @@
           "step": "60s",
           "expected": [
             {
-              "time": "119999ms",
+              "time": "120000ms",
               "counts": {}
             },
             {
-              "time": "179999ms",
+              "time": "180000ms",
               "counts": {}
             }
           ]
@@ -1415,7 +1415,7 @@
           "step": "0s",
           "expected": [
             {
-              "time": "209999ms",
+              "time": "210000ms",
               "counts": {}
             }
           ]
