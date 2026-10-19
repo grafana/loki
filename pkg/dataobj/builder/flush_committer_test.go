@@ -198,7 +198,7 @@ func TestFlushCommitter(t *testing.T) {
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 0, resultCancelled: 1})
 	})
 
-	t.Run("should not commit when indexing is canceled", func(t *testing.T) {
+	t.Run("should not commit when the context is canceled during the upload and the index", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
@@ -216,7 +216,6 @@ func TestFlushCommitter(t *testing.T) {
 		// The cancellation must stay visible so the processor shuts down
 		// gracefully instead of treating this as an unrecoverable flush.
 		require.ErrorIs(t, err, context.Canceled)
-		require.ErrorContains(t, err, "failed to index data object")
 		require.Empty(t, tocWriter.paths)
 		require.Empty(t, committer.offsets)
 		// The object is still released on the way out.
@@ -243,6 +242,46 @@ func TestFlushCommitter(t *testing.T) {
 		require.Equal(t, float64(0), testutil.ToFloat64(flushCommitter.e2eLagSeconds))
 		require.Equal(t, 1, flusher.closer.closed)
 		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 0, resultCancelled: 1})
+	})
+
+	t.Run("should index the object while it uploads", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				reg            = prometheus.NewRegistry()
+				flusher        = &mockFlusher{obj: &dataobj.Object{}, uploadDelay: time.Second}
+				indexer        = &mockIndexer{delay: time.Second}
+				tocWriter      = &mockTOCWriter{}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
+			)
+			start := time.Now()
+			require.NoError(t, flushCommitter.Flush(t.Context(), []builder{newTestFlushBuilder(t, reg)}, "test", 1))
+
+			// The upload and the index each sleep 1s on the fake clock of the
+			// bubble, so 1s means that they overlapped.
+			require.Equal(t, time.Second, time.Since(start))
+			require.Equal(t, []string{"object_001"}, flusher.uploads)
+			require.Equal(t, []string{"object_001"}, indexer.paths)
+			require.Equal(t, []string{"index/object_001"}, tocWriter.paths)
+			require.Equal(t, []int64{1}, committer.offsets)
+		})
+	})
+
+	t.Run("should not update the ToC or commit when the upload fails", func(t *testing.T) {
+		var (
+			reg            = prometheus.NewRegistry()
+			flusher        = &mockFlusher{obj: &dataobj.Object{}, uploadErr: errors.New("mock upload error")}
+			indexer        = &mockIndexer{}
+			tocWriter      = &mockTOCWriter{}
+			committer      = &mockCommitter{}
+			flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, log.NewNopLogger(), reg)
+		)
+		err := flushCommitter.Flush(t.Context(), []builder{newTestFlushBuilder(t, reg)}, "test", 1)
+		require.EqualError(t, err, "failed to upload data object: mock upload error")
+		require.Empty(t, tocWriter.paths)
+		require.Empty(t, committer.offsets)
+		require.Equal(t, 1, flusher.closer.closed)
+		requireFlushResults(t, reg, map[string]uint64{resultOK: 0, resultError: 1, resultCancelled: 0})
 	})
 
 	t.Run("should fail when the commit is canceled", func(t *testing.T) {
@@ -583,4 +622,8 @@ func (m *flushingMockFlusher) Flush(_ context.Context, b builder, _ string) (*da
 	}
 	m.closer.inner = closer
 	return obj, &m.closer, fmt.Sprintf("object_%03d", m.flushes), nil
+}
+
+func (m *flushingMockFlusher) Upload(_ context.Context, _ *dataobj.Object, _ string) error {
+	return nil
 }

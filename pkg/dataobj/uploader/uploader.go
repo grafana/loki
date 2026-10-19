@@ -83,24 +83,34 @@ func ObjectKey(ctx context.Context, object *dataobj.Object, shaPrefixSize int) (
 	return fmt.Sprintf("objects/%s/%s", sumStr[:shaPrefixSize], sumStr[shaPrefixSize:]), nil
 }
 
-// getKey determines the key in object storage to upload the object to, based on our path scheme.
-func (d *Uploader) getKey(ctx context.Context, object *dataobj.Object) (string, error) {
+// Key returns the key in object storage that [Uploader.Upload] uses for
+// object. It reads the whole object to hash it.
+func (d *Uploader) Key(ctx context.Context, object *dataobj.Object) (string, error) {
 	return ObjectKey(ctx, object, d.SHAPrefixSize)
 }
 
 // Upload uploads an object to the configured bucket and returns the key.
-func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key string, err error) {
-	start := time.Now()
-
-	timer := prometheus.NewTimer(d.metrics.uploadTime)
-	defer timer.ObserveDuration()
-
-	objectPath, err := d.getKey(ctx, object)
+func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (string, error) {
+	key, err := d.Key(ctx, object)
 	if err != nil {
 		d.metrics.uploadFailures.Inc()
 		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(object.Size()))
 		return "", fmt.Errorf("generating object key: %w", err)
 	}
+	if err := d.UploadTo(ctx, object, key); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// UploadTo uploads an object to key in the configured bucket. It retries
+// failed attempts with a backoff. Use [Uploader.Key] to get the key that
+// [Uploader.Upload] uses.
+func (d *Uploader) UploadTo(ctx context.Context, object *dataobj.Object, key string) (err error) {
+	start := time.Now()
+
+	timer := prometheus.NewTimer(d.metrics.uploadTime)
+	defer timer.ObserveDuration()
 
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -110,7 +120,7 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 
 	size := object.Size()
 
-	logger := log.With(d.logger, "key", objectPath, "size", size)
+	logger := log.With(d.logger, "key", key, "size", size)
 
 	for backoff.Ongoing() {
 		level.Debug(logger).Log("msg", "attempting to upload dataobj to object storage", "attempt", backoff.NumRetries())
@@ -121,7 +131,7 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 				return err
 			}
 			defer reader.Close()
-			return d.bucket.Upload(ctx, objectPath, reader)
+			return d.bucket.Upload(ctx, key, reader)
 		}()
 		if err == nil {
 			break
@@ -135,10 +145,10 @@ func (d *Uploader) Upload(ctx context.Context, object *dataobj.Object) (key stri
 	if err != nil {
 		d.metrics.uploadFailures.Inc()
 		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
-		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
+		return fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
 	}
 
 	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
 	level.Info(logger).Log("msg", "uploaded dataobj to object storage", "duration", time.Since(start))
-	return objectPath, nil
+	return nil
 }

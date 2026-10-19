@@ -128,6 +128,29 @@ type mockFlusher struct {
 	onFlush func()
 	// builders holds the flushed builders in the order their flushes started.
 	builders []builder
+	// uploads holds the paths of the uploads that succeeded.
+	uploads []string
+	// uploadDelay is how long each upload sleeps before it returns. In a
+	// synctest bubble, the sleep advances the fake clock. A canceled context
+	// ends the sleep early.
+	uploadDelay time.Duration
+	// uploadErr, if set, is returned by every upload.
+	uploadErr error
+}
+
+func (m *mockFlusher) Upload(ctx context.Context, _ *dataobj.Object, path string) error {
+	select {
+	case <-time.After(m.uploadDelay):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if m.uploadErr != nil {
+		return m.uploadErr
+	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.uploads = append(m.uploads, path)
+	return nil
 }
 
 func (m *mockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
@@ -366,21 +389,41 @@ func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Obje
 	return obj, &m.closer, nil
 }
 
+// mockUploader hands out a distinct key per object and records the uploads.
+// It is safe for concurrent use.
 type mockUploader struct {
-	uploaded []*dataobj.Object
 	mtx      sync.Mutex
+	keys     int
+	uploaded []*dataobj.Object
 }
 
-func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+func (m *mockUploader) Key(_ context.Context, _ *dataobj.Object) (string, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.keys++
+	return fmt.Sprintf("object_%03d", m.keys), nil
+}
+
+func (m *mockUploader) UploadTo(_ context.Context, obj *dataobj.Object, _ string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.uploaded = append(m.uploaded, obj)
-	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
+	return nil
 }
 
-// failureUploader is an uploader that always fails.
-type failureUploader struct{}
+// failureUploader is an uploader whose uploads always fail. If failKey is
+// set, computing a key fails too.
+type failureUploader struct {
+	failKey bool
+}
 
-func (f *failureUploader) Upload(_ context.Context, _ *dataobj.Object) (string, error) {
-	return "", errors.New("mock error")
+func (f *failureUploader) Key(_ context.Context, _ *dataobj.Object) (string, error) {
+	if f.failKey {
+		return "", errors.New("mock key error")
+	}
+	return "object_001", nil
+}
+
+func (f *failureUploader) UploadTo(_ context.Context, _ *dataobj.Object, _ string) error {
+	return errors.New("mock error")
 }
