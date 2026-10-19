@@ -23,7 +23,7 @@ To tear it down use:
 ## Configuration
 
 The configuration of the stack is in the [`config/`](./config/) folder.
-The stack currently runs boltdb-shipper storage on minio (via s3 compatible API). All containers data are stored under `.data-.*` if you need it for debugging purpose.
+The stack currently runs TSDB storage on Silo (a MinIO fork, via the S3 compatible API). All containers data are stored under `.data-.*` if you need it for debugging purpose.
 
 Logs from all containers are ingested via the [loki docker driver](https://grafana.com/docs/loki/latest/clients/docker-driver/).
 
