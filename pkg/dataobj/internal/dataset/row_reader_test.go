@@ -1148,6 +1148,28 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		require.NotEmpty(t, readBatchTestRows(t, opts, 3))
 	})
 
+	t.Run("batch func does not run for a column that is not binary", func(t *testing.T) {
+		dset, columns := buildBatchTestDataset(t)
+		keepEvenIDs := FuncPredicate{
+			Column: columns[0],
+			Keep:   func(_ Column, v Value) bool { return v.Int64()%2 == 0 },
+		}
+		withKeepBatch := keepEvenIDs
+		withKeepBatch.KeepBatch = func(Column, *columnar.UTF8, []int32) []int32 {
+			t.Error("KeepBatch must not run for a column that is not binary")
+			return nil
+		}
+		first := testFuncPredicate(columns[1], keepAll, false)
+
+		rowOpts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{first, keepEvenIDs}}
+		batchOpts := rowOpts
+		batchOpts.Predicates = []Predicate{first, withKeepBatch}
+
+		want := readBatchTestRows(t, rowOpts, 3)
+		require.NotEmpty(t, want)
+		require.Equal(t, want, readBatchTestRows(t, batchOpts, 3))
+	})
+
 	t.Run("batch func that keeps an invalid index returns an error", func(t *testing.T) {
 		badIndexes := map[string]func(n int) []int32{
 			"a repeated index": func(int) []int32 { return []int32{0, 0} },

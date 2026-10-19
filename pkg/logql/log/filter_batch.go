@@ -11,7 +11,8 @@ type LinesBatch struct {
 	// bytes outside the lines, and a line can be empty.
 	Data []byte
 
-	// Offsets holds one more element than there are lines. It does not have to start at 0.
+	// Offsets holds one more element than there are lines, or none when there are no lines. It does
+	// not have to start at 0.
 	//
 	// Offsets must not decrease, and its last element must not exceed len(Data). The functions of
 	// this package do not check these rules. A LinesBatch that breaks them can make a function
@@ -49,7 +50,8 @@ var defaultSequentialIndexes = func() []int32 {
 func FilterBatch(f Filterer, batch LinesBatch, dstIndexes []int32) []int32 {
 	n := batch.count()
 	if n <= len(defaultSequentialIndexes) {
-		return filterBatchAtIndexes(f, batch, defaultSequentialIndexes[:n], dstIndexes)
+		// The three-index slice caps the capacity, so an append cannot write into the shared list.
+		return filterBatchAtIndexes(f, batch, defaultSequentialIndexes[:n:n], dstIndexes)
 	}
 
 	srcIndexes := make([]int32, n)
@@ -65,12 +67,13 @@ type batchFilterer interface {
 
 	// filterBatch appends to dstIndexes the index of every line in srcIndexes that passes the
 	// filter, in ascending order. srcIndexes lists the lines to test: distinct indexes in
-	// ascending order.
+	// ascending order, each below the number of lines in batch.
 	//
-	// dstIndexes may be srcIndexes[:0]. The j-th index that filterBatch appends then overwrites
-	// srcIndexes[j], so filterBatch must read srcIndexes[j] before it appends that index.
-	// filterBatch must not write to srcIndexes in any other way, because srcIndexes can be the
-	// shared defaultSequentialIndexes.
+	// dstIndexes may end where srcIndexes begins in memory, for example when dstIndexes is
+	// srcIndexes[:0]. The j-th index that filterBatch appends then overwrites srcIndexes[j]. So
+	// filterBatch must make one forward pass over srcIndexes, and must read srcIndexes[j] before
+	// it appends that index. It must not write to srcIndexes in any other way, because
+	// srcIndexes can be the shared defaultSequentialIndexes.
 	filterBatch(batch LinesBatch, srcIndexes, dstIndexes []int32) []int32
 }
 
@@ -99,9 +102,9 @@ func (l *containsFilter) filterBatch(batch LinesBatch, srcIndexes, dstIndexes []
 		return append(dstIndexes, srcIndexes...)
 	}
 
-	// filterBatchCaseSensitive matches case, so a case-insensitive filter tests each line of
-	// srcIndexes instead. It also tests every line of the batch, so it applies only when srcIndexes
-	// lists every line: distinct, ascending indexes, as many as the batch has lines.
+	// filterBatchCaseSensitive compares bytes exactly, so a case-insensitive filter tests each
+	// line of srcIndexes instead. It also tests every line of the batch, so it applies only when
+	// srcIndexes lists every line: distinct, ascending indexes, as many as the batch has lines.
 	if l.caseInsensitive || len(srcIndexes) != batch.count() {
 		for _, i := range srcIndexes {
 			if contains(batch.line(i), l.match, l.caseInsensitive) {
@@ -114,8 +117,9 @@ func (l *containsFilter) filterBatch(batch LinesBatch, srcIndexes, dstIndexes []
 }
 
 // filterBatchCaseSensitive appends to dstIndexes the index of every line in batch that holds
-// l.match, in ascending order. It tests every line of the batch, not a subset, and it matches
-// case, so the caller must not use it when l.caseInsensitive is set. l.match must not be empty.
+// l.match, in ascending order. It tests every line of the batch, so the caller must pass the
+// whole batch. It compares bytes exactly and ignores l.caseInsensitive, so the caller must use it
+// only for a case-sensitive filter. l.match must not be empty.
 //
 // It searches the whole buffer with one bytes.Index call per hit, instead of one call per line.
 func (l *containsFilter) filterBatchCaseSensitive(batch LinesBatch, dstIndexes []int32) []int32 {
@@ -138,8 +142,8 @@ func (l *containsFilter) filterBatchCaseSensitive(batch LinesBatch, dstIndexes [
 		hit := pos + i
 
 		// Find the line that holds the hit: the last r with offsets[r] <= hit. Hits come in
-		// ascending order and often sit in the next line, so gallop from the previous line
-		// before the binary search.
+		// ascending order, so search forward from row, the first line that can hold this hit. Gallop
+		// first, because the hit is often near row. Then binary search the last step.
 		lo, step := row, 1
 		for lo+step <= n && int(offsets[lo+step]) <= hit {
 			lo += step
@@ -155,8 +159,9 @@ func (l *containsFilter) filterBatchCaseSensitive(batch LinesBatch, dstIndexes [
 			}
 		}
 
-		// The buffer has no separator between lines, so l.match can match across two lines.
-		// Such a hit belongs to no line. A real hit can start inside it, so continue at hit+1.
+		// The buffer has no separator between lines, so l.match can match across line boundaries,
+		// and over more than two lines when a line is shorter than l.match. Such a hit belongs to no
+		// line. A real hit can start inside it, so continue at hit+1.
 		if hit+len(l.match) > int(offsets[lo+1]) {
 			pos = hit + 1
 			row = lo
@@ -266,7 +271,7 @@ func filterBatchAtIndexes(f Filterer, batch LinesBatch, srcIndexes, dstIndexes [
 }
 
 // appendDifference appends to dst the elements of a that are not in b. Both hold distinct indexes
-// in ascending order. dst may be a[:0].
+// in ascending order. dst may end where a begins in memory, for example when dst is a[:0].
 func appendDifference(dst, a, b []int32) []int32 {
 	j := 0
 	for _, x := range a {
@@ -281,8 +286,8 @@ func appendDifference(dst, a, b []int32) []int32 {
 	return dst
 }
 
-// appendUnion appends to dst the elements of a and b, each once. Both hold distinct indexes in
-// ascending order. dst must not share memory with a or b.
+// appendUnion appends to dst the union of a and b, in ascending order. An element in both appears
+// once. Both hold distinct indexes in ascending order. dst must not share memory with a or b.
 func appendUnion(dst, a, b []int32) []int32 {
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {

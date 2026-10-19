@@ -77,8 +77,8 @@ func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count
 
 // ReadEach is like [columnReader.Read], but it passes the values to visit instead of returning
 // them. It reads up to the next count values from the column, without joining the pages it
-// touches. It calls visit once for each page, in order, with the array of values that the page
-// holds. It returns the first error of visit and stops.
+// touches. It calls visit once for each page, in order, with the values that it read from that
+// page. It returns the first error of visit and stops.
 //
 // The arrays come from alloc and stay valid until the caller reclaims alloc.
 //

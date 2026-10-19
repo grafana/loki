@@ -485,7 +485,10 @@ func (r *RowReader) initBatchPredicates() {
 			continue
 		}
 
-		index := r.columnsLookup[fp.Column]
+		index, ok := r.columnsLookup[fp.Column]
+		if !ok {
+			continue
+		}
 		r.batchPredicates[i] = &batchPredicate{
 			predicate: fp,
 			index:     index,

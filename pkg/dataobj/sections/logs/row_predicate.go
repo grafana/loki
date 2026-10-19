@@ -40,16 +40,17 @@ type (
 		// at the same time, so it must be safe for concurrent use.
 		Keep func(line []byte) bool
 
-		// KeepBatch is optional. It tests a batch of lines at once. The reader then skips the
-		// per-row call and the copy of each line that fails.
+		// KeepBatch is optional. It tests a batch of lines at once, which saves a Keep call and a
+		// line copy for each row. The reader calls Keep when it cannot use KeepBatch, so Keep must
+		// always be set.
 		//
-		// Line i is data[offsets[i]:offsets[i+1]]. An entry with no message is an empty line.
-		// Lines have no separator, offsets can start after 0, and data can hold bytes that
-		// belong to no line.
+		// Line i is data[offsets[i]:offsets[i+1]]. An entry with no message is an empty line, and
+		// Keep gets a nil line for it, so Keep must treat a nil and an empty line alike. Lines have
+		// no separator, offsets can start after 0, and data can hold bytes that belong to no line.
 		//
 		// KeepBatch appends to dstIndexes the index of every line that Keep keeps, in ascending
 		// order with no repeat, and returns the result. It must give the same result as Keep on
-		// every line. The reader can call Keep instead.
+		// every line.
 		//
 		// The arguments belong to the reader and are valid only during the call. KeepBatch must
 		// not retain data, offsets or dstIndexes, and must not modify data or offsets. Like Keep,

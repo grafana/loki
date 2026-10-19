@@ -244,10 +244,10 @@ func (pr *basicRowReader) fill(ctx context.Context, columns []Column, s []Row) (
 // them into the rows. It reads each group of rows with consecutive indexes on its own, as
 // [basicRowReader.Fill] does.
 //
-// visit receives the array of values that one page holds for a group, and the position in s of
-// the first row that the array covers. The arrays of a group come in order. visit must not keep an
-// array past the call. visit can reorder the rows of s before the end of that array, but must not
-// touch the rows after it.
+// visit receives one array of values read from one page, and the position in s of the first row
+// that the array covers. The arrays of a group come in order. visit must not keep an array past
+// the call. visit can reorder the rows of s before the end of that array, but must not touch the
+// rows after it.
 //
 // s[i].Index must be set. The column must hold binary values, or visitColumn returns an error.
 // Unlike Fill, visitColumn reports a column that ends before the last row of s as an error, not as

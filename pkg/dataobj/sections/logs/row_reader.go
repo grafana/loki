@@ -117,6 +117,8 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 // When the section holds no such column, a metadata or message predicate evaluates against the
 // empty value.
 //
+// When the section holds none of the projected columns, Open returns an error.
+//
 // When SetProjectedColumns is not called, every recognized column is projected.
 //
 // SetProjectedColumns may only be called before reading begins or after a call to
@@ -205,9 +207,8 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	if r.projected {
 		projectedDatasetColumns, projectedSectionColumns = projectColumns(datasetColumns, sectionColumns, r.projTypes, r.projMetadata)
 
-		// The section holds none of the projected columns, so there is nothing to return. The
-		// dataset reader cannot be opened on an empty column set, so report it here rather
-		// than let it panic later.
+		// The section holds none of the projected columns, so every record would be empty. Report
+		// it here instead of reading rows that hold nothing.
 		if len(projectedDatasetColumns) == 0 {
 			return fmt.Errorf("none of the projected columns are present in the section")
 		}

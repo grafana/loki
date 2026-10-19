@@ -56,6 +56,12 @@ func TestFilterBatch(t *testing.T) {
 			want:   []int32{1},
 		},
 		{
+			name:   "containsFilter should skip two overlapping literals that each span two adjacent lines",
+			filter: mustNewMatcherFilter(t, "aaa", LineMatchEqual),
+			lines:  []string{"xaa", "aayy"},
+			want:   nil,
+		},
+		{
 			name:   "containsFilter should treat an empty line as holding no literal",
 			filter: mustNewMatcherFilter(t, "error", LineMatchEqual),
 			lines:  []string{"", "error", ""},
@@ -188,6 +194,19 @@ func TestFilterBatch(t *testing.T) {
 
 			got := FilterBatch(tc.filter, batch, nil)
 			require.Equal(t, tc.want, got)
+
+			bf, ok := tc.filter.(batchFilterer)
+			if !ok {
+				return
+			}
+			t.Run("filterBatch should return the same lines when dstIndexes is srcIndexes[:0]", func(t *testing.T) {
+				srcIndexes := make([]int32, batch.count())
+				for i := range srcIndexes {
+					srcIndexes[i] = int32(i)
+				}
+				got := bf.filterBatch(batch, srcIndexes, srcIndexes[:0])
+				require.True(t, slices.Equal(tc.want, got), "want %v, got %v", tc.want, got)
+			})
 		})
 	}
 
@@ -225,6 +244,67 @@ func TestFilterBatch(t *testing.T) {
 			mustNewMatcherFilter(t, "even", LineMatchEqual),
 		)
 		require.Equal(t, wantBoth, FilterBatch(both, batch, nil))
+	})
+
+	t.Run("FilterBatch should match Filter on batches around the size of the shared list of indexes", func(t *testing.T) {
+		// These filters read srcIndexes, so a wrong index list changes their result.
+		filters := map[string]Filterer{
+			"negated literal": NewNotFilter(mustNewMatcherFilter(t, "needle", LineMatchEqual)),
+			"regexp":          mustNewFilter(t, "needl+e", LineMatchRegexp),
+			"or": newOrFilter(
+				mustNewMatcherFilter(t, "needle", LineMatchEqual),
+				mustNewMatcherFilter(t, "even", LineMatchEqual),
+			),
+		}
+
+		shared := len(defaultSequentialIndexes)
+		for _, size := range []int{shared - 1, shared, shared + 1, 2*shared + 3} {
+			rows := make([]string, size)
+			for i := range rows {
+				rows[i] = "plain"
+				if i%7 == 0 {
+					rows[i] = "needle"
+				}
+				if i%5 == 0 {
+					rows[i] = "even"
+				}
+			}
+			batch := newTestLinesBatch(rows...)
+
+			for name, f := range filters {
+				want := filterEachLine(f, batch)
+				require.NotEmpty(t, want, "%s with %d lines", name, size)
+				require.Equal(t, want, FilterBatch(f, batch, nil), "%s with %d lines", name, size)
+			}
+		}
+	})
+
+	t.Run("FilterBatch should return no line for a batch without offsets", func(t *testing.T) {
+		filters := map[string]Filterer{
+			"literal":         mustNewMatcherFilter(t, "a", LineMatchEqual),
+			"negated literal": NewNotFilter(mustNewMatcherFilter(t, "a", LineMatchEqual)),
+			"trueFilter":      TrueFilter,
+		}
+		batches := map[string]LinesBatch{
+			"nil offsets":   {},
+			"empty offsets": {Data: []byte("abc"), Offsets: []int32{}},
+		}
+
+		for filterName, f := range filters {
+			for batchName, batch := range batches {
+				require.Empty(t, FilterBatch(f, batch, nil), "%s with %s", filterName, batchName)
+			}
+		}
+	})
+
+	t.Run("orFilter should test wrapped children with their batch form", func(t *testing.T) {
+		left, right := &spyBatchFilter{}, &spyBatchFilter{}
+		f := newOrFilter(WrapFilterer(left), WrapFilterer(right))
+
+		FilterBatch(f, newTestLinesBatch("a", "b", "c"), nil)
+
+		require.Zero(t, left.filterCalls+right.filterCalls)
+		require.Positive(t, left.batchCalls)
 	})
 
 	t.Run("FilterBatch should append to the given dstIndexes", func(t *testing.T) {
@@ -327,6 +407,14 @@ func TestFilterBatch(t *testing.T) {
 			require.True(t, slices.Equal(want, got[2:]), "trial %d, rows %q, want %v, got %v", trial, rows, want, got[2:])
 		}
 	})
+
+	t.Run("FilterBatch should leave the shared list of indexes unchanged", func(t *testing.T) {
+		want := make([]int32, len(defaultSequentialIndexes))
+		for i := range want {
+			want[i] = int32(i)
+		}
+		require.Equal(t, want, defaultSequentialIndexes)
+	})
 }
 
 func newTestLinesBatch(lines ...string) LinesBatch {
@@ -365,4 +453,22 @@ func mustNewMatcherFilter(t *testing.T, match string, mt LineMatchType) MatcherF
 	m, ok := f.(MatcherFilterer)
 	require.True(t, ok, "%T is not a MatcherFilterer", f)
 	return m
+}
+
+// spyBatchFilter keeps every line and counts how a test calls it.
+type spyBatchFilter struct {
+	filterCalls int
+	batchCalls  int
+}
+
+func (s *spyBatchFilter) Filter([]byte) bool {
+	s.filterCalls++
+	return true
+}
+
+func (s *spyBatchFilter) ToStage() Stage { return NoopStage }
+
+func (s *spyBatchFilter) filterBatch(_ LinesBatch, srcIndexes, dstIndexes []int32) []int32 {
+	s.batchCalls++
+	return append(dstIndexes, srcIndexes...)
 }
