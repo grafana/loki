@@ -52,7 +52,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.newQueryPanel('Compaction run duration (seconds)') +
-            g.queryPanel('loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(), '{{pod}}'),
+            g.queryPanel(
+              [
+                'loki_tsdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(),
+                'loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher(),
+              ],
+              ['{{pod}}', '{{pod}}'],
+            ),
           )
         ).addRow(
           g.row('Deletion metrics')

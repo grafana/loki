@@ -289,4 +289,4 @@ limits_config:
   retention_period: 360h
 ```
 
-To verify the Compactor is running and retention is active, check the Loki logs for lines referencing `compactor` and look for the metrics `loki_boltdb_shipper_compact_tables_operation_total` (compaction runs) and `loki_compactor_apply_retention_operation_total` (retention runs).
+To verify the Compactor is running and retention is active, check the Loki logs for lines referencing `compactor` and look for the metrics `loki_tsdb_shipper_compact_tables_operation_total` (compaction runs) and `loki_compactor_apply_retention_operation_total` (retention runs).
