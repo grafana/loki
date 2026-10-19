@@ -711,8 +711,6 @@ func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
 		"msg", "metastore-locality-summary",
 		"toc_tables", xcap.Value[int64](q.capture, metastore.StatMetastoreTocTables),
 		"index_objects", xcap.Value[int64](q.capture, metastore.StatMetastoreIndexObjects),
-		"index_sections_opened", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened),
-		"index_sections_productive", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive),
 		"logs_sections_resolved", sectionsResolved,
 	)
 }

@@ -92,7 +92,7 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int)
 	if err != nil {
 		return nil, err
 	}
-	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, Columns: columns, PrefetchAllOnOpen: false})
+	r := dataset.NewRowReader(dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false})
 	if err := r.Open(ctx); err != nil {
 		_ = r.Close()
 		return nil, fmt.Errorf("opening dataset row reader: %w", err)

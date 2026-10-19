@@ -37,6 +37,9 @@ type streamSelector struct {
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
 
+	// bucketRange prunes the label rows to read. A nil range does not filter by bucket range.
+	bucketRange *postings.ShardBucketRange
+
 	compiledMatchers []postings.CompiledMatcher
 	compiledFilters  []postings.CompiledMatcher
 	scanners         []*postings.Scanner
@@ -44,7 +47,7 @@ type streamSelector struct {
 	opened           bool
 }
 
-func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time) *streamSelector {
+func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time, bucketRange *postings.ShardBucketRange) *streamSelector {
 	var all, eq []*labels.Matcher
 	for _, p := range predicates {
 		if p == nil {
@@ -55,7 +58,7 @@ func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.T
 			eq = append(eq, p)
 		}
 	}
-	return &streamSelector{matchers: matchers, predicates: all, equalPredicates: eq, start: start, end: end}
+	return &streamSelector{matchers: matchers, predicates: all, equalPredicates: eq, start: start, end: end, bucketRange: bucketRange}
 }
 
 func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
@@ -103,6 +106,7 @@ func (s *streamSelector) open(ctx context.Context, sections []*postings.Section,
 				s.predicates,
 				labelStats[i],
 				bloomStats[i],
+				s.bucketRange,
 			)
 			if err != nil {
 				return fmt.Errorf("creating postings scanner readers: %w", err)

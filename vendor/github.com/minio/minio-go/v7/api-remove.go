@@ -743,6 +743,15 @@ func (c *Client) RemoveIncompleteUpload(ctx context.Context, bucketName, objectN
 	return nil
 }
 
+// abortFailedUpload aborts the multipart upload of a failed PutObject or
+// ComposeObject. It detaches from ctx so the abort is still sent when the
+// failure was the caller canceling ctx.
+func (c *Client) abortFailedUpload(ctx context.Context, bucketName, objectName, uploadID string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+}
+
 // abortMultipartUpload aborts a multipart upload for the given
 // uploadID, all previously uploaded parts are deleted.
 func (c *Client) abortMultipartUpload(ctx context.Context, bucketName, objectName, uploadID string) error {

@@ -2228,11 +2228,13 @@ func TestShardCalculation(t *testing.T) {
 	desiredRate := 3 * megabyte
 
 	for _, tc := range []struct {
-		name       string
-		streamSize int
-		rate       int64
+		name          string
+		streamSize    int
+		rate          int64
+		maxShardCount int
 
 		wantShards int
+		wantCapped bool
 	}{
 		{
 			name:       "not enough data to be sharded, stream size (1mb) + ingested rate (0mb) < 3mb",
@@ -2258,10 +2260,34 @@ func TestShardCalculation(t *testing.T) {
 			rate:       int64(300 * megabyte),
 			wantShards: 101,
 		},
+		{
+			name:          "maxShardCount limits the maximum number of shards",
+			streamSize:    1 * megabyte,
+			rate:          int64(10 * megabyte),
+			maxShardCount: 2,
+			wantShards:    2,
+			wantCapped:    true,
+		},
+		{
+			name:          "maxShardCount higher than the natural shard count is a no-op",
+			streamSize:    1 * megabyte,
+			rate:          int64(300 * megabyte),
+			maxShardCount: 1000,
+			wantShards:    101,
+		},
+		{
+			name:          "maxShardCount of 1 pins the stream to a single shard",
+			streamSize:    1 * megabyte,
+			rate:          int64(300 * megabyte),
+			maxShardCount: 1,
+			wantShards:    1,
+			wantCapped:    true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := calculateShards(tc.rate, tc.streamSize, desiredRate)
-			require.Equal(t, tc.wantShards, got)
+			count, capped := calculateShards(tc.rate, tc.streamSize, desiredRate, tc.maxShardCount)
+			require.Equal(t, tc.wantShards, count)
+			require.Equal(t, tc.wantCapped, capped)
 		})
 	}
 }
@@ -3131,6 +3157,98 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
+func TestDistributor_PushRejectPartialWritesByPolicy(t *testing.T) {
+	const (
+		backfillLabels = `{app="backfill"}`
+		blockedLabels  = `{app="blocked"}`
+	)
+
+	for _, tc := range []struct {
+		name                string
+		rejectPartialWrites map[string]bool
+		blockStatusCode     int
+		expectedStatusCode  int32
+		expectWrites        bool
+		expectedRejected    map[string]float64
+	}{
+		{
+			name:               "partial write - policy not configured",
+			blockStatusCode:    http.StatusTooManyRequests,
+			expectedStatusCode: http.StatusTooManyRequests,
+			expectWrites:       true,
+		},
+		{
+			name:                "full reject - accepted stream policy rejects partial writes",
+			rejectPartialWrites: map[string]bool{"backfill": true},
+			blockStatusCode:     http.StatusTooManyRequests,
+			expectedStatusCode:  http.StatusTooManyRequests,
+			expectWrites:        false,
+			expectedRejected:    map[string]float64{"backfill": 1},
+		},
+		{
+			name:                "full reject - rejected stream policy rejects partial writes",
+			rejectPartialWrites: map[string]bool{"blocked": true},
+			blockStatusCode:     http.StatusTooManyRequests,
+			expectedStatusCode:  http.StatusTooManyRequests,
+			expectWrites:        false,
+			expectedRejected:    map[string]float64{"blocked": 1},
+		},
+		{
+			name:                "partial write - non 429 errors do not reject the whole push",
+			rejectPartialWrites: map[string]bool{"backfill": true},
+			blockStatusCode:     http.StatusBadRequest,
+			expectedStatusCode:  http.StatusBadRequest,
+			expectWrites:        true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+				"backfill": []*validation.PriorityStream{{Selector: backfillLabels, Priority: 1}},
+				"blocked":  []*validation.PriorityStream{{Selector: blockedLabels, Priority: 1}},
+			}
+			require.NoError(t, limits.PolicyStreamMapping.Validate())
+			limits.BlockIngestionPolicyUntil = map[string]flagext.Time{
+				"blocked": flagext.Time(time.Now().Add(time.Hour)),
+			}
+			limits.BlockIngestionStatusCode = tc.blockStatusCode
+			limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{}
+			for policy, reject := range tc.rejectPartialWrites {
+				limits.PolicyOverrideLimits[policy] = validation.PolicyOverridableLimits{RejectPartialWrites: reject}
+			}
+
+			distributors, ingesters := prepare(t, 1, 3, limits, nil)
+			request := makeWriteRequestWithLabels(1, 100, []string{backfillLabels, blockedLabels}, false, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			require.Error(t, err)
+
+			resp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok)
+			require.Equal(t, tc.expectedStatusCode, resp.Code)
+
+			var pushed int
+			for i := range ingesters {
+				ingesters[i].mu.Lock()
+				pushed += len(ingesters[i].pushed)
+				ingesters[i].mu.Unlock()
+			}
+			if tc.expectWrites {
+				require.Positive(t, pushed)
+			} else {
+				require.Zero(t, pushed)
+			}
+
+			rejected := distributors[0].m.rejectedPartialWrites
+			require.Equal(t, len(tc.expectedRejected), testutil.CollectAndCount(rejected))
+			for policy, count := range tc.expectedRejected {
+				require.Equal(t, count, testutil.ToFloat64(rejected.WithLabelValues("test", policy)))
 			}
 		})
 	}
@@ -4848,17 +4966,6 @@ func TestDistributor_LimitsServiceShardObservations(t *testing.T) {
 				StreamHash: streamHash,
 				Shards:     1,
 				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonFailed)},
-			}},
-		},
-		expectFailed: true,
-	}, {
-		name:                "the answering instance does not own the partition: not compared",
-		shardStreamsEnabled: true,
-		checkLimitsAndShardResponse: &limitsproto.CheckLimitsAndShardResponse{
-			Results: []*limitsproto.StreamShardResult{{
-				StreamHash: streamHash,
-				Shards:     1,
-				Stats:      &limitsproto.ShardStats{ShardDecisionContext: uint32(limits.ReasonNotOwned)},
 			}},
 		},
 		expectFailed: true,

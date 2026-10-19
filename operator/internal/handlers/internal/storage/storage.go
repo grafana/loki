@@ -103,6 +103,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 }
 
 func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) bool {
+	//nolint:staticcheck
 	activeVersion := lokiv1.ObjectStorageSchemaV11
 	for _, s := range schemas {
 		time, _ := s.EffectiveDate.UTCTime()
@@ -111,6 +112,7 @@ func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time
 		}
 	}
 
+	//nolint:staticcheck
 	return activeVersion != lokiv1.ObjectStorageSchemaV11 &&
 		activeVersion != lokiv1.ObjectStorageSchemaV12
 }

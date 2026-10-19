@@ -197,7 +197,7 @@ func newInstance(
 
 		tailers:             map[uint32]*tailer{},
 		limiter:             limiter,
-		streamCountLimiter:  newStreamCountLimiter(instanceID, streams.Len, memoryPolicyStreams, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
+		streamCountLimiter:  newStreamCountLimiter(instanceID, streams.Len, memoryPolicyStreams, limiter, ownedStreamsSvc),
 		ownedStreamsSvc:     ownedStreamsSvc,
 		memoryPolicyStreams: memoryPolicyStreams,
 		configs:             configs,

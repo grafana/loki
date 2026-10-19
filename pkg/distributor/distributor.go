@@ -665,6 +665,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	var ingestionBlockedError error
 
+	// rejectPartialWritesPolicy is the first policy in the push configured with
+	// reject_partial_writes, if any. Such pushes are rejected as a whole on a 429 instead of being
+	// partially written, see the check before the streams are sent.
+	var (
+		rejectPartialWrites       bool
+		rejectPartialWritesPolicy string
+	)
+
 	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
 	// resolved policy has a per-policy ingestion rate override are metered against their own
 	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
@@ -689,6 +697,10 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 			var lbs labels.Labels
 			var retentionHours, policy string
 			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+			if !rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, policy) {
+				rejectPartialWrites = true
+				rejectPartialWritesPolicy = policy
+			}
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -875,6 +887,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.Intern
 
 	if len(streams) == 0 && validationErr != nil {
 		return nil, validationErr
+	}
+
+	// Reject the whole push with a 429 when a policy asks for it, instead of partially writing and sending a 429.
+	if rejectPartialWrites && validationErr != nil {
+		// Partially accepted data still consumes the ratelimit/stream tokens.
+		if resp, ok := httpgrpc.HTTPResponseFromError(validationErr); ok && resp.Code == http.StatusTooManyRequests {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID, rejectPartialWritesPolicy).Inc()
+			return nil, validationErr
+		}
 	}
 
 	tracker := PushTracker{
@@ -1414,11 +1435,9 @@ func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mo
 			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
 			shardCounts[i] = 0
 		case !ok,
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed),
-			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonNotOwned):
-			// No usable answer: there was none, the service could not check the
-			// stream, or the instance that answered does not own its
-			// partition. Comparing it would report agreement or disagreement
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed):
+			// No usable answer: there was none, or the service could not check
+			// the stream. Comparing it would report agreement or disagreement
 			// that does not exist.
 			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
 			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
@@ -1810,21 +1829,25 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream logproto.InternalS
 		pushRate = 1
 	}
 
-	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
-	if shards == 0 {
-		// 1 shard is enough for the given stream.
-		return 1
+	n, capped := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val(), streamShardcfg.MaxShardCount)
+	if capped {
+		d.m.rateStoreMaxShardsLimited.WithLabelValues(tenantID).Inc()
 	}
-
-	return shards
+	return n
 }
 
-func calculateShards(rate int64, pushSize, desiredRate int) int {
+func calculateShards(rate int64, pushSize, desiredRate, maxShardCount int) (n int, capped bool) {
 	shards := float64(rate+int64(pushSize)) / float64(desiredRate)
 	if shards <= 1 {
-		return 1
+		return 1, false
 	}
-	return int(math.Ceil(shards))
+	n = int(math.Ceil(shards))
+	if maxShardCount > 0 && n > maxShardCount {
+		n = maxShardCount
+		capped = true
+	}
+	n = max(n, 1) // minumum number of shards is 1
+	return
 }
 
 func nestedStreamSize(s logproto.InternalStreamAdapter) int {

@@ -115,183 +115,6 @@ lbac:
 # Configures the server of the launched module(s).
 [server: <server>]
 
-ui:
-  # Enable the experimental Loki UI.
-  # CLI flag: -ui.enabled
-  [enabled: <boolean> | default = false]
-
-  # Enable debug logging for the UI.
-  # CLI flag: -ui.debug
-  [debug: <boolean> | default = false]
-
-  goldfish:
-    # Enable the Goldfish query comparison feature.
-    # CLI flag: -ui.goldfish.enable
-    [enable: <boolean> | default = false]
-
-    storage:
-      # Storage backend type (cloudsql, rds, or empty for no storage)
-      # CLI flag: -ui.goldfish.storage.type
-      [type: <string> | default = ""]
-
-      # CloudSQL host for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.host
-      [cloudsql_host: <string> | default = "127.0.0.1"]
-
-      # CloudSQL port for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.port
-      [cloudsql_port: <int> | default = 3306]
-
-      # CloudSQL database name for Goldfish.
-      # CLI flag: -ui.goldfish.storage.cloudsql.database
-      [cloudsql_database: <string> | default = "goldfish"]
-
-      # CloudSQL username for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.user
-      [cloudsql_user: <string> | default = ""]
-
-      # RDS endpoint (host:port)
-      # CLI flag: -ui.goldfish.storage.rds.endpoint
-      [rds_endpoint: <string> | default = ""]
-
-      # RDS database name
-      # CLI flag: -ui.goldfish.storage.rds.database
-      [rds_database: <string> | default = ""]
-
-      # RDS database user
-      # CLI flag: -ui.goldfish.storage.rds.user
-      [rds_user: <string> | default = ""]
-
-      # Maximum number of database connections for Goldfish.
-      # CLI flag: -ui.goldfish.max-connections
-      [max_connections: <int> | default = 10]
-
-      # Maximum idle time for database connections in seconds.
-      # CLI flag: -ui.goldfish.max-idle-time
-      [max_idle_time_seconds: <int> | default = 300]
-
-    # Base URL of Grafana instance for explore links.
-    # CLI flag: -ui.goldfish.grafana-url
-    [grafana_url: <string> | default = ""]
-
-    # UID of the traces datasource in Grafana.
-    # CLI flag: -ui.goldfish.traces-datasource-uid
-    [traces_datasource_uid: <string> | default = ""]
-
-    # UID of the Loki datasource in Grafana.
-    # CLI flag: -ui.goldfish.logs-datasource-uid
-    [logs_datasource_uid: <string> | default = ""]
-
-    # Namespace for Cell A logs.
-    # CLI flag: -ui.goldfish.cell-a-namespace
-    [cell_a_namespace: <string> | default = ""]
-
-    # Namespace for Cell B logs.
-    # CLI flag: -ui.goldfish.cell-b-namespace
-    [cell_b_namespace: <string> | default = ""]
-
-    # Results storage backend (gcs, s3) for fetching stored query results.
-    # CLI flag: -ui.goldfish.results-backend
-    [results_backend: <string> | default = ""]
-
-    # The thanos_object_store_config block configures the connection to object
-    # storage backend using thanos-io/objstore clients. This will become the
-    # default way of configuring object store clients in future releases.
-    # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
-    # is set to true.
-    # The CLI flags prefix for this block configuration is: ui.goldfish.results
-    [results_bucket: <thanos_object_store_config>]
-
-  ring:
-    kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
-      # CLI flag: -ui.ring.store
-      [store: <string> | default = "consul"]
-
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -ui.ring.prefix
-      [prefix: <string> | default = "collectors/"]
-
-      # Configuration for a Consul client. Only applies if the selected kvstore
-      # is consul.
-      # The CLI flags prefix for this block configuration is: ui.ring
-      [consul: <consul>]
-
-      # Configuration for an ETCD v3 client. Only applies if the selected
-      # kvstore is etcd.
-      # The CLI flags prefix for this block configuration is: ui.ring
-      [etcd: <etcd>]
-
-      multi:
-        # Primary backend storage used by multi-client.
-        # CLI flag: -ui.ring.multi.primary
-        [primary: <string> | default = ""]
-
-        # Secondary backend storage used by multi-client.
-        # CLI flag: -ui.ring.multi.secondary
-        [secondary: <string> | default = ""]
-
-        # Mirror writes to the secondary store.
-        # CLI flag: -ui.ring.multi.mirror-enabled
-        [mirror_enabled: <boolean> | default = false]
-
-        # Timeout for storing a value to the secondary store.
-        # CLI flag: -ui.ring.multi.mirror-timeout
-        [mirror_timeout: <duration> | default = 2s]
-
-    # Period at which to heartbeat to the ring.
-    # CLI flag: -ui.ring.heartbeat-period
-    [heartbeat_period: <duration> | default = 15s]
-
-    # The heartbeat timeout after which compactors are considered unhealthy
-    # within the ring. 0 = never (timeout disabled).
-    # CLI flag: -ui.ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m]
-
-    # File path where tokens are stored. If empty, tokens are not stored at
-    # shutdown and restored at startup.
-    # CLI flag: -ui.ring.tokens-file-path
-    [tokens_file_path: <string> | default = ""]
-
-    # True to enable zone-awareness and replicate blocks across different
-    # availability zones.
-    # CLI flag: -ui.ring.zone-awareness-enabled
-    [zone_awareness_enabled: <boolean> | default = false]
-
-    # Number of tokens to own in the ring.
-    # CLI flag: -ui.ring.num-tokens
-    [num_tokens: <int> | default = 128]
-
-    # Factor for data replication.
-    # CLI flag: -ui.ring.replication-factor
-    [replication_factor: <int> | default = 3]
-
-    # Instance ID to register in the ring.
-    # CLI flag: -ui.ring.instance-id
-    [instance_id: <string> | default = "<hostname>"]
-
-    # Name of network interface to read address from.
-    # CLI flag: -ui.ring.instance-interface-names
-    [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-    # Port to advertise in the ring (defaults to server.grpc-listen-port).
-    # CLI flag: -ui.ring.instance-port
-    [instance_port: <int> | default = 0]
-
-    # IP address to advertise in the ring.
-    # CLI flag: -ui.ring.instance-addr
-    [instance_addr: <string> | default = ""]
-
-    # The availability zone where this instance is running. Required if
-    # zone-awareness is enabled.
-    # CLI flag: -ui.ring.instance-availability-zone
-    [instance_availability_zone: <string> | default = ""]
-
-    # Enable using a IPv6 instance address.
-    # CLI flag: -ui.ring.instance-enable-ipv6
-    [instance_enable_ipv6: <boolean> | default = false]
-
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -1380,6 +1203,14 @@ dataobj:
     # CLI flag: -dataobj.builder.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
+    # The maximum number of data objects that one flush builds, uploads and
+    # indexes at the same time. Each extra object in progress adds the memory to
+    # sort, upload and index it. If one object fails, the flush cancels the
+    # others. The builder commits the Kafka offset only after every object
+    # succeeds.
+    # CLI flag: -dataobj.builder.flush-concurrency
+    [flush_concurrency: <int> | default = 1]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
@@ -1388,6 +1219,11 @@ dataobj:
     # instance hostname instead.
     # CLI flag: -dataobj.builder.partition-id
     [partition_id: <int> | default = -1]
+
+    # How often the builder that consumes partition 0 reads the offsets of every
+    # partition to refresh the loki_dataobj_builder_required_replicas metric.
+    # CLI flag: -dataobj.builder.required-replicas-refresh-interval
+    [required_replicas_refresh_interval: <duration> | default = 30s]
 
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
@@ -1400,6 +1236,13 @@ dataobj:
     # for testing only.
     # CLI flag: -dataobj-metastore.index-storage-prefix
     [index_storage_prefix: <string> | default = "index/v0"]
+
+  # Caches the metadata of the data objects the querier reads. The cache is
+  # enabled when a backend is configured. Entries are keyed by object path, so
+  # the cache cannot differentiate entries between different buckets and
+  # clusters. Multiple installations must not share the same cache backend.
+  # The CLI flags prefix for this block configuration is: dataobj.metadata-cache
+  [metadata_cache: <cache_config>]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
@@ -2410,6 +2253,7 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom.metas-cache`
+- `dataobj.metadata-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.instant-metric-results-cache`
@@ -3120,7 +2964,6 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
-- `ui.ring`
 
 &nbsp;
 
@@ -3407,7 +3250,6 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
-- `ui.ring`
 
 &nbsp;
 
@@ -3429,7 +3271,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is: ui.ring.etcd
+# The CLI flags prefix for this block configuration is: ruler.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -4171,9 +4013,11 @@ wal:
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
 
-# When enabled, the ingester skips stream count limit checks, delegating them
-# entirely to the ingest-limits service (Thor). Requires ingest-limits service
-# to be enabled.
+# Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead.
+# It provides the default for that limit, so the ingester skips stream count
+# limit checks for all tenants that do not set the per-tenant limit, delegating
+# them entirely to the ingest-limits service. Requires ingest-limits service to
+# be enabled.
 # CLI flag: -ingester.delegate-stream-limits-enabled
 [delegate_stream_limits_enabled: <boolean> | default = false]
 
@@ -4408,6 +4252,14 @@ discover_generic_fields:
 # CLI flag: -ingester.use-owned-stream-count
 [use_owned_stream_count: <boolean> | default = false]
 
+# When enabled, the ingester skips stream count limit checks for the tenant,
+# delegating them entirely to the ingest-limits service. Requires ingest-limits
+# service to be enabled. When this limit is not set, the deprecated
+# ingester-wide setting -ingester.delegate-stream-limits-enabled provides its
+# default.
+# CLI flag: -limits.delegate-stream-limits-enabled
+[delegate_stream_limits_enabled: <boolean> | default = false]
+
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
 [max_streams_per_user: <int> | default = 0]
@@ -4465,10 +4317,11 @@ discover_generic_fields:
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 128]
 
-# Target maximum number of bytes assigned to a single sharded query. Also
-# expressible in human readable forms (1GB, etc). Note: This is a _target_ and
-# not an absolute limit. The actual limit can be higher, but the query planner
-# will try to build shards up to this limit.
+# Target maximum number of bytes assigned to a single sharded query that reads
+# chunks. Also expressible in human readable forms (1GB, etc). Note: This is a
+# _target_ and not an absolute limit. The actual limit can be higher, but the
+# query planner will try to build shards up to this limit. The bounded sharding
+# strategy also uses this setting for queries that read data objects.
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
@@ -4551,15 +4404,24 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
-# When enabled, the querier evaluates eligible metric queries in stream-first
-# order, which reads samples one stream at a time instead of in timestamp order.
+# When enabled, Loki evaluates eligible metric queries in stream-first order,
+# which reads samples one stream at a time instead of in timestamp order. The
+# query-frontend and the querier read this setting.
 # CLI flag: -querier.stream-first-execution-enabled
 [stream_first_execution_enabled: <boolean> | default = false]
 
-# Time, inclusive, from which the querier reads stream-first metric queries from
-# data objects. 0 disables it.
+# Time, inclusive, from which stream-first metric queries read data objects. The
+# query-frontend and the querier read this setting. 0 disables it.
 # CLI flag: -querier.dataobj-query-start-time
 [dataobj_query_start_time: <time> | default = 0]
+
+# Target maximum number of bytes assigned to a single sharded query that reads
+# data objects. Also expressible in human readable forms (1GB, etc). Note: This
+# is a _target_ and not an absolute limit. The query-frontend reads this
+# setting. The query-frontend uses it only with the power-of-two sharding
+# strategy. The bounded strategy uses -querier.tsdb-max-bytes-per-shard.
+# CLI flag: -querier.dataobj-max-bytes-per-shard
+[dataobj_max_bytes_per_shard: <int> | default = 6000MB]
 
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
@@ -4728,6 +4590,11 @@ shard_streams:
   # 1536KB/s, it will be sharded into two streams.
   # CLI flag: -shard-streams.desired-rate
   [desired_rate: <int> | default = 1536KB]
+
+  # Maximum number of shards that my be produced by rateStore. The default of 0
+  # means unlimited.
+  # CLI flag: -shard-streams.max-shard-count
+  [max_shard_count: <int> | default = 0]
 
   # Experimental. Whether the ingest-limits service is asked for a shard count
   # for this tenant, and whether its answer is used. One of 'disabled' (default,
@@ -6988,7 +6855,6 @@ Currently this is opt-in and takes effect only when `-use-thanos-objstore` is se
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
-- `ui.goldfish.results`
 
 &nbsp;
 
@@ -7480,6 +7346,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
+- `dataobj.metadata-cache.memcached`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`
@@ -7516,7 +7383,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.chunks-cache.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `tsdb.shipper.postings-cache.memcached`
-- `ui.ring.etcd`
 
 &nbsp;
 

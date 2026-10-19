@@ -63,7 +63,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	inputs, err := c.prepareLogMergeInputs(ctx, node)
 	if err != nil {
 		if errors.Is(err, errNoSourceObjects) {
-			c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+			c.logMergeObserver.ObserveLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		}
 
 		return nil, err
@@ -90,7 +90,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 	batchRecords := 1000
 	observeBatch := func() {
-		c.observeLogMergeInputBytes(inputBytesBatch)
+		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
 		inputBytesTotal += inputBytesBatch
 	}
 	for res := range merged {
@@ -121,7 +121,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, err
 	}
 	if stats.OutputObjects == 0 {
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.logMergeObserver.ObserveLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
@@ -164,7 +164,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"duration", duration,
 	)
 
-	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
+	c.logMergeObserver.ObserveLogMerge(node.Tenant, stats.logMergeObservedStats, duration)
 	return &v2.ResultArtifact{Path: idxPath}, nil
 }
 
@@ -191,18 +191,6 @@ type logMergeObservedStats = LogMergeObservedStats
 // logMergeStats summarizes a completed LogMerge for the reference log line.
 type logMergeStats struct {
 	logMergeObservedStats
-}
-
-func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
-	if c.logMergeObserver != nil {
-		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
-	}
-}
-
-func (c *Context) observeLogMergeInputBytes(bytes int64) {
-	if c.logMergeObserver != nil {
-		c.logMergeObserver.ObserveLogMergeInputBytes(bytes)
-	}
 }
 
 type logSource struct {
@@ -298,7 +286,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 // sourcesMatchSortLayout checks whether every logs section in sources has the
 // target layout. mismatch is the first object path that does not match.
 func sourcesMatchSortLayout(ctx context.Context, sources []*logSource, sortSchema []string) (string, error) {
-	want := logsobj.TargetSortLayout(sortSchema)
+	want := logsobj.TargetSortLayout(sortSchema, streams.DefaultShardLayout())
 	for _, src := range sources {
 		for _, sec := range src.logSectionsByIndex {
 			if sec == nil {
@@ -346,7 +334,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj
 	for _, src := range sources {
 		maps = append(maps, src.streams)
 	}
-	return logsobj.RankMixedStreams(sortSchema, maps...)
+	return logsobj.RankMixedStreams(sortSchema, streams.DefaultShardLayout(), maps...)
 }
 
 // logMergeInputs owns source identity, run order, and the global stream namespace.

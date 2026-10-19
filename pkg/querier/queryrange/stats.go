@@ -40,6 +40,21 @@ type ctxKeyType string
 
 const ctxKey ctxKeyType = "stats"
 
+type internalRequestKeyType struct{}
+
+// WithInternalRequest marks a request that a middleware sends on behalf of the
+// user's query, such as the logline index stats gate. StatsCollectorMiddleware
+// never records such a request as the query's metrics.go line, so if the query
+// later fails, the internal request is not logged in its place.
+func WithInternalRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, internalRequestKeyType{}, true)
+}
+
+func isInternalRequest(ctx context.Context) bool {
+	internal, _ := ctx.Value(internalRequestKeyType{}).(bool)
+	return internal
+}
+
 const (
 	queryTypeLog            = "log"
 	queryTypeMetric         = "metric"
@@ -373,7 +388,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
 			}
-			if data != nil {
+			if data != nil && !isInternalRequest(ctx) {
 				data.recorded = true
 				data.statistics = responseStats
 				data.result = res

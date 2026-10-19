@@ -18,6 +18,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -208,10 +209,13 @@ func RecordRangeAndInstantQueryMetrics(
 		"post_filter_lines", stats.Summary.TotalPostFilterLines,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
+		"dataobj_sections_resolution_max_time", stats.DataobjSectionsResolutionMaxTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"stream_first_queries", stats.Summary.StreamFirstQueries,
+		"timestamp_first_queries", stats.Summary.TimestampFirstQueries,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
@@ -271,6 +275,8 @@ func RecordRangeAndInstantQueryMetrics(
 	if stats.Summary.EstimatedQueryBytes > 0 {
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
+
+	logValues = appendLoglineStats(logValues, stats)
 
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
@@ -516,6 +522,41 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
+// appendLoglineStats adds the logline index fields for queries that went
+// through the logline query-frontend middleware.
+func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []interface{} {
+	l := stats.Logline
+	if l == nil {
+		return logValues
+	}
+	logValues = append(logValues, "logline_outcome", l.Outcome)
+	// A query skipped before the hint lookup has no other logline stats.
+	if l.HintStatus == "" {
+		return logValues
+	}
+
+	logValues = append(logValues,
+		"logline_hint_status", l.HintStatus,
+		"logline_hint_lookup_time", time.Duration(l.HintLookupTime),
+		"logline_hint_wait_time", time.Duration(l.HintWaitTime),
+		"logline_hint_ranges", l.HintRanges,
+		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
+		"logline_skipped_requests", l.SkippedRequests,
+		"logline_narrowed_requests", l.NarrowedRequests,
+		"logline_object_requests", l.ObjectRequests,
+		"logline_io_bytes", util.HumanizeBytes(uint64(l.IOBytes)),
+		"logline_io_wait", time.Duration(l.IOWait),
+		"shard_planned_chunks", l.PlannedChunks,
+		"logline_scanned_chunks", l.ScannedChunks,
+	)
+	// Missing when no split went through shard planning, for example when the
+	// results cache answered the whole query.
+	if l.PlannedChunks > 0 {
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", l.ChunkFilterRatio))
+	}
+	return logValues
+}
+
 func RecordLoglineIndexQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
@@ -523,6 +564,7 @@ func RecordLoglineIndexQueryMetrics(
 	query string,
 	status string,
 	stats logql_stats.Result,
+	hintStats *logproto.HintQueryStats,
 ) {
 	var (
 		logger      = fixLogger(ctx, log)
@@ -552,6 +594,13 @@ func RecordLoglineIndexQueryMetrics(
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
+	if hintStats != nil {
+		logValues = append(logValues,
+			"logline_object_requests", hintStats.ObjectStorageRequests,
+			"logline_io_bytes", util.HumanizeBytes(uint64(hintStats.TotalIOBytes)),
+			"logline_io_wait", hintStats.TotalIOWait,
+		)
+	}
 	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

@@ -60,6 +60,8 @@ The __last__ capture is embedded in each group, so `g.String()` will return the 
 
 In `ECMAScript` mode, duplicate group names are allowed in separate alternatives and keep distinct group numbers. `GroupByName(name)` selects the participating group (or the first if none participated); `GroupNumberFromName(name)` always returns the first declaration's number, which may differ from the selected group.
 
+In `ECMAScript` mode, captures inside a quantified group are cleared before each repetition. Only the final successful repetition's captures remain; a group that does not participate in that repetition has no captures, and its backreference matches the empty string. Other modes retain capture history across repetitions.
+
 If you want to find multiple matches from a single input string you should use the `FindNextMatch` method.  For example, to implement a function similar to `regexp.FindAllString`:
 
 ```go
@@ -311,6 +313,8 @@ func init() {
 In this mode the engine attempts to match the [regex engine](https://tc39.es/ecma262/multipage/text-processing.html#sec-regexp-regular-expression-objects) described in the ECMAScript specification as closely as reasonably possible within regexp2's API and implementation.
 
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
+
+Without `Unicode`, escapes such as `\a`, `\e`, `\A`, `\G`, `\Z`, and `\z` match their literal letters. A control escape `\c` requires an ASCII letter; inside a character class, digits and `_` are also accepted, with character value modulo 32. Otherwise the backslash is literal and `c` and the following syntax are parsed normally: `\c*` matches a backslash followed by zero or more `c` characters, and `[\c]` matches either a backslash or `c`. `Escape` emits `\x07` for BEL so that its output also preserves that character in ECMAScript mode.
 
 Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
 

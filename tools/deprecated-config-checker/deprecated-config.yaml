@@ -18,6 +18,9 @@ index_gateway:
   ring:
     replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."
 
+ingester:
+  delegate_stream_limits_enabled: "Use global or per-tenant delegate_stream_limits_enabled configuration from limits_config."
+
 kafka_config:
   address: "Use reader_config.address or writer_config.address instead."
   client_id: "Use reader_config.client_id or writer_config.client_id instead."

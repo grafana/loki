@@ -86,6 +86,9 @@ type StageHints struct {
 	// when any stage asks. A filter on __error__ therefore also covers an error returned by a
 	// stage placed after the __error__ filter.
 	KeepsErroredLines bool
+
+	// CanModifyLine reports whether the stage can return a line that differs from the one it received.
+	CanModifyLine bool
 }
 
 // Merge combines the hints of two stages that both run on a line.
@@ -94,6 +97,7 @@ func (h StageHints) Merge(other StageHints) StageHints {
 		CanModifyLabels:   h.CanModifyLabels || other.CanModifyLabels,
 		ReadsErrorLabel:   h.ReadsErrorLabel || other.ReadsErrorLabel,
 		KeepsErroredLines: h.KeepsErroredLines || other.KeepsErroredLines,
+		CanModifyLine:     h.CanModifyLine || other.CanModifyLine,
 	}
 }
 
@@ -171,8 +175,8 @@ func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) 
 
 // Hints implements Stage.
 func (noopStage) Hints() StageHints {
-	// It does nothing, so it changes no labels.
-	return StageHints{CanModifyLabels: false}
+	// It does nothing, so it changes no labels and no line.
+	return StageHints{CanModifyLabels: false, CanModifyLine: false}
 }
 
 func (noopStage) RequiredLabelNames() []string { return []string{} }

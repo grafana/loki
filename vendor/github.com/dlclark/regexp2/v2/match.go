@@ -3,6 +3,7 @@ package regexp2
 import (
 	"bytes"
 	"fmt"
+	"sync/atomic"
 	"unicode/utf8"
 )
 
@@ -30,6 +31,9 @@ type Match struct {
 	// whether we've done any balancing with this match.  If we
 	// have done balancing, we'll need to do extra work in Tidy().
 	balancing bool
+
+	// landmarks holds the required landmark searches that found this match.
+	landmarks *requiredLandmarkState
 }
 
 // Group is an explicit or implit (group 0) matched group within the pattern
@@ -60,6 +64,9 @@ type matchText struct {
 	byteOffset       int // original-string byte index of runes[0]
 	byteOffsets      []int
 	byteOffsetsReady bool
+	// landmarkMatch is the last match that FindNextMatch found in this text.
+	// The first call to continue from it takes its landmarks.
+	landmarkMatch atomic.Pointer[Match]
 }
 
 // String returns the captured text. For string input it is a slice of the

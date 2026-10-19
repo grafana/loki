@@ -44,6 +44,8 @@ func TestQueryType(t *testing.T) {
 		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric},
 		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter},
 		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter},
+		{"filter followed by empty filter", `{app="foo"} |= "foo" |= ""`, QueryTypeFilter},
+		{"limited with empty filters", `{app="foo"} |= "" |= ""`, QueryTypeLimited},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -197,6 +199,129 @@ func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
 		require.NotContains(t, out, "failure_category=")
 		require.NotContains(t, out, "failure_reason=")
 	})
+
+	t.Run("logs the stream-first and timestamp-first query counts from the frontend", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := WithComponentContext(user.InjectOrgID(t.Context(), "foo"), componentFrontend)
+		result := stats.Result{Summary: stats.Summary{StreamFirstQueries: 3, TimestampFirstQueries: 5}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "stream_first_queries=3")
+		require.Contains(t, buf.String(), "timestamp_first_queries=5")
+	})
+
+	t.Run("adds the slowest data-object section resolution of the query", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		result := stats.Result{Querier: stats.Querier{Store: stats.Store{
+			Dataobj: stats.Dataobj{SectionsResolutionMaxTime: int64(1500 * time.Millisecond)},
+		}}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "dataobj_sections_resolution_max_time=1.5s")
+	})
+
+	t.Run("adds a zero section resolution time when the query read no data object", func(t *testing.T) {
+		require.Contains(t, record(t, nil), "dataobj_sections_resolution_max_time=0s")
+	})
+}
+
+func TestAppendLoglineStats(t *testing.T) {
+	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
+		return stats.Result{Logline: &stats.Logline{
+			Outcome:            outcome,
+			HintStatus:         "ok",
+			HintLookupTime:     (150 * time.Millisecond).Nanoseconds(),
+			HintWaitTime:       (120 * time.Millisecond).Nanoseconds(),
+			HintRanges:         3,
+			HintRangesDuration: (90 * time.Minute).Nanoseconds(),
+			SkippedRequests:    6,
+			NarrowedRequests:   2,
+			PlannedChunks:      planned,
+			ScannedChunks:      scanned,
+			ChunkFilterRatio:   ratio,
+			ObjectRequests:     12,
+			IOBytes:            2048,
+			IOWait:             (40 * time.Millisecond).Nanoseconds(),
+		}}
+	}
+	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
+		return []interface{}{
+			"logline_outcome", outcome,
+			"logline_hint_status", "ok",
+			"logline_hint_lookup_time", 150 * time.Millisecond,
+			"logline_hint_wait_time", 120 * time.Millisecond,
+			"logline_hint_ranges", int64(3),
+			"logline_hint_ranges_duration", 90 * time.Minute,
+			"logline_skipped_requests", int64(6),
+			"logline_narrowed_requests", int64(2),
+			"logline_object_requests", int64(12),
+			"logline_io_bytes", "2.0kB",
+			"logline_io_wait", 40 * time.Millisecond,
+			"shard_planned_chunks", planned,
+			"logline_scanned_chunks", scanned,
+		}
+	}
+	withRatio := func(outcome string, planned, scanned int64, ratio string) []interface{} {
+		return append(loglineFields(outcome, planned, scanned), "logline_chunk_filter_ratio", ratio)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		stats    stats.Result
+		expected []interface{}
+	}{
+		{
+			name:     "no logline stats",
+			stats:    stats.Result{Index: stats.Index{TotalChunks: 10, ShardPlannedChunks: 10}},
+			expected: []interface{}{},
+		},
+		{
+			name:     "skipped before the hint lookup",
+			stats:    stats.Result{Logline: &stats.Logline{Outcome: "query_too_small", PlannedChunks: 10, ScannedChunks: 10}},
+			expected: []interface{}{"logline_outcome", "query_too_small"},
+		},
+		{
+			name:     "some chunks filtered",
+			stats:    withChunks("data_skipped", 40, 10, 0.75),
+			expected: withRatio("data_skipped", 40, 10, "0.75"),
+		},
+		{
+			name:     "no chunks filtered",
+			stats:    withChunks("tiny_data_skipped", 40, 40, 0),
+			expected: withRatio("tiny_data_skipped", 40, 40, "0.00"),
+		},
+		{
+			name:     "ratio omitted without shard planning",
+			stats:    withChunks("skip_ratio_unavailable", 0, 0, 0),
+			expected: loglineFields("skip_ratio_unavailable", 0, 0),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, appendLoglineStats([]interface{}{}, tc.stats))
+		})
+	}
+}
+
+func TestRecordLoglineIndexQueryMetrics(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	now := time.Now()
+
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "200", stats.Result{}, &logproto.HintQueryStats{
+		ObjectStorageRequests: 12,
+		TotalIOBytes:          2048,
+		TotalIOWait:           40 * time.Millisecond,
+	})
+	require.Contains(t, buf.String(), "query_type=logline_index")
+	require.Contains(t, buf.String(), "logline_object_requests=12 logline_io_bytes=2.0kB logline_io_wait=40ms")
+
+	buf.Reset()
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "500", stats.Result{}, nil)
+	require.NotContains(t, buf.String(), "logline_object_requests")
 }
 
 func TestRecordBytesProcessedTotal(t *testing.T) {

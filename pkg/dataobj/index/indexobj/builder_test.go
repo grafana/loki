@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -34,45 +33,22 @@ var testBuilderConfig = logsobj.BuilderBaseConfig{
 const testTenant = "test-tenant"
 
 func TestBuilder(t *testing.T) {
-	testStreams := []streams.Stream{
+	testPostings := []postings.LabelObservation{
 		{
-			ID: 1,
-			Labels: labels.New(
-				labels.Label{Name: "cluster", Value: "test"},
-				labels.Label{Name: "app", Value: "foo"},
-			),
-			Rows:             2,
-			MinTimestamp:     time.Unix(10, 0).UTC(),
-			MaxTimestamp:     time.Unix(20, 0).UTC(),
-			UncompressedSize: 200,
+			ObjectPath:   "test/path",
+			SectionIndex: 1,
+			ColumnName:   "app",
+			LabelValue:   "foo",
+			StreamID:     1,
+			Timestamp:    time.Unix(10, 0).UTC(),
 		},
 		{
-			ID: 2,
-			Labels: labels.New(
-				labels.Label{Name: "cluster", Value: "test"},
-				labels.Label{Name: "app", Value: "bar"},
-			),
-			Rows:             3,
-			MinTimestamp:     time.Unix(15, 0).UTC(),
-			MaxTimestamp:     time.Unix(25, 0).UTC(),
-			UncompressedSize: 100,
-		},
-	}
-
-	testPointers := []pointers.SectionPointer{
-		{
-			Path:              "test/path",
-			Section:           1,
-			ColumnName:        "foo",
-			ColumnIndex:       1,
-			ValuesBloomFilter: []byte{1, 2, 3},
-		},
-		{
-			Path:              "test/path2",
-			Section:           2,
-			ColumnName:        "bar2",
-			ColumnIndex:       2,
-			ValuesBloomFilter: []byte{1, 2, 3, 4},
+			ObjectPath:   "test/path2",
+			SectionIndex: 2,
+			ColumnName:   "app",
+			LabelValue:   "bar",
+			StreamID:     2,
+			Timestamp:    time.Unix(15, 0).UTC(),
 		},
 	}
 
@@ -80,21 +56,17 @@ func TestBuilder(t *testing.T) {
 		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
-		for _, stream := range testStreams {
-			_, err := builder.AppendStream(stream)
-			require.NoError(t, err)
-		}
-		for _, pointer := range testPointers {
-			err := builder.AppendColumnIndex(pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
-			require.NoError(t, err)
+		for _, obs := range testPostings {
+			builder.ObserveLabelPosting(obs)
 		}
 
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(postings.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
 		require.Equal(t, []string{testTenant}, obj.Tenants())
@@ -142,33 +114,6 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	require.Greater(t, pointerCount, 0)
 }
 
-func TestBuilder_ObserveLogLine(t *testing.T) {
-	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(t, err)
-
-	err = builder.ObserveLogLine("test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
-	require.NoError(t, err)
-
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-	require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
-}
-
-func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
-	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-	require.NoError(b, err)
-
-	const streamCount = 1000
-
-	for b.Loop() {
-		for i := range int64(streamCount) {
-			err := builder.ObserveLogLine("test/path", 1, i, i, time.Unix(10, 0).UTC(), 100)
-			require.NoError(b, err)
-		}
-	}
-}
-
 func TestBuilder_TimeRange(t *testing.T) {
 	t.Run("returns the builder's tenant and zero times when the builder is empty", func(t *testing.T) {
 		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
@@ -177,7 +122,7 @@ func TestBuilder_TimeRange(t *testing.T) {
 		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
 	})
 
-	t.Run("returns the postings range when the builder holds only postings", func(t *testing.T) {
+	t.Run("returns the range of the postings when the builder holds postings", func(t *testing.T) {
 		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
 
@@ -198,37 +143,6 @@ func TestBuilder_TimeRange(t *testing.T) {
 		}, b.TimeRange())
 	})
 
-	t.Run("returns the union of the streams and postings ranges", func(t *testing.T) {
-		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
-		require.NoError(t, err)
-
-		base := time.Unix(10000, 0).UTC()
-
-		// Streams cover [base, base+1h]; postings extend the window on both ends.
-		_, err = b.AppendStream(streams.Stream{
-			Labels:           labels.FromStrings("app", "x"),
-			MinTimestamp:     base,
-			MaxTimestamp:     base.Add(time.Hour),
-			UncompressedSize: 1,
-		})
-		require.NoError(t, err)
-
-		b.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-			StreamID: 1, Timestamp: base.Add(-time.Hour),
-		})
-		b.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
-			StreamID: 2, Timestamp: base.Add(2 * time.Hour),
-		})
-
-		require.Equal(t, dataobj.TimeRange{
-			Tenant:  testTenant,
-			MinTime: base.Add(-time.Hour),
-			MaxTime: base.Add(2 * time.Hour),
-		}, b.TimeRange())
-	})
-
 	t.Run("returns zero times after Reset", func(t *testing.T) {
 		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
 		require.NoError(t, err)
@@ -242,35 +156,6 @@ func TestBuilder_TimeRange(t *testing.T) {
 		b.Reset()
 		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
 	})
-}
-
-func TestUnionTimeRange(t *testing.T) {
-	base := time.Unix(1000, 0).UTC()
-
-	// Case 1: candidate has no data (candMin zero) -> accumulator returned unchanged.
-	gotMin, gotMax := unionTimeRange(base, base.Add(time.Hour), time.Time{}, time.Time{})
-	require.Equal(t, base, gotMin)
-	require.Equal(t, base.Add(time.Hour), gotMax)
-
-	// Case 2: accumulator zero, candidate non-zero -> candidate returned.
-	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, base, base.Add(time.Hour))
-	require.Equal(t, base, gotMin)
-	require.Equal(t, base.Add(time.Hour), gotMax)
-
-	// Case 3: both non-zero, candidate widens on both ends -> widened range.
-	gotMin, gotMax = unionTimeRange(base.Add(time.Hour), base.Add(2*time.Hour), base, base.Add(3*time.Hour))
-	require.Equal(t, base, gotMin)
-	require.Equal(t, base.Add(3*time.Hour), gotMax)
-
-	// Case 4: both non-zero, candidate inside accumulator -> accumulator unchanged.
-	gotMin, gotMax = unionTimeRange(base, base.Add(3*time.Hour), base.Add(time.Hour), base.Add(2*time.Hour))
-	require.Equal(t, base, gotMin)
-	require.Equal(t, base.Add(3*time.Hour), gotMax)
-
-	// Case 5: accumulator zero AND candidate zero -> both zero out.
-	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
-	require.True(t, gotMin.IsZero())
-	require.True(t, gotMax.IsZero())
 }
 
 // failingReadStore is a scratch store whose reads fail: either all of them, or

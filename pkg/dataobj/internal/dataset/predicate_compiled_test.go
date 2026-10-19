@@ -29,10 +29,10 @@ func TestCompilePredicate(t *testing.T) {
 			{"equal matches nil column against nil value", EqualPredicate{Column: colA, Value: nilV}, row(nilV, nilV), true},
 			{"equal does not match non-nil column against nil value", EqualPredicate{Column: colA, Value: nilV}, row(i(5), nilV), false},
 
-			{"in matches a present value", InPredicate{Column: colA, Values: NewInt64ValueSet([]Value{i(1), i(5)})}, row(i(5), nilV), true},
-			{"in does not match an absent value", InPredicate{Column: colA, Values: NewInt64ValueSet([]Value{i(1), i(5)})}, row(i(9), nilV), false},
-			{"in does not match a nil value", InPredicate{Column: colA, Values: NewInt64ValueSet([]Value{i(1)})}, row(nilV, nilV), false},
-			{"in does not match a value of a different type", InPredicate{Column: colA, Values: NewInt64ValueSet([]Value{i(1)})}, row(BinaryValue([]byte("x")), nilV), false},
+			{"in matches a present value", InPredicate{Column: colA, Values: NewInt64ValueSetOf(1, 5)}, row(i(5), nilV), true},
+			{"in does not match an absent value", InPredicate{Column: colA, Values: NewInt64ValueSetOf(1, 5)}, row(i(9), nilV), false},
+			{"in does not match a nil value", InPredicate{Column: colA, Values: NewInt64ValueSetOf(1)}, row(nilV, nilV), false},
+			{"in does not match a value of a different type", InPredicate{Column: colA, Values: NewInt64ValueSetOf(1)}, row(BinaryValue([]byte("x")), nilV), false},
 
 			{"greater than matches a larger value", GreaterThanPredicate{Column: colA, Value: i(5)}, row(i(6), nilV), true},
 			{"greater than does not match an equal value", GreaterThanPredicate{Column: colA, Value: i(5)}, row(i(5), nilV), false},
@@ -107,7 +107,7 @@ func TestCompilePredicate(t *testing.T) {
 			pred Predicate
 		}{
 			{"the missing column is an equal leaf", EqualPredicate{Column: missing, Value: Int64Value(1)}},
-			{"the missing column is an in leaf", InPredicate{Column: missing, Values: NewInt64ValueSet([]Value{Int64Value(1)})}},
+			{"the missing column is an in leaf", InPredicate{Column: missing, Values: NewInt64ValueSetOf(1)}},
 			{"the missing column is a func leaf", FuncPredicate{Column: missing, Keep: func(Column, Value) bool { return true }}},
 			{"the missing column is the left side of an and", AndPredicate{Left: EqualPredicate{Column: missing, Value: Int64Value(1)}, Right: TruePredicate{}}},
 			{"the missing column is the right side of an or", OrPredicate{Left: TruePredicate{}, Right: LessThanPredicate{Column: missing, Value: Int64Value(1)}}},

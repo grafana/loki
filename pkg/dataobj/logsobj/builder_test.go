@@ -102,9 +102,9 @@ func TestBuilder(t *testing.T) {
 			for res := range streams.IterSection(t.Context(), streamSec) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				require.Equal(t, int64(streams.ShardBucket(stream.Labels)), stream.ShardBucket)
+				require.Equal(t, int64(streams.DefaultShardLayout().BucketFromLabels(stream.Labels)), stream.ShardBucket)
 				require.GreaterOrEqual(t, stream.ShardBucket, int64(0))
-				require.Less(t, stream.ShardBucket, int64(streams.ShardFactor))
+				require.Less(t, stream.ShardBucket, int64(streams.DefaultShardLayout().Buckets()))
 			}
 		}
 	})
@@ -356,8 +356,96 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.Equal(t, expectedRecords, actualRecords)
 }
 
+// TestBuilder_CopyAndSort_ShardBuckets asserts a sorted copy stores the same bucket as the source
+// for every stream.
+//
+// The copy takes the bucket from the source section. It does not compute the bucket again. The
+// query side skips the stream-hash check when a shard maps exactly onto buckets. A wrong bucket
+// would then put the stream in the wrong shard.
+func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
+	const (
+		tenant      = "t1"
+		streamCount = 16
+	)
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+
+	source := func(t *testing.T) *dataobj.Object {
+		t.Helper()
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{tenant: {"label:app"}})
+		require.NoError(t, err)
+		for i := range streamCount {
+			require.NoError(t, builder.Append(tenant, logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="app-%d", cluster="test"}`, i),
+				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+			}, now))
+		}
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		return obj
+	}
+
+	bucketsByLabels := func(t *testing.T, obj *dataobj.Object) map[string]int64 {
+		t.Helper()
+		buckets := map[string]int64{}
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamsSection, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamsSection) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				buckets[stream.Labels.String()] = stream.ShardBucket
+			}
+		}
+		return buckets
+	}
+
+	tests := []struct {
+		name      string
+		overrides TenantOverrides
+		resort    bool
+	}{
+		{
+			name:      "the merge-only copy keeps the bucket of every stream",
+			overrides: tenantOverrides{tenant: {"label:app"}},
+			resort:    false,
+		},
+		{
+			name:      "the re-sorting copy keeps the bucket of every stream",
+			overrides: tenantOverrides{tenant: {"label:cluster"}},
+			resort:    true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			src := source(t)
+
+			builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), test.overrides)
+			require.NoError(t, err)
+			resort, err := builder.requiresResort(t.Context(), src)
+			require.NoError(t, err)
+			require.Equal(t, test.resort, resort, "the case must take the copy path it names")
+
+			copied, closer, err := builder.CopyAndSort(t.Context(), src)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			sourceBuckets := bucketsByLabels(t, src)
+			require.Len(t, sourceBuckets, streamCount)
+			require.Equal(t, sourceBuckets, bucketsByLabels(t, copied))
+
+			distinctBuckets := map[int64]struct{}{}
+			for _, bucket := range sourceBuckets {
+				distinctBuckets[bucket] = struct{}{}
+			}
+			require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
+		})
+	}
+}
+
 func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
-	target := TargetSortLayout([]string{"label:app"})
+	target := TargetSortLayout([]string{"label:app"}, streams.DefaultShardLayout())
 	tests := []struct {
 		name    string
 		layouts []logs.SortLayout
@@ -752,7 +840,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Equal(t, logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.ShardFactor,
+				ShardCount:   streams.DefaultShardLayout().Buckets(),
 			}, logsSection.SortLayout())
 		}
 
@@ -791,7 +879,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Equal(t, logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   streams.ShardFactor,
+				ShardCount:   streams.DefaultShardLayout().Buckets(),
 			}, logsSection.SortLayout())
 
 			var (
@@ -1012,11 +1100,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			if i > 0 {
 				prevSchemaKey, err := ComputeSchemaKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				prevKey := streams.NewSortKey(streamsAfter[i-1].labels, prevSchemaKey)
+				prevKey := streams.DefaultShardLayout().NewSortKey(streamsAfter[i-1].labels, prevSchemaKey)
 
 				currSchemaKey, err := ComputeSchemaKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
-				currKey := streams.NewSortKey(stream.labels, currSchemaKey)
+				currKey := streams.DefaultShardLayout().NewSortKey(stream.labels, currSchemaKey)
 				require.LessOrEqual(t, streams.CompareSortKey(prevKey, currKey), 0)
 			}
 		}
@@ -1057,11 +1145,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			prev := logsAfter[i-1]
 			prevSchemaKey, err := ComputeSchemaKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			prevKey := streams.NewSortKey(prev.labels, prevSchemaKey)
+			prevKey := streams.DefaultShardLayout().NewSortKey(prev.labels, prevSchemaKey)
 
 			currSchemaKey, err := ComputeSchemaKey(record.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey := streams.NewSortKey(record.labels, currSchemaKey)
+			currKey := streams.DefaultShardLayout().NewSortKey(record.labels, currSchemaKey)
 
 			switch {
 			case streams.CompareSortKey(prevKey, currKey) != 0:
@@ -1082,7 +1170,7 @@ func expectedLabelOrder(t *testing.T, values []string, labelName string, schemaL
 	for _, v := range values {
 		schemaKey, err := ComputeSchemaKey(labels.FromStrings(labelName, v), schemaLabels)
 		require.NoError(t, err)
-		k := streams.NewSortKey(labels.FromStrings(labelName, v), schemaKey)
+		k := streams.DefaultShardLayout().NewSortKey(labels.FromStrings(labelName, v), schemaKey)
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, streams.CompareSortKey)
@@ -1099,7 +1187,7 @@ func expectedPairsOrder(t *testing.T, values [][2]string, schemaLabels []string)
 	for _, v := range values {
 		schemaKey, err := ComputeSchemaKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaLabels)
 		require.NoError(t, err)
-		k := streams.NewSortKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaKey)
+		k := streams.DefaultShardLayout().NewSortKey(labels.FromStrings("namespace", v[0], "app", v[1]), schemaKey)
 		keys = append(keys, k)
 	}
 	slices.SortFunc(keys, streams.CompareSortKey)

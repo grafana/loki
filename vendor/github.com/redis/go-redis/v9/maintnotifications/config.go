@@ -311,8 +311,8 @@ func (c *Config) ApplyDefaultsWithPoolConfig(poolSize int, maxActiveConns int) *
 	}
 
 	if internal.LogLevel.DebugOrAbove() {
-		internal.Logger.Printf(context.Background(), logs.DebugLoggingEnabled())
-		internal.Logger.Printf(context.Background(), logs.ConfigDebug(result))
+		internal.Logger.Printf(context.Background(), "%s", logs.DebugLoggingEnabled())
+		internal.Logger.Printf(context.Background(), "%s", logs.ConfigDebug(result))
 	}
 	return result
 }

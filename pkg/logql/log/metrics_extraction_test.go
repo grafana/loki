@@ -906,6 +906,12 @@ func TestStageHints_Merge(t *testing.T) {
 		require.True(t, dropsError.Merge(keepsError).KeepsErroredLines)
 		require.True(t, keepsError.Merge(StageHints{}).KeepsErroredLines)
 	})
+
+	t.Run("reports a line change set on either side", func(t *testing.T) {
+		require.False(t, StageHints{}.Merge(StageHints{}).CanModifyLine)
+		require.True(t, StageHints{CanModifyLine: true}.Merge(StageHints{}).CanModifyLine)
+		require.True(t, StageHints{}.Merge(StageHints{CanModifyLine: true}).CanModifyLine)
+	})
 }
 
 func TestReduceStages_FoldsHintsAcrossStages(t *testing.T) {
@@ -916,6 +922,14 @@ func TestReduceStages_FoldsHintsAcrossStages(t *testing.T) {
 	require.True(t, ReduceStages([]Stage{parser, lineFilter}).Hints().CanModifyLabels)
 	require.True(t, ReduceStages([]Stage{lineFilter, parser}).Hints().CanModifyLabels)
 	require.False(t, ReduceStages([]Stage{lineFilter, lineFilter}).Hints().CanModifyLabels)
+
+	t.Run("a line-rewriting stage makes the reduced pipeline report that it can modify the line, in either order", func(t *testing.T) {
+		decolorize := mustStage(NewDecolorizer())
+
+		require.True(t, ReduceStages([]Stage{decolorize, lineFilter}).Hints().CanModifyLine)
+		require.True(t, ReduceStages([]Stage{lineFilter, decolorize}).Hints().CanModifyLine)
+		require.False(t, ReduceStages([]Stage{lineFilter, parser}).Hints().CanModifyLine)
+	})
 }
 
 func BenchmarkLineSampleExtractor_Process(b *testing.B) {
