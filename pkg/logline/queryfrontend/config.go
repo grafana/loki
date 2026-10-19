@@ -7,36 +7,10 @@ import (
 )
 
 const (
-	defaultNgramLength                    = 6
-	defaultMaxHintParallel                = 64
-	defaultHintTimeout                    = 15 * time.Second
-	defaultShardPlanningEnabled           = true
-	defaultShardPlanningMinReductionRatio = 0.75
-
-	shardPlanningStrategyPowerOfTwo = "power_of_two"
+	defaultNgramLength     = 6
+	defaultMaxHintParallel = 64
+	defaultHintTimeout     = 15 * time.Second
 )
-
-// ShardPlanningConfig controls cancel-then-rerun behavior: when logline hints
-// finish before the provisional query and show sufficient narrowing, the
-// in-flight query is cancelled and restarted with power_of_two TSDB sharding.
-type ShardPlanningConfig struct {
-	Enabled               bool    `yaml:"enabled"`
-	MinTimeReductionRatio float64 `yaml:"min_time_reduction_ratio"`
-}
-
-func (c *ShardPlanningConfig) applyDefaults() {
-	if c.MinTimeReductionRatio == 0 {
-		c.MinTimeReductionRatio = defaultShardPlanningMinReductionRatio
-	}
-}
-
-func (c *ShardPlanningConfig) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain ShardPlanningConfig
-	defaults := ShardPlanningConfig{Enabled: defaultShardPlanningEnabled}
-	defaults.applyDefaults()
-	*c = defaults
-	return unmarshal((*plain)(c))
-}
 
 // Config is logline's read path configuration.
 type Config struct {
@@ -71,9 +45,6 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
-	// ShardPlanning controls optional live-query reruns that force Loki's TSDB
-	// shard planner to use a configured strategy when hints prove the request is narrow.
-	ShardPlanning ShardPlanningConfig `yaml:"shard_planning"`
 }
 
 // RegisterFlagsWithPrefix registers the section's flags under prefix.
@@ -92,10 +63,6 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
-	f.BoolVar(&c.ShardPlanning.Enabled, prefix+".shard-planning.enabled", defaultShardPlanningEnabled,
-		"Enable logline shard-planning reruns for narrow live queries")
-	f.Float64Var(&c.ShardPlanning.MinTimeReductionRatio, prefix+".shard-planning.min-time-reduction-ratio", defaultShardPlanningMinReductionRatio,
-		"Minimum hinted time reduction ratio required for a shard-planning rerun (default 0.75)")
 }
 
 // Validate checks constraints and applies defaults for zero-valued fields.
@@ -118,23 +85,5 @@ func (c *Config) Validate() error {
 	if c.HintCacheMaxSizeMB == 0 {
 		c.HintCacheMaxSizeMB = 100
 	}
-	if err := c.ShardPlanning.Validate(); err != nil {
-		return fmt.Errorf("invalid shard_planning config: %w", err)
-	}
-	return nil
-}
-
-func (c *ShardPlanningConfig) Validate() error {
-	zero := *c == ShardPlanningConfig{}
-	if c.MinTimeReductionRatio < 0 {
-		return fmt.Errorf("min_time_reduction_ratio must be >= 0")
-	}
-	if zero {
-		c.Enabled = defaultShardPlanningEnabled
-	}
-	if !c.Enabled {
-		return nil
-	}
-	c.applyDefaults()
 	return nil
 }
