@@ -75,7 +75,7 @@ A query such as `| __error__ > 0`, `| __error__ != 1s`, `| __error_details__ == 
 
 ### Breaking change: Errored samples in metric queries now follow the query's grouping and `__error__` filter
 
-Metric queries report errored log lines differently now.
+Metric queries report errored log lines in a more consistent way now.
 
 Previously, an errored line's sample kept every stream label and every structured metadata key, ignoring the query's `by (...)` or `without (...)` grouping. Lines from the same stream that differed only in a label the grouping didn't name could form separate series. Now an errored sample reports the same labels a successful line would report for that grouping, plus `__error__` and `__error_details__`. `sum()` and `count()` totals are unchanged, but `first_over_time()`, `last_over_time()`, `quantile_over_time()`, and other range aggregations that accept a grouping can report fewer series, or different values, once errored lines collapse into the group they belong to. A failing query's `pipeline error` message now names the grouped labels instead of the whole label set; remove the grouping to identify the affected stream.
 
