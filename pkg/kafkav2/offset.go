@@ -142,64 +142,10 @@ func (r *OffsetReader) ResumeOffset(ctx context.Context, consumerGroup string, p
 	return initialOffset, nil
 }
 
-// StartOffset returns the offset of the oldest record that retention has not
-// deleted. It equals EndOffset if there are no records left.
-func (r *OffsetReader) StartOffset(ctx context.Context, partition int32) (int64, error) {
-	return r.listOffset(ctx, partition, OffsetStart)
-}
-
-// EndOffset returns the end offset.
-func (r *OffsetReader) EndOffset(ctx context.Context, partition int32) (int64, error) {
-	return r.listOffset(ctx, partition, OffsetEnd)
-}
-
-func (r *OffsetReader) listOffset(ctx context.Context, partition int32, timestamp int64) (int64, error) {
-	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
-	partitionReq.Partition = partition
-	partitionReq.Timestamp = timestamp
-
-	topicReq := kmsg.NewListOffsetsRequestTopic()
-	topicReq.Topic = r.topic
-	topicReq.Partitions = []kmsg.ListOffsetsRequestTopicPartition{partitionReq}
-
-	req := kmsg.NewPtrListOffsetsRequest()
-	req.IsolationLevel = 0 // 0 means READ_UNCOMMITTED.
-	req.Topics = []kmsg.ListOffsetsRequestTopic{topicReq}
-
-	// Even if we share the same client, other in-flight requests are not canceled once this context is canceled
-	// (or its deadline is exceeded). We've verified it with a unit test.
-	resps := r.client.RequestSharded(ctx, req)
-
-	// Since we issued a request for only 1 partition, we expect exactly 1 response.
-	if len(resps) != 1 {
-		return 0, fmt.Errorf("unexpected number of responses: %d", len(resps))
-	}
-
-	// Ensure no error occurred.
-	res := resps[0]
-	if res.Err != nil {
-		return 0, res.Err
-	}
-
-	listRes, ok := res.Resp.(*kmsg.ListOffsetsResponse)
-	if !ok {
-		return 0, errors.New("unexpected response type")
-	}
-
-	if len(listRes.Topics) != 1 ||
-		len(listRes.Topics[0].Partitions) != 1 {
-		return 0, errors.New("malformed response")
-	}
-
-	partitionRes := listRes.Topics[0].Partitions[0]
-	if err := kerr.ErrorForCode(partitionRes.ErrorCode); err != nil {
-		return 0, err
-	}
-	return partitionRes.Offset, nil
-}
-
 // StartOffsets returns the start offset of each partition, keyed by
-// partition. See [OffsetReader.StartOffset].
+// partition. The start offset is the offset of the oldest record that
+// retention has not deleted. It equals the end offset if the partition has no
+// records left.
 func (r *OffsetReader) StartOffsets(ctx context.Context) (map[int32]int64, error) {
 	listed, err := r.adm.ListStartOffsets(ctx, r.topic)
 	return r.listedOffsets(listed, err)
