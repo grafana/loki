@@ -1220,6 +1220,11 @@ dataobj:
     # CLI flag: -dataobj.builder.partition-id
     [partition_id: <int> | default = -1]
 
+    # How often the builder that consumes partition 0 reads the offsets of every
+    # partition to refresh the loki_dataobj_builder_required_replicas metric.
+    # CLI flag: -dataobj.builder.required-replicas-refresh-interval
+    [required_replicas_refresh_interval: <duration> | default = 30s]
+
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
     # data objects.

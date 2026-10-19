@@ -16,7 +16,7 @@ type downscalePermittedFunc func(context.Context) (bool, error)
 
 // newOffsetCommittedDownscaleFunc returns a downscalePermittedFunc that
 // permits a downscale when the partition has no records left to consume.
-func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partitionID int32, logger log.Logger) downscalePermittedFunc {
+func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, consumerGroup string, partitionID int32, logger log.Logger) downscalePermittedFunc {
 	return func(ctx context.Context) (bool, error) {
 		startOffset, err := offsetReader.StartOffset(ctx, partitionID)
 		if errors.Is(err, kerr.UnknownTopicOrPartition) {
@@ -30,20 +30,18 @@ func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partiti
 		if err != nil {
 			return false, fmt.Errorf("failed to get end offset: %w", err)
 		}
-		resumeOffset, err := offsetReader.ResumeOffset(ctx, partitionID)
+		resumeOffset, err := offsetReader.ResumeOffset(ctx, consumerGroup, partitionID)
 		if err != nil {
 			return false, fmt.Errorf("failed to get resume offset: %w", err)
 		}
-		// resumeOffset is kafkav2.OffsetStart (-2) if the group never committed.
-		nextOffsetToConsume := max(resumeOffset, startOffset)
-		recordsLeftToConsume := max(endOffset-nextOffsetToConsume, 0)
+		recordsLeft := recordsLeftToConsume(startOffset, endOffset, resumeOffset)
 		level.Debug(logger).Log(
 			"msg", "checked records left to consume",
 			"start_offset", startOffset,
 			"end_offset", endOffset,
 			"resume_offset", resumeOffset,
-			"records_left_to_consume", recordsLeftToConsume,
+			"records_left_to_consume", recordsLeft,
 		)
-		return recordsLeftToConsume == 0, nil
+		return recordsLeft == 0, nil
 	}
 }
