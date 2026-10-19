@@ -2111,6 +2111,50 @@ func Test_RowReader_StatStreamRelevantRows(t *testing.T) {
 	}
 }
 
+func Test_RowReader_Open(t *testing.T) {
+	t.Run("returns only the projected columns when Open runs again after it failed", func(t *testing.T) {
+		dset, columns := buildTestDataset(t)
+
+		r := NewRowReader(RowReaderOptions{
+			Dataset:           &failingOnceDataset{Dataset: dset},
+			ProjectedColumns:  []Column{columns[0]},
+			Predicates:        []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
+			PrefetchAllOnOpen: true,
+		})
+		t.Cleanup(func() { _ = r.Close() })
+
+		require.Error(t, r.Open(t.Context()))
+
+		var want [][]string
+		for _, p := range basicReaderTestData {
+			if p.birthYear > 1982 {
+				want = append(want, []string{p.firstName})
+			}
+		}
+		require.NotEmpty(t, want)
+		require.Equal(t, want, readValuesWithReusedBuffer(t, r, 2))
+	})
+
+	t.Run("returns an error when a predicate reads a nil column", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			predicate Predicate
+		}{
+			{"for a greater than predicate", GreaterThanPredicate{Value: Int64Value(1)}},
+			{"for an in predicate", InPredicate{Values: NewInt64ValueSetOf(1)}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				dset, columns := buildTestDataset(t)
+
+				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
+				t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+				require.ErrorContains(t, r.Open(t.Context()), "nil column")
+			})
+		}
+	})
+}
+
 // readIndexes reads the open reader r until io.EOF. It returns the Index of every row it read.
 // nextBuffer returns the buffer for each Read.
 func readIndexes(ctx context.Context, t *testing.T, r *RowReader, nextBuffer func() []Row) []int {
@@ -2131,6 +2175,42 @@ func readIndexes(ctx context.Context, t *testing.T, r *RowReader, nextBuffer fun
 		if errors.Is(err, io.EOF) {
 			require.Zero(t, n)
 			return indexes
+		}
+		require.NoError(t, err)
+	}
+	t.Fatal("Read did not return io.EOF")
+	return nil
+}
+
+// readValuesWithReusedBuffer opens r and reads it until io.EOF, with one buffer of batchSize rows
+// that it never clears. It returns the values of every row, as strings.
+func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]string {
+	t.Helper()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
+	// of hanging it. It is far above what any caller needs.
+	const maxReadAttempts = 100
+
+	var values [][]string
+	buf := make([]Row, batchSize)
+	for range maxReadAttempts {
+		n, err := r.Read(t.Context(), buf)
+		for _, row := range buf[:n] {
+			strs := make([]string, 0, len(row.Values))
+			for _, v := range row.Values {
+				if v.Type() == datasetmd.PHYSICAL_TYPE_INT64 {
+					strs = append(strs, strconv.FormatInt(v.Int64(), 10))
+				} else {
+					strs = append(strs, string(v.Binary()))
+				}
+			}
+			values = append(values, strs)
+		}
+
+		if errors.Is(err, io.EOF) {
+			return values
 		}
 		require.NoError(t, err)
 	}
@@ -2245,50 +2325,6 @@ func memDatasetOf(t *testing.T, builders ...*ColumnBuilder) (Dataset, []Column) 
 	return dset, columns
 }
 
-func Test_RowReader_Open(t *testing.T) {
-	t.Run("returns only the projected columns when Open runs again after it failed", func(t *testing.T) {
-		dset, columns := buildTestDataset(t)
-
-		r := NewRowReader(RowReaderOptions{
-			Dataset:           &failingOnceDataset{Dataset: dset},
-			ProjectedColumns:  []Column{columns[0]},
-			Predicates:        []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1982)}},
-			PrefetchAllOnOpen: true,
-		})
-		t.Cleanup(func() { _ = r.Close() })
-
-		require.Error(t, r.Open(t.Context()))
-
-		var want [][]string
-		for _, p := range basicReaderTestData {
-			if p.birthYear > 1982 {
-				want = append(want, []string{p.firstName})
-			}
-		}
-		require.NotEmpty(t, want)
-		require.Equal(t, want, readValuesWithReusedBuffer(t, r, 2))
-	})
-
-	t.Run("returns an error when a predicate reads a nil column", func(t *testing.T) {
-		for _, tc := range []struct {
-			name      string
-			predicate Predicate
-		}{
-			{"for a greater than predicate", GreaterThanPredicate{Value: Int64Value(1)}},
-			{"for an in predicate", InPredicate{Values: NewInt64ValueSetOf(1)}},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				dset, columns := buildTestDataset(t)
-
-				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: []Predicate{tc.predicate}})
-				t.Cleanup(func() { require.NoError(t, r.Close()) })
-
-				require.ErrorContains(t, r.Open(t.Context()), "nil column")
-			})
-		}
-	})
-}
-
 // failingOnceDataset is a Dataset whose first ReadPages call fails.
 type failingOnceDataset struct {
 	Dataset
@@ -2301,40 +2337,4 @@ func (d *failingOnceDataset) ReadPages(ctx context.Context, pages []Page) result
 		return result.Iter(func(func(PageData) bool) error { return errors.New("failed to read pages") })
 	}
 	return d.Dataset.ReadPages(ctx, pages)
-}
-
-// readValuesWithReusedBuffer opens r and reads it until io.EOF, with one buffer of batchSize rows
-// that it never clears. It returns the values of every row, as strings.
-func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]string {
-	t.Helper()
-
-	require.NoError(t, r.Open(t.Context()))
-
-	// maxReadAttempts bounds the loop, so a Read that never returns io.EOF fails the test instead
-	// of hanging it. It is far above what any caller needs.
-	const maxReadAttempts = 100
-
-	var values [][]string
-	buf := make([]Row, batchSize)
-	for range maxReadAttempts {
-		n, err := r.Read(t.Context(), buf)
-		for _, row := range buf[:n] {
-			strs := make([]string, 0, len(row.Values))
-			for _, v := range row.Values {
-				if v.Type() == datasetmd.PHYSICAL_TYPE_INT64 {
-					strs = append(strs, strconv.FormatInt(v.Int64(), 10))
-				} else {
-					strs = append(strs, string(v.Binary()))
-				}
-			}
-			values = append(values, strs)
-		}
-
-		if errors.Is(err, io.EOF) {
-			return values
-		}
-		require.NoError(t, err)
-	}
-	t.Fatal("Read did not return io.EOF")
-	return nil
 }
