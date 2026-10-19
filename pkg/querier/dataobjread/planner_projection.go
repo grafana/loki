@@ -210,19 +210,17 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 // query.
 func (p ProjectionPlan) UnpushedExpr() syntax.SampleExpr { return p.unpushedExpr }
 
-// needReadingLine reports whether the read must load the line from storage, to return it or to
-// apply the line filter.
-func (p ProjectionPlan) needReadingLine() bool { return p.needReturningLine || p.lineFilter != nil }
-
-// forStreams returns the columns to read and the predicates to push for a section whose streams
-// carry the given label names. The message predicate of a line filter is the last predicate.
+// forStreams returns the columns to return and the predicates to push for a section whose streams
+// carry the given label names. The message predicate of a line filter is the last predicate. The
+// reader reads the message column for that predicate, so the columns hold the message only when
+// the query returns the line.
 func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (columns []logs.ColumnType, metadataNames []string, predicates []logs.RowPredicate) {
 	columns = make([]logs.ColumnType, 0, 4)
 	columns = append(columns, logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp)
 	if p.needAllMetadata {
 		columns = append(columns, logs.ColumnTypeMetadata)
 	}
-	if p.needReadingLine() {
+	if p.needReturningLine {
 		columns = append(columns, logs.ColumnTypeMessage)
 	}
 	if !p.needAllMetadata {
@@ -252,7 +250,12 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 	// The message predicate goes last because it is the most expensive. It then runs only on the
 	// rows that the previous predicates did not filter out.
 	if p.lineFilter != nil {
-		predicates = append(predicates, logs.LogMessageFilterRowPredicate{Keep: p.lineFilter.Filter})
+		predicates = append(predicates, logs.LogMessageFilterRowPredicate{
+			Keep: p.lineFilter.Filter,
+			KeepBatch: func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
+				return logqllog.FilterBatch(p.lineFilter, logqllog.LinesBatch{Data: data, Offsets: offsets}, dstIndexes)
+			},
+		})
 	}
 
 	return columns, metadataNames, predicates

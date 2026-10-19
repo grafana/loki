@@ -140,6 +140,20 @@ var queries = []benchQuery{
 		streamFirstSupported: true,
 	},
 	{
+		// Only the last line of each stream holds "line=4999 ", which is about 0.02% of the lines.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "line=4999 " [24h]))`, selectorAll),
+		description:          "high input, low output, line filter that keeps almost nothing",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		// Every fixture line starts with "level=info", so the negated filter keeps none of them.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s != "level=info" [24h]))`, selectorAll),
+		description:          "high input, low output, negated line filter that keeps nothing",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
 		expr:                 fmt.Sprintf("count_over_time(%s[24h])", selectorMedium),
 		description:          "medium input, medium output",
 		instant:              true,

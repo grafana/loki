@@ -1,3 +1,4 @@
+
 # |= / != (substring match)
 clear
 load
@@ -57,6 +58,29 @@ eval instant at 60s sum(count_over_time({app=~"a|b"} |= "boom" | logfmt | code="
 eval instant at 60s sum by (code) (count_over_time({app=~"a|b"} |= "boom" | logfmt | code="500" [1m]))
   {code="500"} 6
 
+# |= / != (substring match) tests each line on its own. "xxer" next to "rorxx" spells "error",
+# but no single line holds it. This scenario is related to the FilterBatch() implementation.
+clear
+load
+  {app="a"} "an error here" @ 10s
+  {app="a"} "xxer"          @ 20s
+  {app="a"} "rorxx"         @ 30s
+  {app="a"} "xxer"          @ 40s
+  {app="a"} "an error here" @ 50s
+
+eval instant at 60s sum(count_over_time({app="a"} |= "error" [1m]))
+  {} 2
+eval range from 40s to 80s step 20s sum(count_over_time({app="a"} |= "error" [1m]))   # overlapping
+  {} 1 2 1
+eval range from 60s to 180s step 120s sum(count_over_time({app="a"} |= "error" [1m])) # non-overlapping
+  {} 2 _
+eval instant at 60s sum(count_over_time({app="a"} != "error" [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="a"} |= "error" or "xxer" [1m]))
+  {} 4
+eval instant at 60s sum(count_over_time({app="a"} |= "error" |= "here" [1m]))
+  {} 2
+
 # |~ / !~ (regexp match)
 clear
 load
@@ -78,6 +102,9 @@ eval instant at 60s sum(count_over_time({app="a"} |~ "code=5.." [1m]))
 # A regex is case-sensitive; (?i) makes it case-insensitive and also matches CODE=503.
 eval instant at 60s count_over_time({app="a"} |~ "(?i)code=5.." [1m])
   {app="a"} 4
+# A (?i) regex with no wildcard also matches the literal in any letter case.
+eval instant at 60s sum(count_over_time({app="a"} |~ "(?i)code=503" [1m]))
+  {} 1
 # An invalid regex fails at parse time.
 eval instant at 60s count_over_time({app="a"} |~ "(" [1m])
   expect fail msg: error parsing regexp
