@@ -78,7 +78,7 @@ func Test_RowReader_ReadAll(t *testing.T) {
 	r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns})
 	defer r.Close()
 
-	actualRows, err := readDataset(r, 3)
+	actualRows, err := readDataset(t.Context(), r, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
@@ -114,7 +114,7 @@ func Test_RowReader_ReadWithNegatedConstantPredicate(t *testing.T) {
 			})
 			defer r.Close()
 
-			rows, err := readDataset(r, 3)
+			rows, err := readDataset(t.Context(), r, 3)
 			require.NoError(t, err)
 			require.Empty(t, rows)
 		})
@@ -144,7 +144,7 @@ func TestRowReader_ReadWithPageFiltering(t *testing.T) {
 	})
 	defer r.Close()
 
-	actualRows, err := readDataset(r, 3)
+	actualRows, err := readDataset(t.Context(), r, 3)
 	require.NoError(t, err)
 
 	// Filter expected data manually to verify
@@ -195,7 +195,7 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	})
 	defer r.Close()
 
-	actualRows, err := readDataset(r, 3)
+	actualRows, err := readDataset(t.Context(), r, 3)
 	require.NoError(t, err)
 
 	actualFirstNames := make([]string, 0, len(actualRows))
@@ -235,7 +235,7 @@ func Test_RowReader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	})
 	defer r.Close()
 
-	actualRows, err := readDataset(r, 3)
+	actualRows, err := readDataset(t.Context(), r, 3)
 	require.NoError(t, err)
 
 	// Filter expected data manually to verify
@@ -266,7 +266,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -294,7 +294,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -321,7 +321,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -346,7 +346,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -376,7 +376,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -411,7 +411,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -439,7 +439,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -464,7 +464,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var expected []testPerson
@@ -490,7 +490,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		actualRows, err := readDatasetWithContext(t.Context(), r, 10)
+		actualRows, err := readDataset(t.Context(), r, 10)
 		require.NoError(t, err)
 		require.Equal(t, peopleNamed("Alice", "David", "Grace"), convertToTestPersons(actualRows))
 	})
@@ -519,7 +519,7 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				rows, err := readDatasetWithContext(t.Context(), r, batchSize)
+				rows, err := readDataset(t.Context(), r, batchSize)
 				require.NoError(t, err)
 				require.Equal(t, peopleNamed("David", "Frank", "Grace"), convertToTestPersons(rows))
 				require.Equal(t, []int{10, 6, 4}, calls)
@@ -595,14 +595,14 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				ctx, _ := xcap.NewCapture(t.Context(), nil)
-				ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-				defer region.End()
-				require.NoError(t, r.Open(ctx))
+				var indexes []int
+				stats := runAndCollectStats(t, func(ctx context.Context) {
+					require.NoError(t, r.Open(ctx))
+					indexes = readIndexes(ctx, t, r, func() []Row { return make([]Row, batchSize) })
+				})
 
-				indexes := readIndexes(ctx, t, r, func() []Row { return make([]Row, batchSize) })
 				require.Equal(t, []int{0, 2, 4, 6}, indexes)
-				require.Equal(t, int64(7), statsOf(region)[dataobj.StatDatasetPrimaryRowsRead.Name()])
+				require.Equal(t, int64(7), stats[dataobj.StatDatasetPrimaryRowsRead.Name()])
 			})
 		}
 	})
@@ -946,7 +946,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: projected, Predicates: tc.predicates(columns)})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				stats := collectStats(t, r, 3)
+				stats := runAndCollectStats(t, func(ctx context.Context) {
+					_, err := readDataset(ctx, r, 3)
+					require.NoError(t, err)
+				})
 				require.Equal(t, tc.wantPrimary, stats[dataobj.StatDatasetPrimaryColumns.Name()])
 				require.Equal(t, tc.wantSecondary, stats[dataobj.StatDatasetSecondaryColumns.Name()])
 			})
@@ -963,7 +966,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		stats := collectStats(t, r, 3)
+		stats := runAndCollectStats(t, func(ctx context.Context) {
+			_, err := readDataset(ctx, r, 3)
+			require.NoError(t, err)
+		})
 
 		var wantSecondaryBytes int64
 		for _, p := range basicReaderTestData {
@@ -986,7 +992,10 @@ func Test_RowReader_ReadWithPredicate(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		stats := collectStats(t, r, 3)
+		stats := runAndCollectStats(t, func(ctx context.Context) {
+			_, err := readDataset(ctx, r, 3)
+			require.NoError(t, err)
+		})
 		require.Positive(t, stats[dataobj.StatDatasetPagesPruned.Name()])
 		require.Less(t, stats[dataobj.StatDatasetRowsAfterPruning.Name()], stats[dataobj.StatDatasetMaxRows.Name()])
 	})
@@ -998,12 +1007,12 @@ func Test_RowReader_Reset(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		_, err := readDataset(r, 3)
+		_, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: columns})
 
-		actualRows, err := readDataset(r, 3)
+		actualRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 		require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 	})
@@ -1023,7 +1032,7 @@ func Test_RowReader_Reset(t *testing.T) {
 		})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		firstRows, err := readDataset(r, 3)
+		firstRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var firstExpected []testPerson
@@ -1048,7 +1057,7 @@ func Test_RowReader_Reset(t *testing.T) {
 			},
 		})
 
-		secondRows, err := readDataset(r, 3)
+		secondRows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 
 		var secondExpected []testPerson
@@ -1069,7 +1078,7 @@ func Test_RowReader_Reset(t *testing.T) {
 		r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[0]}, Predicates: predicates})
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		rows, err := readDataset(r, 3)
+		rows, err := readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 		require.NotEmpty(t, rows)
 		for _, row := range rows {
@@ -1078,7 +1087,7 @@ func Test_RowReader_Reset(t *testing.T) {
 
 		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: predicates})
 
-		rows, err = readDataset(r, 3)
+		rows, err = readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 		require.NotEmpty(t, rows)
 		for _, row := range rows {
@@ -1087,7 +1096,7 @@ func Test_RowReader_Reset(t *testing.T) {
 
 		r.Reset(RowReaderOptions{Dataset: dset, ProjectedColumns: []Column{columns[2], columns[0]}, Predicates: predicates})
 
-		rows, err = readDataset(r, 3)
+		rows, err = readDataset(t.Context(), r, 3)
 		require.NoError(t, err)
 		require.NotEmpty(t, rows)
 		for _, row := range rows {
@@ -1176,13 +1185,8 @@ func mergeRows(rows ...[]Row) []Row {
 	return res
 }
 
-// readDataset reads all rows from a RowReader using the given batch size.
-func readDataset(br *RowReader, batchSize int) ([]Row, error) {
-	return readDatasetWithContext(context.Background(), br, batchSize)
-}
-
-// readDatasetWithContext reads all rows from a RowReader using the given batch size and context.
-func readDatasetWithContext(ctx context.Context, br *RowReader, batchSize int) ([]Row, error) {
+// readDataset reads all rows from a RowReader using the given batch size and context.
+func readDataset(ctx context.Context, br *RowReader, batchSize int) ([]Row, error) {
 	var (
 		all []Row
 
@@ -1868,31 +1872,21 @@ func Test_RowReader_Stats(t *testing.T) {
 	})
 	defer r.Close()
 
-	ctx, _ := xcap.NewCapture(context.Background(), nil)
-	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-	defer region.End()
+	stats := runAndCollectStats(t, func(ctx context.Context) {
+		_, err := readDataset(ctx, r, 3)
+		require.NoError(t, err)
+	})
 
-	_, err := readDatasetWithContext(ctx, r, 3)
-	require.NoError(t, err)
+	require.Equal(t, int64(2), stats[dataobj.StatDatasetReadCalls.Name()])
+	require.Equal(t, int64(2), stats[dataobj.StatDatasetPrimaryColumns.Name()])
+	require.Equal(t, int64(2), stats[dataobj.StatDatasetSecondaryColumns.Name()])
+	require.Equal(t, int64(5), stats[dataobj.StatDatasetPrimaryColumnPages.Name()])
+	require.Equal(t, int64(8), stats[dataobj.StatDatasetSecondaryColumnPages.Name()])
 
-	require.NotNil(t, region, "region should be available after reading")
-
-	observations := region.Observations()
-	obsMap := make(map[string]int64)
-	for _, obs := range observations {
-		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
-	}
-
-	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetReadCalls.Name()])
-	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetPrimaryColumns.Name()])
-	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetSecondaryColumns.Name()])
-	require.Equal(t, int64(5), obsMap[dataobj.StatDatasetPrimaryColumnPages.Name()])
-	require.Equal(t, int64(8), obsMap[dataobj.StatDatasetSecondaryColumnPages.Name()])
-
-	require.Equal(t, int64(len(basicReaderTestData)), obsMap[dataobj.StatDatasetMaxRows.Name()])
-	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetRowsAfterPruning.Name()])
-	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
-	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
+	require.Equal(t, int64(len(basicReaderTestData)), stats[dataobj.StatDatasetMaxRows.Name()])
+	require.Equal(t, int64(3), stats[dataobj.StatDatasetRowsAfterPruning.Name()])
+	require.Equal(t, int64(3), stats[dataobj.StatDatasetPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), stats[dataobj.StatDatasetSecondaryRowsRead.Name()])
 }
 
 func Test_RowReader_PrimaryStats(t *testing.T) {
@@ -1982,7 +1976,12 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 					r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
 					t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-					rows, stats := readWithStats(t, r, batchSize)
+					var rows []Row
+					stats := runAndCollectStats(t, func(ctx context.Context) {
+						var err error
+						rows, err = readDataset(ctx, r, batchSize)
+						require.NoError(t, err)
+					})
 
 					require.Equal(t, tc.wantRows, convertToTestPersons(rows))
 					require.Equal(t, int64(len(basicReaderTestData)), stats[dataobj.StatDatasetPrimaryRowsRead.Name()])
@@ -2024,17 +2023,15 @@ func Test_RowReader_PrimaryStats(t *testing.T) {
 				r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
 				t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-				ctx, _ := xcap.NewCapture(t.Context(), nil)
-				ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-				defer region.End()
-				require.NoError(t, r.Open(ctx))
-
 				// Reuse the buffer without clearing it. Rows past the last row read keep the values of
 				// the previous batch.
 				buf := make([]Row, 5)
-				indexes := readIndexes(ctx, t, r, func() []Row { return buf })
+				var indexes []int
+				stats := runAndCollectStats(t, func(ctx context.Context) {
+					require.NoError(t, r.Open(ctx))
+					indexes = readIndexes(ctx, t, r, func() []Row { return buf })
+				})
 
-				stats := statsOf(region)
 				require.Equal(t, tc.wantRows, indexes)
 				require.Equal(t, int64(7), stats[dataobj.StatDatasetPrimaryRowsRead.Name()])
 				require.Equal(t, tc.wantBytes, stats[dataobj.StatDatasetPrimaryRowBytes.Name()])
@@ -2102,27 +2099,16 @@ func Test_RowReader_StatStreamRelevantRows(t *testing.T) {
 			r := NewRowReader(RowReaderOptions{Dataset: dset, ProjectedColumns: columns, Predicates: tc.predicates(columns)})
 			t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-			_, stats := readWithStats(t, r, 8)
+			stats := runAndCollectStats(t, func(ctx context.Context) {
+				_, err := readDataset(ctx, r, 8)
+				require.NoError(t, err)
+			})
 
 			got, recorded := stats[dataobj.StatStreamRelevantRows.Name()]
 			require.Equal(t, tc.wantRecord, recorded)
 			require.Equal(t, tc.wantStat, got)
 		})
 	}
-}
-
-// readWithStats reads every row of r in batches. It returns the rows and a map from stat name to
-// value.
-func readWithStats(t *testing.T, r *RowReader, batchSize int) ([]Row, map[string]int64) {
-	t.Helper()
-
-	ctx, _ := xcap.NewCapture(t.Context(), nil)
-	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-	defer region.End()
-
-	rows, err := readDatasetWithContext(ctx, r, batchSize)
-	require.NoError(t, err)
-	return rows, statsOf(region)
 }
 
 // readIndexes reads the open reader r until io.EOF. It returns the Index of every row it read.
@@ -2152,7 +2138,17 @@ func readIndexes(ctx context.Context, t *testing.T, r *RowReader, nextBuffer fun
 	return nil
 }
 
-func statsOf(region *xcap.Region) map[string]int64 {
+// runAndCollectStats calls f with a context that records the xcap stats of a reader. It returns
+// the value of each stat, by name, after f returns.
+func runAndCollectStats(t *testing.T, f func(ctx context.Context)) map[string]int64 {
+	t.Helper()
+
+	ctx, _ := xcap.NewCapture(t.Context(), nil)
+	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+	defer region.End()
+
+	f(ctx)
+
 	stats := make(map[string]int64)
 	for _, obs := range region.Observations() {
 		stats[obs.Statistic.Name()] = obs.Value.(int64)
@@ -2341,23 +2337,4 @@ func readValuesWithReusedBuffer(t *testing.T, r *RowReader, batchSize int) [][]s
 	}
 	t.Fatal("Read did not return io.EOF")
 	return nil
-}
-
-// collectStats reads every row of r in batches and returns the stats that the reader recorded, by
-// name.
-func collectStats(t *testing.T, r *RowReader, batchSize int) map[string]int64 {
-	t.Helper()
-
-	ctx, _ := xcap.NewCapture(t.Context(), nil)
-	ctx, region := xcap.StartRegion(ctx, "logs.Reader")
-	defer region.End()
-
-	_, err := readDatasetWithContext(ctx, r, batchSize)
-	require.NoError(t, err)
-
-	stats := make(map[string]int64)
-	for _, obs := range region.Observations() {
-		stats[obs.Statistic.Name()] = obs.Value.(int64)
-	}
-	return stats
 }
