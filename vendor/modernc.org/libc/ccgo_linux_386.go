@@ -28755,6 +28755,7 @@ type Tstatfs = struct {
 }
 
 type Tfanotify_event_metadata = struct {
+	F__ccgo_align [0]uint32
 	Fevent_len    uint32
 	Fvers         uint8
 	Freserved     uint8
