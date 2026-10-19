@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/readbudget"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -41,6 +42,17 @@ type RowReaderOptions struct {
 	// required for the current read range are always downloaded even if they
 	// exceed the target.
 	PrefetchAllOnOpen bool
+
+	// Reserver reserves the compressed bytes of the pages before Open downloads
+	// them. Open blocks until the reserver admits the bytes, and downloads no page
+	// data before then.
+	//
+	// The reader releases the bytes of a page when a Read begins at a row after the
+	// page ends. Close or Reset releases the rest.
+	//
+	// Reserver needs PrefetchAllOnOpen, and Open fails without it. A nil Reserver
+	// reserves nothing.
+	Reserver readbudget.Reserver
 
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker RowReaderStatsTracker
@@ -84,7 +96,8 @@ func NewRowReader(opts RowReaderOptions) *RowReader {
 // Open initializes RowReader resources.
 //
 // Open must be called before [RowReader.Read]. Open is safe to call multiple
-// times.
+// times. Open blocks while the [RowReaderOptions.Reserver] has no room for the
+// pages, and fails if ctx ends first.
 func (r *RowReader) Open(ctx context.Context) error {
 	if r.ready {
 		return nil
@@ -428,19 +441,29 @@ func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
 }
 
 // Close closes the RowReader. Closed RowReaders can be reused by calling
-// [RowReader.Reset].
+// [RowReader.Reset]. Close drops the cached pages and releases every reserved
+// byte. It is safe to call more than once.
 func (r *RowReader) Close() error {
+	var err error
 	if r.inner != nil {
-		return r.inner.Close()
+		err = r.inner.Close()
+	}
+	if r.dl != nil {
+		r.dl.Close()
 	}
 
-	return nil
+	return err
 }
 
 // Reset discards any state and resets the RowReader with a new set of options.
 // This permits reusing a RowReader rather than allocating a new one.
 func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.opts = opts
+
+	// Close the downloader here, so a Reset without a Close does not leak the reservation.
+	if r.dl != nil {
+		r.dl.Close()
+	}
 
 	// There's not much work Reset can do without a context, since it needs to
 	// retrieve page info. We'll defer this work to an init function. This also
@@ -464,6 +487,10 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
+
+	if r.opts.Reserver != nil && !r.opts.PrefetchAllOnOpen {
+		return errors.New("a reserver needs PrefetchAllOnOpen: a lazy reader downloads pages it did not reserve")
+	}
 
 	// r.compilePredicates must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicates are valid and can
@@ -532,6 +559,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	if r.opts.PrefetchAllOnOpen {
 		r.dl.targetCompressedBytes = 0
 	}
+	r.dl.reserver = r.opts.Reserver
 
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
