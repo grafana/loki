@@ -236,7 +236,7 @@ func Convert256(c color.Color) IndexedColor {
 	if colorDist <= grayDist {
 		return IndexedColor(16 + ci) //nolint:gosec
 	}
-	return IndexedColor(232 + greyIdx) //nolint:gosec
+	return IndexedColor(232 + greyIdx)
 
 	// // Is grey or 6x6x6 color closest?
 	// d := distSq(cr, cg, cb, int(r), int(g), int(b))

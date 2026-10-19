@@ -13,7 +13,8 @@ bitset's current length and number of positive bits.
 
 BitSets are expanded to the size of the largest set bit; the
 memory allocation is approximately Max bits, where Max is
-the largest set bit. BitSets are never shrunk. On creation,
+the largest set bit. BitSets are never shrunk automatically, but
+the Shrink and Compact methods are available. On creation,
 a hint can be given for the number of bits that will be used.
 
 Many of the methods, including Set,Clear, and Flip, return
@@ -21,13 +22,13 @@ a BitSet pointer, which allows for chaining.
 
 Example use:
 
-	import "bitset"
-	var b BitSet
+	import "github.com/bits-and-blooms/bitset"
+	var b bitset.BitSet
 	b.Set(10).Set(11)
 	if b.Test(1000) {
 		b.Clear(1000)
 	}
-	if B.Intersection(bitset.New(100).Set(10)).Count() > 1 {
+	if b.Intersection(bitset.New(100).Set(10)).Count() == 1 {
 		fmt.Println("Intersection works.")
 	}
 
@@ -99,7 +100,7 @@ func (b *BitSet) safeSet() []uint64 {
 	return b.set
 }
 
-// SetBitsetFrom fills the bitset with an array of integers without creating a new BitSet instance
+// SetBitsetFrom fills the bitset with an array of words without creating a new BitSet instance.
 func (b *BitSet) SetBitsetFrom(buf []uint64) {
 	b.length = uint(len(buf)) * 64
 	b.set = buf
@@ -203,7 +204,7 @@ func Cap() uint {
 }
 
 // Len returns the number of bits in the BitSet.
-// Note that it differ from Count function.
+// Note that it differs from the Count function.
 func (b *BitSet) Len() uint {
 	return b.length
 }
@@ -268,7 +269,7 @@ func (b *BitSet) Set(i uint) *BitSet {
 	return b
 }
 
-// Clear bit i to 0. This never cause a memory allocation. It is always safe.
+// Clear bit i to 0. This never causes a memory allocation. It is always safe.
 func (b *BitSet) Clear(i uint) *BitSet {
 	if i >= b.length {
 		return b
@@ -1018,7 +1019,7 @@ func (b *BitSet) Union(compare *BitSet) (result *BitSet) {
 	return
 }
 
-// UnionCardinality computes the cardinality of the uniton of the base set
+// UnionCardinality computes the cardinality of the union of the base set
 // and the compare set.
 func (b *BitSet) UnionCardinality(compare *BitSet) uint {
 	panicIfNull(b)

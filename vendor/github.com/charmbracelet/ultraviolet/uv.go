@@ -25,7 +25,7 @@ type Drawable interface {
 // DrawableFunc is a function that implements the [Drawable] interface.
 type DrawableFunc func(scr Screen, rect Rectangle)
 
-var _ Drawable = (DrawableFunc)(nil)
+var _ Drawable = DrawableFunc(nil)
 
 // Draw implements the [Drawable] interface.
 func (f DrawableFunc) Draw(scr Screen, rect Rectangle) {
@@ -377,6 +377,52 @@ func EncodeProgressBar(w io.Writer, pb *ProgressBar) error {
 	_, err := io.WriteString(w, seq)
 	if err != nil {
 		return fmt.Errorf("failed to set progress bar: %w", err)
+	}
+
+	return nil
+}
+
+// ProgramStatus is a Program Status Protocol (OSC 7501) report.
+//
+// See: https://www.superlogical.com/rex/docs/build/program-status
+type ProgramStatus = ansi.ProgramStatus
+
+// ProgramState is the state of a [ProgramStatus].
+type ProgramState = ansi.ProgramState
+
+// ProgramStatusKind says what a blocked program waits for.
+type ProgramStatusKind = ansi.ProgramStatusKind
+
+// Program states.
+const (
+	ProgramStateIdle    = ansi.ProgramStateIdle
+	ProgramStateWorking = ansi.ProgramStateWorking
+	ProgramStateDone    = ansi.ProgramStateDone
+	ProgramStateBlocked = ansi.ProgramStateBlocked
+	ProgramStateError   = ansi.ProgramStateError
+	ProgramStateClear   = ansi.ProgramStateClear
+)
+
+// Program status kinds.
+const (
+	ProgramStatusKindPermission = ansi.ProgramStatusKindPermission
+	ProgramStatusKindQuestion   = ansi.ProgramStatusKindQuestion
+	ProgramStatusKindAuth       = ansi.ProgramStatusKindAuth
+)
+
+// EncodeProgramStatus encodes the program status to the given writer. A nil
+// status removes every program status record on the terminal.
+func EncodeProgramStatus(w io.Writer, ps *ProgramStatus) error {
+	seq := ansi.ClearProgramStatus
+	if ps != nil {
+		seq = ansi.SetProgramStatus(*ps)
+		if seq == "" {
+			return fmt.Errorf("invalid program status: state=%q id=%q", ps.State, ps.ID)
+		}
+	}
+
+	if _, err := io.WriteString(w, seq); err != nil {
+		return fmt.Errorf("failed to set program status: %w", err)
 	}
 
 	return nil
