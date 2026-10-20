@@ -752,7 +752,7 @@ func roundTo1Decimal(v float64) float64 {
 func (h *loglinePrefetchHandler) doDryRun(
 	ctx context.Context,
 	req queryrangebase.Request,
-	lokiReq *queryrange.LokiRequest,
+	direction logproto.Direction,
 	expr syntax.Expr,
 	from, through time.Time,
 	queryBytes uint64,
@@ -763,7 +763,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	readStart, readEnd := from, through
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(from, through)
-		readStart = metricStepAlignStart(readStart, groups[0].Interval, lokiReq.Step)
+		readStart = metricStepAlignStart(readStart, groups[0].Interval, req.GetStep())
 	}
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
@@ -782,7 +782,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		}
 		level.Warn(logger).Log(
 			"msg", "logline dry-run hint lookup skipped due to inflight limit",
-			"query_hash", util.HashedQuery(lokiReq.Query),
+			"query_hash", util.HashedQuery(req.GetQuery()),
 			"limit", 1,
 		)
 		return h.next.Do(ctx, req)
@@ -844,7 +844,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 
 	// Bind common fields once so every branch inherits them.
 	logger = log.With(logger,
-		"query_hash", util.HashedQuery(lokiReq.Query),
+		"query_hash", util.HashedQuery(req.GetQuery()),
 		"query_timeout", queryTimeout,
 		"query_start", from.Format(time.RFC3339Nano),
 		"query_end", through.Format(time.RFC3339Nano),
@@ -883,7 +883,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 		return resp, queryErr
 	}
 
-	hintSummary := summarizeDryRunHints(lookup.ranges, readStart, readEnd, eligibleEnd, lokiReq.Direction)
+	hintSummary := summarizeDryRunHints(lookup.ranges, readStart, readEnd, eligibleEnd, direction)
 	queryType, _ := logql.QueryType(expr)
 
 	// Hint lookup succeeded. If the query timed out we can still report
@@ -968,8 +968,9 @@ func (h *loglinePrefetchHandler) doDryRun(
 }
 
 func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	lokiReq, ok := req.(*queryrange.LokiRequest)
-	if !ok {
+	switch req.(type) {
+	case *queryrange.LokiRequest, *queryrange.LokiInstantRequest:
+	default:
 		return h.next.Do(ctx, req)
 	}
 	logger := util_log.WithContext(ctx, h.logger)
@@ -993,7 +994,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	expr, err := syntax.ParseExpr(lokiReq.Query)
+	expr, err := syntax.ParseExpr(req.GetQuery())
 	if err != nil {
 		return h.next.Do(ctx, req)
 	}
@@ -1002,6 +1003,10 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
 			return h.next.Do(ctx, req)
 		}
+	// For now, we only add support for metric instant queries; non-metric instant
+	// queries should continue w/o hints
+	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
+		return h.next.Do(ctx, req)
 	}
 
 	// Shared eligibility: supported query shape.
@@ -1012,11 +1017,11 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	// Shared eligibility: stats-based byte threshold.
-	from := lokiReq.StartTs.UTC()
-	through := lokiReq.EndTs.UTC()
+	from := req.GetStart().UTC()
+	through := req.GetEnd().UTC()
 	queryBytes := uint64(0)
 	if minQueryBytes > 0 {
-		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, lokiReq.Step)
+		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, req.GetStep())
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",
@@ -1038,8 +1043,16 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		}
 	}
 
+	var direction logproto.Direction
+	switch r := req.(type) {
+	case *queryrange.LokiRequest:
+		direction = r.GetDirection()
+	case *queryrange.LokiInstantRequest:
+		direction = r.GetDirection()
+	}
+
 	if mode == ModeDryRun {
-		return h.doDryRun(ctx, req, lokiReq, expr, from, through, queryBytes)
+		return h.doDryRun(ctx, req, direction, expr, from, through, queryBytes)
 	}
 
 	ingesterCutoff := through
