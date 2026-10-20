@@ -553,10 +553,12 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 		})
 	})
 
-	t.Run("stops reading records while the next flush waits for the previous one", func(t *testing.T) {
+	t.Run("stops reading records at the prefetch limit while the next flush waits for the previous one", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			records := make(chan *kgo.Record)
 			proc, m, flushCommitter := newProc(records)
+			// One record fills the prefetch buffer.
+			proc.prefetchBytes = 1
 
 			ran := make(chan error, 1)
 			go func() { ran <- proc.Run(t.Context()) }()
@@ -567,16 +569,18 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 			records <- newRecord(t, 3)
 			synctest.Wait()
 
+			records <- newRecord(t, 4)
+			synctest.Wait()
 			select {
-			case records <- newRecord(t, 4):
-				t.Fatal("Run read a record while the next flush waited for the previous one")
+			case records <- newRecord(t, 5):
+				t.Fatal("Run read a record past the prefetch limit while the next flush waited for the previous one")
 			default:
 			}
 			require.Equal(t, []int64{1}, flushCommitter.startedOffsets())
 
 			m.forceFull = false
 			flushCommitter.results <- nil
-			records <- newRecord(t, 4)
+			records <- newRecord(t, 5)
 			synctest.Wait()
 			require.Equal(t, []int64{1, 2}, flushCommitter.startedOffsets())
 			require.Equal(t, 1, flushCommitter.maxConcurrentFlushes())
@@ -746,6 +750,50 @@ func startTestFlushLoop(ctx context.Context, t *testing.T, proc *processor) (sto
 	stop = sync.OnceValue(proc.stopFlushLoop)
 	t.Cleanup(func() { _ = stop() })
 	return stop
+}
+
+func TestProcessor_Prefetch(t *testing.T) {
+	t.Run("takes records from the consumer while it waits for the previous batch", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				records        = make(chan *kgo.Record)
+				m              = newTestMultiBuilder()
+				flushCommitter = newGatedFlushCommitter()
+				proc           = newProcessor(m, records, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), prometheus.NewRegistry())
+			)
+			ran := make(chan error, 1)
+			go func() { ran <- proc.Run(t.Context()) }()
+
+			records <- newTestRecord(t, "tenant", time.Now())
+			synctest.Wait()
+			m.forceFull = true
+			// The second record starts the flush of the first batch, and the
+			// third waits for it, because the builder stays full.
+			records <- newTestRecord(t, "tenant", time.Now())
+			records <- newTestRecord(t, "tenant", time.Now())
+			synctest.Wait()
+			require.Len(t, flushCommitter.startedOffsets(), 1)
+
+			sent := make(chan struct{})
+			go func() {
+				for range 3 {
+					records <- newTestRecord(t, "tenant", time.Now())
+				}
+				close(sent)
+			}()
+			select {
+			case <-sent:
+			case <-time.After(time.Minute):
+				t.Fatal("the processor took no record while it waited for the previous batch")
+			}
+			require.Positive(t, testutil.ToFloat64(proc.metrics.prefetched))
+
+			close(records)
+			flushCommitter.results <- nil
+			flushCommitter.results <- nil
+			require.NoError(t, <-ran)
+		})
+	})
 }
 
 // newTestBuilder returns a new logsobj.Builder with registered metrics.

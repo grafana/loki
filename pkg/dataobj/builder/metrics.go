@@ -15,6 +15,7 @@ type metrics struct {
 	records        prometheus.Counter
 	recordFailures prometheus.Counter
 	sizeEstimate   prometheus.Gauge
+	prefetched     prometheus.Gauge
 
 	flushWaitSeconds prometheus.Counter
 }
@@ -52,6 +53,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		flushWaitSeconds: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_flush_wait_seconds_total",
 			Help: "Total time in seconds that the processor waited for the previous flush to end before it started the next flush. The processor appends no records while it waits.",
+		}),
+		prefetched: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_builder_prefetched_bytes",
+			Help: "Bytes of Kafka record values that the builder read ahead and did not process yet. Near 0, the builder waits for Kafka. Near the limit, Kafka records wait for the builder.",
 		}),
 	}
 }
