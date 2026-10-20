@@ -71,6 +71,9 @@ type Config struct {
 
 	// MaxConcurrentQueueTimeout bounds how long a request waits for a free slot before rejection.
 	MaxConcurrentQueueTimeout time.Duration `yaml:"max_concurrent_queue_timeout" category:"experimental"`
+
+	// PerIndexOwnership gives each (tenant, table) index its own owners in the ring.
+	PerIndexOwnership PerIndexOwnershipConfig `yaml:"per_index_ownership" category:"experimental" doc:"hidden"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -78,6 +81,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar((*string)(&cfg.Mode), "index-gateway.mode", SimpleMode.String(), "Defines in which mode the index gateway server will operate (default to 'simple'). It supports two modes:\n- 'simple': an index gateway server instance is responsible for handling, storing and returning requests for all indices for all tenants.\n- 'ring': an index gateway server instance is responsible for a subset of tenants instead of all tenants.")
 	f.IntVar(&cfg.MaxConcurrent, "index-gateway.max-concurrent", 0, "Experimental: Maximum number of index gateway RPCs that can execute concurrently. When the limit is reached, additional requests wait up to -index-gateway.max-concurrent-queue-timeout for a free slot. If no slot becomes free in that time, the index gateway rejects the request with an HTTP 503 status. Clients retry the request against another index gateway replica. 0 disables admission control. A recommended starting value when enabling this setting is 200.")
 	f.DurationVar(&cfg.MaxConcurrentQueueTimeout, "index-gateway.max-concurrent-queue-timeout", 5*time.Second, "Experimental: Maximum time a request waits for a free slot when the index gateway is already executing -index-gateway.max-concurrent requests. If no slot becomes free in that time, the index gateway rejects the request. Bursts shorter than this timeout are absorbed without errors. Clients retry rejected requests against other replicas. When every replica is saturated, a request can wait up to this long per replica, so prefer a low value. 0 means requests wait indefinitely, bounded only by the request's own timeout. Only used when -index-gateway.max-concurrent is greater than 0.")
+
+	cfg.PerIndexOwnership.RegisterFlagsWithPrefix("index-gateway.per-index-ownership.", f)
 
 	// Ring
 	skipFlags := []string{
@@ -103,6 +108,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxConcurrentQueueTimeout < 0 {
 		return errors.New("index gateway max concurrent queue timeout must be greater than or equal to 0")
+	}
+	if err := cfg.PerIndexOwnership.Validate(cfg.Mode); err != nil {
+		return err
 	}
 	return nil
 }

@@ -43,14 +43,15 @@ type Limits interface {
 }
 
 // TenantFilter is invoked by an IndexGateway instance and answers which
-// tenants from the given list of tenants are assigned to this instance.
+// tenants from the given list of tenants have their index in table assigned
+// to this instance.
 //
 // It is only relevant by an IndexGateway in the ring mode and if its result
 // does not contain a given tenant, that tenant will be ignored by this
-// IndexGateway during query readiness.
+// IndexGateway during query readiness of that table.
 //
-// It requires the same function signature as indexgateway.(*ShardingStrategy).FilterTenants
-type TenantFilter func([]string) ([]string, error)
+// It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
+type TenantFilter func(table string, tenants []string) ([]string, error)
 
 type TableManager interface {
 	Stop()
@@ -460,7 +461,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
-		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
+		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableName, tableNumber, usersWithIndex, queryReadinessNumByUserID)
 		if err != nil {
 			return err
 		}
@@ -503,7 +504,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
-func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
+func (tm *tableManager) findUsersInTableForQueryReadiness(tableName string, tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
 	overrides := &tm.cfg.QueryReadyOverrides
@@ -532,7 +533,7 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 		}
 	}
 	if tm.tenantFilter != nil {
-		return tm.tenantFilter(usersToBeQueryReadyFor)
+		return tm.tenantFilter(tableName, usersToBeQueryReadyFor)
 	}
 	return usersToBeQueryReadyFor, nil
 }

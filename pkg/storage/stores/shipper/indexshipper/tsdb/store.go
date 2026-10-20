@@ -114,7 +114,7 @@ func (s *store) init(params storeInitParams) error {
 		params.indexShipperCfg,
 		params.objectClient,
 		params.limits,
-		nil,
+		params.indexShipperCfg.TenantFilter,
 		func(p string) (shipperindex.Index, error) {
 			return openShippableTSDBWithPostingsCache(p, readerOpts, s.postingsCache, params.prefix, params.indexShipperCfg.CacheLocation)
 		},

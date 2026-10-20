@@ -114,6 +114,9 @@ type Config struct {
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
 
+	// TenantFilter, if set, limits query readiness to the tenants it returns
+	// for each table. It is set by the index gateway with per-index ownership.
+	TenantFilter downloads.TenantFilter `yaml:"-"`
 	// DelayQueryReadinessUntilPreload moves the initial query readiness run
 	// from construction to the first PreloadIndexes call, once TenantFilter can
 	// answer. It is set by the index gateway with per-index ownership.

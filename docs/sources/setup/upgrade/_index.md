@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental per-index gateway ownership
+
+Set `index_gateway.per_index_ownership.enabled: true` to preload indexes according to tenant/table ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. A preload timeout allows activation with remaining work handled by periodic readiness; other preload errors fail startup. Leave ownership disabled to preserve existing behavior.
+
 ### Experimental process-local index readiness overrides
 
 The `tsdb_shipper.query_ready_overrides` settings are experimental. `num_days` maps tenant IDs to readiness windows, with `"*"` as the default. `tenants_include` and `tenants_exclude` restrict which tenants this process preloads. These settings do not change shared tenant limits or common-index readiness, and are unset by default.

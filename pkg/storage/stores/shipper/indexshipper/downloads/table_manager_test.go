@@ -176,6 +176,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 		queryReadinessLimits mockLimits
 		tableRangeToHandle   *config.TableRange
 		overrides            QueryReadyOverrides
+		tenantFilter         TenantFilter
 
 		expectedQueryReadinessDoneForUsers map[string][]string
 	}{
@@ -370,6 +371,47 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				buildTableName(2): {"user1"},
 			},
 		},
+		{
+			name: "tenant filter by table, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			// user1 owns its index in tables 0 and 2, user2 in table 1.
+			tenantFilter: func(table string, tenants []string) ([]string, error) {
+				owner := map[string]string{
+					buildTableName(0): "user1",
+					buildTableName(1): "user2",
+					buildTableName(2): "user1",
+				}[table]
+				var out []string
+				for _, tenant := range tenants {
+					if tenant == owner {
+						out = append(out, tenant)
+					}
+				}
+				return out, nil
+			},
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): {"user1"},
+				buildTableName(1): {"user2"},
+				buildTableName(2): {"user1"},
+			},
+		},
+		{
+			name: "tenant filter owns nothing, common index: 1 day, user index default: 2 days",
+			queryReadinessLimits: mockLimits{
+				queryReadyIndexNumDaysDefault: 2,
+			},
+			queryReadyNumDaysCfg: 1,
+			tenantFilter: func(_ string, _ []string) ([]string, error) {
+				return nil, nil
+			},
+			// the common index is still kept query ready.
+			expectedQueryReadinessDoneForUsers: map[string][]string{
+				buildTableName(0): nil,
+				buildTableName(1): nil,
+			},
+		},
 		// includes limited table range
 		{
 			name:                 "common index: 20 days",
@@ -422,6 +464,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			tableManager.cfg.QueryReadyNumDays = tc.queryReadyNumDaysCfg
 			tableManager.cfg.Limits = &tc.queryReadinessLimits
 			tableManager.cfg.QueryReadyOverrides = tc.overrides
+			tableManager.tenantFilter = tc.tenantFilter
 			if tc.tableRangeToHandle == nil {
 				tableManager.tableRangeToHandle = config.TableRange{
 					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
