@@ -68,7 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		&cfg.ShardCacheTTL,
 		"ingest-limits-frontend.shard-cache-ttl",
 		0,
-		"[Experimental]: The time to live (TTL) for caching CheckLimitsAndShard results per stream. Pushes arriving while an entry is cached are combined into a single backend request once it goes stale. 0 disables the cache.",
+		"[Experimental]: The time to live (TTL) for caching CheckLimitsAndShard results per stream. 0 disables the cache.",
 	)
 }
 
