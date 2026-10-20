@@ -35,7 +35,7 @@ type partitionConsumer interface {
 
 // A resumeOffsetReader allows mocking of [kafkav2.OffsetReader] in tests.
 type resumeOffsetReader interface {
-	ResumeOffset(ctx context.Context, partition int32) (int64, error)
+	ResumeOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error)
 }
 
 type Service struct {
@@ -43,8 +43,9 @@ type Service struct {
 	consumer           partitionConsumer
 	offsetReader       resumeOffsetReader
 	partition          int32
+	consumerGroup      string
 	processor          services.Service
-	downscalePermitted downscalePermittedFunc
+	reporter           services.Service
 	logger             log.Logger
 	subservicesWatcher *services.FailureWatcher
 }
@@ -85,8 +86,9 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
 
-	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic, instanceID, logger)
-	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, instanceID)
+	consumerGroup := instanceID
+	offsetReader := kafkav2.NewOffsetReader(readerClient, cfg.Topic)
+	committer := kafkav2.NewGroupCommitter(kadm.NewClient(readerClient), cfg.Topic, consumerGroup)
 	records := make(chan *kgo.Record)
 	consumer := kafkav2.NewSinglePartitionConsumer(
 		readerClient,
@@ -167,26 +169,50 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		reg,
 	)
 
-	downscalePermitted := newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
-	return newService(consumer, offsetReader, processor, downscalePermitted, partitionID, logger), nil
+	// Partition 0 always has a builder, so its builder reports how many
+	// builders the other partitions need. It derives the consumer groups of
+	// the other builders from its own hostname. A partition override breaks
+	// that mapping, so a builder with an override does not report.
+	var reporter services.Service
+	if partitionID == 0 {
+		if cfg.PartitionID >= 0 {
+			level.Info(logger).Log("msg", "not reporting required replicas, because the partition ID is set in the config")
+		} else {
+			partitionToConsumerGroup, err := newPartitionToConsumerGroupFunc(instanceID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to derive the consumer groups of other builders: %w", err)
+			}
+			reporter = newRequiredReplicasReporter(
+				offsetReader,
+				partitionToConsumerGroup,
+				cfg.RequiredReplicasRefreshInterval,
+				logger,
+				reg,
+			)
+		}
+	}
+	return newService(consumer, offsetReader, processor, reporter, partitionID, consumerGroup, logger), nil
 }
 
 // newService returns a Service that runs consumer and processor for the
-// partition. It fails if either of them fails.
+// partition, and reporter if it is not nil. It fails if any of them fails.
+// The consumer resumes from the last offset that consumerGroup committed.
 func newService(
 	consumer partitionConsumer,
 	offsetReader resumeOffsetReader,
 	processor services.Service,
-	downscalePermitted downscalePermittedFunc,
+	reporter services.Service,
 	partition int32,
+	consumerGroup string,
 	logger log.Logger,
 ) *Service {
 	s := &Service{
 		consumer:           consumer,
 		offsetReader:       offsetReader,
 		partition:          partition,
+		consumerGroup:      consumerGroup,
 		processor:          processor,
-		downscalePermitted: downscalePermitted,
+		reporter:           reporter,
 		logger:             logger,
 		subservicesWatcher: services.NewFailureWatcher(),
 	}
@@ -195,6 +221,9 @@ func newService(
 	// running reads it.
 	s.subservicesWatcher.WatchService(processor)
 	s.subservicesWatcher.WatchService(consumer)
+	if reporter != nil {
+		s.subservicesWatcher.WatchService(reporter)
+	}
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s
 }
@@ -210,6 +239,11 @@ func (s *Service) starting(ctx context.Context) error {
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
+	}
+	if s.reporter != nil {
+		if err := services.StartAndAwaitRunning(ctx, s.reporter); err != nil {
+			return fmt.Errorf("failed to start required replicas reporter: %w", err)
+		}
 	}
 	return nil
 }
@@ -228,6 +262,11 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
+	if s.reporter != nil {
+		if err := services.StopAndAwaitTerminated(ctx, s.reporter); err != nil {
+			level.Warn(s.logger).Log("msg", "failed to stop required replicas reporter", "err", err)
+		}
+	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
 	}
@@ -248,7 +287,7 @@ func (s *Service) initResumeOffset(ctx context.Context) error {
 	})
 	var lastErr error
 	for b.Ongoing() {
-		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.partition)
+		initialOffset, err := s.offsetReader.ResumeOffset(ctx, s.consumerGroup, s.partition)
 		if err == nil {
 			lastErr = s.consumer.SetInitialOffset(initialOffset)
 			break

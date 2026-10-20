@@ -260,6 +260,10 @@ Alternatively, if the `Content-Type` header is set to `application/json`, a JSON
 }
 ```
 
+{{< admonition type="note" >}}
+Loki validates JSON push payloads strictly: a field name that doesn't belong to the schema shown above causes the request to fail with HTTP 400 and an error message that contains `found unknown field: <field>`. This also applies to the deprecated `/api/prom/push` endpoint, which uses a different JSON schema (`labels` and `entries` instead of `stream` and `values`). Each endpoint only accepts the fields in its own schema, so sending one endpoint's payload format to the other now returns an error instead of silently dropping data. This validation doesn't apply to the default Protocol Buffer encoding.
+{{< /admonition >}}
+
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
 You can optionally attach [structured metadata](../../get-started/labels/structured-metadata/) to each log line by adding a JSON object to the end of the log line array.
@@ -1297,14 +1301,15 @@ POST /flush
 ```
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
-backing store. Mainly used for local testing. The flush is queued and the
-request returns without waiting for it to complete.
+backing store. By default the flush is queued and the request returns without 
+waiting for it to complete.
 
 **URL query parameters:**
 
 - `flush_index` (experimental):
   If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
   The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  Waiting for the flush can take a long time, so set a generous client timeout.
   A bare `flush_index` is treated as `true`.
   If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
@@ -1319,10 +1324,8 @@ POST /flush/tenant
 This endpoint is experimental and may change or be removed.
 
 `/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
-a single tenant. Unlike `/flush`, which only queues the flush and returns, this
-endpoint is synchronous: it returns once the chunks have been written to the
-backing store. This can take a long time, so set a generous client timeout when
-calling it.
+a single tenant to the backing store. By default the flush is queued and the
+request returns without waiting for it to complete.
 
 **URL query parameters:**
 
@@ -1332,11 +1335,12 @@ calling it.
   Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
   If omitted, all in-memory streams for the tenant are flushed.
 - `flush_index`:
-  Optional. After the chunks are flushed, also build and upload the ingester's index (the TSDB head).
-  This makes the flushed chunks immediately referenceable, rather than waiting for the next periodic index rotation.
-  The index is shared by all tenants on the ingester, so this is not tenant-scoped.
-  If omitted, only chunks are flushed.
-  NOTE: If provided the endpoint blocks until all flushing behavior is complete.
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  The index is shared by all tenants on the ingester, so the index flush is not tenant-scoped.
+  Waiting for the flush can take a long time, so set a generous client timeout.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
 For example, `POST /flush/tenant?tenant=foo&matchers={app="bar"}&flush_index`.
 

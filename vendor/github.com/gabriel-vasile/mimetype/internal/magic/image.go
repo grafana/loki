@@ -178,9 +178,7 @@ func jpeg2k(raw []byte, sig []byte) bool {
 
 // Webp matches a WebP file.
 func Webp(raw []byte, _ uint32) bool {
-	return len(raw) > 12 &&
-		bytes.Equal(raw[0:4], []byte("RIFF")) &&
-		bytes.Equal(raw[8:12], []byte{0x57, 0x45, 0x42, 0x50})
+	return iff(raw, []byte("RIFF"), []byte("WEBP"))
 }
 
 // Dwg matches a CAD drawing file.

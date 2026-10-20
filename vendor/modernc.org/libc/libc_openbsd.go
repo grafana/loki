@@ -361,6 +361,28 @@ func Xfsync(t *TLS, fd int32) int32 {
 	return 0
 }
 
+// int fdatasync(int fd);
+//
+// OpenBSD has no fdatasync system call: its libc implements fdatasync as a
+// jump to fsync (checked on OpenBSD 7.8), and only libc may make system calls
+// there, so this does the same.
+func Xfdatasync(t *TLS, fd int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v fd=%v, (%v:)", t, fd, origin(2))
+	}
+	if noFsync {
+		// Simulate -DSQLITE_NO_SYNC for sqlite3 testfixture, see function full_sync in sqlite3.c
+		return Xfstat(t, fd, uintptr(unsafe.Pointer(&fsyncStatbuf)))
+	}
+
+	if err := unix.Fsync(int(fd)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
 // long sysconf(int name);
 func Xsysconf(t *TLS, name int32) long {
 	if __ccgo_strace {

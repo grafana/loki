@@ -47,7 +47,7 @@ type LogRecord struct {
 
 // LogReader runs a read plan and yields decoded log records in batches.
 //
-// One row reader scans each planned section, matching all of its streams together and reading
+// One row reader scans each planned section, matching all of its streams together and returning
 // only the planned columns. The planner rejects a section it was given twice, so no section is
 // scanned twice.
 //
