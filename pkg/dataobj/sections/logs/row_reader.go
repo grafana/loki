@@ -111,7 +111,7 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 //
 // The field of a column that is not projected comes back as its zero value.
 //
-// The reader still reads the columns a stream match or a predicate needs, even when the caller
+// The reader reads the columns a stream match or a predicate needs, even when the caller
 // does not list them. It does not decode them into the [Record].
 //
 // When the section holds no such column, a metadata or message predicate evaluates against the
@@ -128,8 +128,6 @@ func (r *RowReader) SetProjectedColumns(types []ColumnType, metadataNames []stri
 		return fmt.Errorf("cannot change projected columns after reading has started")
 	}
 
-	// A projection has to select something. The reader cannot read zero columns, and an
-	// empty selection is a caller mistake.
 	if len(types) == 0 && len(metadataNames) == 0 {
 		return fmt.Errorf("projection must select at least one column")
 	}
@@ -200,7 +198,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	// that way, because the reader addresses a row's values by position.
 	datasetColumns, sectionColumns := dset.Columns(), r.sec.Columns()
 
-	// The stream match and the predicates look their columns up among all the columns, so they
+	// The stream match and the predicates look their columns up among all the columns. So they
 	// work whether or not the projection lists those columns. Only the projected columns go
 	// into the records.
 	projectedDatasetColumns, projectedSectionColumns := datasetColumns, sectionColumns

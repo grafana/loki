@@ -69,7 +69,7 @@ type RowReader struct {
 	primaryColumnIndexes []int               // Indexes of primary columns in columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
 	batchPredicates      []*batchPredicate   // One per predicate, nil for a row by row predicate.
-	keepScratch          []int32             // Indexes that a batch predicate keeps, reused across reads.
+	keepScratch          []int32             // Scratch for the indexes that KeepBatch returns.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -380,9 +380,9 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 }
 
 // evalBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
-// passing rows to the front of rows and returns how many there are, and the size in bytes of the
-// values it read. It copies the value of a passing row into the row only when the column is
-// projected. On error it returns zero values.
+// passing rows to the front of rows. It returns the number of passing rows and the size in
+// bytes of the values it read. It copies the value of a passing row into the row only when the
+// column is projected. On error it returns zero values.
 func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, rows []Row) (int, int64, error) {
 	var (
 		pass      = 0
@@ -400,7 +400,7 @@ func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, 
 			}
 			prev = k
 
-			// Ascending indexes keep pass <= j. We move rows[j] to rows[pass] by *swapping* the
+			// Ascending indexes guarantee pass <= j. We move rows[j] to rows[pass] by *swapping* the
 			// rows. Copying would result in the Row.Values slice existing in two places in the
 			// buffer, which causes memory corruption when filling in rows.
 			j := offset + int(k)
@@ -468,14 +468,14 @@ func (r *RowReader) initBatchPredicates() {
 		}
 
 		// ReadColumns reads the columns of the first predicate into every row before the predicates
-		// run, so a batch func has nothing left to skip there.
+		// run. KeepBatch would have nothing left to skip there.
 		if i == 0 {
 			continue
 		}
 
-		// A predicate that shares its column with another one needs the value in every row. The
-		// batch path fills the column only in the rows that pass, and not at all when the column
-		// is not projected.
+		// The batch path does not mark its column as filled. A second predicate on the same column
+		// would read it again and count its bytes twice. So predicates that share a column stay on
+		// the row path.
 		if predicatesPerColumn[fp.Column] != 1 {
 			continue
 		}

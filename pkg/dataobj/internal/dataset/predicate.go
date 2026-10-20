@@ -80,9 +80,13 @@ type (
 		// value.
 		//
 		// KeepBatch must give the same result as Keep on every value. Keep gets a nil Value
-		// for a null value, so Keep must treat a nil and an empty value alike. The reader calls Keep
-		// when it cannot use KeepBatch: for the first predicate, for a predicate inside And, Or or
-		// Not, for a column that another predicate reads, and for a column that is not binary.
+		// for a null value, so Keep must treat a nil and an empty value alike.
+		//
+		// The reader can call Keep instead of KeepBatch, so Keep must always be set. It does so for:
+		//   - the first predicate,
+		//   - a predicate inside And, Or or Not,
+		//   - a column that another predicate reads,
+		//   - a column that is not binary.
 		//
 		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
 		// values. It must be safe for concurrent use.

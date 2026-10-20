@@ -4,12 +4,19 @@ import (
 	"math/rand"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestFilterBatch(t *testing.T) {
+	t.Cleanup(func() {
+		for i, v := range defaultSequentialIndexes {
+			require.Equal(t, int32(i), v, "a subtest changed defaultSequentialIndexes[%d]", i)
+		}
+	})
+
 	ipFilter, err := NewIPLineFilter("192.168.0.0/16", LineMatchEqual)
 	require.NoError(t, err)
 
@@ -247,7 +254,6 @@ func TestFilterBatch(t *testing.T) {
 	})
 
 	t.Run("FilterBatch should match Filter on batches around the size of the shared list of indexes", func(t *testing.T) {
-		// These filters read srcIndexes, so a wrong index list changes their result.
 		filters := map[string]Filterer{
 			"negated literal": NewNotFilter(mustNewMatcherFilter(t, "needle", LineMatchEqual)),
 			"regexp":          mustNewFilter(t, "needl+e", LineMatchRegexp),
@@ -319,7 +325,63 @@ func TestFilterBatch(t *testing.T) {
 		)
 		got = FilterBatch(both, batch, []int32{99})
 		require.Equal(t, []int32{99, 2}, got)
+
+		got = FilterBatch(TrueFilter, batch, []int32{99})
+		require.Equal(t, []int32{99, 0, 1, 2}, got)
 	})
+
+	t.Run("FilterBatch should not let a filter that appends to srcIndexes write into the shared list of indexes", func(t *testing.T) {
+		t.Cleanup(func() { defaultSequentialIndexes[3] = 3 })
+
+		FilterBatch(appendingBatchFilter{}, newTestLinesBatch("a", "b", "c"), nil)
+
+		require.Equal(t, int32(3), defaultSequentialIndexes[3])
+	})
+
+	t.Run("FilterBatch should not let a filter that appends to its line change the next line", func(t *testing.T) {
+		batch := newTestLinesBatch("ab", "cd")
+		FilterBatch(appendingLineFilter{}, batch, nil)
+
+		require.Equal(t, []byte("abcd"), batch.Data)
+	})
+
+	for name, f := range map[string]Filterer{
+		"orFilter": newOrFilter(
+			mustNewMatcherFilter(t, "a", LineMatchEqual),
+			mustNewMatcherFilter(t, "b", LineMatchEqual),
+		),
+		"notFilter": NewNotFilter(mustNewMatcherFilter(t, "a", LineMatchEqual)),
+	} {
+		t.Run(name+" should give the same lines to concurrent calls", func(t *testing.T) {
+			rows := make([]string, 300)
+			for i := range rows {
+				rows[i] = []string{"a", "b", "ab", "c"}[i%4]
+			}
+			batch := newTestLinesBatch(rows...)
+			want := filterEachLine(f, batch)
+			require.NotEmpty(t, want)
+
+			const goroutines = 8
+			wrong := make([]int, goroutines)
+			var wg sync.WaitGroup
+			for g := range goroutines {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					var dst []int32
+					for range 500 {
+						dst = FilterBatch(f, batch, dst[:0])
+						if !slices.Equal(want, dst) {
+							wrong[g]++
+						}
+					}
+				}()
+			}
+			wg.Wait()
+
+			require.Equal(t, make([]int, goroutines), wrong, "wrong results for each goroutine")
+		})
+	}
 
 	t.Run("FilterBatch should allocate nothing for a literal and an and in steady state", func(t *testing.T) {
 		batch := newTestLinesBatch("error a", "b", "error error", "c", "a")
@@ -407,14 +469,6 @@ func TestFilterBatch(t *testing.T) {
 			require.True(t, slices.Equal(want, got[2:]), "trial %d, rows %q, want %v, got %v", trial, rows, want, got[2:])
 		}
 	})
-
-	t.Run("FilterBatch should leave the shared list of indexes unchanged", func(t *testing.T) {
-		want := make([]int32, len(defaultSequentialIndexes))
-		for i := range want {
-			want[i] = int32(i)
-		}
-		require.Equal(t, want, defaultSequentialIndexes)
-	})
 }
 
 func newTestLinesBatch(lines ...string) LinesBatch {
@@ -472,3 +526,25 @@ func (s *spyBatchFilter) filterBatch(_ LinesBatch, srcIndexes, dstIndexes []int3
 	s.batchCalls++
 	return append(dstIndexes, srcIndexes...)
 }
+
+// appendingBatchFilter appends to its source list, as a faulty filterBatch could.
+type appendingBatchFilter struct{}
+
+func (appendingBatchFilter) Filter([]byte) bool { return true }
+
+func (appendingBatchFilter) ToStage() Stage { return NoopStage }
+
+func (appendingBatchFilter) filterBatch(_ LinesBatch, srcIndexes, dstIndexes []int32) []int32 {
+	grown := append(srcIndexes, -1)
+	return append(dstIndexes, grown[:len(srcIndexes)]...)
+}
+
+// appendingLineFilter appends to the line that it tests, as a faulty Filterer could.
+type appendingLineFilter struct{}
+
+func (appendingLineFilter) Filter(line []byte) bool {
+	line = append(line, 'Z')
+	return len(line) > 0
+}
+
+func (appendingLineFilter) ToStage() Stage { return NoopStage }

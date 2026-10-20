@@ -80,7 +80,8 @@ func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count
 // touches. It calls visit once for each page, in order, with the values that it read from that
 // page. It returns the first error of visit and stops.
 //
-// The arrays come from alloc and stay valid until the caller reclaims alloc.
+// The values that visit receives come from alloc and stay valid until the caller reclaims
+// alloc.
 //
 // If the column ends before count values, ReadEach visits the values that remain and returns
 // [io.EOF].

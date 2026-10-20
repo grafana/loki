@@ -220,6 +220,15 @@ func Test_basicReader_visitColumn(t *testing.T) {
 		_, err := br.visitColumn(t.Context(), columns[0], rows, func(int, *columnar.UTF8) error { return errVisit })
 		require.ErrorIs(t, err, errVisit)
 	})
+
+	t.Run("holds no memory in its allocator after it returns", func(t *testing.T) {
+		rows := []Row{{Index: 1}, {Index: 2}, {Index: 3}, {Index: 6}, {Index: 8}, {Index: 9}}
+
+		_, err := br.visitColumn(t.Context(), columns[0], rows, func(int, *columnar.UTF8) error { return nil })
+		require.NoError(t, err)
+
+		require.Zero(t, br.visitColumnAlloc.AllocatedBytes())
+	})
 }
 
 func Test_partitionRows(t *testing.T) {

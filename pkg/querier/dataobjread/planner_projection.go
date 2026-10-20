@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-// ProjectionPlan says which columns of a logs section a query reads and which of its metadata
+// ProjectionPlan says which columns of a logs section a query returns and which of its metadata
 // filters and line filters can be pushed into the read. It also yields the unpushed query, through
 // [ProjectionPlan.UnpushedExpr].
 //
@@ -24,10 +24,10 @@ type ProjectionPlan struct {
 	// true when the unpushed query or a delete may read the line.
 	needReturningLine bool
 
-	// needAllMetadata reports whether every metadata column must be read.
+	// needAllMetadata reports whether every metadata column must be returned.
 	needAllMetadata bool
 
-	// metadataNames name the metadata columns to read when needAllMetadata is false, sorted.
+	// metadataNames name the metadata columns to return when needAllMetadata is false, sorted.
 	metadataNames []string
 
 	// pushdownCandidates are the query's label-filter matchers a read may push down. A name one
@@ -212,8 +212,8 @@ func (p ProjectionPlan) UnpushedExpr() syntax.SampleExpr { return p.unpushedExpr
 
 // forStreams returns the columns to return and the predicates to push for a section whose streams
 // carry the given label names. The message predicate of a line filter is the last predicate. The
-// reader reads the message column for that predicate, so the columns hold the message only when
-// the query returns the line.
+// reader reads the message column itself, so columns lists it only when the query returns the
+// line.
 func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (columns []logs.ColumnType, metadataNames []string, predicates []logs.RowPredicate) {
 	columns = make([]logs.ColumnType, 0, 4)
 	columns = append(columns, logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp)

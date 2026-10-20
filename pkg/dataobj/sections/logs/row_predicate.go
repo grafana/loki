@@ -40,9 +40,9 @@ type (
 		// at the same time, so it must be safe for concurrent use.
 		Keep func(line []byte) bool
 
-		// KeepBatch is optional. It tests a batch of lines at once, which saves a Keep call and a
-		// line copy for each row. The reader calls Keep when it cannot use KeepBatch, so Keep must
-		// always be set.
+		// KeepBatch is optional. It tests a batch of lines at once. This saves a Keep call for each
+		// row and a copy of each line that fails. The reader calls Keep when it cannot use KeepBatch,
+		// so Keep must always be set.
 		//
 		// Line i is data[offsets[i]:offsets[i+1]]. An entry with no message is an empty line, and
 		// Keep gets a nil line for it, so Keep must treat a nil and an empty line alike. Lines have
