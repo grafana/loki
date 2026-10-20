@@ -81,8 +81,8 @@ func NewOffsetReader(client *kgo.Client, topic string) *OffsetReader {
 }
 
 // LastCommittedOffset returns the last committed offset of consumerGroup for
-// the partition. The offset is negative if the group has no committed offset
-// for the partition.
+// the partition. The offset is -1 if the group has no committed offset for the
+// partition.
 func (r *OffsetReader) LastCommittedOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error) {
 	offsets, err := r.LastCommittedOffsets(ctx, map[int32]string{partition: consumerGroup})
 	if err != nil {
@@ -136,12 +136,15 @@ func (r *OffsetReader) listedOffsets(listed kadm.ListedOffsets, err error) (map[
 	return offsets, nil
 }
 
+// noCommittedOffset is the offset that OffsetFetch returns for a partition
+// with no committed offset.
+const noCommittedOffset = int64(-1)
+
 // LastCommittedOffsets returns the last committed offset for each partition
 // in groups, keyed by partition. groups maps each partition to the consumer
 // group that consumes it. It sends one request per group coordinator.
 //
-// The offset is negative if the group has no committed offset for its
-// partition.
+// The offset is -1 if the group has no committed offset for its partition.
 func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, groups map[int32]string) (map[int32]int64, error) {
 	offsets := make(map[int32]int64, len(groups))
 	if len(groups) == 0 {
@@ -151,7 +154,8 @@ func (r *OffsetReader) LastCommittedOffsets(ctx context.Context, groups map[int3
 	// offset of the group. That keeps the load on the broker low.
 	partitions := make(map[string][]int32)
 	for partition, group := range groups {
-		offsets[partition] = OffsetStart
+		// The broker omits the partitions of a group that does not exist.
+		offsets[partition] = noCommittedOffset
 		partitions[group] = append(partitions[group], partition)
 	}
 	req := kmsg.NewPtrOffsetFetchRequest()

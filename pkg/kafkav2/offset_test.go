@@ -99,11 +99,19 @@ func TestOffsetReader_LastCommittedOffset(t *testing.T) {
 		testConsumerGroup = "test-consumer-group"
 	)
 
-	t.Run("returns the start offset when the group never committed", func(t *testing.T) {
+	t.Run("returns -1 when the group does not exist", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
 		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 0)
 		require.NoError(t, err)
-		require.Equal(t, OffsetStart, offset)
+		require.Equal(t, noCommittedOffset, offset)
+	})
+
+	t.Run("returns -1 when the group committed only another partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 2)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).LastCommittedOffset(t.Context(), testConsumerGroup, 1)
+		require.NoError(t, err)
+		require.Equal(t, noCommittedOffset, offset)
 	})
 
 	t.Run("returns the committed offset", func(t *testing.T) {
@@ -136,9 +144,17 @@ func TestOffsetReader_ResumeOffset(t *testing.T) {
 		testConsumerGroup = "test-consumer-group"
 	)
 
-	t.Run("returns the start offset when the group never committed", func(t *testing.T) {
+	t.Run("returns the start offset when the group does not exist", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
 		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 0)
+		require.NoError(t, err)
+		require.Equal(t, OffsetStart, offset)
+	})
+
+	t.Run("returns the start offset when the group committed only another partition", func(t *testing.T) {
+		_, client := newTestCluster(t, testTopic, 2)
+		require.NoError(t, NewCommitter(kadm.NewClient(client)).Commit(t.Context(), testTopic, 0, testConsumerGroup, 100))
+		offset, err := NewOffsetReader(client, testTopic).ResumeOffset(t.Context(), testConsumerGroup, 1)
 		require.NoError(t, err)
 		require.Equal(t, OffsetStart, offset)
 	})
@@ -241,21 +257,19 @@ func TestOffsetReader_LastCommittedOffsets(t *testing.T) {
 		require.Equal(t, map[int32]int64{0: 4, 2: 0}, offsets)
 	})
 
-	t.Run("returns a negative offset when the group never committed", func(t *testing.T) {
+	t.Run("returns -1 when the group does not exist", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 1)
 		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
 		require.NoError(t, err)
-		require.Len(t, offsets, 1)
-		require.Negative(t, offsets[0])
+		require.Equal(t, map[int32]int64{0: noCommittedOffset}, offsets)
 	})
 
-	t.Run("returns a negative offset when the group committed only another partition", func(t *testing.T) {
+	t.Run("returns -1 when the group committed only another partition", func(t *testing.T) {
 		_, client := newTestCluster(t, testTopic, 2)
 		commit(t, client, "group-0", 1, 4)
 		offsets, err := NewOffsetReader(client, testTopic).LastCommittedOffsets(t.Context(), map[int32]string{0: "group-0"})
 		require.NoError(t, err)
-		require.Len(t, offsets, 1)
-		require.Negative(t, offsets[0])
+		require.Equal(t, map[int32]int64{0: noCommittedOffset}, offsets)
 	})
 
 	t.Run("requests only the partition of each group", func(t *testing.T) {
