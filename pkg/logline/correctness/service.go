@@ -115,7 +115,7 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		startedAt = cfg.StartedAt.UTC()
 	}
 
-	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, nil, logger, reg)
+	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, 0, nil, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("create hint provider: %w", err)
 	}

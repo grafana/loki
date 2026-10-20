@@ -60,7 +60,7 @@ func TestLoglineHintProvider_ExecuteQuery_OrAcrossShards(t *testing.T) {
 	writeShardedTermTestIndex(t, indexStore, logline.CurrentVersion, "2222222222222222", docs,
 		map[string][]uint32{second: {1}}, secondShard)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 2)
@@ -245,7 +245,7 @@ func TestLoglineHintProvider_ExecuteQuery_SharedBitmapIsNotAliased(t *testing.T)
 		"BBBBBB": {0},
 		"CCCCCC": {1},
 	}, 0, 0)
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	// One worker, so AAAAAA is applied to both conjunctions first, then
@@ -270,7 +270,7 @@ func newCountingProvider(t *testing.T, postings map[string][]uint32) (*LoglineHi
 	indexStore := newTestStore(t)
 	writeTermTestIndex(t, indexStore, logline.CurrentVersion, "1111111111111111", docs, postings, 0, 0)
 
-	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
+	provider, err := NewLoglineHintProvider(indexStore, 6, 0, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	counter := &lookupCounter{findTerm: map[string]int{}, getBitmap: map[string]int{}}
 	provider.wrapReader = func(r logline.Reader) logline.Reader {

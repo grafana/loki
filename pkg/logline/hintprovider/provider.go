@@ -45,6 +45,8 @@ type HintPlan struct {
 	Stats       *QueryStats
 	NgramLength int32
 	MaxParallel int32
+	// MaxConjunctions is the most needle sets Filters was planned into.
+	MaxConjunctions int32
 }
 
 // HintTimeRange is a half-open time window [Start, End) that may contain
