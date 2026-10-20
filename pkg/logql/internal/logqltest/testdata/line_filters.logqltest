@@ -108,6 +108,24 @@ eval instant at 60s sum(count_over_time({app="a"} |~ "(?i)code=503" [1m]))
 eval instant at 60s count_over_time({app="a"} |~ "(" [1m])
   expect fail msg: error parsing regexp
 
+# |~ / !~ with .* between a literal and an alternation: the .* matches any text between them.
+clear
+load
+  {app="a"} "a x bb"    @ 20s [repeat every 20s for 4]
+  {app="a"} "a x cc"    @ 30s
+  {app="a"} "a cc"      @ 35s   # .* matches the empty string
+  {app="a"} "a x dd"    @ 45s   # noise: no alternate
+  {app="a"} "bb then a" @ 50s   # noise: alternate before the literal
+
+eval instant at 60s count_over_time({app="a"} |~ "a .*(bb|cc)" [1m])
+  {app="a"} 5
+eval range from 40s to 80s step 20s count_over_time({app="a"} |~ "a .*(bb|cc)" [1m])   # overlapping
+  {app="a"} 4 5 5
+eval range from 60s to 180s step 120s count_over_time({app="a"} |~ "a .*(bb|cc)" [1m]) # non-overlapping
+  {app="a"} 5 _
+eval instant at 60s count_over_time({app="a"} !~ "a .*(bb|cc)" [1m])
+  {app="a"} 2
+
 # |> / !> (pattern match)
 clear
 load
