@@ -93,7 +93,7 @@ import (
 // and NaN float values decode to time.Time's zero value.
 //
 // To unmarshal CBOR null (0xf6) and undefined (0xf7) values into a
-// slice/map/pointer, Unmarshal sets Go value to nil.  Because null is often
+// slice/map/pointer/interface, Unmarshal sets Go value to nil.  Because null is often
 // used to mean "not present", unmarshaling CBOR null and undefined value
 // into any other Go type has no effect and returns no error.
 //
@@ -1076,7 +1076,7 @@ func (opts DecOptions) decMode() (*decMode, error) { //nolint:gocritic // ignore
 
 	if opts.DefaultByteStringType != nil &&
 		opts.DefaultByteStringType.Kind() != reflect.String &&
-		(opts.DefaultByteStringType.Kind() != reflect.Slice || opts.DefaultByteStringType.Elem().Kind() != reflect.Uint8) {
+		(opts.DefaultByteStringType.Kind() != reflect.Slice || opts.DefaultByteStringType.Elem() != typeByte) {
 		return nil, fmt.Errorf("cbor: invalid DefaultByteStringType: %s is not of kind string or []uint8", opts.DefaultByteStringType)
 	}
 
@@ -1402,9 +1402,19 @@ func (d *decoder) value(v any) error {
 // parseToValue decodes CBOR data to value.  It assumes data is well-formed,
 // and does not perform bounds checking.
 func (d *decoder) parseToValue(v reflect.Value, tInfo *typeInfo) error { //nolint:gocyclo
+	// Strip self-described CBOR tag number before checking for CBOR null/undefined,
+	// so that 55799(null) decodes the same as null.
+	for d.nextCBORType() == cborTypeTag {
+		off := d.off
+		_, _, tagNum := d.getHead()
+		if tagNum != tagNumSelfDescribedCBOR {
+			d.off = off
+			break
+		}
+	}
 
-	// Decode CBOR nil or CBOR undefined to pointer value by setting pointer value to nil.
-	if d.nextCBORNil() && v.Kind() == reflect.Pointer {
+	// Decode CBOR null or undefined values into a pointer or interface by setting it to nil.
+	if d.nextCBORNil() && (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) {
 		d.skip()
 		v.SetZero()
 		return nil
@@ -1412,8 +1422,20 @@ func (d *decoder) parseToValue(v reflect.Value, tInfo *typeInfo) error { //nolin
 
 	if tInfo.spclType == specialTypeIface {
 		if !v.IsNil() {
+			// Decode into the value in the interface only if the value is a non-nil pointer.
+			// Any other value in the interface is unaddressable and can't be decoded into.
+			e := v.Elem()
+			if e.Kind() != reflect.Pointer || e.IsNil() {
+				cType := d.nextCBORType()
+				d.skip()
+				return &UnmarshalTypeError{
+					CBORType: cType.String(),
+					GoType:   tInfo.nonPtrType.String(),
+				}
+			}
+
 			// Use value type
-			v = v.Elem()
+			v = e
 			tInfo = getTypeInfo(v.Type())
 		} else { //nolint:gocritic
 			// Create and use registered type if CBOR data is registered tag
@@ -1451,16 +1473,6 @@ func (d *decoder) parseToValue(v reflect.Value, tInfo *typeInfo) error { //nolin
 			v.Set(reflect.New(v.Type().Elem()))
 		}
 		v = v.Elem()
-	}
-
-	// Strip self-described CBOR tag number.
-	for d.nextCBORType() == cborTypeTag {
-		off := d.off
-		_, _, tagNum := d.getHead()
-		if tagNum != tagNumSelfDescribedCBOR {
-			d.off = off
-			break
-		}
 	}
 
 	// Check validity of supported built-in tags.
@@ -1595,13 +1607,6 @@ func (d *decoder) parseToValue(v reflect.Value, tInfo *typeInfo) error { //nolin
 			return fillFloat(t, f, v)
 
 		default: // ai <= 24
-			if d.dm.simpleValues.rejected[SimpleValue(val)] { //nolint:gosec
-				return &UnacceptableDataItemError{
-					CBORType: t.String(),
-					Message:  "simple value " + strconv.FormatInt(int64(val), 10) + " is not recognized", //nolint:gosec
-				}
-			}
-
 			switch ai {
 			case additionalInformationAsFalse,
 				additionalInformationAsTrue:
@@ -1769,6 +1774,7 @@ func (d *decoder) parseToTime() (time.Time, bool, error) {
 			}
 			return t, true, nil
 		}
+		d.skip()
 		return time.Time{}, false, &UnmarshalTypeError{CBORType: t.String(), GoType: typeTime.String()}
 
 	case cborTypeTextString:
@@ -1845,6 +1851,7 @@ func (d *decoder) parseToTime() (time.Time, bool, error) {
 		return time.Unix(int64(seconds), int64(fractional*1e9)), true, nil
 
 	default:
+		d.skip()
 		return time.Time{}, false, &UnmarshalTypeError{CBORType: t.String(), GoType: typeTime.String()}
 	}
 }
@@ -2155,12 +2162,6 @@ func (d *decoder) parse(skipSelfDescribedTag bool) (any, error) { //nolint:gocyc
 
 	case cborTypePrimitives:
 		_, ai, val := d.getHead()
-		if ai <= 24 && d.dm.simpleValues.rejected[SimpleValue(val)] { //nolint:gosec
-			return nil, &UnacceptableDataItemError{
-				CBORType: t.String(),
-				Message:  "simple value " + strconv.FormatInt(int64(val), 10) + " is not recognized", //nolint:gosec
-			}
-		}
 		if ai < 20 || ai == 24 {
 			return SimpleValue(val), nil //nolint:gosec
 		}
@@ -2484,9 +2485,7 @@ func (d *decoder) parseMapToMap(v reflect.Value, tInfo *typeInfo) error { //noli
 		v.Set(reflect.MakeMapWithSize(tInfo.nonPtrType, mapsize))
 	}
 	keyType, eleType := tInfo.keyTypeInfo.typ, tInfo.elemTypeInfo.typ
-	reuseKey, reuseEle := isImmutableKind(tInfo.keyTypeInfo.kind), isImmutableKind(tInfo.elemTypeInfo.kind)
 	var keyValue, eleValue reflect.Value
-	keyIsInterfaceType := keyType == typeIntf // If key type is interface{}, need to check if key value is hashable.
 	var err, lastErr error
 	keyCount := v.Len()
 	var existingKeys map[any]bool // Store existing map keys, used for detecting duplicate map key.
@@ -2503,7 +2502,7 @@ func (d *decoder) parseMapToMap(v reflect.Value, tInfo *typeInfo) error { //noli
 		// Parse CBOR map key.
 		if !keyValue.IsValid() {
 			keyValue = reflect.New(keyType).Elem()
-		} else if !reuseKey {
+		} else {
 			keyValue.SetZero()
 		}
 		if lastErr = d.parseToValue(keyValue, tInfo.keyTypeInfo); lastErr != nil {
@@ -2515,22 +2514,28 @@ func (d *decoder) parseMapToMap(v reflect.Value, tInfo *typeInfo) error { //noli
 		}
 
 		// Detect if CBOR map key can be used as Go map key.
-		if keyIsInterfaceType && keyValue.Elem().IsValid() {
-			if !isHashableValue(keyValue.Elem()) {
-				var converted bool
-				if d.dm.mapKeyByteString == MapKeyByteStringAllowed {
-					var k any
-					k, converted = convertByteSliceToByteString(keyValue.Elem().Interface())
-					if converted {
-						keyValue.Set(reflect.ValueOf(k))
+		if tInfo.keyNeedsHashableValueCheck {
+			containedKeyValue := keyValue
+			if keyValue.Kind() == reflect.Interface {
+				containedKeyValue = keyValue.Elem()
+			}
+			if containedKeyValue.IsValid() {
+				if !isHashableValue(containedKeyValue) {
+					var converted bool
+					if d.dm.mapKeyByteString == MapKeyByteStringAllowed {
+						var k any
+						k, converted = convertByteSliceToByteString(containedKeyValue.Interface())
+						if converted {
+							keyValue.Set(reflect.ValueOf(k))
+						}
 					}
-				}
-				if !converted {
-					if err == nil {
-						err = &InvalidMapKeyTypeError{keyValue.Elem().Type().String()}
+					if !converted {
+						if err == nil {
+							err = &InvalidMapKeyTypeError{containedKeyValue.Type().String()}
+						}
+						d.skip()
+						continue
 					}
-					d.skip()
-					continue
 				}
 			}
 		}
@@ -2538,7 +2543,7 @@ func (d *decoder) parseMapToMap(v reflect.Value, tInfo *typeInfo) error { //noli
 		// Parse CBOR map value.
 		if !eleValue.IsValid() {
 			eleValue = reflect.New(eleType).Elem()
-		} else if !reuseEle {
+		} else {
 			eleValue.SetZero()
 		}
 		if lastErr := d.parseToValue(eleValue, tInfo.elemTypeInfo); lastErr != nil {
@@ -2578,6 +2583,7 @@ func (d *decoder) parseMapToMap(v reflect.Value, tInfo *typeInfo) error { //noli
 func (d *decoder) parseArrayToStruct(v reflect.Value, tInfo *typeInfo) error {
 	structType, structTypeErr := getDecodingStructType(tInfo.nonPtrType)
 	if structTypeErr != nil {
+		d.skip()
 		return structTypeErr
 	}
 
@@ -2712,6 +2718,7 @@ func (d *decoder) decodeToStructField(v reflect.Value, f *decodingField, tInfo *
 func (d *decoder) parseMapToStruct(v reflect.Value, tInfo *typeInfo) error { //nolint:gocyclo
 	structType, structTypeErr := getDecodingStructType(tInfo.nonPtrType)
 	if structTypeErr != nil {
+		d.skip()
 		return structTypeErr
 	}
 
@@ -3044,7 +3051,6 @@ func (d *decoder) nextCBORNil() bool {
 type jsonUnmarshaler interface{ UnmarshalJSON([]byte) error }
 
 var (
-	typeIntf                  = reflect.TypeOf([]any(nil)).Elem()
 	typeTime                  = reflect.TypeOf(time.Time{})
 	typeBigInt                = reflect.TypeOf(big.Int{})
 	typeUnmarshaler           = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
@@ -3054,6 +3060,7 @@ var (
 	typeJSONUnmarshaler       = reflect.TypeOf((*jsonUnmarshaler)(nil)).Elem()
 	typeString                = reflect.TypeOf("")
 	typeByteSlice             = reflect.TypeOf([]byte(nil))
+	typeByte                  = reflect.TypeOf(byte(0))
 )
 
 func fillNil(_ cborType, v reflect.Value) error {
@@ -3246,34 +3253,40 @@ func fillTextString(t cborType, val []byte, v reflect.Value, tum TextUnmarshaler
 	return &UnmarshalTypeError{CBORType: t.String(), GoType: v.Type().String()}
 }
 
-func isImmutableKind(k reflect.Kind) bool {
-	switch k {
-	case reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64,
-		reflect.String:
-		return true
-
-	default:
-		return false
-	}
-}
-
 func isHashableValue(rv reflect.Value) bool {
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Map, reflect.Func:
 		return false
 
-	case reflect.Struct:
-		switch rv.Type() {
+	case reflect.Struct, reflect.Interface:
+		switch rt := rv.Type(); rt {
 		case typeTag:
 			tag := rv.Interface().(Tag)
 			return isHashableValue(reflect.ValueOf(tag.Content))
+		case typeTime:
+			return true
 		case typeBigInt:
 			return false
+		default:
+			// Both Type.Comparable() and Value.Comparable() checks are needed.
+			// - Type.Comparable() returns true for interface types, so
+			//   Value.Comparable() is needed to check the dynamic value.
+			// - Value.Comparable() returns true for zero-length array of interface,
+			//   array, or struct type (as of go1.27.1), so Type.Comparable() is
+			//   needed to reject zero-length array of uncomparable type.
+			return rt.Comparable() && rv.Comparable()
+		}
+
+	case reflect.Array:
+		switch rt := rv.Type(); rt.Elem().Kind() {
+		case reflect.Slice, reflect.Map, reflect.Func:
+			return false
+
+		case reflect.Struct, reflect.Array, reflect.Interface:
+			return rt.Comparable() && rv.Comparable()
 		}
 	}
+
 	return true
 }
 
