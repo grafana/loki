@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -38,7 +39,7 @@ type QueryHintProvider interface {
 }
 
 type HintPlan struct {
-	Filters     []string
+	Filters     needle.Expr
 	Ranges      []HintTimeRange // pre-min-date passthrough, if any
 	Indexes     []store.Meta
 	Stats       *QueryStats

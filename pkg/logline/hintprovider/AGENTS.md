@@ -69,11 +69,13 @@ Query-shape support and hint lookup for logline index lookups.
    - Shard values are intersected only within one `(version, algorithm, count)`
      group. Intersecting across versions drops the ranges of a version that has
      no term on a shard the other version queried.
-   - Filters are ANDed per version. A filter with no terms under a version (v4
-     emits none for a number shorter than 9 digits) drops out for that version.
-     If no filter has terms for some version in the window, `buildTermJobs`
-     returns `ErrUnsupported`. Skipping that version's blocks would leave them
-     without ranges and hide their matches.
+   - Literals are ANDed per conjunction and per version. A literal with no
+     terms under a version (v4 emits none for a number shorter than 9 digits)
+     drops out of its conjunction for that version. If some conjunction has no
+     terms left for some version in the window, `buildTermJobs` returns
+     `ErrUnconstrained`. The conjunctions are ORed, so one that cannot narrow
+     makes the whole query unconstrained. Skipping that version's blocks would
+     leave them without ranges and hide their matches.
 13. **A regex contributes only the literals every match contains**
     - `|~` and `=~` (line, pre-parser and post-parser filters alike) go through
       `regexliteral.Literals`, never a local AST walk. It owns the rules that
@@ -86,3 +88,14 @@ Query-shape support and hint lookup for logline index lookups.
       separators.
     - Its literals are unfiltered. `SupportedQuery` drops those shorter than
       `ngramLength`, and a regex with none left contributes nothing.
+14. **Shards are intersected per conjunction, never across conjunctions**
+    - Needles are a `needle.Expr`, an OR of conjunctions. `executeQuery` keeps
+      state per (reader, conjunction) and returns ranges per conjunction.
+      `aggregateConjunctionRanges` runs `aggregateShardRanges` on each
+      conjunction and unions the results.
+    - Intersecting shard values across conjunctions turns an OR into an AND:
+      with `abc` on shard 1 and `def` on shard 2, it computes `abc and def`.
+    - A term shared by several conjunctions is one job and is read once. Its
+      bitmap is cloned for every conjunction after the first, because
+      `Bitmap.And` can return its argument and later Ands change a result in
+      place.

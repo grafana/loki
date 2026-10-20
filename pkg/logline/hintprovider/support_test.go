@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logline"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -815,7 +816,7 @@ func TestSupportedQuery(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			got := SupportedQuery(expr, tc.ngramLength)
+			got := literals(t, SupportedQuery(expr, tc.ngramLength))
 			if tc.expected == nil {
 				require.Nil(t, got)
 				return
@@ -961,7 +962,19 @@ func TestSupportedQuery_UppercaseDedupe(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
-			require.ElementsMatch(t, tc.want, SupportedQuery(expr, 6))
+			require.ElementsMatch(t, tc.want, literals(t, SupportedQuery(expr, 6)))
 		})
 	}
+}
+
+// literals returns the one conjunction SupportedQuery builds, or nil when it
+// is True.
+func literals(t *testing.T, e needle.Expr) []string {
+	t.Helper()
+	conjs := e.Conjunctions()
+	require.LessOrEqual(t, len(conjs), 1, "%v", e)
+	if len(conjs) == 0 {
+		return nil
+	}
+	return conjs[0]
 }
