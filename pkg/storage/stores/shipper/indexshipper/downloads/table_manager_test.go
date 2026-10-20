@@ -601,3 +601,48 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	require.Equal(t, float64(1), testutil.ToFloat64(
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
 }
+
+type countingIndexStorageClient struct {
+	mockIndexStorageClient
+	listTablesCalls int
+}
+
+func (m *countingIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+	m.listTablesCalls++
+	return m.mockIndexStorageClient.ListTables(ctx)
+}
+
+func TestTableManager_DelayQueryReadinessUntilPreload(t *testing.T) {
+	tableRange := config.TableRange{Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{}}
+
+	for _, delayed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("delayed=%t", delayed), func(t *testing.T) {
+			client := &countingIndexStorageClient{}
+			cfg := Config{
+				CacheDir:                        t.TempDir(),
+				SyncInterval:                    time.Hour,
+				CacheTTL:                        time.Hour,
+				DownloadTimeout:                 time.Minute,
+				Limits:                          &mockLimits{queryReadyIndexNumDaysDefault: 2},
+				DelayQueryReadinessUntilPreload: delayed,
+			}
+			tm, err := NewTableManager(cfg, func(s string) (index.Index, error) {
+				return openMockIndexFile(t, s), nil
+			}, client, nil, tableRange, nil, log.NewNopLogger())
+			require.NoError(t, err)
+			defer tm.Stop()
+
+			// query readiness runs at construction unless delayed.
+			wantCalls := 1
+			if delayed {
+				wantCalls = 0
+			}
+			require.Equal(t, wantCalls, client.listTablesCalls)
+			require.Equal(t, !delayed, tm.(*tableManager).queryReadinessStarted.Load())
+
+			require.NoError(t, tm.EnsureQueryReadiness(context.Background()))
+			require.Equal(t, wantCalls+1, client.listTablesCalls)
+			require.True(t, tm.(*tableManager).queryReadinessStarted.Load())
+		})
+	}
+}
