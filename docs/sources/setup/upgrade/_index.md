@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental shard planning across tables
+
+Fingerprint-aware clients plan single-table requests across the relevant owners. Multi-table requests gather plans from every table and ownership shard, then coalesce overlapping ranges into a complete, non-overlapping plan. Coalescing can produce ranges larger than the target shard size. Cross-table estimates can count streams and boundary chunks more than once. Multi-table plans omit precomputed chunk groups so execution retrieves complete chunk references through the normal query path.
+
 ### Experimental fingerprint-shard ownership rollout
 
 Per-index ownership uses the `shard_factor` of a schema period to select files by fingerprint overlap. Gateways and clients must use the same schema config. Upgrade the complete query path before setting factors greater than `1`; older table-only routing is insufficient when gateways keep partial indexes. Unsplit files remain readable and overlap every owned shard.

@@ -27,11 +27,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
@@ -478,22 +480,23 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 			if err != nil {
 				return nil, errors.Wrap(err, "index gateway client get tenant ID")
 			}
-			if s.shardFactor() > 1 {
-				return nil, errors.New("GetShards with fingerprint-sharded ownership is not supported yet")
+			shards := IndexShards(s.shardFactor())
+			if len(parts) == 1 {
+				// A request that reads one table is planned by the owners of each
+				// shard of the tenant's index in that table, and the plans are
+				// concatenated in fingerprint order.
+				s.fanoutMetrics.getShardsRequests.WithLabelValues("single").Inc()
+				s.fanoutMetrics.requestParts.WithLabelValues("GetShards").Observe(float64(len(shards)))
+				if len(shards) == 1 {
+					if err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, shards[0], maxRetries, callback); err != nil {
+						return nil, err
+					}
+					return res, nil
+				}
+				return s.getShardsPerShard(ctx, in, tenantID, parts[0].Table, shards, maxRetries)
 			}
-			// Shards are not merged across tables: a request spanning tables goes
-			// whole to the owners of its first table. They answer it correctly, but
-			// have to load the other tables as any non-owner would, so it is slower.
-			// Multi-table shard requests are expected to be rare.
-			tables := "single"
-			if len(parts) > 1 {
-				tables = "multi"
-			}
-			s.fanoutMetrics.getShardsRequests.WithLabelValues(tables).Inc()
-			if err := s.doOnIndexOwners(ctx, tenantID, parts[0].Table, WholeIndexShard, maxRetries, callback); err != nil {
-				return nil, err
-			}
-			return res, nil
+			s.fanoutMetrics.getShardsRequests.WithLabelValues("multi").Inc()
+			return s.getShardsAcrossTables(ctx, in, tenantID, parts, shards, maxRetries)
 		}
 	}
 
@@ -508,6 +511,64 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		return nil, err
 	}
 	return res, nil
+}
+
+// getShardsPerShard sends in to the owners of every shard of tenantID's index
+// in table, with at most PerIndexMaxConcurrency in flight, and concatenates
+// the plans in fingerprint order (see concatShardsResponses). The first error
+// cancels the other parts and is returned.
+func (s *GatewayClient) getShardsPerShard(ctx context.Context, in *logproto.ShardsRequest, tenantID, table string, shards []index.ShardAnnotation, maxRetries int) (*logproto.ShardsResponse, error) {
+	results := make([]*logproto.ShardsResponse, len(shards))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(s.cfg.PerIndexMaxConcurrency)
+	for i, shard := range shards {
+		// Each owner plans over its shard's fingerprint range only; it may hold
+		// the files of other shards it owns, or a whole index downloaded on
+		// demand.
+		query, err := withShardMatcher(in.Query, shard)
+		if err != nil {
+			return nil, err
+		}
+		part := *in
+		part.Query = query
+		g.Go(func() error {
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			return s.doOnIndexOwners(gctx, tenantID, table, shard, maxRetries, func(client logproto.IndexGatewayClient) error {
+				resp, err := receiveShards(gctx, client, &part)
+				if err != nil {
+					return err
+				}
+				results[i] = resp
+				return nil
+			})
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return concatShardsResponses(results, shards), nil
+}
+
+// receiveShards sends a GetShards request to client and buffers the streamed
+// response into one.
+func receiveShards(ctx context.Context, client logproto.IndexGatewayClient, in *logproto.ShardsRequest) (*logproto.ShardsResponse, error) {
+	result := &logproto.ShardsResponse{}
+	streamer, err := client.GetShards(ctx, in)
+	if err != nil {
+		return nil, errors.Wrap(err, "get shards")
+	}
+	for {
+		resp, err := streamer.Recv()
+		if err == io.EOF {
+			return result, nil
+		}
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		result.Merge(resp)
+	}
 }
 
 // poolDo tries each gateway once, up to cfg.MaxRetries retries when configured.
@@ -790,10 +851,59 @@ func newFanoutMetrics(r prometheus.Registerer) (*fanoutMetrics, error) {
 	m.getShardsRequests, err = registerOrExisting(r, prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_client_get_shards_requests_total",
-		Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads a single table is planned by the owners of each shard of the tenant's index; one that reads several tables is sent whole to the owners of the first shard of its first table.",
+		Help:      "GetShards requests sent with per_index sharding, by whether they read a single index table or several. A request that reads a single table is planned by the owners of each shard of the tenant's index; one that reads several tables gathers plans from every table and shard owner.",
 	}, []string{"tables"}))
 	if err != nil {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// getShardsAcrossTables gathers plans from every table/shard owner. An owner
+// can have only part of a table locally, so sending the full request to one
+// gateway cannot provide a complete plan.
+func (s *GatewayClient) getShardsAcrossTables(ctx context.Context, in *logproto.ShardsRequest, tenantID string, tables []tablePart, shards []index.ShardAnnotation, maxRetries int) (*logproto.ShardsResponse, error) {
+	results := make([]*logproto.ShardsResponse, len(tables)*len(shards))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(s.cfg.PerIndexMaxConcurrency)
+	s.fanoutMetrics.requestParts.WithLabelValues("GetShards").Observe(float64(len(results)))
+	for ti, table := range tables {
+		for si, shard := range shards {
+			part := *in
+			part.From, part.Through = table.From, table.Through
+			if shard.Of > 1 {
+				query, err := withShardMatcher(in.Query, shard)
+				if err != nil {
+					return nil, err
+				}
+				part.Query = query
+			}
+			g.Go(func() error {
+				if err := gctx.Err(); err != nil {
+					return err
+				}
+				return s.doOnIndexOwners(gctx, tenantID, table.Table, shard, maxRetries, func(client logproto.IndexGatewayClient) error {
+					response, err := receiveShards(gctx, client, &part)
+					if err != nil {
+						return err
+					}
+					results[ti*len(shards)+si] = response
+					return nil
+				})
+			})
+		}
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	merged := make([]*logproto.ShardsResponse, len(shards))
+	for si, shard := range shards {
+		var plans []*logproto.ShardsResponse
+		from, through := shardBounds(shard)
+		for ti := range tables {
+			plans = append(plans, clipShardsResponse(results[ti*len(shards)+si], from, through))
+		}
+		merged[si] = coalesceTableShardPlans(plans)
+	}
+	return concatShardsResponses(merged, shards), nil
 }

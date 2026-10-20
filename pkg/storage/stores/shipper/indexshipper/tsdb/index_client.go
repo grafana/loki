@@ -304,13 +304,22 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
 
+	// a shard label in the matchers limits the plan to that fingerprint range
+	matchers, fpFilter, err := cleanMatchers(predicate.Matchers...)
+	if err != nil {
+		return nil, err
+	}
+	if fpFilter == nil {
+		fpFilter = v1.FullBounds
+	}
+
 	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
-	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	if err := c.idx.ForSeries(ctx, userID, fpFilter, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		mtx.Lock()
 		m[fp] = append(m[fp], chks...)
 		mtx.Unlock()
 		return false
-	}, predicate.Matchers...); err != nil {
+	}, matchers...); err != nil {
 		return nil, err
 	}
 

@@ -543,26 +543,26 @@ func TestGatewayClientPerIndex_StatsAndVolumeSumPerTable(t *testing.T) {
 	e.calls.take()
 }
 
-func TestGatewayClientPerIndex_ShardsGoWholeToFirstTableOwners(t *testing.T) {
+func TestGatewayClientPerIndex_ShardsReadEveryTable(t *testing.T) {
 	e := newFanoutEnv(t)
 	ctx := user.InjectOrgID(context.Background(), fanoutTenant)
-
 	req := &logproto.ShardsRequest{From: fanoutDayStart(0) + fanoutHour, Through: fanoutDayStart(3), Query: `{app=~".+"}`, TargetBytesPerShard: 1 << 20}
-	want, err := e.single.GetShards(ctx, req)
-	require.NoError(t, err)
+	var want logproto.IndexStatsResponse
+	for _, part := range fanoutParts(req.From, req.Through, e.tableRange) {
+		r := *req
+		r.From, r.Through = part[0], part[1]
+		response, err := e.single.GetShards(ctx, &r)
+		require.NoError(t, err)
+		sum := sumShardStats(response.Shards)
+		want.Streams += sum.Streams
+		want.Chunks += sum.Chunks
+		want.Bytes += sum.Bytes
+		want.Entries += sum.Entries
+	}
 	e.calls.take()
-
 	got, err := e.perIndex.GetShards(ctx, req)
 	require.NoError(t, err)
-	// Timings differ between calls.
-	want.Statistics.Index.ShardsDuration, got.Statistics.Index.ShardsDuration = 0, 0
-	require.Equal(t, want, got)
-
-	calls := e.calls.take()
-	require.Len(t, calls, 1)
-	require.Equal(t, req.From, calls[0].from)
-	require.Equal(t, req.Through, calls[0].through)
-	rs, err := e.ownership.Owners(fanoutTenant, fmt.Sprintf("index_%d", fanoutBase), indexgateway.WholeIndexShard, indexgateway.IndexOwnersRead)
-	require.NoError(t, err)
-	require.True(t, rs.Includes(calls[0].addr))
+	require.Equal(t, want, sumShardStats(got.Shards))
+	require.Empty(t, got.ChunkGroups)
+	require.Equal(t, len(fanoutParts(req.From, req.Through, e.tableRange)), e.checkCallsGoToOwners(t))
 }

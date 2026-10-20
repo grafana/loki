@@ -191,6 +191,47 @@ func TestPerIndexShards_FanOutByShard(t *testing.T) {
 		require.Contains(t, f.shardOwnerAddrs(t, "index_20000", index.NewShard(3, 4)), calls[0].addr)
 	})
 
+	t.Run("GetShards over one table is planned by the owners of every shard", func(t *testing.T) {
+		f.gateways.reset()
+		resp, err := f.client.GetShards(ctx, &logproto.ShardsRequest{From: dayStart(n) + 10, Through: dayStart(n) + 20, Query: `{a="b"}`})
+		require.NoError(t, err)
+		calls := f.gateways.recorded()
+		require.Len(t, calls, k)
+		// each part plans one shard, by one of its owners
+		require.ElementsMatch(t, []string{"0_of_4", "1_of_4", "2_of_4", "3_of_4"}, shardLabelsOf(t, calls))
+		for _, c := range calls {
+			require.Equal(t, "GetShards", c.op)
+			shard, err := index.ParseShardString(requestShardLabel(t, c.matchers))
+			require.NoError(t, err)
+			require.Contains(t, f.shardOwnerAddrs(t, "index_20000", shard), c.addr)
+		}
+		// The fake gateways plan nothing: the concatenation is the single full shard.
+		require.Equal(t, []logproto.Shard{{Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64}, Stats: &logproto.IndexStatsResponse{}}}, resp.Shards)
+
+		single := findMetric(t, f.reg, "loki_index_gateway_client_get_shards_requests_total", map[string]string{"tables": "single"})
+		require.NotNil(t, single)
+		require.Equal(t, float64(1), single.GetCounter().GetValue())
+		parts := findMetric(t, f.reg, "loki_index_gateway_client_request_parts", map[string]string{"operation": "GetShards"})
+		require.NotNil(t, parts)
+		require.Equal(t, float64(k), parts.GetHistogram().GetSampleSum())
+	})
+
+	t.Run("GetShards over several tables reads every shard owner", func(t *testing.T) {
+		f.gateways.reset()
+		_, err := f.client.GetShards(ctx, &logproto.ShardsRequest{From: from, Through: through, Query: `{a="b"}`})
+		require.NoError(t, err)
+		byTable := callsByTable(f.gateways.recorded())
+		require.Len(t, byTable, len(tables))
+		for _, table := range tables {
+			require.Len(t, byTable[table], k)
+			require.ElementsMatch(t, []string{"0_of_4", "1_of_4", "2_of_4", "3_of_4"}, shardLabelsOf(t, byTable[table]))
+			for _, c := range byTable[table] {
+				shard, err := index.ParseShardString(requestShardLabel(t, c.matchers))
+				require.NoError(t, err)
+				require.Contains(t, f.shardOwnerAddrs(t, table, shard), c.addr)
+			}
+		}
+	})
 }
 
 func TestNarrowMatchers(t *testing.T) {
@@ -263,3 +304,69 @@ type emptyFilter struct{}
 
 func (emptyFilter) Match(model.Fingerprint) bool                           { return false }
 func (emptyFilter) GetFromThrough() (model.Fingerprint, model.Fingerprint) { return 5, 5 }
+
+func TestConcatShardsResponses(t *testing.T) {
+	st := func(streams uint64) *logproto.IndexStatsResponse {
+		return &logproto.IndexStatsResponse{Streams: streams, Chunks: streams * 2}
+	}
+	shard := func(minFP, maxFP uint64, streams uint64) logproto.Shard {
+		return logproto.Shard{Bounds: logproto.FPBounds{Min: model.Fingerprint(minFP), Max: model.Fingerprint(maxFP)}, Stats: st(streams)}
+	}
+	group := func(n int) logproto.ChunkRefGroup {
+		return logproto.ChunkRefGroup{Refs: []*logproto.ChunkRef{{Fingerprint: uint64(n)}}}
+	}
+	shards := IndexShards(2)
+	half := uint64(1 << 63)
+
+	t.Run("plans are clipped to their shard and joined in order", func(t *testing.T) {
+		got := concatShardsResponses([]*logproto.ShardsResponse{
+			// the owners of shard 0 plan over the whole space from what they hold
+			{Shards: []logproto.Shard{shard(0, 100, 3), shard(101, math.MaxUint64, 2)}, ChunkGroups: []logproto.ChunkRefGroup{group(1), group(2)}},
+			{Shards: []logproto.Shard{shard(0, math.MaxUint64, 4)}, ChunkGroups: []logproto.ChunkRefGroup{group(3)}},
+		}, shards)
+		require.Equal(t, []logproto.Shard{
+			shard(0, 100, 3),
+			shard(101, half-1, 2),
+			shard(half, math.MaxUint64, 4),
+		}, got.Shards)
+		require.Equal(t, []logproto.ChunkRefGroup{group(1), group(2), group(3)}, got.ChunkGroups)
+
+		// the plan covers the fingerprint space contiguously
+		require.Equal(t, model.Fingerprint(0), got.Shards[0].Bounds.Min)
+		for i := 1; i < len(got.Shards); i++ {
+			require.Equal(t, got.Shards[i-1].Bounds.Max+1, got.Shards[i].Bounds.Min)
+		}
+		require.Equal(t, model.Fingerprint(math.MaxUint64), got.Shards[len(got.Shards)-1].Bounds.Max)
+	})
+
+	t.Run("an empty plan of one shard is folded into its neighbour", func(t *testing.T) {
+		got := concatShardsResponses([]*logproto.ShardsResponse{
+			{Shards: []logproto.Shard{shard(0, math.MaxUint64, 0)}},
+			{Shards: []logproto.Shard{shard(0, math.MaxUint64, 4)}},
+		}, shards)
+		require.Equal(t, []logproto.Shard{shard(0, math.MaxUint64, 4)}, got.Shards)
+
+		got = concatShardsResponses([]*logproto.ShardsResponse{
+			{Shards: []logproto.Shard{shard(0, 10, 2), shard(11, math.MaxUint64, 1)}},
+			{Shards: []logproto.Shard{shard(0, math.MaxUint64, 0)}},
+		}, shards)
+		require.Equal(t, []logproto.Shard{shard(0, 10, 2), shard(11, math.MaxUint64, 1)}, got.Shards)
+	})
+
+	t.Run("no chunks at all is the single full shard", func(t *testing.T) {
+		got := concatShardsResponses([]*logproto.ShardsResponse{
+			{Shards: []logproto.Shard{shard(0, math.MaxUint64, 0)}},
+			{},
+		}, shards)
+		require.Equal(t, []logproto.Shard{{Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64}, Stats: &logproto.IndexStatsResponse{}}}, got.Shards)
+	})
+
+	t.Run("statistics are merged", func(t *testing.T) {
+		a := &logproto.ShardsResponse{Shards: []logproto.Shard{shard(0, 10, 1)}}
+		a.Statistics.Index.TotalChunks = 3
+		b := &logproto.ShardsResponse{Shards: []logproto.Shard{shard(0, math.MaxUint64, 1)}}
+		b.Statistics.Index.TotalChunks = 4
+		got := concatShardsResponses([]*logproto.ShardsResponse{a, b}, shards)
+		require.Equal(t, int64(7), got.Statistics.Index.TotalChunks)
+	})
+}
