@@ -913,6 +913,12 @@ func (n *RegexNode) eliminateEndingBacktracking() {
 			fallthrough
 		case NtLoop:
 			if node.N == 1 {
+				// ECMAScript RepeatMatcher rejects an optional empty iteration.
+				// Its body must retain backtracking so a consuming alternative
+				// can still succeed, even when nothing follows the loop.
+				if node.Options&ECMAScript != 0 && node.M == 0 && node.Children[0].ComputeMinLength() == 0 {
+					break
+				}
 				// If the loop has a max iteration count of 1 (e.g. it's an optional node),
 				// there's no possibility for conflict between multiple iterations, so
 				// we can process it.
