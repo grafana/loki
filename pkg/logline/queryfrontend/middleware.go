@@ -396,6 +396,7 @@ func newLoglinePrefetchHandler(
 		defaultMode:          modeFromDryRun(cfg.DryRun),
 		requireOptInHeader:   cfg.RequireOptInHeader,
 		ngramLength:          cfg.NgramLength,
+		maxConjunctions:      cfg.MaxConjunctions,
 		hintTimeout:          cfg.HintTimeout,
 		queryIngestersWithin: cfg.QueryIngestersWithin,
 		shardPlanning:        cfg.ShardPlanning,
@@ -411,6 +412,7 @@ type loglinePrefetchHandler struct {
 	defaultMode          Mode
 	requireOptInHeader   bool
 	ngramLength          int
+	maxConjunctions      int
 	hintTimeout          time.Duration
 	dryRunInflight       atomic.Int32
 	queryIngestersWithin time.Duration
@@ -926,7 +928,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: supported query shape.
 	// When ngramLength is not configured (<=0), skip the early check and let
 	// ProvideHints handle support detection internally.
-	if h.ngramLength > 0 && hintprovider.SupportedQuery(expr, h.ngramLength).IsTrue() {
+	if h.ngramLength > 0 && hintprovider.SupportedQuery(expr, h.ngramLength, h.maxConjunctions).IsTrue() {
 		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 
