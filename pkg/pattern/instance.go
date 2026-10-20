@@ -47,8 +47,7 @@ type instance struct {
 	metrics         *ingesterMetrics
 	drainCfg        *drain.Config
 	limits          Limits
-	ringClient      RingClient
-	ingesterID      string
+	owner           streamOwner
 	volumeThreshold float64
 
 	aggMetricsLock             sync.Mutex
@@ -70,8 +69,7 @@ func newInstance(
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
 	drainLimits Limits,
-	ringClient RingClient,
-	ingesterID string,
+	owner streamOwner,
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
@@ -90,8 +88,7 @@ func newInstance(
 		metrics:                    metrics,
 		drainCfg:                   drainCfg,
 		limits:                     drainLimits,
-		ringClient:                 ringClient,
-		ingesterID:                 ingesterID,
+		owner:                      owner,
 		volumeThreshold:            volumeThreshold,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
 		metricWriter:               metricWriter,
@@ -124,7 +121,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
 
 		// But only owned streamed are processed for patterns
-		ownedStream, err := i.isOwnedStream(i.ingesterID, reqStream.Labels)
+		ownedStream, err := i.owner.Owns(i.instanceID, reqStream.Labels)
 		if err != nil {
 			appendErr.Add(err)
 		}
@@ -157,10 +154,21 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr.Err()
 }
 
-func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error) {
+// streamOwner decides whether this ingester builds patterns for a stream.
+type streamOwner interface {
+	Owns(instanceID, labels string) (bool, error)
+}
+
+// ringOwner decides ownership using the pattern ingester ring.
+type ringOwner struct {
+	ringClient RingClient
+	ingesterID string
+}
+
+func (r *ringOwner) Owns(instanceID, stream string) (bool, error) {
 	var descs [1]ring.InstanceDesc
-	replicationSet, err := i.ringClient.Ring().Get(
-		lokiring.TokenFor(i.instanceID, stream),
+	replicationSet, err := r.ringClient.Ring().Get(
+		lokiring.TokenFor(instanceID, stream),
 		ring.WriteNoExtend,
 		descs[:0],
 		nil,
@@ -179,12 +187,17 @@ func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error)
 	}
 
 	for _, instanceDesc := range replicationSet.Instances {
-		if instanceDesc.Id == ingesterID {
+		if instanceDesc.Id == r.ingesterID {
 			return true, nil
 		}
 	}
 	return false, nil
 }
+
+// noopOwner skips the ownership check and treats all streams as owned.
+type noopOwner struct{}
+
+func (noopOwner) Owns(_, _ string) (bool, error) { return true, nil }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
