@@ -59,10 +59,11 @@ a frozen algorithm: revert. Do not update the expected values.
 - `ngrams.go` — `ExtractorForVersion` and `FormatterForVersion` shims that return the
   matching `vN` extractor and term formatter
 - `index_config.go` — `IndexConfig`, the shared `logline.index` section (see below)
+- `compaction_config.go` — `CompactionConfig`, the `logline.compaction` section
+- `retention_config.go` — `RetentionConfig`, the `logline.retention` section
 
-## Compaction open question
+## Compaction requires one version per job
 
-When the worker implements real merge logic, blocks with different `Version` values will
-need handling. Recommendation, consistent with `ShardAlgorithm`: require all source blocks
-to share the same index version before compacting. Mixed-version merges would require
-re-indexing under one canonical version. No code change needed now.
+The scheduler groups sources by resolved `Version` (and shard settings and document
+interval), and the compactor verifies it again before merging. Mixed-version merges would
+require re-indexing under one canonical version.

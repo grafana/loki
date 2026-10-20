@@ -2,10 +2,10 @@ package metastore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -89,17 +90,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				lbls, err := syntax.ParseLabels(ts.Labels)
 				require.NoError(b, err)
 
-				newIdx, err := builder.AppendStream(streams.Stream{
-					ID:               globalStreamID,
-					Labels:           lbls,
-					MinTimestamp:     ts.Entries[0].Timestamp,
-					MaxTimestamp:     ts.Entries[0].Timestamp,
-					UncompressedSize: 0,
-				})
-				require.NoError(b, err)
-
-				err = builder.ObserveLogLine("test-path", int64(fileIdx+1), newIdx, globalStreamID, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
-				require.NoError(b, err)
+				observeLabelPostings(builder, "test-path", int64(fileIdx+1), globalStreamID, lbls, ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 
 				globalStreamID++
 			}
@@ -147,7 +138,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 	})
 }
 
-func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
+func BenchmarkSections_PredicateMatchers(b *testing.B) {
 	cases := []struct {
 		name       string
 		predicates []*labels.Matcher
@@ -164,7 +155,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			name: "multiple predicate hit",
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
-				labels.MustNewMatcher(labels.MatchEqual, "traceID", "1234"),
+				labels.MustNewMatcher(labels.MatchEqual, "spanID", "wxyz"),
 			},
 			wantCount: 1,
 		},
@@ -192,28 +183,10 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
 
-			_, err = builder.AppendStream(streams.Stream{
-				ID:               1,
-				Labels:           lbls,
-				MinTimestamp:     now.Add(-3 * time.Hour),
-				MaxTimestamp:     now.Add(-2 * time.Hour),
-				UncompressedSize: 5,
-			})
-			require.NoError(b, err)
-
-			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
-			require.NoError(b, err)
-			err = builder.ObserveLogLine("test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
-			require.NoError(b, err)
-
-			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
-			traceIDBloom.AddString("abcd")
-			traceIDBloom.AddString("1234")
-			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
-			require.NoError(b, err)
-
-			err = builder.AppendColumnIndex("test-path", 0, "traceID", 0, traceIDBloomBytes)
-			require.NoError(b, err)
+			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-3*time.Hour), 5)
+			observeLabelPostings(builder, "test-path", 0, 1, lbls, now.Add(-2*time.Hour), 0)
+			observeBloomPostings(b, builder, "test-path", 0, 1, now.Add(-3*time.Hour), "traceID", "abcd", "1234")
+			observeBloomPostings(b, builder, "test-path", 0, 1, now.Add(-3*time.Hour), "spanID", "wxyz")
 
 			timeRanges := []dataobj.TimeRange{builder.TimeRange()}
 			require.Len(b, timeRanges, 1)
@@ -258,6 +231,76 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			}
 
 			b.StopTimer()
+		})
+	}
+}
+
+// BenchmarkSections_ShardBucketRange resolves sections with and without a shard bucket range. Each
+// log object holds two adjacent buckets.
+func BenchmarkSections_ShardBucketRange(b *testing.B) {
+	const (
+		objects           = 256
+		sectionsPerObject = 4
+		streamsPerSection = 8
+	)
+
+	ctx := user.InjectOrgID(b.Context(), tenantID)
+	bucket := objstore.NewInMemBucket()
+	b.Cleanup(func() { require.NoError(b, bucket.Close()) })
+
+	var observations []postings.LabelObservation
+	for object := range objects {
+		firstBucket := uint32(object) % (streams.DefaultShardLayout().Buckets() - 1)
+		for section := range sectionsPerObject {
+			for stream := range streamsPerSection {
+				streamLabels := []labels.Label{
+					{Name: "app", Value: "foo"},
+					{Name: "pod", Value: fmt.Sprintf("pod-%d-%d-%d", object, section, stream)},
+				}
+				for _, label := range streamLabels {
+					observations = append(observations, postings.LabelObservation{
+						ObjectPath:   fmt.Sprintf("object-%d", object),
+						SectionIndex: int64(section),
+						ColumnName:   label.Name,
+						LabelValue:   label.Value,
+						StreamID:     int64(stream + 1),
+						Timestamp:    now,
+						ShardBucket:  firstBucket + uint32(stream%2),
+					})
+				}
+			}
+		}
+	}
+	createIndexObjectWithPostings(ctx, b, bucket, observations)
+	m := newTestObjectMetastore(bucket)
+
+	for _, test := range []struct {
+		name        string
+		bucketRange *postings.ShardBucketRange
+	}{
+		{name: "no range", bucketRange: nil},
+		{name: "a range of one bucket", bucketRange: &postings.ShardBucketRange{From: 5, To: 5}},
+		{name: "a range of a quarter of the buckets", bucketRange: &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/4 - 1}},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			request := SectionsRequest{
+				Start:            now.Add(-time.Hour),
+				End:              now.Add(time.Hour),
+				Matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				ShardBucketRange: test.bucketRange,
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			var sections int
+			for range b.N {
+				resp, err := m.Sections(ctx, request)
+				require.NoError(b, err)
+				require.NotEmpty(b, resp.Sections)
+				sections = len(resp.Sections)
+			}
+			b.ReportMetric(float64(sections), "sections")
 		})
 	}
 }

@@ -106,6 +106,13 @@ type LogMergeObserver interface {
 	ObserveLogMergeInputBytes(bytes int64)
 }
 
+// nopLogMergeObserver discards LogMerge statistics. Query-only workers have no
+// LogMergeObserver, so the executor uses it in their place.
+type nopLogMergeObserver struct{}
+
+func (nopLogMergeObserver) ObserveLogMerge(string, LogMergeObservedStats, time.Duration) {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytes(int64)                              {}
+
 // NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
 // with the given index.
 type NewLogMergeObserverFunc func(thread int) LogMergeObserver
@@ -131,6 +138,9 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
+	}
+	if c.logMergeObserver == nil {
+		c.logMergeObserver = nopLogMergeObserver{}
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))

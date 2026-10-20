@@ -28,6 +28,12 @@ type Config struct {
 
 	// Correctness is the logline correctness config.
 	Correctness correctness.Config `yaml:"correctness"`
+
+	// Compaction merges indexes into fewer, larger ones.
+	Compaction logline.CompactionConfig `yaml:"compaction"`
+
+	// Retention decides when indexes are deleted.
+	Retention logline.RetentionConfig `yaml:"retention"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -36,6 +42,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Builder.RegisterFlagsWithPrefix("logline-builder", f)
 	cfg.Query.RegisterFlagsWithPrefix("logline-query", f)
 	cfg.Correctness.RegisterFlagsWithPrefix("logline-correctness", f)
+	cfg.Compaction.RegisterFlagsWithPrefix("logline-compaction", f)
+	cfg.Retention.RegisterFlagsWithPrefix("logline-retention", f)
 }
 
 // ValidateBuilder checks the config index building needs.
@@ -84,4 +92,36 @@ func (cfg *Config) ValidateCorrectness() error {
 		return fmt.Errorf("invalid store config: %w", err)
 	}
 	return cfg.Correctness.Validate()
+}
+
+// ValidateScheduler checks the config the compaction scheduler needs: it plans
+// and hands out compaction jobs and deletes indexes. Validation applies
+// defaults as a side effect, so it must run before the config is used.
+func (cfg *Config) ValidateScheduler() error {
+	if err := cfg.Store.Validate(); err != nil {
+		return fmt.Errorf("invalid store config: %w", err)
+	}
+	if err := cfg.Compaction.ValidateScheduler(); err != nil {
+		return fmt.Errorf("invalid compaction config: %w", err)
+	}
+	if err := cfg.Retention.Validate(); err != nil {
+		return fmt.Errorf("invalid retention config: %w", err)
+	}
+	return nil
+}
+
+// ValidateCompactor checks the config the compactor needs to run merge
+// jobs. Validation applies defaults as a side effect, so it must run before
+// the config is used.
+func (cfg *Config) ValidateCompactor() error {
+	if err := cfg.Index.Validate(); err != nil {
+		return fmt.Errorf("invalid index config: %w", err)
+	}
+	if err := cfg.Store.Validate(); err != nil {
+		return fmt.Errorf("invalid store config: %w", err)
+	}
+	if err := cfg.Compaction.ValidateCompactor(); err != nil {
+		return fmt.Errorf("invalid compaction config: %w", err)
+	}
+	return nil
 }

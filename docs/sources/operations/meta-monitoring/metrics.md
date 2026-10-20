@@ -104,24 +104,26 @@ Abnormal behavior:
 Compaction issues can silently degrade read performance and retention behavior over time.
 
 {{< admonition type="note" >}}
-The compaction and retention metrics use a `loki_boltdb_shipper_` prefix for historical reasons. The compactor emits these metrics regardless of which index type you use, including TSDB.
+Prior to Loki 4.0 the compaction and retention metrics used a `loki_boltdb_shipper_` prefix for historical reasons.
+The compactor emitted these metrics regardless of which index type you use, including TSDB.
+After removing the legacy BoltDB Shipper index, the prefix has been renamed to `loki_tsdb_shipper_`.
 {{< /admonition >}}
 
 Key metrics:
 
-- `loki_boltdb_shipper_compactor_running`
-- `loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_compact_tables_operation_total`
-- `loki_boltdb_shipper_compact_tables_operation_duration_seconds`
+- `loki_tsdb_shipper_compactor_running`
+- `loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds`
+- `loki_tsdb_shipper_compact_tables_operation_total`
+- `loki_tsdb_shipper_compact_tables_operation_duration_seconds`
 
 Example queries:
 
 ```promql
-sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace)
+sum(loki_tsdb_shipper_compactor_running) by (cluster, namespace)
 ```
 
 ```promql
-time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
+time() - (loki_tsdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds > 0)
 ```
 
 Abnormal behavior:
@@ -249,6 +251,18 @@ Abnormal behavior:
 - Growing failure rates by operation.
 - Increasing p99 latency for `get`, `get_range`, or `upload`.
 
+Connection metrics just for S3:
+
+- `net_conntrack_dialer_conn_attempted_total`
+- `net_conntrack_dialer_conn_established_total`
+- `net_conntrack_dialer_conn_failed_total`
+- `net_conntrack_dialer_conn_closed_total`
+
+Abnormal behavior:
+
+- Non-zero rate of failed connections.
+- High rate of closed connections under ordinary load.
+
 ## Resource and runtime health
 
 Resource pressure can explain or predict service degradation before alert thresholds are crossed.
@@ -307,13 +321,13 @@ Retention and sweeper lag can cause storage growth and delayed data lifecycle ac
 Key metrics:
 
 - `loki_compactor_apply_retention_last_successful_run_timestamp_seconds`
-- `loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time`
-- `loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
+- `loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time`
+- `loki_tsdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count`
 
 Example query:
 
 ```promql
-time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
+time() - (loki_tsdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster="$cluster", namespace="$namespace"} > 0)
 ```
 
 Abnormal behavior:

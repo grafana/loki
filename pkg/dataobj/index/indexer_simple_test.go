@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -71,20 +72,15 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding a streams and a pointers section for the tenant.
+		// holding postings, and no streams or pointers section.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, 1, idxObj.Sections().Count(streams.CheckSection))
-		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 1)
-
-		// Every stream of the data object is recorded.
-		require.ElementsMatch(t, []string{
-			`{app="bar", cluster="test", env="dev"}`,
-			`{app="foo", cluster="test", env="prod"}`,
-		}, indexedStreams(t, idxObj, "tenant-0"))
+		require.GreaterOrEqual(t, idxObj.Sections().Count(postings.CheckSection), 1)
+		require.Zero(t, idxObj.Sections().Count(streams.CheckSection))
+		require.Zero(t, idxObj.Sections().Count(pointers.CheckSection))
 
 		// The index points back at the data object it was built from.
-		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
 	})
 
 	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
@@ -233,7 +229,7 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 		require.NotEmpty(t, res.Path)
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedObjectPaths(t, idxObj))
 		paths[res.Path] = struct{}{}
 	}
 	require.Len(t, paths, objects)
@@ -300,65 +296,13 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
-// indexedStreams returns the label sets the index object records for tenant.
-func indexedStreams(t *testing.T, obj *dataobj.Object, tenant string) []string {
-	t.Helper()
-
-	var got []string
-	for _, section := range obj.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		sec, err := streams.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := streams.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]streams.Stream, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, stream := range buf[:n] {
-				got = append(got, stream.Labels.String())
-			}
-		}
-	}
-	return got
-}
-
-// indexedPointerPaths returns the distinct data object paths the index points at.
-func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
+// indexedObjectPaths returns the distinct data object paths the stats sections point at.
+func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
 	seen := make(map[string]struct{})
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		sec, err := pointers.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := pointers.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]pointers.SectionPointer, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				seen[pointer.Path] = struct{}{}
-			}
-		}
+	for _, row := range readAllStatsRows(t, obj) {
+		seen[row["object_path.utf8"].(string)] = struct{}{}
 	}
 
 	paths := make([]string, 0, len(seen))

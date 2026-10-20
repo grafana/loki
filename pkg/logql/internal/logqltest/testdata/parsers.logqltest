@@ -47,6 +47,23 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
   {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 
+# logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
+clear
+load
+  {app="a", name="stream"} "name=parsed" @ 10s
+
+eval select from 0 to 30s forward {app="a"} | drop name | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="parsed"]
+eval select from 0 to 30s forward {app="a"} | logfmt | drop name
+  {app="a"} "name=parsed" @ 10s [parsed name_extracted="parsed"]
+# A label re-added after the drop is a parsed label, not a stream label: logfmt neither renames
+# around it nor overwrites it, exactly as for a stream that never had the label.
+eval select from 0 to 30s forward {app="a"} | drop name | label_format name="x" | logfmt
+  {app="a"} "name=parsed" @ 10s [parsed name="x"]
+# Grouping sees the parsed label added after the drop, matching the full label output.
+eval instant at 10s sum by (name) (count_over_time({app="a"} | drop name | logfmt [1m]))
+  {name="parsed"} 1
+
 # logfmt() with a line key that ends in `_extracted`.
 clear
 load

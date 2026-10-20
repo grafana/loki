@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -23,9 +24,9 @@ type directExecutionStack struct {
 	newQuerier newScriptQuerierFunc
 	querier    logql.Querier
 
-	// dataObjStart is the time from which the querier reads stream-first queries from data
+	// dataObjQueryStart is the time from which the querier reads stream-first queries from data
 	// objects. It is zero when the querier reads no data objects.
-	dataObjStart time.Time
+	dataObjQueryStart time.Time
 }
 
 // newDirectTimestampFirstStack returns the direct stack in timestamp-first order.
@@ -42,11 +43,11 @@ func newDirectStreamFirstStack(t *testing.T) *directExecutionStack {
 // reads all the data of stream-first queries from data objects.
 func newDirectDataObjStack(t *testing.T) *directExecutionStack {
 	return &directExecutionStack{
-		t:            t,
-		stackName:    directDataObjStackName,
-		limits:       execLimits{streamFirstExecutionEnabled: true},
-		newQuerier:   newDataObjQuerierFunc(epoch),
-		dataObjStart: epoch,
+		t:                 t,
+		stackName:         directDataObjStackName,
+		limits:            execLimits{streamFirstExecutionEnabled: true},
+		newQuerier:        newDataObjQuerierFunc(epoch),
+		dataObjQueryStart: epoch,
 	}
 }
 
@@ -85,6 +86,12 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 		return logqlmodel.Result{}, err
 	}
 
+	// The stack has no query-frontend, which decides whether a querier may read data objects.
+	// The stack marks the query eligible itself.
+	if !s.dataObjQueryStart.IsZero() {
+		params = params.WithDataObjOptions(&logproto.DataObjOptions{Eligible: true})
+	}
+
 	ctx := user.InjectOrgID(context.Background(), tenant)
 	// Add flag to categorize labels. This is mimicking standard behavior of our most important client: Grafana
 	ctx = httpreq.AddEncodingFlagsToContext(ctx, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
@@ -93,5 +100,5 @@ func (s *directExecutionStack) eval(cmd evalCmd) (logqlmodel.Result, error) {
 		return res, err
 	}
 
-	return res, checkDataObjReads(cmd.query, res, s.dataObjStart)
+	return res, checkDataObjReads(cmd.query, res, s.dataObjQueryStart)
 }

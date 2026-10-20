@@ -16,20 +16,20 @@ import (
 var (
 	streamShardTrackedStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_tracked_streams",
-		"The current number of logical (pre-shard) streams tracked for stream sharding per tenant.",
-		[]string{"tenant"},
+		"The current number of logical (pre-shard) streams tracked for stream sharding per tenant and policy.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	streamShardTotalStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_total_streams",
-		"The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.",
-		[]string{"tenant"},
+		"The current number of physical streams (unsharded streams plus the shards of sharded streams) per tenant and policy implied by the granted shard counts. Compare against loki_ingester_memory_streams for the physical stream count the ingesters see.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	streamShardTotalShardsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_stream_shard_total_shards",
-		"The current number of physical streams that belong to a sharded stream per tenant. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.",
-		[]string{"tenant"},
+		"The current number of physical streams that belong to a sharded stream per tenant and policy. Subtracting this from loki_ingest_limits_stream_shard_total_streams gives the number of unsharded streams.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 )
@@ -40,13 +40,17 @@ var (
 // stream count enforcement in usageStore.
 //
 // The store is in-memory and per-instance. A restart or a partition rebalance
-// loses the rate history of the affected streams, which then warm up again
-// from scratch (see the brand-new or expired case in checkAndShard).
+// loses the affected streams, which then warm up again from scratch (see the
+// brand-new or expired case in checkAndShard) unless durability is enabled,
+// in which case merge restores them from the topic: the streams and their
+// shard footprint over the active window, their rate history over the rate
+// window.
 //
 // Shard growth is capped against max_global_streams_per_user using only the
-// streams this store has evaluated itself. A tenant whose streams predate the
-// store warms up until it has seen them, so the cap can be looser than
-// reality during that window.
+// streams this store has evaluated or merged itself. A tenant whose streams
+// are neither, because they predate the store and never reached the topic,
+// warms up until it has seen them, so the cap can be looser than reality
+// during that window.
 type streamShardStore struct {
 	activeWindow  time.Duration
 	rateWindow    time.Duration
@@ -330,8 +334,8 @@ func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant stri
 	}
 	// Scan the ring for the newest bucket that is complete, has traffic, is
 	// newer than the last one published, and still falls in the rate window.
-	// The window test uses the same cutoff as currentRate and merge, so a
-	// bucket a consumer would drop as too old is not produced at all.
+	// The window test uses the same cutoff as currentRate, so a bucket that
+	// would contribute no rate anywhere is not produced at all.
 	cutoff := seenAt.Add(-s.rateWindow).UnixNano()
 	var b shardRateBucket
 	for _, candidate := range stream.rateBuckets {
@@ -369,8 +373,18 @@ func (s *streamShardStore) recordToProduce(stream *streamShardUsage, tenant stri
 // A record states absolute totals for one bucket, so merging is an assignment,
 // not an addition, and applying a record more than once is a no-op. Within a
 // bucket a zone's totals only grow, so the larger totals win and out-of-order
-// records cannot regress a ring that holds fresher pushes. Records older than
-// the rate window are dropped; their footprint is not restored.
+// records cannot regress a ring that holds fresher pushes.
+//
+// Records are accepted for as long as the stream they describe would be
+// tracked, which is the active window, the same span the consumer replays and
+// the same span [usageStore] accepts. The rate window only bounds the rate
+// history: a record older than it restores the stream and its shard
+// footprint, which is what counts against max_global_streams_per_user, but
+// contributes no rate bucket, as its bucket is already outside every rate
+// computation. Bounding the whole record by the rate window instead left a
+// restarted instance, or a zone the frontend does not query, without most of
+// the streams the ingesters hold, and so handing out budget it had already
+// spent.
 func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord) {
 	if rec.Metadata == nil || rec.ShardRateBucket == nil {
 		return
@@ -378,15 +392,16 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 	var (
 		now         = s.clock.Now()
 		bucketStart = rec.ShardRateBucket.BucketStart
+		cutoff      = now.Add(-s.activeWindow).UnixNano()
 	)
-	if bucketStart < now.Add(-s.rateWindow).UnixNano() {
+	if bucketStart < cutoff {
 		return
 	}
 	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, rec.Metadata.IngestionPolicy)
 	var (
-		hash      = rec.Metadata.StreamHash
-		partition = s.getPartitionForHash(hash)
-		cutoff    = now.Add(-s.activeWindow).UnixNano()
+		hash             = rec.Metadata.StreamHash
+		partition        = s.getPartitionForHash(hash)
+		withinRateWindow = bucketStart >= now.Add(-s.rateWindow).UnixNano()
 	)
 	s.withLock(tenant, func(i int) {
 		bucket := s.checkInitMap(i, tenant, partition, policyBucket)
@@ -394,14 +409,16 @@ func (s *streamShardStore) merge(tenant string, rec *proto.StreamMetadataRecord)
 		stream.hash = hash
 		stream.policy = policyBucket
 		if rec.Zone == s.zone {
-			stream.rateBuckets = s.mergeRateBucket(stream.rateBuckets, rec.ShardRateBucket)
+			if withinRateWindow {
+				stream.rateBuckets = s.mergeRateBucket(stream.rateBuckets, rec.ShardRateBucket)
+			}
 			// The topic already holds a record for this bucket, so advance the
 			// produce cursor to keep the one-record-per-bucket bound across a
 			// restart or a change of partition owner. A record is only ever
 			// written for a complete bucket, so this cannot suppress a bucket
 			// that is still accumulating pushes.
 			stream.lastProducedBucket = max(stream.lastProducedBucket, bucketStart)
-		} else {
+		} else if withinRateWindow {
 			if stream.remoteBuckets == nil {
 				stream.remoteBuckets = make(map[string][]shardRateBucket, 1)
 			}
@@ -502,33 +519,39 @@ func (s *streamShardStore) Describe(descs chan<- *prometheus.Desc) {
 // ingesters see.
 func (s *streamShardStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
-		trackedStreams = make(map[string]int)
-		totalStreams   = make(map[string]uint64)
-		totalShards    = make(map[string]uint64)
+		trackedStreams = make(map[string]map[string]uint64)
+		totalStreams   = make(map[string]map[string]uint64)
+		totalShards    = make(map[string]map[string]uint64)
 	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, bucket := range policies {
-					trackedStreams[tenant] += len(bucket.streams)
-					totalStreams[tenant] += bucket.slots
+				for policy, bucket := range policies {
+					addTenantPolicy(trackedStreams, tenant, policy, uint64(len(bucket.streams)))
+					addTenantPolicy(totalStreams, tenant, policy, bucket.slots)
 					for _, stream := range bucket.streams {
 						if stream.slots >= 2 {
-							totalShards[tenant] += stream.slots
+							addTenantPolicy(totalShards, tenant, policy, stream.slots)
 						}
 					}
 				}
 			}
 		}
 	})
-	for tenant, n := range trackedStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range trackedStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTrackedStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for tenant, n := range totalStreams {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range totalStreams {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalStreamsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
-	for tenant, n := range totalShards {
-		metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), tenant)
+	for tenant, policies := range totalShards {
+		for policy, n := range policies {
+			metrics <- prometheus.MustNewConstMetric(streamShardTotalShardsDesc, prometheus.GaugeValue, float64(n), tenant, policy)
+		}
 	}
 }
 

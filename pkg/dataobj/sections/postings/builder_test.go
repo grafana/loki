@@ -538,8 +538,8 @@ func readWithKindPredicate(t *testing.T, sec *Section, wantKind int64) (rows int
 	require.NotNil(t, kindCol, "kind column not found in dataset")
 
 	reader := dataset.NewRowReader(dataset.RowReaderOptions{
-		Dataset: dset,
-		Columns: cols,
+		Dataset:          dset,
+		ProjectedColumns: cols,
 		Predicates: []dataset.Predicate{
 			dataset.EqualPredicate{Column: kindCol, Value: dataset.Int64Value(wantKind)},
 		},

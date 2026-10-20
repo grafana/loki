@@ -193,7 +193,7 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 // buildersFor initializes the builders for the tenant.
 func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 	if _, ok := b.streams[tenant]; !ok {
-		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, b.shardLayoutFor(tenant))
 		sb.SetTenant(tenant)
 		b.streams[tenant] = sb
 	}
@@ -211,7 +211,7 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 			SortOrder:                 logs.SortSchemaASC,
 			SchemaLabels:              b.schemaLabelsFor(tenant),
 			StreamOrder:               logs.StreamOrderStableHashV1,
-			ShardCount:                streams.ShardFactor,
+			ShardCount:                b.shardLayoutFor(tenant).Buckets(),
 			DropDuplicates:            b.cfg.DropDuplicates,
 		})
 		lb.SetTenant(tenant)
@@ -249,6 +249,12 @@ func (b *Builder) schemaLabelsFor(tenant string) []string {
 		return nil
 	}
 	return b.overrides.SortSchemaLabels(tenant)
+}
+
+// shardLayoutFor returns the shard layout of objects written for a tenant.
+// All tenants use [streams.DefaultShardLayout].
+func (b *Builder) shardLayoutFor(string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
 }
 
 // Append buffers a stream to be written to a data object.
@@ -307,7 +313,7 @@ func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Tim
 		return err
 	}
 	streamHash := labels.StableHash(ls)
-	streamShard := streams.ShardBucketFromHash(streamHash)
+	streamShard := b.shardLayoutFor(tenant).BucketFromHash(streamHash)
 
 	sb, lb := b.buildersFor(tenant)
 
@@ -463,7 +469,9 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		return nil, nil, err
 	}
 
-	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	// The layout of sb is unused. sb receives streams only through
+	// AppendValue, which keeps each stream's shard bucket.
+	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, streams.DefaultShardLayout())
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
@@ -488,6 +496,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		// TODO(chaudum): Handle special case len(sections) == 1
 
 		schemaLabels := b.schemaLabelsFor(tenant)
+		shardLayout := b.shardLayoutFor(tenant)
 
 		var streamSections []*dataobj.Section
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
@@ -506,7 +515,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
 		}
 
-		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumRows())
+		streamIter, remappedStreams, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, shardLayout, streamsSection.NumRows())
 		if err != nil {
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
@@ -548,7 +557,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				SortOrder:        logs.SortSchemaASC,
 				SchemaLabels:     schemaLabels,
 				StreamOrder:      logs.StreamOrderStableHashV1,
-				ShardCount:       streams.ShardFactor,
+				ShardCount:       shardLayout.Buckets(),
 				DropDuplicates:   b.cfg.DropDuplicates,
 			})
 			lb.SetTenant(tenant)
@@ -579,7 +588,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 func (b *Builder) requiresResort(ctx context.Context, obj *dataobj.Object) (bool, error) {
 	for _, tenant := range obj.Tenants() {
 		found := false
-		want := TargetSortLayout(b.schemaLabelsFor(tenant))
+		want := TargetSortLayout(b.schemaLabelsFor(tenant), b.shardLayoutFor(tenant))
 		for _, section := range obj.Sections().Filter(func(section *dataobj.Section) bool {
 			return logs.CheckSection(section) && section.Tenant == tenant
 		}) {
@@ -711,7 +720,7 @@ type mappedStream struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, error) {
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, shardLayout streams.ShardLayout, numStreams int) (result.Seq[streams.Stream], []rankedSortKey, error) {
 	allStreams := make([]mappedStream, 0, numStreams)
 	lookup := make([]rankedSortKey, numStreams+1)
 
@@ -720,7 +729,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		if err != nil {
 			return nil, nil, err
 		}
-		r, err := emptyRankedSortKey(stream.Labels, schemaLabels)
+		r, err := emptyRankedSortKey(stream.Labels, schemaLabels, shardLayout)
 		if err != nil {
 			return nil, nil, err
 		}

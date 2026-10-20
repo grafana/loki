@@ -47,17 +47,28 @@ type DefaultQueryParser struct{}
 // Parse populates "values" into "msg".
 // A value is ignored if its key starts with one of the elements in "filter".
 func (*DefaultQueryParser) Parse(msg proto.Message, values url.Values, filter *utilities.DoubleArray) error {
+	// A field is addressable by both its proto name and its JSON name, so two
+	// keys can set the same one. Record which fields have been set and refuse a
+	// second key for a field, the way protojson refuses a duplicate field in a
+	// body, instead of letting map iteration order pick the value that survives.
+	seen := make(map[string]struct{}, len(values))
 	for key, values := range values {
+		fieldKey, mapKey := key, ""
 		if match := valuesKeyRegexp.FindStringSubmatch(key); len(match) == 3 {
-			key = match[1]
+			fieldKey, mapKey = match[1], "["+match[2]+"]"
 			values = append([]string{match[2]}, values...)
 		}
 
 		msgValue := msg.ProtoReflect()
-		fieldPath := normalizeFieldPath(msgValue, strings.Split(key, "."))
+		fieldPath := normalizeFieldPath(msgValue, strings.Split(fieldKey, "."))
 		if filter.HasCommonPrefix(fieldPath) {
 			continue
 		}
+		field := strings.Join(fieldPath, ".") + mapKey
+		if _, ok := seen[field]; ok {
+			return fmt.Errorf("duplicate field %q", field)
+		}
+		seen[field] = struct{}{}
 		if err := populateFieldValueFromPath(msgValue, fieldPath, values); err != nil {
 			return err
 		}

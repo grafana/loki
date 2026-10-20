@@ -1,6 +1,11 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Package xhash provides fast hashing of pdata values for use as in-memory identity keys.
+//
+// The hash values are not stable across collector versions. The encoding and hash algorithm
+// may change in any release without notice. Do not persist the values or use them where
+// they must stay the same across restarts, upgrades, or instances running different versions.
 package xhash // import "go.opentelemetry.io/collector/pdata/xpdata/xhash"
 
 import (
@@ -53,8 +58,7 @@ func WithValue(v pcommon.Value) HashOption {
 // WithString adds a string to the hash calculation.
 func WithString(s string) HashOption {
 	return func(hw *hashWriter) {
-		hw.byteBuf = append(hw.byteBuf, valStrPrefix...)
-		hw.byteBuf = append(hw.byteBuf, s...)
+		hw.writeString(s)
 	}
 }
 
@@ -151,7 +155,7 @@ func (hw *hashWriter) writeMapHash(m pcommon.Map) {
 	slices.SortFunc(workingEntries, func(a, b mapEntry) int { return strings.Compare(a.key, b.key) })
 	for _, e := range workingEntries {
 		hw.byteBuf = append(hw.byteBuf, keyPrefix...)
-		hw.byteBuf = append(hw.byteBuf, e.key...)
+		writeLenPrefixed(hw, e.key)
 		hw.writeValueHash(e.val)
 	}
 
@@ -190,7 +194,7 @@ func (hw *hashWriter) writeValueHash(v pcommon.Value) {
 		hw.byteBuf = append(hw.byteBuf, valSliceSuffix...)
 	case pcommon.ValueTypeBytes:
 		hw.byteBuf = append(hw.byteBuf, valBytesPrefix...)
-		hw.byteBuf = append(hw.byteBuf, v.Bytes().AsRaw()...)
+		writeLenPrefixed(hw, v.Bytes().AsRaw())
 	case pcommon.ValueTypeEmpty:
 		hw.byteBuf = append(hw.byteBuf, valEmpty...)
 	}
@@ -198,7 +202,14 @@ func (hw *hashWriter) writeValueHash(v pcommon.Value) {
 
 func (hw *hashWriter) writeString(s string) {
 	hw.byteBuf = append(hw.byteBuf, valStrPrefix...)
-	hw.byteBuf = append(hw.byteBuf, s...)
+	writeLenPrefixed(hw, s)
+}
+
+// writeLenPrefixed writes the length of b followed by b itself. Without the length, the end of a
+// variable-length key or value would be ambiguous and distinct maps could produce the same bytes.
+func writeLenPrefixed[T string | []byte](hw *hashWriter, b T) {
+	hw.byteBuf = binary.AppendUvarint(hw.byteBuf, uint64(len(b)))
+	hw.byteBuf = append(hw.byteBuf, b...)
 }
 
 // hashSum128 returns a [16]byte hash sum.

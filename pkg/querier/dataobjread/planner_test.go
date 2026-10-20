@@ -10,6 +10,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -58,6 +60,23 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Len(t, tasks, len(descriptors))
 	})
 
+	t.Run("it omits the line from every task when only a pushed line filter reads it", func(t *testing.T) {
+		readPlanner, _ := newTestPlanner(t, nil)
+		expr, err := syntax.ParseSampleExpr(`sum by (app) (count_over_time({app=~".+"} |= "x" [1m]))`)
+		require.NoError(t, err)
+		projection, err := NewProjectionPlan(expr, nil)
+		require.NoError(t, err)
+
+		query := plainQuery(t)
+		query.Projection = projection
+		tasks, err := drainTasks(readPlanner.Plan(t.Context(), query))
+		require.NoError(t, err)
+		require.NotEmpty(t, tasks)
+		for _, task := range tasks {
+			require.False(t, task.needReturningLine)
+		}
+	})
+
 	t.Run("it forwards the query's metadata predicates to the metastore for bloom pruning", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)
 		objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
@@ -79,6 +98,50 @@ func TestPlanner_Plan(t *testing.T) {
 		require.Len(t, ms.gotRequest.Predicates, 1)
 		require.Equal(t, `level="error"`, ms.gotRequest.Predicates[0].String())
 	})
+
+	for _, test := range []struct {
+		name  string
+		shard *QueryShard
+		want  *postings.ShardBucketRange
+	}{
+		{
+			name:  "an unsharded query asks the metastore for no bucket range",
+			shard: nil,
+			want:  nil,
+		},
+		{
+			name:  "a shard count of one restricts no stream, so the planner asks the metastore for no bucket range",
+			shard: NewQueryShard(powerOfTwoShard(0, 1)),
+			want:  nil,
+		},
+		{
+			name:  "the first of two shards asks the metastore for the lower half of the buckets",
+			shard: NewQueryShard(powerOfTwoShard(0, 2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+		},
+		{
+			name:  "a shard count above the bucket count asks the metastore for the one bucket it falls in",
+			shard: NewQueryShard(powerOfTwoShard(5, streams.DefaultShardLayout().Buckets()*4)),
+			want:  &postings.ShardBucketRange{From: 1, To: 1},
+		},
+		{
+			name:  "a bounded shard asks the metastore for the buckets it spans",
+			shard: NewQueryShard(boundedShard(0, ^uint64(0)/2)),
+			want:  &postings.ShardBucketRange{From: 0, To: streams.DefaultShardLayout().Buckets()/2 - 1},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ms := &fixedMetastore{}
+			readPlanner, _ := newTestPlanner(t, ms)
+
+			query := plainQuery(t)
+			query.Shard = test.shard
+			_, err := drainTasks(readPlanner.Plan(t.Context(), query))
+			require.NoError(t, err)
+
+			require.Equal(t, test.want, ms.gotRequest.ShardBucketRange)
+		})
+	}
 
 	t.Run("a stream the metastore lists but the object does not hold fails the query", func(t *testing.T) {
 		fixture := newObjectsFixture(t, fixtureStreams...)

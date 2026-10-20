@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -25,6 +26,13 @@ type postingsCache struct {
 	cache.Cache
 	logger  log.Logger
 	metrics *postingsCacheMetrics
+	lookups singleflight.Group // Cache key to in-flight fetch/decode; completed results are not retained.
+}
+
+type postingsLookup struct {
+	refs     []storage.SeriesRef // Immutable; each caller creates its own iterator.
+	hit      bool                // An empty postings list is still a hit.
+	populate bool
 }
 
 type postingsCacheMetrics struct {
@@ -34,7 +42,7 @@ type postingsCacheMetrics struct {
 }
 
 func newPostingsCache(c cache.Cache, name string, reg prometheus.Registerer, logger log.Logger) *postingsCache {
-	return &postingsCache{c, logger, newPostingsCacheMetrics(name, reg)}
+	return &postingsCache{Cache: c, logger: logger, metrics: newPostingsCacheMetrics(name, reg)}
 }
 
 func newPostingsCacheMetrics(name string, reg prometheus.Registerer) *postingsCacheMetrics {
@@ -164,16 +172,12 @@ func decodePostings(key string, encoded []byte) ([]storage.SeriesRef, error) {
 }
 
 func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute func() (index.Postings, error)) (index.Postings, error) {
-	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
-	// Avoid a write after a failed fetch.
-	writeCache := err == nil
-	if err == nil && len(found) == 1 && len(bufs) == 1 {
-		refs, err := decodePostings(key, bufs[0])
-		if err == nil {
-			return index.NewListPostings(refs), nil
-		}
-		c.metrics.decodeFailures.Inc()
-		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
+	p, writeCache := c.fetchPostings(ctx, key)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if p != nil {
+		return p, nil
 	}
 
 	postings, err := compute()
@@ -198,4 +202,40 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 		}
 	}
 	return index.NewListPostings(refs), nil
+}
+
+func (c *postingsCache) fetchPostings(ctx context.Context, key string) (p index.Postings, populate bool) {
+	if ctx.Err() != nil {
+		return nil, false
+	}
+	result := c.lookups.DoChan(key, func() (any, error) {
+		refs, hit, populate := c.fetchPostingsRefs(ctx, key)
+		return postingsLookup{refs: refs, hit: hit, populate: populate}, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, false
+	case result := <-result:
+		lookup := result.Val.(postingsLookup)
+		if lookup.hit {
+			return index.NewListPostings(lookup.refs), false
+		}
+		return nil, lookup.populate
+	}
+}
+
+func (c *postingsCache) fetchPostingsRefs(ctx context.Context, key string) (refs []storage.SeriesRef, hit, populate bool) {
+	found, bufs, _, err := c.Fetch(ctx, []string{cache.HashKey(key)})
+	if err != nil {
+		return nil, false, false
+	}
+	if len(found) == 1 && len(bufs) == 1 {
+		refs, err := decodePostings(key, bufs[0])
+		if err == nil {
+			return refs, true, false
+		}
+		c.metrics.decodeFailures.Inc()
+		level.Warn(c.logger).Log("msg", "failed to decode cached postings", "err", err)
+	}
+	return nil, false, true
 }

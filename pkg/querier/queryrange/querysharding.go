@@ -36,14 +36,14 @@ func NewQueryShardMiddleware(
 	engineOpts logql.EngineOpts,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
+	cfg Config,
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
 	retryNextHandler queryrangebase.Handler,
-	shardAggregation []string,
 ) queryrangebase.Middleware {
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
+		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, cfg, limits, maxShards)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -67,13 +67,14 @@ func newASTMapperware(
 	statsHandler queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
+	cfg Config,
 	limits Limits,
 	maxShards int,
-	shardAggregation []string,
 ) *astMapperware {
 	ast := &astMapperware{
 		confs:            confs,
 		logger:           log.With(logger, "middleware", "QueryShard.astMapperware"),
+		cfg:              cfg,
 		limits:           limits,
 		next:             next,
 		retryNextHandler: retryNextHandler,
@@ -81,7 +82,6 @@ func newASTMapperware(
 		ng:               logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:          metrics,
 		maxShards:        maxShards,
-		shardAggregation: shardAggregation,
 	}
 
 	if statsHandler != nil {
@@ -92,6 +92,7 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
+	cfg              Config
 	confs            []config.PeriodConfig
 	logger           log.Logger
 	limits           Limits
@@ -101,10 +102,6 @@ type astMapperware struct {
 	ng               *logql.DownstreamEngine
 	metrics          *logql.MapperMetrics
 	maxShards        int
-
-	// Feature flag for sharding range and vector aggregations such as
-	// quantile_ver_time with probabilistic data structures.
-	shardAggregation []string
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -161,6 +158,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	resolver, ok := newDynamicShardResolver(
 		ctx,
+		ast.cfg,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
 		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),
@@ -194,7 +192,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
 		return ast.limits.ShardAggregations(tenant)
 	})
-	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.shardAggregation...))
+	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.cfg.ShardAggregations...))
 
 	mapper := logql.NewShardMapper(strategy, ast.metrics, mergedShardAggregation)
 

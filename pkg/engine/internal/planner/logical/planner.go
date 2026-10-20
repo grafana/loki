@@ -743,8 +743,9 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
+	default:
+		return nil, fmt.Errorf("invalid label filter %T", expr)
 	}
-	return nil, fmt.Errorf("invalid label filter %T", expr)
 }
 
 func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
