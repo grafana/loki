@@ -33,8 +33,8 @@ type coordinator struct {
 	cfg    Config
 	logger log.Logger
 	bucket objstore.Bucket
-	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge,
-	// IndexFilter, and SortObject plans. They have separate concurrency limits.
+	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge and
+	// IndexFilter plans. They have separate concurrency limits.
 	indexDispatcher *planDispatcher
 	logDispatcher   *planDispatcher
 	publisher       *tocPublisher
@@ -228,9 +228,13 @@ func (c *coordinator) compactTenantLogs(
 // planLogCompaction decides how to compact the logs of one layout-homogeneous
 // index. It reads the index but dispatches nothing and changes no state.
 //
-// Objects with the wrong sort schema or shard count get one SortObject task
-// each. Otherwise, objects are merged with LogMerge, and runs with no merge
-// partner keep their data through an IndexFilter of the source index.
+// Objects are merged with LogMerge in the sort schema of the index, and runs
+// with no merge partner keep their data through an IndexFilter of the source
+// index. Compaction never changes the layout of an object, so indexes with
+// different layouts form separate groups that never merge.
+//
+// planLogCompaction returns an error if the index has a shard count other
+// than the default, because LogMerge writes only the default shard layout.
 //
 // planLogCompaction returns a plan with no work if the index has no sections
 // for tenant, is below the minimum compaction size, or needs no compaction.
@@ -248,15 +252,14 @@ func (c *coordinator) planLogCompaction(
 		return logCompactionPlan{}, nil
 	}
 
-	targetSortSchema := c.limits.SortSchemaLabels(tenant)
-	if !slices.Equal(sortSchema, targetSortSchema) || shardCount != int64(streams.DefaultShardLayout().Buckets()) {
-		return planSortObjects(window, sourceIndex, sections, targetSortSchema), nil
+	if shardCount != int64(streams.DefaultShardLayout().Buckets()) {
+		return logCompactionPlan{}, fmt.Errorf("index %s has shard count %d, but LogMerge supports only %d", sourceIndex.Path, shardCount, streams.DefaultShardLayout().Buckets())
 	}
 	return c.planLogMerge(tenant, window, sourceIndex, sections, sortSchema)
 }
 
-// planLogMerge plans the k-way merge of sections, which must already match
-// the target sort schema and shard count.
+// planLogMerge plans the k-way merge of sections, which must share sortSchema
+// and the default shard count.
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
@@ -373,59 +376,6 @@ func indexFilterForUnmerged(sourceIndex indexEntry, unmerged []v2.Run) indexFilt
 		sourceIndexPath: sourceIndex.Path,
 		objectPaths:     objectPaths,
 		entry:           runsToCEntry(runRefs),
-	}
-}
-
-// planSortObjects plans one SortObject task per log object in sections. Each
-// task rewrites its object with targetSortSchema.
-func planSortObjects(
-	window time.Time,
-	sourceIndex indexEntry,
-	sections []v2.Section[logSortPrefix],
-	targetSortSchema []string,
-) logCompactionPlan {
-	type object struct {
-		path         string
-		minTimestamp int64
-		maxTimestamp int64
-		bytes        uint64
-	}
-
-	var objects []*object
-	objectsByPath := make(map[string]*object)
-	for _, section := range sections {
-		path := section.Ref.ObjectPath
-		obj, ok := objectsByPath[path]
-		if !ok {
-			obj = &object{
-				path:         path,
-				minTimestamp: section.Ref.MinTimestamp,
-				maxTimestamp: section.Ref.MaxTimestamp,
-			}
-			objectsByPath[path] = obj
-			objects = append(objects, obj)
-		}
-		obj.minTimestamp = min(obj.minTimestamp, section.Ref.MinTimestamp)
-		obj.maxTimestamp = max(obj.maxTimestamp, section.Ref.MaxTimestamp)
-		obj.bytes += uint64(section.Ref.UncompressedSize)
-	}
-
-	tasks := make([]logCompactionTask, len(objects))
-	for i, obj := range objects {
-		tasks[i] = sortObjectTask{
-			objectPath: obj.path,
-			sortSchema: targetSortSchema,
-			entry: metastore.TableOfContentsEntry{
-				StartTime: time.Unix(0, obj.minTimestamp).UTC(),
-				EndTime:   time.Unix(0, obj.maxTimestamp).UTC(),
-			},
-			bytes: obj.bytes,
-		}
-	}
-	return logCompactionPlan{
-		window:      window,
-		sourceIndex: sourceIndex,
-		tasks:       tasks,
 	}
 }
 

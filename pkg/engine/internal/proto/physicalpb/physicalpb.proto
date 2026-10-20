@@ -37,6 +37,9 @@ message Node {
   // ID of the node.
   NodeID id = 1 [(gogoproto.nullable) = false];
 
+  reserved 19;
+  reserved "sort_object";
+
   oneof kind {
     AggregateRange aggregate_range = 2;
     AggregateVector aggregate_vector = 3;
@@ -55,7 +58,6 @@ message Node {
     Cache cache = 16;
     IndexMerge index_merge = 17;
     LogMerge log_merge = 18;
-    SortObject sort_object = 19;
     IndexFilter index_filter = 20;
   }
 }
@@ -314,13 +316,6 @@ message LogMerge {
   int64 toc_window_start_unix_nanos = 2;
   repeated proto.RunRef runs = 3;
   repeated string sort_schema = 4;
-}
-
-// SortObject rewrites one complete logs object into a target schema and
-// re-indexes the rewritten object.
-message SortObject {
-  string source_object_path = 1;
-  repeated string sort_schema = 2;
 }
 
 // IndexFilter copies the postings and stats rows of the listed log objects
