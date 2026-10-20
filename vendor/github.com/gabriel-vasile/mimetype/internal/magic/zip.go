@@ -187,11 +187,11 @@ func msoxml(raw scan.Bytes, searchFor zipEntries, stopAfter int) bool {
 	return false
 }
 
+var zipLocalFileHeader = []byte("PK\003\004")
+
 // next extracts the name of the next zip entry.
 func (i *zipIterator) next() []byte {
-	pk := []byte("PK\003\004")
-
-	n := bytes.Index(i.b, pk)
+	n := bytes.Index(i.b, zipLocalFileHeader)
 	if n == -1 {
 		return nil
 	}
@@ -212,10 +212,85 @@ func (i *zipIterator) next() []byte {
 	return i.b[:l]
 }
 
+// skipZipflingerEntry tries to detect a Zipflinger virtual entry and skips it.
+// The detection is based on the following properties:
+// - compression method is 0
+// - CRC32 is 0
+// - compressed size is 0
+// - uncompressed size is 0
+// - file name is empty
+// Returns true if it was found and skipped.
+func (i *zipIterator) skipZipflingerEntry() (skipped bool) {
+	// Make a backup of the data so the inspection does not loses it.
+	b := i.b
+	defer func() {
+		// If no zipflinger was found, restore the original data.
+		if !skipped {
+			i.b = b
+		}
+	}()
+
+	n := bytes.Index(i.b, zipLocalFileHeader)
+	if n == -1 {
+		return false
+	}
+	if !i.b.Advance(0x08) {
+		return false
+	}
+
+	// Check compression method
+	if cm, ok := i.b.Uint16(); !ok || cm != 0 {
+		return false
+	}
+
+	// Advance up to the CRC32 field
+	if !i.b.Advance(0x04) {
+		return false
+	}
+
+	// Check CRC32
+	if crc32, ok := i.b.Uint32(); !ok || crc32 != 0 {
+		return false
+	}
+
+	// Check compressed size
+	if compressedSize, ok := i.b.Uint32(); !ok || compressedSize != 0 {
+		return false
+	}
+
+	// Check uncompressed size
+	if uncompressedSize, ok := i.b.Uint32(); !ok || uncompressedSize != 0 {
+		return false
+	}
+
+	// Check for empty file name
+	if l, ok := i.b.Uint16(); !ok || l != 0 {
+		return false
+	}
+
+	// Reached a zipflinger virtual entry: skip extra data
+	l, ok := i.b.Uint16()
+	if !ok {
+		return false
+	}
+
+	if !i.b.Advance(int(l)) {
+		return false
+	}
+	return true
+}
+
 // APK matches an Android Package Archive.
 // The source of signatures is https://github.com/file/file/blob/1778642b8ba3d947a779a36fcd81f8e807220a19/magic/Magdir/archive#L1820-L1887
 func APK(raw []byte, _ uint32) bool {
-	return zipHas(raw, zipEntries{{
+	iter := zipIterator{raw}
+
+	// If a Zipflinger Virtual Entry is detected, then the data is considered APK
+	if iter.skipZipflingerEntry() {
+		return true
+	}
+
+	return zipHas(iter.b, zipEntries{{
 		name: []byte("AndroidManifest.xml"),
 	}, {
 		name: []byte("META-INF/com/android/build/gradle/app-metadata.properties"),
