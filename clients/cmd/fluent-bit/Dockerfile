@@ -1,4 +1,4 @@
-FROM golang:1.26.5-bookworm AS builder
+FROM golang:1.26.10-bookworm AS builder
 
 COPY . /src
 

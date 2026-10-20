@@ -1,6 +1,6 @@
 module github.com/grafana/loki/v3
 
-go 1.26.5
+go 1.26.10
 
 ignore ./tools/dev
 
