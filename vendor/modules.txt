@@ -655,8 +655,8 @@ github.com/fluent/fluent-bit-go/output
 ## explicit; go 1.23
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/gabriel-vasile/mimetype v1.4.15
-## explicit; go 1.21
+# github.com/gabriel-vasile/mimetype v1.4.16
+## explicit; go 1.24
 github.com/gabriel-vasile/mimetype
 github.com/gabriel-vasile/mimetype/internal/cdf
 github.com/gabriel-vasile/mimetype/internal/charset
