@@ -42,6 +42,12 @@ import (
 // shards. The frontend merges shard results by looking samples up at the
 // exact step timestamps, so a sample mislabeled by the offset handling turns
 // into an empty result there rather than a wrong label.
+//
+// This is the regression test for the range vector sample timestamp rounding
+// fix. Without it (at the fix's parent commit) every sub-millisecond offset
+// case fails in every phase: the querier returns all rows with timestamps 1ms
+// before the step, and the query-frontend, sharded or not, returns no series
+// at all because it discards samples that are not on the step grid.
 func TestLogsVolumeOffsetMicroServices(t *testing.T) {
 	for name, variant := range map[string]volumeVariant{
 		"unsharded": {},
