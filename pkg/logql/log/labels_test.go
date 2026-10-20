@@ -737,12 +737,12 @@ func BenchmarkLabelsBuilder_LabelsResult_CacheHit(b *testing.B) {
 			base := labels.FromStrings("app", "bench", "namespace", "loki")
 			builder := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 
+			builder.Reset()
+			for j := 0; j < n; j++ {
+				builder.Set(ParsedLabel, fmt.Sprintf("key_%d", j), "info")
+			}
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				builder.Reset()
-				for j := 0; j < n; j++ {
-					builder.Set(ParsedLabel, fmt.Sprintf("key_%d", j), "info")
-				}
 				_ = builder.LabelsResult()
 			}
 		})
