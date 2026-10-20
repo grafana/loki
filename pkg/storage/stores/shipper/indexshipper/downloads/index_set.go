@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -30,6 +31,11 @@ const (
 
 var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
 
+// errIndexSetEvicted is returned to queries that reach an index set after it
+// was evicted because this instance no longer owns it, so that the client
+// retries another index gateway instead of getting no results.
+var errIndexSetEvicted = errors.New("index set was evicted because this index gateway no longer owns it, retry another index gateway")
+
 type IndexSet interface {
 	Init(forQuerying bool, logger log.Logger) error
 	Close()
@@ -41,6 +47,14 @@ type IndexSet interface {
 	UpdateLastUsedAt()
 	Sync(ctx context.Context) (err error)
 	AwaitReady(ctx context.Context, reason string) error
+	// QueryReady reports whether the index set is kept ready for queries, as
+	// opposed to downloaded on demand or found on local disk at startup.
+	QueryReady() bool
+	// MarkQueryReady marks the set as kept ready for queries.
+	MarkQueryReady()
+	// Evict drops the index set like DropAllDBs, and makes queries that still
+	// hold a reference to it fail rather than find it empty.
+	Evict() error
 }
 
 // indexSet is a collection of multiple files created for a same table by various ingesters.
@@ -59,10 +73,21 @@ type indexSet struct {
 	indexMtx   *mtxWithReadiness
 	err        error
 
+	// queryReady records whether this set is kept ready for queries.
+	queryReady atomic.Bool
+	// evicted is set by Evict, under the write lock.
+	evicted atomic.Bool
+
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
+	return newIndexSet(tableName, userID, cacheLocation, baseIndexSet, openIndexFileFunc, logger, downloadTimeout, false)
+}
+
+// newIndexSet is NewIndexSet for an index set that is kept ready for queries
+// from the start when queryReady is set.
+func newIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration, queryReady bool) (*indexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -90,6 +115,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		indexMtx:          newMtxWithReadiness(),
 		cancelFunc:        func() {},
 	}
+	is.queryReady.Store(queryReady)
 
 	return &is, nil
 }
@@ -188,6 +214,9 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	if t.err != nil {
 		return t.err
 	}
+	if t.evicted.Load() {
+		return errIndexSetEvicted
+	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
@@ -210,6 +239,9 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 
 	if t.err != nil {
 		return t.err
+	}
+	if t.evicted.Load() {
+		return errIndexSetEvicted
 	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
@@ -259,6 +291,30 @@ func (t *indexSet) DropAllDBs() error {
 
 	return os.RemoveAll(t.cacheLocation)
 }
+
+// Evict implements IndexSet.
+func (t *indexSet) Evict() error {
+	err := t.indexMtx.lock(context.Background())
+	if err != nil {
+		return err
+	}
+	defer t.indexMtx.unlock()
+
+	t.evicted.Store(true)
+	for fileName := range t.index {
+		if err := t.cleanupDB(fileName); err != nil {
+			return err
+		}
+	}
+
+	return os.RemoveAll(t.cacheLocation)
+}
+
+// QueryReady implements IndexSet.
+func (t *indexSet) QueryReady() bool { return t.queryReady.Load() }
+
+// MarkQueryReady implements IndexSet.
+func (t *indexSet) MarkQueryReady() { t.queryReady.Store(true) }
 
 // Err returns the err which is usually set when there was any issue in Init.
 func (t *indexSet) Err() error {

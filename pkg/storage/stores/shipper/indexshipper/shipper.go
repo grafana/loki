@@ -121,6 +121,11 @@ type Config struct {
 	// from construction to the first PreloadIndexes call, once TenantFilter can
 	// answer. It is set by the index gateway with per-index ownership.
 	DelayQueryReadinessUntilPreload bool `yaml:"-"`
+	// DropFilter, if set, answers which tenants in a table this instance no
+	// longer owns, so that their query ready index sets are evicted (see
+	// downloads.Config.DropFilter). It is set by the index gateway with
+	// per-index ownership.
+	DropFilter downloads.TenantFilter `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -283,6 +288,7 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 
 			QueryReadyOverrides:             s.cfg.QueryReadyOverrides,
 			DelayQueryReadinessUntilPreload: s.cfg.DelayQueryReadinessUntilPreload,
+			DropFilter:                      s.cfg.DropFilter,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
