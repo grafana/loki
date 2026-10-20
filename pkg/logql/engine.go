@@ -44,6 +44,7 @@ var tracer = otel.Tracer("pkg/logql")
 
 const (
 	DefaultBlockedQueryMessage = "blocked by policy"
+	FullRangeVectorWarning     = "range vector interval matches the entire query range"
 )
 
 var (
@@ -67,6 +68,24 @@ var (
 // because it reached the series limit.
 func seriesLimitPartialResultsWarning(maxSeries int) string {
 	return fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries)
+}
+
+// HasFullRangeVector reports whether a sample expression contains a range
+// vector whose interval exactly matches the query range.
+func HasFullRangeVector(expr syntax.Expr, queryRange time.Duration) bool {
+	if queryRange <= 0 {
+		return false
+	}
+
+	warn := false
+	expr.Walk(func(e syntax.Expr) bool {
+		rangeExpr, ok := e.(*syntax.LogRangeExpr)
+		if ok && rangeExpr.Interval == queryRange {
+			warn = true
+		}
+		return true
+	})
+	return warn
 }
 
 type QueryParams interface {
@@ -309,6 +328,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
+
+	if expr := q.params.GetExpression(); HasFullRangeVector(expr, q.params.End().Sub(q.params.Start())) {
+		metadataCtx.AddWarning(FullRangeVectorWarning)
+	}
 
 	data, err := q.Eval(ctx)
 

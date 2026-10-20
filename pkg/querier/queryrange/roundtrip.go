@@ -418,29 +418,17 @@ func logQueryExecution(ctx context.Context, logger log.Logger, values ...interfa
 	level.Info(logger).Log(logValues...)
 }
 
-const fullRangeVectorWarning = "range vector interval matches the entire query range"
-
 func addFullRangeVectorWarning(req base.Request, resp base.Response) base.Response {
 	r, ok := req.(*LokiRequest)
 	if !ok || r.Plan == nil {
 		return resp
 	}
 
-	expr, ok := r.Plan.AST.(syntax.SampleExpr)
-	if !ok || r.EndTs.Sub(r.StartTs) <= 0 {
+	if _, ok := r.Plan.AST.(syntax.SampleExpr); !ok {
 		return resp
 	}
 
-	queryRange := r.EndTs.Sub(r.StartTs)
-	warning := false
-	expr.Walk(func(e syntax.Expr) bool {
-		rangeExpr, ok := e.(*syntax.LogRangeExpr)
-		if ok && rangeExpr.Interval == queryRange {
-			warning = true
-		}
-		return true
-	})
-	if !warning {
+	if !logql.HasFullRangeVector(r.Plan.AST, r.EndTs.Sub(r.StartTs)) {
 		return resp
 	}
 
@@ -449,11 +437,11 @@ func addFullRangeVectorWarning(req base.Request, resp base.Response) base.Respon
 		return resp
 	}
 	for _, existing := range promResp.Response.Warnings {
-		if existing == fullRangeVectorWarning {
+		if existing == logql.FullRangeVectorWarning {
 			return resp
 		}
 	}
-	promResp.Response.Warnings = append(promResp.Response.Warnings, fullRangeVectorWarning)
+	promResp.Response.Warnings = append(promResp.Response.Warnings, logql.FullRangeVectorWarning)
 	return resp
 }
 
