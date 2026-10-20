@@ -162,6 +162,14 @@ message Summary {
   int64 streamFirstQueries = 14 [(gogoproto.jsontag) = "streamFirstQueries"];
   // Total number of queries the querier ran in timestamp-first order.
   int64 timestampFirstQueries = 15 [(gogoproto.jsontag) = "timestampFirstQueries"];
+  // Peak number of distinct label sets a range-vector iterator held, for the single
+  // worst sub-query. This is the parse cache, which batchRangeVectorIterator never
+  // prunes, so it is cumulative over that sub-query.
+  int64 peakGroupedLabels = 16 [(gogoproto.jsontag) = "peakGroupedLabels,omitempty"];
+  // Peak number of label sets held in a range-vector iterator's live window, for the
+  // single worst sub-query. The window is pruned as it slides, so this is the live
+  // subset of peakGroupedLabels and is what sets resident bytes.
+  int64 peakWindowLabels = 17 [(gogoproto.jsontag) = "peakWindowLabels,omitempty"];
 }
 
 // Statistics from Index queries

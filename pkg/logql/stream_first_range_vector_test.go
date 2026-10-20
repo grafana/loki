@@ -102,7 +102,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			offset := sec(rnd.Int63n(3)) * 5
 			expr := mustRangeAggregation(t, fmt.Sprintf(`count_over_time({app="foo"}[%s])`, time.Duration(selRange)))
 
-			want, err := newTimestampFirstRangeVectorIterator(newTimestampOrderedIterator(input), expr, selRange, step, start, end, offset)
+			want, err := newTimestampFirstRangeVectorIterator(newTimestampOrderedIterator(input), expr, selRange, step, start, end, offset, nil)
 			require.NoError(t, err)
 
 			rnd.Shuffle(len(input), func(i, j int) { input[i], input[j] = input[j], input[i] })

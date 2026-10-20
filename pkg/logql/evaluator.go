@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -783,6 +784,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			stats.FromContext(ctx),
 		)
 		if err != nil {
 			return nil, err
@@ -839,6 +841,7 @@ func newTimestampFirstRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+			stats.FromContext(ctx),
 		)
 		if err != nil {
 			return nil, err

@@ -276,6 +276,14 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
 
+	if stats.Summary.PeakGroupedLabels > 0 {
+		logValues = append(logValues, "peak_grouped_labels", stats.Summary.PeakGroupedLabels)
+	}
+
+	if stats.Summary.PeakWindowLabels > 0 {
+		logValues = append(logValues, "peak_window_labels", stats.Summary.PeakWindowLabels)
+	}
+
 	logValues = appendLoglineStats(logValues, stats)
 
 	if r, ok := result.(CountMinSketchVector); ok {

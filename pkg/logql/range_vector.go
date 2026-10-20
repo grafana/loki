@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // BatchRangeVectorAggregator aggregates the samples within a range window. It
@@ -42,7 +43,8 @@ type RangeVectorIterator interface {
 func newTimestampFirstRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+	selRange, step, start, end, offset int64,
+	st *stats.Context) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -61,6 +63,7 @@ func newTimestampFirstRangeVectorIterator(
 			return nil, err
 		}
 		return &streamRangeVectorIterator{
+			stats:    st,
 			iter:     it,
 			step:     step,
 			end:      end,
@@ -76,6 +79,7 @@ func newTimestampFirstRangeVectorIterator(
 		return nil, err
 	}
 	return &batchRangeVectorIterator{
+		stats:    st,
 		iter:     it,
 		step:     step,
 		end:      end,
@@ -98,6 +102,7 @@ type batchRangeVectorIterator struct {
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
 	err                                  error
+	stats                                *stats.Context
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
@@ -184,6 +189,8 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			series = getSeries()
 			series.Metric = metric
 			r.window[lbs] = series
+			r.stats.RecordPeakGroupedLabels(int64(len(r.metrics)))
+			r.stats.RecordPeakWindowLabels(int64(len(r.window)))
 		}
 		p := promql.FPoint{
 			T: sample.Timestamp,
@@ -513,6 +520,7 @@ type streamRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	err                                  error
+	stats                                *stats.Context
 }
 
 func (r *streamRangeVectorIterator) Next() bool {
@@ -576,6 +584,8 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			// never err here ,we have check error at evaluator.go rangeAggEvaluator() func
 			rangeAgg, _ = streamingAggregator(r.r, end)
 			r.windowRangeAgg[lbs] = rangeAgg
+			r.stats.RecordPeakGroupedLabels(int64(len(r.metrics)))
+			r.stats.RecordPeakWindowLabels(int64(len(r.windowRangeAgg)))
 		}
 		p := promql.FPoint{
 			T: sample.Timestamp,

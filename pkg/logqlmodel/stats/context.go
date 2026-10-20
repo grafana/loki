@@ -331,6 +331,15 @@ func (s *Summary) Merge(m Summary) {
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
+	// Max-merged, not summed: the same label set recurs in every split and shard, so a
+	// sum would report a multiple of the real figure. The quantity of interest is the
+	// worst single sub-query, because that is what sets the high-water mark on one querier.
+	if m.PeakGroupedLabels > s.PeakGroupedLabels {
+		s.PeakGroupedLabels = m.PeakGroupedLabels
+	}
+	if m.PeakWindowLabels > s.PeakWindowLabels {
+		s.PeakWindowLabels = m.PeakWindowLabels
+	}
 }
 
 func (q *Querier) Merge(m Querier) {
@@ -726,6 +735,37 @@ func (c *Context) AddStreamFirstQueries(num int64) {
 
 func (c *Context) AddTimestampFirstQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.TimestampFirstQueries, num)
+}
+
+// RecordPeakGroupedLabels raises the recorded peak count of distinct label sets held by a
+// range-vector iterator. It keeps the maximum rather than accumulating, so it may be
+// called on every insert.
+func (c *Context) RecordPeakGroupedLabels(n int64) {
+	if c == nil {
+		return
+	}
+	recordPeak(&c.result.Summary.PeakGroupedLabels, n)
+}
+
+// RecordPeakWindowLabels raises the recorded peak count of label sets held in a
+// range-vector iterator's live window.
+func (c *Context) RecordPeakWindowLabels(n int64) {
+	if c == nil {
+		return
+	}
+	recordPeak(&c.result.Summary.PeakWindowLabels, n)
+}
+
+func recordPeak(dst *int64, n int64) {
+	for {
+		cur := atomic.LoadInt64(dst)
+		if n <= cur {
+			return
+		}
+		if atomic.CompareAndSwapInt64(dst, cur, n) {
+			return
+		}
+	}
 }
 
 // RecordDataobjSectionsResolutionTime records d as the section-resolution time of one data-object
