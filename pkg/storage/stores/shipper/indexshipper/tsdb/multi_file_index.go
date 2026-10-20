@@ -79,6 +79,7 @@ func (i *MultiIndex) Bounds() (model.Time, model.Time) {
 	_ = i.forMatchingIndices(
 		context.Background(),
 		0, math.MaxInt64,
+		nil,
 		func(_ context.Context, idx Index) error {
 			from, through := idx.Bounds()
 
@@ -116,17 +117,30 @@ func (i *MultiIndex) Close() error {
 	return i.forMatchingIndices(
 		context.Background(),
 		0, math.MaxInt64,
+		nil,
 		func(_ context.Context, idx Index) error {
 			return idx.Close()
 		},
 	)
 }
 
-func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model.Time, f func(context.Context, Index) error) error {
+// shardedIndex is implemented by indexes that hold a single fingerprint-range
+// shard of their table, such as a compacted file named `<x>_of_<K>`.
+type shardedIndex interface {
+	// ShardBounds returns the [from, through) fingerprint range the index
+	// holds and true, or false when the index holds every fingerprint.
+	ShardBounds() (from, through model.Fingerprint, sharded bool)
+}
+
+// forMatchingIndices runs f on every index that overlaps [from, through] in
+// time and, when fpFilter is not nil, the fingerprint range of fpFilter.
+// Only indexes that report a shard range (shardedIndex) are skipped by
+// fingerprint; unsplit files hold every fingerprint.
+func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model.Time, fpFilter index.FingerprintFilter, f func(context.Context, Index) error) error {
 	queryBounds := newBounds(from, through)
 
 	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
-		if Overlap(idx, queryBounds) {
+		if Overlap(idx, queryBounds) && shardOverlaps(idx, fpFilter) {
 
 			if f := i.getFilterer(); f != nil {
 				// TODO(owen-d): Find a nicer way
@@ -141,6 +155,23 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 		return nil
 	})
 
+}
+
+// shardOverlaps reports whether idx may hold fingerprints matched by fpFilter.
+func shardOverlaps(idx Index, fpFilter index.FingerprintFilter) bool {
+	if fpFilter == nil {
+		return true
+	}
+	sharded, ok := idx.(shardedIndex)
+	if !ok {
+		return true
+	}
+	fileFrom, fileThrough, isSharded := sharded.ShardBounds()
+	if !isSharded {
+		return true
+	}
+	queryFrom, queryThrough := fpFilter.GetFromThrough()
+	return fileFrom < queryThrough && queryFrom < fileThrough
 }
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
@@ -180,6 +211,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		ctx,
 		from,
 		through,
+		fpFilter,
 		func(ctx context.Context, idx Index) error {
 			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
 			if err != nil {
@@ -232,6 +264,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 		ctx,
 		from,
 		through,
+		fpFilter,
 		func(ctx context.Context, idx Index) error {
 			got, err := idx.Series(ctx, userID, from, through, nil, fpFilter, matchers...)
 			if err != nil {
@@ -290,6 +323,7 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 		ctx,
 		from,
 		through,
+		nil,
 		func(ctx context.Context, idx Index) error {
 			got, err := idx.LabelNames(ctx, userID, from, through, matchers...)
 			if err != nil {
@@ -348,6 +382,7 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 		ctx,
 		from,
 		through,
+		nil,
 		func(ctx context.Context, idx Index) error {
 			got, err := idx.LabelValues(ctx, userID, from, through, name, matchers...)
 			if err != nil {
@@ -371,19 +406,19 @@ func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, throu
 }
 
 func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+	return i.forMatchingIndices(ctx, from, through, fpFilter, func(ctx context.Context, idx Index) error {
 		return idx.Stats(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, matchers...)
 	})
 }
 
 func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
-	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+	return i.forMatchingIndices(ctx, from, through, fpFilter, func(ctx context.Context, idx Index) error {
 		return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 	})
 }
 
 func (i *MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
-	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+	return i.forMatchingIndices(ctx, from, through, fpFilter, func(ctx context.Context, idx Index) error {
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 	})
 }
