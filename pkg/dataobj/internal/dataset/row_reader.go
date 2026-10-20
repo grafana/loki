@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
@@ -67,6 +68,8 @@ type RowReader struct {
 	columnsLookup        map[Column]int      // Find the index of a column in columns. The keys are the columns of the options, not the wrapped ones of the downloader.
 	primaryColumnIndexes []int               // Indexes of primary columns in columns.
 	compiledPredicates   []compiledPredicate // opts.Predicates with column indexes resolved, one per predicate.
+	batchPredicates      []*batchPredicate   // One per predicate, nil for a row by row predicate.
+	keepScratch          []int32             // Scratch for the indexes that KeepBatch returns.
 
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
@@ -292,12 +295,16 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 
 	// The first predicate finds its columns already filled, so it only filters.
 	for i, p := range r.opts.Predicates {
-		var filledBytes int64
-		passCount, filledBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
+		var readBytes int64
+		if r.batchPredicates[i] != nil {
+			passCount, readBytes, err = r.evalBatchPredicate(ctx, r.batchPredicates[i], s[:readSize])
+		} else {
+			passCount, readBytes, err = r.evalPredicate(ctx, p, r.compiledPredicates[i], s[:readSize], filledColumns)
+		}
 		if err != nil {
 			return rowsRead, 0, err
 		}
-		primaryColumnBytes += filledBytes
+		primaryColumnBytes += readBytes
 
 		// Track rows that are relevant to the stream matchers.
 		// This is updated only if the first predicate is streamID
@@ -372,6 +379,46 @@ func (r *RowReader) evalPredicate(ctx context.Context, p Predicate, compiled com
 	return passCount, filledBytes, nil
 }
 
+// evalBatchPredicate reads the column of bp for rows and keeps the rows that pass. It moves the
+// passing rows to the front of rows. It returns the number of passing rows and the size in
+// bytes of the values it read. It copies the value of a passing row into the row only when the
+// column is projected. On error it returns zero values.
+func (r *RowReader) evalBatchPredicate(ctx context.Context, bp *batchPredicate, rows []Row) (int, int64, error) {
+	var (
+		pass      = 0
+		readBytes int64
+		keep      = r.keepScratch
+	)
+	_, err := r.inner.visitColumn(ctx, r.allColumns()[bp.index], rows, func(offset int, values *columnar.UTF8) error {
+		readBytes += int64(values.DataLen())
+
+		keep = bp.predicate.KeepBatch(bp.predicate.Column, values, keep[:0])
+		prev := int32(-1)
+		for _, k := range keep {
+			if k <= prev || int(k) >= values.Len() {
+				return fmt.Errorf("batch predicate kept index %d of %d values after index %d, want ascending indexes in range", k, values.Len(), prev)
+			}
+			prev = k
+
+			// Ascending indexes guarantee pass <= j. We move rows[j] to rows[pass] by *swapping* the
+			// rows. Copying would result in the Row.Values slice existing in two places in the
+			// buffer, which causes memory corruption when filling in rows.
+			j := offset + int(k)
+			rows[pass], rows[j] = rows[j], rows[pass]
+			if bp.projected {
+				copyUTF8Value(&rows[pass].Values[bp.index], values, int(k))
+			}
+			pass++
+		}
+		return nil
+	})
+	r.keepScratch = keep[:0]
+	if err != nil {
+		return 0, 0, err
+	}
+	return pass, readBytes, nil
+}
+
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
 // the next valid row in ranges.
 func (r *RowReader) alignRow() (uint64, error) {
@@ -400,6 +447,61 @@ func (r *RowReader) compilePredicates() error {
 		r.compiledPredicates = append(r.compiledPredicates, cp)
 	}
 	return nil
+}
+
+// initBatchPredicates decides which predicates run on an array of values at once.
+func (r *RowReader) initBatchPredicates() {
+	r.batchPredicates = make([]*batchPredicate, len(r.opts.Predicates))
+
+	// predicatesPerColumn counts the leaf predicates that read each column.
+	predicatesPerColumn := make(map[Column]int)
+	for _, p := range r.opts.Predicates {
+		WalkPredicateColumn(p, func(c Column) { predicatesPerColumn[c]++ })
+	}
+
+	for i, p := range r.opts.Predicates {
+		// Only a FuncPredicate with a KeepBatch function can run on an array. A predicate inside
+		// an And, Or or Not is not a FuncPredicate here, so it stays on the row path.
+		fp, ok := p.(FuncPredicate)
+		if !ok || fp.KeepBatch == nil {
+			continue
+		}
+
+		// ReadColumns reads the columns of the first predicate into every row before the predicates
+		// run. KeepBatch would have nothing left to skip there.
+		if i == 0 {
+			continue
+		}
+
+		// The batch path does not mark its column as filled. A second predicate on the same column
+		// would read it again and count its bytes twice. So predicates that share a column stay on
+		// the row path.
+		if predicatesPerColumn[fp.Column] != 1 {
+			continue
+		}
+
+		// KeepBatch tests an array of binary values.
+		if fp.Column.ColumnDesc().Type.Physical != datasetmd.PHYSICAL_TYPE_BINARY {
+			continue
+		}
+
+		index, ok := r.columnsLookup[fp.Column]
+		if !ok {
+			continue
+		}
+		r.batchPredicates[i] = &batchPredicate{
+			predicate: fp,
+			index:     index,
+			projected: index < len(r.projectedColumns),
+		}
+	}
+}
+
+// batchPredicate is a predicate that the reader tests on an array of values at once.
+type batchPredicate struct {
+	predicate FuncPredicate
+	index     int  // Index of the column of predicate in the values of a Row.
+	projected bool // Whether the column is projected, so the value goes into the rows that pass.
 }
 
 // buildMask returns an iterator that yields row ranges from full that are not
@@ -472,6 +574,7 @@ func (r *RowReader) clearInitState() {
 	r.projectedColumns = nil
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.compiledPredicates = sliceclear.Clear(r.compiledPredicates)
+	r.batchPredicates = sliceclear.Clear(r.batchPredicates)
 }
 
 func (r *RowReader) init(ctx context.Context) error {
@@ -491,6 +594,7 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.compilePredicates(); err != nil {
 		return err
 	}
+	r.initBatchPredicates()
 
 	if err := r.initDownloader(ctx); err != nil {
 		return err

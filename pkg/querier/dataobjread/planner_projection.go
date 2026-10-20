@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-// ProjectionPlan says which columns of a logs section a query reads and which of its metadata
+// ProjectionPlan says which columns of a logs section a query returns and which of its metadata
 // filters and line filters can be pushed into the read. It also yields the unpushed query, through
 // [ProjectionPlan.UnpushedExpr].
 //
@@ -24,10 +24,10 @@ type ProjectionPlan struct {
 	// true when the unpushed query or a delete may read the line.
 	needReturningLine bool
 
-	// needAllMetadata reports whether every metadata column must be read.
+	// needAllMetadata reports whether every metadata column must be returned.
 	needAllMetadata bool
 
-	// metadataNames name the metadata columns to read when needAllMetadata is false, sorted.
+	// metadataNames name the metadata columns to return when needAllMetadata is false, sorted.
 	metadataNames []string
 
 	// pushdownCandidates are the query's label-filter matchers a read may push down. A name one
@@ -210,19 +210,17 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 // query.
 func (p ProjectionPlan) UnpushedExpr() syntax.SampleExpr { return p.unpushedExpr }
 
-// needReadingLine reports whether the read must load the line from storage, to return it or to
-// apply the line filter.
-func (p ProjectionPlan) needReadingLine() bool { return p.needReturningLine || p.lineFilter != nil }
-
-// forStreams returns the columns to read and the predicates to push for a section whose streams
-// carry the given label names. The message predicate of a line filter is the last predicate.
+// forStreams returns the columns to return and the predicates to push for a section whose streams
+// carry the given label names. The message predicate of a line filter is the last predicate. The
+// reader reads the message column itself, so columns lists it only when the query returns the
+// line.
 func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (columns []logs.ColumnType, metadataNames []string, predicates []logs.RowPredicate) {
 	columns = make([]logs.ColumnType, 0, 4)
 	columns = append(columns, logs.ColumnTypeStreamID, logs.ColumnTypeTimestamp)
 	if p.needAllMetadata {
 		columns = append(columns, logs.ColumnTypeMetadata)
 	}
-	if p.needReadingLine() {
+	if p.needReturningLine {
 		columns = append(columns, logs.ColumnTypeMessage)
 	}
 	if !p.needAllMetadata {
@@ -252,7 +250,12 @@ func (p ProjectionPlan) forStreams(streamLabelNames map[string]struct{}) (column
 	// The message predicate goes last because it is the most expensive. It then runs only on the
 	// rows that the previous predicates did not filter out.
 	if p.lineFilter != nil {
-		predicates = append(predicates, logs.LogMessageFilterRowPredicate{Keep: p.lineFilter.Filter})
+		predicates = append(predicates, logs.LogMessageFilterRowPredicate{
+			Keep: p.lineFilter.Filter,
+			KeepBatch: func(data []byte, offsets []int32, dstIndexes []int32) []int32 {
+				return logqllog.FilterBatch(p.lineFilter, logqllog.LinesBatch{Data: data, Offsets: offsets}, dstIndexes)
+			},
+		})
 	}
 
 	return columns, metadataNames, predicates

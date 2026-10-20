@@ -85,6 +85,8 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{`.*f.*oo|fo{1,2}`, true, nil, true},
 		{"f|f(?i)oo", true, nil, true},
 		{".foo+", true, nil, true},
+		{"foo.*(bar|uzz)", true, nil, true},
+		{"foo(.*bar|uzz)", true, nil, true},
 	} {
 		t.Run(test.re, func(t *testing.T) {
 			d, err := newRegexpFilter(test.re, test.re, test.match)

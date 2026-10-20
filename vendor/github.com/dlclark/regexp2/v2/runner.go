@@ -64,6 +64,8 @@ type Runner struct {
 	runtrackcount int // count of states that may do backtracking
 
 	runmatch *Match // result object
+	// Reusable metadata for internal string scans. Returned matches own theirs.
+	textInfo *matchText
 
 	timeout  time.Duration // timeout in milliseconds (needed for actual)
 	deadline fasttime
@@ -84,14 +86,11 @@ type Runner struct {
 	landmarks *requiredLandmarkState
 }
 
-// run searches for matches and can continue from the previous match.
+// run starts a search on rune input.
 //
-// quick is usually false, but can be true to not return matches, just put it in caches.
+// quick keeps the match in the runner for boolean-only callers.
 // textstart is -1 to start at the "beginning" (depending on Right-To-Left), otherwise an index in input.
-// previousMatchLength is -1 for an initial scan. A zero value advances the current scan position while
-// preserving textstart for anchors such as \G.
-// textInfo is nil for quick scans that do not need returned capture text metadata.
-func (re *Regexp) run(quick bool, textstart, previousMatchLength int, input []rune, textInfo *matchText) (*Match, error) {
+func (re *Regexp) run(quick bool, textstart int, input []rune) (*Match, error) {
 
 	// get a cached runner
 	runner := re.getRunner()
@@ -104,15 +103,16 @@ func (re *Regexp) run(quick bool, textstart, previousMatchLength int, input []ru
 			textstart = 0
 		}
 	}
-	if quick && textInfo == nil && re.quickCode != nil {
+	if quick && re.quickCode != nil {
 		runner.code = re.quickCode
 	}
 
-	return runner.scan(input, textInfo, textstart, textstart, previousMatchLength, quick, re.MatchTimeout)
+	return runner.scan(input, nil, textstart, textstart, -1, quick, re.MatchTimeout)
 }
 
 // scan starts at candidate while preserving textstart for \G. Both are rune
-// indexes in rt. A nil textInfo allows quick scans to omit capture metadata.
+// indexes in rt. A nil textInfo defers rune input metadata until a match is returned
+// and allows quick scans to omit it entirely.
 func (r *Runner) scan(rt []rune, textInfo *matchText, textstart, candidate, previousMatchLength int, quick bool, timeout time.Duration) (*Match, error) {
 	r.timeout = timeout
 	r.ignoreTimeout = (time.Duration(math.MaxInt64) == timeout)
@@ -2455,6 +2455,14 @@ func hasRequiredLengthAt(r *Runner, start int) bool {
 	return start >= 0 && start <= latestPossibleStart(r)
 }
 
+func (r *Runner) stringMatchText(input string, runes []rune, runeOffset, byteOffset int) *matchText {
+	if r.textInfo == nil {
+		r.textInfo = new(matchText)
+	}
+	r.textInfo.resetString(input, runes, runeOffset, byteOffset)
+	return r.textInfo
+}
+
 func (r *Runner) initMatch(textInfo *matchText) {
 	// Use a hashtable'ed Match object if the capture numbers are sparse
 
@@ -2511,6 +2519,10 @@ func (r *Runner) tidyMatch(quick bool) *Match {
 
 		r.runmatch = nil
 
+		// Rune input needs capture text metadata only when a match escapes the runner.
+		if match.text == nil {
+			match.text = newMatchText(r.Runtext)
+		}
 		match.tidy(r.Runtextpos)
 		return match
 	} else {
@@ -2717,6 +2729,10 @@ func (re *Regexp) putRunner(r *Runner) {
 	r.code = re.code
 	if r.runmatch != nil {
 		r.runmatch.text = nil
+	}
+	if r.textInfo != nil {
+		// Release the input and offset cache, keeping the metadata object for reuse.
+		*r.textInfo = matchText{}
 	}
 	re.runnerPool.Put(r)
 }
