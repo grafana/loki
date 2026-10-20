@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logline"
 	"github.com/grafana/loki/v3/pkg/logline/format"
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/shard"
 	"github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -109,10 +110,10 @@ func TestLoglineHintProvider_ProvideHints_RecordsQueryStats(t *testing.T) {
 
 func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	indexStore := newTestStore(t)
-	needle := "9fA81cD2Ef0077aa"
+	text := "9fA81cD2Ef0077aa"
 	docMin := time.Date(2026, 2, 26, 10, 0, 50, 0, time.UTC)
 	docMax := time.Date(2026, 2, 26, 10, 1, 10, 0, time.UTC)
-	writeTestIndex(t, indexStore, "abababababababab", needle, docMin, docMax)
+	writeTestIndex(t, indexStore, "abababababababab", text, docMin, docMax)
 
 	var observedReason string
 	var observedTermBatches int
@@ -128,7 +129,7 @@ func TestLoglineHintProvider_ExecuteQuery_ObservesQueryMultiple(t *testing.T) {
 	active := indexStore.Snapshot().Active()
 	require.Len(t, active, 1)
 
-	shardRanges, err := provider.executeQuery(context.Background(), []string{"QQQQQQ"}, active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf("QQQQQQ"), active, stats, 6, 64)
 	require.NoError(t, err)
 	require.Empty(t, shardRanges)
 
@@ -1097,10 +1098,10 @@ func TestLoglineHintProvider_ProvideHints_CrossIndexBatchingFillsSharedBatches(t
 
 func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) {
 	indexStore := newTestStore(t)
-	needle := "9fA81cD2Ef0077aa"
+	text := "9fA81cD2Ef0077aa"
 	t0 := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
 
-	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", needle, t0, t0.Add(5*time.Minute))
+	writeTestIndex(t, indexStore, "aaaaaaaaaaaaaaaa", text, t0, t0.Add(5*time.Minute))
 
 	provider, err := NewLoglineHintProvider(indexStore, 6, 0, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
@@ -1109,7 +1110,7 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Len(t, active, 1)
 
 	stats := NewQueryStats()
-	shardRanges, err := provider.executeQuery(context.Background(), []string{needle, needle}, active, stats, 6, 64)
+	shardRanges, err := provider.executeQuery(context.Background(), needle.AllOf(text, text), active, stats, 6, 64)
 	require.NoError(t, err)
 	require.NotEmpty(t, shardRanges)
 
@@ -1208,7 +1209,7 @@ func TestBuildTermJobs_SingleVersionCache(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v3"),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter), metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
@@ -1235,7 +1236,7 @@ func TestBuildTermJobs_MixedVersions(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", versions[1]),
 	}
 
-	jobs, metasByID, err := buildTermJobs([]string{filter}, metas, 6)
+	jobs, metasByID, err := buildTermJobs(needle.AllOf(filter), metas, 6)
 	require.NoError(t, err)
 	require.NotEmpty(t, jobs)
 
@@ -1254,7 +1255,7 @@ func TestBuildTermJobs_UnknownVersionReturnsError(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa2", "2026-01-01", "v99"), // unknown
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs(needle.AllOf(filter), metas, 6)
 	require.Error(t, err)
 }
 
@@ -1267,7 +1268,7 @@ func TestBuildTermJobs_FilterTooShortReturnsUnconstrained(t *testing.T) {
 		minimalMeta("aaaaaaaaaaaaaaa1", "2026-01-01", "v3"),
 	}
 
-	_, _, err := buildTermJobs([]string{filter}, metas, 6)
+	_, _, err := buildTermJobs(needle.AllOf(filter), metas, 6)
 	require.ErrorIs(t, err, ErrUnconstrained)
 }
 
@@ -1277,7 +1278,7 @@ func TestBuildTermJobs_V4UsesSupportedFilterWhenAnotherProducesNoTerms(t *testin
 	// v4 can look up the text filter, but emits no term for an 8-digit number:
 	// numeric text n-grams are skipped and packed terms require exactly 9 digits.
 	jobs, metasByID, err := buildTermJobs(
-		[]string{"abcdefg", "12345678"},
+		needle.AllOf("abcdefg", "12345678"),
 		[]store.Meta{meta},
 		6,
 	)
@@ -1327,7 +1328,7 @@ func TestBuildTermJobs_FiltersWithoutTerms(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobs, metasByID, err := buildTermJobs(tt.filters, tt.metas, 6)
+			jobs, metasByID, err := buildTermJobs(needle.AllOf(tt.filters...), tt.metas, 6)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				return
@@ -1391,6 +1392,21 @@ func writeShardedTermTestIndex(
 	shardValue int,
 ) {
 	t.Helper()
+	writeTermTestIndex(t, indexStore, version, hash, docs, postings, 10, shardValue)
+}
+
+// writeTermTestIndex writes an index with the given documents and term
+// postings. A shardCount of 0 or 1 writes an unsharded index.
+func writeTermTestIndex(
+	t *testing.T,
+	indexStore *store.Store,
+	version string,
+	hash string,
+	docs []format.DocumentMetadata,
+	postings map[string][]uint32,
+	shardCount, shardValue int,
+) {
+	t.Helper()
 	require.NotEmpty(t, docs)
 
 	path := filepath.Join(t.TempDir(), "test.lidx")
@@ -1430,9 +1446,12 @@ func writeShardedTermTestIndex(
 		MaxRecordTs:    maxLogTS,
 		IndexHeader:    &headerInfo,
 		SizeBytes:      int64(len(indexBytes)),
-		ShardCount:     10,
+		ShardCount:     shardCount,
 		ShardAlgorithm: shard.AlgorithmMurmur3Mix,
 		ShardValue:     shardValue,
+	}
+	if shardCount <= 1 {
+		meta.ShardAlgorithm = ""
 	}
 	require.NoError(t, indexStore.PutIndex(context.Background(), bytes.NewReader(indexBytes), meta))
 	require.NoError(t, indexStore.Poll(context.Background()))

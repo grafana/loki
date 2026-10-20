@@ -6,13 +6,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logline/needle"
 	"github.com/grafana/loki/v3/pkg/logline/regexliteral"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// SupportedQuery returns literal match strings for query shapes that can use
-// logline index hints.
+// SupportedQuery returns the needles for query shapes that can use logline
+// index hints. The result is True when the query has no needle. Today it is
+// one conjunction, the literals below, which are all required.
 //
 // Rules:
 //   - at least one mandatory positive filter must exist
@@ -39,33 +41,25 @@ import (
 //
 // Indexes are assumed to include structured metadata and stream label values
 // (v3). Label-filter value literals are looked up the same way as line filters.
-func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
+func SupportedQuery(expr syntax.Expr, ngramLength int) needle.Expr {
 	if expr == nil || ngramLength <= 0 {
-		return nil
+		return needle.True()
 	}
 
 	lineFilters := collectLineFilters(expr)
 	labelFilters := syntax.ExtractLabelFiltersBeforeParser(expr)
 	postParser := collectPostParserLabelFilterLiterals(expr)
 
-	n := len(lineFilters) + len(labelFilters) + len(postParser)
-	literals := make([]string, 0, n)
-	seen := make(map[string]struct{}, n)
-	appendUnique := func(match string) {
-		if len(match) < ngramLength {
-			return
+	literals := make([]string, 0, len(lineFilters)+len(labelFilters)+len(postParser))
+	add := func(match string) {
+		if len(match) >= ngramLength {
+			literals = append(literals, upperASCII(match))
 		}
-		match = upperASCII(match)
-		if _, exists := seen[match]; exists {
-			return
-		}
-		seen[match] = struct{}{}
-		literals = append(literals, match)
 	}
 
 	for _, filter := range lineFilters {
 		for _, match := range extractMandatoryPositiveFilterLiterals(filter) {
-			appendUnique(match)
+			add(match)
 		}
 	}
 
@@ -74,18 +68,16 @@ func SupportedQuery(expr syntax.Expr, ngramLength int) []string {
 			continue
 		}
 		for _, match := range collectLabelFilterLiterals(filter.LabelFilterer) {
-			appendUnique(match)
+			add(match)
 		}
 	}
 
 	for _, match := range postParser {
-		appendUnique(match)
+		add(match)
 	}
 
-	if len(literals) == 0 {
-		return nil
-	}
-	return literals
+	// AllOf deduplicates, so filters that differ only in case share a needle.
+	return needle.AllOf(literals...)
 }
 
 func extractMandatoryPositiveFilterLiterals(filter *syntax.LineFilterExpr) []string {
