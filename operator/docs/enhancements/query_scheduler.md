@@ -6,7 +6,7 @@ authors:
 reviewers:
   - "@joaobravecoding @xperimental @cahartma"
 creation-date: 2026-09-29
-last-updated: 2026-10-16
+last-updated: 2026-10-20
 tracking-link: https://redhat.atlassian.net/browse/LOG-9664
 see-also: []
 replaces: []
@@ -136,9 +136,18 @@ And the `frontend_worker` and `frontend` blocks should read:
 ```yaml
 frontend_worker:
   scheduler_address: <query-scheduler-grpc-svc>:9095
+  query_scheduler_grpc_client:
+    tls_enabled: true
+    tls_server_name: <query-scheduler-grpc-svc-fqdn>
+    ...
+  query_frontend_grpc_client:
+    tls_enabled: true
+    tls_server_name: <query-frontend-grpc-svc-fqdn>
+    ...
 
 frontend:
   scheduler_address: <query-scheduler-grpc-svc>:9095
+  address: <query-frontend-grpc-svc-fqdn>
 ```
 
 **New `query_scheduler` block**
@@ -155,7 +164,7 @@ Note: 32000 is Loki's upstream default.
 
 The query-scheduler is stateless and can be deployed as a `Deployment`.
 
-#### Replication Factor
+#### Replicas
 Loki's current implementation sets the RF of the query-scheduler component to 2. The same applies to the operator except for `1x.demo` where RF is 1.
 
 Queries are not replicated. Each query goes to exactly one scheduler. Each querier goroutine maintains a persistent connection to exactly one scheduler with no dynamic load balancing.
@@ -171,9 +180,9 @@ So across both querier pods:
 - Scheduler 1 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
 - Scheduler 2 ← 2 goroutines (pod A) + 2 goroutines (pod B) = 4 querier goroutines draining it
 
-And on the frontend side, each frontend pod opens 2 goroutines per scheduler (Loki's default `scheduler_worker_concurrency = 2`), so with 2 frontend pods:
-- Scheduler 1 ← 2 goroutines (frontend A) + 2 goroutines (frontend B) = 4 frontend goroutines feeding it
-- Scheduler 2 ← 2 goroutines (frontend A) + 2 goroutines (frontend B) = 4 frontend goroutines feeding it
+And on the frontend side, each frontend pod opens 5 goroutines per scheduler (Loki's default `scheduler_worker_concurrency = 5`), so with 2 frontend pods:
+- Scheduler 1 ← 5 goroutines (frontend A) + 5 goroutines (frontend B) = 10 frontend goroutines feeding it
+- Scheduler 2 ← 5 goroutines (frontend A) + 5 goroutines (frontend B) = 10 frontend goroutines feeding it
 
 #### Observability
 
@@ -184,11 +193,9 @@ The query-scheduler exposes the following Prometheus metrics:
 - `loki_query_scheduler_connected_querier_clients`
 - `loki_query_scheduler_connected_frontend_clients`
 - `loki_query_scheduler_running`
-- `loki_scheduler_queue_length`
-- `loki_scheduler_discarded_requests_total`
-- `loki_scheduler_enqueue_count`
-
-For clusters still on V1 (no scheduler deployed), the equivalent metrics for estimating future scheduler load are `loki_query_frontend_queue_length`, `loki_query_frontend_queue_duration_seconds`, and `loki_query_frontend_connected_clients`.
+- `loki_query_scheduler_queue_length`
+- `loki_query_scheduler_discarded_requests_total`
+- `loki_query_scheduler_enqueue_count`
 
 ### Risks and Mitigations
 
@@ -204,7 +211,5 @@ For clusters still on V1 (no scheduler deployed), the equivalent metrics for est
 
    **Investigation plan**: run the PoC branch against a realistic load profile (matching each supported t-shirt size) and record peak CPU and memory consumption of the scheduler pod. Use those measurements to set `Requests` values and derive sensible `Limits`.
 2. `max_outstanding_requests_per_tenant` default: Loki's upstream default is 32,000. The operator uses this default unchanged. The right value for a given deployment depends on tenant count and query concurrency; it could be surfaced as a `LokiStack` spec field once resource profiles are established.
-3. V1→V2 rollout impact: a rolling reconciliation is expected to be sufficient, but the upgrade path was not validated in this PoC. During the rollout, pending queries on pods being terminated will fail and require client-side retries. In case there's a large rules file, multiple rule evaluations may be disrupted simultaneously, causing gaps in alert evaluations and recording rule metrics.
+3. V1→V2 rollout impact: a rolling reconciliation is expected to be sufficient, but the upgrade path was not validated in this PoC. During the rollout, pending queries on pods being terminated will fail and require client-side retries.
 
-## Changes Needed
-- **PoC only, this will be fixed in the real implementation.** `tls_insecure_skip_verify: true` on querier outbound connections: when `GRPCEncryption` is enabled, the querier's `frontend_worker.grpc_client_config` is shared between two outbound connections, querier→scheduler and querier→frontend (result delivery). Both connections ultimately fail TLS because headless services return pod IPs directly, and the scheduler's cert has no IP SAN. Server-side mTLS is still enforced. The two fixes: make the scheduler gRPC service non-headless, and issue per-pod certificates for the query-frontend (requires cert manager changes).
