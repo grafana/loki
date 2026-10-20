@@ -54,7 +54,7 @@ func runLogsVolumeOffsetScenarios(t *testing.T, extraArgs []string) {
 
 	args := append([]string{
 		"-target=all",
-		"-querier.split-queries-by-interval=1h",
+		"-querier.split-queries-by-interval=30m",
 		"-frontend.max-cache-freshness=1m",
 		// Dev machines with a nearly full disk would otherwise reject pushes.
 		"-ingester.wal-disk-full-threshold=0",
@@ -65,10 +65,14 @@ func runLogsVolumeOffsetScenarios(t *testing.T, extraArgs []string) {
 	tenant := randStringRunes()
 	cli := client.New(tenant, "", tAll.HTTPURL())
 
-	// Two hours of data ending at the start of the current hour, so the range
-	// crosses one split boundary and stays within the ingesters' window.
-	base := time.Now().Truncate(time.Hour).Add(-2 * time.Hour)
-	const minutes = 120
+	// One hour of data ending at the start of the current hour, so the range
+	// crosses one 30m split boundary. In single-binary mode the querier only
+	// asks the ingester for the last max-chunk-age plus index shipping delays
+	// (2h36m with the defaults, see shipperMinIngesterQueryStoreDuration) and
+	// expects anything older to have been flushed to the store. Unflushed data
+	// older than that is invisible, so the data must stay under two hours old.
+	base := time.Now().Truncate(time.Hour).Add(-time.Hour)
+	const minutes = 60
 	for i := 0; i < minutes; i++ {
 		// One line in the middle of each minute, and one exactly on each
 		// minute boundary, so a (start, end] window and a [start, end)
@@ -87,7 +91,7 @@ func runLogsVolumeOffsetScenarios(t *testing.T, extraArgs []string) {
 		want  float64
 	}{
 		// The interior part of a split logs volume query: aligned to the
-		// step, spanning the 1h split boundary. The window shifted by 1ns
+		// step, spanning the 30m split boundary. The window shifted by 1ns
 		// covers [t-1m, t), so every pushed line, including the one on each
 		// bucket's lower boundary, is counted exactly once.
 		"offset_1ns_aligned_split": {
