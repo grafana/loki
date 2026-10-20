@@ -452,22 +452,19 @@ func TestPerIndex_InFlightGateCountsParts(t *testing.T) {
 	require.Len(t, f.gateways.recorded(), 2)
 }
 
-func TestPerIndex_GetShardsGoesToFirstTableOwners(t *testing.T) {
+func TestPerIndex_GetShardsReadsEveryTableOwner(t *testing.T) {
 	f := newFanoutFixture(t, nil)
 	ctx := user.InjectOrgID(context.Background(), "tenant")
 	const n = 20000
-
 	_, err := f.client.GetShards(ctx, &logproto.ShardsRequest{From: dayStart(n) + 1000, Through: dayStart(n + 3), Query: `{a="b"}`})
 	require.NoError(t, err)
 	calls := f.gateways.recorded()
-	require.Len(t, calls, 1)
-	require.Equal(t, dayStart(n)+1000, calls[0].from)
-	require.Equal(t, dayStart(n+3), calls[0].through)
-	require.True(t, f.owners(t, "index_20000").Includes(calls[0].addr))
-
-	multi := findMetric(t, f.reg, "loki_index_gateway_client_get_shards_requests_total", map[string]string{"tables": "multi"})
-	require.NotNil(t, multi)
-	require.Equal(t, float64(1), multi.GetCounter().GetValue())
+	require.Len(t, calls, 4)
+	for _, c := range calls {
+		table := fmt.Sprintf("index_%d", int64(c.from/model.Time(tablePeriod/time.Millisecond)))
+		require.True(t, f.owners(t, table).Includes(c.addr))
+		require.LessOrEqual(t, c.through-c.from, model.Time(tablePeriod/time.Millisecond)-1)
+	}
 }
 
 func TestPerIndex_RequiresRingMode(t *testing.T) {
