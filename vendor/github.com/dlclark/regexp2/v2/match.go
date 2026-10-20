@@ -64,6 +64,10 @@ type matchText struct {
 	byteOffset       int // original-string byte index of runes[0]
 	byteOffsets      []int
 	byteOffsetsReady bool
+	// The first returned capture retains this metadata anyway. Store it here
+	// to avoid a separate allocation; subsequent matches need their own record.
+	initialCaptureUsed bool
+	initialCapture     [1]Capture
 	// landmarkMatch is the last match that FindNextMatch found in this text.
 	// The first call to continue from it takes its landmarks.
 	landmarkMatch atomic.Pointer[Match]
@@ -114,12 +118,8 @@ func newMatchText(r []rune) *matchText {
 	return &matchText{runes: r}
 }
 
-func newStringMatchText(input string, r []rune) *matchText {
-	return newStringMatchTextAt(input, r, 0, 0)
-}
-
-func newStringMatchTextAt(input string, r []rune, runeOffset, byteOffset int) *matchText {
-	return &matchText{
+func (t *matchText) resetString(input string, r []rune, runeOffset, byteOffset int) {
+	*t = matchText{
 		runes:          r,
 		input:          input,
 		hasStringInput: true,
@@ -199,19 +199,35 @@ func runeByteOffsets(runes []rune) []int {
 }
 
 func newMatch(regex *Regexp, capcount int, text *matchText, startpos int) *Match {
-	m := Match{
-		regex:      regex,
-		matchcount: make([]int, capcount),
-		matches:    make([][]int, capcount),
-		textstart:  startpos,
-		balancing:  false,
+	var m *Match
+	if capcount == 1 {
+		// With no explicit capture groups, keep the whole-match bookkeeping in
+		// one allocation rather than allocating three separate slice backings.
+		storage := new(struct {
+			Match
+			countsAndInterval [3]int
+			intervals         [1][]int
+		})
+		m = &storage.Match
+		m.matchcount = storage.countsAndInterval[:1:1]
+		m.matches = storage.intervals[:]
+		m.matches[0] = storage.countsAndInterval[1:]
+	} else {
+		// Capture counts and the initial whole-match interval have the same lifetime.
+		countsAndInterval := make([]int, capcount+2)
+		m = &Match{
+			matchcount: countsAndInterval[:capcount:capcount],
+			matches:    make([][]int, capcount),
+		}
+		m.matches[0] = countsAndInterval[capcount:]
 	}
+	m.regex = regex
+	m.textstart = startpos
 	if (regex.options & ECMAScript) == 0 {
 		m.Name = "0"
 	}
 	m.text = text
-	m.matches[0] = make([]int, 2)
-	return &m
+	return m
 }
 
 func newMatchSparse(regex *Regexp, caps map[int]int, capcount int, text *matchText, startpos int) *Match {
@@ -236,7 +252,13 @@ func (m *Match) tidy(textpos int) {
 	m.textpos = textpos
 	m.capcount = m.matchcount[0]
 	//copy our root capture to the list
-	m.Captures = []Capture{m.Capture}
+	if m.text != nil && !m.text.initialCaptureUsed {
+		m.text.initialCaptureUsed = true
+		m.text.initialCapture[0] = m.Capture
+		m.Captures = m.text.initialCapture[:]
+	} else {
+		m.Captures = []Capture{m.Capture}
+	}
 	if m.text != nil && m.text.hasStringInput {
 		m.text.ensureByteOffsets()
 	}
