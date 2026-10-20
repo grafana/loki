@@ -1066,13 +1066,12 @@ func TestQuerySizeLimiter_BytesReadByQuery(t *testing.T) {
 		return uint64(through.Sub(from) * bytesPerHour / time.Hour)
 	}
 
-	t.Run("rejects a metric query when its splits together read more than the limit", func(t *testing.T) {
-		const (
-			query = `sum by (env) (count_over_time({dataset="production"} |= "needle" [1h]))`
-			limit = 2500
-		)
+	// runSplitQuery runs a 1h metric query with a [1h] range through the size limiter and
+	// the split middleware. The splits go to 16:40-17:00 and 17:00-17:40. It returns the
+	// bytes that the splits read.
+	runSplitQuery := func(limit int) (uint64, error) {
+		const query = `sum by (env) (count_over_time({dataset="production"} |= "needle" [1h]))`
 		start := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
-		end := start.Add(time.Hour)
 
 		limits := fakeLimits{
 			maxQueryBytesRead:   limit,
@@ -1097,22 +1096,40 @@ func TestQuerySizeLimiter_BytesReadByQuery(t *testing.T) {
 			return ResultToResponse(logqlmodel.Result{Data: promql.Matrix{}}, params)
 		})
 
+		splitter := newMetricQuerySplitter(Config{}, limits, nil)
 		handler := queryrangebase.MergeMiddlewares(
-			NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, statsHandler),
-			SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, newMetricQuerySplitter(Config{}, limits, nil), nilMetrics),
+			newSplitQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, splitter, statsHandler),
+			SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, splitter, nilMetrics),
 		).Wrap(splitHandler)
 
 		ctx := user.InjectOrgID(context.Background(), "foo")
 		_, err := handler.Do(ctx, &LokiRequest{
 			Query:     query,
 			StartTs:   start,
-			EndTs:     end,
+			EndTs:     start.Add(time.Hour),
 			Step:      (14 * time.Second).Milliseconds(),
 			Direction: logproto.BACKWARD,
 			Path:      "/query_range",
 			Plan:      testutil.MustPlan(query),
 		})
-		require.Error(t, err, "the splits read %d bytes, the limit is %d bytes", bytesRead.Load(), limit)
+		return bytesRead.Load(), err
+	}
+
+	t.Run("rejects a metric query when its splits together read more than the limit", func(t *testing.T) {
+		const limit = 2500
+
+		bytesRead, err := runSplitQuery(limit)
+		require.Error(t, err, "the splits read %d bytes, the limit is %d bytes", bytesRead, limit)
+		require.Zero(t, bytesRead)
+	})
+
+	t.Run("accepts a metric query when its splits together read no more than the limit", func(t *testing.T) {
+		const limit = 3000
+
+		bytesRead, err := runSplitQuery(limit)
+		require.NoError(t, err)
+		require.Greater(t, bytesRead, uint64(2*bytesPerHour))
+		require.LessOrEqual(t, bytesRead, uint64(limit))
 	})
 
 	t.Run("rejects the query when the index stats request fails", func(t *testing.T) {
@@ -1136,6 +1153,28 @@ func TestQuerySizeLimiter_BytesReadByQuery(t *testing.T) {
 			Plan:      testutil.MustPlan(query),
 		})
 		require.Error(t, err)
+	})
+}
+
+func TestSplitBytesRead(t *testing.T) {
+	from := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	twoSplits := []queryrangebase.Request{
+		&LokiRequest{StartTs: from, EndTs: from.Add(20 * time.Minute)},
+		&LokiRequest{StartTs: from.Add(20 * time.Minute), EndTs: to},
+	}
+
+	t.Run("returns the bytes unchanged when the request has one split", func(t *testing.T) {
+		oneSplit := []queryrangebase.Request{&LokiRequest{StartTs: from, EndTs: to}}
+		require.Equal(t, uint64(1000), splitBytesRead(1000, time.Hour, from, to, oneSplit))
+	})
+
+	t.Run("returns the bytes unchanged when the matcher group has no range vector interval", func(t *testing.T) {
+		require.Equal(t, uint64(1000), splitBytesRead(1000, 0, from, to, twoSplits))
+	})
+
+	t.Run("scales the bytes by the time that the overlapping split windows read", func(t *testing.T) {
+		require.Equal(t, uint64(1500), splitBytesRead(1000, time.Hour, from, to, twoSplits))
 	})
 }
 
