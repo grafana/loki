@@ -49,7 +49,7 @@ type IndexSet interface {
 // CompactedIndex is built by TableCompactor for IndexSet after compaction.
 // It would be used for:
 // 1. applying custom retention, processing delete requests using IndexProcessor
-// 2. uploading the compacted index to storage by converting it to index.Index using ToIndexFile
+// 2. uploading the compacted index to storage by converting it to index.Index using ToIndexFiles
 // After all the operations are successfully done or in case of failure, Cleanup would be called to cleanup the state.
 type CompactedIndex interface {
 	// IndexProcessor is used for applying custom retention and processing delete requests.
@@ -57,9 +57,9 @@ type CompactedIndex interface {
 	// Cleanup should clean up all the state built during compaction.
 	// It is typically called at the end or in case of an error.
 	Cleanup()
-	// ToIndexFile is used to convert the CompactedIndex to an IndexFile for uploading to the object store.
+	// ToIndexFiles converts the compacted index into files for uploading to the object store.
 	// Once the IndexFile is uploaded using Index.Reader, the file is closed using Index.Close and removed from disk using Index.Path.
-	ToIndexFile() (index.Index, error)
+	ToIndexFiles() ([]index.Index, error)
 }
 
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
@@ -262,31 +262,47 @@ func (is *indexSet) applyUpdates(labels labels.Labels, rebuiltChunks map[string]
 	return chunksNotIndexed, nil
 }
 
-// upload uploads the compacted index in compressed format.
+// upload uploads the compacted index in compressed format, one object per index file.
 func (is *indexSet) upload() error {
 	if is.compactedIndex == nil {
 		return errors.New("can't upload nil or empty compacted index")
 	}
 
-	// ToDo(Sandeep): move index uploading to a common function and share it with generic index-shipper
-	idx, err := is.compactedIndex.ToIndexFile()
+	idxs, err := is.compactedIndex.ToIndexFiles()
 	if err != nil {
 		return err
 	}
+	if len(idxs) == 0 {
+		return errors.New("compacted index produced no index files")
+	}
 
 	defer func() {
-		filePath := idx.Path()
+		for _, idx := range idxs {
+			filePath := idx.Path()
 
-		if err := idx.Close(); err != nil {
-			level.Error(is.logger).Log("msg", "failed to close indexFile", "err", err)
-			return
-		}
+			if err := idx.Close(); err != nil {
+				level.Error(is.logger).Log("msg", "failed to close indexFile", "err", err)
+				continue
+			}
 
-		if err := os.Remove(filePath); err != nil {
-			level.Error(is.logger).Log("msg", "failed to remove indexFile", "err", err)
-			return
+			if err := os.Remove(filePath); err != nil {
+				level.Error(is.logger).Log("msg", "failed to remove indexFile", "err", err)
+				continue
+			}
 		}
 	}()
+
+	for _, idx := range idxs {
+		if err := is.uploadFile(idx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uploadFile compresses and uploads a single index file. The caller owns cleanup.
+func (is *indexSet) uploadFile(idx index.Index) error {
+	// ToDo(Sandeep): move index uploading to a common function and share it with generic index-shipper
 
 	fileName := idx.Name()
 	level.Debug(is.logger).Log("msg", "uploading index", "file_name", fileName)
