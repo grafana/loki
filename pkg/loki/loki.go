@@ -145,9 +145,9 @@ type Config struct {
 	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
-	// PublicConfigFields specifies which /config fields /loki/api/v1/config/public exposes, addressed
+	// ExposedFields specifies which /config fields /loki/api/v1/exposed-config returns, addressed
 	// by dot-separated path. Empty means nothing is exposed, since /config can hold sensitive data.
-	PublicConfigFields []string `yaml:"public_config_fields"`
+	ExposedFields []string `yaml:"exposed_fields"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
@@ -217,9 +217,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.Var(
-		(*flagext.StringSlice)(&c.PublicConfigFields),
-		"config.public-fields",
-		"List of /config fields to expose via /loki/api/v1/config/public, addressed by dot-separated path (e.g. 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty by default, meaning the endpoint exposes nothing.",
+		(*flagext.StringSlice)(&c.ExposedFields),
+		"config.exposed-fields",
+		"List of /config fields to expose via /loki/api/v1/exposed-config, addressed by dot-separated path (e.g. 'distributor.otlp_config.default_resource_attributes_as_index_labels'). Empty by default, meaning nothing is exposed.",
 	)
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
@@ -593,7 +593,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(false))
 	t.Server.HTTP.Path("/loki/api/v1/drilldown-limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(true))
-	t.Server.HTTP.Path("/loki/api/v1/config/public").Methods("GET").HandlerFunc(publicConfigHandler(t.Cfg, t.Cfg.PublicConfigFields))
+	t.Server.HTTP.Path("/loki/api/v1/exposed-config").Methods("GET").HandlerFunc(exposedConfigHandler(t.Cfg, t.Cfg.ExposedFields))
 }
 
 // ListTargets prints a list of available user visible targets and their

@@ -123,9 +123,9 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	}
 }
 
-// publicConfigHandler always returns exactly allowedFields. A field missing from the actual config
+// exposedConfigHandler always returns exactly allowedFields. A field missing from the actual config
 // is an operator misconfiguration (a typo in allowedFields), not a client error, so it's a 500.
-func publicConfigHandler(actualCfg any, allowedFields []string) http.HandlerFunc {
+func exposedConfigHandler(actualCfg any, allowedFields []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		if len(allowedFields) == 0 {
 			writeYAMLResponse(w, map[string]any{})

@@ -71,6 +71,7 @@ These HTTP endpoints are exposed by all components and return the status of the 
 - [`GET /log_level`](#change-log-level)
 - [`GET /metrics`](#prometheus-metrics)
 - [`GET /config`](#show-current-configuration)
+- [`GET /loki/api/v1/exposed-config`](#show-exposed-configuration)
 - [`GET /services`](#list-running-services)
 - [`GET /loki/api/v1/status/buildinfo`](#show-build-information)
 
@@ -1265,17 +1266,17 @@ and the current are returned. A value of `defaults` returns the default configur
 
 In microservices mode, the `/config` endpoint is exposed by all components.
 
-## Show public configuration
+## Show exposed configuration
 
 ```bash
-GET /loki/api/v1/config/public
+GET /loki/api/v1/exposed-config
 ```
 
-`/loki/api/v1/config/public` returns a fixed, operator-configured subset of `/config`, set with
-`-config.public-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
+`/loki/api/v1/exposed-config` returns a fixed, operator-configured subset of `/config`, set with
+`-config.exposed-fields`. It's meant for cases where `/config` itself isn't safe to expose directly,
 such as through a datasource proxy. Empty by default, meaning the endpoint returns `{}`.
 
-In microservices mode, the `/loki/api/v1/config/public` endpoint is exposed by all components.
+In microservices mode, the `/loki/api/v1/exposed-config` endpoint is exposed by all components.
 
 ## List running services
 

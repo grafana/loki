@@ -122,7 +122,7 @@ func TestConfigDiffHandler(t *testing.T) {
 	}
 }
 
-func TestPublicConfigHandler(t *testing.T) {
+func TestExposedConfigHandler(t *testing.T) {
 	cfg := newDefaultDiffConfigMock()
 
 	for _, tc := range []struct {
@@ -152,10 +152,10 @@ func TestPublicConfigHandler(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "http://test.com/loki/api/v1/config/public", nil)
+			req := httptest.NewRequest("GET", "http://test.com/loki/api/v1/exposed-config", nil)
 			w := httptest.NewRecorder()
 
-			publicConfigHandler(cfg, tc.allowedFields)(w, req)
+			exposedConfigHandler(cfg, tc.allowedFields)(w, req)
 			resp := w.Result()
 			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
 
