@@ -33,12 +33,13 @@ func (a *frontendHintAdapter) ProvideHints(
 	}
 
 	resp, err := a.next.Do(ctx, &logproto.LoglineIndexRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     hintprovider.ToProtoIndexMetas(plan.Indexes), // export or keep toProto in this pkg via a helper on HintPlan
-		NgramLength: plan.NgramLength,                             // or pass from cfg
-		MaxParallel: plan.MaxParallel,
+		From:            from,
+		Through:         through,
+		Expr:            expr.String(),
+		Indexes:         hintprovider.ToProtoIndexMetas(plan.Indexes), // export or keep toProto in this pkg via a helper on HintPlan
+		NgramLength:     plan.NgramLength,                             // or pass from cfg
+		MaxParallel:     plan.MaxParallel,
+		MaxConjunctions: plan.MaxConjunctions,
 	})
 
 	if err != nil {

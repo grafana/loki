@@ -199,6 +199,9 @@ func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *Inge
 			loglineStore,
 			ngramLength,
 			maxHintParallel,
+			// The query-frontend sends max_conjunctions with every request. 0
+			// only applies to requests from an older frontend.
+			0,
 			observeQueryMultipleTermBatches,
 			logger,
 			prometheus.DefaultRegisterer,
