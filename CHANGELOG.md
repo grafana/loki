@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.19](https://github.com/grafana/loki/compare/v3.6.18...v3.6.19) (2026-10-20)
+
+
+### Bug Fixes
+
+* **security:** Bump Go to 1.26.10 [SECURITY] (release-3.6.x) ([#25457](https://github.com/grafana/loki/issues/25457)) ([de41836](https://github.com/grafana/loki/commit/de41836f1cfe918cc2c053deed98a751a6f639ee))
+
 ## [3.6.18](https://github.com/grafana/loki/compare/v3.6.17...v3.6.18) (2026-10-15)
 
 
