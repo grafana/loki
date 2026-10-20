@@ -7,7 +7,8 @@ import (
 )
 
 // RegionSections names the xcap region of [ObjectMetastore.Sections] and
-// [ObjectMetastore.SectionsStream].
+// [ObjectMetastore.SectionsStream]. The region lasts until the sequence ends, so it also covers
+// the time the caller spends on each batch.
 const RegionSections = "metastore.Sections"
 
 // Metastore statistics.

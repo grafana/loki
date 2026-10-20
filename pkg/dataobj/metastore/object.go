@@ -97,6 +97,8 @@ type DataobjSectionDescriptors []*DataobjSectionDescriptor
 //
 // A stream ID means something only within one object, so a caller that reads streams has to
 // work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
+//
+// A batch of [ObjectMetastore.SectionsStream] can hold only some of the sections of an object.
 func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
 	byObject := make(map[string]DataobjSectionDescriptors)
 	for _, descriptor := range d {
@@ -433,7 +435,8 @@ func (m *ObjectMetastore) SectionsStream(ctx context.Context, req SectionsReques
 	}
 }
 
-// streamSections runs one resolution for SectionsStream.
+// streamSections runs one resolution and yields its batches from the calling goroutine. It returns
+// after every read ends.
 func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, req SectionsRequest, yield func(DataobjSectionDescriptors, error) bool) {
 	start := time.Now()
 
@@ -457,6 +460,7 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	}
 
 	// batch is the deduplicated sections of one index object, or the error that ends the resolution.
+	// A batch with sections is never empty.
 	type batch struct {
 		sections DataobjSectionDescriptors
 
@@ -464,38 +468,40 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		err error
 	}
 
-	// The resolution runs in the background and never waits for the caller, so its duration does not
-	// include the time the caller spends on the batches. The channel holds one batch for each index
-	// object, so no send waits for the caller. The batches stay in memory until the caller receives
-	// them. The channel closes after the resolution ends.
+	// The resolution runs in the background and never waits for the caller. So its duration excludes
+	// the time the caller spends on the batches.
+	//
+	// The channel holds one batch for each index object, so no send waits for the caller. The batches
+	// stay in memory until the caller receives them. The channel closes after the resolution ends.
 	readCtx, cancelReads := context.WithCancel(ctx)
 	batches := make(chan batch, len(indexes.Indexes))
 
-	// A separate goroutine runs the resolution. Starting a read can wait for a free slot, and the
-	// caller must receive the first batches meanwhile.
+	// A separate goroutine runs the resolution. g.Go blocks while m.parallelism reads run. The caller
+	// must not wait for it to receive the first batch.
 	go func() {
 		defer close(batches)
 
-		// Each read deduplicates its sections while it holds mu. The deduplicator keeps the first
-		// descriptor of each section until the resolution ends and compares the later copies with it.
-		// So the caller must not modify a descriptor it received.
 		var (
 			g errgroup.Group
 
 			// mu guards the variables below.
-			mu             sync.Mutex
-			deduplicator   = newSectionsDeduplicator(m.logger, m.metrics)
+			mu sync.Mutex
+
+			// deduplicator keeps the first descriptor of each section until the resolution ends, and
+			// compares the later copies with it. So it reads descriptors that the caller already holds.
+			deduplicator = newSectionsDeduplicator(m.logger, m.metrics)
+
 			failed         bool
 			totalSections  int
 			uniqueSections int
 		)
 
-		// fail ends the resolution with err. The caller must hold mu.
+		// fail ends the resolution with err. Call it with mu held.
 		fail := func(err error) {
 			failed = true
 
-			// Send err before cancelling the reads, so the caller sees the cause before the context
-			// errors of the cancelled reads.
+			// Send err before canceling the reads, so the caller sees the cause before the context
+			// errors of the canceled reads.
 			batches <- batch{err: err}
 			cancelReads()
 		}
@@ -507,6 +513,12 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 
 				mu.Lock()
 				defer mu.Unlock()
+
+				// An earlier read failed. The deduplicator must not run again after an error, and the
+				// caller drops the batches that follow.
+				if failed {
+					return nil
+				}
 
 				if err != nil {
 					fail(err)
@@ -537,8 +549,9 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		}
 		_ = g.Wait()
 
-		// A failed resolution records no metric. A cancelled one has failed reads.
-		if failed {
+		// A failed or canceled resolution records no metric. A read can succeed after the cancel, so
+		// check the context as well as the failed flag.
+		if failed || readCtx.Err() != nil {
 			return
 		}
 
@@ -571,7 +584,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	}()
 
 	// On return, cancel the reads and drop the batches left in the channel. The channel closes only
-	// after every read ends, so this loop also waits for the reads.
+	// after every read ends, so this loop also waits for the reads. It also makes every span.Record
+	// of the resolution happen before span.End.
 	defer func() {
 		cancelReads()
 		for range batches {

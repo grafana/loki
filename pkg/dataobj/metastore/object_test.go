@@ -810,6 +810,25 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		return batches, failure
 	}
 
+	// requireOnlyFirstIndexRecorded checks the metrics of a resolution that yielded one batch and then
+	// failed or was canceled. Only the first-index metric and stat exist, because the resolution
+	// recorded its totals only when it ends without a failure or a cancel.
+	requireOnlyFirstIndexRecorded := func(t *testing.T, reg *prometheus.Registry, capture *xcap.Capture) {
+		t.Helper()
+
+		require.Equal(t, uint64(1), gatherHistogram(t, reg, "loki_metastore_resolved_sections_first_index_duration_seconds").GetSampleCount())
+		require.Positive(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsFirstIndexDuration))
+		require.Zero(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration))
+		for _, name := range []string{
+			"loki_metastore_stream_filter_sections_total",
+			"loki_metastore_resolved_sections_total",
+			"loki_metastore_resolved_sections_ratio",
+			"loki_metastore_resolved_sections_total_duration_seconds",
+		} {
+			require.Zero(t, gatherHistogram(t, reg, name).GetSampleCount(), name)
+		}
+	}
+
 	t.Run("yields the first batch while another index object is still blocked", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		addIndexObject(t, inMem, sectionOf("object-fast"))
@@ -840,12 +859,13 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("stops the reads in flight and records no total duration when the caller breaks after the first batch", func(t *testing.T) {
+	t.Run("stops the reads in flight and records only the first-index metric when the caller breaks after the first batch", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		addIndexObject(t, inMem, sectionOf("object-fast"))
 		slowIndex := addIndexObject(t, inMem, sectionOf("object-slow"))
 		bucket := newGatedBucket(inMem)
 		gate := bucket.hold(slowIndex, nil)
+		gate.proceedOnCancel = true
 		m, reg, _ := newTestMetastore(bucket)
 		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -863,27 +883,33 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.NoError(t, boundedCtx.Err(), "the loop waited for the blocked read")
 		require.Equal(t, 1, batches)
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
-		require.Zero(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration))
-		require.Zero(t, gatherHistogram(t, reg, "loki_metastore_resolved_sections_total_duration_seconds").GetSampleCount())
+		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
-	t.Run("keeps reading the index objects while the caller holds the first batch", func(t *testing.T) {
+	t.Run("keeps reading the index objects while the caller holds the first batch and the launch waits for a free slot", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		var indexes []string
-		for _, object := range []string{"object-a", "object-b", "object-c", "object-d"} {
+		for _, object := range []string{"object-a", "object-b", "object-c", "object-d", "object-e"} {
 			indexes = append(indexes, addIndexObject(t, inMem, sectionOf(object)))
 		}
+		slices.Sort(indexes)
 		bucket := newGatedBucket(inMem)
-		gate := bucket.hold(slices.Max(indexes), nil)
+		gate := bucket.hold(indexes[3], nil)
 		m, _, _ := newTestMetastore(bucket)
 		m.parallelism = 1
+		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-		for _, err := range m.SectionsStream(ctx, request) {
+		var batches int
+		for _, err := range m.SectionsStream(boundedCtx, request) {
 			require.NoError(t, err)
 			gate.waitUntilHeld(t)
+			batches++
 			break
 		}
 
+		require.NoError(t, boundedCtx.Err(), "the loop waited for the blocked read")
+		require.Equal(t, 1, batches)
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
 	})
 
@@ -894,8 +920,10 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		bucket := newGatedBucket(inMem)
 		gate := bucket.hold(slowIndex, nil)
 		m, _, _ := newTestMetastore(bucket)
+		boundedCtx, cancelTimeout := context.WithTimeout(ctx, 10*time.Second)
+		defer cancelTimeout()
 
-		cancelCtx, cancel := context.WithCancel(ctx)
+		cancelCtx, cancel := context.WithCancel(boundedCtx)
 		t.Cleanup(cancel)
 		next, stop := iter.Pull2(m.SectionsStream(cancelCtx, request))
 		defer stop()
@@ -918,7 +946,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
 	})
 
-	t.Run("yields the error of the failed read, not the cancel error of another read, and records no total duration", func(t *testing.T) {
+	t.Run("yields the error of the failed read, not the cancel error of another read, and records only the first-index metric", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		addIndexObject(t, inMem, sectionOf("object-fast"))
 		failingIndex := addIndexObject(t, inMem, sectionOf("object-failing"))
@@ -927,7 +955,9 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		failingGate := bucket.hold(failingIndex, errors.New("storage unavailable"))
 		slowGate := bucket.hold(slowIndex, nil)
 		m, reg, _ := newTestMetastore(bucket)
-		captureCtx, capture := xcap.NewCapture(ctx, nil)
+		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		captureCtx, capture := xcap.NewCapture(boundedCtx, nil)
 
 		next, stop := iter.Pull2(m.SectionsStream(captureCtx, request))
 		defer stop()
@@ -948,8 +978,8 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		_, _, ok = next()
 		require.False(t, ok)
 
-		require.Zero(t, xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration))
-		require.Zero(t, gatherHistogram(t, reg, "loki_metastore_resolved_sections_total_duration_seconds").GetSampleCount())
+		require.NoError(t, boundedCtx.Err(), "the sequence waited for a blocked read")
+		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
 	t.Run("cancels the other index reads when one read fails, even while the caller handles a batch", func(t *testing.T) {
@@ -961,8 +991,11 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		failingGate := bucket.hold(failingIndex, errors.New("storage unavailable"))
 		slowGate := bucket.hold(slowIndex, nil)
 		m, _, _ := newTestMetastore(bucket)
+		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-		for batch, err := range m.SectionsStream(ctx, request) {
+		var batches int
+		for batch, err := range m.SectionsStream(boundedCtx, request) {
 			require.NoError(t, err)
 			require.Equal(t, []string{"object-fast"}, objectPathsOf(batch))
 
@@ -970,9 +1003,12 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 			slowGate.waitUntilHeld(t)
 			failingGate.open()
 			slowGate.waitUntilLeft(t)
+			batches++
 			break
 		}
 
+		require.NoError(t, boundedCtx.Err(), "the loop waited for a blocked read")
+		require.Equal(t, 1, batches)
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
 	})
 
@@ -998,7 +1034,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		}
 
 		require.ElementsMatch(t, want, got)
-		require.LessOrEqual(t, bucket.peak.Load(), int64(2), "more index reads ran at once than the limit")
+		require.LessOrEqual(t, bucket.peakObjects, 2, "more index objects were read at once than the limit")
 	})
 
 	t.Run("runs a new resolution each time the caller ranges over the sequence", func(t *testing.T) {
@@ -1015,6 +1051,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		}
 
 		require.Equal(t, uint64(2), gatherHistogram(t, reg, "loki_metastore_resolved_sections_total_duration_seconds").GetSampleCount())
+		require.Equal(t, uint64(2), gatherHistogram(t, reg, "loki_metastore_resolved_sections_first_index_duration_seconds").GetSampleCount())
 	})
 
 	t.Run("does no work until the caller ranges over the sequence", func(t *testing.T) {
@@ -1053,6 +1090,25 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		total := xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsDuration)
 		require.Positive(t, firstIndex)
 		require.LessOrEqual(t, firstIndex, total)
+	})
+
+	t.Run("counts one diverged duplicate when several index objects list different streams of a section", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		for streams := 1; streams <= 4; streams++ {
+			var observations []postings.LabelObservation
+			for streamID := 1; streamID <= streams; streamID++ {
+				observations = append(observations, postings.LabelObservation{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: int64(streamID), Timestamp: now})
+			}
+			createIndexObjectWithPostings(ctx, t, bucket, observations)
+		}
+		m, _, logs := newTestMetastore(bucket)
+		m.parallelism = 1
+
+		_, err := collectSectionBatches(t, m.SectionsStream(ctx, request))
+
+		require.ErrorIs(t, err, errDifferentSectionStatistics)
+		require.Equal(t, float64(1), testutil.ToFloat64(m.metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue)))
+		require.Equal(t, 1, strings.Count(logs.String(), "level=error"))
 	})
 
 	t.Run("yields no batch and records no first-index metric when no section resolves", func(t *testing.T) {
@@ -1683,22 +1739,25 @@ func sectionOf(objectPath string) []indexedLine {
 }
 
 // gatedBucket holds back or fails the reads of chosen objects. It counts the reads in flight and the
-// most reads in flight at once.
+// most objects read at once.
 type gatedBucket struct {
 	objstore.Bucket
 
 	// latency delays every read, so that concurrent reads overlap. Set it before the first read.
 	latency time.Duration
 
-	mtx   sync.Mutex
-	gates map[string]*readGate
+	mtx     sync.Mutex
+	gates   map[string]*readGate
+	reading map[string]int
+
+	// peakObjects is the most objects with a read in flight at once. Read it after the reads end.
+	peakObjects int
 
 	inFlight atomic.Int64
-	peak     atomic.Int64
 }
 
 func newGatedBucket(bucket objstore.Bucket) *gatedBucket {
-	return &gatedBucket{Bucket: bucket, gates: make(map[string]*readGate)}
+	return &gatedBucket{Bucket: bucket, gates: make(map[string]*readGate), reading: make(map[string]int)}
 }
 
 // hold makes every read of the object at path wait for the gate to open or for the context of the
@@ -1715,12 +1774,18 @@ func (b *gatedBucket) hold(path string, err error) *readGate {
 // enter counts a read in flight and holds it at the gate of its object. It returns the error that
 // the read must fail with. The caller must call leave when the read ends, also when err is set.
 func (b *gatedBucket) enter(ctx context.Context, name string) (leave func(), err error) {
-	inFlight := b.inFlight.Add(1)
-	leave = func() { b.inFlight.Add(-1) }
-	for {
-		peak := b.peak.Load()
-		if inFlight <= peak || b.peak.CompareAndSwap(peak, inFlight) {
-			break
+	b.inFlight.Add(1)
+	b.mtx.Lock()
+	b.reading[name]++
+	b.peakObjects = max(b.peakObjects, len(b.reading))
+	b.mtx.Unlock()
+	leave = func() {
+		b.inFlight.Add(-1)
+
+		b.mtx.Lock()
+		defer b.mtx.Unlock()
+		if b.reading[name]--; b.reading[name] == 0 {
+			delete(b.reading, name)
 		}
 	}
 
@@ -1745,6 +1810,9 @@ func (b *gatedBucket) enter(ctx context.Context, name string) (leave func(), err
 	case <-gate.release:
 		return leave, gate.err
 	case <-ctx.Done():
+		if gate.proceedOnCancel {
+			return leave, nil
+		}
 		return leave, ctx.Err()
 	}
 }
@@ -1784,6 +1852,10 @@ type readGate struct {
 	leftOnce    sync.Once
 	release     chan struct{}
 	err         error
+
+	// proceedOnCancel lets a held read go through, instead of fail, when its context ends. It models
+	// a read that ends without an error after the cancel. Set it before the first read.
+	proceedOnCancel bool
 }
 
 // waitUntilHeld blocks until a read of the object reaches the gate.
