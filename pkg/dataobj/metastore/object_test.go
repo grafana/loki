@@ -1260,6 +1260,53 @@ func TestListTableOfContentsTenants(t *testing.T) {
 	}
 }
 
+func TestObjectMetastore_readIndexSections(t *testing.T) {
+	ctx := user.InjectOrgID(t.Context(), tenantID)
+	request := SectionsRequest{
+		Start:    now.Add(-time.Hour),
+		End:      now.Add(time.Hour),
+		Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+	}
+
+	t.Run("returns the sections of the index object with its path and the number of rows read", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		indexPath := createIndexObjectWithPostings(ctx, t, bucket, []postings.LabelObservation{
+			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+			{ObjectPath: "object-b", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now},
+		})
+
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexPath)
+
+		require.NoError(t, err)
+		require.Len(t, sections, 2)
+		require.ElementsMatch(t, []string{"object-a", "object-b"}, []string{sections[0].ObjectPath, sections[1].ObjectPath})
+		require.Equal(t, indexPath, sections[0].IndexPath)
+		require.Equal(t, indexPath, sections[1].IndexPath)
+		require.Positive(t, readRows)
+	})
+
+	t.Run("returns no section and no rows when the index object lists no section for the request", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		indexPath := createIndexObjectWithPostings(ctx, t, bucket, []postings.LabelObservation{
+			{ObjectPath: "object-a", SectionIndex: 0, ColumnName: "app", LabelValue: "bar", StreamID: 1, Timestamp: now},
+		})
+
+		sections, readRows, err := newTestObjectMetastore(bucket).readIndexSections(ctx, request, indexPath)
+
+		require.NoError(t, err)
+		require.Empty(t, sections)
+		require.Zero(t, readRows)
+	})
+
+	t.Run("returns an error that names the index object when the index object does not exist", func(t *testing.T) {
+		sections, readRows, err := newTestObjectMetastore(objstore.NewInMemBucket()).readIndexSections(ctx, request, "missing-index-object")
+
+		require.ErrorContains(t, err, "missing-index-object")
+		require.Empty(t, sections)
+		require.Zero(t, readRows)
+	})
+}
+
 // createIndexObjectWithPostings uploads an index object with one postings section, adds it to the ToC,
 // and returns its path.
 func createIndexObjectWithPostings(ctx context.Context, t testing.TB, bucket objstore.Bucket, observations []postings.LabelObservation) string {
