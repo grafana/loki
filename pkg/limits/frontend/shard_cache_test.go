@@ -106,6 +106,32 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		})
 	})
 
+	t.Run("pushes answered with a cached rejection are not accumulated", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			onMiss := &mockLimitsClient{
+				t: t,
+				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+					Results: []*proto.StreamShardResult{{StreamHash: 0x1, RejectReason: "max_streams"}},
+				},
+			}
+			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+			_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
+			require.NoError(t, err)
+
+			resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
+			require.NoError(t, err)
+			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+			require.Equal(t, "max_streams", resp.Results[0].RejectReason)
+
+			time.Sleep(time.Minute)
+
+			onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, 7)
+			_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 7))
+			require.NoError(t, err)
+			require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
+		})
+	})
+
 	t.Run("backend error is not cached and its pushes are forwarded again", func(t *testing.T) {
 		onMiss := &mockLimitsClient{
 			t:   t,

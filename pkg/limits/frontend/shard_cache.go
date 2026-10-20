@@ -41,9 +41,9 @@ type shardRefresh struct {
 
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
 // Pushes for a stream whose result is younger than ttl, or whose result is
-// being refreshed, are answered from the cache and their size is
-// accumulated. The first push after ttl forwards the accumulated size
-// together with its own in a single backend request.
+// being refreshed, are answered from the cache. If the cached result accepts
+// the stream, their size is accumulated. The first push after ttl forwards
+// the accumulated size together with its own in a single backend request.
 //
 // Concurrent pushes for a stream without a result, such as a new stream, are
 // all forwarded.
@@ -95,8 +95,13 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			c.entries[key] = entry
 		}
 		if entry.result != nil && (entry.inflight || now.Sub(entry.cachedAt) < c.ttl) {
-			entry.accumSize += m.TotalSize
-			entry.accumPushes++
+			// The limits service does not record the size of a push it
+			// rejects, so a push answered with a cached rejection must not
+			// reach it with the next refresh either.
+			if entry.result.RejectReason == "" {
+				entry.accumSize += m.TotalSize
+				entry.accumPushes++
+			}
 			results = append(results, entry.result)
 			continue
 		}
