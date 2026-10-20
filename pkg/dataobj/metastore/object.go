@@ -440,10 +440,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, nil
 	}
 
-	var (
-		batches     []indexSections
-		numSections int
-	)
+	var sections []DataobjSectionDescriptorWithIndex
 	sectionsMu := sync.Mutex{}
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -474,8 +471,9 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 			sp := reader.(statsProvider)
 			totalSections.Add(sp.stats().ReadRows)
 
-			batches = append(batches, indexSections{indexPath: indexEntry.Path, sections: sectionsResp.SectionsResponse.Sections})
-			numSections += len(sectionsResp.SectionsResponse.Sections)
+			for _, section := range sectionsResp.SectionsResponse.Sections {
+				sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexEntry.Path})
+			}
 			sectionsMu.Unlock()
 
 			return nil
@@ -486,14 +484,9 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, err
 	}
 
-	deduplicator := newSectionsDeduplicator(m.logger, m.metrics)
-	uniqueSections := make([]*DataobjSectionDescriptor, 0, numSections)
-	for _, batch := range batches {
-		unique, err := deduplicator.deduplicate(ctx, batch.indexPath, batch.sections)
-		if err != nil {
-			return SectionsResponse{}, err
-		}
-		uniqueSections = append(uniqueSections, unique...)
+	uniqueSections, err := newSectionsDeduplicator(m.logger, m.metrics).deduplicate(ctx, sections)
+	if err != nil {
+		return SectionsResponse{}, err
 	}
 
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
@@ -522,12 +515,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 	)
 
 	return SectionsResponse{uniqueSections}, nil
-}
-
-// indexSections holds the sections that one index object lists.
-type indexSections struct {
-	indexPath string
-	sections  []*DataobjSectionDescriptor
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {

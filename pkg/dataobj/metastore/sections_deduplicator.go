@@ -48,24 +48,23 @@ func newSectionsDeduplicator(logger log.Logger, metrics *ObjectMetastoreMetrics)
 // deduplicate returns the sections that the deduplicator has not seen yet, in input order, and
 // records them as seen. It returns a new slice that holds the same descriptors.
 //
-// indexPath names the index object that listed the sections. deduplicate uses it in log lines.
+// Each section carries the path of the index object that listed it. deduplicate uses the path in
+// log lines.
 //
 // A diverged copy makes deduplicate return an error and no sections. deduplicate has already
 // recorded the sections before that copy, so the caller must not call it again after an error.
-func (d *sectionsDeduplicator) deduplicate(ctx context.Context, indexPath string, sections []*DataobjSectionDescriptor) ([]*DataobjSectionDescriptor, error) {
+func (d *sectionsDeduplicator) deduplicate(ctx context.Context, sections []DataobjSectionDescriptorWithIndex) ([]*DataobjSectionDescriptor, error) {
 	kept := make([]*DataobjSectionDescriptor, 0, len(sections))
 
-	for _, descriptor := range sections {
-		section := DataobjSectionDescriptorWithIndex{descriptor, indexPath}
-
+	for _, section := range sections {
 		first, ok := d.seen[section.SectionKey]
 		if !ok {
 			d.seen[section.SectionKey] = section
-			kept = append(kept, descriptor)
+			kept = append(kept, section.DataobjSectionDescriptor)
 			continue
 		}
 
-		if !first.sameStreamAndStatistics(descriptor) {
+		if !first.sameStreamAndStatistics(section.DataobjSectionDescriptor) {
 			d.metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue).Inc()
 
 			// This log carries the details the error lacks. It does not use duplicatesLogger,
