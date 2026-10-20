@@ -590,3 +590,5 @@ func TestTableManager_SkipInitialQueryReadiness(t *testing.T) {
 		})
 	}
 }
+
+func (m *mockTable) DropNotOwned(_ context.Context, _ TenantFilter) error { return nil }
