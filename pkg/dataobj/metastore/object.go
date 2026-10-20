@@ -51,11 +51,7 @@ const (
 	duplicatesLogsPerSecond = 1
 	duplicatesLogsBurst     = 5
 
-	// indexPrefetchBytes is how many bytes Sections reads up front when it opens an index
-	// object. The section metadata of a compacted index object ends near byte 25,000, past
-	// the 16 KiB minimum window, so a smaller window needs a second request. Each open
-	// allocates the whole window, so a larger value costs memory and bandwidth for no fewer
-	// requests.
+	// indexPrefetchBytes is how many bytes Sections reads up front from an index object.
 	indexPrefetchBytes = 64 * 1024
 )
 
