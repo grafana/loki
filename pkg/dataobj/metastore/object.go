@@ -98,7 +98,7 @@ type DataobjSectionDescriptors []*DataobjSectionDescriptor
 // A stream ID means something only within one object, so a caller that reads streams has to
 // work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
 //
-// A batch of [Metastore.SectionsStream] can hold only some of the sections of an object, so a group
+// A batch of [Metastore.SectionsStream] can hold only some of the sections of an object. A group
 // from one batch can lack sections that another batch holds.
 func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
 	byObject := make(map[string]DataobjSectionDescriptors)

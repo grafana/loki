@@ -811,8 +811,8 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 	}
 
 	// requireOnlyFirstIndexRecorded checks the metrics of a resolution that yielded one batch and then
-	// failed or was canceled. Only the first-index metric and stat exist, because a resolution
-	// records its totals only when it ends without a failure or a cancel.
+	// failed or was canceled. Only the first-index metric and stat exist. A resolution records its
+	// totals only when it ends without a failure or a cancel.
 	requireOnlyFirstIndexRecorded := func(t *testing.T, reg *prometheus.Registry, capture *xcap.Capture) {
 		t.Helper()
 
@@ -1794,8 +1794,8 @@ func newGatedBucket(bucket objstore.Bucket) *gatedBucket {
 	return &gatedBucket{Bucket: bucket, gates: make(map[string]*readGate), reading: make(map[string]int)}
 }
 
-// hold makes every read of the object at path wait for the gate to open or for the context of the
-// read to end. Once the gate opens, the reads fail with err, or go through when err is nil.
+// hold makes every read of the object at path wait. A read ends when the gate opens or its context
+// ends. Once the gate opens, the reads fail with err, or go through when err is nil.
 func (b *gatedBucket) hold(path string, err error) *readGate {
 	gate := &readGate{entered: make(chan struct{}), left: make(chan struct{}), release: make(chan struct{}), err: err}
 
