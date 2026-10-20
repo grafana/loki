@@ -584,7 +584,7 @@ func dryRunMetricReport(expr syntax.Expr, promResp *queryrange.LokiPromResponse,
 				continue
 			}
 			report.TotalEntries++
-			if len(rangesOverlapping(hints, winStart, winEnd)) == 0 {
+			if !rangesOverlap(hints, winStart, winEnd) {
 				report.FalseNegativeRanges = append(report.FalseNegativeRanges, hintprovider.HintTimeRange{
 					Start: winStart,
 					End:   winEnd,
@@ -1401,6 +1401,18 @@ func hintCoverageDuration(ranges []hintprovider.HintTimeRange, start, end time.T
 
 func isCancel(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+// rangesOverlap reports whether any range overlaps [start, end].
+// Assumes ranges are sorted by Start. It does not allocate.
+func rangesOverlap(ranges []hintprovider.HintTimeRange, start, end time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	idx := sort.Search(len(ranges), func(i int) bool {
+		return !ranges[i].End.Before(start)
+	})
+	return idx < len(ranges) && !ranges[idx].Start.After(end)
 }
 
 // rangesOverlapping returns hint ranges that overlap [start, end].

@@ -2423,11 +2423,13 @@ func TestRangesOverlapping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := rangesOverlapping(ranges, tc.start, tc.end)
 			require.Len(t, got, tc.want)
+			require.Equal(t, tc.want > 0, rangesOverlap(ranges, tc.start, tc.end))
 		})
 	}
 
 	// Empty input.
 	require.Nil(t, rangesOverlapping(nil, base, base.Add(time.Hour)))
+	require.False(t, rangesOverlap(nil, base, base.Add(time.Hour)))
 }
 
 func testTime(n int) time.Time {
