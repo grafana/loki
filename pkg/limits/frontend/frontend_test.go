@@ -226,24 +226,6 @@ func TestFrontend_CheckLimitsAndShard_FailsOpenToOneShard(t *testing.T) {
 		require.Equal(t, 1, client.checkLimitsAndShardCalls)
 	})
 
-	t.Run("the client call fails but returns results for other streams, which are kept", func(t *testing.T) {
-		sharded := &proto.StreamShardResult{StreamHash: 0x2, Shards: 4}
-		f := newTestFrontend(t)
-		f.limitsClient = &mockLimitsClient{
-			t: t,
-			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-				Results: []*proto.StreamShardResult{sharded},
-			},
-			err: errors.New("boom"),
-		}
-		resp, err := f.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-			Tenant:  "test",
-			Streams: []*proto.StreamMetadata{{StreamHash: 0x1}, {StreamHash: 0x2}},
-		})
-		require.NoError(t, err)
-		require.Equal(t, append([]*proto.StreamShardResult{sharded}, expected...), resp.Results)
-	})
-
 	t.Run("the backend consuming the stream's partition returns an error, leaving the stream unanswered", func(t *testing.T) {
 		instances := []ring.InstanceDesc{{Addr: "instance-0"}}
 		mockClient := &mockLimitsProtoClient{
@@ -335,6 +317,7 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	tests := []struct {
 		name             string
 		response         *proto.CheckLimitsAndShardResponse
+		err              error
 		expected         []*proto.StreamShardResult
 		expectedShards   float64
 		expectedFailed   float64
@@ -348,6 +331,13 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	}, {
 		name:           "results for a subset of the streams",
 		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
+		expectedShards: 5,
+		expectedFailed: 1,
+	}, {
+		name:           "results for a subset of the streams, returned with an error",
+		response:       &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{sharded}},
+		err:            errors.New("boom"),
 		expected:       []*proto.StreamShardResult{sharded, failedOpen(0x1)},
 		expectedShards: 5,
 		expectedFailed: 1,
@@ -377,7 +367,7 @@ func TestFrontend_CheckLimitsAndShard_CompletesPartialResponses(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			f := newTestFrontend(t)
-			f.limitsClient = &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.response}
+			f.limitsClient = &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.response, err: test.err}
 			resp, err := f.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
 				Tenant:  "test",
 				Streams: streams,

@@ -15,144 +15,51 @@ import (
 )
 
 func TestShardCacheLimitsClient(t *testing.T) {
-	t.Run("miss goes to backend and is cached", func(t *testing.T) {
-		onMiss := &mockLimitsClient{
-			t: t,
-			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
-			},
-			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 1}},
-			},
+	t.Run("pushes within ttl are served from the cache and forwarded combined once stale", func(t *testing.T) {
+		tests := []struct {
+			name              string
+			cached            *proto.StreamShardResult
+			expectedForwarded uint64
+		}{{
+			name:              "accepted stream",
+			cached:            &proto.StreamShardResult{StreamHash: 0x1, Shards: 3},
+			expectedForwarded: 12,
+		}, {
+			name:              "rejected stream, whose pushes are not ingested",
+			cached:            &proto.StreamShardResult{StreamHash: 0x1, RejectReason: "max_streams"},
+			expectedForwarded: 7,
+		}}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					onMiss := &mockLimitsClient{
+						t:                                  t,
+						expectedCheckLimitsAndShardRequest: newShardRequest(0x1, 10),
+						checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+							Results: []*proto.StreamShardResult{test.cached},
+						},
+					}
+					c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+					_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
+					require.NoError(t, err)
+
+					resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
+					require.NoError(t, err)
+					require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+					require.Equal(t, []*proto.StreamShardResult{test.cached}, resp.Results)
+
+					time.Sleep(time.Minute)
+
+					onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, test.expectedForwarded)
+					_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 7))
+					require.NoError(t, err)
+					require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
+				})
+			})
 		}
-		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-		resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-			Tenant:  "test",
-			Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
-		})
-		require.NoError(t, err)
-		require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-		require.Len(t, resp.Results, 1)
-		require.Equal(t, uint32(1), resp.Results[0].Shards)
 	})
 
-	t.Run("hit within ttl is served from cache and accumulates", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			onMiss := &mockLimitsClient{
-				t: t,
-				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 2}},
-				},
-			}
-			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-			_, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
-			})
-			require.NoError(t, err)
-			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-
-			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 5}},
-			})
-			require.NoError(t, err)
-			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-			require.Len(t, resp.Results, 1)
-			require.Equal(t, uint32(2), resp.Results[0].Shards)
-
-			entry := c.entries[shardCacheKey{"test", 0x1}]
-			require.Equal(t, uint64(5), entry.accumSize)
-			require.Equal(t, uint32(1), entry.accumPushes)
-		})
-	})
-
-	t.Run("stale entry combines accumulated pushes into one request", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			onMiss := &mockLimitsClient{
-				t: t,
-				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
-				},
-			}
-			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-			_, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 10}},
-			})
-			require.NoError(t, err)
-
-			_, err = c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 5}},
-			})
-			require.NoError(t, err)
-			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-
-			time.Sleep(time.Minute + time.Second)
-
-			onMiss.expectedCheckLimitsAndShardRequest = &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 12}},
-			}
-			resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-				Tenant:  "test",
-				Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 7}},
-			})
-			require.NoError(t, err)
-			require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
-			require.Equal(t, uint32(3), resp.Results[0].Shards)
-		})
-	})
-
-	t.Run("pushes answered with a cached rejection are not accumulated", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			onMiss := &mockLimitsClient{
-				t: t,
-				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-					Results: []*proto.StreamShardResult{{StreamHash: 0x1, RejectReason: "max_streams"}},
-				},
-			}
-			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-			_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
-			require.NoError(t, err)
-
-			resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
-			require.NoError(t, err)
-			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-			require.Equal(t, "max_streams", resp.Results[0].RejectReason)
-
-			time.Sleep(time.Minute)
-
-			onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, 7)
-			_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 7))
-			require.NoError(t, err)
-			require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
-		})
-	})
-
-	t.Run("backend error is not cached and its pushes are forwarded again", func(t *testing.T) {
-		onMiss := &mockLimitsClient{
-			t:   t,
-			err: errors.New("backend unavailable"),
-		}
-		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-		_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
-		require.Error(t, err)
-
-		onMiss.err = nil
-		onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, 15)
-		onMiss.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{
-			Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 1}},
-		}
-		resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
-		require.NoError(t, err)
-		require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
-		require.Equal(t, uint32(1), resp.Results[0].Shards)
-	})
-
-	t.Run("backend error keeps the results answered from the cache", func(t *testing.T) {
+	t.Run("backend error keeps the cached results and forwards the failed pushes again", func(t *testing.T) {
 		cached := &proto.StreamShardResult{StreamHash: 0x1, Shards: 4}
 		onMiss := &mockLimitsClient{
 			t: t,
@@ -173,35 +80,47 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Equal(t, []*proto.StreamShardResult{cached}, resp.Results)
+
+		onMiss.err = nil
+		onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x2, 25)
+		onMiss.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{
+			Results: []*proto.StreamShardResult{{StreamHash: 0x2, Shards: 1}},
+		}
+		_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x2, 5))
+		require.NoError(t, err)
+		require.Equal(t, 3, onMiss.checkLimitsAndShardCalls)
 	})
 
 	t.Run("a stream without an answer stops serving its previous result", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			onMiss := &mockLimitsClient{
-				t: t,
-				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
-				},
-			}
+			onMiss := newGatedMockLimitsClient()
 			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-			_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
-			require.NoError(t, err)
+
+			warm := checkAsync(t.Context(), c, newShardRequest(0x1, 10))
+			<-onMiss.calls
+			onMiss.release(10, &proto.StreamShardResult{StreamHash: 0x1, Shards: 3})
+			require.NoError(t, (<-warm).err)
 
 			time.Sleep(time.Minute)
 
-			onMiss.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{}
-			resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 20))
-			require.NoError(t, err)
-			require.Empty(t, resp.Results)
+			unanswered := checkAsync(t.Context(), c, newShardRequest(0x1, 20))
+			<-onMiss.calls
+			onMiss.release(20, nil)
+			require.Empty(t, (<-unanswered).resp.Results)
 
-			onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, 25)
-			onMiss.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{
-				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 4}},
-			}
-			resp, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
-			require.NoError(t, err)
-			require.Equal(t, 3, onMiss.checkLimitsAndShardCalls)
-			require.Equal(t, uint32(4), resp.Results[0].Shards)
+			// The previous result could only be served again to a push that
+			// arrives while the retry is in flight.
+			retry := checkAsync(t.Context(), c, newShardRequest(0x1, 5))
+			require.Equal(t, newShardRequest(0x1, 25), <-onMiss.calls)
+			concurrent := checkAsync(t.Context(), c, newShardRequest(0x1, 1))
+			synctest.Wait()
+			require.Len(t, onMiss.calls, 1)
+			<-onMiss.calls
+
+			onMiss.release(25, &proto.StreamShardResult{StreamHash: 0x1, Shards: 4})
+			onMiss.release(1, &proto.StreamShardResult{StreamHash: 0x1, Shards: 4})
+			require.NoError(t, (<-retry).err)
+			require.NoError(t, (<-concurrent).err)
 		})
 	})
 
@@ -238,55 +157,33 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		})
 	})
 
-	t.Run("concurrent pushes for a stream without a result are all forwarded", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			onMiss := newGatedMockLimitsClient()
-			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-
-			first := checkAsync(t.Context(), c, newShardRequest(0x1, 10))
-			<-onMiss.calls
-			second := checkAsync(t.Context(), c, newShardRequest(0x1, 20))
-			<-onMiss.calls
-
-			onMiss.release(10, &proto.StreamShardResult{StreamHash: 0x1, Shards: 1})
-			require.NoError(t, (<-first).err)
-			onMiss.release(20, &proto.StreamShardResult{StreamHash: 0x1, Shards: 2})
-			require.NoError(t, (<-second).err)
-
-			entry := c.entries[shardCacheKey{"test", 0x1}]
-			require.Equal(t, uint32(2), entry.result.Shards)
-			require.False(t, entry.inflight)
-		})
-	})
-
 	t.Run("a duplicate stream hash in one request is forwarded once per occurrence", func(t *testing.T) {
-		onMiss := &mockLimitsClient{
-			t: t,
-			expectedCheckLimitsAndShardRequest: &proto.CheckLimitsAndShardRequest{
-				Tenant: "test",
-				Streams: []*proto.StreamMetadata{
-					{StreamHash: 0x1, TotalSize: 10},
-					{StreamHash: 0x1, TotalSize: 20},
+		synctest.Test(t, func(t *testing.T) {
+			newRequest := func() *proto.CheckLimitsAndShardRequest {
+				return &proto.CheckLimitsAndShardRequest{
+					Tenant: "test",
+					Streams: []*proto.StreamMetadata{
+						{StreamHash: 0x1, TotalSize: 10},
+						{StreamHash: 0x1, TotalSize: 20},
+					},
+				}
+			}
+			onMiss := &mockLimitsClient{
+				t:                                  t,
+				expectedCheckLimitsAndShardRequest: newRequest(),
+				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+					Results: []*proto.StreamShardResult{
+						{StreamHash: 0x1, Shards: 1},
+						{StreamHash: 0x1, Shards: 1},
+					},
 				},
-			},
-			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
-				Results: []*proto.StreamShardResult{
-					{StreamHash: 0x1, Shards: 1},
-					{StreamHash: 0x1, Shards: 1},
-				},
-			},
-		}
-		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
-		resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
-			Tenant: "test",
-			Streams: []*proto.StreamMetadata{
-				{StreamHash: 0x1, TotalSize: 10},
-				{StreamHash: 0x1, TotalSize: 20},
-			},
+			}
+			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+			resp, err := c.CheckLimitsAndShard(t.Context(), newRequest())
+			require.NoError(t, err)
+			require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+			require.Len(t, resp.Results, 2)
 		})
-		require.NoError(t, err)
-		require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
-		require.Len(t, resp.Results, 2)
 	})
 }
 
@@ -340,11 +237,15 @@ func (m *gatedMockLimitsClient) CheckLimitsAndShard(_ context.Context, req *prot
 	m.gates[req.Streams[0].TotalSize] = gate
 	m.mu.Unlock()
 	m.calls <- req
-	result := <-gate
-	return &proto.CheckLimitsAndShardResponse{Results: []*proto.StreamShardResult{result}}, nil
+	resp := &proto.CheckLimitsAndShardResponse{}
+	if result := <-gate; result != nil {
+		resp.Results = append(resp.Results, result)
+	}
+	return resp, nil
 }
 
-// release unblocks the call whose first stream had the given size.
+// release unblocks the call whose first stream had the given size. A nil
+// result leaves the call without an answer.
 func (m *gatedMockLimitsClient) release(size uint64, result *proto.StreamShardResult) {
 	m.mu.Lock()
 	gate := m.gates[size]
