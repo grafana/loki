@@ -140,6 +140,13 @@ func (s fanoutShipper) ForEachConcurrent(_ context.Context, table, _ string, cal
 // buildFanoutShipper indexes each chunk of series in every table its time
 // range overlaps, as ingesters do.
 func buildFanoutShipper(t *testing.T, series []LoadableSeries, tableRange config.TableRange) fanoutShipper {
+	return buildFanoutShipperWithShards(t, series, tableRange, 1)
+}
+
+// buildFanoutShipperWithShards is buildFanoutShipper with each table split
+// into k fingerprint-range files, as the compactor writes them for a tenant
+// with tsdb_index_shard_factor k. Shards with no series have no file.
+func buildFanoutShipperWithShards(t *testing.T, series []LoadableSeries, tableRange config.TableRange, k int) fanoutShipper {
 	byTable := map[string][]LoadableSeries{}
 	for _, s := range series {
 		perTable := map[string]index.ChunkMetas{}
@@ -155,7 +162,22 @@ func buildFanoutShipper(t *testing.T, series []LoadableSeries, tableRange config
 
 	shipper := fanoutShipper{}
 	for table, ss := range byTable {
-		shipper[table] = []*TSDBFile{BuildIndex(t, t.TempDir(), ss)}
+		if k < 2 {
+			shipper[table] = []*TSDBFile{BuildIndex(t, t.TempDir(), ss)}
+			continue
+		}
+		for _, shard := range indexgateway.IndexShards(k) {
+			var inShard []LoadableSeries
+			for _, s := range ss {
+				if shard.Match(model.Fingerprint(labels.StableHash(s.Labels))) {
+					inShard = append(inShard, s)
+				}
+			}
+			if len(inShard) == 0 {
+				continue
+			}
+			shipper[table] = append(shipper[table], BuildShardedIndex(t, t.TempDir(), inShard, shard))
+		}
 	}
 	return shipper
 }
@@ -232,17 +254,27 @@ type fanoutEnv struct {
 	ownership        *indexgateway.IndexOwnership
 	calls            *fanoutCalls
 	tableRange       config.TableRange
+	// shardFactor is the tenant's tsdb_index_shard_factor: the files of each
+	// table are split k ways and the per_index client routes per shard.
+	shardFactor int
 }
 
 func newFanoutEnv(t *testing.T) *fanoutEnv {
+	return newFanoutEnvWithShards(t, 1)
+}
+
+// newFanoutEnvWithShards is newFanoutEnv for a tenant whose index is split k
+// ways. Every gateway serves every file; which files an owner would hold is
+// covered by the ownership filter tests, this checks routing and answers.
+func newFanoutEnvWithShards(t *testing.T, k int) *fanoutEnv {
 	t.Helper()
 	logger := log.NewNopLogger()
 	tableRange := fanoutTableRange()
 
-	limits, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: 0, VolumeMaxSeries: 1000, TSDBMaxBytesPerShard: 1 << 30}, nil)
+	limits, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: 0, VolumeMaxSeries: 1000, TSDBMaxBytesPerShard: 1 << 30, TSDBIndexShardFactor: k}, nil)
 	require.NoError(t, err)
 
-	idx := newIndexShipperQuerier(buildFanoutShipper(t, fanoutSeries(), tableRange), tableRange)
+	idx := newIndexShipperQuerier(buildFanoutShipperWithShards(t, fanoutSeries(), tableRange, k), tableRange)
 	gw, err := indexgateway.NewIndexGateway(indexgateway.Config{}, limits, logger, nil, fanoutQuerier{NewIndexClient(idx, DefaultIndexClientOptions(), limits)}, nil, nil)
 	require.NoError(t, err)
 
@@ -286,11 +318,12 @@ func newFanoutEnv(t *testing.T) *fanoutEnv {
 	}
 
 	return &fanoutEnv{
-		perIndex:   newClient(indexgateway.ShardingPerIndex),
-		single:     newClient(indexgateway.ShardingDefault),
-		ownership:  indexgateway.NewIndexOwnership(r),
-		calls:      calls,
-		tableRange: tableRange,
+		perIndex:    newClient(indexgateway.ShardingPerIndex),
+		single:      newClient(indexgateway.ShardingDefault),
+		ownership:   indexgateway.NewIndexOwnership(r),
+		calls:       calls,
+		tableRange:  tableRange,
+		shardFactor: k,
 	}
 }
 
