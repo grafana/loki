@@ -8,8 +8,12 @@ import (
 
 // BenchmarkPostingsBatch reproduces many concurrent queries against the same
 // index file, each asking for a subset of the postings.
-// All the queried postings lists contain a single element, so the cost is
-// dominated by per-list overhead.
+//   - The "pod" postings lists contain a single element, so those cases are
+//     dominated by per-list overhead.
+//   - The "a" lists are large.
+//   - Some cases are bounded to a single shard, which exercises the case where
+//     we don't fully read each postings list.
+//
 // Run with -cpu to vary contention.
 func BenchmarkPostingsBatch(b *testing.B) {
 	const (
@@ -42,34 +46,32 @@ func BenchmarkPostingsBatch(b *testing.B) {
 	}
 
 	for _, tc := range []struct {
-		name   string
-		values []string
+		name     string
+		label    string
+		values   []string
+		fpFilter FingerprintFilter
 	}{
-		{"spread-64", spread(64)},
-		{"consecutive-64", consecutive(64)},
-		{"consecutive-1024", consecutive(1024)},
+		{"64-small-postings-lists-spread-through-the-index", labelName, spread(64), nil},
+		{"64-small-postings-lists-consecutive-in-the-index", labelName, consecutive(64), nil},
+		{"1024-small-postings-lists-consecutive-in-the-index", labelName, consecutive(1024), nil},
+		{"1024-small-postings-lists-consecutive-in-the-index-sharded-to-1-16th", labelName, consecutive(1024), NewShard(0, 16)},
+		{"2-big-postings-lists", "a", []string{"0", "1"}, nil},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			want := len(tc.values)
 			b.ReportAllocs()
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					postings, err := r.Postings(labelName, nil, tc.values...)
+					postings, err := r.Postings(tc.label, tc.fpFilter, tc.values...)
 					if err != nil {
 						b.Error(err)
 						return
 					}
-					n := 0
 					for postings.Next() {
-						n++
+						_ = postings.At()
 					}
 					if err := postings.Err(); err != nil {
 						b.Error(err)
-						return
-					}
-					if n != want {
-						b.Errorf("got %d postings, want %d", n, want)
 						return
 					}
 				}
