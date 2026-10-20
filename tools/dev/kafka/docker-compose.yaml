@@ -1,6 +1,6 @@
 services:
   grafana:
-    image: grafana/grafana-enterprise:latest
+    image: grafana/grafana-enterprise:latest@sha256:18b723df0d73f5861f8079afd4b31d22c68b9d1babc7b55c2dace57bde49b6ba
     environment:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -15,7 +15,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:latest@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     ports:
       - 8080:8080
     environment:
@@ -27,7 +27,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
   broker:
-    image: apache/kafka:latest
+    image: apache/kafka:latest@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
     hostname: broker
     container_name: broker
     ports:
@@ -49,5 +49,5 @@ services:
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
   generator:
-    image: theperiklis/log-generator:latest
+    image: theperiklis/log-generator:latest@sha256:7a61d2836bb9bc9ebc3bf7b707f06182033c7727d4febbcb9cd6f7af50533ecc
     command: -url http://host.docker.internal:3100/loki/api/v1/push

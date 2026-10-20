@@ -1,6 +1,6 @@
 services:
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:latest@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     hostname: kafka-ui
     container_name: kafka-ui
     ports:
@@ -17,7 +17,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   broker:
-    image: apache/kafka:latest
+    image: apache/kafka:latest@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
     hostname: broker
     container_name: broker
     ports:
@@ -47,7 +47,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   loki:
-    image: theperiklis/loki:feat-usage-tracker-293aed8
+    image: theperiklis/loki:feat-usage-tracker-293aed8@sha256:e107c38e45ee5795d9942e895fdfa5e658e363ccbf6867b879c31a17e8e6cfdc
     hostname: loki
     container_name: loki
     user: root

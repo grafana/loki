@@ -14,7 +14,7 @@
 name: loki-ha-monolithic
 
 x-loki-common: &loki-common
-  image: grafana/loki:3.7.2
+  image: grafana/loki:3.7.2@sha256:191d4fdfb7264f16989f0a57f320872620a5a7c2ceeec6229212c4190ec49b86
   command:
     [
       "-config.file=/etc/loki/loki.yaml",
@@ -36,7 +36,7 @@ x-loki-common: &loki-common
 
 services:
   minio:
-    image: pgsty/minio:latest
+    image: pgsty/minio:latest@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     entrypoint: ["minio", "server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: loki
@@ -56,7 +56,7 @@ services:
       - loki
 
   minio-init:
-    image: pgsty/mc:latest
+    image: pgsty/mc:latest@sha256:6ecdaec70bc5e8cf9d0e9a70c190f3beb1c83f11617ff4333f1fcd71ab1daf18
     depends_on:
       minio:
         condition: service_healthy
@@ -102,7 +102,7 @@ services:
       - loki-3-data:/loki
 
   nginx:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d
     container_name: nginx
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro

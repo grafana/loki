@@ -4,7 +4,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -26,7 +26,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:latest@sha256:9726bfba078de9bc2212c60c6e643238c700b4fe0868ea78cbe03163d03d95bf
     volumes:
       - ./alloy-local-config.yaml:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -59,7 +59,7 @@ services:
       - loki
 
   minio:
-    image: minio/minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     entrypoint:
       - sh
       - -euc
@@ -85,7 +85,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:latest@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
     environment:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -121,7 +121,7 @@ services:
       - loki
 
   backend:
-    image: grafana/loki:latest
+    image: grafana/loki:latest@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
     ports:
@@ -141,7 +141,7 @@ services:
     
 
   gateway:
-    image: nginx:latest
+    image: nginx:latest@sha256:bc4cad49969aaf95eb4eecec5572846f86e59f1e8332aba36ed64b91aff8b724
     depends_on:
       - read
       - write
@@ -211,7 +211,7 @@ services:
   
 
   flog:
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: -f json -d 200ms -l
     networks:
       - loki

@@ -1,4 +1,4 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.35.1
+ARG BUILD_IMAGE=grafana/loki-build-image:0.35.1@sha256:36cbf972e47ea226dce878f8f0f9a1c7cc0163c9ba0f6464e515d9a19b4d3c57
 ARG GOARCH=amd64
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
