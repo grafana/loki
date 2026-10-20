@@ -390,11 +390,7 @@ func sortLabelSlice(l []labels.Label) {
 	})
 }
 
-// TestHashSorted_MatchesStableHash pins hasher.HashSorted (used by
-// LabelsResult/toUncategorizedResult to hash before paying for
-// labels.New's packed-string encoding) to produce exactly the hash
-// labels.StableHash(labels.New(buf...)) would - including the 1KB+
-// Write-API fallback path both implementations share. A future vendor
+// A future vendor
 // bump that changes StableHash's internal separator byte would only be
 // caught here, not by the compiler - see the comment on hashSep in
 // labels_stringlabels.go.
