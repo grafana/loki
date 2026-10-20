@@ -33,19 +33,20 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt --keep-em
   {app="a", a_b="1", _9x="2", dup="first", msg="hi there", empty=""} 2 3
 
 # logfmt() clashing labels keep the loser under `<name>_extracted`, following the base-name
-# precedence stream > metadata > parsed (the same for every parser).
+# precedence stream > metadata > parsed (the same for every parser). In the three-way clash (`tri`)
+# the metadata value keeps `tri_extracted`, and the parsed value is dropped.
 clear
 load
   {app="a", sl="s", sm="s", tri="s"} `sl=p md=p tri=p` @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
   {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | logfmt [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 2 3
 # logfmt() label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | logfmt sl, md, sm, tri [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 
 # logfmt() after `drop`: a dropped stream label does not clash with parsed keys.
 clear
@@ -162,12 +163,12 @@ load
   {app="noise"} `{"x":1}` @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | json [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 2 3
 # json()'s label-expression form resolves the same clashes the same way.
 eval instant at 60s count_over_time({app="a"} | json sl, md, sm, tri [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 
 # json() malformed line: the query fails, unless a __error__ filter drops the bad line.
 clear
@@ -344,9 +345,9 @@ load
   {app="noise"} "y" @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | regexp `(?P<sl>\S+) (?P<md>\S+) (?P<tri>\S+)` [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | regexp `(?P<sl>\S+) (?P<md>\S+) (?P<tri>\S+)` [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 2 3
 
 # pattern()
 clear
@@ -388,9 +389,9 @@ load
   {app="noise"} "y" @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | pattern `<sl> <md> <tri>` [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | pattern `<sl> <md> <tri>` [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 2 3
 
 # unpack() promotes the string fields of a json line to labels. It skips a non-string field (num) and
 # the reserved `_entry` key, whose value replaces the log line instead of becoming a label.
@@ -430,9 +431,9 @@ load
   {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | unpack [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack [1m])
-  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="m"} 2 3
 
 # unpack() fails on a non-json line; a __error__ filter drops it.
 clear

@@ -85,6 +85,8 @@ Of course, you can filter by multiple labels of structured metadata at the same 
 {job="example"} | pod="myservice-abc1234-56789" | trace_id="0242ac120002"
 ```
 
+If a structured metadata key has the same name as a stream label, the stream label keeps the name, and Loki renames the structured metadata key to `<name>_extracted`. Refer to [Label name collisions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-name-collisions) for the rules.
+
 Note that since structured metadata is extracted automatically to the results labels, some metric queries might return an error like `maximum of series (50000) reached for a single query`. You can use the [Keep](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#keep-labels-expression) and [Drop](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#drop-labels-expression) stages to filter out labels that you don't need.
 For example:
 
