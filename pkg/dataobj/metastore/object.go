@@ -50,6 +50,9 @@ const (
 	// sections logger.
 	duplicatesLogsPerSecond = 1
 	duplicatesLogsBurst     = 5
+
+	// indexPrefetchBytes is how many bytes Sections reads up front from an index object.
+	indexPrefetchBytes = 64 * 1024
 )
 
 var (
@@ -460,6 +463,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 				IndexPath:       indexEntry.Path,
 				SectionsRequest: req,
+				PrefetchBytes:   indexPrefetchBytes,
 			})
 			if err != nil {
 				return fmt.Errorf("get index sections reader: %w", err)
