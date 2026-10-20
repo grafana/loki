@@ -374,7 +374,7 @@ func (e *fanoutEnv) checkCallsGoToOwners(t *testing.T) int {
 	calls := e.calls.take()
 	for _, c := range calls {
 		table := fmt.Sprintf("index_%d", int64(c.from/fanoutDay))
-		rs, err := e.ownership.Owners(fanoutTenant, table, indexgateway.IndexOwnersRead)
+		rs, err := e.ownership.Owners(fanoutTenant, table, indexgateway.WholeIndexShard, indexgateway.IndexOwnersRead)
 		require.NoError(t, err)
 		require.True(t, rs.Includes(c.addr), "%s [%d, %d] for %s sent to %s, not an owner", c.method, c.from, c.through, table, c.addr)
 	}
@@ -527,7 +527,7 @@ func TestGatewayClientPerIndex_ShardsGoWholeToFirstTableOwners(t *testing.T) {
 	require.Len(t, calls, 1)
 	require.Equal(t, req.From, calls[0].from)
 	require.Equal(t, req.Through, calls[0].through)
-	rs, err := e.ownership.Owners(fanoutTenant, fmt.Sprintf("index_%d", fanoutBase), indexgateway.IndexOwnersRead)
+	rs, err := e.ownership.Owners(fanoutTenant, fmt.Sprintf("index_%d", fanoutBase), indexgateway.WholeIndexShard, indexgateway.IndexOwnersRead)
 	require.NoError(t, err)
 	require.True(t, rs.Includes(calls[0].addr))
 }

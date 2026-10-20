@@ -127,6 +127,11 @@ type Config struct {
 	// downloads.Config.DropFilter). It is set by the index gateway with
 	// per-index ownership.
 	DropFilter downloads.TenantFilter `yaml:"-"`
+	// FileFilter, if set, limits the files of a tenant's index in a table that
+	// are kept ready for queries to the ones this instance owns (see
+	// downloads.Config.FileFilter). It is set by the index gateway with
+	// per-index ownership.
+	FileFilter downloads.FileFilter `yaml:"-"`
 }
 
 // ForPeriod returns the config and the object storage path prefix of the
@@ -144,6 +149,7 @@ func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
 	cfg.TenantFilter = nil
 	cfg.SkipInitialQueryReadiness = false
 	cfg.DropFilter = nil
+	cfg.FileFilter = nil
 	return cfg, p.IndexTables.PathPrefix
 }
 
@@ -301,6 +307,7 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			Limits:                    limits,
 			SkipInitialQueryReadiness: s.cfg.SkipInitialQueryReadiness,
 			DropFilter:                s.cfg.DropFilter,
+			FileFilter:                s.cfg.FileFilter,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {

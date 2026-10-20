@@ -52,6 +52,18 @@ type Limits interface {
 // It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterTenants
 type TenantFilter func(table string, tenants []string) ([]string, error)
 
+// FileFilter answers which of the index files of a tenant in a table this
+// instance must keep ready for queries. It is applied when a user index set
+// kept ready for queries syncs with storage: files it does not return are not
+// downloaded, and are removed if present. Index sets downloaded on demand by
+// a query are not filtered, so a gateway that is not an owner can still answer
+// a query from the whole index. With fingerprint-sharded index files, the
+// index gateway keeps the files whose fingerprint range overlaps a shard it
+// owns.
+//
+// It requires the same function signature as indexgateway.(*IndexOwnershipFilter).FilterFiles
+type FileFilter func(table, tenant string, files []storage.IndexFile) ([]storage.IndexFile, error)
+
 type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
@@ -85,6 +97,10 @@ type Config struct {
 	// demand and the common index sets are never evicted this way; they go
 	// by CacheTTL. The index gateway with per-index ownership sets it.
 	DropFilter TenantFilter
+	// FileFilter, if set, limits the files a user index set kept ready for
+	// queries downloads and keeps (see FileFilter). The index gateway with
+	// per-index ownership sets it.
+	FileFilter FileFilter
 }
 
 type tableManager struct {
@@ -362,7 +378,7 @@ func (tm *tableManager) cleanupCache() error {
 }
 
 func (tm *tableManager) tableOptions() tableOptions {
-	return tableOptions{}
+	return tableOptions{fileFilter: tm.cfg.FileFilter}
 }
 
 // EnsureQueryReadiness implements TableManager. With Config.DropFilter, it
