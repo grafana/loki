@@ -229,7 +229,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, schema []st
 	if !slices.Equal(got, schema) {
 		return nil, fmt.Errorf("section schema %v does not match expected sort schema %v", got, schema)
 	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, nil)
 	if err != nil {
 		return nil, err
 	}

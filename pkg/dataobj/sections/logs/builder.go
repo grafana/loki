@@ -250,14 +250,13 @@ func (b *Builder) Append(entry Record) {
 	}
 }
 
+// RecordOverhead is the number of bytes that [Builder.UncompressedSize] counts
+// for each record on top of [Record.UncompressedSize]: one byte for the
+// stream ID (as a uvarint) and eight bytes for the timestamp.
+const RecordOverhead = 9
+
 func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	size += int(record.UncompressedSize())
-
-	return size
+	return RecordOverhead + int(record.UncompressedSize())
 }
 
 func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {

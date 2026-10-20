@@ -13,14 +13,17 @@ import (
 
 // A Sorter sorts data objects.
 type Sorter struct {
-	factory  *BuilderFactory
-	duration prometheus.Histogram
+	factory     *BuilderFactory
+	concurrency int
+	duration    prometheus.Histogram
 }
 
-// NewSorter returns a new Sorter.
-func NewSorter(factory *BuilderFactory, r prometheus.Registerer) *Sorter {
+// NewSorter returns a new Sorter. It sorts the logs of one tenant on up to
+// concurrency goroutines, see [Builder.CopyAndSortWithConcurrency].
+func NewSorter(factory *BuilderFactory, concurrency int, r prometheus.Registerer) *Sorter {
 	return &Sorter{
-		factory: factory,
+		factory:     factory,
+		concurrency: concurrency,
 		duration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_dataobj_sort_duration_seconds",
 			Help: "Histogram of time spent sorting data objects",
@@ -42,5 +45,5 @@ func (s *Sorter) Sort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object
 	t := prometheus.NewTimer(s.duration)
 	defer t.ObserveDuration()
 	// Don't need to reset b as it is discarded after each use.
-	return b.CopyAndSort(ctx, obj)
+	return b.CopyAndSortWithConcurrency(ctx, obj, s.concurrency)
 }

@@ -451,6 +451,19 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // already follows its tenant's target layout, it performs only a k-way merge
 // and stream-ID remap. If any section differs, it re-sorts the entire object.
 func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return b.CopyAndSortWithConcurrency(ctx, obj, 1)
+}
+
+// CopyAndSortWithConcurrency is like [Builder.CopyAndSort], but it sorts the
+// logs of one tenant on up to concurrency goroutines. Each goroutine sorts a
+// contiguous range of streams, of about the target section size, and the
+// sections of the ranges reach the object in stream order.
+//
+// The records come out in the same order as with a concurrency of 1. The
+// section boundaries can differ, because a range always ends a section. At
+// most concurrency ranges hold buffered records or encoded sections at a
+// time.
+func (b *Builder) CopyAndSortWithConcurrency(ctx context.Context, obj *dataobj.Object, concurrency int) (*dataobj.Object, io.Closer, error) {
 	// Must reset builder when done.
 	defer b.Reset()
 
@@ -520,7 +533,8 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 		}
 
-		if err := b.buildStreamSection(ctx, tenant, streamIter, sb); err != nil {
+		streamSizes, err := b.buildStreamSection(ctx, tenant, streamIter, sb)
+		if err != nil {
 			return nil, nil, err
 		}
 
@@ -543,27 +557,37 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 				}()
 			}
 
-			logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap)
+			newSection := func() *logs.Builder {
+				lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+					PageSizeHint:     int(b.cfg.TargetPageSize),
+					PageMaxRowCount:  b.cfg.MaxPageRows,
+					BufferSize:       int(b.cfg.BufferSize),
+					StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+					AppendStrategy:   logs.AppendOrdered,
+					SortOrder:        logs.SortSchemaASC,
+					SchemaLabels:     schemaLabels,
+					StreamOrder:      logs.StreamOrderStableHashV1,
+					ShardCount:       shardLayout.Buckets(),
+					DropDuplicates:   b.cfg.DropDuplicates,
+				})
+				lb.SetTenant(tenant)
+				return lb
+			}
+
+			if concurrency > 1 {
+				ranges := planSortRanges(streamSizes, sortKeysByRank(remappedStreams), int64(b.cfg.TargetSectionSize))
+				if len(ranges) > 1 {
+					return b.sortRangesConcurrently(ctx, tenant, mergeSections, mergeRemap, streamIDsByRange(mergeRemap, ranges), newSection, concurrency)
+				}
+			}
+
+			logsIter, iterErr := mergeAndRemapLogsIter(ctx, mergeSections, mergeRemap, nil)
 			if iterErr != nil {
 				return fmt.Errorf("creating sort iterator for tenant %s: %w", tenant, iterErr)
 			}
 
-			lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-				PageSizeHint:     int(b.cfg.TargetPageSize),
-				PageMaxRowCount:  b.cfg.MaxPageRows,
-				BufferSize:       int(b.cfg.BufferSize),
-				StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-				AppendStrategy:   logs.AppendOrdered,
-				SortOrder:        logs.SortSchemaASC,
-				SchemaLabels:     schemaLabels,
-				StreamOrder:      logs.StreamOrderStableHashV1,
-				ShardCount:       shardLayout.Buckets(),
-				DropDuplicates:   b.cfg.DropDuplicates,
-			})
-			lb.SetTenant(tenant)
-
 			// Drain logs iter and append section from lb into the object stored on the builder.
-			if err := b.drainLogsIter(ctx, logsIter, lb, tenant); err != nil {
+			if err := b.drainLogsIter(ctx, logsIter, newSection(), tenant); err != nil {
 				return err
 			}
 			return nil
@@ -682,24 +706,32 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record
 }
 
 // buildStreamSection consumes an iterator, appending each stream to the provided
-// streams.Builder, and adds it to the sections accumulator.
-func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) error {
+// streams.Builder, and adds it to the sections accumulator. The iterator must
+// yield streams with IDs from 1 to the number of streams. buildStreamSection
+// returns, indexed by stream ID, the uncompressed size that the records of
+// each stream add to a logs section.
+func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter result.Seq[streams.Stream], sb *streams.Builder) ([]int64, error) {
 	sb.Reset()
 	sb.SetTenant(tenant)
 
+	sizes := []int64{0}
 	for res := range iter {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 		stream, err := res.Value()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if stream.ID != int64(len(sizes)) {
+			return nil, fmt.Errorf("stream ID %d out of order for tenant %s, want %d", stream.ID, tenant, len(sizes))
+		}
+		sizes = append(sizes, stream.UncompressedSize+int64(stream.Rows)*logs.RecordOverhead)
 		sb.AppendValue(stream)
 	}
-	return b.builder.Append(sb)
+	return sizes, b.builder.Append(sb)
 }
 
 type mappedStream struct {
