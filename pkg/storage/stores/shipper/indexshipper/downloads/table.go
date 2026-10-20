@@ -35,6 +35,9 @@ type Table interface {
 	DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error)
 	Sync(ctx context.Context) error
 	EnsureQueryReadiness(ctx context.Context, userIDs []string) error
+	// DropNotOwned evicts the user index sets that dropFilter says this instance
+	// no longer owns.
+	DropNotOwned(ctx context.Context, dropFilter TenantFilter) error
 }
 
 // table is a collection of multiple files created for a same table by various ingesters.
@@ -76,6 +79,8 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
+// Index sets found on local disk are not query ready: whether they still are is
+// decided by the next query readiness run, which marks them.
 func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, downloadTimeout time.Duration) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
@@ -272,18 +277,81 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 			}
 
 			level.Info(t.logger).Log("msg", "cleaning up expired index set", "user_id", userID)
-			err := t.indexSets[userID].DropAllDBs()
-			if err != nil {
+			if err := t.dropIndexSetLocked(userID, t.indexSets[userID].DropAllDBs); err != nil {
 				return false, err
 			}
-
-			delete(t.indexSets, userID)
 		}
 
 		return len(t.indexSets) == 0, nil
 	}
 
 	return false, nil
+}
+
+// dropIndexSetLocked removes the index set of userID from the table after
+// drop, which is the index set's DropAllDBs or Evict, succeeds. The caller
+// must hold indexSetsMtx for writing.
+func (t *table) dropIndexSetLocked(userID string, drop func() error) error {
+	if err := drop(); err != nil {
+		return err
+	}
+	delete(t.indexSets, userID)
+	return nil
+}
+
+// DropNotOwned implements Table. Only user index sets kept ready for queries
+// are considered: ones created on demand by a query are left to the TTL, and
+// so is the common index set, which every index gateway needs.
+func (t *table) DropNotOwned(ctx context.Context, dropFilter TenantFilter) error {
+	t.indexSetsMtx.RLock()
+	candidates := make([]string, 0, len(t.indexSets))
+	for userID, indexSet := range t.indexSets {
+		// Skip index sets still initialising: evicting one would wait for it
+		// while holding indexSetsMtx, which blocks every query of the table.
+		if userID != "" && indexSet.QueryReady() && isIndexSetReady(indexSet) {
+			candidates = append(candidates, userID)
+		}
+	}
+	t.indexSetsMtx.RUnlock()
+
+	if len(candidates) == 0 {
+		return nil
+	}
+	slices.Sort(candidates)
+
+	toDrop, err := dropFilter(t.name, candidates)
+	if err != nil {
+		return err
+	}
+	if len(toDrop) == 0 {
+		return nil
+	}
+
+	t.indexSetsMtx.Lock()
+	defer t.indexSetsMtx.Unlock()
+	for _, userID := range toDrop {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		indexSet, ok := t.indexSets[userID]
+		if !ok || !indexSet.QueryReady() || !isIndexSetReady(indexSet) {
+			continue
+		}
+		level.Info(t.logger).Log("msg", "evicting index set no longer owned by this instance", "user_id", userID)
+		if err := t.dropIndexSetLocked(userID, indexSet.Evict); err != nil {
+			return errors.Wrapf(err, "failed to evict index set %s for table %s", userID, t.name)
+		}
+	}
+	return nil
+}
+
+// isIndexSetReady reports whether set has finished initialising. Index
+// sets other than *indexSet are assumed ready.
+func isIndexSetReady(set IndexSet) bool {
+	if is, ok := set.(*indexSet); ok {
+		return is.indexMtx.isReady()
+	}
+	return true
 }
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
@@ -344,11 +412,13 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 		baseIndexSet = t.baseCommonIndexSet
 	}
 
-	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout)
+	// instantiate the index set, add it to the map. Index sets created other
+	// than for a query are created for query readiness.
+	newSet, err := newIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id), t.downloadTimeout, !forQuerying)
 	if err != nil {
 		return nil, err
 	}
+	indexSet = newSet
 	t.indexSets[id] = indexSet
 
 	// initialize the index set in async mode
@@ -408,15 +478,22 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 	commonIndexSet.UpdateLastUsedAt()
 
 	missingUserIDs := make([]string, 0, len(userIDs))
+	notQueryReady := []IndexSet{commonIndexSet}
 	t.indexSetsMtx.RLock()
 	for _, userID := range userIDs {
 		if userIndexSet, ok := t.indexSets[userID]; !ok {
 			missingUserIDs = append(missingUserIDs, userID)
 		} else {
 			userIndexSet.UpdateLastUsedAt()
+			notQueryReady = append(notQueryReady, userIndexSet)
 		}
 	}
 	t.indexSetsMtx.RUnlock()
+
+	// Existing sets are now kept ready for queries.
+	for _, indexSet := range notQueryReady {
+		indexSet.MarkQueryReady()
+	}
 
 	return t.downloadUserIndexes(ctx, missingUserIDs)
 }

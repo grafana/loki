@@ -31,6 +31,7 @@ type PerIndexOwnershipConfig struct {
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration" category:"experimental"`
 	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration" category:"experimental"`
 	PreloadTimeout           time.Duration `yaml:"preload_timeout" category:"experimental"`
+	RingCheckPeriod          time.Duration `yaml:"ring_check_period" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix registers flags.
@@ -43,6 +44,7 @@ func (cfg *PerIndexOwnershipConfig) RegisterFlagsWithPrefix(prefix string, f *fl
 		"Experimental. Maximum time to wait for the ring to be stable before preloading anyway. Only used when -index-gateway.per-index-ownership.wait-stability-min-duration is greater than 0.")
 	f.DurationVar(&cfg.PreloadTimeout, prefix+"preload-timeout", 30*time.Minute,
 		"Experimental. Maximum time to preload owned indexes before becoming ACTIVE anyway. Indexes not loaded by then are loaded by the periodic query readiness loop. 0 means no timeout.")
+	cfg.registerReconcileFlags(prefix, f)
 }
 
 // Validate validates the config.
@@ -53,7 +55,7 @@ func (cfg *PerIndexOwnershipConfig) Validate(mode Mode) error {
 	if mode != RingMode {
 		return errors.New("index-gateway.per-index-ownership.enabled requires index-gateway.mode=ring")
 	}
-	if cfg.WaitStabilityMinDuration < 0 || cfg.WaitStabilityMaxDuration < 0 || cfg.PreloadTimeout < 0 {
+	if cfg.WaitStabilityMinDuration < 0 || cfg.WaitStabilityMaxDuration < 0 || cfg.PreloadTimeout < 0 || cfg.RingCheckPeriod < 0 {
 		return errors.New("index-gateway.per-index-ownership durations must not be negative")
 	}
 	if cfg.WaitStabilityMinDuration > 0 && cfg.WaitStabilityMaxDuration < cfg.WaitStabilityMinDuration {
