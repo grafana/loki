@@ -17,7 +17,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -46,11 +45,6 @@ const (
 
 	tocFileName = "toc.toc"
 
-	// duplicatesLogsPerSecond and duplicatesLogsBurst set the rate limit of the duplicate
-	// sections logger.
-	duplicatesLogsPerSecond = 1
-	duplicatesLogsBurst     = 5
-
 	// indexPrefetchBytes is how many bytes Sections reads up front from an index object.
 	indexPrefetchBytes = 64 * 1024
 )
@@ -69,10 +63,6 @@ type ObjectMetastore struct {
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
-
-	// duplicatesLogger limits the logs of duplicate sections. One query can find thousands of
-	// them.
-	duplicatesLogger log.Logger
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -284,8 +274,6 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
-
-		duplicatesLogger: dslog.NewRateLimitedLogger(logger, duplicatesLogsPerSecond, duplicatesLogsBurst, nil),
 	}
 
 	return store
@@ -452,7 +440,10 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, nil
 	}
 
-	var sections []DataobjSectionDescriptorWithIndex
+	var (
+		batches     []indexSections
+		numSections int
+	)
 	sectionsMu := sync.Mutex{}
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -483,9 +474,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 			sp := reader.(statsProvider)
 			totalSections.Add(sp.stats().ReadRows)
 
-			for _, section := range sectionsResp.SectionsResponse.Sections {
-				sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexEntry.Path})
-			}
+			batches = append(batches, indexSections{indexPath: indexEntry.Path, sections: sectionsResp.SectionsResponse.Sections})
+			numSections += len(sectionsResp.SectionsResponse.Sections)
 			sectionsMu.Unlock()
 
 			return nil
@@ -496,9 +486,14 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 		return SectionsResponse{}, err
 	}
 
-	uniqueSections, err := m.dropDuplicateSections(ctx, sections)
-	if err != nil {
-		return SectionsResponse{}, err
+	deduplicator := newSectionsDeduplicator(m.logger, m.metrics)
+	uniqueSections := make([]*DataobjSectionDescriptor, 0, numSections)
+	for _, batch := range batches {
+		unique, err := deduplicator.deduplicate(ctx, batch.indexPath, batch.sections)
+		if err != nil {
+			return SectionsResponse{}, err
+		}
+		uniqueSections = append(uniqueSections, unique...)
 	}
 
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
@@ -529,53 +524,10 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 	return SectionsResponse{uniqueSections}, nil
 }
 
-// dropDuplicateSections keeps the first descriptor of each section, unchanged,
-// and drops the others. The kept descriptors stay in input order.
-//
-// Two index objects can describe the same section, for example when the
-// builder indexes one log object twice after a failed flush. Both index the
-// same log object, so they must agree on the section. It returns an error when
-// a later copy disagrees with the first one.
-func (m *ObjectMetastore) dropDuplicateSections(ctx context.Context, sections []DataobjSectionDescriptorWithIndex) ([]*DataobjSectionDescriptor, error) {
-	var (
-		seen = make(map[SectionKey]DataobjSectionDescriptorWithIndex, len(sections))
-		kept = make([]*DataobjSectionDescriptor, 0, len(sections))
-	)
-
-	for _, section := range sections {
-		first, ok := seen[section.SectionKey]
-		if !ok {
-			seen[section.SectionKey] = section
-			kept = append(kept, section.DataobjSectionDescriptor)
-			continue
-		}
-
-		if !first.sameStreamAndStatistics(section.DataobjSectionDescriptor) {
-			m.metrics.duplicateSectionsTotal.WithLabelValues(divergedTrue).Inc()
-
-			// This log carries the details the error lacks. It does not use duplicatesLogger,
-			// because each failed query logs once and the limit could drop it.
-			level.Error(utillog.WithContext(ctx, m.logger)).Log(
-				"msg", errDifferentSectionStatistics.Error(),
-				"object", first.ObjectPath,
-				"section", first.SectionIdx,
-				"first_index", first.IndexPath,
-				"second_index", section.IndexPath,
-			)
-			return nil, errDifferentSectionStatistics
-		}
-
-		level.Info(utillog.WithContext(ctx, m.duplicatesLogger)).Log(
-			"msg", "the same section was found in multiple index objects, deduplicating it",
-			"object", first.ObjectPath,
-			"section", first.SectionIdx,
-			"kept_index", first.IndexPath,
-			"dropped_index", section.IndexPath,
-		)
-		m.metrics.duplicateSectionsTotal.WithLabelValues(divergedFalse).Inc()
-	}
-
-	return kept, nil
+// indexSections holds the sections that one index object lists.
+type indexSections struct {
+	indexPath string
+	sections  []*DataobjSectionDescriptor
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
