@@ -104,6 +104,8 @@ type Config struct {
 	StreamingIndexMaxIdleFileHandles uint         `yaml:"streaming_index_max_idle_file_handles" category:"experimental"`
 	PostingsCache                    cache.Config `yaml:"postings_cache" category:"experimental" doc:"description=Experimental. Caches expanded postings for downloaded per-tenant TSDB index files."`
 
+	QueryReadyOverrides downloads.QueryReadyOverrides `yaml:"query_ready_overrides" category:"experimental" doc:"hidden"`
+
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
@@ -115,6 +117,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.QueryReadyOverrides.RegisterFlagsWithPrefix(prefix+"shipper.query-ready-overrides.", f)
 	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
 
@@ -155,6 +158,9 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if err := cfg.QueryReadyOverrides.Validate(); err != nil {
+		return err
+	}
 	if cfg.DownloadTimeout <= 0 {
 		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
 	}
@@ -255,12 +261,13 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:          s.cfg.CacheLocation,
-			SyncInterval:      s.cfg.ResyncInterval,
-			CacheTTL:          s.cfg.CacheTTL,
-			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
-			DownloadTimeout:   s.cfg.DownloadTimeout,
-			Limits:            limits,
+			CacheDir:            s.cfg.CacheLocation,
+			SyncInterval:        s.cfg.ResyncInterval,
+			CacheTTL:            s.cfg.CacheTTL,
+			QueryReadyNumDays:   s.cfg.QueryReadyNumDays,
+			DownloadTimeout:     s.cfg.DownloadTimeout,
+			Limits:              limits,
+			QueryReadyOverrides: s.cfg.QueryReadyOverrides,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {

@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental process-local index readiness overrides
+
+The `tsdb_shipper.query_ready_overrides` settings are experimental. `num_days` maps tenant IDs to readiness windows, with `"*"` as the default. `tenants_include` and `tenants_exclude` restrict which tenants this process preloads. These settings do not change shared tenant limits or common-index readiness, and are unset by default.
+
 ### Experimental fingerprint-sharded TSDB index
 
 Set the experimental `sharded_path_prefix` in the `index` block of a schema period to have the compactor also write every per-tenant index of the period's tables that it uploads to that prefix, split into the period's experimental `shard_factor` fingerprint-range files. The prefix must differ from the `path_prefix` of every schema period. `shard_factor` values `0` and `1` write a single file; larger values must be powers of two and require `sharded_path_prefix`. The index under `path_prefix` is never split, and readers of it are unaffected.
