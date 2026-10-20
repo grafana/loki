@@ -69,8 +69,9 @@ type Config struct {
 	QueryReadyNumDays int
 	// DownloadTimeout bounds how long an indexSet's Init may take to download
 	// its files from object storage.
-	DownloadTimeout time.Duration
-	Limits          Limits
+	DownloadTimeout     time.Duration
+	QueryReadyOverrides QueryReadyOverrides
+	Limits              Limits
 }
 
 type tableManager struct {
@@ -376,6 +377,8 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		}
 	}
 
+	largestQueryReadinessNum = max(largestQueryReadinessNum, tm.cfg.QueryReadyOverrides.maxNumDays())
+
 	// return early if no table has to be downloaded for query readiness
 	if largestQueryReadinessNum == 0 {
 		return nil
@@ -467,10 +470,19 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
+	overrides := &tm.cfg.QueryReadyOverrides
 
 	for _, userID := range usersWithIndexInTable {
-		// use the query readiness config for the user if it exists or use the default config
-		queryReadyNumDays, ok := queryReadinessNumByUserID[userID]
+		if !overrides.allowed(userID) {
+			continue
+		}
+
+		// use this process's override for the user if there is one, else the
+		// query readiness config for the user if it exists, else the default config
+		queryReadyNumDays, ok := overrides.numDays(userID)
+		if !ok {
+			queryReadyNumDays, ok = queryReadinessNumByUserID[userID]
+		}
 		if !ok {
 			queryReadyNumDays = tm.cfg.Limits.DefaultLimits().QueryReadyIndexNumDays
 		}
