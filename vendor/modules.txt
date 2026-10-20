@@ -1292,7 +1292,7 @@ github.com/parquet-go/parquet-go/internal/memory
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
 github.com/parquet-go/parquet-go/variant
-# github.com/philhofer/fwd v1.2.0
+# github.com/philhofer/fwd v1.2.1
 ## explicit; go 1.20
 github.com/philhofer/fwd
 # github.com/pierrec/lz4/v4 v4.1.33
