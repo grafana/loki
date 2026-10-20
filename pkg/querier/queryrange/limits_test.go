@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -1055,6 +1056,87 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestQuerySizeLimiter_BytesReadByQuery(t *testing.T) {
+	const bytesPerHour = 1000
+
+	// bytesIn returns the bytes stored in a time range at a constant rate of bytesPerHour.
+	bytesIn := func(from, through time.Time) uint64 {
+		return uint64(through.Sub(from) * bytesPerHour / time.Hour)
+	}
+
+	t.Run("rejects a metric query when its splits together read more than the limit", func(t *testing.T) {
+		const (
+			query = `sum by (env) (count_over_time({dataset="production"} |= "needle" [1h]))`
+			limit = 2500
+		)
+		start := time.Date(2026, 10, 9, 16, 40, 0, 0, time.UTC)
+		end := start.Add(time.Hour)
+
+		limits := fakeLimits{
+			maxQueryBytesRead:   limit,
+			maxQueryParallelism: 1,
+			splitDuration:       map[string]time.Duration{"foo": 30 * time.Minute},
+		}
+
+		statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{
+				Bytes: bytesIn(req.GetStart(), req.GetEnd()),
+			}}, nil
+		})
+
+		// Each split reads its own time range plus the 1h range vector before it.
+		bytesRead := atomic.NewUint64(0)
+		splitHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			bytesRead.Add(bytesIn(req.GetStart().Add(-time.Hour), req.GetEnd()))
+			params, err := ParamsFromRequest(req)
+			if err != nil {
+				return nil, err
+			}
+			return ResultToResponse(logqlmodel.Result{Data: promql.Matrix{}}, params)
+		})
+
+		handler := queryrangebase.MergeMiddlewares(
+			NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, limits, statsHandler),
+			SplitByIntervalMiddleware(testSchemas, limits, DefaultCodec, newMetricQuerySplitter(Config{}, limits, nil), nilMetrics),
+		).Wrap(splitHandler)
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			StartTs:   start,
+			EndTs:     end,
+			Step:      (14 * time.Second).Milliseconds(),
+			Direction: logproto.BACKWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.Error(t, err, "the splits read %d bytes, the limit is %d bytes", bytesRead.Load(), limit)
+	})
+
+	t.Run("rejects the query when the index stats request fails", func(t *testing.T) {
+		const query = `{app="foo"} |= "foo"`
+
+		statsHandler := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+			return nil, errors.New("index gateway unavailable")
+		})
+		_, promHandler := promqlResult(matrix)
+
+		handler := NewQuerySizeLimiterMiddleware(testEngineOpts, util_log.Logger, fakeLimits{maxQueryBytesRead: 1000}, statsHandler).Wrap(promHandler)
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		_, err := handler.Do(ctx, &LokiRequest{
+			Query:     query,
+			Limit:     1000,
+			StartTs:   testTime.Add(-time.Hour),
+			EndTs:     testTime,
+			Direction: logproto.FORWARD,
+			Path:      "/query_range",
+			Plan:      testutil.MustPlan(query),
+		})
+		require.Error(t, err)
+	})
 }
 
 func TestAcquireWithTiming(t *testing.T) {
