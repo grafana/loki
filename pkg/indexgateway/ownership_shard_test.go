@@ -222,3 +222,7 @@ func containsString(xs []string, x string) bool {
 	}
 	return false
 }
+
+func TestMaximumFingerprintOverlapsLastShard(t *testing.T) {
+	require.Equal(t, []index.ShardAnnotation{index.NewShard(3, 4)}, ShardsOverlapping(4, math.MaxUint64, math.MaxUint64))
+}

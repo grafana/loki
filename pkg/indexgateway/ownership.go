@@ -117,10 +117,10 @@ func shardBounds(shard index.ShardAnnotation) (model.Fingerprint, model.Fingerpr
 	return shard.GetFromThrough()
 }
 
-// rangesOverlap reports whether [aFrom, aThrough) and [bFrom, bThrough)
-// intersect. An empty range intersects nothing.
+// rangesOverlap reports whether the fingerprint ranges intersect.
+// MaxUint64 is an inclusive upper sentinel.
 func rangesOverlap(aFrom, aThrough, bFrom, bThrough model.Fingerprint) bool {
-	return aFrom < aThrough && bFrom < bThrough && aFrom < bThrough && bFrom < aThrough
+	return index.FingerprintRangesOverlap(aFrom, aThrough, bFrom, bThrough)
 }
 
 // ShardsOverlapping returns the shards of k whose fingerprint range intersects
