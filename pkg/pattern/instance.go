@@ -108,6 +108,17 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
+		lbls, err := syntax.ParseLabels(reqStream.Labels)
+		if err != nil {
+			appendErr.Add(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()))
+			continue
+		}
+
+		// Skip streams that are already aggregated metrics or patterns to avoid loops.
+		if lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel) {
+			continue
+		}
+
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
 		i.Observe(ctx, reqStream.Labels, reqStream.Entries)

@@ -238,8 +238,8 @@ github.com/digitalocean/godo v1.210.0 h1:syE1urCVp/pG/Y8hZ+ECK9LxkVGlGbIWVHEq1YG
 github.com/digitalocean/godo v1.210.0/go.mod h1:xQsWpVCCbkDrWisHA72hPzPlnC+4W5w/McZY5ij9uvU=
 github.com/distribution/reference v0.6.0 h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=
 github.com/distribution/reference v0.6.0/go.mod h1:BbU0aIcezP1/5jX/8MP0YiH4SdvB5Y4f/wlDRiLyi3E=
-github.com/dlclark/regexp2/v2 v2.9.0 h1:kKj+BlRuUhZzJk8B3yOBxWKxDFnx2Ilq4e7KNdq/Mxk=
-github.com/dlclark/regexp2/v2 v2.9.0/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
+github.com/dlclark/regexp2/v2 v2.9.1 h1:q6bZW/NN9VodqMjYXpuic2lZxdHPfFTzGS+MJxIJmKQ=
+github.com/dlclark/regexp2/v2 v2.9.1/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
 github.com/docker/go-connections v0.8.2 h1:9d9DEokx5W7qlr0shkFXIxEA7+TTD+llwzcykSlxMNc=
 github.com/docker/go-connections v0.8.2/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
 github.com/docker/go-metrics v0.1.0 h1:r76KPNpstz+IvQKSWpYegSkkyzex0V3A1ZGVx6bhGlY=
@@ -416,8 +416,8 @@ github.com/google/gofuzz v1.2.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/
 github.com/google/martian/v3 v3.3.3 h1:DIhPTQrbPkgs2yJYdXU/eNACCG5DVQjySNRNlflZ9Fc=
 github.com/google/martian/v3 v3.3.3/go.mod h1:iEPrYcgCF7jA9OtScMFQyAlZZ4YXTKEtJ1E6RWzmBA0=
 github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7/go.mod h1:czg5+yv1E0ZGTi6S6vVK1mke0fV+FaUhNGcd6VRS9Ik=
-github.com/google/pprof v0.0.0-20261008003335-7bae8d8c4c9e h1:e+e5v2rfqKrd4lDA2n3azN3ludWyM2p+4MWob4EBlbk=
-github.com/google/pprof v0.0.0-20261008003335-7bae8d8c4c9e/go.mod h1:yUo1AMMpsPIDFGuwDK8nLcf8+vvAd5l2O6JDZ6hpwrM=
+github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50 h1:PlNWJRxu5APSV0pWqfIsZ0qt9OOGHSWfZQ4zvx+WgWs=
+github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50/go.mod h1:yUo1AMMpsPIDFGuwDK8nLcf8+vvAd5l2O6JDZ6hpwrM=
 github.com/google/s2a-go v0.1.11 h1:7v1V1TraNGP63WptsAkNqr2w8jgm4vM6A6qx6Lsw9iM=
 github.com/google/s2a-go v0.1.11/go.mod h1:pz4tyvwXvJLLbyrkh6FW1eS2zPUXMaTmyNhYtyP2tNw=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
@@ -669,8 +669,8 @@ github.com/parquet-go/parquet-go v0.32.0 h1:NWDqTUHfrCS4cJP/Fj2HlxvqsrVedWG3sayM
 github.com/parquet-go/parquet-go v0.32.0/go.mod h1:navtkAYr2LGoJVp141oXPlO/sxLvaOe3la2JEoD8+rg=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/philhofer/fwd v1.1.1/go.mod h1:gk3iGcWd9+svBvR0sR+KPcfE+RNWozjowpeBVG3ZVNU=
-github.com/philhofer/fwd v1.2.0 h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=
-github.com/philhofer/fwd v1.2.0/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
+github.com/philhofer/fwd v1.2.1 h1:UtpS73q8bFgy/yH3gCq8LSNvj5gv/FowNOiWZa7uKwQ=
+github.com/philhofer/fwd v1.2.1/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
 github.com/pierrec/lz4/v4 v4.1.33 h1:GjG1TJ1V4IzKP8L96muuuDNpTwd7D+l2ccXrjAbe014=
 github.com/pierrec/lz4/v4 v4.1.33/go.mod h1:7SE9MC2STkNtL4PIwGhjmyVwvILaGI9/COYQNBhKM/c=
 github.com/pires/go-proxyproto v0.15.0 h1:dTshmNbFm/D+0+sbrxUuddPOZ5Y0B7c5NhtsBkm6LqI=

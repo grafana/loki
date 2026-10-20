@@ -2290,14 +2290,6 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 	}
 	t.dataObjBuilder = dataObjBuilder
 
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-	)
-	t.Server.HTTP.
-		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
-		Path("/dataobj-builder/prepare-downscale").
-		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjBuilder.PrepareDownscaleHandler)))
-
 	return t.dataObjBuilder, nil
 }
 

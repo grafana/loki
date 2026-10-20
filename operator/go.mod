@@ -10,9 +10,9 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/grafana/loki/operator/api/loki v0.0.0-20260827121917-dd170be07101
+	github.com/grafana/loki/operator/api/loki/v3 v3.7.8
 	github.com/grafana/loki/v3 v3.7.8
-	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.2
+	github.com/maxbrunsfeld/counterfeiter/v6 v6.14.0
 	github.com/openshift/api v0.0.0-20260827103138-252412308277 // release-5.0
 	github.com/openshift/cloud-credential-operator v0.0.0-20260923223624-82a5b4459331 // release-5.0
 	github.com/openshift/library-go v0.0.0-20260814122159-7b930c0d20a6 // release-5.0
@@ -86,7 +86,7 @@ require (
 	github.com/google/cel-go v0.32.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/grafana/dskit v0.0.0-20260209132809-8d1c6d34bb5a // indirect
+	github.com/grafana/dskit v0.0.0-20261014094829-7a896efbf053 // indirect
 	github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654 // indirect
 	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 // indirect
 	github.com/grafana/loki/pkg/push v0.4.0 // indirect
@@ -174,10 +174,10 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.22.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.46.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0 // indirect
-	go.opentelemetry.io/otel/log v0.22.0 // indirect
+	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
-	go.opentelemetry.io/otel/sdk/log v0.22.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
@@ -205,7 +205,7 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.37.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect
@@ -213,7 +213,7 @@ require (
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v7 v7.0.0 // indirect
 )
 
 replace github.com/grafana/loki/operator/api/loki => ./api/loki
