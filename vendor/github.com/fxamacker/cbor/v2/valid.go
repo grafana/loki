@@ -100,7 +100,7 @@ func (d *decoder) wellformed(allowExtraData bool, checkBuiltinTags bool) error {
 
 // wellformedInternal checks data's well-formedness and returns max depth and error.
 func (d *decoder) wellformedInternal(depth int, checkBuiltinTags bool) (int, error) { //nolint:gocyclo
-	t, _, val, indefiniteLength, err := d.wellformedHeadWithIndefiniteLengthFlag()
+	t, ai, val, indefiniteLength, err := d.wellformedHeadWithIndefiniteLengthFlag()
 	if err != nil {
 		return 0, err
 	}
@@ -169,6 +169,14 @@ func (d *decoder) wellformedInternal(depth int, checkBuiltinTags bool) (int, err
 			}
 		}
 		depth = maxDepth
+
+	case cborTypePrimitives:
+		if ai <= 24 && d.dm.simpleValues != nil && d.dm.simpleValues.rejected[SimpleValue(val)] { //nolint:gosec
+			return 0, &UnacceptableDataItemError{
+				CBORType: t.String(),
+				Message:  "simple value " + strconv.FormatInt(int64(val), 10) + " is not recognized", //nolint:gosec
+			}
+		}
 
 	case cborTypeTag:
 		if d.dm.tagsMd == TagsForbidden {
