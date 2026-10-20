@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.9](https://github.com/grafana/loki/compare/v3.7.8...v3.7.9) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** Update github.com/thanos-io/objstore digest to 72d3b9f (release-3.7.x) ([#25389](https://github.com/grafana/loki/issues/25389)) ([e7d6809](https://github.com/grafana/loki/commit/e7d68093e0be6cf96fdc81c801057beaca4f212d))
+* **deps:** Update go4.org/netipx digest to 3075585 (release-3.7.x) ([#25390](https://github.com/grafana/loki/issues/25390)) ([24be2f4](https://github.com/grafana/loki/commit/24be2f4dbe6ba67269c5518f3e3f15979d6d1b8a))
+* **deps:** Update k8s.io/utils digest to cf1189d (release-3.7.x) ([#25391](https://github.com/grafana/loki/issues/25391)) ([a5218df](https://github.com/grafana/loki/commit/a5218dffae9ac78224b691daecd67690f4784dd4))
+* **ingester:** Concurrent WAL `Append()` calls could lead to inconsitent record order and irrecoverable WAL state ([#25125](https://github.com/grafana/loki/issues/25125)) ([72aa93e](https://github.com/grafana/loki/commit/72aa93ed048c289c924ebdef7236ed04df3b6e19))
+* Limit request body size for ruler "CreateRuleGroup" API and LogQLAnalyzer API [release-3.7.x] ([#24838](https://github.com/grafana/loki/issues/24838)) ([6c6e9dc](https://github.com/grafana/loki/commit/6c6e9dcafb0bfafc988a4a2f5a0b006e4d2f99aa))
+* **logql:** Keep entries while stream accumulator has free room [release-3.7.x] ([#24703](https://github.com/grafana/loki/issues/24703)) ([4390fb1](https://github.com/grafana/loki/commit/4390fb1166fd829a0bb24bca1146bfe8466b0edd))
+* **security/LOW/:** Update module go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc to v1.45.0 [SECURITY] (release-3.7.x) ([#24614](https://github.com/grafana/loki/issues/24614)) ([bab6de2](https://github.com/grafana/loki/commit/bab6de213675f0105c7efd3d772d1b4c00da5d21))
+* **security/LOW/:** Update module go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp to v1.45.0 [SECURITY] (release-3.7.x) ([#24615](https://github.com/grafana/loki/issues/24615)) ([7aee5f1](https://github.com/grafana/loki/commit/7aee5f1980b85848e94df163d644381eec29bcd3))
+* **security/LOW/:** Update module go.opentelemetry.io/otel/sdk to v1.45.0 [SECURITY] (release-3.7.x) ([#24616](https://github.com/grafana/loki/issues/24616)) ([b787d9a](https://github.com/grafana/loki/commit/b787d9a4bf438fdf873f07ed87f8f47b910fc0ae))
+* **security/MEDIUM/:** Update module github.com/containerd/containerd/v2 to v2.2.9 [SECURITY] (release-3.7.x) ([#24806](https://github.com/grafana/loki/issues/24806)) ([bafb1b8](https://github.com/grafana/loki/commit/bafb1b85014e40854424cb14e7dc7dbdae6f03d7))
+* **security:** Bump Go to 1.26.10 [SECURITY] (release-3.7.x) ([#25458](https://github.com/grafana/loki/issues/25458)) ([d3b4a2f](https://github.com/grafana/loki/commit/d3b4a2f76bfc5625abee7ceb00b8896fa3c31549))
+
 ## [3.7.8](https://github.com/grafana/loki/compare/v3.7.7...v3.7.8) (2026-09-17)
 
 
