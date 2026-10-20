@@ -79,6 +79,12 @@ type Config struct {
 	// NewTableManager, for a TenantFilter that cannot answer yet. Query
 	// readiness still runs periodically and on EnsureQueryReadiness.
 	SkipInitialQueryReadiness bool
+	// DropFilter, if set, answers which tenants in a table this instance no
+	// longer owns. After each query readiness run, the user index sets kept
+	// ready for queries that it returns are evicted. Index sets downloaded on
+	// demand and the common index sets are never evicted this way; they go
+	// by CacheTTL. The index gateway with per-index ownership sets it.
+	DropFilter TenantFilter
 }
 
 type tableManager struct {
@@ -278,7 +284,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
+			table = newTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout, tm.tableOptions())
 			tm.tables[tableName] = table
 		}
 	}
@@ -355,11 +361,46 @@ func (tm *tableManager) cleanupCache() error {
 	return nil
 }
 
-// EnsureQueryReadiness implements TableManager.
+func (tm *tableManager) tableOptions() tableOptions {
+	return tableOptions{}
+}
+
+// EnsureQueryReadiness implements TableManager. With Config.DropFilter, it
+// then evicts the query ready index sets this instance no longer owns.
 func (tm *tableManager) EnsureQueryReadiness(ctx context.Context) error {
 	tm.queryReadinessMtx.Lock()
 	defer tm.queryReadinessMtx.Unlock()
-	return tm.ensureQueryReadiness(ctx)
+	err := tm.ensureQueryReadiness(ctx)
+	// Evict even if loading failed: an error loading one table must not keep
+	// every other table's no longer owned index sets in memory.
+	if tm.cfg.DropFilter != nil {
+		tm.dropNotOwned(ctx)
+	}
+	return err
+}
+
+// dropNotOwned evicts, in every table, the query ready user index sets that
+// Config.DropFilter says this instance no longer owns. Errors are logged per
+// table, and leave that table's index sets in place until the next run.
+func (tm *tableManager) dropNotOwned(ctx context.Context) {
+	tm.tablesMtx.RLock()
+	names := slices.Collect(maps.Keys(tm.tables))
+	tm.tablesMtx.RUnlock()
+
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[name]
+		tm.tablesMtx.RUnlock()
+		if !ok {
+			continue
+		}
+		if err := table.DropNotOwned(ctx, tm.cfg.DropFilter); err != nil {
+			level.Error(tm.logger).Log("msg", "failed to evict index sets no longer owned", "table", name, "err", err)
+		}
+	}
 }
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
@@ -530,8 +571,8 @@ func (tm *tableManager) loadLocalTables() error {
 
 		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
-		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
+		table, err := loadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout, tm.tableOptions())
 		if err != nil {
 			return err
 		}

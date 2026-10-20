@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental ownership reconciliation
+
+With per-index ownership enabled, `index_gateway.per_index_ownership.ring_check_period` controls experimental ring-change reconciliation. The default is `10s`; `0` disables the watcher. Gateways retain serving replicas during handoff and evict only indexes loaded for query readiness that they no longer own. On-demand and common indexes keep their existing TTL behavior.
+
 ### Experimental per-index gateway ownership
 
 Set `index_gateway.per_index_ownership.enabled: true` to have index gateways read the sharded index copy of the schema periods with a `sharded_path_prefix`, and preload those indexes according to tenant/table ownership. Tables of other periods are read from `path_prefix` and loaded as without per-index ownership. All settings in `per_index_ownership` are experimental and require ring mode. Gateways join the ring, optionally wait for stable tokens, and preload before becoming ACTIVE. A preload timeout allows activation with remaining work handled by periodic readiness; other preload errors fail startup. Leave ownership disabled to preserve existing behavior.

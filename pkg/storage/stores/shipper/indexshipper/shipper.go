@@ -122,6 +122,11 @@ type Config struct {
 	// SkipInitialQueryReadiness skips query readiness at construction, for a
 	// TenantFilter that cannot answer until later.
 	SkipInitialQueryReadiness bool `yaml:"-"`
+	// DropFilter, if set, answers which tenants in a table this instance no
+	// longer owns, so that their query ready index sets are evicted (see
+	// downloads.Config.DropFilter). It is set by the index gateway with
+	// per-index ownership.
+	DropFilter downloads.TenantFilter `yaml:"-"`
 }
 
 // ForPeriod returns the config and the object storage path prefix of the
@@ -138,6 +143,7 @@ func (cfg Config) ForPeriod(p config.PeriodConfig) (Config, string) {
 	cfg.PerIndexOwnership = false
 	cfg.TenantFilter = nil
 	cfg.SkipInitialQueryReadiness = false
+	cfg.DropFilter = nil
 	return cfg, p.IndexTables.PathPrefix
 }
 
@@ -287,14 +293,14 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:          s.cfg.CacheLocation,
-			SyncInterval:      s.cfg.ResyncInterval,
-			CacheTTL:          s.cfg.CacheTTL,
-			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
-			DownloadTimeout:   s.cfg.DownloadTimeout,
-			Limits:            limits,
-
+			CacheDir:                  s.cfg.CacheLocation,
+			SyncInterval:              s.cfg.ResyncInterval,
+			CacheTTL:                  s.cfg.CacheTTL,
+			QueryReadyNumDays:         s.cfg.QueryReadyNumDays,
+			DownloadTimeout:           s.cfg.DownloadTimeout,
+			Limits:                    limits,
 			SkipInitialQueryReadiness: s.cfg.SkipInitialQueryReadiness,
+			DropFilter:                s.cfg.DropFilter,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
