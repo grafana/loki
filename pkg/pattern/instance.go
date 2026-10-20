@@ -105,14 +105,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
-		lbls, err := syntax.ParseLabels(reqStream.Labels)
+		skip, err := i.skipStream(reqStream)
 		if err != nil {
-			appendErr.Add(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()))
+			appendErr.Add(err)
 			continue
 		}
-
-		// Skip streams that are already aggregated metrics or patterns to avoid loops.
-		if lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel) {
+		if skip {
 			continue
 		}
 
@@ -152,6 +150,17 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	return appendErr.Err()
+}
+
+// skipStream returns true if the stream should not be processed because it is
+// already an aggregated metric or pattern stream, to avoid loops. It returns
+// false and an error if the labels of the stream are invalid.
+func (i *instance) skipStream(stream logproto.Stream) (bool, error) {
+	lbls, err := syntax.ParseLabels(stream.Labels)
+	if err != nil {
+		return false, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+	return lbls.Has(constants.AggregatedMetricLabel) || lbls.Has(constants.PatternLabel), nil
 }
 
 // streamOwner decides whether this ingester builds patterns for a stream.
