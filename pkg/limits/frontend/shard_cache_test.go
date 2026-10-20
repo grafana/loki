@@ -124,6 +124,65 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		})
 	})
 
+	t.Run("sweep keeps a stream that is still pushed while the backend does not answer", func(t *testing.T) {
+		tests := []struct {
+			name              string
+			first             *proto.CheckLimitsAndShardResponse
+			expectedForwarded uint64
+		}{{
+			name:              "lookup without an answer",
+			first:             &proto.CheckLimitsAndShardResponse{},
+			expectedForwarded: 35,
+		}, {
+			name: "refresh without an answer",
+			first: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
+			},
+			expectedForwarded: 25,
+		}}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					onMiss := &mockLimitsClient{t: t, checkLimitsAndShardResponse: test.first}
+					c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+					_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
+					require.NoError(t, err)
+
+					time.Sleep(5 * time.Minute)
+					onMiss.checkLimitsAndShardResponse = &proto.CheckLimitsAndShardResponse{}
+					_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 20))
+					require.NoError(t, err)
+
+					// Sweep runs every 10 minutes, so the call at 11 minutes
+					// sweeps. The stream's last backend call was at 5 minutes.
+					time.Sleep(6 * time.Minute)
+					onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, test.expectedForwarded)
+					_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
+					require.NoError(t, err)
+				})
+			})
+		}
+	})
+
+	t.Run("sweep removes a stream that is no longer pushed", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			onMiss := &mockLimitsClient{
+				t: t,
+				checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+					Results: []*proto.StreamShardResult{{StreamHash: 0x1, Shards: 3}},
+				},
+			}
+			c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+			_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
+			require.NoError(t, err)
+
+			time.Sleep(11 * time.Minute)
+			_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x2, 10))
+			require.NoError(t, err)
+			require.NotContains(t, c.entries, shardCacheKey{"test", 0x1})
+		})
+	})
+
 	t.Run("pushes during a refresh get the previous result without another backend call", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			onMiss := newGatedMockLimitsClient()

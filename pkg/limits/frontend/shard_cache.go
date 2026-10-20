@@ -11,8 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// shardCacheMaxIdleFactor bounds the cache's size: an entry not refreshed for
-// longer than ttl*shardCacheMaxIdleFactor is swept.
+// shardCacheMaxIdleFactor bounds the cache's size: an entry without a backend
+// call for longer than ttl*shardCacheMaxIdleFactor is swept.
 const shardCacheMaxIdleFactor = 10
 
 type shardCacheKey struct {
@@ -22,9 +22,14 @@ type shardCacheKey struct {
 
 type shardCacheEntry struct {
 	result      *proto.StreamShardResult
-	cachedAt    time.Time
 	accumSize   uint64
 	accumPushes uint32
+
+	// refreshedAt is the time of the last backend call for the stream,
+	// whether it was answered or not. A stream that is still pushed gets a
+	// backend call at least once per ttl, so sweep uses it to tell such a
+	// stream, and the size it accumulated, apart from an idle one.
+	refreshedAt time.Time
 
 	// inflight is set while a backend call refreshes the entry. Pushes that
 	// arrive meanwhile are answered with the previous result, so that an
@@ -94,7 +99,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			entry = &shardCacheEntry{}
 			c.entries[key] = entry
 		}
-		if entry.result != nil && (entry.inflight || now.Sub(entry.cachedAt) < c.ttl) {
+		if entry.result != nil && (entry.inflight || now.Sub(entry.refreshedAt) < c.ttl) {
 			// The limits service does not record the size of a push it
 			// rejects, so a push answered with a cached rejection must not
 			// reach it with the next refresh either.
@@ -132,9 +137,9 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	c.mtx.Lock()
 	for i, r := range refreshes {
 		r.entry.inflight = false
+		r.entry.refreshedAt = now
 		if res, ok := byHash[forward[i].StreamHash]; ok {
 			r.entry.result = res
-			r.entry.cachedAt = now
 			c.combinedPushes.Observe(float64(r.pushes))
 			continue
 		}
@@ -153,8 +158,10 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	return &proto.CheckLimitsAndShardResponse{Results: append(results, resp.Results...)}, nil
 }
 
-// sweep removes the entries not refreshed within ttl*shardCacheMaxIdleFactor,
-// except those being refreshed. It must be called with mtx held.
+// sweep removes the entries without a backend call within
+// ttl*shardCacheMaxIdleFactor, except those being refreshed. The size an
+// idle stream accumulated since its last backend call is dropped with it.
+// It must be called with mtx held.
 func (c *shardCacheLimitsClient) sweep(now time.Time) {
 	maxAge := c.ttl * shardCacheMaxIdleFactor
 	if now.Sub(c.lastSwept) < maxAge {
@@ -163,7 +170,7 @@ func (c *shardCacheLimitsClient) sweep(now time.Time) {
 	c.lastSwept = now
 	cutoff := now.Add(-maxAge)
 	for k, e := range c.entries {
-		if !e.inflight && e.cachedAt.Before(cutoff) {
+		if !e.inflight && e.refreshedAt.Before(cutoff) {
 			delete(c.entries, k)
 		}
 	}
