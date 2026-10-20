@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -65,6 +66,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 			input := []labeledSample{
 				{foo, sec(1)}, {foo, sec(10)}, {foo, sec(11)}, {foo, sec(20)}, {bar, sec(15)},
 			}
+
 			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
@@ -76,6 +78,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("excludes a sample on the window start and includes one on the window end", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(10)}, {foo, sec(20)}}
+
 			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(20), sec(20), 0, byApp, 0, false)
 			require.NoError(t, err)
 
@@ -84,6 +87,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("evaluates an instant query as one step", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}, {foo, sec(9)}, {bar, sec(1)}}
+
 			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
 			require.NoError(t, err)
 
@@ -92,6 +96,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("reports steps at their unshifted timestamp when the query has an offset", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}}
+
 			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), 0, sec(20), sec(20), sec(10), byApp, 0, false)
 			require.NoError(t, err)
 
@@ -100,6 +105,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 		t.Run("emits no sample for a window without samples", func(t *testing.T) {
 			input := []labeledSample{{foo, sec(5)}}
+
 			it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), query, sec(10), sec(10), sec(10), sec(30), 0, byApp, 0, false)
 			require.NoError(t, err)
 
@@ -190,6 +196,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("fails when the input fails", func(t *testing.T) {
 		readErr := errors.New("read failed")
 		input := failingSampleIterator{SampleIterator: newLabeledSampleIterator([]labeledSample{{foo, sec(5)}}), err: readErr}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
@@ -199,6 +206,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("fails with the cancellation error the input reports", func(t *testing.T) {
 		input := failingSampleIterator{SampleIterator: newLabeledSampleIterator([]labeledSample{{foo, sec(5)}}), err: context.Canceled}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), iter.NewPeekingSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
@@ -208,6 +216,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("fails when a new series exceeds the series limit", func(t *testing.T) {
 		input := []labeledSample{{foo, sec(5)}, {bar, sec(6)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -218,6 +227,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("ignores a series without samples in any window when enforcing the series limit", func(t *testing.T) {
 		input := []labeledSample{{bar, sec(50)}, {foo, sec(5)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -226,6 +236,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("fails when the labels of a series do not parse", func(t *testing.T) {
 		input := []labeledSample{{foo, sec(4)}, {`{app=`, sec(5)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
 		require.NoError(t, err)
 
@@ -237,6 +248,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		md, ctx := metadata.NewContext(context.Background())
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{foo, sec(5)}, {`{__error__="JSONParserErr", app="bar"}`, sec(6)}}
+
 		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -246,10 +258,95 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.Empty(t, md.Warnings())
 	})
 
+	t.Run("fails with the pipeline error at the first series that carries an error label when the series limit allows it", func(t *testing.T) {
+		const maxSeries = 100
+
+		var (
+			errored = labels.FromStrings("__error__", "JSONParserErr", "app", "bar")
+			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
+		)
+
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+	})
+
+	t.Run("fails with the pipeline error and not the limit error when a series over the limit carries an error label", func(t *testing.T) {
+		const maxSeries = 1
+
+		var (
+			errored = labels.FromStrings("__error__", "JSONParserErr", "app", "bar")
+			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
+		)
+
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+	})
+
+	t.Run("fails with the pipeline error at a series that carries an error label and joins an output series the iterator already has when the query has no series limit", func(t *testing.T) {
+		const noSeriesLimit = 0
+
+		var (
+			errored = labels.FromStrings("__error__", "JSONParserErr", "app", "foo")
+			input   = []labeledSample{{foo, sec(5)}, {errored.String(), sec(6)}}
+		)
+
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, noSeriesLimit, false)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
+	})
+
+	t.Run("stops reading at the first of many series that carry an error label and fall in one output series", func(t *testing.T) {
+		input := make([]labeledSample, 5000)
+		for i := range input {
+			input[i] = labeledSample{labels: fmt.Sprintf(`{__error__="SampleExtractionErr", app="foo", n="%d"}`, i), timestamp: sec(5)}
+		}
+		var read int
+		counted := iter.NewPeekingSampleIterator(&countingSampleIterator{SampleIterator: newLabeledSampleIterator(input), count: &read})
+
+		const maxSeries = 2
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), counted, countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, maxSeries, false)
+		require.NoError(t, err)
+
+		require.False(t, it.Next())
+		firstErrored := labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo", "n", "0")
+		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(firstErrored).Error())
+		require.Less(t, read, 10)
+	})
+
+	t.Run("keeps the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
+		var (
+			errored = `{__error__="JSONParserErr", app="bar"}`
+			input   = []labeledSample{{foo, sec(5)}, {errored, sec(6)}}
+		)
+
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, true)
+		require.NoError(t, err)
+
+		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 1, errored: 1}}, drainRangeVector(t, it))
+	})
+
+	t.Run("ignores a series that carries an error label and has no sample in any window", func(t *testing.T) {
+		input := []labeledSample{{`{__error__="JSONParserErr", app="bar"}`, sec(50)}, {foo, sec(5)}}
+
+		it, err := newStreamFirstRangeVectorIterator(t.Context(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 0, false)
+		require.NoError(t, err)
+
+		require.Equal(t, map[int64]map[string]float64{10_000: {foo: 1}}, drainRangeVector(t, it))
+	})
+
 	t.Run("returns the first series with a warning when a Logs Drilldown request exceeds the series limit", func(t *testing.T) {
 		md, ctx := metadata.NewContext(context.Background())
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{foo, sec(5)}, {bar, sec(6)}, {foo, sec(7)}}
+
 		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -259,6 +356,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("counts series that differ only in a label the sum drops as one output series", func(t *testing.T) {
 		input := []labeledSample{{`{app="foo", pod="1"}`, sec(5)}, {`{app="foo", pod="2"}`, sec(6)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -267,6 +365,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 
 	t.Run("counts the same output series of two tenants once", func(t *testing.T) {
 		input := []labeledSample{{`{__tenant_id__="a", app="foo"}`, sec(5)}, {`{__tenant_id__="b", app="foo"}`, sec(6)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 
@@ -276,6 +375,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 	t.Run("fails when series differ in a label a without grouping keeps", func(t *testing.T) {
 		withoutPod := &syntax.Grouping{Groups: []string{"pod"}, Without: true}
 		input := []labeledSample{{`{app="foo", pod="1"}`, sec(5)}, {`{app="bar", pod="1"}`, sec(6)}}
+
 		it, err := newStreamFirstRangeVectorIterator(context.Background(), newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, withoutPod, 1, false)
 		require.NoError(t, err)
 
@@ -287,6 +387,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		_, ctx := metadata.NewContext(context.Background())
 		ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
 		input := []labeledSample{{`{__tenant_id__="a", app="foo"}`, sec(5)}, {`{__tenant_id__="a", app="bar"}`, sec(6)}, {`{__tenant_id__="b", app="foo"}`, sec(7)}}
+
 		it, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), countOverTime, sec(10), 0, sec(10), sec(10), 0, byApp, 1, false)
 		require.NoError(t, err)
 

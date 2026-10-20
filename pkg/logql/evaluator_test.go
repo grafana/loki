@@ -988,4 +988,44 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		}
 		require.Less(t, querier.samplesRead, totalSamples)
 	})
+
+	t.Run("fails with the pipeline error at the first series that carries an error label without reading the remaining samples", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored, errored)}
+		_, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (count_over_time({app="foo"}[1m]))`, time.Minute)
+
+		require.EqualError(t, err, logqlmodel.NewPipelineErr(labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo")).Error())
+
+		totalSamples := 0
+		for _, s := range querier.series {
+			totalSamples += len(s.Samples)
+		}
+		require.Less(t, querier.samplesRead, totalSamples)
+	})
+
+	t.Run("returns the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored)}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app, __error__) (count_over_time({app="foo"} | __error__!="" [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		require.Equal(t, promql.Matrix{
+			{
+				Metric: labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 1},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 2},
+				},
+			},
+			{
+				Metric: labels.FromStrings("app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 2},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 4},
+				},
+			},
+		}, got)
+	})
 }
