@@ -802,9 +802,30 @@ func TestSampleOrderFor(t *testing.T) {
 
 	count := fullExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
-	t.Run("returns stream-first for a root sum of count_over_time when the tenant enables it", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), count, limits, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
+	t.Run("returns stream-first for every supported query when the tenant enables it", func(t *testing.T) {
+		streamFirstQueries := []string{
+			`sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range streamFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got, query)
+		}
+	})
+
+	t.Run("returns timestamp-first for every unsupported query when the tenant enables it", func(t *testing.T) {
+		timestampFirstQueries := []string{
+			`sum(rate({app="foo"}[1m]))`,
+			`count_over_time({app="foo"}[1m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap n [1m])`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range timestampFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got, query)
+		}
 	})
 
 	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
@@ -824,16 +845,6 @@ func TestSampleOrderFor(t *testing.T) {
 
 	t.Run("returns timestamp-first for an expression that is not the root", func(t *testing.T) {
 		got := sampleOrderFor(tenantContext("a"), count, limits, false)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for a range aggregation other than count_over_time", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), fullExpr(`sum(rate({app="foo"}[1m]))`), limits, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for a bare range aggregation without a sum", func(t *testing.T) {
-		got := sampleOrderFor(tenantContext("a"), fullExpr(`count_over_time({app="foo"}[1m])`), limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
@@ -918,6 +929,27 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 			Floats: []promql.FPoint{
 				{T: start.Add(time.Minute).UnixMilli(), F: 2},
 				{T: start.Add(2 * time.Minute).UnixMilli(), F: 4},
+			},
+		}}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("sum_over_time() sums every sample value of streams returned one after the other", func(t *testing.T) {
+		sampleAt := func(offset time.Duration, value float64) logproto.Sample {
+			return logproto.Sample{Timestamp: start.Add(offset).UnixNano(), Value: value}
+		}
+		querier := &seriesQuerier{series: []logproto.Series{
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 1), sampleAt(70*time.Second, 2), sampleAt(110*time.Second, 4)}},
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 10), sampleAt(70*time.Second, 20), sampleAt(110*time.Second, 40)}},
+		}}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		want := promql.Matrix{{
+			Metric: labels.FromStrings("app", "foo"),
+			Floats: []promql.FPoint{
+				{T: start.Add(time.Minute).UnixMilli(), F: 11},
+				{T: start.Add(2 * time.Minute).UnixMilli(), F: 66},
 			},
 		}}
 		require.Equal(t, want, got)

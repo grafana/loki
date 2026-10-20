@@ -141,6 +141,17 @@ eval instant at 60s sum by (zone) (max_over_time({app="foo"} | logfmt | unwrap v
 eval instant at 60s sum without (extra) (max_over_time({app="foo"} | logfmt | unwrap v [1m]))
   {app="foo", zone="eu"} 6
   {app="foo", zone="us"} 28
+eval instant at 60s sum(sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {} 248
+eval instant at 60s sum by (zone) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {zone="eu"} 13
+  {zone="us"} 235
+eval range from 20s to 60s step 20s sum by (zone) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))   # overlapping
+  {zone="eu"} 1 7 13
+  {zone="us"} 18 93 235
+eval instant at 60s sum without (extra) (sum_over_time({app="foo"} | logfmt | unwrap v [1m]))
+  {app="foo", zone="eu"} 13
+  {app="foo", zone="us"} 235
 
 # A __error__ set directly as structured metadata is an extraction error too, and a __error__
 # filter decides what to do with it exactly like a parser-raised error.
@@ -148,6 +159,8 @@ clear
 load
   {app="a"} "1" @ 10s [repeat every 10s for 6]
   {app="a"} "2" @ 15s [repeat every 10s for 6] [metadata __error__="malformed"]
+  {app="x"} "v=oops" @ 40s
+  {app="x"} "v=5"    @ 50s
 
 eval instant at 60s sum(count_over_time({app="a"}[1m]))
   expect fail
@@ -161,6 +174,11 @@ eval instant at 60s sum(count_over_time({app="a"} |= "2" [1m]))
   expect fail
 eval instant at 60s sum(count_over_time({app="a"} |= "1" [1m]))
   {} 6
+# A failed unwrap conversion fails sum_over_time() the same way, unless a filter drops the line.
+eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v [1m]))
+  expect fail msg: SampleExtractionErr
+eval instant at 60s sum(sum_over_time({app="x"} | logfmt | unwrap v | __error__="" [1m]))
+  {} 5
 
 # sum() with special inputs.
 clear
@@ -181,6 +199,43 @@ eval instant at 60s sum(max_over_time({app="a", k=~"pinf|nan"} | logfmt | unwrap
   {} NaN
 eval instant at 60s sum(max_over_time({app="a", k=~"ninf|nan"} | logfmt | unwrap v [1m]))
   {} NaN
+
+# sum() of sum_over_time() edge cases:
+# - A window that sums to zero or to a negative value is a value, not an empty window.
+# - A huge value in one window does not change the sum of a later window.
+# - A NaN or an Inf stays in its own window.
+clear
+load
+  {app="z", c="zero"} "v=5"                  @ 20s
+  {app="z", c="zero"} "v=-5"                 @ 40s
+  {app="z", c="neg"}  "v=-3"                 @ 20s
+  {app="z", c="pos"}  "v=1"                  @ 20s
+  {app="h", c="big"}   "v=10000000000000000" @ 20s
+  {app="h", c="big"}   "v=1.5"               @ 40s
+  {app="h", c="small"} "v=123456789.123"     @ 20s
+  {app="h", c="small"} "v=0.1"               @ 40s
+  {app="n", c="nan"}   "v=7"                 @ 20s
+  {app="n", c="nan"}   "v=NaN"               @ 40s
+  {app="n", c="nan"}   "v=3"                 @ 60s
+  {app="n", c="inf"}   "v=+Inf"              @ 20s
+  {app="n", c="inf"}   "v=-Inf"              @ 40s
+  {app="n", c="inf"}   "v=5"                 @ 60s
+  {app="noise"}        "v=1"                 @ 30s
+
+eval instant at 60s sum by (c) (sum_over_time({app="z"} | logfmt | unwrap v [1m]))
+  {c="zero"} 0    # 5 - 5 = 0
+  {c="neg"} -3
+  {c="pos"} 1
+eval range from 60s to 130s step 70s sum by (c) (sum_over_time({app="z"} | logfmt | unwrap v [1m]))   # non-overlapping
+  {c="zero"} 0 _  # (70s,130s] has no sample
+  {c="neg"} -3 _
+  {c="pos"} 1 _
+eval range from 20s to 40s step 20s sum by (c) (sum_over_time({app="h"} | logfmt | unwrap v [20s]))   # overlapping
+  {c="big"}   10000000000000000 1.5
+  {c="small"} 123456789.123 0.1
+eval range from 20s to 80s step 20s sum by (c) (sum_over_time({app="n"} | logfmt | unwrap v [20s]))   # overlapping
+  {c="nan"} 7 NaN 3 _
+  {c="inf"} +Inf -Inf 5 _
 
 # avg()
 clear

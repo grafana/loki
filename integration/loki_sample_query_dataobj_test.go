@@ -158,18 +158,24 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	streamLabels := func(app string) map[string]string { return map[string]string{"job": "dataobjit", "app": app} }
 
 	// Grouping by every fixture label keeps one output series per stream.
-	const query = `sum by (job, app) (count_over_time({job="dataobjit"}[1h]))`
-	expected := map[string]float64{
+	const countQuery = `sum by (job, app) (count_over_time({job="dataobjit"}[1h]))`
+	expectedCounts := map[string]float64{
 		labels.FromMap(streamLabels("a")).String(): 3,
 		labels.FromMap(streamLabels("b")).String(): 2,
 	}
 
-	// runQuery and countsOf return plain errors, not require, so the Eventually loops below can
+	const sumQuery = `sum by (job, app) (sum_over_time({job="dataobjit"} | logfmt | unwrap n [1h]))`
+	expectedSums := map[string]float64{
+		labels.FromMap(streamLabels("a")).String(): 60,
+		labels.FromMap(streamLabels("b")).String(): 3,
+	}
+
+	// runQuery and valuesOf return plain errors, not require, so the Eventually loops below can
 	// call them from their own goroutine.
 	runQuery := func() (*client.Response, error) {
-		return cliFrontend.RunQuery(ctx, query)
+		return cliFrontend.RunQuery(ctx, countQuery)
 	}
-	countsOf := func(resp *client.Response) (map[string]float64, error) {
+	valuesOf := func(resp *client.Response) (map[string]float64, error) {
 		if resp.Data.ResultType != "vector" {
 			return nil, fmt.Errorf("unexpected result type %q", resp.Data.ResultType)
 		}
@@ -189,79 +195,91 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		return cliDistributor.PushLogLine("__warmup__", now, nil, map[string]string{"job": "warmup"}) == nil
 	}, 60*time.Second, 250*time.Millisecond, "distributor should be able to produce to an active partition")
 
-	require.NoError(t, cliDistributor.PushLogLine("a1", tsA1, nil, streamLabels("a")))
-	require.NoError(t, cliDistributor.PushLogLine("a2", tsA2, nil, streamLabels("a")))
-	require.NoError(t, cliDistributor.PushLogLine("a3", tsA3, nil, streamLabels("a")))
-	require.NoError(t, cliDistributor.PushLogLine("b1", tsB1, nil, streamLabels("b")))
-	require.NoError(t, cliDistributor.PushLogLine("b2", tsB2, nil, streamLabels("b")))
+	require.NoError(t, cliDistributor.PushLogLine("msg=a1 n=10", tsA1, nil, streamLabels("a")))
+	require.NoError(t, cliDistributor.PushLogLine("msg=a2 n=20", tsA2, nil, streamLabels("a")))
+	require.NoError(t, cliDistributor.PushLogLine("msg=a3 n=30", tsA3, nil, streamLabels("a")))
+	require.NoError(t, cliDistributor.PushLogLine("msg=b1 n=1", tsB1, nil, streamLabels("b")))
+	require.NoError(t, cliDistributor.PushLogLine("msg=b2 n=2", tsB2, nil, streamLabels("b")))
 
-	t.Run("a query served by the chunk store returns the complete expected result and reads chunks", func(t *testing.T) {
-		// Flush to chunks, sync the index, and query, retrying until the result matches. The
-		// querier is store-only, so there's no direct way to check Kafka-consumption completeness;
-		// retrying the flush proves it instead, since a flush before the ingester consumes every record
-		// would produce a partial result that could never match.
-		var resp *client.Response
-		require.Eventually(t, func() bool {
-			if err := cliIngester.FlushTenant(""); err != nil {
-				t.Logf("flush: %v", err)
-				return false
-			}
-			// Best effort: ignore a sync already running; the next retry re-triggers it.
-			if _, err := cliIndexGateway.TriggerSyncIndexes(); err != nil {
-				t.Logf("sync trigger: %v", err)
-				return false
-			}
-			r, err := runQuery()
-			if err != nil {
-				t.Logf("baseline query: %v", err)
-				return false
-			}
-			counts, err := countsOf(r)
-			if err != nil {
-				t.Logf("baseline counts: %v", err)
-				return false
-			}
-			resp = r
-			return reflect.DeepEqual(counts, expected)
-		}, 60*time.Second, 500*time.Millisecond, "the chunk store should eventually serve the complete expected result")
+	// Flush to chunks, sync the index, and query, retrying until the result matches. The
+	// querier is store-only, so there's no direct way to check Kafka-consumption completeness;
+	// retrying the flush proves it instead, since a flush before the ingester consumes every record
+	// would produce a partial result that could never match.
+	require.Eventually(t, func() bool {
+		if err := cliIngester.FlushTenant(""); err != nil {
+			t.Logf("flush: %v", err)
+			return false
+		}
+		// Best effort: ignore a sync already running; the next retry re-triggers it.
+		if _, err := cliIndexGateway.TriggerSyncIndexes(); err != nil {
+			t.Logf("sync trigger: %v", err)
+			return false
+		}
+		resp, err := runQuery()
+		if err != nil {
+			t.Logf("baseline query: %v", err)
+			return false
+		}
+		counts, err := valuesOf(resp)
+		if err != nil {
+			t.Logf("baseline counts: %v", err)
+			return false
+		}
+		return reflect.DeepEqual(counts, expectedCounts)
+	}, 60*time.Second, 500*time.Millisecond, "the chunk store should eventually serve the complete expected result")
 
-		counts, err := countsOf(resp)
+	t.Run("a count_over_time query served by the chunk store returns the complete expected result and reads chunks", func(t *testing.T) {
+		resp, err := runQuery()
 		require.NoError(t, err)
-		require.Equal(t, expected, counts)
+
+		counts, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.Equal(t, expectedCounts, counts)
 		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
 	})
 
-	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
-		tQuerier.AddFlags(
-			"-dataobj.enabled=true",
-			"-querier.dataobj-query-start-time="+dataObjQueryStart,
-			"-dataobj.storage-lag=0s",
-			"-dataobj.metadata-cache.embedded-cache.enabled=true",
-		)
-		require.NoError(t, tQuerier.Restart())
-
-		// The dataobj-builder flushes and uploads on its own (idle-flush-timeout/max-builder-age are set
-		// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
-		// request, so poll the query itself rather than any builder-internal state.
-		var resp *client.Response
-		require.Eventually(t, func() bool {
-			r, err := runQuery()
-			if err != nil {
-				t.Logf("data-object query: %v", err)
-				return false
-			}
-			counts, err := countsOf(r)
-			if err != nil {
-				t.Logf("data-object counts: %v", err)
-				return false
-			}
-			resp = r
-			return reflect.DeepEqual(counts, expected)
-		}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
-
-		counts, err := countsOf(resp)
+	t.Run("a sum_over_time query served by the chunk store returns the expected sums and reads chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, sumQuery)
 		require.NoError(t, err)
-		require.Equal(t, expected, counts)
+
+		sums, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.Equal(t, expectedSums, sums)
+		require.Positive(t, resp.Data.Statistics.Querier.Store.Chunk.DecompressedLines)
+	})
+
+	tQuerier.AddFlags(
+		"-dataobj.enabled=true",
+		"-querier.dataobj-query-start-time="+dataObjQueryStart,
+		"-dataobj.storage-lag=0s",
+		"-dataobj.metadata-cache.embedded-cache.enabled=true",
+	)
+	require.NoError(t, tQuerier.Restart())
+
+	// The dataobj-builder flushes and uploads on its own (idle-flush-timeout/max-builder-age are set
+	// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
+	// request, so poll the query itself rather than any builder-internal state.
+	require.Eventually(t, func() bool {
+		resp, err := runQuery()
+		if err != nil {
+			t.Logf("data-object query: %v", err)
+			return false
+		}
+		counts, err := valuesOf(resp)
+		if err != nil {
+			t.Logf("data-object counts: %v", err)
+			return false
+		}
+		return reflect.DeepEqual(counts, expectedCounts)
+	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
+
+	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
+		resp, err := runQuery()
+		require.NoError(t, err)
+
+		counts, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.Equal(t, expectedCounts, counts)
 
 		store := resp.Data.Statistics.Querier.Store
 		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
@@ -280,11 +298,24 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		require.Positive(t, getMetricValue(t, "loki_dataobj_metadata_cache_hits_total", metrics))
 	})
 
+	t.Run("a sum_over_time query served by data objects returns the same sums as the chunk store and reads no chunks", func(t *testing.T) {
+		resp, err := cliFrontend.RunQuery(ctx, sumQuery)
+		require.NoError(t, err)
+
+		sums, err := valuesOf(resp)
+		require.NoError(t, err)
+		require.Equal(t, expectedSums, sums)
+
+		store := resp.Data.Statistics.Querier.Store
+		require.Positive(t, store.Dataobj.PrePredicateDecompressedRows)
+		require.Zero(t, store.Chunk.DecompressedLines)
+	})
+
 	t.Run("a line-filter query served by data objects returns the matching stream and reports no second-stage bytes because the line column is read first and the fixture holds no other column", func(t *testing.T) {
 		resp, err := cliFrontend.RunQuery(ctx, `sum by (job, app) (count_over_time({job="dataobjit"} |= "a" [1h]))`)
 		require.NoError(t, err)
 
-		counts, err := countsOf(resp)
+		counts, err := valuesOf(resp)
 		require.NoError(t, err)
 		require.Equal(t, map[string]float64{labels.FromMap(streamLabels("a")).String(): 3}, counts)
 
