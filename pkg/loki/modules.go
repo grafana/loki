@@ -992,8 +992,11 @@ func (t *Loki) initStore() (services.Service, error) {
 	if perIndexOwnership {
 		// Preload only the indexes this gateway owns, once it has joined the
 		// ring and can tell which those are (see below).
-		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr())
+		filter := indexgateway.NewIndexOwnershipFilter(t.indexGatewayRingManager.Ring, t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr(), t.Overrides)
 		t.Cfg.StorageConfig.TSDBShipperConfig.TenantFilter = filter.FilterTenants
+		// Of a tenant's index, keep only the files of the fingerprint-range
+		// shards this gateway owns.
+		t.Cfg.StorageConfig.TSDBShipperConfig.FileFilter = filter.FilterFiles
 		t.Cfg.StorageConfig.TSDBShipperConfig.DelayQueryReadinessUntilPreload = true
 		// Evict query ready indexes this gateway no longer owns, judged from
 		// the ACTIVE instances, on each query readiness run.

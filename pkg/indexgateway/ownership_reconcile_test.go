@@ -142,7 +142,7 @@ func (s *reconcileSim) reconcile(instances []testInstance) map[string][]indexKey
 	s.t.Helper()
 	dropped := map[string][]indexKey{}
 	for _, inst := range instances {
-		f := NewIndexOwnershipFilter(s.r, inst.id)
+		f := NewIndexOwnershipFilter(s.r, inst.id, nil)
 		held := s.held[inst.id]
 		if held == nil {
 			held = map[indexKey]bool{}
@@ -269,7 +269,7 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 
 	t.Run("an ACTIVE instance drops what it does not own", func(t *testing.T) {
 		r := newMutableTestRing(t, 1, instances)
-		f := NewIndexOwnershipFilter(r, instances[0].id)
+		f := NewIndexOwnershipFilter(r, instances[0].id, nil)
 		drop, err := f.FilterTenantsToDrop(table, tenants)
 		require.NoError(t, err)
 		owned, err := f.FilterTenants(table, tenants)
@@ -283,7 +283,7 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 			withSelf := slices.Clone(instances)
 			withSelf[0].state = state
 			r := newMutableTestRing(t, 1, withSelf)
-			drop, err := NewIndexOwnershipFilter(r, instances[0].id).FilterTenantsToDrop(table, tenants)
+			drop, err := NewIndexOwnershipFilter(r, instances[0].id, nil).FilterTenantsToDrop(table, tenants)
 			require.NoError(t, err)
 			require.Empty(t, drop)
 		})
@@ -291,14 +291,14 @@ func TestIndexOwnershipFilter_FilterTenantsToDrop(t *testing.T) {
 
 	t.Run("an instance missing from the ring drops nothing", func(t *testing.T) {
 		r := newMutableTestRing(t, 1, instances)
-		drop, err := NewIndexOwnershipFilter(r, "not-in-the-ring").FilterTenantsToDrop(table, tenants)
+		drop, err := NewIndexOwnershipFilter(r, "not-in-the-ring", nil).FilterTenantsToDrop(table, tenants)
 		require.NoError(t, err)
 		require.Empty(t, drop)
 	})
 
 	t.Run("an empty ring drops nothing", func(t *testing.T) {
 		r := newMutableTestRing(t, 1, nil)
-		drop, err := NewIndexOwnershipFilter(r, instances[0].id).FilterTenantsToDrop(table, tenants)
+		drop, err := NewIndexOwnershipFilter(r, instances[0].id, nil).FilterTenantsToDrop(table, tenants)
 		require.Error(t, err)
 		require.Empty(t, drop)
 	})

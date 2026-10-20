@@ -263,7 +263,7 @@ func newFanoutFixture(t *testing.T, mutate func(*ClientConfig)) *fanoutFixture {
 
 func (f *fanoutFixture) owners(t *testing.T, table string) ring.ReplicationSet {
 	t.Helper()
-	rs, err := f.ownership.Owners("tenant", table, IndexOwnersRead)
+	rs, err := f.ownership.Owners("tenant", table, WholeIndexShard, IndexOwnersRead)
 	require.NoError(t, err)
 	require.Len(t, rs.Instances, ReplicationFactor)
 	return rs
