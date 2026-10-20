@@ -19,29 +19,19 @@ func collectLineFilters(expr syntax.Expr) []*syntax.LineFilterExpr {
 	return out
 }
 
-// lineFiltersFromOriginalLine collects |= / |~ stages that still run on the
-// ingested line. line_format, decolorize, and unpack rewrite it; filters after
-// them are not safe n-gram lookups.
+// lineFiltersFromOriginalLine collects the line filter stages that still run
+// on the ingested line. line_format, decolorize, and unpack rewrite it, so
+// filters after them are not safe n-gram lookups. Each stage is returned as
+// is, with its Left and Or chains, so the caller can mirror
+// LineFilterExpr.Filter.
 func lineFiltersFromOriginalLine(stages syntax.MultiStageExpr) []*syntax.LineFilterExpr {
 	original := true
 	var out []*syntax.LineFilterExpr
-	appendFilter := func(expr *syntax.LineFilterExpr) {
-		if expr == nil {
-			return
-		}
-		expr.Walk(func(node syntax.Expr) bool {
-			if f, ok := node.(*syntax.LineFilterExpr); ok {
-				out = append(out, f)
-			}
-			return true
-		})
-	}
-
 	for _, stage := range stages {
 		switch s := stage.(type) {
 		case *syntax.LineFilterExpr:
-			if original {
-				appendFilter(s)
+			if original && s != nil {
+				out = append(out, s)
 			}
 
 		case *syntax.LineFmtExpr, *syntax.DecolorizeExpr:

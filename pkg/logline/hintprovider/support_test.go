@@ -828,7 +828,7 @@ func TestSupportedQuery(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			got := literals(t, SupportedQuery(expr, tc.ngramLength))
+			got := literals(t, SupportedQuery(expr, tc.ngramLength, 1))
 			if tc.expected == nil {
 				require.Nil(t, got)
 				return
@@ -839,16 +839,16 @@ func TestSupportedQuery(t *testing.T) {
 }
 
 func TestCollectLineFilters(t *testing.T) {
-	t.Run("collects all line filters when the line is unchanged", func(t *testing.T) {
+	t.Run("returns each stage with its chain when the line is unchanged", func(t *testing.T) {
 		expr, err := syntax.ParseExpr(`{app="foo"} |= "alpha" |~ "beta" != "gamma" |= "delta"`)
 		require.NoError(t, err)
 
 		got := collectLineFilters(expr)
-		require.Len(t, got, 4)
+		require.Len(t, got, 1)
 
-		matches := make([]string, len(got))
-		for i, f := range got {
-			matches[i] = f.Match
+		var matches []string
+		for f := got[0]; f != nil; f = f.Left {
+			matches = append(matches, f.Match)
 		}
 		require.ElementsMatch(t, []string{"alpha", "beta", "gamma", "delta"}, matches)
 	})
@@ -974,7 +974,7 @@ func TestSupportedQuery_UppercaseDedupe(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
-			require.ElementsMatch(t, tc.want, literals(t, SupportedQuery(expr, 6)))
+			require.ElementsMatch(t, tc.want, literals(t, SupportedQuery(expr, 6, 1)))
 		})
 	}
 }

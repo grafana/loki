@@ -27,6 +27,9 @@ type LoglineHintProvider struct {
 	store       *store.Store
 	ngramLength int
 	maxParallel int
+	// maxConjunctions is the most needle sets a query is planned into when
+	// the request does not set it.
+	maxConjunctions int
 	// queryMultipleObserver is optional and receives one callback per
 	// QueryMultiple call with termination reason and term batches processed.
 	queryMultipleObserver func(reason string, termBatchesProcessed int)
@@ -39,7 +42,7 @@ type LoglineHintProvider struct {
 
 func NewLoglineHintProvider(
 	indexStore *store.Store,
-	ngramLength, maxParallel int,
+	ngramLength, maxParallel, maxConjunctions int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
 	cacheReg prometheus.Registerer,
@@ -53,6 +56,9 @@ func NewLoglineHintProvider(
 	if maxParallel <= 0 {
 		maxParallel = defaultHintParallel
 	}
+	if maxConjunctions <= 0 {
+		maxConjunctions = DefaultMaxConjunctions
+	}
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -61,6 +67,7 @@ func NewLoglineHintProvider(
 		store:                 indexStore,
 		ngramLength:           ngramLength,
 		maxParallel:           maxParallel,
+		maxConjunctions:       maxConjunctions,
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
@@ -97,12 +104,12 @@ func (p *LoglineHintProvider) queryRanges(
 		req = &logproto.LoglineIndexRequest{}
 	}
 
-	ngramLength, maxParallel := p.lookupParams(req)
-	filters := SupportedQuery(expr, ngramLength)
+	ngramLength, maxParallel, maxConjunctions := p.lookupParams(req)
+	filters := SupportedQuery(expr, ngramLength, maxConjunctions)
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
-	if len(filters) == 0 {
+	if filters.IsTrue() {
 		return []HintTimeRange{passthroughForInclusiveThrough(through)}, stats, nil
 	}
 
@@ -133,13 +140,16 @@ func timeUnion(ranges []HintTimeRange) []HintTimeRange {
 	return NormalizeRanges(out)
 }
 
-func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel int) {
-	ngramLength, maxParallel = p.ngramLength, p.maxParallel
+func (p *LoglineHintProvider) lookupParams(req *logproto.LoglineIndexRequest) (ngramLength, maxParallel, maxConjunctions int) {
+	ngramLength, maxParallel, maxConjunctions = p.ngramLength, p.maxParallel, p.maxConjunctions
 	if req.NgramLength > 0 {
 		ngramLength = int(req.NgramLength)
 	}
 	if req.MaxParallel > 0 {
 		maxParallel = int(req.MaxParallel)
+	}
+	if req.MaxConjunctions > 0 {
+		maxConjunctions = int(req.MaxConjunctions)
 	}
 	return
 }
@@ -152,13 +162,14 @@ func (p *LoglineHintProvider) PlanHints(
 	_ = tenant // reserved for future tenant-aware hinting
 	stats := NewQueryStats()
 	plan := HintPlan{
-		Stats:       stats,
-		NgramLength: int32(p.ngramLength),
-		MaxParallel: int32(p.maxParallel),
+		Stats:           stats,
+		NgramLength:     int32(p.ngramLength),
+		MaxParallel:     int32(p.maxParallel),
+		MaxConjunctions: int32(p.maxConjunctions),
 	}
 
-	filters := SupportedQuery(expr, p.ngramLength)
-	if len(filters) == 0 {
+	filters := SupportedQuery(expr, p.ngramLength, p.maxConjunctions)
+	if filters.IsTrue() {
 		return plan, ErrUnsupported
 	}
 	plan.Filters = filters
@@ -203,7 +214,7 @@ func (p *LoglineHintProvider) ProvideHints(
 	if err != nil || len(plan.Indexes) == 0 {
 		return &Hints{TimeRanges: plan.Ranges}, plan.Stats, err
 	}
-	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan, p.ngramLength, p.maxParallel))
+	ranges, stats, err := p.queryRanges(ctx, expr, loglineIndexRequest(expr, from, through, plan))
 	if err != nil {
 		return nil, plan.Stats, err
 	}
@@ -211,15 +222,16 @@ func (p *LoglineHintProvider) ProvideHints(
 }
 
 func loglineIndexRequest(
-	expr syntax.Expr, from, through model.Time, plan HintPlan, ngram, parallel int,
+	expr syntax.Expr, from, through model.Time, plan HintPlan,
 ) *logproto.LoglineIndexRequest {
 	return &logproto.LoglineIndexRequest{
-		From:        from,
-		Through:     through,
-		Expr:        expr.String(),
-		Indexes:     ToProtoIndexMetas(plan.Indexes),
-		NgramLength: int32(ngram),
-		MaxParallel: int32(parallel),
+		From:            from,
+		Through:         through,
+		Expr:            expr.String(),
+		Indexes:         ToProtoIndexMetas(plan.Indexes),
+		NgramLength:     plan.NgramLength,
+		MaxParallel:     plan.MaxParallel,
+		MaxConjunctions: plan.MaxConjunctions,
 	}
 }
 

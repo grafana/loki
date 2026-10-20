@@ -268,7 +268,7 @@ func (s *queryFrontendExecutionStack) setStores(stores *scriptStores) {
 	if s.loglineEnabled {
 		var err error
 		// There is no polling lifecycle to invalidate cached index metadata.
-		provider, err = hintprovider.NewLoglineHintProvider(stores.logline, logline.DefaultNgramLength, 0, nil, log.NewNopLogger(), nil)
+		provider, err = hintprovider.NewLoglineHintProvider(stores.logline, logline.DefaultNgramLength, 0, 0, nil, log.NewNopLogger(), nil)
 		require.NoError(s.t, err)
 	}
 	handler, err := s.handlerForStore(stores.logline)
