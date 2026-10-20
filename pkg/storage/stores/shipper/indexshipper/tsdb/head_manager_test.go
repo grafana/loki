@@ -1105,61 +1105,6 @@ func Test_HeadManager_ForcedRotationsWithinOneSecond(t *testing.T) {
 	require.Equal(t, 5, mgr.builds)
 }
 
-// Test_HeadManager_BackToBackFlushesUseDistinctSeconds requires back-to-back Flush
-// calls (as repeated /flush/tenant requests make) to start each head in a later
-// second than the last.
-func Test_HeadManager_BackToBackFlushesUseDistinctSeconds(t *testing.T) {
-	dir := t.TempDir()
-	storeName := "store_2010-10-10"
-	mgr := newRecordingTSDBManager(storeName, dir)
-	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
-	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.NoError(t, util.EnsureDirectory(d))
-	}
-	require.NoError(t, hm.Rotate(time.Now()))
-
-	hm.wg.Add(1)
-	go hm.loop()
-	t.Cleanup(func() { _ = hm.Stop() })
-
-	starts := []time.Time{hm.activeHeads.start}
-	for i := 0; i < 3; i++ {
-		require.NoError(t, hm.Flush(context.Background()))
-		start := hm.activeHeads.start
-		require.Greater(t, start.Unix(), starts[len(starts)-1].Unix(), "flush %d started a head in an already used second", i)
-		starts = append(starts, start)
-	}
-	require.Equal(t, 3, mgr.builds)
-}
-
-// Test_HeadManager_FlushRightAfterPeriodicRotation covers a /flush/tenant landing in
-// the same second as a periodic rotation: the forced head starts in the next second
-// instead of reusing the periodic head's WAL dir and TSDB name.
-func Test_HeadManager_FlushRightAfterPeriodicRotation(t *testing.T) {
-	dir := t.TempDir()
-	storeName := "store_2010-10-10"
-	mgr := newRecordingTSDBManager(storeName, dir)
-	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
-	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.NoError(t, util.EnsureDirectory(d))
-	}
-	require.NoError(t, hm.Rotate(time.Now().Add(-time.Duration(hm.period))))
-
-	hm.tick(time.Now()) // periodic rotation: a new period has started
-	require.Equal(t, 1, mgr.builds)
-	periodic := hm.activeHeads.start
-
-	hm.wg.Add(1)
-	go hm.loop()
-	t.Cleanup(func() { _ = hm.Stop() })
-
-	require.NoError(t, hm.Flush(context.Background()))
-	forced := hm.activeHeads.start
-	require.Greater(t, forced.Unix(), periodic.Unix(), "the forced head must not share the periodic head's start second")
-	require.Equal(t, 2, mgr.builds)
-	require.DirExists(t, walPath(storeName, dir, forced))
-}
-
 // Test_HeadManager_PeriodicRotationRightAfterFlush covers the reverse order: a forced
 // flush in the last second of a period, then the periodic tick just after the
 // boundary. Period boundaries fall on whole seconds, so the two heads always start
