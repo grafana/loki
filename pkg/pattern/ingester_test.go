@@ -1058,7 +1058,7 @@ func TestInstancePushOwnership(t *testing.T) {
 		},
 		{
 			name:            "noop owner mines every stream",
-			owner:           noopOwner{},
+			owner:           allStreamsOwner{},
 			expectedStreams: 1,
 		},
 	}

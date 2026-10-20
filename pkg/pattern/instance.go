@@ -194,10 +194,10 @@ func (r *ringOwner) Owns(instanceID, stream string) (bool, error) {
 	return false, nil
 }
 
-// noopOwner skips the ownership check and treats all streams as owned.
-type noopOwner struct{}
+// allStreamsOwner skips the ownership check and treats all streams as owned.
+type allStreamsOwner struct{}
 
-func (noopOwner) Owns(_, _ string) (bool, error) { return true, nil }
+func (allStreamsOwner) Owns(_, _ string) (bool, error) { return true, nil }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
