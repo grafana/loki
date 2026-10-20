@@ -479,7 +479,7 @@ func resolveMode(header string, tenantMode, defaultMode Mode, requireOptInHeader
 	return mode, false
 }
 
-func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time) (uint64, error) {
+func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.Expr, from, through time.Time, stepMillis int64) (uint64, error) {
 	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
 		return 0, err
@@ -494,6 +494,7 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	var totalBytes uint64
 	for _, group := range matcherGroups {
 		adjustedFrom, adjustedThrough := group.Widen(from, through)
+		adjustedFrom = metricStepAlignStart(adjustedFrom, group.Interval, stepMillis)
 
 		resp, err := h.next.Do(ctx, &logproto.IndexStatsRequest{
 			From:     model.Time(adjustedFrom.UnixMilli()),
@@ -515,6 +516,16 @@ func (h *loglinePrefetchHandler) getQueryBytes(ctx context.Context, expr syntax.
 	}
 
 	return totalBytes, nil
+}
+
+// metricStepAlignStart moves a metric read start back by one query step.
+// Prefetch runs before step alignment, which floors the request start by less
+// than one step. A log selector has a zero interval, so its start stays put.
+func metricStepAlignStart(start time.Time, interval time.Duration, stepMillis int64) time.Time {
+	if interval <= 0 || stepMillis <= 0 {
+		return start
+	}
+	return start.Add(-time.Duration(stepMillis) * time.Millisecond)
 }
 
 func (h *loglinePrefetchHandler) observeShardPlanning(result, reason string) {
@@ -752,6 +763,7 @@ func (h *loglinePrefetchHandler) doDryRun(
 	readStart, readEnd := from, through
 	if groups, err := syntax.MatcherGroups(expr); err == nil && len(groups) == 1 {
 		readStart, readEnd = groups[0].Widen(from, through)
+		readStart = metricStepAlignStart(readStart, groups[0].Interval, lokiReq.Step)
 	}
 	eligibleEnd := readEnd
 	if h.queryIngestersWithin > 0 {
@@ -1004,7 +1016,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	through := lokiReq.EndTs.UTC()
 	queryBytes := uint64(0)
 	if minQueryBytes > 0 {
-		queryBytes, err = h.getQueryBytes(ctx, expr, from, through)
+		queryBytes, err = h.getQueryBytes(ctx, expr, from, through, lokiReq.Step)
 		if err != nil {
 			level.Warn(logger).Log(
 				"msg", "failed to get query stats for logline gating; skipping hint lookup",

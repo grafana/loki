@@ -2613,6 +2613,66 @@ func TestDryRun_MetricRange_PositiveStepOverlapsWidenedHint(t *testing.T) {
 	}
 }
 
+func TestDryRun_MetricRange_StepExtendsLookupStart(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	step := time.Minute
+	interval := 5 * time.Minute
+	lookupFrom := reqStart.Add(-interval - step)
+	lookupThrough := now
+
+	var statsFrom, statsThrough model.Time
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch r := req.(type) {
+		case *logproto.IndexStatsRequest:
+			statsFrom, statsThrough = r.From, r.Through
+			return &queryrange.IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1000}}, nil
+		default:
+			time.Sleep(25 * time.Millisecond)
+			return metricMatrixResponse(1, now), nil
+		}
+	})
+
+	hp := &mockHintProvider{
+		hints: &hintprovider.Hints{
+			TimeRanges: []hintprovider.HintTimeRange{{Start: lookupFrom, End: lookupThrough}},
+		},
+	}
+	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 1})
+	req := newTestLokiRequest(`sum(count_over_time({app="api"} |= "timeout" [5m]))`, reqStart, now)
+	req.Step = step.Milliseconds()
+	_, err := handler.Do(testTenantContext(), req)
+	require.NoError(t, err)
+
+	require.Equal(t, model.Time(lookupFrom.UnixMilli()), statsFrom)
+	require.Equal(t, model.Time(lookupThrough.UnixMilli()), statsThrough)
+	gotFrom, gotThrough := hp.Window()
+	require.Equal(t, model.TimeFromUnixNano(lookupFrom.UnixNano()), gotFrom)
+	require.Equal(t, model.TimeFromUnixNano(lookupThrough.UnixNano()), gotThrough)
+}
+
+func TestDryRun_LogQuery_StepDoesNotExtendLookupStart(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	reqStart := now.Add(-1 * time.Hour)
+	hp := &mockHintProvider{hints: &hintprovider.Hints{}}
+	querier := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		if _, ok := req.(*logproto.IndexStatsRequest); ok {
+			return &queryrange.IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1000}}, nil
+		}
+		time.Sleep(25 * time.Millisecond)
+		return emptyStreamResponse(), nil
+	})
+	handler := buildStack(hp, Config{DryRun: true, NgramLength: 6}, newTestMetrics(), querier, mockLimits{defaultMinQueryBytes: 1})
+	req := newTestLokiRequest(`{app="api"} |= "timeout"`, reqStart, now)
+	req.Step = time.Minute.Milliseconds()
+	_, err := handler.Do(testTenantContext(), req)
+	require.NoError(t, err)
+
+	gotFrom, gotThrough := hp.Window()
+	require.Equal(t, model.TimeFromUnixNano(reqStart.UnixNano()), gotFrom)
+	require.Equal(t, model.TimeFromUnixNano(now.UnixNano()), gotThrough)
+}
+
 func TestDryRun_MetricRange_EmptyHintsMissPositiveStep(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 	reqStart := now.Add(-1 * time.Hour)
