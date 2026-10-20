@@ -908,6 +908,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return nil, nil
 	}
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Pattern.KafkaIngestion.KafkaConfig = t.Cfg.KafkaConfig
 	t.PatternIngester, err = pattern.New(
 		t.Cfg.Pattern,
 		t.Overrides,
@@ -946,6 +947,10 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	if !t.Cfg.Pattern.Enabled {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
+		return nil, nil
+	}
+	if t.Cfg.Pattern.KafkaIngestion.Enabled {
+		_ = level.Info(logger).Log("msg", "pattern ingester tee service disabled because the pattern ingester consumes from Kafka")
 		return nil, nil
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")

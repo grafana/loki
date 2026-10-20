@@ -358,10 +358,12 @@ func (c *Config) Validate() error {
 	if err := c.Pattern.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
-	if c.Ingester.KafkaIngestion.Enabled {
+	if c.Ingester.KafkaIngestion.Enabled || (c.Pattern.Enabled && c.Pattern.KafkaIngestion.Enabled) {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
+	}
+	if c.Ingester.KafkaIngestion.Enabled {
 		if err := c.DataObj.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
