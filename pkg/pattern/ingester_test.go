@@ -426,6 +426,74 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 	})
 }
 
+func TestInstancePushSkipsInternalStreams(t *testing.T) {
+	tests := []struct {
+		name            string
+		labels          string
+		expectedErr     bool
+		expectedStreams int
+	}{
+		{
+			name:            "regular stream is observed and mined",
+			labels:          `{service_name="svc"}`,
+			expectedStreams: 1,
+		},
+		{
+			name:   "aggregated metric stream is skipped",
+			labels: fmt.Sprintf(`{%s="svc"}`, constants.AggregatedMetricLabel),
+		},
+		{
+			name:   "pattern stream is skipped",
+			labels: fmt.Sprintf(`{%s="svc"}`, constants.PatternLabel),
+		},
+		{
+			name:        "invalid labels are rejected",
+			labels:      `{not valid`,
+			expectedErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ingesterID := "ingester-0"
+			fakeRing := &fakeRing{}
+			fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(ring.ReplicationSet{
+					Instances: []ring.InstanceDesc{{Id: ingesterID, Addr: ingesterID}},
+				}, nil)
+
+			inst, err := newInstance(
+				"tenant-0",
+				log.NewNopLogger(),
+				newIngesterMetrics(nil, "test"),
+				drain.DefaultConfig(),
+				&fakeLimits{},
+				&fakeRingClient{ring: fakeRing},
+				ingesterID,
+				nil,
+				nil,
+				aggregation.NewMetrics(nil),
+				0.99,
+			)
+			require.NoError(t, err)
+
+			req := push.PushRequest{
+				Streams: []push.Stream{{
+					Labels:  tc.labels,
+					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
+				}},
+			}
+			err = inst.Push(t.Context(), &req)
+			if tc.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedStreams, inst.streams.Len())
+		})
+	}
+}
+
 type mockEntryWriter struct {
 	mock.Mock
 }
