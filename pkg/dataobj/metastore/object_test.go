@@ -940,7 +940,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 			select {
 			case <-resolved:
 			case <-boundedCtx.Done():
-				t.Fatal("the resolution waited for the caller")
+				t.Fatal("the resolution did not end while the caller held the first batch")
 			}
 			batches++
 			break
@@ -1049,7 +1049,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
 	})
 
-	t.Run("yields every section and runs no more index reads at once than the parallelism limit", func(t *testing.T) {
+	t.Run("yields every section and reads as many index objects at once as the parallelism limit allows", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		var want []string
 		for i := range 12 {

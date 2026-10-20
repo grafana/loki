@@ -19,8 +19,8 @@ type Metastore interface {
 	// SectionsStream yields the sections that Sections returns, in batches. It yields the sections
 	// of an index object when its read ends, without waiting for the slowest one.
 	//
-	// The resolution does not wait for the caller. It reads every index object, and the batches
-	// wait in memory until the caller receives them.
+	// The reads do not wait for the caller. The batches wait in memory until the caller receives
+	// them.
 	//
 	// Each section appears in at most one batch. A batch holds the sections of one index object
 	// that no earlier batch listed. A batch is never empty, so an index object that lists no new
@@ -34,9 +34,9 @@ type Metastore interface {
 	// The sequence does no work until the caller ranges over it. Each range runs a new resolution.
 	// Breaking out of the loop cancels the reads and waits for them to end.
 	//
-	// The caller owns each batch slice. The caller must not modify a yielded descriptor, or the
-	// slices it holds, until the sequence ends. The sequence still reads them. Reading them from
-	// other goroutines is safe.
+	// The caller owns each batch slice and may modify it. The caller must not modify a yielded
+	// descriptor, including its StreamIDs and AmbiguousPredicates, until the sequence ends. The
+	// sequence still reads the descriptors. Reading them from other goroutines is safe.
 	SectionsStream(ctx context.Context, req SectionsRequest) iter.Seq2[DataobjSectionDescriptors, error]
 
 	GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error)

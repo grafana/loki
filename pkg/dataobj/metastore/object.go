@@ -99,7 +99,7 @@ type DataobjSectionDescriptors []*DataobjSectionDescriptor
 // work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
 //
 // A batch of [Metastore.SectionsStream] can hold only some of the sections of an object, so a group
-// from one batch is partial.
+// from one batch can lack sections that another batch holds.
 func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
 	byObject := make(map[string]DataobjSectionDescriptors)
 	for _, descriptor := range d {
@@ -501,8 +501,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		fail := func(err error) {
 			failed = true
 
-			// err is the only error in the channel. A read that ends after this one finds failed set
-			// and sends nothing.
+			// err is the only error in the channel. A read that takes mu later finds failed set and
+			// sends nothing.
 			batches <- batch{err: err}
 			cancelReads()
 		}
