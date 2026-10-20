@@ -448,33 +448,17 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 	totalSections := atomic.NewUint64(0)
 	for _, indexEntry := range indexes.Indexes {
 		g.Go(func() error {
-			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-				IndexPath:       indexEntry.Path,
-				SectionsRequest: req,
-				PrefetchBytes:   indexPrefetchBytes,
-			})
+			indexSections, readRows, err := m.readIndexSections(ctx, req, indexEntry.Path)
 			if err != nil {
-				return fmt.Errorf("get index sections reader: %w", err)
-			}
-			reader := readerResp.Reader
-			defer reader.Close()
-
-			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
-			if err != nil {
-				return fmt.Errorf("collect sections of index object %q: %w", indexEntry.Path, err)
+				return err
 			}
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
 			sectionsMu.Lock()
-
-			// this is temporary, the stats will be collected differently in a distributed metastore
-			sp := reader.(statsProvider)
-			totalSections.Add(sp.stats().ReadRows)
-
-			for _, section := range sectionsResp.SectionsResponse.Sections {
-				sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexEntry.Path})
-			}
+			sections = append(sections, indexSections...)
 			sectionsMu.Unlock()
+
+			totalSections.Add(uint64(readRows))
 
 			return nil
 		})
@@ -515,6 +499,34 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ 
 	)
 
 	return SectionsResponse{uniqueSections}, nil
+}
+
+// readIndexSections reads the sections that one index object lists. It returns them with the number
+// of rows the index reader resolved, before deduplication.
+func (m *ObjectMetastore) readIndexSections(ctx context.Context, req SectionsRequest, indexPath string) ([]DataobjSectionDescriptorWithIndex, int, error) {
+	readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+		IndexPath:       indexPath,
+		SectionsRequest: req,
+		PrefetchBytes:   indexPrefetchBytes,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("get index sections reader: %w", err)
+	}
+	reader := readerResp.Reader
+	defer reader.Close()
+
+	sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
+	if err != nil {
+		return nil, 0, fmt.Errorf("collect sections of index object %q: %w", indexPath, err)
+	}
+
+	sections := make([]DataobjSectionDescriptorWithIndex, 0, len(sectionsResp.SectionsResponse.Sections))
+	for _, section := range sectionsResp.SectionsResponse.Sections {
+		sections = append(sections, DataobjSectionDescriptorWithIndex{section, indexPath})
+	}
+
+	sp := reader.(statsProvider)
+	return sections, int(sp.stats().ReadRows), nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
