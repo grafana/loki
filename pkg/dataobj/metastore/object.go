@@ -98,7 +98,8 @@ type DataobjSectionDescriptors []*DataobjSectionDescriptor
 // A stream ID means something only within one object, so a caller that reads streams has to
 // work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
 //
-// A batch of [ObjectMetastore.SectionsStream] can hold only some of the sections of an object.
+// A batch of [Metastore.SectionsStream] can hold only some of the sections of an object, so a group
+// from one batch is partial.
 func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
 	byObject := make(map[string]DataobjSectionDescriptors)
 	for _, descriptor := range d {
@@ -459,8 +460,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		return
 	}
 
-	// batch is the deduplicated sections of one index object, or the error that ends the resolution.
-	// A batch with sections is never empty.
+	// batch carries the deduplicated sections of one index object, or the error that ends the
+	// resolution. A batch without an error holds at least one section.
 	type batch struct {
 		sections DataobjSectionDescriptors
 
@@ -476,8 +477,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	readCtx, cancelReads := context.WithCancel(ctx)
 	batches := make(chan batch, len(indexes.Indexes))
 
-	// A separate goroutine runs the resolution. g.Go blocks while m.parallelism reads run. The caller
-	// must not wait for it to receive the first batch.
+	// g.Go blocks while m.parallelism reads run. The goroutine lets the caller receive the first
+	// batch without waiting for the last read to start.
 	go func() {
 		defer close(batches)
 
@@ -487,8 +488,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 			// mu guards the variables below.
 			mu sync.Mutex
 
-			// deduplicator keeps the first descriptor of each section until the resolution ends, and
-			// compares the later copies with it. So it reads descriptors that the caller already holds.
+			// deduplicator keeps the first descriptor of each section until the resolution ends. It
+			// compares each later copy with that descriptor, which the caller can already hold.
 			deduplicator = newSectionsDeduplicator(m.logger, m.metrics)
 
 			failed         bool
@@ -500,8 +501,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		fail := func(err error) {
 			failed = true
 
-			// Send err before canceling the reads, so the caller sees the cause before the context
-			// errors of the canceled reads.
+			// err is the only error in the channel. A read that ends after this one finds failed set
+			// and sends nothing.
 			batches <- batch{err: err}
 			cancelReads()
 		}
@@ -549,8 +550,8 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		}
 		_ = g.Wait()
 
-		// A failed or canceled resolution records no metric. A read can succeed after the cancel, so
-		// check the context as well as the failed flag.
+		// A failed or canceled resolution skips the totals below. A read can succeed after the cancel,
+		// so check the context as well as the failed flag.
 		if failed || readCtx.Err() != nil {
 			return
 		}

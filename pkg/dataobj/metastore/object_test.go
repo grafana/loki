@@ -811,8 +811,8 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 	}
 
 	// requireOnlyFirstIndexRecorded checks the metrics of a resolution that yielded one batch and then
-	// failed or was canceled. Only the first-index metric and stat exist, because the resolution
-	// recorded its totals only when it ends without a failure or a cancel.
+	// failed or was canceled. Only the first-index metric and stat exist, because a resolution
+	// records its totals only when it ends without a failure or a cancel.
 	requireOnlyFirstIndexRecorded := func(t *testing.T, reg *prometheus.Registry, capture *xcap.Capture) {
 		t.Helper()
 
@@ -886,7 +886,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		requireOnlyFirstIndexRecorded(t, reg, capture)
 	})
 
-	t.Run("keeps reading the index objects while the caller holds the first batch and the launch waits for a free slot", func(t *testing.T) {
+	t.Run("keeps reading the index objects while the caller holds the first batch and the next read waits for a free slot", func(t *testing.T) {
 		inMem := objstore.NewInMemBucket()
 		var indexes []string
 		for _, object := range []string{"object-a", "object-b", "object-c", "object-d", "object-e"} {
@@ -911,6 +911,43 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.NoError(t, boundedCtx.Err(), "the loop waited for the blocked read")
 		require.Equal(t, 1, batches)
 		require.Zero(t, bucket.inFlight.Load(), "a read outlived the loop")
+	})
+
+	t.Run("ends the resolution and records its duration while the caller holds the first batch", func(t *testing.T) {
+		inMem := objstore.NewInMemBucket()
+		for _, object := range []string{"object-a", "object-b", "object-c", "object-d"} {
+			addIndexObject(t, inMem, sectionOf(object))
+		}
+		resolved := make(chan struct{})
+		var closeResolved sync.Once
+		logger := log.LoggerFunc(func(keyvals ...any) error {
+			for i := 0; i+1 < len(keyvals); i += 2 {
+				if keyvals[i] == "msg" && keyvals[i+1] == "resolved sections" {
+					closeResolved.Do(func() { close(resolved) })
+				}
+			}
+			return nil
+		})
+		reg := prometheus.NewRegistry()
+		m := NewObjectMetastore(inMem, Config{}, logger, NewObjectMetastoreMetrics(reg))
+		boundedCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		var batches int
+		for _, err := range m.SectionsStream(boundedCtx, request) {
+			require.NoError(t, err)
+
+			select {
+			case <-resolved:
+			case <-boundedCtx.Done():
+				t.Fatal("the resolution waited for the caller")
+			}
+			batches++
+			break
+		}
+
+		require.Equal(t, 1, batches)
+		require.Equal(t, uint64(1), gatherHistogram(t, reg, "loki_metastore_resolved_sections_total_duration_seconds").GetSampleCount())
 	})
 
 	t.Run("yields the context error and stops when the caller cancels the context after the first batch", func(t *testing.T) {
@@ -1034,7 +1071,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		}
 
 		require.ElementsMatch(t, want, got)
-		require.LessOrEqual(t, bucket.peakObjects, 2, "more index objects were read at once than the limit")
+		require.Equal(t, 2, bucket.peakObjects, "the index objects were not read at the limit")
 	})
 
 	t.Run("runs a new resolution each time the caller ranges over the sequence", func(t *testing.T) {
@@ -1065,14 +1102,11 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.Empty(t, bucket.names)
 	})
 
-	t.Run("records the resolution metrics when two index objects list a section", func(t *testing.T) {
-		sectionOfTestObject := []indexedLine{
-			{objectPath: "test-path", section: 1, streamID: 1, labels: `{app="foo", env="prod"}`, timestamp: now},
-			{objectPath: "test-path", section: 1, streamID: 2, labels: `{app="foo", env="dev"}`, timestamp: now},
-		}
+	t.Run("records the totals, the ratio and both durations when two index objects list the same section", func(t *testing.T) {
+		otherApp := indexedLine{objectPath: "other-path", section: 1, streamID: 2, labels: `{app="bar"}`, timestamp: now}
 		bucket := objstore.NewInMemBucket()
-		addIndexObject(t, bucket, sectionOfTestObject)
-		addIndexObject(t, bucket, append(slices.Clone(sectionOfTestObject), sectionOf("other-path")...))
+		addIndexObject(t, bucket, sectionOf("test-path"))
+		addIndexObject(t, bucket, append(sectionOf("test-path"), otherApp))
 		m, reg, _ := newTestMetastore(bucket)
 		captureCtx, capture := xcap.NewCapture(ctx, nil)
 
@@ -1081,9 +1115,9 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.NoError(t, err)
 		resolved := gatherHistogram(t, reg, "loki_metastore_resolved_sections_total")
 		require.Equal(t, uint64(1), resolved.GetSampleCount())
-		require.Equal(t, float64(2), resolved.GetSampleSum())
-		require.Equal(t, float64(5), gatherHistogram(t, reg, "loki_metastore_stream_filter_sections_total").GetSampleSum())
-		require.InDelta(t, 0.4, gatherHistogram(t, reg, "loki_metastore_resolved_sections_ratio").GetSampleSum(), 1e-9)
+		require.Equal(t, float64(1), resolved.GetSampleSum())
+		require.Equal(t, float64(2), gatherHistogram(t, reg, "loki_metastore_stream_filter_sections_total").GetSampleSum())
+		require.InDelta(t, 0.5, gatherHistogram(t, reg, "loki_metastore_resolved_sections_ratio").GetSampleSum(), 1e-9)
 		require.Equal(t, uint64(1), gatherHistogram(t, reg, "loki_metastore_resolved_sections_first_index_duration_seconds").GetSampleCount())
 		require.Equal(t, uint64(1), gatherHistogram(t, reg, "loki_metastore_resolved_sections_total_duration_seconds").GetSampleCount())
 		firstIndex := xcap.ValueFromRegion[int64](capture, RegionSections, StatMetastoreSectionsFirstIndexDuration)
@@ -1092,7 +1126,7 @@ func TestObjectMetastore_SectionsStream(t *testing.T) {
 		require.LessOrEqual(t, firstIndex, total)
 	})
 
-	t.Run("counts one diverged duplicate when several index objects list different streams of a section", func(t *testing.T) {
+	t.Run("fails once and counts one diverged duplicate when several index objects list different streams of a section", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		for streams := 1; streams <= 4; streams++ {
 			var observations []postings.LabelObservation
