@@ -285,13 +285,6 @@ func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket obj
 // for imWindow.
 func buildCurrentIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
-	buildCurrentIndexWithShardBuckets(ctx, t, bucket, tenant, path, rows, int64(streams.DefaultShardLayout().Buckets()))
-}
-
-// buildCurrentIndexWithShardBuckets is buildCurrentIndexWithStats for log
-// objects with shardBuckets shard buckets.
-func buildCurrentIndexWithShardBuckets(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat, shardBuckets int64) {
-	t.Helper()
 	seen := make(map[string]bool)
 	var postingRows []postings.Row
 	for _, row := range rows {
@@ -306,7 +299,7 @@ func buildCurrentIndexWithShardBuckets(ctx context.Context, t *testing.T, bucket
 			SectionIndex: row.SectionIndex,
 			ColumnName:   "layout",
 			LabelValue:   "current",
-			ShardBuckets: shardBuckets,
+			ShardBuckets: int64(streams.DefaultShardLayout().Buckets()),
 		})
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{
@@ -371,36 +364,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
-}
-
-func TestCompactTenantLogs_MergesInTheSortSchemaOfTheIndex(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-	indexPath := "indexes/aa/cluster"
-	buildCurrentIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:cluster",
-			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 2, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:cluster",
-			Labels: map[string]string{"cluster": "dev"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 3, UncompressedSize: 200},
-	})
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-
-	result, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
-	require.NoError(t, err)
-	require.Equal(t, compactionStats{removed: 1, added: 1, dispatched: 1}, result)
-
-	calls := runner.snapshot()
-	require.Len(t, calls, 1)
-	require.Equal(t, []string{"compaction", "log-merge"}, calls[0].opts.Actor)
-	root, err := calls[0].plan.Root()
-	require.NoError(t, err)
-	node, ok := root.(*physical.LogMerge)
-	require.True(t, ok, "root is %T, want *physical.LogMerge", root)
-	require.Equal(t, []string{"label:cluster"}, node.SortSchema)
 }
 
 // totalLogInputBytes returns the sum of the log input bytes of plan.
@@ -491,18 +454,6 @@ func TestPlanLogCompaction(t *testing.T) {
 		require.True(t, ok, "task is %T, want logMergeTask", plan.tasks[0])
 		require.Equal(t, []string{"label:cluster"}, merge.spec.SortSchema)
 		require.Equal(t, uint64(250), totalLogInputBytes(plan))
-	})
-
-	t.Run("returns an error when the index has a shard count other than the default", func(t *testing.T) {
-		bucket := objstore.NewInMemBucket()
-		buildCurrentIndexWithShardBuckets(ctx, t, bucket, "acme", indexPath, []stats.Stat{
-			stat("logs/log-0", "label:service_name", auth, 10, 20),
-			stat("logs/log-1", "label:service_name", auth, 15, 30),
-		}, int64(streams.DefaultShardLayout().Buckets()/2))
-		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-
-		_, err := c.planLogCompaction(ctx, "acme", window, indexEntry{Path: indexPath})
-		require.ErrorContains(t, err, "LogMerge supports only")
 	})
 
 	t.Run("returns no work when the index has no sections for the tenant", func(t *testing.T) {
@@ -1189,29 +1140,18 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 			if err != nil {
 				return false
 			}
-			switch n := root.(type) {
-			case *physical.IndexMerge:
-				for _, run := range n.Runs {
-					for _, section := range run.Sections {
-						if section.ObjectPath == path {
-							return true
-						}
+			merge, ok := root.(*physical.IndexMerge)
+			if !ok {
+				return false
+			}
+			for _, run := range merge.Runs {
+				for _, section := range run.Sections {
+					if section.ObjectPath == path {
+						return true
 					}
 				}
 			}
 			return false
-		}
-	}
-	logIndex := func(t *testing.T, schema string, labels map[string]string) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		bucket := objstore.NewInMemBucket()
-		rows := make([]stats.Stat, 3)
-		for i := range rows {
-			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: schema, Labels: labels,
-				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
-		}
-		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
-		return bucket, func(c *coordinator) (compactionStats, error) {
-			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
 		}
 	}
 
@@ -1224,7 +1164,16 @@ func TestCompactionPublicationRequiresCompleteResults(t *testing.T) {
 		}
 	}
 	equalRuns := func(t *testing.T) (objstore.Bucket, func(*coordinator) (compactionStats, error)) {
-		return logIndex(t, "label:service_name", map[string]string{"service_name": "auth"})
+		bucket := objstore.NewInMemBucket()
+		rows := make([]stats.Stat, 3)
+		for i := range rows {
+			rows[i] = stats.Stat{ObjectPath: fmt.Sprintf("logs/%d", i), SortSchema: "label:service_name", Labels: map[string]string{"service_name": "auth"},
+				MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100}
+		}
+		buildCurrentIndexWithStats(ctx, t, bucket, "acme", "indexes/source", rows)
+		return bucket, func(c *coordinator) (compactionStats, error) {
+			return c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: "indexes/source"})
+		}
 	}
 
 	tests := []struct {

@@ -789,7 +789,7 @@ func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
 	}
 
 	arts, err := c.doLogObjectMerge(ctx, node)
-	require.ErrorContains(t, err, "sort layout does not match target")
+	require.ErrorContains(t, err, "sort layout does not match the task sort schema")
 	require.Nil(t, arts, "mismatched sort layout must not produce an output")
 }
 

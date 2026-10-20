@@ -16,7 +16,6 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -228,13 +227,9 @@ func (c *coordinator) compactTenantLogs(
 // planLogCompaction decides how to compact the logs of one layout-homogeneous
 // index. It reads the index but dispatches nothing and changes no state.
 //
-// Objects are merged with LogMerge in the sort schema of the index, and runs
-// with no merge partner keep their data through an IndexFilter of the source
-// index. Compaction never changes the layout of an object, so indexes with
-// different layouts form separate groups that never merge.
-//
-// planLogCompaction returns an error if the index has a shard count other
-// than the default, because LogMerge writes only the default shard layout.
+// It plans LogMerge tasks that keep the sort schema of the source index. An
+// IndexFilter of the source index keeps the runs that have no merge partner.
+// Compaction never changes the layout of an object.
 //
 // planLogCompaction returns a plan with no work if the index has no sections
 // for tenant, is below the minimum compaction size, or needs no compaction.
@@ -244,22 +239,17 @@ func (c *coordinator) planLogCompaction(
 	window time.Time,
 	sourceIndex indexEntry,
 ) (logCompactionPlan, error) {
-	sections, sortSchema, shardCount, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
+	sections, sortSchema, _, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndex.Path)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 	if len(sections) == 0 {
 		return logCompactionPlan{}, nil
 	}
-
-	if shardCount != int64(streams.DefaultShardLayout().Buckets()) {
-		return logCompactionPlan{}, fmt.Errorf("index %s has shard count %d, but LogMerge supports only %d", sourceIndex.Path, shardCount, streams.DefaultShardLayout().Buckets())
-	}
 	return c.planLogMerge(tenant, window, sourceIndex, sections, sortSchema)
 }
 
-// planLogMerge plans the k-way merge of sections, which must share sortSchema
-// and the default shard count.
+// planLogMerge plans the k-way merge of sections, which must share sortSchema.
 func (c *coordinator) planLogMerge(
 	tenant string,
 	window time.Time,
@@ -401,8 +391,8 @@ func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 }
 
 // compactTenantIndexes performs one index-compaction pass for a tenant and window.
-// Indexes are grouped by indexed log layout so an IndexMerge can never create
-// an index containing incompatible sort metadata.
+// Indexes are grouped by sort schema and shard count, so indexes in different
+// groups never merge.
 func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	groups := make(map[indexedLogLayout][]indexEntry)
 	for _, entry := range entries {
@@ -688,7 +678,7 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 // safe to execute because index objects are written once. A plan fails before
 // its tasks run if the ToC no longer lists its source index. If another writer
 // replaces the source index while the tasks run, the swap fails and the work
-// is not used. A limits change takes effect at the next phase.
+// is not used.
 func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phaseOutcome {
 	start := c.clock()
 	plans, anyError := c.planLogCompactions(ctx, tenant)

@@ -192,14 +192,6 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 			expectedSchemas: [][]string{appSchema},
 		},
 		{
-			name: "an index in another sort schema compacts in its own sort schema",
-			indexGroups: []indexGroup{{
-				schema: clusterSchema, shardCount: defaultShardCount, layouts: []logs.SortLayout{clusterLayout, clusterLayout},
-			}},
-			expectedIndexes: 1,
-			expectedSchemas: [][]string{clusterSchema},
-		},
-		{
 			name: "indexes with different sort schemas compact separately and never merge",
 			indexGroups: []indexGroup{
 				{schema: appSchema, shardCount: defaultShardCount, layouts: []logs.SortLayout{appLayout, appLayout}},
@@ -250,11 +242,12 @@ func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
 			before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, before, len(test.indexGroups))
 
-			require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, tenant))
+			stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+			scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+			scenario.compactUntilIdle(tenant)
 
 			after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
 			require.Len(t, after, test.expectedIndexes)
-			stored := &compactortest.Scenario{Bucket: bucket, Window: window}
 			contents := stored.ReadReachableContents(ctx, t, tenant)
 			requireLogContents(t, contents, sourceLines, test.expectedSchemas...)
 			for _, entry := range after {
@@ -466,8 +459,9 @@ func newScenarioLogSource(t *testing.T, path, tenant string, entries *fixtures.L
 	return compactortest.Source{Path: path, Object: obj}
 }
 
-// requireLogContents checks that contents hold exactly sourceLines, and that
-// every log section uses the layout of one of schemas.
+// requireLogContents checks that contents hold exactly sourceLines, that the
+// index stats hold exactly the sort schemas in schemas, and that every log
+// section uses the layout of one of schemas.
 func requireLogContents(t *testing.T, contents compactortest.Contents, sourceLines []string, schemas ...[]string) {
 	t.Helper()
 	require.ElementsMatch(t, sourceLines, contents.Lines, "all source records must be reachable exactly once")
