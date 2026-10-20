@@ -418,6 +418,45 @@ func logQueryExecution(ctx context.Context, logger log.Logger, values ...interfa
 	level.Info(logger).Log(logValues...)
 }
 
+const fullRangeVectorWarning = "range vector interval matches the entire query range"
+
+func addFullRangeVectorWarning(req base.Request, resp base.Response) base.Response {
+	r, ok := req.(*LokiRequest)
+	if !ok || r.Plan == nil {
+		return resp
+	}
+
+	expr, ok := r.Plan.AST.(syntax.SampleExpr)
+	if !ok || r.EndTs.Sub(r.StartTs) <= 0 {
+		return resp
+	}
+
+	queryRange := r.EndTs.Sub(r.StartTs)
+	warning := false
+	expr.Walk(func(e syntax.Expr) bool {
+		rangeExpr, ok := e.(*syntax.LogRangeExpr)
+		if ok && rangeExpr.Interval == queryRange {
+			warning = true
+		}
+		return true
+	})
+	if !warning {
+		return resp
+	}
+
+	promResp, ok := resp.(*LokiPromResponse)
+	if !ok || promResp.Response == nil {
+		return resp
+	}
+	for _, existing := range promResp.Response.Warnings {
+		if existing == fullRangeVectorWarning {
+			return resp
+		}
+	}
+	promResp.Response.Warnings = append(promResp.Response.Warnings, fullRangeVectorWarning)
+	return resp
+}
+
 func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, error) {
 	logger := logutil.WithContext(ctx, r.logger)
 
@@ -453,7 +492,11 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 			}
-			return r.metric.Do(ctx, req)
+			resp, err := r.metric.Do(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+			return addFullRangeVectorWarning(req, resp), nil
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
 				// Rejected before the middleware chain, so the line is emitted here.
