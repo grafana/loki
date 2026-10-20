@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
@@ -104,19 +105,21 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 	return nil
 }
 
-// SetProjectedColumns restricts the reader to the given column types plus the metadata
-// columns named in metadataNames. A [ColumnTypeMetadata] entry in types reads all metadata
+// SetProjectedColumns restricts the [Record] to the given column types plus the metadata
+// columns named in metadataNames. A [ColumnTypeMetadata] entry in types selects all metadata
 // columns instead.
 //
-// The field of a column that is not read comes back as its zero value.
+// The field of a column that is not projected comes back as its zero value.
 //
-// The reader reads the columns a stream match or a predicate needs, even when the caller does
-// not list them. A column added that way is decoded into the [Record] as well.
+// The reader reads the columns a stream match or a predicate needs, even when the caller
+// does not list them. It does not decode them into the [Record].
 //
 // When the section holds no such column, a metadata or message predicate evaluates against the
 // empty value.
 //
-// When SetProjectedColumns is not called, every recognized column is read.
+// When the section holds none of the projected columns, Open returns an error.
+//
+// When SetProjectedColumns is not called, every recognized column is projected.
 //
 // SetProjectedColumns may only be called before reading begins or after a call to
 // [RowReader.Reset].
@@ -125,8 +128,6 @@ func (r *RowReader) SetProjectedColumns(types []ColumnType, metadataNames []stri
 		return fmt.Errorf("cannot change projected columns after reading has started")
 	}
 
-	// A projection has to select something. The reader cannot read zero columns, and an
-	// empty selection is a caller mistake.
 	if len(types) == 0 && len(metadataNames) == 0 {
 		return fmt.Errorf("projection must select at least one column")
 	}
@@ -196,14 +197,17 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	// column as sectionColumns[i]. The projection below filters both together so they stay
 	// that way, because the reader addresses a row's values by position.
 	datasetColumns, sectionColumns := dset.Columns(), r.sec.Columns()
-	if r.projected {
-		types, metadataNames := r.projectionColumns()
-		datasetColumns, sectionColumns = projectColumns(datasetColumns, sectionColumns, types, metadataNames)
 
-		// The section holds none of the projected columns, so there is nothing to read. The
-		// dataset reader cannot be opened on an empty column set, so report it here rather
-		// than let it panic later.
-		if len(datasetColumns) == 0 {
+	// The stream match and the predicates look their columns up among all the columns. So they
+	// work whether or not the projection lists those columns. Only the projected columns go
+	// into the records.
+	projectedDatasetColumns, projectedSectionColumns := datasetColumns, sectionColumns
+	if r.projected {
+		projectedDatasetColumns, projectedSectionColumns = projectColumns(datasetColumns, sectionColumns, r.projTypes, r.projMetadata)
+
+		// The section holds none of the projected columns, so every record would be empty. Report
+		// it here instead of reading rows that hold nothing.
+		if len(projectedDatasetColumns) == 0 {
 			return fmt.Errorf("none of the projected columns are present in the section")
 		}
 	}
@@ -230,7 +234,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
-		ProjectedColumns:  datasetColumns,
+		ProjectedColumns:  projectedDatasetColumns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
 	}
@@ -250,64 +254,9 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.projSectionColumns = sectionColumns
+	r.projSectionColumns = projectedSectionColumns
 	r.ready = true
 	return nil
-}
-
-// projectionColumns returns the column types and metadata names to read: the caller's
-// projection, widened with whatever the stream match and the predicates need in order to
-// evaluate.
-func (r *RowReader) projectionColumns() (types map[ColumnType]struct{}, metadataNames map[string]struct{}) {
-	types = make(map[ColumnType]struct{}, len(r.projTypes))
-	metadataNames = make(map[string]struct{}, len(r.projMetadata))
-	maps.Copy(types, r.projTypes)
-	maps.Copy(metadataNames, r.projMetadata)
-
-	// A stream match is evaluated as a predicate on the stream ID column, so that column has
-	// to be read; without it the match reduces to a constant that drops every row.
-	if len(r.matchIDs) > 0 {
-		types[ColumnTypeStreamID] = struct{}{}
-	}
-
-	// Same for the predicates. translateLogsPredicate later looks each one's column up among
-	// the projected columns, and turns a predicate whose column is missing into a constant
-	// that keeps or drops every row instead of filtering on it.
-	for _, p := range r.predicates {
-		projectPredicateColumns(p, types, metadataNames)
-	}
-	return types, metadataNames
-}
-
-// projectPredicateColumns records the columns p reads into types and metadataNames.
-//
-// It panics on a predicate it does not recognize. Every predicate has to name its columns
-// here: one that does not would leave its column unprojected, and translateLogsPredicate
-// would then find no column for it and turn it into a constant, so it would silently keep
-// or drop every row instead of filtering.
-func projectPredicateColumns(p RowPredicate, types map[ColumnType]struct{}, metadataNames map[string]struct{}) {
-	switch p := p.(type) {
-	case AndRowPredicate:
-		projectPredicateColumns(p.Left, types, metadataNames)
-		projectPredicateColumns(p.Right, types, metadataNames)
-	case OrRowPredicate:
-		projectPredicateColumns(p.Left, types, metadataNames)
-		projectPredicateColumns(p.Right, types, metadataNames)
-	case NotRowPredicate:
-		projectPredicateColumns(p.Inner, types, metadataNames)
-	case TimeRangeRowPredicate:
-		types[ColumnTypeTimestamp] = struct{}{}
-	case LogMessageFilterRowPredicate:
-		types[ColumnTypeMessage] = struct{}{}
-	case MetadataMatcherRowPredicate:
-		metadataNames[p.Key] = struct{}{}
-	case MetadataFilterRowPredicate:
-		metadataNames[p.Key] = struct{}{}
-	case nil:
-		// A nil branch reads nothing, which is how translateLogsPredicate treats it too.
-	default:
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
-	}
 }
 
 // projectColumns keeps the columns the projection selects, returning the dataset and
@@ -436,7 +385,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 			return dataset.NewConstPredicate(p.Keep(nil))
 		}
 
-		return dataset.FuncPredicate{
+		fp := dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				// A nil value reads as an empty line.
@@ -446,6 +395,12 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 				return p.Keep(value.Binary())
 			},
 		}
+		if p.KeepBatch != nil {
+			fp.KeepBatch = func(_ dataset.Column, values *columnar.UTF8, dstIndexes []int32) []int32 {
+				return p.KeepBatch(values.Data(), values.Offsets(), dstIndexes)
+			}
+		}
+		return fp
 
 	case MetadataMatcherRowPredicate:
 		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
