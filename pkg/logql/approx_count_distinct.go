@@ -303,7 +303,7 @@ type countDistinctBatchRangeVectorIterator struct {
 
 func (r *countDistinctBatchRangeVectorIterator) At() (int64, StepResult) {
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
-	ts := r.current/1e+6 + r.offset/1e+6
+	ts := (r.current + r.offset) / 1e+6
 	if r.emitSketch {
 		at := make(CountDistinctSketchVector, 0, len(r.window))
 		for _, series := range r.window {
