@@ -11,13 +11,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// shardCacheMaxIdleFactor bounds the cache's size: an entry without a backend
-// call for longer than ttl*shardCacheMaxIdleFactor is swept.
+// An entry without a backend request for longer than ttl*shardCacheMaxIdleFactor is swept.
 const shardCacheMaxIdleFactor = 10
 
 type shardCacheKey struct {
 	tenant string
 	hash   uint64
+}
+
+type streamShardPushCount struct {
+	entry  *shardCacheEntry
+	pushes uint32
 }
 
 type shardCacheEntry struct {
@@ -26,9 +30,7 @@ type shardCacheEntry struct {
 	accumPushes uint32
 
 	// refreshedAt is the time of the last backend call for the stream,
-	// whether it was answered or not. A stream that is still pushed gets a
-	// backend call at least once per ttl, so sweep uses it to tell such a
-	// stream, and the size it accumulated, apart from an idle one.
+	// whether it was answered or not.
 	refreshedAt time.Time
 
 	// inflight is set while a backend call refreshes the entry. Pushes that
@@ -37,24 +39,17 @@ type shardCacheEntry struct {
 	inflight bool
 }
 
-// shardRefresh is the bookkeeping for one stream of the request forwarded to
-// the backend.
-type shardRefresh struct {
-	entry  *shardCacheEntry
-	pushes uint32
-}
-
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
 // Pushes for a stream whose result is younger than ttl, or whose result is
 // being refreshed, are answered from the cache. If the cached result accepts
 // the stream, their size is accumulated. The first push after ttl forwards
 // the accumulated size together with its own in a single backend request.
 //
-// Concurrent pushes for a stream without a result, such as a new stream, are
-// all forwarded.
+// The tradeoff is, that concurrent pushes for a stream without a result, such as
+// a new stream, are all forwarded.
 type shardCacheLimitsClient struct {
-	ttl    time.Duration
-	onMiss limitsClient
+	ttl  time.Duration
+	next limitsClient // the client invoked on cache miss
 
 	mtx       sync.Mutex
 	entries   map[shardCacheKey]*shardCacheEntry
@@ -63,10 +58,10 @@ type shardCacheLimitsClient struct {
 	combinedPushes prometheus.Histogram
 }
 
-func newShardCacheLimitsClient(ttl time.Duration, onMiss limitsClient, reg prometheus.Registerer) *shardCacheLimitsClient {
+func newShardCacheLimitsClient(ttl time.Duration, next limitsClient, reg prometheus.Registerer) *shardCacheLimitsClient {
 	return &shardCacheLimitsClient{
 		ttl:     ttl,
-		onMiss:  onMiss,
+		next:    next,
 		entries: make(map[shardCacheKey]*shardCacheEntry),
 		combinedPushes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_ingest_limits_frontend_shard_cache_combined_pushes",
@@ -76,9 +71,9 @@ func newShardCacheLimitsClient(ttl time.Duration, onMiss limitsClient, reg prome
 	}
 }
 
-// ExceedsLimits implements the [limitsClient] interface. It is not cached.
+// ExceedsLimits implements the [limitsClient] interface. It never caches.
 func (c *shardCacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	return c.onMiss.ExceedsLimits(ctx, req)
+	return c.next.ExceedsLimits(ctx, req)
 }
 
 // CheckLimitsAndShard implements the [limitsClient] interface.
@@ -87,7 +82,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	results := make([]*proto.StreamShardResult, 0, len(req.Streams))
 	var (
 		forward   []*proto.StreamMetadata
-		refreshes []shardRefresh
+		refreshes []streamShardPushCount
 	)
 
 	c.mtx.Lock()
@@ -115,7 +110,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 			TotalSize:       m.TotalSize + entry.accumSize,
 			IngestionPolicy: m.IngestionPolicy,
 		})
-		refreshes = append(refreshes, shardRefresh{entry: entry, pushes: entry.accumPushes + 1})
+		refreshes = append(refreshes, streamShardPushCount{entry: entry, pushes: entry.accumPushes + 1})
 		entry.accumSize, entry.accumPushes, entry.inflight = 0, 0, true
 	}
 	c.mtx.Unlock()
@@ -124,21 +119,21 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		return &proto.CheckLimitsAndShardResponse{Results: results}, nil
 	}
 
-	resp, err := c.onMiss.CheckLimitsAndShard(ctx, &proto.CheckLimitsAndShardRequest{
+	resp, err := c.next.CheckLimitsAndShard(ctx, &proto.CheckLimitsAndShardRequest{
 		Tenant:  req.Tenant,
 		Streams: forward,
 	})
 
-	byHash := make(map[uint64]*proto.StreamShardResult, len(resp.GetResults()))
+	resultsByHash := make(map[uint64]*proto.StreamShardResult, len(resp.GetResults()))
 	for _, res := range resp.GetResults() {
-		byHash[res.StreamHash] = res
+		resultsByHash[res.StreamHash] = res
 	}
 
 	c.mtx.Lock()
 	for i, r := range refreshes {
 		r.entry.inflight = false
 		r.entry.refreshedAt = now
-		if res, ok := byHash[forward[i].StreamHash]; ok {
+		if res, ok := resultsByHash[forward[i].StreamHash]; ok {
 			r.entry.result = res
 			c.combinedPushes.Observe(float64(r.pushes))
 			continue

@@ -32,28 +32,28 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					onMiss := &mockLimitsClient{
+					next := &mockLimitsClient{
 						t:                                  t,
 						expectedCheckLimitsAndShardRequest: newShardRequest(0x1, 10),
 						checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
 							Results: []*proto.StreamShardResult{test.cached},
 						},
 					}
-					c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+					c := newShardCacheLimitsClient(time.Minute, next, prometheus.NewRegistry())
 					_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
 					require.NoError(t, err)
 
 					resp, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 5))
 					require.NoError(t, err)
-					require.Equal(t, 1, onMiss.checkLimitsAndShardCalls)
+					require.Equal(t, 1, next.checkLimitsAndShardCalls)
 					require.Equal(t, []*proto.StreamShardResult{test.cached}, resp.Results)
 
 					time.Sleep(time.Minute)
 
-					onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, test.expectedForwarded)
+					next.expectedCheckLimitsAndShardRequest = newShardRequest(0x1, test.expectedForwarded)
 					_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 7))
 					require.NoError(t, err)
-					require.Equal(t, 2, onMiss.checkLimitsAndShardCalls)
+					require.Equal(t, 2, next.checkLimitsAndShardCalls)
 				})
 			})
 		}
