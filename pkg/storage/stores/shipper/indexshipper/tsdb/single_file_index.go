@@ -94,6 +94,33 @@ type TSDBFile struct {
 
 	// to sastisfy Reader() and Close() methods
 	getRawFileReader GetRawFileReaderFunc
+
+	// shard is the fingerprint range of the file when its name says it is one
+	// of several shards of its table (see SingleTenantTSDBIdentifier.Shard).
+	shard   index.ShardAnnotation
+	sharded bool
+}
+
+// ShardBounds returns the [from, through) fingerprint range the file holds
+// and true when it is a fingerprint-range shard of its table, false otherwise.
+func (f *TSDBFile) ShardBounds() (model.Fingerprint, model.Fingerprint, bool) {
+	if !f.sharded {
+		return 0, 0, false
+	}
+	from, through := f.shard.GetFromThrough()
+	return from, through, true
+}
+
+// shardOfIdentifier parses the shard of a compacted file from its name. The
+// identifier may wrap the name in a prefix, or be a multitenant identifier
+// built from a compacted file's path (identifierFromPath parses full paths as
+// multitenant), so the base name is parsed rather than the identifier type.
+func shardOfIdentifier(id Identifier) (index.ShardAnnotation, bool) {
+	parsed, ok := ParseSingleTenantTSDBPath(filepath.Base(id.Name()))
+	if !ok || !parsed.IsSharded() {
+		return index.ShardAnnotation{}, false
+	}
+	return parsed.Shard, true
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
@@ -146,6 +173,7 @@ func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
 	}
+	file.shard, file.sharded = shardOfIdentifier(id)
 	return file, err
 }
 
