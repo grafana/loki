@@ -434,9 +434,9 @@ func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logp
 
 func (c *compactedIndex) Cleanup() {}
 
-// ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
+// ToIndexFiles creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
-func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
+func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
 	for seriesID, chks := range c.deleteChunks {
 		for _, chk := range chks {
 			chunkFound, err := c.builder.DropChunk(seriesID, chk)
@@ -480,7 +480,11 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
+	idx, err := NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return []shipperindex.Index{idx}, nil
 }
 
 func getUnsafeBytes(s string) []byte {
