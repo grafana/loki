@@ -265,7 +265,7 @@ func (re *Regexp) FindStringMatch(s string) (*Match, error) {
 
 // FindRunesMatch searches the input rune slice for a Regexp match
 func (re *Regexp) FindRunesMatch(r []rune) (*Match, error) {
-	return re.run(false, -1, -1, r, newMatchText(r))
+	return re.run(false, -1, r)
 }
 
 // FindStringMatchStartingAt searches the input string for a Regexp match starting at the startAt index
@@ -281,19 +281,28 @@ func (re *Regexp) FindStringMatchStartingAt(s string, startAt int) (*Match, erro
 }
 
 func (re *Regexp) findDecodedStringMatch(s string, candidate, startAt int) (*Match, error) {
-	// Returned matches retain their rune data, so this path must not consume a
-	// pooled buffer that can never be returned.
-	d := re.decodeStringInput(s, candidate, false)
+	d := re.decodeStringInput(s, candidate, true)
 	runner := re.getRunner()
 	defer re.putRunner(runner)
-	text := newStringMatchTextAt(s, d.runes, d.runeOffset, d.byteOffset)
+	text := runner.stringMatchText(s, d.runes, d.runeOffset, d.byteOffset)
 	origin := re.stringSearchOrigin(s, startAt, d.runeStart)
-	return runner.scan(d.runes, text, origin, d.runeStart, -1, false, re.MatchTimeout)
+	m, err := runner.scan(d.runes, text, origin, d.runeStart, -1, false, re.MatchTimeout)
+	if err != nil || m == nil {
+		d.release()
+		return nil, err
+	}
+	// The match takes both the input and its metadata. A miss keeps the
+	// metadata in the runner and returns the decoded buffer for reuse.
+	runner.textInfo = nil
+	if d.pooled != nil {
+		pooledMatchRuneBuffers.detach(d.pooled, cap(d.runes))
+	}
+	return m, nil
 }
 
 // FindRunesMatchStartingAt searches the input rune slice for a Regexp match starting at the startAt index
 func (re *Regexp) FindRunesMatchStartingAt(r []rune, startAt int) (*Match, error) {
-	return re.run(false, startAt, -1, r, newMatchText(r))
+	return re.run(false, startAt, r)
 }
 
 // FindAllStringIndex returns a slice of byte index pairs identifying all
@@ -313,7 +322,7 @@ func (re *Regexp) FindAllStringIndex(s string, n int) ([][]int, error) {
 
 	// Index results only need byte offsets. Keep the mapper relative to the
 	// decoded suffix so neither decoding nor mapping has to count prefix runes.
-	d := decodeInput(s, startAt, re.decodeFrom(s, startAt), re.optimizations.MaxCachedRuneBufferLength, false)
+	d := decodeInput(s, startAt, re.decodeFrom(s, startAt), re.optimizations.MaxCachedRuneBufferLength)
 	runner := re.getRunner()
 	defer func() {
 		re.putRunner(runner)
@@ -362,8 +371,8 @@ func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, origin, startA
 	var out [][]int
 	var flat []int
 	if n > 0 {
-		out = make([][]int, 0, n)
-		flat = make([]int, 0, n*2)
+		// Preserve the non-nil empty result without allocating backing storage.
+		out = [][]int{}
 	}
 
 	prevEnd := -1
@@ -379,6 +388,10 @@ func (re *Regexp) findAllRunesIndex(runner *Runner, input []rune, origin, startA
 
 		localIndex := m.runeSliceIndex()
 		if m.RuneLength != 0 || localIndex != prevEnd {
+			if len(out) == 0 && n > 0 {
+				out = make([][]int, 0, n)
+				flat = make([]int, 0, n*2)
+			}
 			start, end := makeIndex(localIndex, m.RuneLength)
 			flat = append(flat, start, end)
 			out = append(out, flat[len(flat)-2:len(flat):len(flat)])
@@ -474,7 +487,7 @@ func (re *Regexp) matchStringAt(s string, startAt int) (bool, error) {
 			runeStart = len(input)
 		}
 	} else {
-		d := decodeInput(s, startAt, re.decodeFrom(s, startAt), re.optimizations.MaxCachedRuneBufferLength, false)
+		d := decodeInput(s, startAt, re.decodeFrom(s, startAt), re.optimizations.MaxCachedRuneBufferLength)
 		input = d.runes
 		pooledInput = d.pooled
 		runeStart = d.runeStart
@@ -504,7 +517,7 @@ func (re *Regexp) matchStringAt(s string, startAt int) (bool, error) {
 // MatchRunes return true if the runes matches the regex
 // error will be set if a timeout occurs
 func (re *Regexp) MatchRunes(r []rune) (bool, error) {
-	m, err := re.run(true, -1, -1, r, nil)
+	m, err := re.run(true, -1, r)
 	if err != nil {
 		return false, err
 	}

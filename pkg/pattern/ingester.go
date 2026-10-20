@@ -206,6 +206,7 @@ type Ingester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
 	ringClient RingClient
+	owner      streamOwner
 
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -266,6 +267,8 @@ func New(
 
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
+
+	i.owner = &ringOwner{ringClient: ringClient, ingesterID: i.lifecycler.ID}
 
 	return i, nil
 }
@@ -515,8 +518,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.metrics,
 			i.drainCfg,
 			i.limits,
-			i.ringClient,
-			i.lifecycler.ID,
+			i.owner,
 			metricWriter,
 			patternWriter,
 			aggregationMetrics,

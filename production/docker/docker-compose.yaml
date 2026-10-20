@@ -97,15 +97,15 @@ services:
     networks:
       - loki
 
-  minio:
-    image: minio/minio
+  silo:
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
     entrypoint:
       - sh
       - -euc
       - |
         mkdir -p /data/loki-data && \
         mkdir -p /data/loki-ruler &&
-        minio server --address "0.0.0.0:9000" --console-address "0.0.0.0:9001" /data
+        exec /usr/bin/silo server --address "0.0.0.0:9000" --console-address "0.0.0.0:9001" /data
     environment:
       - MINIO_ROOT_USER=loki
       - MINIO_ROOT_PASSWORD=supersecret

@@ -38,13 +38,13 @@ func (re *Regexp) Split(input string, count int) ([]string, error) {
 	if !ok {
 		return []string{input}, nil
 	}
-	d := decodeInput(input, startAt, re.decodeFrom(input, startAt), re.optimizations.MaxCachedRuneBufferLength, false)
+	d := decodeInput(input, startAt, re.decodeFrom(input, startAt), re.optimizations.MaxCachedRuneBufferLength)
 	runner := re.getRunner()
 	defer func() {
 		re.putRunner(runner)
 		d.release()
 	}()
-	text := newStringMatchTextAt(input, d.runes, 0, d.byteOffset)
+	text := runner.stringMatchText(input, d.runes, 0, d.byteOffset)
 
 	// Keep captures in the reusable match, but only materialize output strings.
 	// Passing text also ensures registered engines use their capturing program.
