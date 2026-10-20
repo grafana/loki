@@ -126,6 +126,10 @@ type LokiStore struct {
 	// (FlushIndexes) and to refresh the object-listing cache + download newly
 	// shipped indexes on demand (TriggerSync/SyncStatuses).
 	syncerFlushers []namedSyncerFlusher
+
+	// preloaders are the per-period index stores that can download their
+	// query ready indexes on demand (PreloadIndexes).
+	preloaders []index.Preloader
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -215,6 +219,19 @@ func (s *LokiStore) TriggerSync() bool {
 		}
 	}
 	return started
+}
+
+// PreloadIndexes downloads the query ready indexes of every index store
+// collected at construction that supports it. It is needed only when the
+// initial query readiness run was delayed
+// (indexshipper.Config.DelayQueryReadinessUntilPreload).
+func (s *LokiStore) PreloadIndexes(ctx context.Context) error {
+	for _, p := range s.preloaders {
+		if err := p.PreloadIndexes(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SyncStatuses reports the sync status of each per-period index store, labeled
@@ -342,6 +359,9 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	// assertion collects it for both uses.
 	if sf, ok := indexReaderWriter.(syncerFlusher); ok {
 		s.syncerFlushers = append(s.syncerFlushers, namedSyncerFlusher{name: name, syncerFlusher: sf})
+	}
+	if p, ok := indexReaderWriter.(index.Preloader); ok {
+		s.preloaders = append(s.preloaders, p)
 	}
 
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
