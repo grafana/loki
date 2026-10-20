@@ -6,7 +6,7 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "1"
-    image: hashicorp/consul
+    image: hashicorp/consul@sha256:1c59f007df8ea1c21b2558dc73ef8d99047bc895d9e52e635d1e745e35fe9a54
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
       - 8500:8500
@@ -14,7 +14,7 @@ services:
   minio:
     logging:
       <<: *logging
-    image: minio/minio:RELEASE.2024-02-24T17-11-14Z
+    image: minio/minio:RELEASE.2024-02-24T17-11-14Z@sha256:a23f6de6bd0f7601cbda132e940a9f325ae127ebe634d79eb0a8df5d6b713859
     entrypoint: sh
     command: -c 'mkdir -p /data/loki && /usr/bin/minio server --console-address :9001 /data'
     environment:
@@ -235,7 +235,7 @@ services:
   grafana:
     logging:
       <<: *logging
-    image: grafana/grafana
+    image: grafana/grafana@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
     depends_on:
       - query-frontend
       - querier
@@ -251,7 +251,7 @@ services:
   log-gen:
     logging:
       <<: *logging
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor
@@ -263,7 +263,7 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "2"
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     command: ["-f", "json", "-l", "-d", "2s"]
     depends_on:
       - distributor

@@ -12,7 +12,7 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: &lokiImage grafana/loki:latest
+    image: &lokiImage grafana/loki:latest@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     user: root
     volumes:
       - ./loki:/loki
@@ -52,7 +52,7 @@ services:
 
   # for testing purposes only, disable in production
   log-generator:
-    image: mingrammer/flog
+    image: mingrammer/flog@sha256:44180f8610fab7d4c29ff233a79e19cf28bd425c1737aa59c72c1f66613fdf41
     platform: linux/amd64
     command:
       - --loop
@@ -66,7 +66,7 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:latest@sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
@@ -77,7 +77,7 @@ services:
       - loki
 
   minio:
-    image: minio/minio
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     entrypoint:
       - sh
       - -euc
@@ -99,7 +99,7 @@ services:
       - loki
 
   loki-gateway:
-    image: nginx:latest
+    image: nginx:latest@sha256:bc4cad49969aaf95eb4eecec5572846f86e59f1e8332aba36ed64b91aff8b724
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf
     ports:
