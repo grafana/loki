@@ -955,7 +955,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	}
 
 	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
-		if len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
+		if hintprovider.SupportedMetricQuery(expr, h.ngramLength).IsTrue() {
 			return h.next.Do(ctx, req)
 		}
 		if mode == ModeLive {
@@ -980,7 +980,7 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 	// Shared eligibility: supported query shape.
 	// When ngramLength is not configured (<=0), skip the early check and let
 	// ProvideHints handle support detection internally.
-	if h.ngramLength > 0 && len(hintprovider.SupportedQuery(expr, h.ngramLength)) == 0 {
+	if h.ngramLength > 0 && hintprovider.SupportedQuery(expr, h.ngramLength).IsTrue() {
 		return h.nextWithOutcome(ctx, req, mode, outcomeUnsupportedQuery)
 	}
 

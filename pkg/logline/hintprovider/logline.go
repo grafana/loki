@@ -32,6 +32,9 @@ type LoglineHintProvider struct {
 	queryMultipleObserver func(reason string, termBatchesProcessed int)
 	logger                log.Logger
 	cache                 *metadataCache
+	// wrapReader, when set, wraps every reader opened for a query. Tests use
+	// it to count lookups.
+	wrapReader func(logline.Reader) logline.Reader
 }
 
 func NewLoglineHintProvider(
@@ -99,7 +102,7 @@ func (p *LoglineHintProvider) queryRanges(
 	stats := NewQueryStats()
 	through := req.GetEnd()
 
-	if len(filters) == 0 {
+	if filters.IsTrue() {
 		return []HintTimeRange{passthroughForInclusiveThrough(through)}, stats, nil
 	}
 
@@ -113,7 +116,7 @@ func (p *LoglineHintProvider) queryRanges(
 	if err != nil {
 		return nil, stats, err
 	}
-	return aggregateShardRanges(shardRanges), stats, nil
+	return aggregateConjunctionRanges(shardRanges), stats, nil
 }
 
 // timeUnion merges ranges by time alone, across document shards. Ranges
@@ -155,7 +158,7 @@ func (p *LoglineHintProvider) PlanHints(
 	}
 
 	filters := SupportedQuery(expr, p.ngramLength)
-	if len(filters) == 0 {
+	if filters.IsTrue() {
 		return plan, ErrUnsupported
 	}
 	plan.Filters = filters
@@ -281,6 +284,19 @@ func (p *LoglineHintProvider) startCacheInvalidationLoop() {
 			p.cache.evictStale(snap)
 		}
 	}()
+}
+
+// aggregateConjunctionRanges unions the ranges of every conjunction. Each
+// conjunction is aggregated on its own with aggregateShardRanges. Shard values
+// may only be intersected within one conjunction: with "abc" on shard 1 and
+// "def" on shard 2, intersecting the shards of "abc or def" would compute
+// "abc and def".
+func aggregateConjunctionRanges(byConj map[int]map[shardKey][]HintTimeRange) []HintTimeRange {
+	var all []HintTimeRange
+	for _, byKey := range byConj {
+		all = append(all, aggregateShardRanges(byKey)...)
+	}
+	return NormalizeRanges(all)
 }
 
 // aggregateShardRanges combines per-shard results with the correct semantics:

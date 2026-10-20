@@ -1,11 +1,14 @@
 package hintprovider
 
-import "github.com/grafana/loki/v3/pkg/logql/syntax"
+import (
+	"github.com/grafana/loki/v3/pkg/logline/needle"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+)
 
-func SupportedMetricQuery(expr syntax.Expr, ngramLength int) []string {
+func SupportedMetricQuery(expr syntax.Expr, ngramLength int) needle.Expr {
 	selector, ok := metricLogSelector(expr)
 	if !ok {
-		return nil
+		return needle.True()
 	}
 	return SupportedQuery(selector, ngramLength)
 }
