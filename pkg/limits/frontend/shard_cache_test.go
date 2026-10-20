@@ -152,6 +152,29 @@ func TestShardCacheLimitsClient(t *testing.T) {
 		require.Equal(t, uint32(1), resp.Results[0].Shards)
 	})
 
+	t.Run("backend error keeps the results answered from the cache", func(t *testing.T) {
+		cached := &proto.StreamShardResult{StreamHash: 0x1, Shards: 4}
+		onMiss := &mockLimitsClient{
+			t: t,
+			checkLimitsAndShardResponse: &proto.CheckLimitsAndShardResponse{
+				Results: []*proto.StreamShardResult{cached},
+			},
+		}
+		c := newShardCacheLimitsClient(time.Minute, onMiss, prometheus.NewRegistry())
+		_, err := c.CheckLimitsAndShard(t.Context(), newShardRequest(0x1, 10))
+		require.NoError(t, err)
+
+		onMiss.checkLimitsAndShardResponse = nil
+		onMiss.err = errors.New("backend unavailable")
+		onMiss.expectedCheckLimitsAndShardRequest = newShardRequest(0x2, 20)
+		resp, err := c.CheckLimitsAndShard(t.Context(), &proto.CheckLimitsAndShardRequest{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{{StreamHash: 0x1, TotalSize: 5}, {StreamHash: 0x2, TotalSize: 20}},
+		})
+		require.Error(t, err)
+		require.Equal(t, []*proto.StreamShardResult{cached}, resp.Results)
+	})
+
 	t.Run("a stream without an answer stops serving its previous result", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			onMiss := &mockLimitsClient{

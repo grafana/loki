@@ -148,7 +148,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	c.mtx.Unlock()
 
 	if err != nil {
-		return nil, err
+		return &proto.CheckLimitsAndShardResponse{Results: results}, err
 	}
 	return &proto.CheckLimitsAndShardResponse{Results: append(results, resp.Results...)}, nil
 }

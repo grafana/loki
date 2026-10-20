@@ -191,6 +191,8 @@ func (f *Frontend) CheckLimitsAndShard(ctx context.Context, req *proto.CheckLimi
 	resp, err := f.limitsClient.CheckLimitsAndShard(ctx, req)
 	if err != nil {
 		level.Error(f.logger).Log("msg", "failed to check limits and shard", "err", err)
+	}
+	if resp == nil {
 		resp = &proto.CheckLimitsAndShardResponse{}
 	}
 	resp.Results = completeShardResults(resp.Results, req.Streams)
