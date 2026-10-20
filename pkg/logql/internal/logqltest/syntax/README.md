@@ -47,11 +47,16 @@ repository = "file:///absolute/path/to/loki"
 rev = "my-branch"
 ```
 
-Zed fetches only committed state, so commit first. `rev` may be a branch, a tag or a commit, and it
-is fetched again on every build: rebuild the extension from the Extensions page after committing a
-change. If Zed reports that the grammar directory "is not a git clone", you changed `repository`
-after a build: delete `zed/grammars` and rebuild. Zed puts its build output there and in `*.wasm`
-files, and both are ignored by git.
+Zed fetches only committed state, so commit first. Zed builds in `zed/grammars` and reuses that
+checkout, so a branch or tag name in `rev` stops following the branch after the first build and
+Zed keeps compiling the old grammar. Either set `rev` to a commit (`git rev-parse HEAD`) and update
+it after every commit, or delete `zed/grammars` before each rebuild. The same goes for the default
+`main`: to pick up a newer upstream grammar, delete `zed/grammars` and rebuild from the Extensions
+page. Delete it too if Zed reports that the grammar directory "is not a git clone", which means
+`repository` changed after a build.
+
+`zed/grammars` and `*.wasm` are Zed's build output and are ignored by git. With a `file://`
+repository, `zed/grammars` holds a full copy of the repository.
 
 Colors follow the active theme's mapping for the captures in
 `zed/languages/logqltest/highlights.scm`.
