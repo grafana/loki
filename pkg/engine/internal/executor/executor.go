@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -54,8 +53,6 @@ type Config struct {
 	IndexobjCfg logsobj.BuilderBaseConfig
 	// LogsobjCfg is the builder config for index objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
@@ -95,10 +92,27 @@ type IndexMergeObserver interface {
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
-// LogMergeObserver receives per-task compaction summaries from LogMerge.
+// LogMergeObserver receives LogMerge statistics from one worker thread.
 type LogMergeObserver interface {
+	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
+
+	// ObserveLogMergeInputBytes receives the size of a batch of merged records
+	// while the task runs. It reports during the task, not once at the end,
+	// so that rate() stays steady for tasks that run for many minutes.
+	ObserveLogMergeInputBytes(bytes int64)
 }
+
+// nopLogMergeObserver discards LogMerge statistics. Query-only workers have no
+// LogMergeObserver, so the executor uses it in their place.
+type nopLogMergeObserver struct{}
+
+func (nopLogMergeObserver) ObserveLogMerge(string, LogMergeObservedStats, time.Duration) {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytes(int64)                              {}
+
+// NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
+// with the given index.
+type NewLogMergeObserverFunc func(thread int) LogMergeObserver
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
@@ -117,10 +131,12 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
 		logsobjCfg:         cfg.LogsobjCfg,
-		uploaderCfg:        cfg.UploaderCfg,
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
+	}
+	if c.logMergeObserver == nil {
+		c.logMergeObserver = nopLogMergeObserver{}
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -155,7 +171,6 @@ type Context struct {
 	scratchStore   scratch.Store
 	indexobjCfg    logsobj.BuilderBaseConfig
 	logsobjCfg     logsobj.BuilderBaseConfig
-	uploaderCfg    uploader.Config
 	builderMetrics *logsobj.BuilderMetrics
 
 	indexMergeObserver IndexMergeObserver
@@ -217,8 +232,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// node's Runs, producing schema-sorted compacted log object(s). See
 		// executeLogMerge / doLogObjectMerge in log_merge.go.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
-	case *physical.SortObject:
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeSortObject(n))
+	case *physical.IndexFilter:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexFilter(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}

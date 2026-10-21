@@ -231,7 +231,7 @@ func (r *Reader) init(ctx context.Context) error {
 
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           dset.Columns(),
+		ProjectedColumns:  dset.Columns(),
 		PrefetchAllOnOpen: true,
 	}
 	if r.inner == nil {

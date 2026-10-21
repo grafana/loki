@@ -619,30 +619,6 @@ func Bool64(b bool) int64 {
 	return 0
 }
 
-type sorter struct {
-	len  int
-	base uintptr
-	sz   uintptr
-	f    func(*TLS, uintptr, uintptr) int32
-	t    *TLS
-}
-
-func (s *sorter) Len() int { return s.len }
-
-func (s *sorter) Less(i, j int) bool {
-	return s.f(s.t, s.base+uintptr(i)*s.sz, s.base+uintptr(j)*s.sz) < 0
-}
-
-func (s *sorter) Swap(i, j int) {
-	p := uintptr(s.base + uintptr(i)*s.sz)
-	q := uintptr(s.base + uintptr(j)*s.sz)
-	for i := 0; i < int(s.sz); i++ {
-		*(*byte)(unsafe.Pointer(p)), *(*byte)(unsafe.Pointer(q)) = *(*byte)(unsafe.Pointer(q)), *(*byte)(unsafe.Pointer(p))
-		p++
-		q++
-	}
-}
-
 func CString(s string) (uintptr, error) {
 	n := len(s)
 	p := Xmalloc(nil, types.Size_t(n)+1)
@@ -808,128 +784,92 @@ out:
 	}
 }
 
-func parseZone(s string) (name string, off int) {
-	_, name, off, _ = parseZoneOffset(s, false)
-	return name, off
-}
-
-func parseZoneOffset(s string, offOpt bool) (string, string, int, bool) {
-	s0 := s
-	name := s
-	for len(s) != 0 {
-		switch c := s[0]; {
-		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_', c == '/':
-			s = s[1:]
-		default:
-			name = name[:len(name)-len(s)]
-			if len(name) < 3 {
-				panic(todo("%q", s0))
-			}
-
-			if offOpt {
-				if len(s) == 0 {
-					return "", name, 0, false
-				}
-
-				if c := s[0]; (c < '0' || c > '9') && c != '+' && c != '-' {
-					return s, name, 0, false
-				}
-			}
-
-			s, off := parseOffset(s)
-			return s, name, off, true
+// parseZone parses the standard time part of a POSIX TZ value: a name of
+// letters, '_' and '/', at least three of them unless the name is all there is,
+// then a [+|-]hh[:mm[:ss]] offset. Whatever follows the offset is ignored. It
+// reports false for anything else.
+func parseZone(s string) (name string, off int, ok bool) {
+	i := 0
+	for ; i < len(s); i++ {
+		if c := s[i]; !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '_' || c == '/') {
+			break
 		}
 	}
-	return "", s0, 0, true
+	if i == len(s) {
+		return s, 0, true
+	}
+
+	if i < 3 {
+		return "", 0, false
+	}
+
+	if _, off, ok = parseOffset(s[i:]); !ok {
+		return "", 0, false
+	}
+
+	return s[:i], off, true
 }
 
 // [+|-]hh[:mm[:ss]]
-func parseOffset(s string) (string, int) {
-	if len(s) == 0 {
-		panic(todo(""))
-	}
-
+func parseOffset(s string) (string, int, bool) {
 	k := 1
-	switch s[0] {
-	case '+':
-		// nop
-		s = s[1:]
-	case '-':
-		k = -1
-		s = s[1:]
+	if len(s) != 0 {
+		switch s[0] {
+		case '+':
+			s = s[1:]
+		case '-':
+			k = -1
+			s = s[1:]
+		}
 	}
 	s, hh, ok := parseUint(s)
 	if !ok {
-		panic(todo(""))
+		return s, 0, false
 	}
 
 	n := hh * 3600
 	if len(s) == 0 || s[0] != ':' {
-		return s, k * n
+		return s, k * n, true
 	}
 
-	s = s[1:] // ':'
-	if len(s) == 0 {
-		panic(todo(""))
-	}
-
-	s, mm, ok := parseUint(s)
+	s, mm, ok := parseUint(s[1:])
 	if !ok {
-		panic(todo(""))
+		return s, 0, false
 	}
 
 	n += mm * 60
 	if len(s) == 0 || s[0] != ':' {
-		return s, k * n
+		return s, k * n, true
 	}
 
 	s = s[1:] // ':'
 	if len(s) == 0 {
-		panic(todo(""))
+		return s, 0, false
 	}
 
 	s, ss, _ := parseUint(s)
-	return s, k * (n + ss)
+	return s, k * (n + ss), true
 }
 
+// parseUint parses a decimal number up to 0xffff, small enough that an offset
+// computed from it fits a 32-bit int. It reports false for no digits or a larger
+// number.
 func parseUint(s string) (string, int, bool) {
 	var ok bool
 	var r int
-	for len(s) != 0 {
-		switch c := s[0]; {
-		case c >= '0' && c <= '9':
-			ok = true
-			r0 := r
-			r = 10*r + int(c) - '0'
-			if r < r0 {
-				panic(todo(""))
-			}
-
-			s = s[1:]
-		default:
-			return s, r, ok
+	for len(s) != 0 && s[0] >= '0' && s[0] <= '9' {
+		if r = 10*r + int(s[0]-'0'); r > 0xffff {
+			return s, 0, false
 		}
+
+		ok = true
+		s = s[1:]
 	}
 	return s, r, ok
 }
 
-// https://stackoverflow.com/a/53052382
-//
 // isTimeDST returns true if time t occurs within daylight saving time
 // for its time zone.
 func isTimeDST(t time.Time) bool {
-	// If the most recent (within the last year) clock change
-	// was forward then assume the change was from std to dst.
-	hh, mm, _ := t.UTC().Clock()
-	tClock := hh*60 + mm
-	for m := -1; m > -12; m-- {
-		// assume dst lasts for at least one month
-		hh, mm, _ := t.AddDate(0, m, 0).UTC().Clock()
-		clock := hh*60 + mm
-		if clock != tClock {
-			return clock > tClock
-		}
-	}
-	// assume no dst
-	return false
+	return t.IsDST()
 }

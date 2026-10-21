@@ -1457,8 +1457,6 @@ func (b *BitSet) UnmarshalJSON(data []byte) error {
 // that are set in the bitset.
 // See https://en.wikipedia.org/wiki/Ranking#Ranking_in_statistics
 func (b *BitSet) Rank(index uint) (rank uint) {
-	index++ // Rank is up to and including
-
 	// needed more than once
 	length := len(b.set)
 
@@ -1482,7 +1480,7 @@ func (b *BitSet) Rank(index uint) (rank uint) {
 	// make Rank inlineable and faster in the end
 	// don't test index&63 != 0, just add, less branching
 	if idx < length {
-		rank += uint(bits.OnesCount64(b.set[idx] << (64 - index&63)))
+		rank += uint(bits.OnesCount64(b.set[idx] << (63 - index&63)))
 	}
 
 	return
@@ -1625,6 +1623,11 @@ func (b *BitSet) ShiftRight(bits uint) {
 // Returns 0 if from >= to.
 func (b *BitSet) OnesBetween(from, to uint) uint {
 	panicIfNull(b)
+
+	// Bits at or past length are unset, so clamp before indexing b.set.
+	if to > b.length {
+		to = b.length
+	}
 
 	if from >= to {
 		return 0

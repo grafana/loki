@@ -271,8 +271,10 @@ func (q *QuerierAPI) LoglineIndexHandler(ctx context.Context, req *logproto.Logl
 
 	resp, err := q.querier.LoglineIndex(ctx, req)
 	resLength := 0
+	var hintStats *logproto.HintQueryStats
 	if resp != nil {
 		resLength = len(resp.TimeRanges)
+		hintStats = resp.Stats
 	}
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
@@ -281,7 +283,7 @@ func (q *QuerierAPI) LoglineIndexHandler(ctx context.Context, req *logproto.Logl
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordLoglineIndexQueryMetrics(ctx, utillog.Logger, req.GetStart(), req.GetEnd(), req.Expr, strconv.Itoa(status), statResult)
+	logql.RecordLoglineIndexQueryMetrics(ctx, utillog.Logger, req.GetStart(), req.GetEnd(), req.Expr, strconv.Itoa(status), statResult, hintStats)
 	return resp, err
 }
 

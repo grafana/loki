@@ -405,6 +405,11 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 			}
 
 		case sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL: // ".*"
+			if len(baseLiteral) != 0 && sub != reg.Sub[len(reg.Sub)-1] {
+				// Anything after ".*" is no longer adjacent to the base literal,
+				// so it can't be concatenated with it.
+				return nil, false
+			}
 			continue // Nothing to do; always matches everything.
 
 		default:

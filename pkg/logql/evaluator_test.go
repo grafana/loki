@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -72,6 +73,49 @@ func TestDefaultEvaluatorPropagatesHintRanges(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, stepEvaluator.Close())
 	require.Equal(t, hintRanges, querier.sampleParams.HintRanges)
+}
+
+func TestDefaultEvaluator_NewStepEvaluator_dataObjOptions(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+
+	newParams := func(t *testing.T, query string) LiteralParams {
+		t.Helper()
+		params, err := NewLiteralParams(query, start, start.Add(time.Hour), time.Minute, 0, logproto.FORWARD, 0, nil, nil)
+		require.NoError(t, err)
+		return params
+	}
+
+	queries := map[string]string{
+		"a sum of a range aggregation":  `sum(count_over_time({app="foo"}[1m]))`,
+		"a range aggregation":           `count_over_time({app="foo"}[1m])`,
+		"an approximate count distinct": `approx_count_distinct(mac, {app="foo"}[1m]) by (version)`,
+	}
+	for name, query := range queries {
+		t.Run("copies the options into the sample request of "+name, func(t *testing.T) {
+			querier := &hintCapturingQuerier{}
+			evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
+			options := &logproto.DataObjOptions{Eligible: true}
+			params := newParams(t, query).WithDataObjOptions(options)
+
+			stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+			require.NoError(t, err)
+			require.NoError(t, stepEvaluator.Close())
+
+			require.Equal(t, options, querier.sampleParams.DataObjOptions)
+		})
+	}
+
+	t.Run("leaves the options unset when the params do not set them", func(t *testing.T) {
+		querier := &hintCapturingQuerier{}
+		evaluator := NewDefaultEvaluator(querier, 0, 0, NoLimits)
+		params := newParams(t, queries["a sum of a range aggregation"])
+
+		stepEvaluator, err := evaluator.NewStepEvaluator(t.Context(), evaluator, params.GetExpression().(syntax.SampleExpr), params, true)
+		require.NoError(t, err)
+		require.NoError(t, stepEvaluator.Close())
+
+		require.Nil(t, querier.sampleParams.DataObjOptions)
+	})
 }
 
 func TestDefaultEvaluator_DivideByZero(t *testing.T) {
@@ -335,7 +379,7 @@ func TestEmptyNestedEvaluator(t *testing.T) {
 		},
 		{
 			desc: "BinOpStepEvaluator",
-			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}},
+			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}, lse: &emptyEvaluator{}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -344,6 +388,193 @@ func TestEmptyNestedEvaluator(t *testing.T) {
 		})
 	}
 
+}
+
+func TestBinOpStepEvaluator_Next(t *testing.T) {
+	t.Run("returns false and records the error when duplicate right-hand labels make the match many-to-many", func(t *testing.T) {
+		rse := newReturnVectorEvaluator([]float64{1, 2})
+		lse := newReturnVectorEvaluator([]float64{1})
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Error(t, ev.Error())
+	})
+
+	t.Run("a second call after an error stays exhausted and does not call rse or lse again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		rse := &fakeEvaluator{
+			ok: true,
+			result: SampleVector{
+				{Metric: labels.FromStrings("foo", "bar"), F: 1},
+				{Metric: labels.FromStrings("foo", "bar"), F: 2},
+			},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+		require.Error(t, ev.Error())
+	})
+
+	t.Run("surfaces an error that lives only in a child evaluator and skips the other child", func(t *testing.T) {
+		lseCalls := 0
+		rseErr := errors.New("rse error present before Next")
+		rse := &fakeEvaluator{err: rseErr}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+	})
+
+	t.Run("does not call rse when lse already carries a known error", func(t *testing.T) {
+		rseCalls := 0
+		lseErr := errors.New("lse error present before Next")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{err: lseErr}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, rseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 0, rseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+	})
+
+	t.Run("a second call after rse reveals an error mid-step stays exhausted and does not call either child again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		rseErr := errors.New("rse failed mid-iteration")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return rseErr },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return nil },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 0, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 0, lseCalls)
+		require.ErrorIs(t, ev.Error(), rseErr)
+	})
+
+	t.Run("a second call after lse reveals an error mid-step stays exhausted and does not call either child again", func(t *testing.T) {
+		rseCalls, lseCalls := 0, 0
+		lseErr := errors.New("lse failed mid-iteration")
+		rse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { rseCalls++; return nil },
+		}
+		lse := &fakeEvaluator{
+			ok:     true,
+			result: SampleVector{{Metric: labels.FromStrings("foo", "bar"), F: 1}},
+			onNext: func() error { lseCalls++; return lseErr },
+		}
+
+		ev := &BinOpStepEvaluator{
+			rse: rse,
+			lse: lse,
+			expr: &syntax.BinOpExpr{
+				Op:   syntax.OpTypeAdd,
+				Opts: &syntax.BinOpOptions{VectorMatching: &syntax.VectorMatching{}},
+			},
+		}
+
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+
+		ok, _, _ = ev.Next()
+		require.False(t, ok)
+		require.Equal(t, 1, rseCalls)
+		require.Equal(t, 1, lseCalls)
+		require.ErrorIs(t, ev.Error(), lseErr)
+	})
 }
 
 func TestLiteralStepEvaluator(t *testing.T) {
@@ -558,55 +789,67 @@ func (it *countingSampleIterator) Next() bool {
 	return true
 }
 
-func TestDefaultEvaluator_sampleOrderFor(t *testing.T) {
+func TestSampleOrderFor(t *testing.T) {
 	limits := tenantStreamFirstLimits{enabled: map[string]bool{"a": true, "b": true}}
 
-	evaluatorWith := func(l Limits) *DefaultEvaluator {
-		return NewDefaultEvaluator(&hintCapturingQuerier{}, 0, 0, l)
-	}
-
-	rangeAggregation := func(query string) *syntax.RangeAggregationExpr {
-		return syntax.MustParseExpr(query).(*syntax.VectorAggregationExpr).Left.(*syntax.RangeAggregationExpr)
+	fullExpr := func(query string) syntax.SampleExpr {
+		return syntax.MustParseExpr(query).(syntax.SampleExpr)
 	}
 
 	tenantContext := func(tenantID string) context.Context {
 		return user.InjectOrgID(context.Background(), tenantID)
 	}
 
-	count := rangeAggregation(`sum by (app) (count_over_time({app="foo"}[1m]))`)
+	count := fullExpr(`sum by (app) (count_over_time({app="foo"}[1m]))`)
 
-	t.Run("returns stream-first for a root sum of count_over_time when the tenant enables it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), count, true)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
+	t.Run("returns stream-first for every supported query when the tenant enables it", func(t *testing.T) {
+		streamFirstQueries := []string{
+			`sum by (app) (count_over_time({app="foo"}[1m]))`,
+			`sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range streamFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got, query)
+		}
+	})
+
+	t.Run("returns timestamp-first for every unsupported query when the tenant enables it", func(t *testing.T) {
+		timestampFirstQueries := []string{
+			`sum(rate({app="foo"}[1m]))`,
+			`count_over_time({app="foo"}[1m])`,
+			`sum_over_time({app="foo"} | logfmt | unwrap n [1m])`,
+			`max(sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`,
+		}
+
+		for _, query := range timestampFirstQueries {
+			got := sampleOrderFor(tenantContext("a"), fullExpr(query), limits, true)
+			require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got, query)
+		}
 	})
 
 	t.Run("returns timestamp-first when the tenant does not enable it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("other"), count, true)
+		got := sampleOrderFor(tenantContext("other"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns stream-first for a multi-tenant query when every tenant enables it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a|b"), count, true)
+		got := sampleOrderFor(tenantContext("a|b"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, got)
 	})
 
 	t.Run("returns timestamp-first for a multi-tenant query when one tenant does not enable it", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a|other"), count, true)
+		got := sampleOrderFor(tenantContext("a|other"), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first for an expression that is not the root", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), count, false)
-		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
-	})
-
-	t.Run("returns timestamp-first for a range aggregation other than count_over_time", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(tenantContext("a"), rangeAggregation(`sum(rate({app="foo"}[1m]))`), true)
+		got := sampleOrderFor(tenantContext("a"), count, limits, false)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 
 	t.Run("returns timestamp-first when the context has no tenant", func(t *testing.T) {
-		got := evaluatorWith(limits).sampleOrderFor(context.Background(), count, true)
+		got := sampleOrderFor(context.Background(), count, limits, true)
 		require.Equal(t, logproto.SAMPLE_ORDER_BY_TIMESTAMP, got)
 	})
 }
@@ -691,6 +934,27 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
+	t.Run("sum_over_time() sums every sample value of streams returned one after the other", func(t *testing.T) {
+		sampleAt := func(offset time.Duration, value float64) logproto.Sample {
+			return logproto.Sample{Timestamp: start.Add(offset).UnixNano(), Value: value}
+		}
+		querier := &seriesQuerier{series: []logproto.Series{
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 1), sampleAt(70*time.Second, 2), sampleAt(110*time.Second, 4)}},
+			{Labels: `{app="foo"}`, Samples: []logproto.Sample{sampleAt(10*time.Second, 10), sampleAt(70*time.Second, 20), sampleAt(110*time.Second, 40)}},
+		}}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (sum_over_time({app="foo"} | logfmt | unwrap n [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		want := promql.Matrix{{
+			Metric: labels.FromStrings("app", "foo"),
+			Floats: []promql.FPoint{
+				{T: start.Add(time.Minute).UnixMilli(), F: 11},
+				{T: start.Add(2 * time.Minute).UnixMilli(), F: 66},
+			},
+		}}
+		require.Equal(t, want, got)
+	})
+
 	t.Run("succeeds for a multi-tenant query whose output fits the series limit while its per-tenant series do not", func(t *testing.T) {
 		var series []logproto.Series
 		for _, tenantID := range []string{"a", "b"} {
@@ -723,5 +987,45 @@ func TestDefaultEvaluator_NewStepEvaluator(t *testing.T) {
 			totalSamples += len(s.Samples)
 		}
 		require.Less(t, querier.samplesRead, totalSamples)
+	})
+
+	t.Run("fails with the pipeline error at the first series that carries an error label without reading the remaining samples", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored, errored)}
+		_, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app) (count_over_time({app="foo"}[1m]))`, time.Minute)
+
+		require.EqualError(t, err, logqlmodel.NewPipelineErr(labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo")).Error())
+
+		totalSamples := 0
+		for _, s := range querier.series {
+			totalSamples += len(s.Samples)
+		}
+		require.Less(t, querier.samplesRead, totalSamples)
+	})
+
+	t.Run("returns the series that carry an error label when the query keeps errored lines", func(t *testing.T) {
+		series := streamFirstSeries("foo")
+		errored := logproto.Series{Labels: `{__error__="SampleExtractionErr", app="foo"}`, Samples: series[0].Samples}
+		querier := &seriesQuerier{series: append(series, errored)}
+		got, err := execute(t, limitsWithMaxSeries(100), querier, `sum by (app, __error__) (count_over_time({app="foo"} | __error__!="" [1m]))`, time.Minute)
+		require.NoError(t, err)
+
+		require.Equal(t, promql.Matrix{
+			{
+				Metric: labels.FromStrings("__error__", "SampleExtractionErr", "app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 1},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 2},
+				},
+			},
+			{
+				Metric: labels.FromStrings("app", "foo"),
+				Floats: []promql.FPoint{
+					{T: start.Add(time.Minute).UnixMilli(), F: 2},
+					{T: start.Add(2 * time.Minute).UnixMilli(), F: 4},
+				},
+			},
+		}, got)
 	})
 }

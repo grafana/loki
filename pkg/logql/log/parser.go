@@ -169,7 +169,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
 		}
 
-		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
+		if !j.lbs.LabelFilterHints().ShouldContinueParsingLine(sanitizedKey, j.lbs) {
 			return errLabelDoesNotMatch
 		}
 		return nil
@@ -211,7 +211,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
 
-	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
+	if !j.lbs.LabelFilterHints().ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
 	return nil
@@ -255,7 +255,7 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 // Hints implements Stage.
 func (j *JSONParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
@@ -336,6 +336,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
+	labelFilterHints := lbs.LabelFilterHints()
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, ok := r.keys.Get(unsafeGetBytes(name), func() (string, bool) {
@@ -359,7 +360,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 
 			lbs.Set(ParsedLabel, key, string(value))
-			if !parserHints.ShouldContinueParsingLine(key, lbs) {
+			if !labelFilterHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
 		}
@@ -369,7 +370,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (r *RegexpParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
@@ -394,6 +395,7 @@ func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 
 func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
+	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
 	}
@@ -441,7 +443,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		lbs.Set(ParsedLabel, key, string(val))
-		if !parserHints.ShouldContinueParsingLine(key, lbs) {
+		if !labelFilterHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
 
@@ -453,7 +455,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.strict && l.dec.Err() != nil {
 		lbs.SetErr(errLogfmt, l.dec.Err())
 
-		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
+		if !labelFilterHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
 			return line, false
 		}
 		return line, true
@@ -464,7 +466,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 // Hints implements Stage.
 func (l *LogfmtParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
@@ -492,6 +494,7 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 
 func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
+	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
 		return line, true
 	}
@@ -508,7 +511,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 		}
 
 		lbs.Set(ParsedLabel, name, string(m))
-		if !parserHints.ShouldContinueParsingLine(name, lbs) {
+		if !labelFilterHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
 	}
@@ -517,7 +520,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 
 // Hints implements Stage.
 func (l *PatternParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
@@ -651,7 +654,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 // Hints implements Stage.
 func (l *LogfmtExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -763,7 +766,7 @@ func isValidJSONStart(data []byte) bool {
 
 // Hints implements Stage.
 func (j *JSONExpressionParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{CanModifyLabels: true, CanModifyLine: false}
 }
 
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
@@ -786,7 +789,14 @@ func NewUnpackParser() *UnpackParser {
 
 // Hints implements Stage.
 func (u *UnpackParser) Hints() StageHints {
-	return StageHints{CanModifyLabels: true}
+	return StageHints{
+		// It turns the string-valued fields of a packed object into labels. It sets __error__ when
+		// the line is not a JSON object.
+		CanModifyLabels: true,
+		// It replaces the line with the _entry value when the line carries one. It leaves the line
+		// alone when the query needs no parsed label.
+		CanModifyLine: true,
+	}
 }
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
@@ -862,7 +872,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
 			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
-			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
+			if !lbs.LabelFilterHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
 			}
 		}

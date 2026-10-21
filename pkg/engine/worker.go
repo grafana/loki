@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
@@ -83,13 +82,13 @@ type WorkerParams struct {
 	// Required for compaction tasks; may be the zero-value for query-only workers.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
-
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
-	LogMergeObserver   executor.LogMergeObserver
+
+	// NewLogMergeObserver returns the LogMerge observer for each worker
+	// thread. Optional; nil for query-only workers.
+	NewLogMergeObserver executor.NewLogMergeObserverFunc
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -187,11 +186,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
 		LogsobjCfg:     params.LogsobjCfg,
-		UploaderCfg:    params.UploaderCfg,
 		BuilderMetrics: builderMetrics,
 
-		IndexMergeObserver: params.IndexMergeObserver,
-		LogMergeObserver:   params.LogMergeObserver,
+		IndexMergeObserver:  params.IndexMergeObserver,
+		NewLogMergeObserver: params.NewLogMergeObserver,
 	})
 	if err != nil {
 		return nil, err

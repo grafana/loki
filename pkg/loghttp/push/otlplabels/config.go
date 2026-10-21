@@ -49,11 +49,13 @@ type OTLPConfig struct {
 }
 
 type GlobalOTLPConfig struct {
+	DeferAttributeExpansion                    bool     `yaml:"defer_attribute_expansion"`
 	DefaultOTLPResourceAttributesAsIndexLabels []string `yaml:"default_resource_attributes_as_index_labels"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *GlobalOTLPConfig) RegisterFlags(fs *flag.FlagSet) {
+	fs.BoolVar(&cfg.DeferAttributeExpansion, "distributor.otlp.defer-attribute-expansion", false, "Controls when OTLP resource and scope attributes are expanded: during parsing when false, or when needed by downstream components when true.")
 	cfg.DefaultOTLPResourceAttributesAsIndexLabels = []string{
 		"service.name",
 		"service.namespace",

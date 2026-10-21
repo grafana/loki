@@ -80,6 +80,8 @@ func put[T any](p *sync.Pool, s *[]T) {
 	p.Put(s)
 }
 
+// ComponentName returns the component name for the exporter with the
+// provided ID.
 func ComponentName(id int64) string {
 	return fmt.Sprintf("%s/%d", ComponentType, id)
 }

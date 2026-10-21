@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -126,7 +127,8 @@ type BaseLabelsBuilder struct {
 
 	groups                       []string
 	baseMap                      map[string]string
-	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	parserKeyHints               ParserHint       // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	labelFilterHints             LabelFilterHints // lets a parser stop early once a label it just extracted already fails a filter positioned later in the pipeline.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
@@ -159,19 +161,31 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
 			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
-		resultCache:    make(map[uint64]LabelsResult),
-		hasher:         newHasher(),
-		groups:         groups,
-		parserKeyHints: parserKeyHints,
-		noLabels:       noLabels,
-		without:        without,
-		jsonPaths:      make(map[string][]string),
+		resultCache:      make(map[uint64]LabelsResult),
+		hasher:           newHasher(),
+		groups:           groups,
+		parserKeyHints:   parserKeyHints,
+		labelFilterHints: NoLabelFilterHints(),
+		noLabels:         noLabels,
+		without:          without,
+		jsonPaths:        make(map[string][]string),
 	}
 }
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+}
+
+// WithLabelFilterHints sets the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline. Returns b for chaining.
+func (b *BaseLabelsBuilder) WithLabelFilterHints(h LabelFilterHints) *BaseLabelsBuilder {
+	if h == nil {
+		h = NoLabelFilterHints()
+	}
+	b.labelFilterHints = h
+	return b
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
@@ -213,6 +227,13 @@ func (b *BaseLabelsBuilder) Reset() {
 // Returns nil when it's impossible to hint labels extractions.
 func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
+}
+
+// LabelFilterHints returns the hints that let a parser stop extracting a
+// line early once a label it just extracted already fails a filter
+// positioned later in the pipeline.
+func (b *BaseLabelsBuilder) LabelFilterHints() LabelFilterHints {
+	return b.labelFilterHints
 }
 
 func (b *BaseLabelsBuilder) hasDel() bool {
@@ -288,8 +309,11 @@ func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
 	return labelsContain(b.add[category], key)
 }
 
-// BaseHas returns the base labels have the given key
+// BaseHas returns whether the base labels have the given key, ignoring keys already removed by a previous stage (e.g. `drop`).
 func (b *LabelsBuilder) BaseHas(key string) bool {
+	if slices.Contains(b.del, key) {
+		return false
+	}
 	return b.base.Has(key)
 }
 
@@ -616,14 +640,16 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return b.currentResult
 	}
 
-	// Get all labels at once and sort them
+	// Get all labels at once and sort them without allocations.
 	b.buf = b.UnsortedLabels(b.buf)
-	lbls := labels.New(b.buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(b.buf)
+	hash := b.HashSorted(b.buf)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
+
+	lbls := labels.New(b.buf...)
 
 	// Now segregate the sorted labels into their categories
 	var stream, meta, parsed []labels.Label
@@ -651,6 +677,14 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	return result
 }
 
+// sortLabelPairsByName sorts buf in place by Name, using the exact
+// comparator labels.New uses internally - so hashing buf in this order
+// (see hasher.HashSorted) produces the same hash labels.New(buf...)
+// would, without first paying for its packed-string encoding.
+func sortLabelPairsByName(buf []labels.Label) {
+	slices.SortFunc(buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+}
+
 func labelsContain(labels []labels.Label, name string) bool {
 	for _, l := range labels {
 		if l.Name == name {
@@ -670,12 +704,13 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 }
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
-	lbls := labels.New(buf...)
-	hash := b.Hash(lbls)
+	sortLabelPairsByName(buf)
+	hash := b.HashSorted(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
+	lbls := labels.New(buf...)
 	res := NewLabelsResult(lbls.String(), hash, lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	b.resultCache[hash] = res
 	return res
@@ -735,11 +770,6 @@ func (b *LabelsBuilder) toByGroup() LabelsResult {
 	}
 Outer:
 	for _, g := range b.groups {
-		for _, n := range b.del {
-			if g == n {
-				continue Outer
-			}
-		}
 		for category, la := range b.add {
 			for _, l := range la {
 				if g == l.Name {
@@ -750,6 +780,11 @@ Outer:
 					continue Outer
 				}
 			}
+		}
+
+		// A deleted stream label is gone, but a label added after the delete (e.g. by a parser) is not.
+		if slices.Contains(b.del, g) {
+			continue
 		}
 
 		value := b.base.Get(g)

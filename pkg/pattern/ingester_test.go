@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
@@ -60,8 +63,7 @@ func TestInstancePushQuery(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -153,6 +155,46 @@ func TestInstancePushQuery(t *testing.T) {
 	}, patterns)
 }
 
+func TestIngesterPushInternal(t *testing.T) {
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(ring.ReplicationSet{Instances: []ring.InstanceDesc{{Id: "localhost", Addr: "ingester0"}}}, nil)
+
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, &fakeRingClient{ring: fakeRing}, "test", nil, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	level := func(lvl string) []push.LabelAdapter {
+		return []push.LabelAdapter{{Name: constants.LevelLabel, Value: lvl}}
+	}
+	entry := func(sec int64) push.Entry {
+		return push.Entry{Timestamp: time.Unix(sec, 0), Line: "ts=1 msg=hello"}
+	}
+
+	// The levels are only on shared attributes, so they reach the pattern
+	// ingester only if PushInternal expands them onto the entries.
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	_, err = ing.PushInternal(ctx, &logproto.InternalPushRequest{
+		Streams: []logproto.InternalStreamAdapter{{
+			Labels: `{service_name="checkout"}`,
+			ResourceLogs: []logproto.ResourceLogs{
+				{Attrs: level(constants.LogLevelError), ScopeLogs: []logproto.ScopeLogs{{Entries: []push.Entry{entry(1), entry(2)}}}},
+				{ScopeLogs: []logproto.ScopeLogs{{Attrs: level(constants.LogLevelInfo), Entries: []push.Entry{entry(3)}}}},
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	inst, ok := ing.getInstanceByID("foo")
+	require.True(t, ok)
+	counts := map[string]uint64{}
+	for lvl, m := range inst.aggMetricsByStreamAndLevel[`{service_name="checkout"}`] {
+		counts[lvl] = m.count
+	}
+	require.Equal(t, map[string]uint64{constants.LogLevelError: 2, constants.LogLevelInfo: 1}, counts)
+}
+
 func TestInstancePushAggregateMetrics(t *testing.T) {
 	lbs := labels.New(
 		labels.Label{Name: "test", Value: "test"},
@@ -194,8 +236,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			newIngesterMetrics(nil, "test"),
 			drain.DefaultConfig(),
 			&fakeLimits{},
-			ringClient,
-			ingesterID,
+			&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
@@ -384,6 +425,73 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 	})
 }
 
+func TestInstancePushSkipsInternalStreams(t *testing.T) {
+	tests := []struct {
+		name            string
+		labels          string
+		expectedErr     bool
+		expectedStreams int
+	}{
+		{
+			name:            "regular stream is observed and mined",
+			labels:          `{service_name="svc"}`,
+			expectedStreams: 1,
+		},
+		{
+			name:   "aggregated metric stream is skipped",
+			labels: fmt.Sprintf(`{%s="svc"}`, constants.AggregatedMetricLabel),
+		},
+		{
+			name:   "pattern stream is skipped",
+			labels: fmt.Sprintf(`{%s="svc"}`, constants.PatternLabel),
+		},
+		{
+			name:        "invalid labels are rejected",
+			labels:      `{not valid`,
+			expectedErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ingesterID := "ingester-0"
+			fakeRing := &fakeRing{}
+			fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(ring.ReplicationSet{
+					Instances: []ring.InstanceDesc{{Id: ingesterID, Addr: ingesterID}},
+				}, nil)
+
+			inst, err := newInstance(
+				"tenant-0",
+				log.NewNopLogger(),
+				newIngesterMetrics(nil, "test"),
+				drain.DefaultConfig(),
+				&fakeLimits{},
+				&ringOwner{ringClient: &fakeRingClient{ring: fakeRing}, ingesterID: ingesterID},
+				nil,
+				nil,
+				aggregation.NewMetrics(nil),
+				0.99,
+			)
+			require.NoError(t, err)
+
+			req := push.PushRequest{
+				Streams: []push.Stream{{
+					Labels:  tc.labels,
+					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
+				}},
+			}
+			err = inst.Push(t.Context(), &req)
+			if tc.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedStreams, inst.streams.Len())
+		})
+	}
+}
+
 type mockEntryWriter struct {
 	mock.Mock
 }
@@ -457,8 +565,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{patternPersistenceEnabled: true},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -540,8 +647,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
 		&fakeLimits{patternPersistenceEnabled: true},
-		ringClient,
-		ingesterID,
+		&ringOwner{ringClient: ringClient, ingesterID: ingesterID},
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
@@ -784,6 +890,7 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 			})
 		mockWriter.On("Stop")
 
+		cfg.LifecyclerConfig.ID = ingesterID
 		ingester, err := New(
 			cfg,
 			limits,
@@ -793,9 +900,6 @@ func TestVolumeFilteringEndToEnd(t *testing.T) {
 			log.NewNopLogger(),
 		)
 		require.NoError(t, err)
-
-		// Override ingester ID for testing
-		ingester.lifecycler.ID = ingesterID
 
 		// Create instance
 		inst, err := ingester.GetOrCreateInstance("test-tenant")
@@ -922,4 +1026,71 @@ func TestConfigurationValidation(t *testing.T) {
 		err := cfg.Validate()
 		require.NoError(t, err, "should pass validation with valid configuration")
 	})
+}
+
+type fakeOwner struct {
+	owned bool
+	err   error
+}
+
+func (f fakeOwner) Owns(_, _ string) (bool, error) { return f.owned, f.err }
+
+func TestInstancePushOwnership(t *testing.T) {
+	tests := []struct {
+		name            string
+		owner           streamOwner
+		expectedErr     bool
+		expectedStreams int
+	}{
+		{
+			name:            "owned stream is mined for patterns",
+			owner:           fakeOwner{owned: true},
+			expectedStreams: 1,
+		},
+		{
+			name:  "unowned stream is not mined for patterns",
+			owner: fakeOwner{owned: false},
+		},
+		{
+			name:        "ownership error is returned",
+			owner:       fakeOwner{err: errors.New("ring unavailable")},
+			expectedErr: true,
+		},
+		{
+			name:            "noop owner mines every stream",
+			owner:           allStreamsOwner{},
+			expectedStreams: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			inst, err := newInstance(
+				"tenant-0",
+				log.NewNopLogger(),
+				newIngesterMetrics(nil, "test"),
+				drain.DefaultConfig(),
+				&fakeLimits{},
+				tc.owner,
+				nil,
+				nil,
+				aggregation.NewMetrics(nil),
+				0.99,
+			)
+			require.NoError(t, err)
+
+			err = inst.Push(t.Context(), &push.PushRequest{
+				Streams: []push.Stream{{
+					Labels:  `{service_name="svc"}`,
+					Entries: []push.Entry{{Timestamp: time.Now(), Line: "ts=1 msg=foo"}},
+				}},
+			})
+			if tc.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedStreams, inst.streams.Len())
+		})
+	}
 }

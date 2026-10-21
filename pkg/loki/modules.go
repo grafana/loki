@@ -33,6 +33,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metadatacache"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -56,8 +58,11 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
+	loglinecompactor "github.com/grafana/loki/v3/pkg/logline/compactor"
 	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
+	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
+	loglinescheduler "github.com/grafana/loki/v3/pkg/logline/scheduler"
 	loglinestore "github.com/grafana/loki/v3/pkg/logline/store"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -88,7 +93,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -157,8 +161,8 @@ const (
 	LoglineBuilderPartitionRing     = "logline-index-builder-partition-ring"
 	LoglineQueryFrontendTripperware = "logline-query-frontend-tripperware"
 	LoglineCorrectness              = "logline-correctness"
-	UIRing                          = "ui-ring"
-	UI                              = "ui"
+	LoglineScheduler                = "logline-scheduler"
+	LoglineCompactor                = "logline-compactor"
 	All                             = "all"
 	AuthMiddleware                  = "auth-middleware"
 	LabelAccess                     = "label-access"
@@ -528,7 +532,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	return ingestLimitsFrontend, nil
 }
 
-func (t *Loki) initQuerier() (services.Service, error) {
+func (t *Loki) initQuerier() (_ services.Service, returnErr error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
@@ -561,9 +565,57 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
+	var (
+		dataObjBucket    objstore.Bucket
+		dataObjMetastore metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable || t.Cfg.DataObj.Enabled {
+		dataObjBucket, err = t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		dataObjMetastore = metastore.NewObjectMetastore(dataObjBucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
+	// dataObjStore stays a nil interface when data objects are disabled, so the querier sees no
+	// data-object store.
+	var (
+		dataObjStore         querier.Store
+		dataObjMetadataCache *metadatacache.Cache
+	)
+
+	// A failed init returns no service, so nothing else stops the cache.
+	defer func() {
+		if returnErr != nil && dataObjMetadataCache != nil {
+			dataObjMetadataCache.Stop()
+		}
+	}()
+
+	if t.Cfg.DataObj.Enabled {
+		var storeOpts []querier.DataObjStoreOption
+
+		if t.lbacChunkFilterer != nil {
+			storeOpts = append(storeOpts, querier.WithDataObjStreamFilterer(t.lbacChunkFilterer))
+		}
+
+		if cache.IsCacheConfigured(t.Cfg.DataObj.MetadataCache) {
+			dataObjMetadataCache, err = metadatacache.NewFromConfig(t.Cfg.DataObj.MetadataCache, prometheus.DefaultRegisterer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("creating data object metadata cache: %w", err)
+			}
+			storeOpts = append(storeOpts, querier.WithDataObjMetadataCache(dataObjMetadataCache))
+		}
+
+		dataObjStore, err = querier.NewDataObjStore(t.Store, dataObjBucket, dataObjMetastore, prometheus.DefaultRegisterer, storeOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	t.Querier, err = querier.New(
 		t.Cfg.Querier,
 		t.Store,
+		dataObjStore,
 		t.ingesterQuerier,
 		t.Overrides,
 		deleteStore,
@@ -608,19 +660,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.NewPrepopulateMiddleware(),
 	}
 
-	var (
-		store objstore.Bucket
-		ms    metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable {
-		store, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-	}
-
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, dataObjMetastore, t.Querier, t.Overrides, dataObjBucket, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -761,7 +801,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	if svc != nil {
-		svc.AddListener(deleteRequestsStoreListener(deleteStore))
+		svc.AddListener(newStopListener(deleteStore.Stop))
+		if dataObjMetadataCache != nil {
+			svc.AddListener(newStopListener(dataObjMetadataCache.Stop))
+		}
 	}
 	return withLoglineStorePolling(loglineStore, svc)
 }
@@ -842,10 +885,11 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
 	)
-	// Tenant-scoped flush. Wrapped with the auth middleware so the tenant is
-	// available in the request context (X-Scope-OrgID).
+	// Tenant-scoped flush (experimental). The tenant is the "tenant" param rather than
+	// X-Scope-OrgID because the caller is an operator, so it carries no auth
+	// middleware, like /flush.
 	t.Server.HTTP.Methods("POST").Path("/flush/tenant").Handler(
-		t.HTTPAuthMiddleware.Wrap(httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler))),
+		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler)),
 	)
 	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
@@ -1030,11 +1074,9 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
 	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
-		t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
@@ -1688,7 +1730,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	t.ruler.AddListener(deleteRequestsStoreListener(deleteStore))
+	t.ruler.AddListener(newStopListener(deleteStore.Stop))
 
 	return t.ruler, nil
 }
@@ -1796,7 +1838,6 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.UI.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
@@ -1978,8 +2019,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	// On-demand index sync: refresh the object-listing cache and download newly
 	// shipped indexes so a freshly flushed index becomes queryable without
 	// waiting for the periodic list-cache TTL. This is cluster-wide and not
-	// tenant-scoped, so it carries no auth middleware (mirroring /flush rather
-	// than /flush/tenant). PUT triggers an async sync; GET reports its status.
+	// tenant-scoped, so it carries no auth middleware (mirroring /flush and
+	// /flush/tenant). PUT triggers an async sync; GET reports its status.
 	t.Server.HTTP.Methods("PUT").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexesHandler))
 	t.Server.HTTP.Methods("GET").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexStatusHandler))
 
@@ -2207,42 +2248,6 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	return t.PartitionRingWatcher, nil
 }
 
-func (t *Loki) initUIRing() (services.Service, error) {
-	if !t.Cfg.UI.Enabled {
-		return nil, nil
-	}
-
-	// Set the listen port for the ring instance address
-	if t.Cfg.UI.Ring.ListenPort == 0 {
-		t.Cfg.UI.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	}
-
-	// Create UI ring manager
-	rm, err := lokiring.NewRingManager(
-		"ui",
-		lokiring.ServerMode,
-		t.Cfg.UI.Ring,
-		1, // replication factor - UI doesn't need replication
-		1, // num tokens - UI instances only need 1 token
-		util_log.Logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create UI ring manager: %w", err)
-	}
-
-	t.uiRingManager = rm
-
-	// Register HTTP handlers for the UI ring status page
-	t.Server.HTTP.Path("/ui/ring").Methods("GET", "POST").Handler(rm)
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/ui/ring").Methods("GET", "POST").Handler(rm)
-	}
-
-	t.Server.HTTP.Path("/analytics").Methods("GET", "POST").Handler(analytics.Handler())
-	return rm, nil
-}
-
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
 	store, err := t.getDataObjBucket("dataobj-explorer")
 	if err != nil {
@@ -2256,35 +2261,6 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 	path, handler := explorer.Handler()
 	t.Server.HTTP.PathPrefix(path).Handler(handler)
 	return explorer, nil
-}
-
-func (t *Loki) initUI() (services.Service, error) {
-	if !t.Cfg.UI.Enabled {
-		// UI is disabled, return nil to skip initialization
-		return nil, nil
-	}
-
-	// Ensure UI ring manager is initialized first
-	if t.uiRingManager == nil {
-		return nil, fmt.Errorf("UI ring must be initialized before UI service")
-	}
-
-	// Get the HTTP listen address for the UI service
-	httpListenAddr := t.Server.HTTPListenAddr().String()
-
-	svc, err := ui.NewService(
-		t.Cfg.UI,
-		t.Server.HTTP,
-		t.uiRingManager.Ring,
-		httpListenAddr,
-		log.With(util_log.Logger, "component", "ui"),
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-	t.UI = svc
-	return svc, nil
 }
 
 func (t *Loki) initDataObjBuilder() (services.Service, error) {
@@ -2313,18 +2289,11 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 	}
 	t.dataObjBuilder = dataObjBuilder
 
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-	)
-	t.Server.HTTP.
-		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
-		Path("/dataobj-builder/prepare-downscale").
-		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjBuilder.PrepareDownscaleHandler)))
-
 	return t.dataObjBuilder, nil
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
+	const componentName = "dataobj-compaction-planner"
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
 	}
@@ -2333,9 +2302,9 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
+	logger := log.With(util_log.Logger, "component", componentName)
 
-	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
@@ -2346,7 +2315,19 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
 		indexBucket = objstore.NewPrefixedBucket(store, prefix)
 	}
-	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	reg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": componentName},
+		prometheus.DefaultRegisterer,
+	)
+	tocWriter := metastore.NewTableOfContentsWriter(
+		indexBucket,
+		metastore.DefaultTocWriterBackoffConfig,
+		metastore.DefaultTocBuilderConfig,
+		logger,
+		metastore.NewTocWriterMetrics(reg),
+		indexobj.NewBuilderMetrics(reg),
+	)
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
@@ -2427,7 +2408,6 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		UploaderCfg:  t.Cfg.DataObj.Uploader,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})
@@ -2531,7 +2511,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
+	q, err := querier.New(t.Cfg.Querier, t.Store, nil, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
@@ -2753,7 +2733,7 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 		t.Cfg.StorageConfig.ObjectStore,
 		storeCfg,
 		logger,
-		prometheus.DefaultRegisterer,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "correctness"}, prometheus.DefaultRegisterer),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating logline index store: %w", err)
@@ -2771,4 +2751,77 @@ func (t *Loki) initLoglineCorrectness() (services.Service, error) {
 
 	loglinecorrectness.RegisterHandlers(t.Server, svc, logger)
 	return svc, nil
+}
+
+// initLoglineScheduler plans compaction jobs, hands them to logline workers,
+// and deletes indexes that are past retention or were merged away.
+func (t *Loki) initLoglineScheduler() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineScheduler)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compaction-scheduler"}, prometheus.DefaultRegisterer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	// Indexes are shared across tenants, so retention reads every tenant's
+	// limits rather than the per-tenant view t.Overrides gives.
+	overrides, err := validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline retention limits: %w", err)
+	}
+
+	svc, err := loglinescheduler.New(
+		indexStore,
+		loglinelimits.NewMaxLimits(overrides, prometheus.DefaultRegisterer),
+		loglinescheduler.Config{
+			Compaction: t.Cfg.Logline.Compaction,
+			Retention:  t.Cfg.Logline.Retention,
+		},
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := loglinescheduler.RegisterHandlers(t.Server, svc, logger); err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
+// initLoglineCompactor runs the compaction jobs handed out by the logline
+// scheduler.
+func (t *Loki) initLoglineCompactor() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", LoglineCompactor)
+
+	indexStore, err := loglinestore.New(
+		context.Background(),
+		t.Cfg.SchemaConfig,
+		t.Cfg.StorageConfig.ObjectStore,
+		t.Cfg.Logline.Store,
+		logger,
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, prometheus.DefaultRegisterer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating logline index store: %w", err)
+	}
+
+	// Merged indexes must apply the same density threshold the builder used.
+	return loglinecompactor.New(
+		indexStore,
+		loglinecompactor.Config{
+			Compaction:       t.Cfg.Logline.Compaction,
+			DensityThreshold: t.Cfg.Logline.Index.DensityThreshold,
+		},
+		logger,
+		prometheus.DefaultRegisterer,
+	)
 }

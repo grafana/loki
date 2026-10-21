@@ -3070,9 +3070,11 @@ used with the Loki cluster.</p>
 </thead>
 <tbody><tr><td><p>&#34;v11&#34;</p></td>
 <td><p>ObjectStorageSchemaV11 when using v11 for the storage schema</p>
+<p>Deprecated: ObjectStorageSchemaV11 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.</p>
 </td>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
+<p>Deprecated: ObjectStorageSchemaV12 is deprecated and will no longer reconcile. Use ObjectStorageSchemaV13 instead.</p>
 </td>
 </tr><tr><td><p>&#34;v13&#34;</p></td>
 <td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>

@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/objtest"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -18,8 +23,12 @@ import (
 func TestLogReader(t *testing.T) {
 	metrics := NewMetrics(nil)
 
+	// bytes_over_time projects the message column, which these tests need: the line is the one
+	// field the row reader hands back out of a reused buffer.
+	const queryReturningLine = `bytes_over_time({app=~".+"}[1m])`
+
 	t.Run("it yields every record of every planned section", func(t *testing.T) {
-		fixture := newReaderFixture(t,
+		fixture := newReaderFixture(t, queryReturningLine,
 			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")}},
 			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "three")}},
 		)
@@ -42,7 +51,7 @@ func TestLogReader(t *testing.T) {
 			entries = append(entries, entry(t, i+1, line))
 			want = append(want, line)
 		}
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
 		lines := drainReader(reader)
@@ -51,8 +60,40 @@ func TestLogReader(t *testing.T) {
 		require.ElementsMatch(t, want, lines)
 	})
 
+	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
+		var (
+			entries []push.Entry
+			want    []int64
+		)
+		for i := range 25 {
+			line := fmt.Sprintf("line-%d", i)
+			entries = append(entries, entry(t, i+1, line))
+			if strings.Contains(line, "1") {
+				want = append(want, at(i+1).UnixNano())
+			}
+		}
+		require.NotEmpty(t, want)
+
+		fixture := newReaderFixture(t, `count_over_time({app=~".+"} |= "1" [1m])`, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		for _, task := range fixture.tasks {
+			require.False(t, task.needReturningLine)
+		}
+
+		for _, batchSize := range []int{1, 4, DefaultReadBatchSize} {
+			reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
+
+			var timestamps []int64
+			for reader.Next() {
+				timestamps = append(timestamps, reader.At().timestamp)
+			}
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+			require.ElementsMatch(t, want, timestamps, "batch size %d", batchSize)
+		}
+	})
+
 	t.Run("a task naming a section the object does not hold fails the read", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		task := fixture.tasks[0]
 		task.sectionIdx = 999
@@ -64,7 +105,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a task naming an object the bucket does not hold fails the read", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		task := fixture.tasks[0]
 		task.objectPath = "objects/does-not-exist"
@@ -76,7 +117,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("one failing scan does not stop the reader reporting the failure", func(t *testing.T) {
-		fixture := newReaderFixture(t,
+		fixture := newReaderFixture(t, queryReturningLine,
 			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}},
 			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "two")}},
 		)
@@ -92,7 +133,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a cancelled context is reported rather than looking like a clean end", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -103,7 +144,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a planning error surfaces even when no task was planned", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		tasks := queuedTasks()
 		wantErr := errors.New("resolution failed")
@@ -119,7 +160,7 @@ func TestLogReader(t *testing.T) {
 			entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three"),
 			entry(t, 4, "four"), entry(t, 5, "five"),
 		}
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
 		// One batch per record and a batch channel of one, so the scan is certainly blocked on a
 		// send when Close cancels it. At the default batch size the scan finishes first and
@@ -143,7 +184,7 @@ func TestLogReader(t *testing.T) {
 		// Close suppresses the cancellation it causes itself. It must not suppress one the
 		// caller caused, even when no scan has reported it yet: the query did fail, and a
 		// truncated result would otherwise look authoritative.
-		fixture := newReaderFixture(t, logproto.Stream{
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{
 			Labels:  `{app="a"}`,
 			Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")},
 		})
@@ -157,7 +198,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a planning cancellation the reader did not cause still fails the read", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		// The caller's context is alive and the reader has stopped nothing, so a cancellation
 		// arriving from the planner is somebody else's, and a real failure.
@@ -172,7 +213,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("the caller's own cause is reported, not a bare cancellation", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		ctx, cancel := context.WithCancelCause(t.Context())
 		cancel(errors.New("query timed out upstream"))
@@ -184,7 +225,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("the first failure reported is the one kept", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		require.Empty(t, drainReader(reader))
@@ -197,7 +238,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a panic scanning a section fails the read rather than the process", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		// A task with no decoded streams makes the scan dereference a nil pointer as it turns
 		// rows into records, which is a panic on the scan's own goroutine.
@@ -219,7 +260,7 @@ func TestLogReader(t *testing.T) {
 			entries = append(entries, entry(t, i+1, line))
 			want = append(want, line)
 		}
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
 		ctx, cancel := context.WithCancel(t.Context())
 		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
@@ -234,7 +275,7 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("closing twice reports no error the second time", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		drainReader(reader)
@@ -243,12 +284,40 @@ func TestLogReader(t *testing.T) {
 	})
 
 	t.Run("a plan with no task yields nothing and reports no error", func(t *testing.T) {
-		fixture := newReaderFixture(t, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 		require.Empty(t, drainReader(reader))
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
+	})
+
+	t.Run("Close reports the slowest metastore section resolution of the capture in the query stats", func(t *testing.T) {
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		statsCtx, ctx := stats.NewContext(t.Context())
+		ctx, _ = xcap.NewCapture(ctx, nil)
+		for _, d := range []time.Duration{7 * time.Millisecond, 3 * time.Millisecond} {
+			_, region := xcap.StartRegion(ctx, metastore.RegionSections)
+			region.Record(metastore.StatMetastoreSectionsDuration.Observe(int64(d)))
+		}
+
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		drainReader(reader)
+		require.NoError(t, reader.Close())
+
+		require.Equal(t, 7*time.Millisecond, statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime())
+	})
+
+	t.Run("Close reports no section resolution time when the capture holds no metastore region", func(t *testing.T) {
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
+		statsCtx, ctx := stats.NewContext(t.Context())
+		ctx, _ = xcap.NewCapture(ctx, nil)
+
+		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
+		drainReader(reader)
+		require.NoError(t, reader.Close())
+
+		require.Zero(t, statsCtx.Result(0, 0, 0).DataobjSectionsResolutionMaxTime())
 	})
 }
 
@@ -304,16 +373,15 @@ type readerFixture struct {
 	tasks   []ReadTask
 }
 
-func newReaderFixture(t *testing.T, streams ...logproto.Stream) readerFixture {
+// newReaderFixture plans the read of query over streams.
+func newReaderFixture(t *testing.T, query string, streams ...logproto.Stream) readerFixture {
 	t.Helper()
 
 	fixture := newObjectsFixture(t, streams...)
 	objects := NewOpenObjects(fixture.bucket, objtest.Tenant, DefaultHeadPrefetchBytes, nil)
 	t.Cleanup(objects.release)
 
-	// bytes_over_time projects the message column, which the reader tests need: the line is the
-	// one field the row reader hands back out of a reused buffer.
-	expr, err := syntax.ParseSampleExpr(`bytes_over_time({app=~".+"}[1m])`)
+	expr, err := syntax.ParseSampleExpr(query)
 	require.NoError(t, err)
 	projection, err := NewProjectionPlan(expr, nil)
 	require.NoError(t, err)

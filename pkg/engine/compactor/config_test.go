@@ -27,7 +27,7 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"min backoff zero", func(c *Config) { c.MinBackoff = 0 }, errInvalidMinBackoff},
 		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
 		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
-		{"window lookback negative", func(c *Config) { c.WindowLookback = -1 }, errInvalidWindowLookback},
+		{"window lookback below one", func(c *Config) { c.WindowLookback = 0 }, errInvalidWindowLookback},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -65,5 +65,31 @@ func TestConfig_LogMinCompactionSizeValidation(t *testing.T) {
 	t.Run("zero fails", func(t *testing.T) {
 		cfg := base(t, "--dataobj.compaction.logs.min-compaction-size=0")
 		require.ErrorIs(t, cfg.Validate(), errInvalidLogMinCompactionSize)
+	})
+}
+
+func TestConfig_LogMaxRunsPerTaskValidation(t *testing.T) {
+	base := func(maxRuns int) Config {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.ContinueOnError))
+		cfg.Enabled = true
+		cfg.Scheduler.Endpoint = defaultEndpoint
+		cfg.LogMaxRunsPerTask = maxRuns
+		return cfg
+	}
+
+	t.Run("rejects zero", func(t *testing.T) {
+		cfg := base(0)
+		require.ErrorIs(t, cfg.Validate(), errInvalidLogMaxRunsPerTask)
+	})
+
+	t.Run("rejects one because a lone run would trigger compaction forever", func(t *testing.T) {
+		cfg := base(1)
+		require.ErrorIs(t, cfg.Validate(), errInvalidLogMaxRunsPerTask)
+	})
+
+	t.Run("accepts two", func(t *testing.T) {
+		cfg := base(2)
+		require.NoError(t, cfg.Validate())
 	})
 }

@@ -520,16 +520,17 @@ func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	}, nil
 }
 
-// MarshalPhysical converts a protobuf SortObject into a physical plan node.
-func (n *Node_SortObject) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return n.SortObject.MarshalPhysical(nodeID)
+// MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
+func (n *Node_IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.IndexFilter.MarshalPhysical(nodeID)
 }
 
-// MarshalPhysical converts a protobuf SortObject into a physical plan node.
-func (n *SortObject) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return &physical.SortObject{
-		NodeID:           nodeID,
-		SourceObjectPath: n.SourceObjectPath,
-		SortSchema:       slices.Clone(n.SortSchema),
+// MarshalPhysical converts a protobuf IndexFilter into a physical plan node.
+func (n *IndexFilter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.IndexFilter{
+		NodeID:          nodeID,
+		Tenant:          n.Tenant,
+		SourceIndexPath: n.SourceIndexPath,
+		ObjectPaths:     slices.Clone(n.ObjectPaths),
 	}, nil
 }

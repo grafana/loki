@@ -1938,6 +1938,89 @@ common:
 	})
 }
 
+func Test_applyIngesterDelegateStreamLimits(t *testing.T) {
+	t.Run("the deprecated ingester-wide setting becomes the per-tenant default", func(t *testing.T) {
+		yamlContent := `ingester:
+  delegate_stream_limits_enabled: true`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.LimitsConfig.DelegateStreamLimits)
+	})
+
+	t.Run("the per-tenant limit can be enabled while the deprecated ingester-wide setting is disabled", func(t *testing.T) {
+		yamlContent := `ingester:
+  delegate_stream_limits_enabled: false
+limits_config:
+  delegate_stream_limits_enabled: true`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.LimitsConfig.DelegateStreamLimits)
+	})
+
+	t.Run("an explicit false limit in the config file wins over the deprecated ingester-wide setting", func(t *testing.T) {
+		yamlContent := `ingester:
+  delegate_stream_limits_enabled: true
+limits_config:
+  delegate_stream_limits_enabled: false`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.False(t, config.LimitsConfig.DelegateStreamLimits)
+	})
+
+	t.Run("an explicit false limit flag wins over the deprecated ingester-wide setting", func(t *testing.T) {
+		yamlContent := `ingester:
+  delegate_stream_limits_enabled: true`
+		config, _, err := configWrapperFromYAML(t, yamlContent, []string{"-limits.delegate-stream-limits-enabled=false"})
+		require.NoError(t, err)
+		require.False(t, config.LimitsConfig.DelegateStreamLimits)
+	})
+
+	t.Run("both settings are disabled by default", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, nil)
+		require.NoError(t, err)
+		require.False(t, config.Ingester.DelegateStreamLimits)
+		require.False(t, config.LimitsConfig.DelegateStreamLimits)
+	})
+}
+
+func Test_applyQuerierDataObjConfig(t *testing.T) {
+	t.Run("copies the data-object settings into the querier config", func(t *testing.T) {
+		yamlContent := `dataobj:
+  enabled: true
+  storage_lag: 5h`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.Querier.DataObjEnabled)
+		require.Equal(t, 5*time.Hour, config.Querier.DataObjStorageLag)
+	})
+
+	t.Run("copies the default storage lag when data objects are disabled", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, nil)
+		require.NoError(t, err)
+		require.False(t, config.Querier.DataObjEnabled)
+		require.Equal(t, 3*time.Hour, config.Querier.DataObjStorageLag)
+	})
+}
+
+func Test_applyQueryRangeDataObjConfig(t *testing.T) {
+	t.Run("copies the data-object settings into the query range config", func(t *testing.T) {
+		yamlContent := `dataobj:
+  enabled: true
+  storage_lag: 5h`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.True(t, config.QueryRange.DataObjEnabled)
+		require.Equal(t, 5*time.Hour, config.QueryRange.DataObjStorageLag)
+	})
+
+	t.Run("copies the default storage lag when data objects are disabled", func(t *testing.T) {
+		config, _, err := configWrapperFromYAML(t, minimalConfig, nil)
+		require.NoError(t, err)
+		require.False(t, config.QueryRange.DataObjEnabled)
+		require.Equal(t, 3*time.Hour, config.QueryRange.DataObjStorageLag)
+	})
+}
+
 func Test_IndexGatewayRingReplicationFactor(t *testing.T) {
 	t.Run("default replication factor is 3", func(t *testing.T) {
 		const emptyConfigString = `---

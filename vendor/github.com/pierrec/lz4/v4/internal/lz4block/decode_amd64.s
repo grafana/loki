@@ -1,9 +1,11 @@
-// +build !appengine
-// +build gc
-// +build !noasm
+//go:build gc && !noasm
 
 #include "go_asm.h"
 #include "textflag.h"
+
+// Stream copies at least this long prefetch for ownership (see
+// copy_match_stream64_avx2).
+#define AVX2_PREFETCH_MIN 49152
 
 // AX scratch
 // BX scratch, match pointer
@@ -693,6 +695,8 @@ copy_match_stream:
 	JB   copy_match_stream_bytes
 	CMPQ CX, $64
 	JB   copy_match_stream_tail
+	CMPB ·hasAVX2(SB), $0
+	JNE  copy_match_stream64_avx2
 copy_match_stream64:
 	MOVOU (BX), X0
 	MOVOU 16(BX), X1
@@ -735,6 +739,64 @@ copy_match_stream_bytes:
 	DECQ CX
 	JNZ  copy_match_stream_bytes
 	JMP  loopcheck
+
+	// AVX2 variant of copy_match_stream64, out of line so that it moves
+	// no other code: two 32-byte loads and stores per 64 bytes.
+	//
+	// PCALIGN $64 also aligns decodeBlock itself to 64 bytes. Without
+	// it the function is only 32-byte aligned, and whether it lands on a
+	// 64-byte boundary depends on the code linked before it: the other
+	// half moved every hot loop and cost Zen 4/5 2-6% on real data.
+	PCALIGN $64
+copy_match_stream64_avx2:
+	// Long copies store faster than Intel's Golden Cove-class cores
+	// (Sapphire and Granite Rapids) prefetch lines for ownership: once the
+	// destination leaves L1d, 32-byte stores send about 6x as many demand
+	// RFOs to L2 as 16-byte ones, fill the fill and store buffers, and run
+	// 4-14% slower than the SSE loop. Prefetching for ownership 512 bytes
+	// ahead prevents that; shorter copies stay in L1d and skip it, as do
+	// CPUs that do not enumerate PREFETCHW (Haswell).
+	CMPQ    CX, $AVX2_PREFETCH_MIN
+	JB      copy_match_stream64_avx2_loop
+	CMPB    ·hasPrefetchW(SB), $0
+	JNE     copy_match_stream64_avx2_pfw
+	JMP     copy_match_stream64_avx2_loop
+
+	// Each loop starts on a 64-byte boundary so that it fits in one 64-byte
+	// fetch window: straddling one cost Sapphire Rapids 20% at 4-32K. Every
+	// block before a PCALIGN here ends in a jump, so no padding executes.
+	PCALIGN $64
+copy_match_stream64_avx2_loop:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VMOVDQU Y0, (DI)
+	VMOVDQU Y1, 32(DI)
+	ADDQ    $64, BX
+	ADDQ    $64, DI
+	SUBQ    $64, CX
+	CMPQ    CX, $64
+	JAE     copy_match_stream64_avx2_loop
+	// The tail and the rest of the decoder use legacy SSE encodings.
+	VZEROUPPER
+	JMP     copy_match_stream_tail
+
+	PCALIGN $64
+copy_match_stream64_avx2_pfw:
+	// PREFETCHW 512(DI), which the Go assembler does not know. Only
+	// reached when hasPrefetchW is set.
+	BYTE    $0x0f; BYTE $0x0d; BYTE $0x8f
+	BYTE    $0x00; BYTE $0x02; BYTE $0x00; BYTE $0x00
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VMOVDQU Y0, (DI)
+	VMOVDQU Y1, 32(DI)
+	ADDQ    $64, BX
+	ADDQ    $64, DI
+	SUBQ    $64, CX
+	CMPQ    CX, $64
+	JAE     copy_match_stream64_avx2_pfw
+	VZEROUPPER
+	JMP     copy_match_stream_tail
 
 // tileStep[offset] = (16/offset)*offset for offsets 3, 5, 6, 7, 9..15.
 DATA tileStep<>+0(SB)/8, $0x0e0c0f100f101000

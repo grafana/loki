@@ -34,7 +34,7 @@ type CompressorCCompat struct {
 	table32 [ccompatTableSize]uint32
 }
 
-var compressorCCompatPool = sync.Pool{New: func() interface{} { return new(CompressorCCompat) }}
+var compressorCCompatPool = sync.Pool{New: func() any { return new(CompressorCCompat) }}
 
 // CompressBlockCCompat is CompressorCCompat.CompressBlock with acceleration 1,
 // using a pooled CompressorCCompat.

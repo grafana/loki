@@ -34,6 +34,10 @@ func TestConfig_Validate(t *testing.T) {
 		name:    "negative rate window",
 		cfg:     Config{LimitsServiceStreamShardingRateWindow: -time.Second},
 		wantErr: "invalid limits_service_stream_sharding_rate_window -1s: must not be negative",
+	}, {
+		name:    "negative max shard count",
+		cfg:     Config{MaxShardCount: -1},
+		wantErr: "invalid max_shard_count: -1 must not be negative",
 	}}
 
 	for _, test := range tests {

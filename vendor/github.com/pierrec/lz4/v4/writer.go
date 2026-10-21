@@ -140,9 +140,12 @@ func (w *Writer) write(data []byte, safe bool) error {
 	w.frame.Blocks.Blocks <- c
 	go func(c chan *lz4stream.FrameDataBlock, data []byte, safe bool) {
 		b := lz4stream.NewFrameDataBlock(w.frame)
-		c <- b.Compress(w.frame, data, w.level)
-		<-c
+		b.Compress(w.frame, data, w.level)
+		// Report the block before handing it over, so that Close, which waits
+		// for every block to be written, returns after all the reports.
 		w.handler(len(b.Data))
+		c <- b
+		<-c
 		b.Close(w.frame)
 		if safe {
 			// safe to put it back as the last usage of it was FrameDataBlock.Write() called before c is closed
@@ -251,11 +254,10 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			if err != nil {
 				return
 			}
-			w.handler(rn)
 		}
 		if !done && !w.isNotConcurrent() {
 			// The buffer will be returned automatically by go routines (safe=true)
-			// so get a new one fo the next round.
+			// so get a new one for the next round.
 			data = size.Get()
 		}
 	}

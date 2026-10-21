@@ -14,7 +14,7 @@ import (
 // CharSet combines start-end rune ranges and unicode categories representing a set of characters
 type CharSet struct {
 	ranges     []SingleRange
-	categories []Category
+	categories []charCategory
 	sub        *CharSet //optional subtractor
 	negate     bool
 	anything   bool
@@ -29,6 +29,21 @@ type asciiBitmap struct {
 type Category struct {
 	Negate bool
 	Cat    string
+}
+
+// Keep the public Category representation unchanged. Shared ECMAScript sets
+// are immutable and can be retained when a character set is copied or merged.
+type charCategory struct {
+	Category
+	set *CharSet
+}
+
+func newCharCategory(category Category) charCategory {
+	ct := charCategory{Category: category}
+	if strings.HasPrefix(category.Cat, ecmaPropertyPrefix) {
+		ct.set = ecmaPropertySet(category.Cat)
+	}
+	return ct
 }
 
 type SingleRange struct {
@@ -51,7 +66,7 @@ var (
 
 var (
 	AnyClass          = getCharSetFromOldString([]rune{0}, false)
-	ECMAAnyClass      = getCharSetFromOldString([]rune{0, 0x000a, 0x000b, 0x000d, 0x000e}, false)
+	ECMAAnyClass      = getCharSetFromOldString([]rune{0, 0x000a, 0x000b, 0x000d, 0x000e, 0x2028, 0x202a}, false)
 	NoneClass         = getCharSetFromOldString(nil, false)
 	ECMAWordClass     = getCharSetFromOldString(ecmaWord, false)
 	NotECMAWordClass  = getCharSetFromOldString(ecmaWord, true)
@@ -101,9 +116,9 @@ func getCharSetFromCategoryString(negateSet bool, negateCat bool, cats ...string
 
 	c := CharSet{negate: negateSet}
 
-	c.categories = make([]Category, len(cats))
+	c.categories = make([]charCategory, len(cats))
 	for i, cat := range cats {
-		c.categories[i] = Category{Cat: cat, Negate: negateCat}
+		c.categories[i] = newCharCategory(Category{Cat: cat, Negate: negateCat})
 	}
 	return func() *CharSet {
 		//make a copy each time
@@ -270,7 +285,7 @@ func NewCharSetRuntime(buf string) CharSet {
 		retVal.ranges[i] = r
 	}
 
-	retVal.categories = make([]Category, lenCats)
+	retVal.categories = make([]charCategory, lenCats)
 	for i := 0; i < int(lenCats); i++ {
 		var lenCat int8
 		c := Category{}
@@ -280,7 +295,7 @@ func NewCharSetRuntime(buf string) CharSet {
 			lenCat *= -1
 		}
 		c.Cat = string(b.Next(int(lenCat)))
-		retVal.categories[i] = c
+		retVal.categories[i] = newCharCategory(c)
 	}
 
 	//sub
@@ -378,6 +393,14 @@ func (c *CharSet) prepareASCIIBitmap() {
 
 func (c *CharSet) charInCategories(ch rune) bool {
 	for _, ct := range c.categories {
+		if ct.set != nil {
+			if ct.set.Contains(ch) != ct.Negate {
+				return true
+			}
+			// Each category contributes to a union. Failure to match one
+			// property must not prevent a later property from matching.
+			continue
+		}
 		// special categories...then unicode
 		if ct.Cat == SpaceCategoryText {
 			if unicode.IsSpace(ch) {
@@ -406,6 +429,13 @@ func (c *CharSet) charInCategories(ch rune) bool {
 }
 
 func (c Category) String() string {
+	if flags, ok := strings.CutPrefix(c.Cat, ecmaPropertyPrefix); ok {
+		escape := "\\p{"
+		if (flags[0] == 'P') != c.Negate {
+			escape = "\\P{"
+		}
+		return escape + flags[2:] + "}"
+	}
 	switch c.Cat {
 	case SpaceCategoryText:
 		if c.Negate {
@@ -573,17 +603,25 @@ func (c *CharSet) addSet(set CharSet) {
 	}
 	// just append here to prevent double-canon
 	c.ranges = append(c.ranges, set.ranges...)
-	c.addCategories(set.categories...)
+	for _, ct := range set.categories {
+		c.addCharCategory(ct)
+	}
 	c.canonicalize()
 }
 
 func (c *CharSet) makeAnything() {
 	c.anything = true
-	c.categories = []Category{}
+	c.categories = nil
 	c.ranges = []SingleRange{{First: 0, Last: unicode.MaxRune}}
 }
 
 func (c *CharSet) addCategories(cats ...Category) {
+	for _, ct := range cats {
+		c.addCharCategory(newCharCategory(ct))
+	}
+}
+
+func (c *CharSet) addCharCategory(ct charCategory) {
 	// don't add dupes and remove positive+negative
 	if c.anything {
 		// if we've had a previous positive+negative group then
@@ -591,25 +629,16 @@ func (c *CharSet) addCategories(cats ...Category) {
 		return
 	}
 
-	for _, ct := range cats {
-		found := false
-		for _, ct2 := range c.categories {
-			if ct.Cat == ct2.Cat {
-				if ct.Negate != ct2.Negate {
-					// oposite negations...this mean we just
-					// take us as anything and move on
-					c.makeAnything()
-					return
-				}
-				found = true
-				break
+	for _, ct2 := range c.categories {
+		if ct.Cat == ct2.Cat {
+			if ct.Negate != ct2.Negate {
+				// Opposite negations cover the entire character domain.
+				c.makeAnything()
 			}
-		}
-
-		if !found {
-			c.categories = append(c.categories, ct)
+			return
 		}
 	}
+	c.categories = append(c.categories, ct)
 }
 
 // Merges new ranges to our own
@@ -924,7 +953,7 @@ func (c *CharSet) canonicalize() {
 		} else {
 			c.negate = true
 			c.ranges = []SingleRange{{c.ranges[0].Last + 1, c.ranges[0].Last + 1}}
-			c.categories = []Category{}
+			c.categories = nil
 		}
 	}
 }
@@ -1177,6 +1206,11 @@ func (set1 *CharSet) MayOverlap(set2 *CharSet) bool {
 	// If set2 can be easily enumerated (e.g. no unicode categories), then enumerate it and
 	// check if any of its members are in set1.  Otherwise, the same for set1.
 	if !set2.HasSubtraction() && len(set2.categories) == 0 {
+		if !set1.HasSubtraction() && len(set1.categories) == 0 {
+			// Both sets are just ranges, so compare those. Enumerating a large
+			// set such as ECMAScript's "." would visit about 1.1M runes.
+			return rangesOverlap(set1.ranges, set2.ranges)
+		}
 		return mayOverlapByEnumeration(set1, set2)
 	} else if !set1.HasSubtraction() && len(set1.categories) == 0 {
 		return mayOverlapByEnumeration(set2, set1)
@@ -1193,6 +1227,22 @@ func knownDistinctSets(set1, set2 *CharSet) bool {
 		(set2.Equals(DigitClass()) || set2.Equals(WordClass()) ||
 			set2.Equals(ECMADigitClass()) || set2.Equals(ECMAWordClass()))
 
+}
+
+// rangesOverlap reports whether two range lists, each sorted by First as
+// Contains also requires, share a rune.
+func rangesOverlap(ranges1, ranges2 []SingleRange) bool {
+	for i, j := 0, 0; i < len(ranges1) && j < len(ranges2); {
+		switch {
+		case ranges1[i].Last < ranges2[j].First:
+			i++
+		case ranges2[j].Last < ranges1[i].First:
+			j++
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func mayOverlapByEnumeration(set1, set2 *CharSet) bool {
@@ -1414,7 +1464,7 @@ func (c *CharSet) GetIfOnlyUnicodeCategories() (cats []Category, negate bool) {
 
 	neg := c.categories[0].Negate
 	for _, cat := range c.categories {
-		if neg != cat.Negate || cat.Cat == SpaceCategoryText || cat.Cat == WordCategoryText {
+		if neg != cat.Negate || cat.Cat == SpaceCategoryText || cat.Cat == WordCategoryText || cat.set != nil {
 			// negate some and not others...a problem
 			// or one of our non-unicode categories
 			return nil, false
@@ -1424,7 +1474,11 @@ func (c *CharSet) GetIfOnlyUnicodeCategories() (cats []Category, negate bool) {
 	// tell the caller to negate if either all the categories
 	// are negated or the set as a whole is negated, but not
 	// both
-	return c.categories, neg != c.negate
+	cats = make([]Category, len(c.categories))
+	for i, cat := range c.categories {
+		cats[i] = cat.Category
+	}
+	return cats, neg != c.negate
 }
 
 type CharClassAnalysisResults struct {

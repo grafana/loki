@@ -12,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -33,8 +32,6 @@ type WorkerParams struct {
 	IndexobjCfg logsobj.BuilderBaseConfig
 	// LogsobjCfg controls index object construction parameters for compaction.
 	LogsobjCfg logsobj.BuilderBaseConfig
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
@@ -106,11 +103,10 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint:      params.Config.Endpoint,
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
-		IndexobjCfg:        params.IndexobjCfg,
-		LogsobjCfg:         params.LogsobjCfg,
-		UploaderCfg:        params.UploaderCfg,
-		IndexMergeObserver: wm,
-		LogMergeObserver:   wm,
+		IndexobjCfg:         params.IndexobjCfg,
+		LogsobjCfg:          params.LogsobjCfg,
+		IndexMergeObserver:  wm,
+		NewLogMergeObserver: wm.logMergeObserver,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

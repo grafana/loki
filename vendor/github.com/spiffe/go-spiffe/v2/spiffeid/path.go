@@ -8,7 +8,7 @@ import (
 // FormatPath builds a path by formatting the given formatting string with
 // the given args (i.e. fmt.Sprintf). The resulting path must be valid or
 // an error is returned.
-func FormatPath(format string, args ...interface{}) (string, error) {
+func FormatPath(format string, args ...any) (string, error) {
 	path := fmt.Sprintf(format, args...)
 	if err := ValidatePath(path); err != nil {
 		return "", err

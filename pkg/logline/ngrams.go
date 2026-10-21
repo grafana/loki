@@ -7,6 +7,7 @@ import (
 
 	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
 	v4 "github.com/grafana/loki/v3/pkg/logline/internal/v4"
+	v5 "github.com/grafana/loki/v3/pkg/logline/internal/v5"
 )
 
 // ExtractFunc is the signature of an n-gram extraction function. Implementations
@@ -32,6 +33,8 @@ var ngramsByVersion = map[string]struct {
 }{
 	"v3": {extract: v3.ExtractFeatures, format: v3.FormatTerm},
 	"v4": {extract: v4.ExtractFeatures, format: v4.FormatTerm},
+	// v5 is in development. Its extractor is v4's, forked unchanged.
+	"v5": {extract: v5.ExtractFeatures, format: v5.FormatTerm},
 }
 
 // ExtractorForVersion returns the extraction function paired with the given

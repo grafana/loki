@@ -113,6 +113,7 @@ func ConfigOptions(opt Options) config.Options {
 	boltdb := false
 	tsdb := false
 	for _, schema := range opt.Stack.Storage.Schemas {
+		//nolint:staticcheck
 		if !boltdb && (schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12) {
 			shippers = append(shippers, "boltdb")
 			boltdb = true

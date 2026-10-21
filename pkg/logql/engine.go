@@ -322,7 +322,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data, err)
 	}
 
 	return logqlmodel.Result{
@@ -407,6 +407,20 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	expr, err = optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
+	}
+
+	// Only count the real query evaluation, not the *DownstreamEvaluator the query-frontend uses
+	// to dispatch a sharded or astmapper-rewritten query. It never reads a sample itself.
+	//
+	// expr here is always the query's root: evalSample never recurses, so isRootExpr is always
+	// true, matching the NewStepEvaluator call below.
+	if _, ok := q.evaluator.(*DefaultEvaluator); ok {
+		switch sampleOrderFor(ctx, expr, q.limits, true) {
+		case logproto.SAMPLE_ORDER_BY_STREAM:
+			stats.FromContext(ctx).AddStreamFirstQueries(1)
+		default:
+			stats.FromContext(ctx).AddTimestampFirstQueries(1)
+		}
 	}
 
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
