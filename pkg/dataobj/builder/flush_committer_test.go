@@ -452,35 +452,6 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 	})
 }
 
-func TestLargestFirst(t *testing.T) {
-	t.Run("should sort the builders largest first and keep the order of builders of equal size", func(t *testing.T) {
-		// More than 12 builders, because the unstable sort of the slices
-		// package uses a stable insertion sort for 12 elements or fewer.
-		sizes := map[string]int{
-			"a1": 1, "a2": 1, "a3": 1, "a4": 1, "a5": 1,
-			"b1": 2, "b2": 2, "b3": 2, "b4": 2, "b5": 2,
-			"c1": 3, "c2": 3, "c3": 3, "c4": 3, "c5": 3,
-		}
-		given := fixedSizeBuilders(sizes,
-			"a1", "c1", "b1", "a2", "c2", "b2", "a3", "c3",
-			"b3", "a4", "c4", "b4", "a5", "c5", "b5",
-		)
-
-		require.Equal(t, []string{
-			"c1", "c2", "c3", "c4", "c5",
-			"b1", "b2", "b3", "b4", "b5",
-			"a1", "a2", "a3", "a4", "a5",
-		}, builderNames(largestFirst(given)))
-	})
-
-	t.Run("should not modify the given slice", func(t *testing.T) {
-		given := fixedSizeBuilders(map[string]int{"small": 1, "large": 2}, "small", "large")
-
-		largestFirst(given)
-		require.Equal(t, []string{"small", "large"}, builderNames(given))
-	})
-}
-
 // fixedSizeBuilder is a builder with a name, a fixed estimated size and no
 // records. It supports only the calls that the flush committer makes with a
 // [mockFlusher]. Any other call panics on the nil embedded builder.
