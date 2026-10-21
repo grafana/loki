@@ -115,6 +115,7 @@ type storeContainer struct {
 	tableMarker        retention.TableMarker
 	sweeper            *retention.Sweeper
 	indexStorageClient storage.Client
+	shardedIndexClient storage.Client
 }
 
 type Limits interface {
@@ -232,6 +233,12 @@ func (c *Compactor) init(
 
 		var sc storeContainer
 		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, period.IndexTables.PathPrefix)
+		if c.cfg.ShardedIndexPathPrefix != "" {
+			if period.IndexTables.PathPrefix == c.cfg.ShardedIndexPathPrefix {
+				return fmt.Errorf("sharded index path prefix %s is also the index path_prefix of the period starting at %s", c.cfg.ShardedIndexPathPrefix, period.From.String())
+			}
+			sc.shardedIndexClient = storage.NewIndexStorageClient(objectClient, c.cfg.ShardedIndexPathPrefix)
+		}
 
 		if c.cfg.RetentionEnabled {
 			var (

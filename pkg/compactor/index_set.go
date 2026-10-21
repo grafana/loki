@@ -32,6 +32,8 @@ var deleteFileBackoffConfig = backoff.Config{
 	MaxRetries: 5,
 }
 
+var errShardedIndexCopy = errors.New("failed to update sharded index copy")
+
 type IndexSet interface {
 	GetTableName() string
 	ListSourceFiles() []storage.IndexFile
@@ -62,12 +64,19 @@ type CompactedIndex interface {
 	ToIndexFiles() ([]index.Index, error)
 }
 
+// ShardedCompactedIndex is optionally implemented by a CompactedIndex that can
+// also be written as fingerprint-range shard files, for the sharded index copy.
+type ShardedCompactedIndex interface {
+	ToShardedIndexFiles() ([]index.Index, error)
+}
+
 // indexSet helps with doing operations on a set of index files belonging to a single user or common index files shared by users.
 type indexSet struct {
 	ctx               context.Context
 	tableName, userID string
 	workingDir        string
 	baseIndexSet      storage.IndexSet
+	shardedIndexSet   storage.IndexSet
 
 	uploadCompactedDB   bool
 	removeSourceObjects bool
@@ -276,32 +285,34 @@ func (is *indexSet) upload() error {
 		return errors.New("compacted index produced no index files")
 	}
 
-	defer func() {
-		for _, idx := range idxs {
-			filePath := idx.Path()
-
-			if err := idx.Close(); err != nil {
-				level.Error(is.logger).Log("msg", "failed to close indexFile", "err", err)
-				continue
-			}
-
-			if err := os.Remove(filePath); err != nil {
-				level.Error(is.logger).Log("msg", "failed to remove indexFile", "err", err)
-				continue
-			}
-		}
-	}()
+	defer is.closeAndRemove(idxs)
 
 	for _, idx := range idxs {
-		if err := is.uploadFile(idx); err != nil {
+		if err := is.uploadFile(is.baseIndexSet, idx); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// uploadFile compresses and uploads a single index file. The caller owns cleanup.
-func (is *indexSet) uploadFile(idx index.Index) error {
+func (is *indexSet) closeAndRemove(idxs []index.Index) {
+	for _, idx := range idxs {
+		filePath := idx.Path()
+
+		if err := idx.Close(); err != nil {
+			level.Error(is.logger).Log("msg", "failed to close indexFile", "err", err)
+			continue
+		}
+
+		if err := os.Remove(filePath); err != nil {
+			level.Error(is.logger).Log("msg", "failed to remove indexFile", "err", err)
+			continue
+		}
+	}
+}
+
+// uploadFile compresses and uploads a single index file to dest. The caller owns cleanup.
+func (is *indexSet) uploadFile(dest storage.IndexSet, idx index.Index) error {
 	// ToDo(Sandeep): move index uploading to a common function and share it with generic index-shipper
 
 	fileName := idx.Name()
@@ -363,7 +374,7 @@ func (is *indexSet) uploadFile(idx index.Index) error {
 		return err
 	}
 
-	return is.baseIndexSet.PutFile(is.ctx, is.tableName, is.userID, fmt.Sprintf("%s.gz", fileName), f)
+	return dest.PutFile(is.ctx, is.tableName, is.userID, fmt.Sprintf("%s.gz", fileName), f)
 }
 
 // removeFilesFromStorage deletes source objects from storage.
@@ -371,7 +382,7 @@ func (is *indexSet) removeFilesFromStorage() error {
 	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(is.sourceObjects))
 
 	for _, object := range is.sourceObjects {
-		if err := is.removeFileFromStorage(object); err != nil {
+		if err := is.removeFileFromStorage(is.baseIndexSet, object); err != nil {
 			level.Error(is.logger).Log("msg", "failed to remove source db file from storage", "file", object.Name, "err", err)
 			return err
 		}
@@ -380,25 +391,25 @@ func (is *indexSet) removeFilesFromStorage() error {
 	return nil
 }
 
-// removeFileFromStorage deletes the object from storage.
+// removeFileFromStorage deletes the object from dest.
 // It retries transient errors and treats FileNotFound errors
 // as a success. A missing file should not stall compaction.
-func (is *indexSet) removeFileFromStorage(object storage.IndexFile) error {
+func (is *indexSet) removeFileFromStorage(dest storage.IndexSet, object storage.IndexFile) error {
 	retry := backoff.New(is.ctx, deleteFileBackoffConfig)
 	for retry.Ongoing() {
-		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
+		err := dest.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
 		if err == nil {
 			return nil
 		}
 
-		if is.baseIndexSet.IsRetryableErr(err) {
+		if dest.IsRetryableErr(err) {
 			level.Warn(is.logger).Log(
 				"msg", "delete from storage: retrying transient error",
 				"file", object.Name,
 				"err", err,
 			)
 			retry.Wait()
-		} else if is.baseIndexSet.IsFileNotFoundErr(err) {
+		} else if dest.IsFileNotFoundErr(err) {
 			level.Warn(is.logger).Log(
 				"msg", "delete from storage: ignoring file not found error",
 				"file", object.Name,
@@ -415,6 +426,7 @@ func (is *indexSet) removeFileFromStorage(object storage.IndexFile) error {
 
 // done takes care of file operations which includes:
 // - upload the compacted db if required.
+// - update the sharded index copy if configured.
 // - remove the source objects from storage if required.
 func (is *indexSet) done() error {
 	if is.uploadCompactedDB {
@@ -423,10 +435,62 @@ func (is *indexSet) done() error {
 		}
 	}
 
+	if is.shardedIndexSet != nil {
+		if err := is.updateShardedCopy(); err != nil {
+			return fmt.Errorf("%w: %w", errShardedIndexCopy, err)
+		}
+	}
+
 	if is.removeSourceObjects {
 		return is.removeFilesFromStorage()
 	}
 
+	return nil
+}
+
+// updateShardedCopy replaces the files of this index set in the sharded index
+// prefix with the compacted index split into shards, or removes them when the
+// compacted index was dropped.
+func (is *indexSet) updateShardedCopy() error {
+	if !is.uploadCompactedDB && !is.removeSourceObjects {
+		return nil
+	}
+
+	var idxs []index.Index
+	if is.uploadCompactedDB {
+		sharded, ok := is.compactedIndex.(ShardedCompactedIndex)
+		if !ok {
+			return nil
+		}
+		var err error
+		idxs, err = sharded.ToShardedIndexFiles()
+		if err != nil {
+			return err
+		}
+		defer is.closeAndRemove(idxs)
+	}
+
+	previous, err := is.shardedIndexSet.ListFiles(is.ctx, is.tableName, is.userID, false)
+	if err != nil {
+		return err
+	}
+
+	uploaded := make(map[string]struct{}, len(idxs))
+	for _, idx := range idxs {
+		if err := is.uploadFile(is.shardedIndexSet, idx); err != nil {
+			return err
+		}
+		uploaded[idx.Name()+".gz"] = struct{}{}
+	}
+
+	for _, f := range previous {
+		if _, ok := uploaded[f.Name]; ok {
+			continue
+		}
+		if err := is.removeFileFromStorage(is.shardedIndexSet, f); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

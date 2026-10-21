@@ -44,6 +44,7 @@ type Config struct {
 	WorkerConfig                    jobqueue.WorkerConfig `yaml:"worker_config"`
 	JobsConfig                      JobsConfig            `yaml:"jobs_config"`
 	DeletionMarkerObjectStorePrefix string                `yaml:"deletion_marker_object_store_prefix"`
+	ShardedIndexPathPrefix          string                `yaml:"sharded_index_path_prefix" category:"experimental" doc:"hidden"`
 }
 
 // RegisterFlags registers flags.
@@ -87,6 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
+	f.StringVar(&cfg.ShardedIndexPathPrefix, "compactor.sharded-index-path-prefix", "", "Experimental: Object storage path prefix for a copy of every compacted per-tenant TSDB index. Must differ from the index path_prefix of every schema period. If writing the copy fails, compaction of the table fails and is retried on the next run, keeping the source index files. Leave empty to disable the copy.")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -126,6 +128,12 @@ func (cfg *Config) Validate() error {
 
 		if cfg.DeletionMarkerObjectStorePrefix != "" && !strings.HasSuffix(cfg.DeletionMarkerObjectStorePrefix, "/") {
 			return fmt.Errorf("deletion marker object store prefix must end with /")
+		}
+	}
+
+	if cfg.ShardedIndexPathPrefix != "" {
+		if err := config.ValidatePathPrefix(cfg.ShardedIndexPathPrefix); err != nil {
+			return fmt.Errorf("validate sharded index path prefix: %w", err)
 		}
 	}
 
