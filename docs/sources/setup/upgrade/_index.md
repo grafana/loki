@@ -37,6 +37,23 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Partially rejected ingester pushes preserve retryable errors
+
+Ingester push responses now preserve failures from every stream in a request. Previously, a later stream could overwrite an earlier error and change the response:
+
+- **Rate limit followed by success:** One stream exceeds its rate limit (HTTP 429), then another stream succeeds. Previously, the later success could clear the error and produce HTTP 204, even though the rate-limited logs were not stored. The response now remains HTTP 429 in either stream order.
+- **Rate limit followed by invalid labels:** One stream exceeds its rate limit (HTTP 429), then another stream is rejected because its labels are malformed (HTTP 400). Previously, the later HTTP 400 could hide the retryable HTTP 429, reporting a permanent failure even though the rate-limited logs could succeed on retry. The response now remains HTTP 429 in either stream order. Retrying does not make the malformed labels valid.
+
+When a request encounters multiple failures, the ingester selects the error that determines its response in this order, regardless of the order in which the failures occurred:
+
+1. An internal or server error, if one occurred.
+2. Otherwise, a rate-limit error (HTTP 429).
+3. Otherwise, a permanent rejection, such as HTTP 400.
+
+The same selection applies to errors within a single stream. For example, an out-of-order entry (HTTP 400) no longer hides a rate-limited entry (HTTP 429) in that stream.
+
+Clients may therefore retry partially accepted requests that previously received a successful response or a permanent rejection. Entries already accepted remain stored; retrying does not roll back the request. Existing retry and duplicate-handling behavior still applies. No configuration change is required.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.

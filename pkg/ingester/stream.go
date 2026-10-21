@@ -232,18 +232,15 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 		return nil
 	}
 
-	lastEntryWithErr := failedEntriesWithError[len(failedEntriesWithError)-1]
-	_, ok := lastEntryWithErr.e.(*validation.ErrStreamRateLimit)
-	outOfOrder := chunkenc.IsOutOfOrderErr(lastEntryWithErr.e)
-	if !outOfOrder && !ok {
-		return lastEntryWithErr.e
-	}
-	var statusCode int
-	if outOfOrder {
-		statusCode = http.StatusBadRequest
-	}
-	if ok {
-		statusCode = http.StatusTooManyRequests
+	statusCode := http.StatusBadRequest
+	// Classify every failure before limiting the diagnostic text. A later
+	// permanent rejection must not hide an earlier retryable failure.
+	for _, failed := range failedEntriesWithError {
+		if _, ok := failed.e.(*validation.ErrStreamRateLimit); ok {
+			statusCode = http.StatusTooManyRequests
+		} else if !chunkenc.IsOutOfOrderErr(failed.e) {
+			return failed.e
+		}
 	}
 	// Return a http status 4xx request response with all failed entries.
 	buf := bytes.Buffer{}

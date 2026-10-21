@@ -225,9 +225,8 @@ func newInstance(
 
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
 //
-// Although multiple streams are part of the PushRequest, the returned error only reflects what
-// happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
-// and all three failed, the returned error only describes what happened to the last processed stream.
+// Preserve failures across streams, preferring internal errors and rate limits over
+// permanent rejections so clients can retry a partially accepted request.
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
@@ -253,11 +252,12 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			},
 		)
 		if err != nil {
-			appendErr = err
+			appendErr = selectPushError(appendErr, err)
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		_, err = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		appendErr = selectPushError(appendErr, err)
 		s.chunkMtx.Unlock()
 	}
 
@@ -278,6 +278,29 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	}
 
 	return appendErr
+}
+
+// selectPushError keeps a failure when a later stream succeeds. Internal errors
+// take precedence over rate limits, which take precedence over permanent errors.
+// Within a class, retain the last error as the request's bounded diagnostic.
+func selectPushError(previous, next error) error {
+	priority := func(err error) int {
+		if err == nil {
+			return 0
+		}
+		response, ok := httpgrpc.HTTPResponseFromError(err)
+		if !ok || response.Code < http.StatusBadRequest || response.Code >= http.StatusInternalServerError {
+			return 3
+		}
+		if response.Code == http.StatusTooManyRequests {
+			return 2
+		}
+		return 1
+	}
+	if priority(next) >= priority(previous) {
+		return next
+	}
+	return previous
 }
 
 func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
