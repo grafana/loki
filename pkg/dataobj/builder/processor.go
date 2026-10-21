@@ -198,13 +198,16 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 				p.observeRecordErr(rec)
 			}
 		case <-time.After(p.idleFlushTimeout):
-			// This partition is idle, flush it.
+			// This partition is idle, flush any buffered data.
 			p.metrics.setConsumptionLag(0)
-			if _, err := p.idleFlush(ctx); err != nil {
-				if errors.Is(err, errStopProcessing) {
-					return nil
-				}
-				level.Error(p.logger).Log("msg", "failed to enqueue idle flush", "err", err)
+
+			if !p.needsIdleFlush() {
+				continue
+			}
+
+			enqueued := p.enqueueFlush(ctx, flushReasonIdle)
+			if !enqueued {
+				return nil
 			}
 		}
 	}
@@ -225,14 +228,14 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	}
 
 	if p.shouldFlushDueToMaxAge() {
-		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
-			return err
+		if enqueued := p.enqueueFlush(ctx, flushReasonMaxAge); !enqueued {
+			return errStopProcessing
 		}
 	}
 
 	if p.builder.IsFull() {
-		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return err
+		if enqueued := p.enqueueFlush(ctx, flushReasonBuilderFull); !enqueued {
+			return errStopProcessing
 		}
 	}
 
@@ -257,20 +260,6 @@ func (p *processor) shouldFlushDueToMaxAge() bool {
 		time.Since(p.firstAppend) > p.maxBuilderAge
 }
 
-// idleFlush sends a flush request to the flush loop if the partition has
-// exceeded the idle flush timeout. It returns true if it sent the request,
-// false with errStopProcessing if it could not send it, and false with a nil
-// error if the partition has not exceeded the timeout.
-func (p *processor) idleFlush(ctx context.Context) (bool, error) {
-	if !p.needsIdleFlush() {
-		return false, nil
-	}
-	if err := p.flush(ctx, flushReasonIdle); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {
@@ -286,13 +275,14 @@ func (p *processor) needsIdleFlush() bool {
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
 }
 
-// flush sends the builders to the flush loop as a flush request. The loop
+// enqueueFlush sends the builders to the flush loop as a flush request. The loop
 // flushes them and commits the offset of the last appended record, while the
 // processor keeps appending records to new builders.
 //
-// flush waits while the loop runs the previous flush. It returns
-// errStopProcessing if the loop stopped or ctx is canceled.
-func (p *processor) flush(ctx context.Context, reason string) error {
+// enqueueFlush waits while the loop runs the previous flush. It returns false
+// if the flush loop stopped or ctx is canceled. The builders are then lost, so
+// the caller must stop processing.
+func (p *processor) enqueueFlush(ctx context.Context, reason string) bool {
 	req := flushRequest{
 		builders: p.builder.getBuilders(),
 		reason:   reason,
@@ -313,11 +303,11 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 	select {
 	case p.flushes <- req:
 		p.metrics.flushWaitSeconds.Add(time.Since(waitStart).Seconds())
-		return nil
+		return true
 	case <-p.flushLoopDone:
-		return errStopProcessing
+		return false
 	case <-ctx.Done():
-		return errStopProcessing
+		return false
 	}
 }
 
@@ -346,7 +336,7 @@ func (p *processor) startFlushLoop(ctx context.Context) {
 
 // stopFlushLoop waits for the flush in progress and stops the flush loop. It
 // returns the error of a failed flush, or nil. The processor must not call
-// flush after stopFlushLoop.
+// enqueueFlush after stopFlushLoop.
 func (p *processor) stopFlushLoop() error {
 	close(p.flushes)
 	<-p.flushLoopDone

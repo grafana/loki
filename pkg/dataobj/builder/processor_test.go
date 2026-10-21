@@ -143,33 +143,26 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 		startTestFlushLoop(ctx, t, proc)
 
 		// The idle flush timeout has not been exceeded, no flush should occur.
-		flushed, err := proc.idleFlush(ctx)
-		require.NoError(t, err)
-		require.False(t, flushed)
+		require.False(t, proc.needsIdleFlush())
 		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Advance time past the idle flush time. No flush should occur because
 		// the builder is empty.
 		time.Sleep(6 * time.Minute)
-		flushed, err = proc.idleFlush(ctx)
-		require.NoError(t, err)
-		require.False(t, flushed)
+		require.False(t, proc.needsIdleFlush())
 		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Process a record containing some log lines. No flush should occur because
 		// when log lines are appended to the builder it resets the idle timeout.
 		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 		require.False(t, proc.lastAppend.IsZero())
-		flushed, err = proc.idleFlush(ctx)
-		require.NoError(t, err)
-		require.False(t, flushed)
+		require.False(t, proc.needsIdleFlush())
 		require.Equal(t, 0, flushCommitter.flushes)
 
 		// Advance time past the idle timeout. A flush should occur.
 		time.Sleep(6 * time.Minute)
-		flushed, err = proc.idleFlush(ctx)
-		require.NoError(t, err)
-		require.True(t, flushed)
+		require.True(t, proc.needsIdleFlush())
+		require.True(t, proc.enqueueFlush(ctx, flushReasonIdle))
 		synctest.Wait()
 		require.Equal(t, 1, flushCommitter.flushes)
 	})
@@ -227,11 +220,11 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// Advance time and force a flush.
 			time.Sleep(time.Second)
-			require.NoError(t, proc.flush(ctx, "test"))
+			require.True(t, proc.enqueueFlush(ctx, "test"))
 			synctest.Wait()
 			require.Equal(t, 1, flushCommitter.flushes)
 
-			// flush resets these fields when it sends the flush request.
+			// enqueueFlush resets these fields when it sends the flush request.
 			require.True(t, proc.firstAppend.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
@@ -260,11 +253,11 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			// with the error. The partition processor then restarts and reads
 			// the records again from Kafka.
 			time.Sleep(time.Second)
-			require.NoError(t, proc.flush(ctx, "forced"))
+			require.True(t, proc.enqueueFlush(ctx, "forced"))
 			err := stop()
 			require.ErrorContains(t, err, "forced flush up to offset 0: mock error")
 
-			// flush reset these fields when it sent the flush request, before
+			// enqueueFlush reset these fields when it sent the flush request, before
 			// the flush failed.
 			require.True(t, proc.firstAppend.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
@@ -284,13 +277,13 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
 
-			require.NoError(t, proc.flush(ctx, "forced"))
+			require.True(t, proc.enqueueFlush(ctx, "forced"))
 			cancel()
 			synctest.Wait()
 
 			// The flush loop stopped, so a later flush fails.
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
-			require.ErrorIs(t, proc.flush(ctx, "forced"), errStopProcessing)
+			require.False(t, proc.enqueueFlush(ctx, "forced"))
 			require.NoError(t, stop())
 		})
 	})
@@ -308,7 +301,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
 
-			require.NoError(t, proc.flush(ctx, "forced"))
+			require.True(t, proc.enqueueFlush(ctx, "forced"))
 			err := stop()
 			require.ErrorIs(t, err, context.Canceled)
 			require.ErrorContains(t, err, "forced flush up to offset 0")
@@ -341,13 +334,13 @@ func TestPartitionProcessor_FlushSplitsAcrossTenantsAndWindows(t *testing.T) {
 		// Three windows for tenant-a and two for tenant-b.
 		require.Len(t, m.getBuilders(), 5)
 
-		require.NoError(t, proc.flush(ctx, "forced"))
+		require.True(t, proc.enqueueFlush(ctx, "forced"))
 		synctest.Wait()
 		require.Equal(t, 1, flushCommitter.flushes)
 		require.Equal(t, 5, flushCommitter.lastBuilderCount)
 		require.Equal(t, rec.Offset, flushCommitter.lastOffset)
 
-		// flush resets the multi-builder when it sends the flush request.
+		// enqueueFlush resets the multi-builder when it sends the flush request.
 		require.Empty(t, m.getBuilders())
 		require.Equal(t, 0, m.GetEstimatedSize())
 	})
