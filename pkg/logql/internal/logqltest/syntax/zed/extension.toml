@@ -9,8 +9,6 @@ repository = "https://github.com/grafana/loki"
 # The grammar is built from this repository when the extension is installed. To work on the grammar
 # or to avoid fetching the whole repository, see ../README.md.
 [grammars.logqltest]
-# repository = "https://github.com/grafana/loki"
-# rev = "main"
-repository = "file:///Users/spiridonov/development/loki"
-rev = "spiridonov-logql-label-collision-edge-cases"
+repository = "https://github.com/grafana/loki"
+rev = "main"
 path = "pkg/logql/internal/logqltest/syntax/zed/tree-sitter-logqltest"
