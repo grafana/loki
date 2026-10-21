@@ -2294,3 +2294,85 @@ func TestParsedKeyDoesNotReplaceLabelWithTheName(t *testing.T) {
 		}
 	}
 }
+
+// The expression forms follow the first-writer rule of the other parsers: a name that an earlier
+// stage wrote, or an earlier key of the same line, keeps its value. An asked name that the line lacks
+// does not replace a value with an empty one.
+func TestExpressionParsersKeepTheFirstValue(t *testing.T) {
+	jsonExpr, err := NewJSONExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")})
+	require.NoError(t, err)
+	logfmtExpr, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+	require.NoError(t, err)
+
+	type stage struct {
+		parser Stage
+		line   string
+	}
+	for _, tt := range []struct {
+		name   string
+		stream labels.Labels
+		stages []stage
+		want   labels.Labels
+	}{
+		{
+			name:   "json expression after an earlier stage",
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"foo":"second"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression after an earlier stage",
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `foo=second`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "json expression, name missing after an earlier stage",
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"other":"x"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression, name missing after an earlier stage",
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `other=x`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "json expression, renamed key after an earlier stage",
+			stream: labels.FromStrings("foo", "l"),
+			stages: []stage{{NewLogfmtParser(false, false), `foo=first`}, {jsonExpr, `{"foo":"second"}`}},
+			want:   labels.FromStrings("foo", "l", "foo_extracted", "first"),
+		},
+		{
+			name:   "logfmt expression, renamed key after an earlier stage",
+			stream: labels.FromStrings("foo", "l"),
+			stages: []stage{{NewJSONParser(false), `{"foo":"first"}`}, {logfmtExpr, `foo=second`}},
+			want:   labels.FromStrings("foo", "l", "foo_extracted", "first"),
+		},
+		{
+			name:   "json expression, duplicate key",
+			stages: []stage{{jsonExpr, `{"foo":"first","foo":"second"}`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+		{
+			name:   "logfmt expression, duplicate key",
+			stages: []stage{{logfmtExpr, `foo=first foo=second`}},
+			want:   labels.FromStrings("foo", "first"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			base := tt.stream
+			if base.IsEmpty() {
+				base = labels.FromStrings("app", "x")
+			} else {
+				base = labels.NewBuilder(tt.stream).Set("app", "x").Labels()
+			}
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			for _, st := range tt.stages {
+				_, ok := st.parser.Process(0, []byte(st.line), b)
+				require.True(t, ok)
+			}
+			want := labels.NewBuilder(tt.want).Set("app", "x").Labels()
+			require.Equal(t, want, b.LabelsResult().Labels())
+		})
+	}
+}
