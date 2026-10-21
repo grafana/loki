@@ -149,6 +149,11 @@ func (p *processor) stopping(_ error) error {
 var (
 	errUnrecoverableFlush = fmt.Errorf("unrecoverable flush failure")
 	errFlushLoopStopped   = fmt.Errorf("flush loop stopped")
+
+	// errFlush wraps every error that processRecord gets from flush. Run stops
+	// on it, because the processor cannot commit the records that it appends
+	// after a failed flush.
+	errFlush = errors.New("failed to flush")
 )
 
 func (p *processor) Run(ctx context.Context) (returnErr error) {
@@ -161,9 +166,10 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 	p.startFlushLoop(ctx)
 	defer func() {
 		if err := p.stopFlushLoop(); err != nil {
-			// restarting to re-read Kafka records
+			// The error fails the service. The builder restarts and reads the
+			// records again from the last commit.
 			level.Error(p.logger).Log("msg", "terminating after failed flush", "err", err)
-			returnErr = err
+			returnErr = errors.Join(returnErr, err)
 		}
 	}()
 
@@ -185,8 +191,9 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 			}
 			if err := p.processRecord(ctx, rec); err != nil {
 				// The record is not lost if the processor stops: a restart
-				// reads it again from the last commit.
-				if errors.Is(err, errFlushLoopStopped) || ctx.Err() != nil {
+				// reads it again from the last commit. The deferred
+				// stopFlushLoop returns the error of a failed flush.
+				if errors.Is(err, errFlush) {
 					return nil
 				}
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
@@ -195,11 +202,8 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
 			p.metrics.setConsumptionLag(0)
-			if _, err := p.idleFlush(ctx); err != nil {
-				if errors.Is(err, errFlushLoopStopped) || ctx.Err() != nil {
-					return nil
-				}
-				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
+			if _, err := p.idleFlush(ctx); errors.Is(err, errFlush) {
+				return nil
 			}
 		}
 	}
@@ -221,13 +225,13 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 	if p.shouldFlushDueToMaxAge() {
 		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
-			return fmt.Errorf("failed to flush: %w", err)
+			return fmt.Errorf("%w: %w", errFlush, err)
 		}
 	}
 
 	if p.builder.IsFull() {
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return fmt.Errorf("failed to flush: %w", err)
+			return fmt.Errorf("%w: %w", errFlush, err)
 		}
 	}
 
@@ -252,16 +256,16 @@ func (p *processor) shouldFlushDueToMaxAge() bool {
 		time.Since(p.firstAppend) > p.maxBuilderAge
 }
 
-// idleFlush flushes the partition if it has exceeded the idle flush timeout.
-// It returns true if the partition was flushed, false with a non-nil error
-// if the partition could not be flushed, and false with a nil error if
-// the partition has not exceeded the timeout.
+// idleFlush sends a flush request to the flush loop if the partition has
+// exceeded the idle flush timeout. It returns true if it sent the request,
+// false with an error that wraps errFlush if it could not send it, and false
+// with a nil error if the partition has not exceeded the timeout.
 func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
 	if err := p.flush(ctx, flushReasonIdle); err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: %w", errFlush, err)
 	}
 	return true, nil
 }

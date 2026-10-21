@@ -468,6 +468,7 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 			synctest.Wait()
 
 			err := proc.processRecord(ctx, newRecord(t, 3))
+			require.ErrorIs(t, err, errFlush)
 			require.ErrorIs(t, err, errFlushLoopStopped)
 			require.Equal(t, []int64{1}, flushCommitter.startedOffsets())
 
