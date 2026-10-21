@@ -41,11 +41,16 @@ type tocWriter interface {
 // A flusher allows mocking of flushes in tests. Implementations must be safe
 // for concurrent use.
 type flusher interface {
-	// Flush builds, sorts and uploads the builder's data object. On success the
-	// caller owns the returned [io.Closer] and must close it once it is done
-	// reading the object; reads of the object fail after that. If an error is
-	// returned the closer is always nil.
+	// Flush builds and sorts the builder's data object, and returns it with
+	// the path to upload it to. On success the caller owns the returned
+	// [io.Closer] and must close it once it is done reading the object; reads
+	// of the object fail after that. If an error is returned the closer is
+	// always nil.
 	Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error)
+
+	// Upload uploads obj, which Flush returned, to path. It does not release
+	// obj.
+	Upload(ctx context.Context, obj *dataobj.Object, path string) error
 }
 
 // A flushCommitterImpl manages the flushing of data objects and commits.
@@ -202,15 +207,33 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reas
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
-	// Releasing the object never fails the flush: it is already uploaded, and
-	// the flusher counts and logs any failure.
+	// Releasing the object never fails the flush: the flusher counts and logs
+	// any failure.
 	defer func() { _ = objCloser.Close() }()
 
-	// index returns an error if the context is canceled or the object can't
-	// be processed. It retries every other error indefinitely.
-	res, err := c.index(ctx, obj, objPath)
-	if err != nil {
-		return fmt.Errorf("failed to index data object: %w", err)
+	// The index needs the object and its path, not the uploaded object, so it
+	// runs while the object uploads. Queries find the object only through its
+	// ToC entry, which flushOne writes after both steps succeed. The first
+	// failure cancels the other step.
+	var res index.Result
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		if err := c.flusher.Upload(gctx, obj, objPath); err != nil {
+			return fmt.Errorf("failed to upload data object: %w", err)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		// index returns an error if the context is canceled or the object
+		// can't be processed. It retries every other error indefinitely.
+		var err error
+		if res, err = c.index(gctx, obj, objPath); err != nil {
+			return fmt.Errorf("failed to index data object: %w", err)
+		}
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// A WriteEntry error fails the flush, so the offset is not committed and

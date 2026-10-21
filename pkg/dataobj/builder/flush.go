@@ -26,7 +26,8 @@ type sorter interface {
 
 // An uploader allows mocking of [uploader.Uploader] in tests.
 type uploader interface {
-	Upload(ctx context.Context, obj *dataobj.Object) (string, error)
+	Key(ctx context.Context, obj *dataobj.Object) (string, error)
+	UploadTo(ctx context.Context, obj *dataobj.Object, key string) error
 }
 
 // A flusherImpl is responsible for flushing data object builders to data objects.
@@ -77,7 +78,8 @@ func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheu
 	return f
 }
 
-// Flush flushes the data object builder. It returns an error if the flush fails.
+// Flush builds and sorts the builder's data object, and returns it with the
+// path to upload it to. It returns an error if the flush fails.
 func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error) {
 	f.flushes.WithLabelValues(reason).Inc()
 	timer := prometheus.NewTimer(f.flushDuration)
@@ -89,9 +91,10 @@ func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string)
 	return obj, objCloser, objPath, err
 }
 
-// flush builds a complete data object from the builder, sorts and uploads it.
-// On success the caller owns the returned [io.Closer]; reads of the object fail
-// once it is closed. If an error is returned the closer is always nil.
+// flush builds a complete data object from the builder, sorts it and computes
+// its path. On success the caller owns the returned [io.Closer]; reads of the
+// object fail once it is closed. If an error is returned the closer is always
+// nil.
 func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Object, io.Closer, string, error) {
 	unsortedObj, unsortedObjCloser, err := builder.Flush()
 	if err != nil {
@@ -106,10 +109,10 @@ func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Obje
 		return nil, nil, "", fmt.Errorf("failed to sort data object: %w", err)
 	}
 
-	objectPath, err := f.uploader.Upload(ctx, sortedObj)
+	objectPath, err := f.uploader.Key(ctx, sortedObj)
 	if err != nil {
 		f.release(sortedObjCloser, "sorted")
-		return nil, nil, "", fmt.Errorf("failed to upload object: %w", err)
+		return nil, nil, "", fmt.Errorf("failed to compute object path: %w", err)
 	}
 
 	// Ownership of the sorted object transfers to the caller, but it is still
@@ -118,9 +121,18 @@ func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Obje
 	return sortedObj, closerFunc(func() { f.release(sortedObjCloser, "flushed") }), objectPath, nil
 }
 
+// Upload uploads obj, which Flush returned, to path. It does not release obj.
+func (f *flusherImpl) Upload(ctx context.Context, obj *dataobj.Object, path string) error {
+	if err := f.uploader.UploadTo(ctx, obj, path); err != nil {
+		f.flushFailures.Inc()
+		return fmt.Errorf("failed to upload object: %w", err)
+	}
+	return nil
+}
+
 // release closes a data object's backing scratch storage. Failures are counted
-// and logged rather than returned: by the time an object is released it has
-// already been uploaded, so a cleanup failure must not fail the flush.
+// and logged rather than returned: a release runs once the outcome of the
+// flush is known, so a cleanup failure must not change that outcome.
 func (f *flusherImpl) release(closer io.Closer, which string) {
 	if err := closer.Close(); err != nil {
 		f.releaseFailures.Inc()

@@ -181,6 +181,10 @@ func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj
 	return nil, nil, "", errors.New("mock error")
 }
 
+func (f *failureFlusher) Upload(_ context.Context, _ *dataobj.Object, _ string) error {
+	return errors.New("mock error")
+}
+
 type failureFlushCommitter struct{}
 
 func (m *failureFlushCommitter) Flush(_ context.Context, _ []builder, _ string, _ int64) error {
