@@ -260,6 +260,10 @@ Alternatively, if the `Content-Type` header is set to `application/json`, a JSON
 }
 ```
 
+{{< admonition type="note" >}}
+Loki validates JSON push payloads strictly: a field name that doesn't belong to the schema shown above causes the request to fail with HTTP 400 and an error message that contains `found unknown field: <field>`. This also applies to the deprecated `/api/prom/push` endpoint, which uses a different JSON schema (`labels` and `entries` instead of `stream` and `values`). Each endpoint only accepts the fields in its own schema, so sending one endpoint's payload format to the other now returns an error instead of silently dropping data. This validation doesn't apply to the default Protocol Buffer encoding.
+{{< /admonition >}}
+
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
 You can optionally attach [structured metadata](../../get-started/labels/structured-metadata/) to each log line by adding a JSON object to the end of the log line array.

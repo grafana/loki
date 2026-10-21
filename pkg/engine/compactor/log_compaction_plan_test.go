@@ -13,14 +13,16 @@ import (
 
 func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
-	sortTask := func(oldest time.Time, bytes uint64) sortObjectTask {
-		return sortObjectTask{entry: metastore.TableOfContentsEntry{StartTime: oldest}, bytes: bytes}
+	mergeTask := func(oldest time.Time, bytes uint64) logMergeTask {
+		return newLogMergeTask(&compactionv2pb.TaskSpec{Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "logs/a", MinTimestamp: oldest.UnixNano(), MaxTimestamp: oldest.UnixNano(), UncompressedSize: int64(bytes)},
+		}}}})
 	}
 
 	t.Run("yields the bytes and oldest timestamp of each task that reads log data", func(t *testing.T) {
 		plan := logCompactionPlan{tasks: []logCompactionTask{
-			sortTask(now.Add(-30*time.Minute), 16),
-			sortTask(now.Add(-12*time.Hour), 100),
+			mergeTask(now.Add(-30*time.Minute), 16),
+			mergeTask(now.Add(-12*time.Hour), 100),
 		}}
 
 		require.Equal(t, []logTaskStats{
@@ -39,8 +41,8 @@ func TestLogCompactionPlanLogTaskStats(t *testing.T) {
 
 	t.Run("stops yielding when the caller stops iterating", func(t *testing.T) {
 		plan := logCompactionPlan{tasks: []logCompactionTask{
-			sortTask(now, 1),
-			sortTask(now, 2),
+			mergeTask(now, 1),
+			mergeTask(now, 2),
 		}}
 
 		var seen []logTaskStats

@@ -149,12 +149,12 @@ func checkDataObjReads(query string, res logqlmodel.Result, dataObjQueryStart ti
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		for _, s := range data {
-			needsDataObj = needsDataObj || (s.F > 0 && !windowStart(s.T).Before(dataObjQueryStart))
+			needsDataObj = needsDataObj || !windowStart(s.T).Before(dataObjQueryStart)
 		}
 	case promql.Matrix:
 		for _, series := range data {
 			for _, p := range series.Floats {
-				needsDataObj = needsDataObj || (p.F > 0 && !windowStart(p.T).Before(dataObjQueryStart))
+				needsDataObj = needsDataObj || !windowStart(p.T).Before(dataObjQueryStart)
 			}
 		}
 	}

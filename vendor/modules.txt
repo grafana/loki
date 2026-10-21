@@ -570,7 +570,7 @@ github.com/drone/envsubst/path
 # github.com/dustin/go-humanize v1.1.0
 ## explicit; go 1.21
 github.com/dustin/go-humanize
-# github.com/ebitengine/purego v0.11.1
+# github.com/ebitengine/purego v0.11.2
 ## explicit; go 1.25.0
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
@@ -940,7 +940,7 @@ github.com/grafana/gomemcache/memcache
 ## explicit; go 1.13
 github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.4.0 => ./pkg/push
-## explicit; go 1.27.2
+## explicit; go 1.27.3
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.7.0
 ## explicit; go 1.25.0
@@ -1062,7 +1062,7 @@ github.com/klauspost/cpuid/v2/topology
 # github.com/klauspost/crc32 v1.3.0
 ## explicit; go 1.23.0
 github.com/klauspost/crc32
-# github.com/klauspost/pgzip v1.2.7
+# github.com/klauspost/pgzip v1.3.0
 ## explicit; go 1.25
 github.com/klauspost/pgzip
 # github.com/knadh/koanf/maps v0.1.3

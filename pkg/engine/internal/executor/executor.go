@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -54,8 +53,6 @@ type Config struct {
 	IndexobjCfg logsobj.BuilderBaseConfig
 	// LogsobjCfg is the builder config for index objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
-	// UploaderCfg controls object key generation for compacted log objects.
-	UploaderCfg uploader.Config
 	// BuilderMetrics is shared by logs object builders across worker tasks.
 	BuilderMetrics *logsobj.BuilderMetrics
 
@@ -134,7 +131,6 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
 		logsobjCfg:         cfg.LogsobjCfg,
-		uploaderCfg:        cfg.UploaderCfg,
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
@@ -175,7 +171,6 @@ type Context struct {
 	scratchStore   scratch.Store
 	indexobjCfg    logsobj.BuilderBaseConfig
 	logsobjCfg     logsobj.BuilderBaseConfig
-	uploaderCfg    uploader.Config
 	builderMetrics *logsobj.BuilderMetrics
 
 	indexMergeObserver IndexMergeObserver
@@ -237,8 +232,6 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// node's Runs, producing schema-sorted compacted log object(s). See
 		// executeLogMerge / doLogObjectMerge in log_merge.go.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
-	case *physical.SortObject:
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeSortObject(n))
 	case *physical.IndexFilter:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexFilter(n))
 	default:
