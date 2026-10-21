@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
+	"strconv"
+	"strings"
 
 	"github.com/prometheus/common/model"
 )
@@ -78,6 +81,31 @@ func (shard ShardAnnotation) Validate() error {
 		return fmt.Errorf("shard factor must be a power of two, got %d", shard.Of)
 	}
 	return nil
+}
+
+// ParseShardString parses a shard in the ShardLabelFmt form `<x>_of_<K>`. K
+// must be a power of two and x below K. `0_of_1` is the whole fingerprint
+// space.
+func ParseShardString(s string) (ShardAnnotation, error) {
+	parts := strings.Split(s, "_of_")
+	if len(parts) != 2 {
+		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: want <shard>_of_<factor>", s)
+	}
+	x, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: %w", s, err)
+	}
+	of, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: %w", s, err)
+	}
+	if bits.OnesCount64(of) != 1 {
+		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: factor must be a power of two", s)
+	}
+	if x >= of {
+		return ShardAnnotation{}, fmt.Errorf("invalid shard %q: shard must be below the factor", s)
+	}
+	return NewShard(uint32(x), uint32(of)), nil
 }
 
 // GetFromThrough shows the [minimum, maximum) fingerprints. If there is no maximum
