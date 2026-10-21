@@ -629,8 +629,10 @@ func TestCompactor_Compact(t *testing.T) {
 						}
 
 						// now convert the compactedIndex to index.Index and verify the chunkmetas again
-						indexFile, err := compactedIdx.ToIndexFile()
+						indexFiles, err := compactedIdx.ToIndexFiles()
 						require.NoError(t, err)
+						require.Len(t, indexFiles, 1)
+						indexFile := indexFiles[0]
 
 						actualChunks = map[string]index.ChunkMetas{}
 						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
@@ -918,12 +920,14 @@ func TestCompactedIndex(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			indexFile, err := compactedIndex.ToIndexFile()
+			indexFiles, err := compactedIndex.ToIndexFiles()
 			if tc.shouldErr {
 				require.NotNil(t, err)
 				return
 			}
 			require.NoError(t, err)
+			require.Len(t, indexFiles, 1)
+			indexFile := indexFiles[0]
 
 			foundChunks := map[string][]retention.Chunk{}
 			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
@@ -1048,7 +1052,7 @@ func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
 	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
 	require.NoError(t, err)
 
-	_, err = compactedIndex.ToIndexFile()
+	_, err = compactedIndex.ToIndexFiles()
 	require.NoError(t, err)
 
 	var got []retention.Chunk
