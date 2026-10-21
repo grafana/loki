@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -39,6 +40,28 @@ type shardCacheEntry struct {
 	inflight bool
 }
 
+type stripeLock struct {
+	sync.RWMutex
+	_ [40]byte // Padding to avoid multiple locks being on the same cache line.
+}
+
+type keyedMutex []stripeLock
+
+func newStripedLock(n int) keyedMutex {
+	return make(keyedMutex, n)
+}
+
+func (l keyedMutex) getStripe(tenant string) int {
+	h := fnv.New32()
+	_, _ = h.Write([]byte(tenant))
+	return int(h.Sum32() % uint32(len(l)))
+}
+
+func (l keyedMutex) getLock(tenant string) *stripeLock {
+	i := l.getStripe(tenant)
+	return &l[i]
+}
+
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
 // Pushes for a stream whose result is younger than ttl, or whose result is
 // being refreshed, are answered from the cache. If the cached result accepts
@@ -51,18 +74,20 @@ type shardCacheLimitsClient struct {
 	ttl  time.Duration
 	next limitsClient // the client invoked on cache miss
 
-	mtx       sync.Mutex
+	tenantMtx keyedMutex
 	entries   map[shardCacheKey]*shardCacheEntry
-	lastSwept time.Time
+	lastSwept map[string]time.Time
 
 	combinedPushes prometheus.Histogram
 }
 
 func newShardCacheLimitsClient(ttl time.Duration, next limitsClient, reg prometheus.Registerer) *shardCacheLimitsClient {
 	return &shardCacheLimitsClient{
-		ttl:     ttl,
-		next:    next,
-		entries: make(map[shardCacheKey]*shardCacheEntry),
+		ttl:       ttl,
+		next:      next,
+		entries:   make(map[shardCacheKey]*shardCacheEntry),
+		tenantMtx: newStripedLock(128),
+		lastSwept: make(map[string]time.Time),
 		combinedPushes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_ingest_limits_frontend_shard_cache_combined_pushes",
 			Help:    "The number of pushes combined into a single CheckLimitsAndShard backend request.",
@@ -85,8 +110,9 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		refreshes []streamShardPushCount
 	)
 
-	c.mtx.Lock()
-	c.sweep(now)
+	mtx := c.tenantMtx.getLock(req.Tenant)
+	mtx.Lock()
+	c.sweep(now, req.Tenant)
 	for _, m := range req.Streams {
 		key := shardCacheKey{req.Tenant, m.StreamHash}
 		entry, ok := c.entries[key]
@@ -113,7 +139,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		refreshes = append(refreshes, streamShardPushCount{entry: entry, pushes: entry.accumPushes + 1})
 		entry.accumSize, entry.accumPushes, entry.inflight = 0, 0, true
 	}
-	c.mtx.Unlock()
+	mtx.Unlock()
 
 	if len(forward) == 0 {
 		return &proto.CheckLimitsAndShardResponse{Results: results}, nil
@@ -129,7 +155,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		resultsByHash[res.StreamHash] = res
 	}
 
-	c.mtx.Lock()
+	mtx.Lock()
 	for i, r := range refreshes {
 		r.entry.inflight = false
 		r.entry.refreshedAt = now
@@ -145,7 +171,7 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		r.entry.accumSize += forward[i].TotalSize
 		r.entry.accumPushes += r.pushes
 	}
-	c.mtx.Unlock()
+	mtx.Unlock()
 
 	if err != nil {
 		return &proto.CheckLimitsAndShardResponse{Results: results}, err
@@ -157,15 +183,16 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 // ttl*shardCacheMaxIdleFactor, except those being refreshed. The size an
 // idle stream accumulated since its last backend call is dropped with it.
 // It must be called with mtx held.
-func (c *shardCacheLimitsClient) sweep(now time.Time) {
+func (c *shardCacheLimitsClient) sweep(now time.Time, tenant string) {
 	maxAge := c.ttl * shardCacheMaxIdleFactor
-	if now.Sub(c.lastSwept) < maxAge {
+	lastSwept, _ := c.lastSwept[tenant]
+	if now.Sub(lastSwept) < maxAge {
 		return
 	}
-	c.lastSwept = now
+	c.lastSwept[tenant] = now
 	cutoff := now.Add(-maxAge)
 	for k, e := range c.entries {
-		if !e.inflight && e.refreshedAt.Before(cutoff) {
+		if k.tenant == tenant && !e.inflight && e.refreshedAt.Before(cutoff) {
 			delete(c.entries, k)
 		}
 	}
