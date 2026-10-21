@@ -491,9 +491,10 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 	if err != nil {
 		b.metrics.flushFailures.Inc()
 		// The caller never closes an object returned with an error, so release
-		// it here.
+		// it here. err already reports the failure, so a close error adds
+		// nothing.
 		if sortedCloser != nil {
-			util.CloseAndHandleError(sortedCloser, &err)
+			_ = sortedCloser.Close()
 		}
 		return nil, nil, fmt.Errorf("sorting object: %w", err)
 	}
