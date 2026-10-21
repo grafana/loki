@@ -37,6 +37,18 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Bloom filters are deprecated
+
+Query acceleration using bloom filters is deprecated and will be removed in a future release.
+This covers the Bloom Planner, Bloom Builder, and Bloom Gateway components and the following settings:
+
+- The `bloom_build` and `bloom_gateway` configuration blocks.
+- The `storage_config.bloom_shipper` configuration block.
+- The per-tenant `bloom_*` settings in `limits_config`, for example `bloom_creation_enabled` and `bloom_gateway_enable_filtering`.
+
+The components and settings still work. Each bloom component logs a deprecation warning on startup.
+The `deprecated-config-checker` tool flags the deprecated settings.
+
 ### Breaking change: Compactor and retention metrics are renamed 
 
 A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
