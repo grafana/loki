@@ -195,9 +195,7 @@ func (p *processor) runUntilStopped(ctx context.Context) {
 				return
 			}
 			if err := p.processRecord(ctx, rec); err != nil {
-				// The record is not lost if the processor stops: a restart
-				// reads it again from the last commit. Run then calls
-				// stopFlushLoop, which returns the error of a failed flush.
+				// This record will be reprocessed on the restart, so it's not lost.
 				if errors.Is(err, errStopProcessing) {
 					return
 				}
