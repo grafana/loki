@@ -119,3 +119,22 @@ func (shard ShardAnnotation) GetFromThrough() (model.Fingerprint, model.Fingerpr
 	}
 	return from, model.Fingerprint(shard.Shard+1) << (64 - requiredBits)
 }
+
+// FingerprintRangesOverlap reports whether two half-open fingerprint ranges
+// overlap. MaxUint64 is an unbounded upper sentinel and includes the maximum
+// fingerprint, including a range whose lower bound is MaxUint64 itself.
+func FingerprintRangesOverlap(aFrom, aThrough, bFrom, bThrough model.Fingerprint) bool {
+	if aThrough != math.MaxUint64 {
+		if aFrom >= aThrough {
+			return false
+		}
+		aThrough--
+	}
+	if bThrough != math.MaxUint64 {
+		if bFrom >= bThrough {
+			return false
+		}
+		bThrough--
+	}
+	return aFrom <= aThrough && bFrom <= bThrough && aFrom <= bThrough && bFrom <= aThrough
+}

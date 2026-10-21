@@ -18,10 +18,22 @@ type LoadableSeries struct {
 }
 
 func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
+	return BuildShardedIndex(t, dir, cases, index.ShardAnnotation{})
+}
+
+// BuildShardedIndex builds the file of one fingerprint-range shard of a table
+// the compactor split: only the series of cases that shard matches are
+// written, and the file is named for the shard. The zero shard builds an
+// unsplit file of every series.
+func BuildShardedIndex(t testing.TB, dir string, cases []LoadableSeries, shard index.ShardAnnotation) *TSDBFile {
 	b := NewBuilder(index.FormatV3)
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, model.Fingerprint(labels.StableHash(s.Labels)), s.Chunks)
+		fp := model.Fingerprint(labels.StableHash(s.Labels))
+		if shard.Of > 1 && !shard.Match(fp) {
+			continue
+		}
+		b.AddSeries(s.Labels, fp, s.Chunks)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
@@ -30,6 +42,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 			From:     from,
 			Through:  through,
 			Checksum: checksum,
+			Shard:    shard,
 		}
 		return NewPrefixedIdentifier(id, dir, dir)
 	})
