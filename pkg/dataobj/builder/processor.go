@@ -152,12 +152,6 @@ func (p *processor) stopping(_ error) error {
 // errFlush wraps every error that processRecord and idleFlush get from flush.
 // Run stops on it, because the processor cannot commit the records that it
 // appends after a failed flush.
-//
-// flush fails only if it cannot send its request to the flush loop. This
-// happens when:
-//   - the previous flush fails while flush waits for it;
-//   - a shutdown cancels ctx while flush waits;
-//   - the flush loop already stopped, but Run picked another ready case.
 var errFlush = errors.New("failed to flush")
 
 func (p *processor) Run(ctx context.Context) (returnErr error) {
@@ -329,9 +323,6 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 // after a flush once ctx is canceled. After it stops it runs no more flushes,
 // so no commit passes a failed or canceled flush. A restart reads those
 // records again from the last commit.
-//
-// The processor starts the flush loop at most once, because stopFlushLoop
-// closes the channels that newProcessor creates.
 func (p *processor) startFlushLoop(ctx context.Context) {
 	go func() {
 		defer close(p.flushLoopDone)
