@@ -22,6 +22,7 @@ import (
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const readDBsConcurrency = 50
@@ -444,14 +445,64 @@ func (c *compactedIndex) Cleanup() {}
 // ToIndexFiles creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
 func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
+	if err := c.applyUpdates(); err != nil {
+		return nil, err
+	}
+
+	idx, err := c.buildFile(c.builder, tsdbindex.ShardAnnotation{})
+	if err != nil {
+		return nil, err
+	}
+	return []shipperindex.Index{idx}, nil
+}
+
+// ToShardedIndexFiles is like ToIndexFiles, but with a shardFactor greater than 1 the series are
+// partitioned by the top bits of their fingerprint into that many files, one per non-empty shard,
+// each named with its `<x>_of_<K>` range.
+func (c *compactedIndex) ToShardedIndexFiles(shardFactor int) ([]shipperindex.Index, error) {
+	if err := c.applyUpdates(); err != nil {
+		return nil, err
+	}
+
+	if shardFactor <= 1 || c.builder.numStreams() == 0 {
+		return c.ToIndexFiles()
+	}
+
+	k := uint32(shardFactor)
+	builders := partitionBuilder(c.builder, k)
+
+	files := make([]shipperindex.Index, 0, len(builders))
+	for x, b := range builders {
+		if b == nil {
+			continue
+		}
+		idx, err := c.buildFile(b, tsdbindex.NewShard(uint32(x), k))
+		if err != nil {
+			for _, f := range files {
+				if closeErr := f.Close(); closeErr != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to close index file after build error", "path", f.Path(), "err", closeErr)
+				}
+				if removeErr := os.Remove(f.Path()); removeErr != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to remove index file after build error", "path", f.Path(), "err", removeErr)
+				}
+			}
+			return nil, err
+		}
+		files = append(files, idx)
+	}
+	return files, nil
+}
+
+// applyUpdates applies the lined up deletes and additions of chunks to the builder. It is a noop once applied.
+func (c *compactedIndex) applyUpdates() error {
 	for seriesID, sc := range c.deleteChunks {
 		for _, chk := range sc.chunks {
 			chunkFound, err := c.builder.DropChunk(sc.lbls, chk)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if !chunkFound {
-				return nil, fmt.Errorf("could not drop non-existent chunk %x from series %s", chk, seriesID)
+				return fmt.Errorf("could not drop non-existent chunk %x from series %s", chk, seriesID)
 			}
 		}
 	}
@@ -461,7 +512,7 @@ func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
 		for i := range sc.chunks {
 			err := c.builder.InsertChunk(sc.lbls, sc.chunks[i])
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
@@ -469,13 +520,45 @@ func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
 
 	// cleanup any empty streams due to chunk removals above
 	c.builder.dropEmptyStreams()
+	return nil
+}
 
-	id, err := c.builder.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
+// partitionBuilder splits the streams of b into k builders by the top bits of
+// their fingerprint, so that builders[x] holds exactly the series matched by
+// index.ShardAnnotation{Shard: x, Of: k}. Shards with no series are nil.
+func partitionBuilder(b *Builder, k uint32) []*Builder {
+	builders := make([]*Builder, k)
+	requiredBits := tsdbindex.NewShard(0, k).RequiredBits()
+	put := func(h uint64, s *stream) {
+		x := uint64(s.fp) >> (64 - requiredBits)
+		if builders[x] == nil {
+			builders[x] = NewBuilder(b.version)
+			builders[x].hash = b.hash
+			builders[x].chunksFinalized = b.chunksFinalized
+		}
+		builders[x].putStream(h, s)
+	}
+	for h, s := range b.streams {
+		put(h, s)
+	}
+	for h, cs := range b.collisions {
+		for _, s := range cs {
+			put(h, s)
+		}
+	}
+	return builders
+}
+
+// buildFile writes the builder to a compacted TSDB file in the working dir,
+// named for the given shard (the zero value names an unsplit file).
+func (c *compactedIndex) buildFile(b *Builder, shard tsdbindex.ShardAnnotation) (shipperindex.Index, error) {
+	id, err := b.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
 			TS:       time.Now(),
 			From:     from,
 			Through:  through,
 			Checksum: checksum,
+			Shard:    shard,
 		}
 		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
@@ -483,17 +566,7 @@ func (c *compactedIndex) ToIndexFiles() ([]shipperindex.Index, error) {
 		return nil, err
 	}
 
-	idx, err := NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return []shipperindex.Index{idx}, nil
-}
-
-// ToShardedIndexFiles creates the files of the sharded index copy. The index is
-// not split by fingerprint yet, so this is the same single file as ToIndexFiles.
-func (c *compactedIndex) ToShardedIndexFiles() ([]shipperindex.Index, error) {
-	return c.ToIndexFiles()
+	return NewShippableTSDBFile(id, tsdbindex.MmapOptions{})
 }
 
 func getUnsafeBytes(s string) []byte {

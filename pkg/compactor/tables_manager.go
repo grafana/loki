@@ -29,6 +29,7 @@ type tablesManager struct {
 	storeContainers   map[config.DayTime]storeContainer
 	indexCompactors   map[string]IndexCompactor
 	schemaConfig      config.SchemaConfig
+	limits            ShardedIndexLimits
 	metrics           *metrics
 
 	tableLocker *tableLocker
@@ -40,6 +41,7 @@ func newTablesManager(
 	indexCompactors map[string]IndexCompactor,
 	schemaConfig config.SchemaConfig,
 	expirationChecker retention.ExpirationChecker,
+	limits ShardedIndexLimits,
 	metrics *metrics,
 ) *tablesManager {
 	t := &tablesManager{
@@ -48,6 +50,7 @@ func newTablesManager(
 		indexCompactors:   indexCompactors,
 		schemaConfig:      schemaConfig,
 		expirationChecker: expirationChecker,
+		limits:            limits,
 		metrics:           metrics,
 
 		tableLocker: newTableLocker(),
@@ -217,6 +220,7 @@ func (c *tablesManager) initTable(ctx context.Context, tableName string) (*table
 	}
 	if sc.shardedIndexClient != nil {
 		table.shardedUserIndexSet = storage.NewIndexSet(sc.shardedIndexClient, true)
+		table.shardedIndexLimits = c.limits
 	}
 
 	return table, nil

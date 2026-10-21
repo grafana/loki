@@ -294,6 +294,40 @@ func TestTable_CompactionWritesShardedCopyOfUserIndexes(t *testing.T) {
 	}
 }
 
+type shardFactorLimits map[string]int
+
+func (l shardFactorLimits) TSDBShardedIndexShardFactor(userID string) int { return l[userID] }
+
+func TestTable_CompactionUsesPerTenantShardFactor(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		perUser IndexesConfig
+	}{
+		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}},
+		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+			SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{}, PerUserIndexesConfig{IndexesConfig: tc.perUser, NumUsers: 2})
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+			require.NoError(t, err)
+
+			table, err := newTable(context.Background(), filepath.Join(tempDir, workingDirName, tableName), storage.NewIndexStorageClient(objectClient, ""),
+				newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+			require.NoError(t, err)
+			table.shardedUserIndexSet = storage.NewIndexSet(storage.NewIndexStorageClient(objectClient, "sharded/"), true)
+			table.shardedIndexLimits = shardFactorLimits{BuildUserID(0): 8}
+			defer table.cleanup()
+
+			require.NoError(t, table.compact())
+
+			require.Equal(t, 8, table.indexSets[BuildUserID(0)].shardFactor)
+			require.Equal(t, 0, table.indexSets[BuildUserID(1)].shardFactor)
+		})
+	}
+}
+
 type TableMarkerFunc func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error)
 
 func (t TableMarkerFunc) FindAndMarkChunksForDeletion(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {

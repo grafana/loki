@@ -121,7 +121,13 @@ type storeContainer struct {
 type Limits interface {
 	deletion.Limits
 	retention.Limits
+	ShardedIndexLimits
 	DefaultLimits() *validation.Limits
+}
+
+// ShardedIndexLimits are the per-tenant limits of the sharded index copy.
+type ShardedIndexLimits interface {
+	TSDBShardedIndexShardFactor(userID string) int
 }
 
 func NewCompactor(
@@ -329,7 +335,7 @@ func (c *Compactor) init(
 	}
 
 	c.metrics = newMetrics(r)
-	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
+	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.limits, c.metrics)
 
 	if c.cfg.RetentionEnabled {
 		if err := c.deleteRequestsManager.Init(c.tablesManager, r); err != nil {

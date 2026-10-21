@@ -93,6 +93,7 @@ type table struct {
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 	shardedUserIndexSet                  storage.IndexSet
+	shardedIndexLimits                   ShardedIndexLimits
 
 	indexSets             map[string]*indexSet
 	usersWithPerUserIndex []string
@@ -160,7 +161,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return err
 		}
-		t.indexSets[userID].shardedIndexSet = t.shardedUserIndexSet
+		t.setShardedCopy(t.indexSets[userID])
 		userIndexSets[userID] = t.indexSets[userID]
 	}
 
@@ -174,7 +175,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return nil, err
 		}
-		indexSet.shardedIndexSet = t.shardedUserIndexSet
+		t.setShardedCopy(indexSet)
 		t.indexSets[userID] = indexSet
 		return indexSet, nil
 	}, t.periodConfig)
@@ -389,4 +390,11 @@ func tableHasUncompactedIndex(ctx context.Context, tableName string, indexStorag
 
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
+}
+
+func (t *table) setShardedCopy(is *indexSet) {
+	is.shardedIndexSet = t.shardedUserIndexSet
+	if t.shardedIndexLimits != nil {
+		is.shardFactor = t.shardedIndexLimits.TSDBShardedIndexShardFactor(is.userID)
+	}
 }
