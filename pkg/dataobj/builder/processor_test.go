@@ -633,10 +633,10 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 	})
 
 	t.Run("builds the same data objects and indexes as a flush that blocks consumption", func(t *testing.T) {
-		flushes := newTestFlushRecords(t, 3, 300)
+		recordsByFlush := newTestFlushRecords(t, 3, 300)
 
-		wantObjects, wantOffsets := flushSerially(t, flushes)
-		objects, offsets := runWithRealStack(t, flushes)
+		wantObjects, wantOffsets := flushSerially(t, recordsByFlush)
+		objects, offsets := runWithRealStack(t, recordsByFlush)
 
 		require.NotEmpty(t, wantObjects)
 		require.Equal(t, wantOffsets, offsets)
@@ -654,8 +654,8 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 func newTestFlushRecords(t *testing.T, n, size int) [][]*kgo.Record {
 	base := time.Date(2026, time.October, 1, 6, 0, 0, 0, time.UTC)
 	var (
-		flushes [][]*kgo.Record
-		offset  int64
+		recordsByFlush [][]*kgo.Record
+		offset         int64
 	)
 	for f := range n {
 		var records []*kgo.Record
@@ -675,9 +675,9 @@ func newTestFlushRecords(t *testing.T, n, size int) [][]*kgo.Record {
 			})
 			offset++
 		}
-		flushes = append(flushes, records)
+		recordsByFlush = append(recordsByFlush, records)
 	}
-	return flushes
+	return recordsByFlush
 }
 
 // A realStack is the production flush committer, with the production sort,
@@ -726,13 +726,13 @@ func newRealStack(t *testing.T) *realStack {
 // flushes them with a real stack and waits for the flush to end. It uses no
 // processor, so no append overlaps a flush. It returns the contents of the
 // bucket and the committed offsets.
-func flushSerially(t *testing.T, flushes [][]*kgo.Record) (map[string][]byte, []int64) {
+func flushSerially(t *testing.T, recordsByFlush [][]*kgo.Record) (map[string][]byte, []int64) {
 	stack := newRealStack(t)
 	decoder, err := kafka.NewDecoder()
 	require.NoError(t, err)
 
 	m := NewMultiObjectBuilder(stack.factory, stack.targetSize)
-	for _, records := range flushes {
+	for _, records := range recordsByFlush {
 		for _, rec := range records {
 			stream, err := decoder.DecodeWithoutLabels(rec.Value)
 			require.NoError(t, err)
@@ -752,25 +752,25 @@ func flushSerially(t *testing.T, flushes [][]*kgo.Record) (map[string][]byte, []
 // the processor flushes at the same records as flushSerially. One more record
 // makes the processor flush the records of the last flush. The processor
 // never flushes that record.
-func runWithRealStack(t *testing.T, flushes [][]*kgo.Record) (map[string][]byte, []int64) {
+func runWithRealStack(t *testing.T, recordsByFlush [][]*kgo.Record) (map[string][]byte, []int64) {
 	var (
 		stack   = newRealStack(t)
 		records = make(chan *kgo.Record)
 		m       = &fixedCountMultiBuilder{
 			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize),
-			fullAfter:          len(flushes[0]),
+			fullAfter:          len(recordsByFlush[0]),
 		}
 		proc = newProcessor(m, records, stack.flushCommitter, time.Hour, 0, log.NewNopLogger(), prometheus.NewRegistry())
 		ran  = make(chan error, 1)
 	)
 	go func() { ran <- proc.Run(t.Context()) }()
 
-	last := flushes[len(flushes)-1]
+	last := recordsByFlush[len(recordsByFlush)-1]
 	trailer := newTestRecord(t, "tenant-0", last[len(last)-1].Timestamp)
 	trailer.Offset = last[len(last)-1].Offset + 1
 	go func() {
-		for _, flush := range flushes {
-			for _, rec := range flush {
+		for _, flushRecords := range recordsByFlush {
+			for _, rec := range flushRecords {
 				records <- rec
 			}
 		}
