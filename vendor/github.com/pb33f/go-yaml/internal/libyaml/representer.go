@@ -49,6 +49,10 @@ func NewRepresenter(opts *Options) *Representer {
 
 // Represent converts a Go value to a YAML node tree.
 // This is the primary method for the Representer stage in the dump pipeline.
+//
+// Nodes found in the value (*Node or Node) are used as-is rather than copied,
+// so the returned tree may share nodes with the caller, and later stages must
+// not modify it.
 func (r *Representer) Represent(tag string, in reflect.Value) *Node {
 	var node *Node
 	if in.IsValid() {

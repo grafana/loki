@@ -331,10 +331,9 @@ func (n *Node) Load(v any, opts ...Option) (err error) {
 func (n *Node) Encode(v any) (err error) {
 	defer handleErr(&err)
 	// Use the 3-stage dump pipeline with round-trip to preserve styles
+	// (the Serializer applies the Desolver)
 	r := NewRepresenter(DefaultOptions)
 	node := r.Represent("", reflect.ValueOf(v))
-	d := NewDesolver(DefaultOptions)
-	d.Desolve(node)
 	s := NewSerializer(nil, DefaultOptions)
 	var out []byte
 	s.Emitter.SetOutputString(&out)
@@ -365,10 +364,9 @@ func (n *Node) Dump(v any, opts ...Option) (err error) {
 		return err
 	}
 	// Use the 3-stage dump pipeline with round-trip to preserve styles
+	// (the Serializer applies the Desolver)
 	r := NewRepresenter(o)
 	node := r.Represent("", reflect.ValueOf(v))
-	d := NewDesolver(o)
-	d.Desolve(node)
 	s := NewSerializer(nil, o)
 	var out []byte
 	s.Emitter.SetOutputString(&out)
