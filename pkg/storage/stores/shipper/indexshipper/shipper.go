@@ -88,6 +88,10 @@ type IndexShipper interface {
 	TriggerSync() bool
 	// SyncStatus reports the current/last sync status.
 	SyncStatus() indexstore.SyncStatus
+	// PreloadIndexes runs the initial query readiness. It is needed only with
+	// Config.DelayQueryReadinessUntilPreload; otherwise that runs at
+	// construction.
+	PreloadIndexes(ctx context.Context) error
 	Stop()
 }
 
@@ -109,6 +113,11 @@ type Config struct {
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
+
+	// DelayQueryReadinessUntilPreload moves the initial query readiness run
+	// from construction to the first PreloadIndexes call, once TenantFilter can
+	// answer. It is set by the index gateway with per-index ownership.
+	DelayQueryReadinessUntilPreload bool `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -117,9 +126,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.QueryReadyOverrides.RegisterFlagsWithPrefix(prefix+"shipper.query-ready-overrides.", f)
 	cfg.PostingsCache.RegisterFlagsWithPrefix(prefix+"shipper.postings-cache.", "", f)
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.QueryReadyOverrides.RegisterFlagsWithPrefix(prefix+"shipper.query-ready-overrides.", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -161,6 +170,7 @@ func (cfg *Config) Validate() error {
 	if err := cfg.QueryReadyOverrides.Validate(); err != nil {
 		return err
 	}
+
 	if cfg.DownloadTimeout <= 0 {
 		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
 	}
@@ -261,13 +271,15 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 
 	if s.cfg.Mode != ModeWriteOnly {
 		cfg := downloads.Config{
-			CacheDir:            s.cfg.CacheLocation,
-			SyncInterval:        s.cfg.ResyncInterval,
-			CacheTTL:            s.cfg.CacheTTL,
-			QueryReadyNumDays:   s.cfg.QueryReadyNumDays,
-			DownloadTimeout:     s.cfg.DownloadTimeout,
-			Limits:              limits,
-			QueryReadyOverrides: s.cfg.QueryReadyOverrides,
+			CacheDir:          s.cfg.CacheLocation,
+			SyncInterval:      s.cfg.ResyncInterval,
+			CacheTTL:          s.cfg.CacheTTL,
+			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
+			DownloadTimeout:   s.cfg.DownloadTimeout,
+			Limits:            limits,
+
+			QueryReadyOverrides:             s.cfg.QueryReadyOverrides,
+			DelayQueryReadinessUntilPreload: s.cfg.DelayQueryReadinessUntilPreload,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
@@ -335,6 +347,13 @@ func (s *indexShipper) TriggerSync() bool {
 	return false
 }
 
+func (s *indexShipper) PreloadIndexes(ctx context.Context) error {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.EnsureQueryReadiness(ctx)
+	}
+	return nil
+}
+
 func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
 	if s.downloadsManager != nil {
 		return s.downloadsManager.SyncStatus()
@@ -365,7 +384,8 @@ func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback
 func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) FlushIndexes(_ context.Context) error { return nil }
-func (Noop) TriggerSync() bool                    { return false }
-func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
-func (Noop) Stop()                                {}
+func (Noop) FlushIndexes(_ context.Context) error   { return nil }
+func (Noop) TriggerSync() bool                      { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus      { return indexstore.SyncStatus{} }
+func (Noop) PreloadIndexes(_ context.Context) error { return nil }
+func (Noop) Stop()                                  {}
