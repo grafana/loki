@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -18,17 +19,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -51,6 +51,10 @@ const (
 
 var (
 	tracer = otel.Tracer("pkg/dataobj/metastore")
+
+	// errNoMatchers is the error of a lookup without a stream matcher. The metastore cannot select
+	// sections without one, and an empty result would hide the mistake.
+	errNoMatchers = errors.New("at least one stream matcher is required")
 
 	// errDifferentSectionStatistics is the error of a lookup that finds one section described by more
 	// than one index object, with different statistics.
@@ -409,96 +413,213 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	return entries
 }
 
-func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (_ SectionsResponse, returnErr error) {
-	ctx, span := xcap.StartSpan(ctx, tracer, RegionSections)
-	defer span.End()
-
-	start := time.Now()
-	// This runs before span.End, which stops the region from recording.
-	defer func() {
-		if returnErr == nil {
-			span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+// Sections collects every batch of SectionsStream. It returns no section when the sequence fails.
+func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
+	var sections DataobjSectionDescriptors
+	for batch, err := range m.SectionsStream(ctx, req) {
+		if err != nil {
+			return SectionsResponse{}, err
 		}
-	}()
+		sections = append(sections, batch...)
+	}
+	return SectionsResponse{Sections: sections}, nil
+}
 
-	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
+func (m *ObjectMetastore) SectionsStream(ctx context.Context, req SectionsRequest) iter.Seq2[DataobjSectionDescriptors, error] {
+	return func(yield func(DataobjSectionDescriptors, error) bool) {
+		ctx, span := xcap.StartSpan(ctx, tracer, RegionSections)
+		defer span.End()
+
+		m.streamSections(ctx, span, req, yield)
+	}
+}
+
+// streamSections runs one resolution and yields its batches from the calling goroutine. It returns
+// after every read ends.
+func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, req SectionsRequest, yield func(DataobjSectionDescriptors, error) bool) {
+	start := time.Now()
 
 	if len(req.Matchers) == 0 {
-		// At least one stream matcher is required, currently.
-		return SectionsResponse{}, nil
+		yield(nil, errNoMatchers)
+		return
 	}
 
 	indexes, err := m.GetIndexes(ctx, GetIndexesRequest{Start: req.Start, End: req.End})
 	if err != nil {
-		return SectionsResponse{}, err
+		yield(nil, err)
+		return
 	}
 
 	// Return early if no index files found
 	if len(indexes.Indexes) == 0 {
 		m.metrics.resolvedSectionsTotal.Observe(0)
 		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
-		return SectionsResponse{}, nil
+		span.Record(StatMetastoreSectionsDuration.Observe(int64(time.Since(start))))
+		return
 	}
 
-	var sections []DataobjSectionDescriptorWithIndex
-	sectionsMu := sync.Mutex{}
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
+	// batch carries the deduplicated sections of one index object, or the error that ends the
+	// resolution. A batch without an error holds at least one section.
+	type batch struct {
+		sections DataobjSectionDescriptors
 
-	totalSections := atomic.NewUint64(0)
-	for _, indexEntry := range indexes.Indexes {
-		g.Go(func() error {
-			indexSections, readRows, err := m.readIndexSections(ctx, req, indexEntry.Path)
-			if err != nil {
-				return err
+		// err is the error that ends the resolution. When err is set, sections is nil.
+		err error
+	}
+
+	// The resolution runs in the background and never waits for the caller. So its duration excludes
+	// the time the caller spends on the batches.
+	//
+	// The channel holds one batch for each index object, so no send waits for the caller. The batches
+	// stay in memory until the caller receives them. The channel closes after the resolution ends.
+	readCtx, cancelReads := context.WithCancel(ctx)
+	batches := make(chan batch, len(indexes.Indexes))
+
+	go func() {
+		defer close(batches)
+
+		var (
+			g errgroup.Group
+
+			// mu guards the variables below.
+			mu sync.Mutex
+
+			// deduplicator keeps the first descriptor of each section until the resolution ends. It
+			// compares each later copy with that descriptor, which the caller can already hold.
+			deduplicator = newSectionsDeduplicator(m.logger, m.metrics)
+
+			failed         bool
+			totalSections  int
+			uniqueSections int
+		)
+
+		// fail ends the resolution with err. It does nothing when an earlier read already failed. Call
+		// it with mu held.
+		fail := func(err error) {
+			if failed {
+				return
 			}
+			failed = true
 
-			// Merge the section descriptors for the object into the global section descriptors in one batch
-			sectionsMu.Lock()
-			sections = append(sections, indexSections...)
-			sectionsMu.Unlock()
+			// The check above makes err the only error in the channel.
+			batches <- batch{err: err}
+			cancelReads()
+		}
 
-			totalSections.Add(uint64(readRows))
+		g.SetLimit(m.parallelism)
+		for _, indexEntry := range indexes.Indexes {
+			g.Go(func() error {
+				// The caller cannot recover a panic on this goroutine, and the panic would end the
+				// process. End the resolution with an error instead. The deferred Unlock below runs
+				// first, so mu is free here.
+				defer func() {
+					if panicked := recover(); panicked != nil {
+						serverutil.RecordPanic()
+						level.Error(utillog.WithContext(ctx, m.logger)).Log(
+							"msg", "panic reading the sections of an index object",
+							"index", indexEntry.Path,
+							"panic", panicked,
+							"stack", string(debug.Stack()),
+						)
 
-			return nil
-		})
+						mu.Lock()
+						defer mu.Unlock()
+						fail(fmt.Errorf("reading the sections of index object %q: %v", indexEntry.Path, panicked))
+					}
+				}()
+
+				sections, readRows, err := m.readIndexSections(readCtx, req, indexEntry.Path)
+
+				mu.Lock()
+				defer mu.Unlock()
+
+				// An earlier read failed. The deduplicator must not run again after an error, and the
+				// caller drops the batches that follow.
+				if failed {
+					return nil
+				}
+
+				if err != nil {
+					fail(err)
+					return nil
+				}
+
+				indexUniqueSections, err := deduplicator.deduplicate(ctx, sections)
+				if err != nil {
+					fail(err)
+					return nil
+				}
+
+				totalSections += readRows
+				if len(indexUniqueSections) == 0 {
+					return nil
+				}
+
+				if uniqueSections == 0 {
+					firstIndex := time.Since(start)
+					m.metrics.resolvedSectionsFirstIndexDuration.Observe(firstIndex.Seconds())
+					span.Record(StatMetastoreSectionsFirstIndexDuration.Observe(int64(firstIndex)))
+				}
+				uniqueSections += len(indexUniqueSections)
+
+				batches <- batch{sections: indexUniqueSections}
+				return nil
+			})
+		}
+		_ = g.Wait()
+
+		// A failed or canceled resolution skips the totals below. A read can succeed after the cancel,
+		// so check the context as well as the failed flag.
+		if failed || readCtx.Err() != nil {
+			return
+		}
+
+		m.metrics.streamFilterSections.Observe(float64(totalSections))
+		m.metrics.resolvedSectionsTotal.Observe(float64(uniqueSections))
+
+		// The stream filters can resolve no section, and then the ratio is undefined. Observing 0/0
+		// would turn the histogram sum into NaN. Observing 0 would claim that deduplication dropped
+		// every section.
+		var ratio float64
+		if totalSections > 0 {
+			ratio = float64(uniqueSections) / float64(totalSections)
+			m.metrics.resolvedSectionsRatio.Observe(ratio)
+		}
+		duration := time.Since(start)
+		m.metrics.resolvedSectionsTotalDuration.Observe(duration.Seconds())
+		span.Record(StatMetastoreSectionsDuration.Observe(int64(duration)))
+
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log(
+			"msg", "resolved sections",
+			"duration", duration,
+			"tables", len(indexes.TableOfContentsPaths),
+			"indexes", len(indexes.Indexes),
+			"sections", uniqueSections,
+			"ratio", ratio,
+			"matchers", matchersToString(req.Matchers),
+			"start", req.Start,
+			"end", req.End,
+		)
+	}()
+
+	// On return, cancel the reads and drop the batches left in the channel. The channel closes only
+	// after every read ends, so this loop also waits for the reads. It also makes every span.Record
+	// of the resolution happen before span.End.
+	defer func() {
+		cancelReads()
+		for range batches {
+		}
+	}()
+
+	for b := range batches {
+		if b.err != nil {
+			yield(nil, b.err)
+			return
+		}
+		if !yield(b.sections, nil) {
+			return
+		}
 	}
-
-	if err := g.Wait(); err != nil {
-		return SectionsResponse{}, err
-	}
-
-	uniqueSections, err := newSectionsDeduplicator(m.logger, m.metrics).deduplicate(ctx, sections)
-	if err != nil {
-		return SectionsResponse{}, err
-	}
-
-	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
-	m.metrics.resolvedSectionsTotal.Observe(float64(len(uniqueSections)))
-
-	// The stream filters can resolve no section, and then the ratio is undefined. Observing 0/0
-	// would turn the histogram sum into NaN. Observing 0 would claim that deduplication dropped
-	// every section.
-	var ratio float64
-	if totalSections.Load() > 0 {
-		ratio = float64(len(uniqueSections)) / float64(totalSections.Load())
-		m.metrics.resolvedSectionsRatio.Observe(ratio)
-	}
-	duration := sectionsTimer.ObserveDuration()
-
-	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
-		"msg", "resolved sections",
-		"duration", duration,
-		"tables", len(indexes.TableOfContentsPaths),
-		"indexes", len(indexes.Indexes),
-		"sections", len(uniqueSections),
-		"ratio", ratio,
-		"matchers", matchersToString(req.Matchers),
-		"start", req.Start,
-		"end", req.End,
-	)
-
-	return SectionsResponse{uniqueSections}, nil
 }
 
 // readIndexSections reads the sections that one index object lists. It returns them with the number

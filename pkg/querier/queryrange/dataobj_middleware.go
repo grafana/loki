@@ -12,22 +12,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
-// Values of the outcome label of the eligibility metric.
-const (
-	dataObjOutcomeEligible            = "eligible"
-	dataObjOutcomeUnsupportedQuery    = "unsupported_query"
-	dataObjOutcomeStreamFirstDisabled = "stream_first_disabled"
-	dataObjOutcomeDataObjectsDisabled = "data_objects_disabled"
-	dataObjOutcomeOutsideDataObjRange = "outside_data_object_range"
-)
-
-// dataObjOutcomes lists every value of the outcome label.
-var dataObjOutcomes = []string{
-	dataObjOutcomeEligible,
-	dataObjOutcomeUnsupportedQuery,
-	dataObjOutcomeStreamFirstDisabled,
-	dataObjOutcomeDataObjectsDisabled,
-	dataObjOutcomeOutsideDataObjRange,
+// dataObjOutcomes lists every value of the outcome label of the eligibility metric.
+var dataObjOutcomes = []DataObjResolutionOutcome{
+	DataObjOutcomeEligible,
+	DataObjOutcomeUnsupportedQuery,
+	DataObjOutcomeStreamFirstDisabled,
+	DataObjOutcomeDataObjectsDisabled,
+	DataObjOutcomeOutsideDataObjRange,
 }
 
 // DataObjMetrics holds the metrics of the data-object routing in the query-frontend.
@@ -45,7 +36,7 @@ func NewDataObjMetrics(registerer prometheus.Registerer, metricsNamespace string
 
 	// A series that does not exist yet hides its first count from rate() and increase().
 	for _, outcome := range dataObjOutcomes {
-		eligibility.WithLabelValues(outcome)
+		eligibility.WithLabelValues(string(outcome))
 	}
 
 	return &DataObjMetrics{eligibility: eligibility}
@@ -95,11 +86,11 @@ func (m *dataObjEligibilityMiddleware) Do(ctx context.Context, r queryrangebase.
 func (m *dataObjEligibilityMiddleware) eligible(tenantIDs []string, queryPlan *plan.QueryPlan, query string, start, end time.Time) bool {
 	expr, err := planExpr(queryPlan, query)
 	if err != nil {
-		m.metrics.eligibility.WithLabelValues(dataObjOutcomeUnsupportedQuery).Inc()
+		m.metrics.eligibility.WithLabelValues(string(DataObjOutcomeUnsupportedQuery)).Inc()
 		return false
 	}
 
 	res := dataObjResolve(m.cfg, m.limits, tenantIDs, expr, start, end)
-	m.metrics.eligibility.WithLabelValues(res.outcome).Inc()
-	return res.outcome == dataObjOutcomeEligible
+	m.metrics.eligibility.WithLabelValues(string(res.Outcome)).Inc()
+	return res.Eligible()
 }

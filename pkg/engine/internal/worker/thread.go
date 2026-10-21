@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -99,7 +98,6 @@ type thread struct {
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
 	LogsobjCfg     logsobj.BuilderBaseConfig
-	UploaderCfg    uploader.Config
 	BuilderMetrics *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is optional; nil for query-only workers.
@@ -230,7 +228,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		ScratchStore:   t.ScratchStore,
 		IndexobjCfg:    t.IndexobjCfg,
 		LogsobjCfg:     t.LogsobjCfg,
-		UploaderCfg:    t.UploaderCfg,
 		BuilderMetrics: t.BuilderMetrics,
 
 		IndexMergeObserver: t.IndexMergeObserver,

@@ -25,7 +25,7 @@ type LogMerge struct {
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
 
-	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
+	// SortSchema is the sort schema of the source index as ordered FQN sort keys
 	// (e.g. "label:service_name")
 	SortSchema []string
 }

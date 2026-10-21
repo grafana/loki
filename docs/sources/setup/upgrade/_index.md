@@ -37,6 +37,19 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Compactor and retention metrics are renamed 
+
+A number of legacy Prometheus metrics prefixed with `loki_boltdb_shipper_*` are renamed to `loki_tsdb_shipper_*`.
+These metrics have already been exposing values from TSDB Shipper and do not change their semantics.
+
+```
+loki_boltdb_shipper_compactor_running
+loki_boltdb_shipper_compact_tables_operation_*
+loki_boltdb_shipper_retention_*
+```
+
+To upgrade, check rules and dashboard queries and replace any occurrences of these metrics with their new counterpart with the `loki_tsdb_shipper_*` prefix.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.

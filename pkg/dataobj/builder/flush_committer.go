@@ -1,10 +1,12 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log"
@@ -145,15 +147,24 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 // The first failure cancels the builders in progress and skips the builders
 // not yet started. flushAll returns that first failure, not the cancellation
 // errors that it causes in the other builders.
-//
-// flushAll takes the builders in the order given, but builders in progress
-// can run and finish in any order. This is safe because a ToC is an unordered
-// set of index pointers, and the ToC writer is safe for concurrent use. The
-// caller commits the offset only after flushAll returns.
 func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.concurrency)
-	for _, b := range builders {
+
+	ordered := builders
+	if c.concurrency > 1 {
+		// One large builder can take most of the flush time. If it starts
+		// last, it runs alone after the small builders. If it starts first,
+		// the small builders run beside it, and the flush ends sooner.
+		//
+		// With one slot, the order does not change the flush time. Largest
+		// first would only delay the ToC entries of the small builders.
+		//
+		// Largest first also builds the largest sorted objects at the same
+		// time, which raises peak memory.
+		ordered = largestFirst(builders)
+	}
+	for _, b := range ordered {
 		g.Go(func() error {
 			// Skip the builder if the flush was canceled or another builder
 			// failed while this one waited for a slot. builder.Flush takes no
@@ -166,6 +177,17 @@ func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, r
 		})
 	}
 	return g.Wait()
+}
+
+// largestFirst returns a new slice with the builders sorted by estimated size,
+// largest first. Builders of equal size keep their order. largestFirst does
+// not modify the given slice.
+func largestFirst(builders []builder) []builder {
+	ordered := slices.Clone(builders)
+	slices.SortStableFunc(ordered, func(a, b builder) int {
+		return cmp.Compare(b.GetEstimatedSize(), a.GetEstimatedSize())
+	})
+	return ordered
 }
 
 func (c *flushCommitterImpl) flushOne(ctx context.Context, builder builder, reason string) error {

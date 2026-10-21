@@ -42,7 +42,6 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -98,7 +97,6 @@ type Config struct {
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
@@ -214,7 +212,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.QueryEngine.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -486,8 +483,6 @@ type Loki struct {
 	dataObjCompactionPlanner  *enginecompactor.Planner
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
-	queryEngineV2             *engine.Engine
-	queryEngineV2Scheduler    *engine.Scheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -848,9 +843,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(LoglineScheduler, t.initLoglineScheduler, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineCompactor, t.initLoglineCompactor, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
@@ -873,9 +865,6 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
 		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
-		QueryEngine:              {QueryEngineScheduler},
-		QueryEngineWorker:        {Server, Overrides, TenantConfigs, Analytics},
-		QueryEngineScheduler:     {Server, Overrides, TenantConfigs, Analytics},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
