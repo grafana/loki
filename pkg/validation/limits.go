@@ -274,6 +274,10 @@ type Limits struct {
 	// DataObjShardFactor is the number of stream shard buckets in new data
 	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+
+	// TSDBShardedIndexShardFactor is the number of fingerprint-range files the
+	// compactor splits the tenant's sharded TSDB index copy into.
+	TSDBShardedIndexShardFactor int `yaml:"tsdb_sharded_index_shard_factor" json:"tsdb_sharded_index_shard_factor" category:"experimental" doc:"hidden"`
 }
 
 // ShardFactor is the number of shard buckets that data objects divide a
@@ -627,6 +631,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
 	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Only %d is supported.", streams.DefaultShardBuckets))
+	f.IntVar(&l.TSDBShardedIndexShardFactor, "limits.tsdb-sharded-index-shard-factor", 0, "Experimental: Number of fingerprint-range files the compactor splits the tenant's index into in the sharded_path_prefix of a schema period. 0 and 1 write a single file; larger values must be powers of two.")
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
 }
 
@@ -769,6 +774,10 @@ func (l *Limits) Validate() error {
 
 	if err := l.DataObjShardFactor.Validate(); err != nil {
 		return fmt.Errorf("dataobj_shard_factor: %w", err)
+	}
+
+	if f := l.TSDBShardedIndexShardFactor; f < 0 || f&(f-1) != 0 {
+		return fmt.Errorf("tsdb_sharded_index_shard_factor must be 0, 1 or a power of two, got %d", f)
 	}
 
 	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
@@ -1506,6 +1515,12 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 		return streams.DefaultShardLayout()
 	}
 	return layout
+}
+
+// TSDBShardedIndexShardFactor returns the number of fingerprint-range files of
+// the sharded TSDB index copy for userID.
+func (o *Overrides) TSDBShardedIndexShardFactor(userID string) int {
+	return o.getOverridesForUser(userID).TSDBShardedIndexShardFactor
 }
 
 // SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.

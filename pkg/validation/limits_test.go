@@ -1534,6 +1534,30 @@ func TestShardFactor_Set(t *testing.T) {
 	})
 }
 
+func TestLimits_TSDBShardedIndexShardFactor(t *testing.T) {
+	for _, tc := range []struct {
+		factor int
+		err    bool
+	}{
+		{factor: 0},
+		{factor: 1},
+		{factor: 8},
+		{factor: 6, err: true},
+		{factor: -2, err: true},
+	} {
+		t.Run(fmt.Sprintf("factor=%d", tc.factor), func(t *testing.T) {
+			var l Limits
+			l.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+			l.TSDBShardedIndexShardFactor = tc.factor
+			if tc.err {
+				require.ErrorContains(t, l.Validate(), "tsdb_sharded_index_shard_factor")
+				return
+			}
+			require.NoError(t, l.Validate())
+		})
+	}
+}
+
 func TestLimits_DataObjShardFactor(t *testing.T) {
 	t.Run("register flags sets the default factor", func(t *testing.T) {
 		var l Limits
