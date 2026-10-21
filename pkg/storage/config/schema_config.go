@@ -480,6 +480,7 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 type IndexPeriodicTableConfig struct {
 	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
 	ShardedPathPrefix   string `yaml:"sharded_path_prefix" category:"experimental" doc:"hidden"`
+	ShardFactor         int    `yaml:"shard_factor" category:"experimental" doc:"hidden"`
 	PeriodicTableConfig `yaml:",inline"`
 }
 
@@ -493,10 +494,16 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 	}
 
 	if cfg.ShardedPathPrefix == "" {
+		if cfg.ShardFactor > 1 {
+			return errors.New("shard_factor requires sharded_path_prefix")
+		}
 		return nil
 	}
 	if err := ValidatePathPrefix(cfg.ShardedPathPrefix); err != nil {
 		return fmt.Errorf("sharded_path_prefix: %w", err)
+	}
+	if cfg.ShardFactor < 0 || cfg.ShardFactor&(cfg.ShardFactor-1) != 0 {
+		return fmt.Errorf("shard_factor must be 0, 1 or a power of two, got %d", cfg.ShardFactor)
 	}
 	return nil
 }
@@ -506,6 +513,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
 		PathPrefix        string         `yaml:"path_prefix"`
 		ShardedPathPrefix string         `yaml:"sharded_path_prefix"`
+		ShardFactor       int            `yaml:"shard_factor"`
 		Prefix            string         `yaml:"prefix"`
 		Period            model.Duration `yaml:"period"`
 	}{}
@@ -517,6 +525,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	cfg.PathPrefix = g.PathPrefix
 	cfg.ShardedPathPrefix = g.ShardedPathPrefix
+	cfg.ShardFactor = g.ShardFactor
 	cfg.Prefix = g.Prefix
 	cfg.Period = time.Duration(g.Period)
 
@@ -528,11 +537,13 @@ func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	g := &struct {
 		PathPrefix        string         `yaml:"path_prefix"`
 		ShardedPathPrefix string         `yaml:"sharded_path_prefix,omitempty"`
+		ShardFactor       int            `yaml:"shard_factor,omitempty"`
 		Prefix            string         `yaml:"prefix"`
 		Period            model.Duration `yaml:"period"`
 	}{
 		PathPrefix:        cfg.PathPrefix,
 		ShardedPathPrefix: cfg.ShardedPathPrefix,
+		ShardFactor:       cfg.ShardFactor,
 		Prefix:            cfg.Prefix,
 		Period:            model.Duration(cfg.Period),
 	}

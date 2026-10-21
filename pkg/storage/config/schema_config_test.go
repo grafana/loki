@@ -235,16 +235,22 @@ func TestIndexPeriodicTableConfig_ValidateSharded(t *testing.T) {
 	for _, tc := range []struct {
 		desc          string
 		shardedPrefix string
+		shardFactor   int
 		err           string
 	}{
 		{desc: "no sharded copy"},
-		{desc: "sharded copy", shardedPrefix: "index_sharded/"},
+		{desc: "unsplit sharded copy", shardedPrefix: "index_sharded/"},
+		{desc: "split sharded copy", shardedPrefix: "index_sharded/", shardFactor: 8},
+		{desc: "shard factor without sharded copy", shardFactor: 8, err: "shard_factor requires sharded_path_prefix"},
 		{desc: "invalid sharded prefix", shardedPrefix: "index_sharded", err: "sharded_path_prefix"},
+		{desc: "shard factor not a power of two", shardedPrefix: "index_sharded/", shardFactor: 6, err: "power of two"},
+		{desc: "negative shard factor", shardedPrefix: "index_sharded/", shardFactor: -2, err: "power of two"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			cfg := IndexPeriodicTableConfig{
 				PathPrefix:          "index/",
 				ShardedPathPrefix:   tc.shardedPrefix,
+				ShardFactor:         tc.shardFactor,
 				PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour},
 			}
 			if tc.err == "" {
@@ -288,6 +294,7 @@ func TestSchemaConfig_ValidateShardedPathPrefix(t *testing.T) {
 func TestIndexPeriodicTableConfig_YAMLSharded(t *testing.T) {
 	in := `path_prefix: index/
 sharded_path_prefix: index_sharded/
+shard_factor: 8
 prefix: index_
 period: 1d
 `
@@ -296,6 +303,7 @@ period: 1d
 	require.Equal(t, IndexPeriodicTableConfig{
 		PathPrefix:          "index/",
 		ShardedPathPrefix:   "index_sharded/",
+		ShardFactor:         8,
 		PeriodicTableConfig: PeriodicTableConfig{Prefix: "index_", Period: 24 * time.Hour},
 	}, cfg)
 
