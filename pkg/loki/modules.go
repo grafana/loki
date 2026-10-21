@@ -1188,7 +1188,6 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		queryrange.RouterConfig{},
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
