@@ -112,8 +112,6 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	statsCtx.SetQueryUsedV2Engine()
-
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)

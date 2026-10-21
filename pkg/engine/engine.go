@@ -345,13 +345,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 // statsSummary computes a stats.Result from observations in the capture.
 func statsSummary(capture *xcap.Capture, execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
-	result := stats.Result{
-		Querier: stats.Querier{
-			Store: stats.Store{
-				QueryUsedV2Engine: true,
-			},
-		},
-	}
+	var result stats.Result
 
 	if capture == nil {
 		result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
