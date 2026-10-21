@@ -717,7 +717,7 @@ func flushWithRealStack(t *testing.T, flushes [][]*kgo.Record, serial bool) (map
 	require.NoError(t, err)
 	var (
 		uploader       = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
-		flusher        = newFlusher(logsobj.NewSorter(factory, reg), uploader, logger, reg)
+		flusher        = newFlusher(logsobj.NewSorter(factory, 1, reg), uploader, logger, reg)
 		tocWriter      = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
 		flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, logger, reg)
 		proc           = newProcessor(NewMultiObjectBuilder(factory, int(cfg.LogsobjBuilder.TargetObjectSize)), nil, flushCommitter, time.Hour, 0, logger, reg)
