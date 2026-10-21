@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental fingerprint-sharded TSDB index
+
+Set `compactor.sharded_index_path_prefix` to have the compactor also write every per-tenant index it uploads to that prefix. The prefix must differ from the index `path_prefix` of every schema period.
+
+The copy follows retention and delete processing, because it is written from the same compacted index. It only contains per-tenant indexes. If writing the copy fails, compaction of the table fails like a failed index upload: the source index files are kept and the table is compacted again on the next run, which also rewrites the copy. While the sharded prefix is unavailable, compaction of the regular index stops too; clear the prefix to recover. Failed runs are counted by `loki_tsdb_shipper_compact_tables_operation_total` and `loki_compactor_apply_retention_operation_total` with `status="failure"`, and the new `reason` label is `sharded_index_copy` for copy failures or `index` otherwise. Clearing the prefix does not remove the copied objects.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.

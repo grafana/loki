@@ -188,6 +188,14 @@ func (c compactedIndex) ToIndexFiles() ([]index.Index, error) {
 	return []index.Index{c}, nil
 }
 
+func (c compactedIndex) ToShardedIndexFiles() ([]index.Index, error) {
+	sharded, err := openCompactedIndex(filepath.Join(filepath.Dir(c.indexFile.Name()), fmt.Sprintf("sharded-%d", time.Now().UnixNano())))
+	if err != nil {
+		return nil, err
+	}
+	return []index.Index{sharded}, nil
+}
+
 func (c compactedIndex) Name() string {
 	return fmt.Sprintf("compactor-%d", time.Now().Unix())
 }
