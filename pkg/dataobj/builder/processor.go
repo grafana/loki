@@ -150,11 +150,11 @@ func (p *processor) stopping(_ error) error {
 }
 
 // errStopProcessing means that the flush loop stopped or ctx is canceled, so
-// the processor cannot flush any more. Run stops on it. stopFlushLoop returns
+// the processor cannot flush anymore. Run stops on it. stopFlushLoop returns
 // the error of a failed flush, if any.
 var errStopProcessing = errors.New("processor must stop")
 
-func (p *processor) Run(ctx context.Context) (returnErr error) {
+func (p *processor) Run(ctx context.Context) error {
 	defer level.Info(p.logger).Log("msg", "stopped partition processor")
 	level.Info(p.logger).Log("msg", "started partition processor")
 
@@ -162,37 +162,44 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 	// soon after a shutdown cancels ctx. Run returns the error of a failed
 	// flush, which only stopFlushLoop reads.
 	p.startFlushLoop(ctx)
-	defer func() {
-		if err := p.stopFlushLoop(); err != nil {
-			// The error fails the service. The builder restarts and reads the
-			// records again from the last commit.
-			level.Error(p.logger).Log("msg", "terminating after failed flush", "err", err)
-			returnErr = errors.Join(returnErr, err)
-		}
-	}()
 
+	p.runUntilStopped(ctx)
+
+	if err := p.stopFlushLoop(); err != nil {
+		// The error fails the service. The builder restarts and reads the
+		// records again from the last commit.
+		level.Error(p.logger).Log("msg", "terminating after failed flush", "err", err)
+		return err
+	}
+
+	// Run returns nil after a shutdown cancels ctx. Returning ctx.Err() would
+	// fail the service while it stops.
+	return nil
+}
+
+// runUntilStopped processes records until ctx is canceled, the records channel
+// closes, or the flush loop stops.
+func (p *processor) runUntilStopped(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			level.Info(p.logger).Log("msg", "context canceled")
-			// We don't return ctx.Err() here as it manifests as a service failure
-			// when stopping the service.
-			return nil
+			return
 		case <-p.flushLoopDone:
 			// The processor stops now, not at the next flush, so it does not
 			// append records that it can never commit.
-			return nil
+			return
 		case rec, ok := <-p.records:
 			if !ok {
 				level.Info(p.logger).Log("msg", "channel closed")
-				return nil
+				return
 			}
 			if err := p.processRecord(ctx, rec); err != nil {
 				// The record is not lost if the processor stops: a restart
-				// reads it again from the last commit. The deferred
-				// stopFlushLoop returns the error of a failed flush.
+				// reads it again from the last commit. Run then calls
+				// stopFlushLoop, which returns the error of a failed flush.
 				if errors.Is(err, errStopProcessing) {
-					return nil
+					return
 				}
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
 				p.observeRecordErr(rec)
@@ -207,7 +214,7 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 
 			enqueued := p.enqueueFlush(ctx, flushReasonIdle)
 			if !enqueued {
-				return nil
+				return
 			}
 		}
 	}
