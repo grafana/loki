@@ -115,6 +115,7 @@ type storeContainer struct {
 	tableMarker        retention.TableMarker
 	sweeper            *retention.Sweeper
 	indexStorageClient storage.Client
+	shardedIndexClient storage.Client
 }
 
 type Limits interface {
@@ -232,6 +233,9 @@ func (c *Compactor) init(
 
 		var sc storeContainer
 		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, period.IndexTables.PathPrefix)
+		if period.IndexTables.ShardedPathPrefix != "" {
+			sc.shardedIndexClient = storage.NewIndexStorageClient(objectClient, period.IndexTables.ShardedPathPrefix)
+		}
 
 		if c.cfg.RetentionEnabled {
 			var (

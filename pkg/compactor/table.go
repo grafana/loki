@@ -92,6 +92,7 @@ type table struct {
 	periodConfig       config.PeriodConfig
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
+	shardedUserIndexSet                  storage.IndexSet
 
 	indexSets             map[string]*indexSet
 	usersWithPerUserIndex []string
@@ -159,6 +160,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return err
 		}
+		t.indexSets[userID].shardedIndexSet = t.shardedUserIndexSet
 		userIndexSets[userID] = t.indexSets[userID]
 	}
 
@@ -172,6 +174,7 @@ func (t *table) compact() error {
 		if err != nil {
 			return nil, err
 		}
+		indexSet.shardedIndexSet = t.shardedUserIndexSet
 		t.indexSets[userID] = indexSet
 		return indexSet, nil
 	}, t.periodConfig)

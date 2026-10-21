@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -214,6 +215,9 @@ func (c *tablesManager) initTable(ctx context.Context, tableName string) (*table
 	if err != nil {
 		return nil, err
 	}
+	if sc.shardedIndexClient != nil {
+		table.shardedUserIndexSet = storage.NewIndexSet(sc.shardedIndexClient, true)
+	}
 
 	return table, nil
 }
@@ -227,13 +231,15 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 	}
 
 	defer func() {
+		reason := ""
 		if err != nil {
 			status = statusFailure
+			reason = failureReason(err)
 		}
 		if applyRetention {
-			c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
+			c.metrics.applyRetentionOperationTotal.WithLabelValues(status, reason).Inc()
 		} else {
-			c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+			c.metrics.compactTablesOperationTotal.WithLabelValues(status, reason).Inc()
 		}
 		runtime := time.Since(start)
 		if status == statusSuccess {
@@ -319,6 +325,13 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 	}
 
 	return ctx.Err()
+}
+
+func failureReason(err error) string {
+	if errors.Is(err, errShardedIndexCopy) {
+		return reasonShardedIndexCopy
+	}
+	return reasonIndex
 }
 
 func (c *tablesManager) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
