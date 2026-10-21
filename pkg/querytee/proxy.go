@@ -33,49 +33,17 @@ type RoutingConfig struct {
 	V1Preferred string
 	V2Preferred string
 
-	// SplitStart is the start date of data available in v2 (dataobjs) storage.
-	// Queries for data before this date will only go to the v1 backend.
-	// If not set, assume v2 data is always available.
-	//
-	// When splitting queries will be split into up to three parts:
-	// 1. Data before SplitStart -> split goes to the v1 backend only
-	// 2. Data between SplitStart and (now - SplitLag) -> split goes to both v1 and v2 backends
-	// 3. Data after (now - SplitLag) -> split goes to the v1 backend only
-	SplitStart flagext.Time
-
-	// SplitLag is the minimum age of data to route to v2.
-	// Data newer than (now - SplitLag) will only go to the v1 backend.
-	// When set to 0, query splitting is disabled.
-	SplitLag time.Duration
-
-	// SplitRetentionDays is the lifecycle of data objects in days.
-	// If set, data in v2 storage is considered available only for retention days.
-	// Queries for data before the retention period will go to the v1 backend.
-	// When both SplitStart and SplitRetentionDays are set, the more restrictive of the two will
-	// determine v2 data availability.
-	SplitRetentionDays int64
-
-	// AddRoutingDecisionsToWarnings controls whether routing decisions are added
-	// as warnings to query responses. When enabled, responses will include
-	// warnings indicating which backend handled the query and how it was routed.
+	// AddRoutingDecisionsToWarnings controls whether the proxy adds a warning that
+	// names the preferred backend to the query response. The proxy adds no warning
+	// when it returns the response of another backend, because the preferred
+	// backend failed.
 	AddRoutingDecisionsToWarnings bool
 }
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.V1Preferred, "routing.v1-preferred", "", "The hostname of the preferred v1 (chunks) backend")
 	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the v2 (dataobjs) backend")
-	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
-	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
-	f.Int64Var(&cfg.SplitRetentionDays, "routing.split-retention-days", 0, "Lifecycle of data objects in days. If set, data outside of retention period will not be available in v2 storage. When both split-start and split-retention-days are set, the more restrictive of the two will apply.")
-	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add routing decisions as warnings to query responses.")
-}
-
-func (cfg *RoutingConfig) Validate() error {
-	if cfg.SplitLag < 0 {
-		return fmt.Errorf("split lag must be >= 0")
-	}
-
-	return nil
+	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add a warning that names the preferred backend to query responses.")
 }
 
 type ProxyConfig struct {
@@ -146,10 +114,6 @@ func NewProxy(
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
 ) (*Proxy, error) {
-	if err := cfg.Routing.Validate(); err != nil {
-		return nil, err
-	}
-
 	if cfg.CompareResponses && cfg.Routing.V1Preferred == "" {
 		return nil, fmt.Errorf("when enabling comparison of results -routing.v1-backend flag must be set")
 	}
@@ -295,16 +259,9 @@ func (p *Proxy) Start() error {
 			Logger:                        p.logger,
 			Metrics:                       p.metrics,
 			InstrumentCompares:            p.cfg.InstrumentCompares,
-			SplitStart:                    p.cfg.Routing.SplitStart,
-			SplitLag:                      p.cfg.Routing.SplitLag,
-			SplitRetentionDays:            p.cfg.Routing.SplitRetentionDays,
 			AddRoutingDecisionsToWarnings: p.cfg.Routing.AddRoutingDecisionsToWarnings,
 		})
-		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
-		if err != nil {
-			return err
-		}
-		endpoint.WithQueryHandler(queryHandler)
+		endpoint.WithQueryHandler(routeHandlerFactory.CreateHandler(route.RouteName, comp))
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,

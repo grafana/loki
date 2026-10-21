@@ -14,7 +14,9 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -171,11 +173,26 @@ func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangeba
 	return nil, fmt.Errorf("all backends failed")
 }
 
+// tenantLabel returns the tenant label of the metrics for the request. A multi-tenant request has
+// its tenant IDs joined by "|".
+func tenantLabel(httpReq *http.Request) (string, error) {
+	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(httpReq)
+	if err != nil {
+		return "", err
+	}
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return "", err
+	}
+	return tenant.JoinTenantIDs(tenantIDs), nil
+}
+
 // collectRemainingAndCompare collects remaining backend results and performs comparisons.
 // Should be called asynchronously to not block preferred response from returning.
 func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) {
 	issuer := detectIssuer(httpReq)
-	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
+	tenantID, err := tenantLabel(httpReq)
 	if err != nil {
 		level.Warn(h.logger).Log(
 			"msg", "failed to extract tenant id from http request",
@@ -390,4 +407,16 @@ func statusCodeFromError(err error) int {
 	}
 
 	return http.StatusInternalServerError
+}
+
+// addWarningToResponse adds a warning message to the response based on its type.
+func addWarningToResponse(resp queryrangebase.Response, warning string) {
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Warnings = append(r.Warnings, warning)
+	case *queryrange.LokiPromResponse:
+		if r.Response != nil {
+			r.Response.Warnings = append(r.Response.Warnings, warning)
+		}
+	}
 }
