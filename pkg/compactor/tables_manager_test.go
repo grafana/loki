@@ -161,27 +161,27 @@ func TestTablesManager_TableLocking(t *testing.T) {
 					// retention should not timeout after first run since we won't be locking the table
 					if n == 1 && tc.retentionShouldTimeout {
 						require.ErrorIs(t, err, context.DeadlineExceeded)
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusFailure)))
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure)))
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusFailure, reasonIndex)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, reasonIndex)))
 						return
 					}
 					require.NoError(t, err)
 
 					if n > 1 && tc.applyRetention && tc.retentionShouldTimeout {
 						// this should be the first successful run if retention was expected to timeout out during first run
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 					} else {
 						// else it should have succeeded during all the n runs
 						if tc.applyRetention {
-							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 						} else {
-							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, "")))
 						}
 					}
 					if tc.applyRetention {
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, "")))
 					} else {
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess, "")))
 					}
 
 					// if the table was locked and compaction ran without retention then only locked table should have been skipped
@@ -508,4 +508,18 @@ func (d *dummyStorageUpdatesIterator) Err() error {
 
 func (d *dummyStorageUpdatesIterator) ForEachSeries(_ func(_ string, _ map[string]deletion.Chunk, _ []string) error) error {
 	return nil
+}
+
+func TestFailureReason(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{err: fmt.Errorf("%w: %w", errShardedIndexCopy, errors.New("upload failed")), want: reasonShardedIndexCopy},
+		{err: errors.New("upload failed"), want: reasonIndex},
+	} {
+		t.Run(tc.err.Error(), func(t *testing.T) {
+			require.Equal(t, tc.want, failureReason(tc.err))
+		})
+	}
 }

@@ -156,6 +156,56 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 	}
 }
 
+func TestCompactor_WritesShardedCopyForPeriodsWithShardedPathPrefix(t *testing.T) {
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+
+	daySeconds := int64(24 * time.Hour / time.Second)
+	tableNumEnd := time.Now().Unix() / daySeconds
+	periodOneStart := tableNumEnd - 4
+	periodTwoStart := tableNumEnd - 2
+
+	period := func(from int64, shardedPathPrefix string) config.PeriodConfig {
+		return config.PeriodConfig{
+			From:       config.DayTime{Time: model.Time(from * daySeconds * 1000)},
+			IndexType:  "dummy",
+			ObjectType: "fs",
+			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix:        "index/",
+				ShardedPathPrefix: shardedPathPrefix,
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
+		}
+	}
+	periodConfigs := []config.PeriodConfig{period(0, ""), period(periodTwoStart, "index_sharded/")}
+
+	const numUsers = 3
+	for i := periodOneStart; i < tableNumEnd; i++ {
+		SetupTable(t, filepath.Join(objectStoragePath, "index", fmt.Sprintf("%s%d", indexTablePrefix, i)), IndexesConfig{}, PerUserIndexesConfig{IndexesConfig: IndexesConfig{NumCompactedFiles: 2}, NumUsers: numUsers})
+	}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+	objectClients := map[config.DayTime]client.ObjectClient{
+		periodConfigs[0].From: objectClient,
+		periodConfigs[1].From: objectClient,
+	}
+
+	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	require.NoError(t, compactor.tablesManager.runCompaction(context.Background(), false))
+
+	for i := periodOneStart; i < periodTwoStart; i++ {
+		require.NoDirExists(t, filepath.Join(objectStoragePath, "index_sharded", fmt.Sprintf("%s%d", indexTablePrefix, i)))
+	}
+	for i := periodTwoStart; i < tableNumEnd; i++ {
+		validateTable(t, filepath.Join(objectStoragePath, "index_sharded", fmt.Sprintf("%s%d", indexTablePrefix, i)), 0, numUsers, func(filename string) {
+			require.True(t, strings.HasSuffix(filename, ".gz"), filename)
+		})
+	}
+}
+
 func Test_schemaPeriodForTable(t *testing.T) {
 	indexFromTime := func(t time.Time) string {
 		return fmt.Sprintf("%d", t.Unix()/int64(24*time.Hour/time.Second))

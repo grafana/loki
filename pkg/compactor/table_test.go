@@ -262,6 +262,38 @@ func TestTable_Compaction(t *testing.T) {
 	}
 }
 
+func TestTable_CompactionWritesShardedCopyOfUserIndexes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		perUser  IndexesConfig
+		numUsers int
+	}{
+		{name: "existing user indexes", perUser: IndexesConfig{NumCompactedFiles: 2}, numUsers: 3},
+		{name: "user indexes from multi-tenant files", perUser: IndexesConfig{NumUnCompactedFiles: 5}, numUsers: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+			SetupTable(t, filepath.Join(objectStoragePath, tableName), IndexesConfig{}, PerUserIndexesConfig{IndexesConfig: tc.perUser, NumUsers: tc.numUsers})
+			objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+			require.NoError(t, err)
+
+			table, err := newTable(context.Background(), filepath.Join(tempDir, workingDirName, tableName), storage.NewIndexStorageClient(objectClient, ""),
+				newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+			require.NoError(t, err)
+			table.shardedUserIndexSet = storage.NewIndexSet(storage.NewIndexStorageClient(objectClient, "sharded/"), true)
+
+			require.NoError(t, table.compact())
+			require.NoError(t, table.done())
+			table.cleanup()
+
+			validateTable(t, filepath.Join(objectStoragePath, "sharded", tableName), 0, tc.numUsers, func(filename string) {
+				require.True(t, strings.HasSuffix(filename, ".gz"), filename)
+			})
+		})
+	}
+}
+
 type TableMarkerFunc func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error)
 
 func (t TableMarkerFunc) FindAndMarkChunksForDeletion(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
