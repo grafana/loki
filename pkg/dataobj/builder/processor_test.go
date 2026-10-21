@@ -290,7 +290,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// The flush loop stopped, so a later flush fails.
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
-			require.Error(t, proc.flush(ctx, "forced"))
+			require.ErrorIs(t, proc.flush(ctx, "forced"), errFlush)
 			require.NoError(t, stop())
 		})
 	})

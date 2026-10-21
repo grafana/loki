@@ -149,7 +149,7 @@ func (p *processor) stopping(_ error) error {
 	return nil
 }
 
-// errFlush wraps every error that processRecord and idleFlush get from flush.
+// errFlush means that flush could not send its request to the flush loop.
 // Run stops on it, because the processor cannot commit the records that it
 // appends after a failed flush.
 var errFlush = errors.New("failed to flush")
@@ -223,13 +223,13 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 
 	if p.shouldFlushDueToMaxAge() {
 		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
-			return fmt.Errorf("%w: %w", errFlush, err)
+			return err
 		}
 	}
 
 	if p.builder.IsFull() {
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return fmt.Errorf("%w: %w", errFlush, err)
+			return err
 		}
 	}
 
@@ -256,14 +256,14 @@ func (p *processor) shouldFlushDueToMaxAge() bool {
 
 // idleFlush sends a flush request to the flush loop if the partition has
 // exceeded the idle flush timeout. It returns true if it sent the request,
-// false with an error that wraps errFlush if it could not send it, and false
-// with a nil error if the partition has not exceeded the timeout.
+// false with errFlush if it could not send it, and false with a nil error if
+// the partition has not exceeded the timeout.
 func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
 	if err := p.flush(ctx, flushReasonIdle); err != nil {
-		return false, fmt.Errorf("%w: %w", errFlush, err)
+		return false, err
 	}
 	return true, nil
 }
@@ -287,7 +287,7 @@ func (p *processor) needsIdleFlush() bool {
 // flushes them and commits the offset of the last appended record, while the
 // processor keeps appending records to new builders.
 //
-// flush waits while the loop runs the previous flush. It returns an error if
+// flush waits while the loop runs the previous flush. It returns errFlush if
 // the loop stopped or ctx is canceled.
 func (p *processor) flush(ctx context.Context, reason string) error {
 	req := flushRequest{
@@ -312,9 +312,9 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.flushWaitSeconds.Add(time.Since(waitStart).Seconds())
 		return nil
 	case <-p.flushLoopDone:
-		return errors.New("flush loop stopped")
+		return errFlush
 	case <-ctx.Done():
-		return ctx.Err()
+		return errFlush
 	}
 }
 
