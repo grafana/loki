@@ -999,12 +999,12 @@ func (h *loglinePrefetchHandler) Do(ctx context.Context, req queryrangebase.Requ
 		return h.next.Do(ctx, req)
 	}
 
-	if _, ok := expr.(syntax.SampleExpr); ok {
+	if _, isMetric := expr.(syntax.SampleExpr); isMetric {
 		if mode != ModeDryRun || len(hintprovider.SupportedMetricQuery(expr, h.ngramLength)) == 0 {
 			return h.next.Do(ctx, req)
 		}
-	// For now, we only add support for metric instant queries; non-metric instant
-	// queries should continue w/o hints
+	// A log selector on the instant endpoint is rejected by the querier.
+	// Return it here so this path does not look up hints for that request.
 	} else if _, isInstant := req.(*queryrange.LokiInstantRequest); isInstant {
 		return h.next.Do(ctx, req)
 	}
