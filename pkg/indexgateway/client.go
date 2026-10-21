@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
@@ -144,38 +145,24 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
 func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
-	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	latency, err := registerOrExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
 		Help:      "Time (in seconds) spent serving requests when using the index gateway",
 		Buckets:   instrument.DefBuckets,
-	}, []string{"operation", "status_code"})
-	if r != nil {
-		err := r.Register(latency)
-		if err != nil {
-			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
-			if !ok {
-				return nil, err
-			}
-			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
-		}
+	}, []string{"operation", "status_code"}))
+	if err != nil {
+		return nil, err
 	}
 
-	retries := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	retries, err := registerOrExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_retries",
 		Help:      "Number of retries attempted before a successful or failed index gateway request",
 		Buckets:   []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50, 100},
-	}, []string{"status"})
-	if r != nil {
-		err := r.Register(retries)
-		if err != nil {
-			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
-			if !ok {
-				return nil, err
-			}
-			retries = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
-		}
+	}, []string{"status"}))
+	if err != nil {
+		return nil, err
 	}
 
 	buckets := make([]time.Duration, len(cfg.TimeBasedShardingBuckets))
@@ -234,20 +221,13 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 			HealthCheckEnabled: sgClient.cfg.PoolConfig.HealthCheckIngesters,
 			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
 		}
-		clients := prometheus.NewGauge(prometheus.GaugeOpts{
+		clients, err := registerOrExisting(r, prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "index_gateway_clients",
 			Help:      "The current number of index gateway clients.",
-		})
-		if r != nil {
-			err := r.Register(clients)
-			if err != nil {
-				alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
-				if !ok {
-					return nil, err
-				}
-				clients = alreadyErr.ExistingCollector.(prometheus.Gauge)
-			}
+		}))
+		if err != nil {
+			return nil, err
 		}
 		//TODO(ewelch) we can't use metrics in the provider because of duplicate registration errors
 		dnsProvider := discovery.NewDNS(logger, sgClient.cfg.PoolConfig.ClientCleanupPeriod, sgClient.cfg.Address, nil)
@@ -283,87 +263,54 @@ func (s *GatewayClient) Stop() {
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	var (
-		resp *logproto.GetChunkRefResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetChunkRef(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.GetChunkRef)
 }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	var (
-		resp *logproto.GetSeriesResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetSeries(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.GetSeries)
 }
 
 func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelNamesForMetricName(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.LabelNamesForMetricName)
 }
 
 func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelValuesForMetricName(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.LabelValuesForMetricName)
 }
 
 func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	var (
-		resp *logproto.IndexStatsResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetStats(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.GetStats)
 }
 
 func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	var (
-		resp *logproto.VolumeResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetVolume(ctx, in)
-		return err
+	return callIndexGateway(ctx, s, in, in.Through, logproto.IndexGatewayClient.GetVolume)
+}
+
+// callIndexGateway executes a unary RPC with the standard routing and retry policy.
+func callIndexGateway[Req, Resp any](
+	ctx context.Context,
+	s *GatewayClient,
+	in *Req,
+	through model.Time,
+	call func(c logproto.IndexGatewayClient, ctx context.Context, in *Req, opts ...grpc.CallOption) (Resp, error),
+) (Resp, error) {
+	var zero Resp
+
+	resp := zero
+	err := s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		r, err := call(client, ctx, in)
+		if err != nil {
+			return err
+		}
+		resp = r
+		return nil
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
+		return addressesForQueryEndTime(addrs, through.Time(), s.buckets, time.Now().UTC())
 	})
-	return resp, err
+	if err != nil {
+		return zero, err
+	}
+	return resp, nil
 }
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
@@ -450,6 +397,17 @@ func (s *GatewayClient) poolDoWithMaxRetries(
 		addrs = s.jumpHashShuffleSharding(userID, addrs)
 	}
 
+	return s.tryAddrs(userID, addrs, maxRetries, callback)
+}
+
+// tryAddrs calls callback on the gateways at addrs in random order until one
+// succeeds, giving up after maxRetries failures when maxRetries >= 0.
+func (s *GatewayClient) tryAddrs(
+	userID string,
+	addrs []string,
+	maxRetries int,
+	callback func(client logproto.IndexGatewayClient) error,
+) error {
 	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
@@ -618,4 +576,21 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 	}
 
 	return addrs[start:end]
+}
+
+// registerOrExisting registers c with r, or returns the collector already
+// registered under the same descriptor. One client is built per schema period,
+// and they share their metrics.
+func registerOrExisting[T prometheus.Collector](r prometheus.Registerer, c T) (T, error) {
+	if r == nil {
+		return c, nil
+	}
+	if err := r.Register(c); err != nil {
+		alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+		if !ok {
+			return c, err
+		}
+		return alreadyErr.ExistingCollector.(T), nil
+	}
+	return c, nil
 }
