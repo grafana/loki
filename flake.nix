@@ -21,10 +21,10 @@
         # days. Overlay to pin to the exact version go.mod expects.
         goOverlay = final: prev: {
           go_1_26 = prev.go_1_26.overrideAttrs (old: rec {
-            version = "1.26.8";
+            version = "1.27.3";
             src = prev.fetchurl {
               url = "https://go.dev/dl/go${version}.src.tar.gz";
-              hash = "sha256-Tjm5jkL5RvoFrIvFtxh335fb23y7Gnd7VBZnrXEX/S4=";
+              hash = "sha256-bndJA1zzYPBrJXXRYup535/ajvZxiJ5cN1+OUHd/Jrs=";
             };
           });
         };
