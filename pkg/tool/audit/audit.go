@@ -81,7 +81,7 @@ func DownloadIndexFile(ctx context.Context, cfg Config, cloudIndexPath string, o
 
 func ParseCompactexIndex(ctx context.Context, localFilePath, table string, cfg Config) (compactor.CompactedIndex, error) {
 	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
-	idxCompactor := tsdb.NewIndexCompactor()
+	idxCompactor := tsdb.NewIndexCompactor(nil)
 	compactedIdx, err := idxCompactor.OpenCompactedIndexFile(ctx, localFilePath, table, cfg.Tenant, cfg.WorkingDir, periodCfg, util_log.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't open compacted index file %q: %w", localFilePath, err)

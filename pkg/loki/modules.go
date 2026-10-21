@@ -1953,7 +1953,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(types.IndexTypeTSDB, tsdb.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.IndexTypeTSDB, tsdb.NewIndexCompactor(t.Overrides))
 	prefix, compactorHandler := t.compactor.Handler()
 	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 

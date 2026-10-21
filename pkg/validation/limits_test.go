@@ -1620,3 +1620,19 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
 	})
 }
+
+func TestValidateTSDBIndexShardFactor(t *testing.T) {
+	for _, tc := range []struct {
+		k     int
+		valid bool
+	}{{-1, false}, {0, true}, {1, true}, {2, true}, {3, false}, {4, true}, {8, true}, {15, false}, {16, true}} {
+		t.Run(fmt.Sprint(tc.k), func(t *testing.T) {
+			err := ValidateTSDBIndexShardFactor(tc.k)
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}

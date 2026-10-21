@@ -88,7 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
-	f.StringVar(&cfg.ShardedIndexPathPrefix, "compactor.sharded-index-path-prefix", "", "Experimental: Object storage path prefix for a copy of every compacted per-tenant TSDB index. Must differ from the index path_prefix of every schema period. If writing the copy fails, compaction of the table fails and is retried on the next run, keeping the source index files. Leave empty to disable the copy.")
+	f.StringVar(&cfg.ShardedIndexPathPrefix, "compactor.sharded-index-path-prefix", "", "Experimental: Object storage path prefix for a copy of every compacted per-tenant TSDB index, split into the tenant's tsdb_index_shard_factor fingerprint-range files. Must differ from the index path_prefix of every schema period. If writing the copy fails, compaction of the table fails and is retried on the next run, keeping the source index files. Leave empty to disable the copy.")
 }
 
 // Validate verifies the config does not contain inappropriate values
