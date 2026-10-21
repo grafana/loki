@@ -124,6 +124,9 @@ func newProcessor(
 		flushCommitter:   flushCommitter,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
+		flushes:          make(chan flushRequest),
+		flushFailed:      make(chan error, 1),
+		flushLoopDone:    make(chan struct{}),
 		metrics:          newMetrics(reg),
 		logger:           logger,
 	}
@@ -325,11 +328,10 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 // after a flush once ctx is canceled. After it stops it runs no more flushes,
 // so no commit passes a failed or canceled flush. A restart reads those
 // records again from the last commit.
+//
+// The processor starts the flush loop at most once, because stopFlushLoop
+// closes the channels that newProcessor creates.
 func (p *processor) startFlushLoop(ctx context.Context) {
-	p.flushes = make(chan flushRequest)
-	p.flushFailed = make(chan error, 1)
-	p.flushLoopDone = make(chan struct{})
-
 	go func() {
 		defer close(p.flushLoopDone)
 		for req := range p.flushes {

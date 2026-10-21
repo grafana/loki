@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
@@ -639,15 +640,15 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 	})
 
 	t.Run("builds the same data objects and indexes as a flush that blocks consumption", func(t *testing.T) {
-		records := newTestFlushRecords(t, 3, 300)
+		flushes := newTestFlushRecords(t, 3, 300)
 
-		serialObjects, serialOffsets := flushWithRealStack(t, records, true)
-		objects, offsets := flushWithRealStack(t, records, false)
+		wantObjects, wantOffsets := flushSerially(t, flushes)
+		objects, offsets := runWithRealStack(t, flushes)
 
-		require.NotEmpty(t, serialObjects)
-		require.Equal(t, serialOffsets, offsets)
-		require.Equal(t, slices.Sorted(maps.Keys(serialObjects)), slices.Sorted(maps.Keys(objects)))
-		for name, data := range serialObjects {
+		require.NotEmpty(t, wantObjects)
+		require.Equal(t, wantOffsets, offsets)
+		require.Equal(t, slices.Sorted(maps.Keys(wantObjects)), slices.Sorted(maps.Keys(objects)))
+		for name, data := range wantObjects {
 			require.Equal(t, data, objects[name], "object %s", name)
 		}
 	})
@@ -686,20 +687,22 @@ func newTestFlushRecords(t *testing.T, n, size int) [][]*kgo.Record {
 	return flushes
 }
 
-// flushWithRealStack appends the records of each flush to a processor, then
-// flushes them. The flush uses the production sort, upload, index and ToC
-// writer with an in-memory bucket. It returns the contents of the bucket and
-// the committed offsets.
-//
-// If serial is true, it waits for each flush to end before it appends the
-// records of the next one, so no append overlaps a flush.
-func flushWithRealStack(t *testing.T, flushes [][]*kgo.Record, serial bool) (map[string][]byte, []int64) {
+// A realStack is the production flush committer, with the production sort,
+// upload, index and ToC writer, on an in-memory bucket.
+type realStack struct {
+	factory        *logsobj.BuilderFactory
+	targetSize     int
+	flushCommitter *flushCommitterImpl
+	committer      *mockCommitter
+	bucket         *objstore.InMemBucket
+}
+
+func newRealStack(t *testing.T) *realStack {
 	var cfg Config
 	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 	cfg.LogsobjBuilder.DropDuplicates = true
 
 	var (
-		ctx          = t.Context()
 		logger       = log.NewNopLogger()
 		reg          = prometheus.NewRegistry()
 		scratchStore = scratch.NewMemory()
@@ -713,26 +716,82 @@ func flushWithRealStack(t *testing.T, flushes [][]*kgo.Record, serial bool) (map
 	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
 	require.NoError(t, err)
 	var (
-		uploader       = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
-		flusher        = newFlusher(logsobj.NewSorter(factory, reg), uploader, logger, reg)
-		tocWriter      = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
-		flushCommitter = newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, logger, reg)
-		proc           = newProcessor(NewMultiObjectBuilder(factory, int(cfg.LogsobjBuilder.TargetObjectSize)), nil, flushCommitter, time.Hour, 0, logger, reg)
+		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
+		flusher   = newFlusher(logsobj.NewSorter(factory, reg), uploader, logger, reg)
+		tocWriter = metastore.NewTableOfContentsWriter(idxBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, logger, metastore.NewTocWriterMetrics(reg), indexobjMetrics)
 	)
+	return &realStack{
+		factory:        factory,
+		targetSize:     int(cfg.LogsobjBuilder.TargetObjectSize),
+		flushCommitter: newFlushCommitter(flusher, committer, indexer, tocWriter, 0, 1, logger, reg),
+		committer:      committer,
+		bucket:         bucket,
+	}
+}
 
-	proc.startFlushLoop(ctx)
+// flushSerially appends the records of each flush to a multi-builder, then
+// flushes them with a real stack and waits for the flush to end. It uses no
+// processor, so no append overlaps a flush. It returns the contents of the
+// bucket and the committed offsets.
+func flushSerially(t *testing.T, flushes [][]*kgo.Record) (map[string][]byte, []int64) {
+	stack := newRealStack(t)
+	decoder, err := kafka.NewDecoder()
+	require.NoError(t, err)
+
+	m := NewMultiObjectBuilder(stack.factory, stack.targetSize)
 	for _, records := range flushes {
 		for _, rec := range records {
-			require.NoError(t, proc.processRecord(ctx, rec))
+			stream, err := decoder.DecodeWithoutLabels(rec.Value)
+			require.NoError(t, err)
+			require.NoError(t, m.Append(string(rec.Key), stream, rec.Timestamp))
 		}
-		require.NoError(t, proc.flush(ctx, "test"))
-		if serial {
-			require.NoError(t, proc.stopFlushLoop())
-			proc.startFlushLoop(ctx)
-		}
+		require.NoError(t, stack.flushCommitter.Flush(t.Context(), m.getBuilders(), "test", records[len(records)-1].Offset))
+		m.Reset()
 	}
-	require.NoError(t, proc.stopFlushLoop())
-	return maps.Clone(bucket.Objects()), committer.offsets
+	return maps.Clone(stack.bucket.Objects()), stack.committer.offsets
+}
+
+// runWithRealStack sends the records of each flush to a running processor
+// with a real stack. It returns the contents of the bucket and the committed
+// offsets.
+//
+// The multi-builder reports itself full after the records of one flush, so
+// the processor flushes at the same records as flushSerially. One more record
+// makes the processor flush the records of the last flush. The processor
+// never flushes that record.
+func runWithRealStack(t *testing.T, flushes [][]*kgo.Record) (map[string][]byte, []int64) {
+	var (
+		stack   = newRealStack(t)
+		records = make(chan *kgo.Record)
+		m       = &fixedCountMultiBuilder{
+			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize),
+			fullAfter:          len(flushes[0]),
+		}
+		proc = newProcessor(m, records, stack.flushCommitter, time.Hour, 0, log.NewNopLogger(), prometheus.NewRegistry())
+		ran  = make(chan error, 1)
+	)
+	go func() { ran <- proc.Run(t.Context()) }()
+
+	last := flushes[len(flushes)-1]
+	trailer := newTestRecord(t, "tenant-0", last[len(last)-1].Timestamp)
+	trailer.Offset = last[len(last)-1].Offset + 1
+	go func() {
+		for _, flush := range flushes {
+			for _, rec := range flush {
+				records <- rec
+			}
+		}
+		records <- trailer
+		close(records)
+	}()
+
+	select {
+	case err := <-ran:
+		require.NoError(t, err)
+	case <-time.After(time.Minute):
+		t.Fatal("Run did not return")
+	}
+	return maps.Clone(stack.bucket.Objects()), stack.committer.offsets
 }
 
 // startTestFlushLoop starts the flush loop of proc, for a test that does not

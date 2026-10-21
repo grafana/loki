@@ -342,6 +342,31 @@ func (m *mockMultiBuilder) IsFull() bool {
 	return m.forceFull || m.MultiObjectBuilder.IsFull()
 }
 
+// fixedCountMultiBuilder wraps the production [MultiObjectBuilder] and reports
+// itself full after fullAfter appends since the last Reset. Its flushes then
+// depend only on the order of the records, not on their size.
+type fixedCountMultiBuilder struct {
+	*MultiObjectBuilder
+	fullAfter int
+	appends   int
+}
+
+var _ multiBuilder = (*fixedCountMultiBuilder)(nil)
+
+func (m *fixedCountMultiBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	m.appends++
+	return m.MultiObjectBuilder.Append(tenant, stream, recTime)
+}
+
+func (m *fixedCountMultiBuilder) IsFull() bool {
+	return m.appends >= m.fullAfter
+}
+
+func (m *fixedCountMultiBuilder) Reset() {
+	m.appends = 0
+	m.MultiObjectBuilder.Reset()
+}
+
 // newTestMultiBuilder returns a multiBuilder backed by real per-scope
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
