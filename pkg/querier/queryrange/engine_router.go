@@ -299,20 +299,19 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, lim
 	finishResponses := func(queryErr error) (queryrangebase.Response, error) {
 		cancel(errors.New("engine router process cancelled"))
 		if queryErr != nil {
-			discardedUsage.finalizeResponseUsage(ctx, responses, queryErr)
+			discardedUsage.finalizeFailedResponseUsage(ctx, responses)
 			return nil, queryErr
 		}
 
 		response, err := e.merger.MergeResponse(responses...)
 		if err != nil {
-			discardedUsage.finalizeResponseUsage(ctx, responses, err)
+			discardedUsage.finalizeFailedResponseUsage(ctx, responses)
 			return nil, err
 		}
 
 		// Attach discarded usage after merging so MergeSplit cannot reset
 		// the combined split count.
-		finalized := discardedUsage.finalizeResponseUsage(ctx, []queryrangebase.Response{response}, nil)
-		return finalized[0], nil
+		return discardedUsage.finalizeSuccessfulResponseUsage(response), nil
 	}
 
 	// Run all requests in parallel as we only get a max of 3 splits.

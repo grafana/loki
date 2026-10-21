@@ -71,18 +71,18 @@ func TestProcessAccountsCompletedUnconsumedSplits(t *testing.T) {
 			})}
 
 			discardedWork, ctx := stats.NewDiscardedWorkContext(parent)
-			responses, err := h.Process(ctx, 2, 1, []*lokiResult{first, second}, 0)
+			result, err := h.Process(ctx, 2, 1, []*lokiResult{first, second}, 0)
 
 			// On failure, only the second split returned statistics: expect 200 bytes
 			// in discarded-work stats. On line-limit success, expect 300 bytes but only the
 			// first split's entry in the response.
 			if tc.queryErr != nil {
 				require.ErrorIs(t, err, tc.queryErr)
+				require.Nil(t, result)
 				require.Equal(t, int64(200), discardedWork.Result().Summary.TotalBytesProcessed)
 			} else {
 				require.NoError(t, err)
-				require.Len(t, responses, 1)
-				response := responses[0].(*LokiResponse)
+				response := result.(*LokiResponse)
 				require.Equal(t, int64(300), response.Statistics.Summary.TotalBytesProcessed)
 				require.Equal(t, int64(1), response.Count(), "discarded split must not change returned entries")
 				require.Equal(t, int64(1), response.Statistics.Summary.TotalEntriesReturned)
@@ -96,24 +96,55 @@ func TestProcessAccountsCompletedUnconsumedSplits(t *testing.T) {
 
 func TestDiscardedResponseUsageTrackerFinalizesAllErrorUsage(t *testing.T) {
 	for _, withUncollectedResponse := range []bool{false, true} {
-		for _, queryErr := range []error{errors.New("query failed"), context.Canceled} {
-			t.Run(fmt.Sprintf("uncollected=%t/error=%s", withUncollectedResponse, queryErr), func(t *testing.T) {
-				discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
-				tracker := &discardedResponseUsageTracker{}
-				response := logResponseWithScanUsage(100)
-				collected := &lokiResult{}
-				tracker.recordResponse(collected, response)
-				tracker.markResponseCollected(collected)
-				want := int64(100)
-				if withUncollectedResponse {
-					tracker.recordResponse(&lokiResult{}, logResponseWithScanUsage(200))
-					want += 200
-				}
-				result := tracker.finalizeResponseUsage(ctx, []queryrangebase.Response{response}, queryErr)
-				require.Nil(t, result, "error returns must not expose successful sibling responses")
-				require.Equal(t, want, discardedWork.Result().Summary.TotalBytesProcessed)
-				require.Equal(t, int64(100), response.Statistics.Summary.TotalBytesProcessed)
-			})
-		}
+		t.Run(fmt.Sprintf("uncollected=%t", withUncollectedResponse), func(t *testing.T) {
+			discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
+			tracker := &discardedResponseUsageTracker{}
+			response := logResponseWithScanUsage(100)
+			collected := &lokiResult{}
+			tracker.recordResponse(collected, response)
+			tracker.markResponseCollected(collected)
+			want := int64(100)
+			if withUncollectedResponse {
+				tracker.recordResponse(&lokiResult{}, logResponseWithScanUsage(200))
+				want += 200
+			}
+
+			tracker.finalizeFailedResponseUsage(ctx, []queryrangebase.Response{response})
+			require.Equal(t, want, discardedWork.Result().Summary.TotalBytesProcessed)
+			require.Equal(t, int64(100), response.Statistics.Summary.TotalBytesProcessed)
+		})
+	}
+}
+
+func TestDiscardedResponseUsageTrackerFinalizesSuccessfulUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		discardedBytes []int64
+		wantBytes      int64
+		wantSplits     int64
+	}{
+		{name: "no discarded responses", wantBytes: 100, wantSplits: 2},
+		{name: "discarded response with zero bytes", discardedBytes: []int64{0}, wantBytes: 100, wantSplits: 3},
+		{name: "discarded response with scanned bytes", discardedBytes: []int64{200}, wantBytes: 300, wantSplits: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tracker := &discardedResponseUsageTracker{}
+			for _, bytesScanned := range tc.discardedBytes {
+				tracker.recordResponse(&lokiResult{}, logResponseWithScanUsage(bytesScanned))
+			}
+
+			// The input is already merged. Preserve its statistics and entries,
+			// even when the caller shares this response with another consumer.
+			response := logResponseWithScanUsage(100)
+			response.Statistics.Summary.Splits = 2
+			originalStats := response.Statistics
+
+			result := tracker.finalizeSuccessfulResponseUsage(response).(*LokiResponse)
+			require.Equal(t, tc.wantBytes, result.Statistics.Summary.TotalBytesProcessed)
+			require.Equal(t, tc.wantSplits, result.Statistics.Summary.Splits)
+			require.Equal(t, int64(1), result.Statistics.Summary.TotalEntriesReturned)
+			require.Equal(t, response.Data, result.Data)
+			require.Equal(t, originalStats, response.Statistics)
+		})
 	}
 }

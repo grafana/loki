@@ -72,39 +72,34 @@ func (tracker *discardedResponseUsageTracker) recordResponse(split *lokiResult, 
 	tracker.recordStatistics(split, responseStats)
 }
 
-// finalizeResponseUsage preserves statistics from collected and uncollected
-// responses. On success with completed responses still in the tracker, pass one
-// merged log response and return it without merging again. With no remaining
-// tracked responses, successful responses pass through unchanged and may still
-// need merging. On error, pass all collected responses so their statistics enter
-// the discarded-work context before this function returns nil.
-func (tracker *discardedResponseUsageTracker) finalizeResponseUsage(ctx context.Context, responses []queryrangebase.Response, err error) []queryrangebase.Response {
+// finalizeSuccessfulResponseUsage closes the tracker and adds discarded log
+// statistics to the already-merged response. Return the result without merging
+// it again, which would reset its split count.
+func (tracker *discardedResponseUsageTracker) finalizeSuccessfulResponseUsage(response queryrangebase.Response) queryrangebase.Response {
 	uncollectedStats, hasUncollectedStats := tracker.finalize()
-	if err != nil {
-		recordDiscardedResponseUsage(ctx, responses)
-		if hasUncollectedStats {
-			stats.JoinDiscardedWork(ctx, uncollectedStats)
-		}
-		return nil
-	}
 	if !hasUncollectedStats {
-		return responses
+		return response
 	}
-	// Log queries can succeed at the line limit without collecting every
-	// interval response. Add usage from completed, uncollected intervals to
-	// the collected log response's statistics, without adding their entries.
-	// The interval splitter and engine router have already merged the collected
-	// log responses on this early-exit path.
-	// Successful metric queries collect every response and need no adjustment.
-	if len(responses) > 0 {
-		if response, ok := responses[0].(*LokiResponse); ok {
-			// Copy before changing statistics; the original response may be shared.
-			responseWithUsage := *response
-			responseWithUsage.Statistics.Merge(uncollectedStats)
-			responses[0] = &responseWithUsage
-		}
+	// Only log queries that reach their line limit can succeed with responses
+	// still in the tracker. Add their statistics without adding their entries.
+	if logResponse, ok := response.(*LokiResponse); ok {
+		// Copy before changing statistics; the original response may be shared.
+		responseWithUsage := *logResponse
+		responseWithUsage.Statistics.Merge(uncollectedStats)
+		return &responseWithUsage
 	}
-	return responses
+	return response
+}
+
+// finalizeFailedResponseUsage closes the tracker and records statistics from
+// all collected responses and any completed responses still in the tracker.
+// Call it before discarding responses on a collection or merge failure.
+func (tracker *discardedResponseUsageTracker) finalizeFailedResponseUsage(ctx context.Context, responses []queryrangebase.Response) {
+	uncollectedStats, hasUncollectedStats := tracker.finalize()
+	recordDiscardedResponseUsage(ctx, responses)
+	if hasUncollectedStats {
+		stats.JoinDiscardedWork(ctx, uncollectedStats)
+	}
 }
 
 // recordDiscardedResponseUsage preserves usage before successful responses are

@@ -531,14 +531,14 @@ func TestStatsCollectorMiddleware_SeriesLimitIncludesCompletedUsage(t *testing.T
 
 	// Run the real splitter and series limiter inside the root stats collector.
 	handler := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		responses, err := split.Process(ctx, 3, 0, inputs, 1)
+		response, err := split.Process(ctx, 3, 0, inputs, 1)
 		if err != nil {
-			if responses != nil {
-				return nil, errors.New("failed collection returned responses")
+			if response != nil {
+				return nil, errors.New("failed collection returned a response")
 			}
 			return nil, err
 		}
-		return DefaultCodec.MergeResponse(responses...)
+		return response, nil
 	}))
 
 	// The failed root query must report usage from all three responses once.
