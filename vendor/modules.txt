@@ -1062,7 +1062,7 @@ github.com/klauspost/cpuid/v2/topology
 # github.com/klauspost/crc32 v1.3.0
 ## explicit; go 1.23.0
 github.com/klauspost/crc32
-# github.com/klauspost/pgzip v1.2.7
+# github.com/klauspost/pgzip v1.3.0
 ## explicit; go 1.25
 github.com/klauspost/pgzip
 # github.com/knadh/koanf/maps v0.1.3
