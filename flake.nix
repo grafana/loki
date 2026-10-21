@@ -20,11 +20,11 @@
         # The go version in nixpkgs often trails behind the latest by a few
         # days. Overlay to pin to the exact version go.mod expects.
         goOverlay = final: prev: {
-          go_1_26 = prev.go_1_26.overrideAttrs (old: rec {
-            version = "1.26.8";
+          go_1_27 = prev.go_1_27.overrideAttrs (old: rec {
+            version = "1.27.3";
             src = prev.fetchurl {
               url = "https://go.dev/dl/go${version}.src.tar.gz";
-              hash = "sha256-Tjm5jkL5RvoFrIvFtxh335fb23y7Gnd7VBZnrXEX/S4=";
+              hash = "sha256-bndJA1zzYPBrJXXRYup535/ajvZxiJ5cN1+OUHd/Jrs=";
             };
           });
         };
@@ -45,7 +45,8 @@
         };
 
         pkgs = base // {
-          inherit (unstable) buildGoModule;
+          inherit (unstable) go_1_27;
+          buildGoModule = unstable.buildGo127Module;
         };
       in
       rec {
@@ -79,7 +80,7 @@
 
               chart-testing
               gcc
-              go_1_26
+              go_1_27
               golangci-lint
               gotools
               helm-docs
