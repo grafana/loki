@@ -184,13 +184,13 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 	return &proto.CheckLimitsAndShardResponse{Results: append(results, resp.Results...)}, nil
 }
 
-// sweep removes the entries without a backend call within
+// sweep removes the entries of a stripe without a backend call within
 // ttl*shardCacheMaxIdleFactor, except those being refreshed. The size an
 // idle stream accumulated since its last backend call is dropped with it.
-// It must be called with mtx held.
+// It must be called with a strip mtx held.
 func (c *shardCacheLimitsClient) sweep(now time.Time, tenant string) {
-	sIdx := c.stripes.getStripe(tenant)
 	maxAge := c.ttl * shardCacheMaxIdleFactor
+	sIdx := c.stripes.getStripe(tenant)
 	lastSwept, _ := c.stripes[sIdx].lastSwept[tenant]
 	if now.Sub(lastSwept) < maxAge {
 		return
@@ -198,7 +198,7 @@ func (c *shardCacheLimitsClient) sweep(now time.Time, tenant string) {
 	c.stripes[sIdx].lastSwept[tenant] = now
 	cutoff := now.Add(-maxAge)
 	for k, e := range c.stripes[sIdx].entries {
-		if k.tenant == tenant && !e.inflight && e.refreshedAt.Before(cutoff) {
+		if !e.inflight && e.refreshedAt.Before(cutoff) {
 			delete(c.stripes[sIdx].entries, k)
 		}
 	}
