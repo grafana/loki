@@ -1490,8 +1490,8 @@ github.com/mdlayher/vsock
 # github.com/mfridman/interpolate v0.0.2
 ## explicit; go 1.19
 github.com/mfridman/interpolate
-# github.com/miekg/dns v1.1.72
-## explicit; go 1.24.0
+# github.com/miekg/dns v1.1.73
+## explicit; go 1.25.0
 github.com/miekg/dns
 # github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8
 ## explicit
