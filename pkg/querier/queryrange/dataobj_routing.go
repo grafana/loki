@@ -8,47 +8,86 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
-// dataObjCoverageThreshold is the share of the read window that data objects must exceed. A query
+// DataObjCoverageThreshold is the share of the read window that data objects must exceed. A query
 // above it uses the data-object logic for time splitting and query sharding.
-const dataObjCoverageThreshold = 0.5
+const DataObjCoverageThreshold = 0.5
 
-// dataObjResolution is the result of the data-object checks for one expression.
-type dataObjResolution struct {
-	// outcome is dataObjOutcomeEligible, or the first check that failed.
-	outcome string
-	// coverage is the share of the read window that the held range covers. It is set only when
-	// outcome is dataObjOutcomeEligible.
-	coverage float64
+// DataObjLimits is the part of the tenant limits that the data-object checks read.
+type DataObjLimits interface {
+	// StreamFirstExecutionEnabled reports whether eligible metric queries of the tenant run in
+	// stream-first sample order.
+	StreamFirstExecutionEnabled(userID string) bool
+	// DataObjQueryStartTime returns the time from which the tenant reads stream-first metric queries
+	// from data objects. The zero time turns data-object reads off for the tenant.
+	DataObjQueryStartTime(userID string) time.Time
+}
+
+// DataObjResolutionOutcome is the result of the data-object checks for one expression. It is
+// DataObjOutcomeEligible, or the first check that failed. The constants form a small fixed set, so
+// the values are safe as metric labels.
+type DataObjResolutionOutcome string
+
+const (
+	// DataObjOutcomeEligible means the expression passed every check.
+	DataObjOutcomeEligible DataObjResolutionOutcome = "eligible"
+	// DataObjOutcomeUnsupportedQuery means the expression is not a stream-first sum.
+	DataObjOutcomeUnsupportedQuery DataObjResolutionOutcome = "unsupported_query"
+	// DataObjOutcomeStreamFirstDisabled means a tenant has stream-first off.
+	DataObjOutcomeStreamFirstDisabled DataObjResolutionOutcome = "stream_first_disabled"
+	// DataObjOutcomeDataObjectsDisabled means data objects are off, or a tenant has no data-object
+	// start time.
+	DataObjOutcomeDataObjectsDisabled DataObjResolutionOutcome = "data_objects_disabled"
+	// DataObjOutcomeOutsideDataObjRange means the read window does not overlap the held range.
+	DataObjOutcomeOutsideDataObjRange DataObjResolutionOutcome = "outside_data_object_range"
+)
+
+// DataObjResolution is the result of the data-object checks for one expression.
+type DataObjResolution struct {
+	Outcome DataObjResolutionOutcome
+	// Coverage is the share of the read window that the held range covers, from 0 to 1. It is set
+	// only when Outcome is DataObjOutcomeEligible.
+	Coverage float64
+}
+
+// Eligible reports whether the expression passed every check.
+func (r DataObjResolution) Eligible() bool {
+	return r.Outcome == DataObjOutcomeEligible
 }
 
 // prefers reports whether the expression is eligible and the share of the read window that the held
-// range covers is above dataObjCoverageThreshold.
-func (r dataObjResolution) prefers() bool {
-	return r.outcome == dataObjOutcomeEligible && r.coverage > dataObjCoverageThreshold
+// range covers is above DataObjCoverageThreshold.
+func (r DataObjResolution) prefers() bool {
+	return r.Eligible() && r.Coverage > DataObjCoverageThreshold
 }
 
-// dataObjResolve decides whether a querier may read the expression from data objects. The request
+// dataObjResolve decides whether a querier may read the expression from data objects, with the
+// settings of the frontend config. See ResolveDataObj.
+func dataObjResolve(cfg Config, limits Limits, tenantIDs []string, expr syntax.Expr, start, end time.Time) DataObjResolution {
+	return ResolveDataObj(cfg.DataObjEnabled, cfg.DataObjStorageLag, limits, tenantIDs, expr, start, end, cfg.now)
+}
+
+// ResolveDataObj decides whether a querier may read the expression from data objects. The request
 // covers the time range from start to end.
 //
-// The checks mirror the ones the querier makes. The config must turn data objects on. The expression
-// must be a stream-first sum. Every tenant must turn stream-first and data objects on. The read
-// window must overlap the held range.
+// The checks mirror the ones the querier makes. Data objects must be enabled. The expression must be
+// a stream-first sum. Every tenant must turn stream-first and data objects on. The read window must
+// overlap the held range.
 //
 // The read window of a query is the time range the query reads. It is wider than the request,
 // because it includes the range vector and moves back by the offset. The held range is the time
 // range that data objects hold. It runs from the latest start time of the tenants to the current
-// time minus the storage lag.
-func dataObjResolve(cfg Config, limits Limits, tenantIDs []string, expr syntax.Expr, start, end time.Time) dataObjResolution {
-	if !cfg.DataObjEnabled {
-		return dataObjResolution{outcome: dataObjOutcomeDataObjectsDisabled}
+// time minus the storage lag. A nil now means time.Now.
+func ResolveDataObj(enabled bool, storageLag time.Duration, limits DataObjLimits, tenantIDs []string, expr syntax.Expr, start, end time.Time, now func() time.Time) DataObjResolution {
+	if !enabled {
+		return DataObjResolution{Outcome: DataObjOutcomeDataObjectsDisabled}
 	}
 
 	rng, ok := logql.StreamFirstRangeAggregationExpr(expr)
 	if !ok {
-		return dataObjResolution{outcome: dataObjOutcomeUnsupportedQuery}
+		return DataObjResolution{Outcome: DataObjOutcomeUnsupportedQuery}
 	}
 
-	return dataObjResolveWindow(cfg, limits, tenantIDs, rng.Left.Interval, rng.Left.Offset, start, end)
+	return dataObjResolveWindow(enabled, storageLag, limits, tenantIDs, rng.Left.Interval, rng.Left.Offset, start, end, now)
 }
 
 // dataObjAnyPrefers predicts whether a piece of a query will prefer data objects. The caller has
@@ -57,7 +96,7 @@ func dataObjResolve(cfg Config, limits Limits, tenantIDs []string, expr syntax.E
 // It reports true only when data objects are on and every tenant turns stream-first and data
 // objects on. It also needs both of these:
 //   - A sub-expression has the stream-first shape, such as one leg of a binary expression.
-//   - Data objects hold more than dataObjCoverageThreshold of the read window. The window uses the
+//   - Data objects hold more than DataObjCoverageThreshold of the read window. The window uses the
 //     longest range vector and the longest offset of the whole query.
 //
 // The query-frontend splits a query in time before it shards it, so it cannot yet see the pieces
@@ -79,19 +118,19 @@ func dataObjAnyPrefers(cfg Config, limits Limits, tenantIDs []string, expr synta
 	}
 
 	maxRange, maxOffset := maxRangeVectorAndOffsetDuration(expr)
-	return dataObjResolveWindow(cfg, limits, tenantIDs, maxRange, maxOffset, start, end).prefers()
+	return dataObjResolveWindow(cfg.DataObjEnabled, cfg.DataObjStorageLag, limits, tenantIDs, maxRange, maxOffset, start, end, cfg.now).prefers()
 }
 
-// dataObjResolveWindow runs the checks that depend on the config, the tenants and the time range.
+// dataObjResolveWindow runs the checks that depend on the settings, the tenants and the time range.
 // The query reads a range vector of the given length at the given offset.
-func dataObjResolveWindow(cfg Config, limits Limits, tenantIDs []string, interval, offset time.Duration, start, end time.Time) dataObjResolution {
-	if !cfg.DataObjEnabled || len(tenantIDs) == 0 {
-		return dataObjResolution{outcome: dataObjOutcomeDataObjectsDisabled}
+func dataObjResolveWindow(enabled bool, storageLag time.Duration, limits DataObjLimits, tenantIDs []string, interval, offset time.Duration, start, end time.Time, now func() time.Time) DataObjResolution {
+	if !enabled || len(tenantIDs) == 0 {
+		return DataObjResolution{Outcome: DataObjOutcomeDataObjectsDisabled}
 	}
 
 	for _, id := range tenantIDs {
 		if !limits.StreamFirstExecutionEnabled(id) {
-			return dataObjResolution{outcome: dataObjOutcomeStreamFirstDisabled}
+			return DataObjResolution{Outcome: DataObjOutcomeStreamFirstDisabled}
 		}
 	}
 
@@ -105,30 +144,29 @@ func dataObjResolveWindow(cfg Config, limits Limits, tenantIDs []string, interva
 	for _, id := range tenantIDs {
 		tenantStart := limits.DataObjQueryStartTime(id)
 		if tenantStart.IsZero() {
-			return dataObjResolution{outcome: dataObjOutcomeDataObjectsDisabled}
+			return DataObjResolution{Outcome: DataObjOutcomeDataObjectsDisabled}
 		}
 		if tenantStart.After(heldStart) {
 			heldStart = tenantStart
 		}
 	}
 
-	now := time.Now
-	if cfg.now != nil {
-		now = cfg.now
+	if now == nil {
+		now = time.Now
 	}
-	heldEnd := now().Add(-cfg.DataObjStorageLag)
+	heldEnd := now().Add(-storageLag)
 
 	// The querier reads data objects only when the read window overlaps the held range. An empty
 	// overlap makes the query ineligible. A non-empty overlap also proves that the window has a
 	// positive length, so the division below is safe.
 	overlapStart, overlapEnd := maxTime(windowStart, heldStart), minTime(windowEnd, heldEnd)
 	if !overlapStart.Before(overlapEnd) {
-		return dataObjResolution{outcome: dataObjOutcomeOutsideDataObjRange}
+		return DataObjResolution{Outcome: DataObjOutcomeOutsideDataObjRange}
 	}
 
-	return dataObjResolution{
-		outcome:  dataObjOutcomeEligible,
-		coverage: float64(overlapEnd.Sub(overlapStart)) / float64(windowEnd.Sub(windowStart)),
+	return DataObjResolution{
+		Outcome:  DataObjOutcomeEligible,
+		Coverage: float64(overlapEnd.Sub(overlapStart)) / float64(windowEnd.Sub(windowStart)),
 	}
 }
 
