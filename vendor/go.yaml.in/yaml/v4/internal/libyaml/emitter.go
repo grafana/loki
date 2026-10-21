@@ -11,120 +11,158 @@ package libyaml
 import (
 	"bytes"
 	"fmt"
+	"io"
 )
 
-// Flush the buffer if needed.
-func (emitter *Emitter) flushIfNeeded() error {
-	if emitter.buffer_pos+5 >= len(emitter.buffer) {
-		return emitter.flush()
+// WriteHandler is called when the [Emitter] needs to flush the accumulated
+// characters to the output.  The handler should write @a size bytes of the
+// @a buffer to the output.
+//
+//	@param[in,out]   data        A pointer to an application data specified by
+//	                             yamlEmitter.setOutput().
+//	@param[in]       buffer      The buffer with bytes to be written.
+//	@param[in]       size        The size of the buffer.
+//
+//	@returns On success, the handler should return @c 1.  If the handler failed,
+//	the returned value should be @c 0.
+type WriteHandler func(emitter *Emitter, buffer []byte) error
+
+// EmitterState represents the current state of the emitter.
+type EmitterState int
+
+// The emitter states.
+const (
+	// Expect STREAM-START.
+	EMIT_STREAM_START_STATE EmitterState = iota
+
+	EMIT_FIRST_DOCUMENT_START_STATE       // Expect the first DOCUMENT-START or STREAM-END.
+	EMIT_DOCUMENT_START_STATE             // Expect DOCUMENT-START or STREAM-END.
+	EMIT_DOCUMENT_CONTENT_STATE           // Expect the content of a document.
+	EMIT_DOCUMENT_END_STATE               // Expect DOCUMENT-END.
+	EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE   // Expect the first item of a flow sequence.
+	EMIT_FLOW_SEQUENCE_TRAIL_ITEM_STATE   // Expect the next item of a flow sequence, with the comma already written out
+	EMIT_FLOW_SEQUENCE_ITEM_STATE         // Expect an item of a flow sequence.
+	EMIT_FLOW_MAPPING_FIRST_KEY_STATE     // Expect the first key of a flow mapping.
+	EMIT_FLOW_MAPPING_TRAIL_KEY_STATE     // Expect the next key of a flow mapping, with the comma already written out
+	EMIT_FLOW_MAPPING_KEY_STATE           // Expect a key of a flow mapping.
+	EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE  // Expect a value for a simple key of a flow mapping.
+	EMIT_FLOW_MAPPING_VALUE_STATE         // Expect a value of a flow mapping.
+	EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE  // Expect the first item of a block sequence.
+	EMIT_BLOCK_SEQUENCE_ITEM_STATE        // Expect an item of a block sequence.
+	EMIT_BLOCK_MAPPING_FIRST_KEY_STATE    // Expect the first key of a block mapping.
+	EMIT_BLOCK_MAPPING_KEY_STATE          // Expect the key of a block mapping.
+	EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE // Expect a value for a simple key of a block mapping.
+	EMIT_BLOCK_MAPPING_VALUE_STATE        // Expect a value of a block mapping.
+	EMIT_END_STATE                        // Expect nothing.
+)
+
+// Emitter holds all information about the current state of the emitter.
+type Emitter struct {
+	// Writer stuff
+
+	write_handler WriteHandler // Write handler.
+
+	output_buffer *[]byte   // String output data.
+	output_writer io.Writer // File output data.
+
+	buffer     []byte // The working buffer.
+	buffer_pos int    // The current position of the buffer.
+
+	encoding Encoding // The stream encoding.
+
+	// Emitter stuff
+
+	canonical       bool       // If the output is in the canonical style?
+	BestIndent      int        // The number of indentation spaces.
+	best_width      int        // The preferred width of the output lines.
+	unicode         bool       // Allow unescaped non-ASCII characters?
+	line_break      LineBreak  // The preferred line break.
+	quotePreference QuoteStyle // Preferred quote style when quoting is required.
+
+	state  EmitterState   // The current emitter state.
+	states []EmitterState // The stack of states.
+
+	events      []Event // The event queue.
+	events_head int     // The head of the event queue.
+
+	indents []int // The stack of indentation levels.
+
+	tag_directives []TagDirective // The list of tag directives.
+
+	indent int // The current indentation level.
+
+	CompactSequenceIndent bool // Is '- ' is considered part of the indentation for sequence elements?
+
+	flow_level int // The current flow level.
+
+	root_context       bool // Is it the document root context?
+	sequence_context   bool // Is it a sequence context?
+	mapping_context    bool // Is it a mapping context?
+	simple_key_context bool // Is it a simple mapping key context?
+
+	line       int  // The current line.
+	column     int  // The current column.
+	whitespace bool // If the last character was a whitespace?
+	indention  bool // If the last character was an indentation character (' ', '-', '?', ':')?
+	OpenEnded  bool // If an explicit document end is required?
+
+	space_above bool // Is there's an empty line above?
+	foot_indent int  // The indent used to write the foot comment above, or -1 if none.
+
+	// Anchor analysis.
+	anchor_data struct {
+		anchor []byte // The anchor value.
+		alias  bool   // Is it an alias?
 	}
-	return nil
+
+	// Tag analysis.
+	tag_data struct {
+		handle []byte // The tag handle.
+		suffix []byte // The tag suffix.
+	}
+
+	// Scalar analysis.
+	scalar_data struct {
+		value                 []byte      // The scalar value.
+		multiline             bool        // Does the scalar contain line breaks?
+		flow_plain_allowed    bool        // Can the scalar be expressed in the flow plain style?
+		block_plain_allowed   bool        // Can the scalar be expressed in the block plain style?
+		single_quoted_allowed bool        // Can the scalar be expressed in the single quoted style?
+		block_allowed         bool        // Can the scalar be expressed in the literal or folded styles?
+		style                 ScalarStyle // The output style.
+	}
+
+	// Comments
+	HeadComment []byte
+	LineComment []byte
+	FootComment []byte
+	TailComment []byte
+
+	key_line_comment []byte
+
+	// Representer stuff
+
+	opened bool // If the stream was already opened?
+	closed bool // If the stream was already closed?
+
+	// The information associated with the document nodes.
+	anchors *struct {
+		references int  // The number of references.
+		anchor     int  // The anchor id.
+		serialized bool // If the node has been emitted?
+	}
+
+	last_anchor_id int // The last assigned anchor id.
 }
 
-// Put a character to the output buffer.
-func (emitter *Emitter) put(value byte) error {
-	if emitter.buffer_pos+5 >= len(emitter.buffer) {
-		if err := emitter.flush(); err != nil {
-			return err
-		}
+// NewEmitter creates a new emitter object.
+func NewEmitter() Emitter {
+	return Emitter{
+		buffer:     make([]byte, output_buffer_size),
+		states:     make([]EmitterState, 0, initial_stack_size),
+		events:     make([]Event, 0, initial_queue_size),
+		best_width: -1,
 	}
-	emitter.buffer[emitter.buffer_pos] = value
-	emitter.buffer_pos++
-	emitter.column++
-	return nil
-}
-
-// Put a line break to the output buffer.
-func (emitter *Emitter) putLineBreak() error {
-	if emitter.buffer_pos+5 >= len(emitter.buffer) {
-		if err := emitter.flush(); err != nil {
-			return err
-		}
-	}
-	switch emitter.line_break {
-	case CR_BREAK:
-		emitter.buffer[emitter.buffer_pos] = '\r'
-		emitter.buffer_pos += 1
-	case LN_BREAK:
-		emitter.buffer[emitter.buffer_pos] = '\n'
-		emitter.buffer_pos += 1
-	case CRLN_BREAK:
-		emitter.buffer[emitter.buffer_pos+0] = '\r'
-		emitter.buffer[emitter.buffer_pos+1] = '\n'
-		emitter.buffer_pos += 2
-	default:
-		panic("unknown line break setting")
-	}
-	if emitter.column == 0 {
-		emitter.space_above = true
-	}
-	emitter.column = 0
-	emitter.line++
-	// [Go] Do this here and below and drop from everywhere else (see commented lines).
-	emitter.indention = true
-	return nil
-}
-
-// Copy a character from a string into buffer.
-func (emitter *Emitter) write(s []byte, i *int) error {
-	if emitter.buffer_pos+5 >= len(emitter.buffer) {
-		if err := emitter.flush(); err != nil {
-			return err
-		}
-	}
-	p := emitter.buffer_pos
-	w := width(s[*i])
-	switch w {
-	case 4:
-		emitter.buffer[p+3] = s[*i+3]
-		fallthrough
-	case 3:
-		emitter.buffer[p+2] = s[*i+2]
-		fallthrough
-	case 2:
-		emitter.buffer[p+1] = s[*i+1]
-		fallthrough
-	case 1:
-		emitter.buffer[p+0] = s[*i+0]
-	default:
-		panic("unknown character width")
-	}
-	emitter.column++
-	emitter.buffer_pos += w
-	*i += w
-	return nil
-}
-
-// Write a whole string into buffer.
-func (emitter *Emitter) writeAll(s []byte) error {
-	for i := 0; i < len(s); {
-		if err := emitter.write(s, &i); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Copy a line break character from a string into buffer.
-func (emitter *Emitter) writeLineBreak(s []byte, i *int) error {
-	if s[*i] == '\n' {
-		if err := emitter.putLineBreak(); err != nil {
-			return err
-		}
-		*i++
-	} else {
-		if err := emitter.write(s, i); err != nil {
-			return err
-		}
-		if emitter.column == 0 {
-			emitter.space_above = true
-		}
-		emitter.column = 0
-		emitter.line++
-		// [Go] Do this here and above and drop from everywhere else (see commented lines).
-		emitter.indention = true
-	}
-	return nil
 }
 
 // Emit an event.
@@ -144,97 +182,79 @@ func (emitter *Emitter) Emit(event *Event) error {
 	return nil
 }
 
-// Check if we need to accumulate more events before emitting.
-//
-// We accumulate extra
-//   - 1 event for DOCUMENT-START
-//   - 2 events for SEQUENCE-START
-//   - 3 events for MAPPING-START
-func (emitter *Emitter) needMoreEvents() bool {
-	if emitter.events_head == len(emitter.events) {
-		return true
-	}
-	var accumulate int
-	switch emitter.events[emitter.events_head].Type {
-	case DOCUMENT_START_EVENT:
-		accumulate = 1
-	case SEQUENCE_START_EVENT:
-		accumulate = 2
-	case MAPPING_START_EVENT:
-		accumulate = 3
-	default:
-		return false
-	}
-	if len(emitter.events)-emitter.events_head > accumulate {
-		return false
-	}
-	var level int
-	for i := emitter.events_head; i < len(emitter.events); i++ {
-		switch emitter.events[i].Type {
-		case STREAM_START_EVENT, DOCUMENT_START_EVENT, SEQUENCE_START_EVENT, MAPPING_START_EVENT:
-			level++
-		case STREAM_END_EVENT, DOCUMENT_END_EVENT, SEQUENCE_END_EVENT, MAPPING_END_EVENT:
-			level--
-		}
-		if level == 0 {
-			return false
-		}
-	}
-	return true
+// Delete an emitter object.
+func (emitter *Emitter) Delete() {
+	*emitter = Emitter{}
 }
 
-// Append a directive to the directives stack.
-func (emitter *Emitter) appendTagDirective(value *TagDirective, allow_duplicates bool) error {
-	for i := 0; i < len(emitter.tag_directives); i++ {
-		if bytes.Equal(value.handle, emitter.tag_directives[i].handle) {
-			if allow_duplicates {
-				return nil
-			}
-			return EmitterError{
-				Message: "duplicate %TAG directive",
-			}
-		}
-	}
-
-	// [Go] Do we actually need to copy this given garbage collection
-	// and the lack of deallocating destructors?
-	tag_copy := TagDirective{
-		handle: make([]byte, len(value.handle)),
-		prefix: make([]byte, len(value.prefix)),
-	}
-	copy(tag_copy.handle, value.handle)
-	copy(tag_copy.prefix, value.prefix)
-	emitter.tag_directives = append(emitter.tag_directives, tag_copy)
+// String write handler.
+func yamlStringWriteHandler(emitter *Emitter, buffer []byte) error {
+	*emitter.output_buffer = append(*emitter.output_buffer, buffer...)
 	return nil
 }
 
-// Increase the indentation level.
-func (emitter *Emitter) increaseIndentCompact(flow, indentless bool, compact_seq bool) error {
-	emitter.indents = append(emitter.indents, emitter.indent)
-	if emitter.indent < 0 {
-		if flow {
-			emitter.indent = emitter.BestIndent
-		} else {
-			emitter.indent = 0
-		}
-	} else if !indentless {
-		// [Go] This was changed so that indentations are more regular.
-		if emitter.states[len(emitter.states)-1] == EMIT_BLOCK_SEQUENCE_ITEM_STATE {
-			// The first indent inside a sequence will just skip the "- " indicator.
-			emitter.indent += 2
-		} else {
-			// Everything else aligns to the chosen indentation.
-			emitter.indent = emitter.BestIndent * ((emitter.indent + emitter.BestIndent) / emitter.BestIndent)
-			if compact_seq {
-				// The value compact_seq passed in is almost always set to `false` when this function is called,
-				// except when we are dealing with sequence nodes. So this gets triggered to subtract 2 only when we
-				// are increasing the indent to account for sequence nodes, which will be correct because we need to
-				// subtract 2 to account for the - at the beginning of the sequence node.
-				emitter.indent = emitter.indent - 2
-			}
-		}
+// yamlWriterWriteHandler uses emitter.output_writer to write the
+// emitted text.
+func yamlWriterWriteHandler(emitter *Emitter, buffer []byte) error {
+	_, err := emitter.output_writer.Write(buffer)
+	return err
+}
+
+// SetOutputString sets a string output.
+func (emitter *Emitter) SetOutputString(output_buffer *[]byte) {
+	if emitter.write_handler != nil {
+		panic("must set the output target only once")
 	}
-	return nil
+	emitter.write_handler = yamlStringWriteHandler
+	emitter.output_buffer = output_buffer
+}
+
+// SetOutputWriter sets a file output.
+func (emitter *Emitter) SetOutputWriter(w io.Writer) {
+	if emitter.write_handler != nil {
+		panic("must set the output target only once")
+	}
+	emitter.write_handler = yamlWriterWriteHandler
+	emitter.output_writer = w
+}
+
+// SetEncoding sets the output encoding.
+func (emitter *Emitter) SetEncoding(encoding Encoding) {
+	if emitter.encoding != ANY_ENCODING {
+		panic("must set the output encoding only once")
+	}
+	emitter.encoding = encoding
+}
+
+// SetCanonical sets the canonical output style.
+func (emitter *Emitter) SetCanonical(canonical bool) {
+	emitter.canonical = canonical
+}
+
+// SetIndent sets the indentation increment.
+func (emitter *Emitter) SetIndent(indent int) {
+	if indent < 2 || indent > 9 {
+		indent = 2
+	}
+	emitter.BestIndent = indent
+}
+
+// SetWidth sets the preferred line width.
+func (emitter *Emitter) SetWidth(width int) {
+	if width < 0 {
+		width = -1
+	}
+	emitter.best_width = width
+}
+
+// SetUnicode sets if unescaped non-ASCII characters are allowed.
+func (emitter *Emitter) SetUnicode(unicode bool) {
+	emitter.unicode = unicode
+}
+
+// SetLineBreak sets the preferred line break character.
+func (emitter *Emitter) SetLineBreak(line_break LineBreak) {
+	emitter.line_break = line_break
 }
 
 // State dispatcher.
@@ -304,6 +324,45 @@ func (emitter *Emitter) stateMachine(event *Event) error {
 		}
 	}
 	panic("invalid emitter state")
+}
+
+// Check if we need to accumulate more events before emitting.
+//
+// We accumulate extra
+//   - 1 event for DOCUMENT-START
+//   - 2 events for SEQUENCE-START
+//   - 3 events for MAPPING-START
+func (emitter *Emitter) needMoreEvents() bool {
+	if emitter.events_head == len(emitter.events) {
+		return true
+	}
+	var accumulate int
+	switch emitter.events[emitter.events_head].Type {
+	case DOCUMENT_START_EVENT:
+		accumulate = 1
+	case SEQUENCE_START_EVENT:
+		accumulate = 2
+	case MAPPING_START_EVENT:
+		accumulate = 3
+	default:
+		return false
+	}
+	if len(emitter.events)-emitter.events_head > accumulate {
+		return false
+	}
+	var level int
+	for i := emitter.events_head; i < len(emitter.events); i++ {
+		switch emitter.events[i].Type {
+		case STREAM_START_EVENT, DOCUMENT_START_EVENT, SEQUENCE_START_EVENT, MAPPING_START_EVENT:
+			level++
+		case STREAM_END_EVENT, DOCUMENT_END_EVENT, SEQUENCE_END_EVENT, MAPPING_END_EVENT:
+			level--
+		}
+		if level == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Expect STREAM-START.
@@ -473,18 +532,6 @@ func (emitter *Emitter) emitDocumentStart(event *Event, first bool) error {
 	}
 }
 
-// emitter preserves the original signature and delegates to
-// increaseIndentCompact without compact-sequence indentation
-func (emitter *Emitter) increaseIndent(flow, indentless bool) error {
-	return emitter.increaseIndentCompact(flow, indentless, false)
-}
-
-// processLineComment preserves the original signature and delegates to
-// processLineCommentLinebreak passing false for linebreak
-func (emitter *Emitter) processLineComment() error {
-	return emitter.processLineCommentLinebreak(false)
-}
-
 // Expect the root node.
 func (emitter *Emitter) emitDocumentContent(event *Event) error {
 	emitter.states = append(emitter.states, EMIT_DOCUMENT_END_STATE)
@@ -633,7 +680,9 @@ func (emitter *Emitter) emitFlowMappingKey(event *Event, first, trail bool) erro
 	}
 
 	if event.Type == MAPPING_END_EVENT {
-		if (emitter.canonical || len(emitter.HeadComment)+len(emitter.FootComment)+len(emitter.TailComment) > 0) && !first && !trail {
+		if (emitter.canonical ||
+			len(emitter.HeadComment)+len(emitter.FootComment)+len(emitter.TailComment) > 0) &&
+			!first && !trail {
 			if err := emitter.writeIndicator([]byte{','}, false, false, false); err != nil {
 				return err
 			}
@@ -737,13 +786,17 @@ func (emitter *Emitter) emitFlowMappingValue(event *Event, simple bool) error {
 // Expect a block item node.
 func (emitter *Emitter) emitBlockSequenceItem(event *Event, first bool) error {
 	if first {
-		// emitter.mapping context tells us if we are currently in a mapping context.
-		// emitter.column tells us which column we are in the yaml output. 0 is the first char of the column.
-		// emitter.indentation tells us if the last character was an indentation character.
-		// emitter.compact_sequence_indent tells us if '- ' is considered part of the indentation for sequence elements.
-		// So, `seq` means that we are in a mapping context, and we are either at the first char of the column or
-		//  the last character was not an indentation character, and we consider '- ' part of the indentation
-		//  for sequence elements.
+		// emitter.mapping context tells us if we are currently in a
+		// mapping context.  emitter.column tells us which column we
+		// are in the yaml output. 0 is the first char of the column.
+		// emitter.indentation tells us if the last character was an
+		// indentation character.
+		// emitter.compact_sequence_indent tells us if '- ' is
+		// considered part of the indentation for sequence elements.
+		// So, `seq` means that we are in a mapping context, and we are
+		// either at the first char of the column or the last character
+		// was not an indentation character, and we consider '- ' part
+		// of the indentation for sequence elements.
 		seq := emitter.mapping_context && (emitter.column == 0 || !emitter.indention) &&
 			emitter.CompactSequenceIndent
 		if err := emitter.increaseIndentCompact(false, false, seq); err != nil {
@@ -841,19 +894,23 @@ func (emitter *Emitter) emitBlockMappingValue(event *Event, simple bool) error {
 		}
 	}
 	if len(emitter.key_line_comment) > 0 {
-		// [Go] Line comments are generally associated with the value, but when there's
-		//      no value on the same line as a mapping key they end up attached to the
-		//      key itself.
+		// [Go] Line comments are generally associated with the value,
+		// but when there's no value on the same line as a mapping key
+		// they end up attached to the key itself.
 		if event.Type == SCALAR_EVENT {
 			if len(emitter.LineComment) == 0 {
-				// A scalar is coming and it has no line comments by itself yet,
-				// so just let it handle the line comment as usual. If it has a
-				// line comment, we can't have both so the one from the key is lost.
+				// A scalar is coming and it has no line
+				// comments by itself yet, so just let it
+				// handle the line comment as usual. If it has
+				// a line comment, we can't have both so the
+				// one from the key is lost.
 				emitter.LineComment = emitter.key_line_comment
 				emitter.key_line_comment = nil
 			}
-		} else if event.SequenceStyle() != FLOW_SEQUENCE_STYLE && (event.Type == MAPPING_START_EVENT || event.Type == SEQUENCE_START_EVENT) {
-			// An indented block follows, so write the comment right now.
+		} else if event.SequenceStyle() != FLOW_SEQUENCE_STYLE &&
+			(event.Type == MAPPING_START_EVENT || event.Type == SEQUENCE_START_EVENT) {
+			// An indented block follows, so write the comment
+			// right now.
 			emitter.LineComment, emitter.key_line_comment = emitter.key_line_comment, emitter.LineComment
 			if err := emitter.processLineComment(); err != nil {
 				return err
@@ -872,10 +929,6 @@ func (emitter *Emitter) emitBlockMappingValue(event *Event, simple bool) error {
 		return err
 	}
 	return nil
-}
-
-func (emitter *Emitter) silentNilEvent(event *Event) bool {
-	return event.Type == SCALAR_EVENT && event.Implicit && !emitter.canonical && len(emitter.scalar_data.value) == 0
 }
 
 // Expect a node.
@@ -913,15 +966,6 @@ func (emitter *Emitter) emitAlias(event *Event) error {
 	return nil
 }
 
-// requiredQuoteStyle returns the appropriate quote style based on the
-// emitter's quotePreference setting.
-func (emitter *Emitter) requiredQuoteStyle() ScalarStyle {
-	if emitter.quotePreference == QuoteDouble {
-		return DOUBLE_QUOTED_SCALAR_STYLE
-	}
-	return SINGLE_QUOTED_SCALAR_STYLE
-}
-
 // Expect SCALAR.
 func (emitter *Emitter) emitScalar(event *Event) error {
 	if err := emitter.selectScalarStyle(event); err != nil {
@@ -954,7 +998,8 @@ func (emitter *Emitter) emitSequenceStart(event *Event) error {
 	if err := emitter.processTag(); err != nil {
 		return err
 	}
-	if emitter.flow_level > 0 || emitter.canonical || event.SequenceStyle() == FLOW_SEQUENCE_STYLE ||
+	if emitter.flow_level > 0 || emitter.canonical ||
+		event.SequenceStyle() == FLOW_SEQUENCE_STYLE ||
 		emitter.checkEmptySequence() {
 		emitter.state = EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE
 	} else {
@@ -971,7 +1016,8 @@ func (emitter *Emitter) emitMappingStart(event *Event) error {
 	if err := emitter.processTag(); err != nil {
 		return err
 	}
-	if emitter.flow_level > 0 || emitter.canonical || event.MappingStyle() == FLOW_MAPPING_STYLE ||
+	if emitter.flow_level > 0 || emitter.canonical ||
+		event.MappingStyle() == FLOW_MAPPING_STYLE ||
 		emitter.checkEmptyMapping() {
 		emitter.state = EMIT_FLOW_MAPPING_FIRST_KEY_STATE
 	} else {
@@ -1035,56 +1081,6 @@ func (emitter *Emitter) checkSimpleKey() bool {
 		return false
 	}
 	return length <= 128
-}
-
-// Determine an acceptable scalar style.
-func (emitter *Emitter) selectScalarStyle(event *Event) error {
-	no_tag := len(emitter.tag_data.handle) == 0 && len(emitter.tag_data.suffix) == 0
-	if no_tag && !event.Implicit && !event.quoted_implicit {
-		return EmitterError{
-			Message: "neither tag nor implicit flags are specified",
-		}
-	}
-
-	style := event.ScalarStyle()
-	if style == ANY_SCALAR_STYLE {
-		style = PLAIN_SCALAR_STYLE
-	}
-	if emitter.canonical {
-		style = DOUBLE_QUOTED_SCALAR_STYLE
-	}
-	if emitter.simple_key_context && emitter.scalar_data.multiline {
-		style = DOUBLE_QUOTED_SCALAR_STYLE
-	}
-
-	if style == PLAIN_SCALAR_STYLE {
-		if emitter.flow_level > 0 && !emitter.scalar_data.flow_plain_allowed ||
-			emitter.flow_level == 0 && !emitter.scalar_data.block_plain_allowed {
-			style = emitter.requiredQuoteStyle()
-		}
-		if len(emitter.scalar_data.value) == 0 && (emitter.flow_level > 0 || emitter.simple_key_context) {
-			style = emitter.requiredQuoteStyle()
-		}
-		if no_tag && !event.Implicit {
-			style = emitter.requiredQuoteStyle()
-		}
-	}
-	if style == SINGLE_QUOTED_SCALAR_STYLE {
-		if !emitter.scalar_data.single_quoted_allowed {
-			style = DOUBLE_QUOTED_SCALAR_STYLE
-		}
-	}
-	if style == LITERAL_SCALAR_STYLE || style == FOLDED_SCALAR_STYLE {
-		if !emitter.scalar_data.block_allowed || emitter.flow_level > 0 || emitter.simple_key_context {
-			style = DOUBLE_QUOTED_SCALAR_STYLE
-		}
-	}
-
-	if no_tag && !event.quoted_implicit && style != PLAIN_SCALAR_STYLE {
-		emitter.tag_data.handle = []byte{'!'}
-	}
-	emitter.scalar_data.style = style
-	return nil
 }
 
 // Write an anchor.
@@ -1181,7 +1177,13 @@ func (emitter *Emitter) processHeadComment() error {
 	return nil
 }
 
-// Write an line comment.
+// processLineComment preserves the original signature and delegates to
+// processLineCommentLinebreak passing false for linebreak
+func (emitter *Emitter) processLineComment() error {
+	return emitter.processLineCommentLinebreak(false)
+}
+
+// Write a line comment.
 func (emitter *Emitter) processLineCommentLinebreak(linebreak bool) error {
 	if len(emitter.LineComment) == 0 {
 		// The next 3 lines are needed to resolve an issue with leading newlines
@@ -1347,7 +1349,9 @@ func (emitter *Emitter) analyzeScalar(value []byte) error {
 		return nil
 	}
 
-	if len(value) >= 3 && ((value[0] == '-' && value[1] == '-' && value[2] == '-') || (value[0] == '.' && value[1] == '.' && value[2] == '.')) {
+	if len(value) >= 3 &&
+		((value[0] == '-' && value[1] == '-' && value[2] == '-') ||
+			(value[0] == '.' && value[1] == '.' && value[2] == '.')) {
 		block_indicators = true
 		flow_indicators = true
 	}
@@ -1359,7 +1363,8 @@ func (emitter *Emitter) analyzeScalar(value []byte) error {
 
 		if i == 0 {
 			switch value[i] {
-			case '#', ',', '[', ']', '{', '}', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`':
+			case '#', ',', '[', ']', '{', '}', '&', '*', '!',
+				'|', '>', '\'', '"', '%', '@', '`':
 				flow_indicators = true
 				block_indicators = true
 			case '?', ':':
@@ -1425,7 +1430,8 @@ func (emitter *Emitter) analyzeScalar(value []byte) error {
 			previous_break = false
 		}
 
-		// [Go]: Why 'z'? Couldn't be the end of the string as that's the loop condition.
+		// [Go]: Why 'z'? Couldn't be the end of the string as that's
+		// the loop condition.
 		preceded_by_whitespace = isBlankOrZero(value, i)
 	}
 
@@ -1500,7 +1506,8 @@ func (emitter *Emitter) analyzeEvent(event *Event) error {
 				return err
 			}
 		}
-		if len(event.Tag) > 0 && (emitter.canonical || (!event.Implicit && !event.quoted_implicit)) {
+		if len(event.Tag) > 0 && (emitter.canonical ||
+			(!event.Implicit && !event.quoted_implicit)) {
 			if err := emitter.analyzeTag(event.Tag); err != nil {
 				return err
 			}
@@ -1536,6 +1543,58 @@ func (emitter *Emitter) analyzeEvent(event *Event) error {
 	return nil
 }
 
+// Determine an acceptable scalar style.
+func (emitter *Emitter) selectScalarStyle(event *Event) error {
+	no_tag := len(emitter.tag_data.handle) == 0 && len(emitter.tag_data.suffix) == 0
+	if no_tag && !event.Implicit && !event.quoted_implicit {
+		return EmitterError{
+			Message: "neither tag nor implicit flags are specified",
+		}
+	}
+
+	style := event.ScalarStyle()
+	if style == ANY_SCALAR_STYLE {
+		style = PLAIN_SCALAR_STYLE
+	}
+	if emitter.canonical {
+		style = DOUBLE_QUOTED_SCALAR_STYLE
+	}
+	if emitter.simple_key_context && emitter.scalar_data.multiline {
+		style = DOUBLE_QUOTED_SCALAR_STYLE
+	}
+
+	if style == PLAIN_SCALAR_STYLE {
+		if emitter.flow_level > 0 && !emitter.scalar_data.flow_plain_allowed ||
+			emitter.flow_level == 0 && !emitter.scalar_data.block_plain_allowed {
+			style = emitter.requiredQuoteStyle()
+		}
+		if len(emitter.scalar_data.value) == 0 &&
+			(emitter.flow_level > 0 || emitter.simple_key_context) {
+			style = emitter.requiredQuoteStyle()
+		}
+		if no_tag && !event.Implicit {
+			style = emitter.requiredQuoteStyle()
+		}
+	}
+	if style == SINGLE_QUOTED_SCALAR_STYLE {
+		if !emitter.scalar_data.single_quoted_allowed {
+			style = DOUBLE_QUOTED_SCALAR_STYLE
+		}
+	}
+	if style == LITERAL_SCALAR_STYLE || style == FOLDED_SCALAR_STYLE {
+		if !emitter.scalar_data.block_allowed ||
+			emitter.flow_level > 0 || emitter.simple_key_context {
+			style = DOUBLE_QUOTED_SCALAR_STYLE
+		}
+	}
+
+	if no_tag && !event.quoted_implicit && style != PLAIN_SCALAR_STYLE {
+		emitter.tag_data.handle = []byte{'!'}
+	}
+	emitter.scalar_data.style = style
+	return nil
+}
+
 // Write the BOM character.
 func (emitter *Emitter) writeBom() error {
 	if err := emitter.flushIfNeeded(); err != nil {
@@ -1549,12 +1608,14 @@ func (emitter *Emitter) writeBom() error {
 	return nil
 }
 
+// writeIndent writes the appropriate indentation to the output.
 func (emitter *Emitter) writeIndent() error {
 	indent := emitter.indent
 	if indent < 0 {
 		indent = 0
 	}
-	if !emitter.indention || emitter.column > indent || (emitter.column == indent && !emitter.whitespace) {
+	if !emitter.indention || emitter.column > indent ||
+		(emitter.column == indent && !emitter.whitespace) {
 		if err := emitter.putLineBreak(); err != nil {
 			return err
 		}
@@ -1575,6 +1636,7 @@ func (emitter *Emitter) writeIndent() error {
 	return nil
 }
 
+// writeIndicator writes a YAML indicator (like ':', '-', '?') to the output.
 func (emitter *Emitter) writeIndicator(indicator []byte, need_whitespace, is_whitespace, is_indention bool) error {
 	if need_whitespace && !emitter.whitespace {
 		if err := emitter.put(' '); err != nil {
@@ -1590,6 +1652,7 @@ func (emitter *Emitter) writeIndicator(indicator []byte, need_whitespace, is_whi
 	return nil
 }
 
+// writeAnchor writes an anchor name to the output.
 func (emitter *Emitter) writeAnchor(value []byte) error {
 	if err := emitter.writeAll(value); err != nil {
 		return err
@@ -1599,6 +1662,7 @@ func (emitter *Emitter) writeAnchor(value []byte) error {
 	return nil
 }
 
+// writeTagHandle writes a tag handle to the output.
 func (emitter *Emitter) writeTagHandle(value []byte) error {
 	if !emitter.whitespace {
 		if err := emitter.put(' '); err != nil {
@@ -1613,6 +1677,8 @@ func (emitter *Emitter) writeTagHandle(value []byte) error {
 	return nil
 }
 
+// writeTagContent writes a tag URI to the output, URL-encoding special
+// characters as needed.
 func (emitter *Emitter) writeTagContent(value []byte, need_whitespace bool) error {
 	if need_whitespace && !emitter.whitespace {
 		if err := emitter.put(' '); err != nil {
@@ -1622,7 +1688,8 @@ func (emitter *Emitter) writeTagContent(value []byte, need_whitespace bool) erro
 	for i := 0; i < len(value); {
 		var must_write bool
 		switch value[i] {
-		case ';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '_', '.', '~', '*', '\'', '(', ')', '[', ']':
+		case ';', '/', '?', ':', '@', '&', '=', '+', '$', ',',
+			'_', '.', '~', '*', '\'', '(', ')', '[', ']':
 			must_write = true
 		default:
 			must_write = isAlpha(value, i)
@@ -1667,6 +1734,8 @@ func (emitter *Emitter) writeTagContent(value []byte, need_whitespace bool) erro
 	return nil
 }
 
+// writePlainScalar writes a plain (unquoted) scalar to the output, handling
+// line breaks and wrapping as needed.
 func (emitter *Emitter) writePlainScalar(value []byte, allow_breaks bool) error {
 	if len(value) > 0 && !emitter.whitespace {
 		if err := emitter.put(' '); err != nil {
@@ -1678,7 +1747,9 @@ func (emitter *Emitter) writePlainScalar(value []byte, allow_breaks bool) error 
 	breaks := false
 	for i := 0; i < len(value); {
 		if isSpace(value, i) {
-			if allow_breaks && !spaces && emitter.column > emitter.best_width && !isSpace(value, i+1) {
+			if allow_breaks && !spaces &&
+				emitter.column > emitter.best_width &&
+				!isSpace(value, i+1) {
 				if err := emitter.writeIndent(); err != nil {
 					return err
 				}
@@ -1725,6 +1796,8 @@ func (emitter *Emitter) writePlainScalar(value []byte, allow_breaks bool) error 
 	return nil
 }
 
+// writeSingleQuotedScalar writes a single-quoted scalar to the output,
+// escaping single quotes and handling line breaks.
 func (emitter *Emitter) writeSingleQuotedScalar(value []byte, allow_breaks bool) error {
 	if err := emitter.writeIndicator([]byte{'\''}, true, false, false); err != nil {
 		return err
@@ -1734,7 +1807,9 @@ func (emitter *Emitter) writeSingleQuotedScalar(value []byte, allow_breaks bool)
 	breaks := false
 	for i := 0; i < len(value); {
 		if isSpace(value, i) {
-			if allow_breaks && !spaces && emitter.column > emitter.best_width && i > 0 && i < len(value)-1 && !isSpace(value, i+1) {
+			if allow_breaks && !spaces &&
+				emitter.column > emitter.best_width &&
+				i > 0 && i < len(value)-1 && !isSpace(value, i+1) {
 				if err := emitter.writeIndent(); err != nil {
 					return err
 				}
@@ -1782,6 +1857,8 @@ func (emitter *Emitter) writeSingleQuotedScalar(value []byte, allow_breaks bool)
 	return nil
 }
 
+// writeDoubleQuotedScalar writes a double-quoted scalar to the output,
+// escaping special characters and handling Unicode.
 func (emitter *Emitter) writeDoubleQuotedScalar(value []byte, allow_breaks bool) error {
 	spaces := false
 	if err := emitter.writeIndicator([]byte{'"'}, true, false, false); err != nil {
@@ -1874,7 +1951,9 @@ func (emitter *Emitter) writeDoubleQuotedScalar(value []byte, allow_breaks bool)
 			}
 			spaces = false
 		} else if isSpace(value, i) {
-			if allow_breaks && !spaces && emitter.column > emitter.best_width && i > 0 && i < len(value)-1 {
+			if allow_breaks && !spaces &&
+				emitter.column > emitter.best_width &&
+				i > 0 && i < len(value)-1 {
 				if err := emitter.writeIndent(); err != nil {
 					return err
 				}
@@ -1903,10 +1982,13 @@ func (emitter *Emitter) writeDoubleQuotedScalar(value []byte, allow_breaks bool)
 	return nil
 }
 
+// writeBlockScalarHints writes the indentation and chomping indicators for
+// block scalars.
 func (emitter *Emitter) writeBlockScalarHints(value []byte) error {
 	if isSpace(value, 0) {
 		// https://github.com/yaml/go-yaml/issues/65
-		// isLineBreak(value, 0) removed as the linebreak will only write the indentation value.
+		// isLineBreak(value, 0) removed as the linebreak will only
+		// write the indentation value.
 		indent_hint := []byte{'0' + byte(emitter.BestIndent)}
 		if err := emitter.writeIndicator(indent_hint, false, false, false); err != nil {
 			return err
@@ -1947,6 +2029,8 @@ func (emitter *Emitter) writeBlockScalarHints(value []byte) error {
 	return nil
 }
 
+// writeLiteralScalar writes a literal block scalar (|) to the output,
+// preserving line breaks exactly.
 func (emitter *Emitter) writeLiteralScalar(value []byte) error {
 	if err := emitter.writeIndicator([]byte{'|'}, true, false, false); err != nil {
 		return err
@@ -1982,6 +2066,8 @@ func (emitter *Emitter) writeLiteralScalar(value []byte) error {
 	return nil
 }
 
+// writeFoldedScalar writes a folded block scalar (>) to the output, folding
+// long lines at appropriate breaks.
 func (emitter *Emitter) writeFoldedScalar(value []byte) error {
 	if err := emitter.writeIndicator([]byte{'>'}, true, false, false); err != nil {
 		return err
@@ -2021,7 +2107,9 @@ func (emitter *Emitter) writeFoldedScalar(value []byte) error {
 				}
 				leading_spaces = isBlank(value, i)
 			}
-			if !breaks && isSpace(value, i) && !isSpace(value, i+1) && emitter.column > emitter.best_width {
+			if !breaks && isSpace(value, i) &&
+				!isSpace(value, i+1) &&
+				emitter.column > emitter.best_width {
 				if err := emitter.writeIndent(); err != nil {
 					return err
 				}
@@ -2038,6 +2126,8 @@ func (emitter *Emitter) writeFoldedScalar(value []byte) error {
 	return nil
 }
 
+// writeComment writes a comment to the output, ensuring each line starts
+// with '#' and handling line breaks appropriately.
 func (emitter *Emitter) writeComment(comment []byte) error {
 	breaks := false
 	pound := false
@@ -2080,4 +2170,202 @@ func (emitter *Emitter) writeComment(comment []byte) error {
 
 	emitter.whitespace = true
 	return nil
+}
+
+// Flush the buffer if needed.
+func (emitter *Emitter) flushIfNeeded() error {
+	if emitter.buffer_pos+5 >= len(emitter.buffer) {
+		return emitter.flush()
+	}
+	return nil
+}
+
+// Put a character to the output buffer.
+func (emitter *Emitter) put(value byte) error {
+	if emitter.buffer_pos+5 >= len(emitter.buffer) {
+		if err := emitter.flush(); err != nil {
+			return err
+		}
+	}
+	emitter.buffer[emitter.buffer_pos] = value
+	emitter.buffer_pos++
+	emitter.column++
+	return nil
+}
+
+// Put a line break to the output buffer.
+func (emitter *Emitter) putLineBreak() error {
+	if emitter.buffer_pos+5 >= len(emitter.buffer) {
+		if err := emitter.flush(); err != nil {
+			return err
+		}
+	}
+	switch emitter.line_break {
+	case CR_BREAK:
+		emitter.buffer[emitter.buffer_pos] = '\r'
+		emitter.buffer_pos += 1
+	case LN_BREAK:
+		emitter.buffer[emitter.buffer_pos] = '\n'
+		emitter.buffer_pos += 1
+	case CRLN_BREAK:
+		emitter.buffer[emitter.buffer_pos+0] = '\r'
+		emitter.buffer[emitter.buffer_pos+1] = '\n'
+		emitter.buffer_pos += 2
+	default:
+		panic("unknown line break setting")
+	}
+	if emitter.column == 0 {
+		emitter.space_above = true
+	}
+	emitter.column = 0
+	emitter.line++
+	// [Go] Do this here and below and drop from everywhere else (see
+	// commented lines).
+	emitter.indention = true
+	return nil
+}
+
+// Copy a character from a string into buffer.
+func (emitter *Emitter) write(s []byte, i *int) error {
+	if emitter.buffer_pos+5 >= len(emitter.buffer) {
+		if err := emitter.flush(); err != nil {
+			return err
+		}
+	}
+	p := emitter.buffer_pos
+	w := width(s[*i])
+	switch w {
+	case 4:
+		emitter.buffer[p+3] = s[*i+3]
+		fallthrough
+	case 3:
+		emitter.buffer[p+2] = s[*i+2]
+		fallthrough
+	case 2:
+		emitter.buffer[p+1] = s[*i+1]
+		fallthrough
+	case 1:
+		emitter.buffer[p+0] = s[*i+0]
+	default:
+		panic("unknown character width")
+	}
+	emitter.column++
+	emitter.buffer_pos += w
+	*i += w
+	return nil
+}
+
+// Write a whole string into buffer.
+func (emitter *Emitter) writeAll(s []byte) error {
+	for i := 0; i < len(s); {
+		if err := emitter.write(s, &i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Copy a line break character from a string into buffer.
+func (emitter *Emitter) writeLineBreak(s []byte, i *int) error {
+	if s[*i] == '\n' {
+		if err := emitter.putLineBreak(); err != nil {
+			return err
+		}
+		*i++
+	} else {
+		if err := emitter.write(s, i); err != nil {
+			return err
+		}
+		if emitter.column == 0 {
+			emitter.space_above = true
+		}
+		emitter.column = 0
+		emitter.line++
+		// [Go] Do this here and above and drop from everywhere else
+		// (see commented lines).
+		emitter.indention = true
+	}
+	return nil
+}
+
+// Append a directive to the directives stack.
+func (emitter *Emitter) appendTagDirective(value *TagDirective, allow_duplicates bool) error {
+	for i := 0; i < len(emitter.tag_directives); i++ {
+		if bytes.Equal(value.handle, emitter.tag_directives[i].handle) {
+			if allow_duplicates {
+				return nil
+			}
+			return EmitterError{
+				Message: "duplicate %TAG directive",
+			}
+		}
+	}
+
+	// [Go] Do we actually need to copy this given garbage collection
+	// and the lack of deallocating destructors?
+	tag_copy := TagDirective{
+		handle: make([]byte, len(value.handle)),
+		prefix: make([]byte, len(value.prefix)),
+	}
+	copy(tag_copy.handle, value.handle)
+	copy(tag_copy.prefix, value.prefix)
+	emitter.tag_directives = append(emitter.tag_directives, tag_copy)
+	return nil
+}
+
+// Increase the indentation level.
+func (emitter *Emitter) increaseIndentCompact(flow, indentless bool, compact_seq bool) error {
+	emitter.indents = append(emitter.indents, emitter.indent)
+	if emitter.indent < 0 {
+		if flow {
+			emitter.indent = emitter.BestIndent
+		} else {
+			emitter.indent = 0
+		}
+	} else if !indentless {
+		// [Go] This was changed so that indentations are more regular.
+		if emitter.states[len(emitter.states)-1] == EMIT_BLOCK_SEQUENCE_ITEM_STATE {
+			// The first indent inside a sequence will just skip
+			// the "- " indicator.
+			emitter.indent += 2
+		} else {
+			// Everything else aligns to the chosen indentation.
+			emitter.indent = emitter.BestIndent *
+				((emitter.indent + emitter.BestIndent) / emitter.BestIndent)
+			if compact_seq {
+				// The value compact_seq passed in is almost
+				// always set to `false` when this function is
+				// called, except when we are dealing with
+				// sequence nodes. So this gets triggered to
+				// subtract 2 only when we are increasing the
+				// indent to account for sequence nodes, which
+				// will be correct because we need to subtract
+				// 2 to account for the - at the beginning of
+				// the sequence node.
+				emitter.indent = emitter.indent - 2
+			}
+		}
+	}
+	return nil
+}
+
+// emitter preserves the original signature and delegates to
+// increaseIndentCompact without compact-sequence indentation
+func (emitter *Emitter) increaseIndent(flow, indentless bool) error {
+	return emitter.increaseIndentCompact(flow, indentless, false)
+}
+
+// silentNilEvent checks if an event represents an implicit null scalar that
+// can be omitted in non-canonical mode.
+func (emitter *Emitter) silentNilEvent(event *Event) bool {
+	return event.Type == SCALAR_EVENT && event.Implicit && !emitter.canonical && len(emitter.scalar_data.value) == 0
+}
+
+// requiredQuoteStyle returns the appropriate quote style based on the
+// emitter's quotePreference setting.
+func (emitter *Emitter) requiredQuoteStyle() ScalarStyle {
+	if emitter.quotePreference == QuoteDouble {
+		return DOUBLE_QUOTED_SCALAR_STYLE
+	}
+	return SINGLE_QUOTED_SCALAR_STYLE
 }
