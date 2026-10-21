@@ -176,6 +176,7 @@ internal_server:
   http_listen_address: ""
   tls_min_version: VersionTLS12
   tls_cipher_suites: cipher1,cipher2
+  tls_curve_preferences: X25519MLKEM768,X25519,CurveP256,CurveP384
   http_tls_config:
     cert_file: /var/run/tls/http/tls.crt
     key_file: /var/run/tls/http/tls.key
@@ -192,6 +193,7 @@ server:
   http_server_write_timeout: 10m0s
   tls_min_version: VersionTLS12
   tls_cipher_suites: cipher1,cipher2
+  tls_curve_preferences: X25519MLKEM768,X25519,CurveP256,CurveP384
   http_tls_config:
     cert_file: /var/run/tls/http/tls.crt
     key_file: /var/run/tls/http/tls.key

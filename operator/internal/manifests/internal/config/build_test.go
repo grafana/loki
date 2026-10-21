@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -1192,6 +1193,7 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 		},
 		TLS: TLSOptions{
 			Ciphers:       []string{"cipher1", "cipher2"},
+			Groups:        []string{"X25519MLKEM768", "X25519", "secp256r1", "secp384r1"},
 			MinTLSVersion: "VersionTLS12",
 			Paths: TLSFilePaths{
 				CA: "/var/run/tls/ca.pem",
@@ -1276,6 +1278,83 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
+}
+
+func TestBuild_TLSCurvePreferences(t *testing.T) {
+	opts := Options{
+		Stack: lokiv1.LokiStackSpec{
+			Replication: &lokiv1.ReplicationSpec{Factor: 1},
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					IngestionLimits: &lokiv1.IngestionLimitSpec{},
+					QueryLimits:     &lokiv1.QueryLimitSpec{},
+				},
+			},
+		},
+	}
+	for _, encryption := range []struct {
+		name string
+		http bool
+		grpc bool
+	}{
+		{name: "plaintext"},
+		{name: "http", http: true},
+		{name: "grpc", grpc: true},
+		{name: "http-and-grpc", http: true, grpc: true},
+	} {
+		for _, profile := range []struct {
+			name   string
+			groups []string
+			want   string
+		}{
+			{name: "nil-groups"},
+			{name: "empty-groups", groups: []string{}},
+			{
+				name:   "profile-groups",
+				groups: []string{"X25519MLKEM768", "X25519", "secp256r1", "secp384r1"},
+				want:   "X25519MLKEM768,X25519,CurveP256,CurveP384",
+			},
+			{
+				name:   "custom-groups",
+				groups: []string{"secp521r1", "secp384r1", "X25519", "secp256r1"},
+				want:   "CurveP521,CurveP384,X25519,CurveP256",
+			},
+		} {
+			t.Run(encryption.name+"/"+profile.name, func(t *testing.T) {
+				testOpts := opts
+				testOpts.Gates.HTTPEncryption = encryption.http
+				testOpts.Gates.GRPCEncryption = encryption.grpc
+				testOpts.TLS.Groups = profile.groups
+				cfg, _, err := Build(testOpts)
+				require.NoError(t, err)
+
+				var actual map[string]any
+				require.NoError(t, yaml.Unmarshal(cfg, &actual))
+				if encryption.http {
+					require.Contains(t, actual, "internal_server")
+				} else {
+					require.NotContains(t, actual, "internal_server")
+				}
+				wantFields := 0
+				for _, server := range []struct {
+					name    string
+					enabled bool
+				}{
+					{name: "server", enabled: encryption.http || encryption.grpc},
+					{name: "internal_server", enabled: encryption.http},
+				} {
+					settings, _ := actual[server.name].(map[string]any)
+					if server.enabled && profile.want != "" {
+						wantFields++
+						require.Equal(t, profile.want, settings["tls_curve_preferences"])
+					} else {
+						require.NotContains(t, settings, "tls_curve_preferences")
+					}
+				}
+				require.Equal(t, wantFields, strings.Count(string(cfg), "tls_curve_preferences:"))
+			})
+		}
+	}
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverrides(t *testing.T) {
