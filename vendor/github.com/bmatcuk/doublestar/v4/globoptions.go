@@ -29,6 +29,9 @@ func newGlob(opts ...GlobOption) *glob {
 // FilepathGlob. If passed, doublestar will treat all alphabetic characters as
 // case insensitive (i.e. "a" in the pattern would match "a" or "A"). This is
 // useful for platforms like Windows where paths are case insensitive by default.
+//
+// Note that this case insensitive comparison is naïve, simply using
+// `unicode.ToLower()` to compare.
 func WithCaseInsensitive() GlobOption {
 	return func(g *glob) {
 		g.caseInsensitive = true
