@@ -102,9 +102,10 @@ eval instant at 60s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1
 eval range from 40s to 60s step 20s sum by (sp_extracted) (count_over_time({app="a"} | logfmt [1m]))
   {sp_extracted="p1"} 2 3
   {sp_extracted="p2"} 1 2
+# `tri` is a stream label, structured metadata, and a parsed field. The parsed value is dropped, so
+# the metadata value stays under `tri_extracted`.
 eval instant at 60s sum by (tri_extracted) (count_over_time({app="a"} | logfmt [1m]))
-  {tri_extracted="p1"} 3
-  {tri_extracted="p2"} 2
+  {tri_extracted="m"} 5
 # The line has no `sm` key, so the spilled metadata value stays.
 eval instant at 60s sum by (sm_extracted) (count_over_time({app="a"} | logfmt [1m]))
   {sm_extracted="m"} 5
