@@ -256,14 +256,13 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			require.Equal(t, rec.Offset, proc.lastOffset)
 
 			// Advance time and force a flush. The flush runs in the flush loop
-			// and fails. The flusher is not re-entrant, so the flush loop wraps
-			// the failure in errUnrecoverableFlush. The partition processor then
-			// restarts and reads the records again from Kafka.
+			// and fails. The flusher is not re-entrant, so the flush loop stops
+			// with the error. The partition processor then restarts and reads
+			// the records again from Kafka.
 			time.Sleep(time.Second)
 			require.NoError(t, proc.flush(ctx, "forced"))
 			err := stop()
-			require.ErrorIs(t, err, errUnrecoverableFlush)
-			require.ErrorContains(t, err, "mock error")
+			require.ErrorContains(t, err, "forced flush up to offset 0: mock error")
 
 			// flush reset these fields when it sent the flush request, before
 			// the flush failed.
@@ -289,16 +288,14 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			cancel()
 			synctest.Wait()
 
-			// The flush loop stopped and ctx is canceled, so a later flush
-			// fails with either error.
+			// The flush loop stopped, so a later flush fails.
 			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
-			err := proc.flush(ctx, "forced")
-			require.True(t, errors.Is(err, errFlushLoopStopped) || errors.Is(err, context.Canceled), "unexpected error: %v", err)
+			require.Error(t, proc.flush(ctx, "forced"))
 			require.NoError(t, stop())
 		})
 	})
 
-	t.Run("escalates a canceled error while the context is live", func(t *testing.T) {
+	t.Run("stops the flush loop with an error when a flush fails with context.Canceled while the context is live", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			var (
 				ctx            = t.Context()
@@ -313,7 +310,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			require.NoError(t, proc.flush(ctx, "forced"))
 			err := stop()
-			require.ErrorIs(t, err, errUnrecoverableFlush)
 			require.ErrorIs(t, err, context.Canceled)
 			require.ErrorContains(t, err, "forced flush up to offset 0")
 		})
@@ -470,12 +466,10 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 
 			err := proc.processRecord(ctx, newRecord(t, 3))
 			require.ErrorIs(t, err, errFlush)
-			require.ErrorIs(t, err, errFlushLoopStopped)
 			require.Equal(t, []int64{1}, flushCommitter.startedOffsets())
 
 			err = stop()
-			require.ErrorIs(t, err, errUnrecoverableFlush)
-			require.ErrorContains(t, err, "mock error")
+			require.ErrorContains(t, err, "builder_full flush up to offset 1: mock error")
 		})
 	})
 
@@ -494,8 +488,7 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 
 			flushCommitter.results <- errors.New("mock error")
 			err := waitRun(t, ran)
-			require.ErrorIs(t, err, errUnrecoverableFlush)
-			require.ErrorContains(t, err, "mock error")
+			require.ErrorContains(t, err, "builder_full flush up to offset 1: mock error")
 		})
 	})
 

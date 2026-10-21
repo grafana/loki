@@ -149,15 +149,10 @@ func (p *processor) stopping(_ error) error {
 	return nil
 }
 
-var (
-	errUnrecoverableFlush = fmt.Errorf("unrecoverable flush failure")
-	errFlushLoopStopped   = fmt.Errorf("flush loop stopped")
-
-	// errFlush wraps every error that processRecord gets from flush. Run stops
-	// on it, because the processor cannot commit the records that it appends
-	// after a failed flush.
-	errFlush = errors.New("failed to flush")
-)
+// errFlush wraps every error that processRecord and idleFlush get from flush.
+// Run stops on it, because the processor cannot commit the records that it
+// appends after a failed flush.
+var errFlush = errors.New("failed to flush")
 
 func (p *processor) Run(ctx context.Context) (returnErr error) {
 	defer level.Info(p.logger).Log("msg", "stopped partition processor")
@@ -292,8 +287,8 @@ func (p *processor) needsIdleFlush() bool {
 // flushes them and commits the offset of the last appended record, while the
 // processor keeps appending records to new builders.
 //
-// flush waits while the loop runs the previous flush. It returns
-// errFlushLoopStopped if the loop stopped, or the error of ctx.
+// flush waits while the loop runs the previous flush. It returns an error if
+// the loop stopped or ctx is canceled.
 func (p *processor) flush(ctx context.Context, reason string) error {
 	req := flushRequest{
 		builders: p.builder.getBuilders(),
@@ -317,7 +312,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.metrics.flushWaitSeconds.Add(time.Since(waitStart).Seconds())
 		return nil
 	case <-p.flushLoopDone:
-		return errFlushLoopStopped
+		return errors.New("flush loop stopped")
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -342,7 +337,7 @@ func (p *processor) startFlushLoop(ctx context.Context) {
 			if err != nil {
 				// The builders are already reset, so the processor cannot flush
 				// them again. A restart reads the records again from Kafka.
-				p.flushFailed <- fmt.Errorf("%w: %s flush up to offset %d: %w", errUnrecoverableFlush, req.reason, req.offset, err)
+				p.flushFailed <- fmt.Errorf("%s flush up to offset %d: %w", req.reason, req.offset, err)
 				return
 			}
 		}
