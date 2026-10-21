@@ -689,3 +689,5 @@ func TestTableManager_DelayQueryReadinessUntilPreload(t *testing.T) {
 		})
 	}
 }
+
+func (m *mockTable) DropNotOwned(_ context.Context, _ TenantFilter) error { return nil }
