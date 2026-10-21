@@ -8,8 +8,12 @@ import (
 	"time"
 
 	gokitlog "github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -51,13 +55,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	b, err := logsobj.NewBuilder(cfg, scr, nil, gokitlog.NewNopLogger(), nil)
+	b, err := logsobj.NewBuilder(cfg, scr, logsobj.NewBuilderMetrics(), gokitlog.NewNopLogger(), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	start := time.Now()
-	sortedObj, closer, err := b.CopyAndSort(ctx, orig)
+	if err := appendObject(ctx, b, orig); err != nil {
+		log.Fatal(err)
+	}
+	sortedObj, closer, err := b.FlushAndSort(ctx)
 	duration := time.Since(start)
 	if err != nil {
 		log.Fatal(err)
@@ -97,4 +104,40 @@ func main() {
 	}
 
 	log.Printf("Written %d bytes to %s in %s\n", written, fw.Name(), duration)
+}
+
+// appendObject appends every log record of obj to b.
+func appendObject(ctx context.Context, b *logsobj.Builder, obj *dataobj.Object) error {
+	for _, tenant := range obj.Tenants() {
+		streamLabels := make(map[int64]labels.Labels)
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
+			opened, err := streams.Open(ctx, sec)
+			if err != nil {
+				return err
+			}
+			for res := range streams.IterSection(ctx, opened) {
+				stream, err := res.Value()
+				if err != nil {
+					return err
+				}
+				streamLabels[stream.ID] = stream.Labels.Copy()
+			}
+		}
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
+			opened, err := logs.Open(ctx, sec)
+			if err != nil {
+				return err
+			}
+			for res := range logs.IterSection(ctx, opened) {
+				record, err := res.Value()
+				if err != nil {
+					return err
+				}
+				if err := b.AppendRecord(tenant, streamLabels[record.StreamID], record.Copy(), record.Timestamp); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -21,7 +21,8 @@ import (
 )
 
 // TestBuilder_EndToEnd is a sanity check for the full builder pipeline:
-// Append -> Flush (intermediate object) -> CopyAndSort (final object).
+// Append -> Flush (intermediate object), and Append -> FlushAndSort (final
+// object) on a second builder with the same dataset.
 //
 // The dataset is randomly generated with a fixed seed to broadly exercise:
 // - intermediate log sections are individually ordered.
@@ -117,9 +118,10 @@ func TestBuilder_EndToEnd(t *testing.T) {
 		intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
 	}
 
-	mergeBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	sortBuilder, err := NewBuilder(baseCfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 	require.NoError(t, err)
-	obj2, closer2, err := mergeBuilder.CopyAndSort(t.Context(), obj1)
+	appendDataset(t, sortBuilder)
+	obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	defer closer2.Close()
 

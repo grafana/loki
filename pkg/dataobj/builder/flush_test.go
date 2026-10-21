@@ -59,27 +59,24 @@ func TestFlusher_Flush(t *testing.T) {
 		"loki_dataobj_builder_flush_failures_total",
 	}
 
-	t.Run("should succeed", func(t *testing.T) {
+	t.Run("should succeed and transfer ownership of the object to the caller", func(t *testing.T) {
 		var (
 			reg          = prometheus.NewRegistry()
 			testCtx      = t.Context()
 			testBuilder  = newTestMockBuilder(t)
-			testSorter   = &mockSorter{}
 			testUploader = &mockUploader{}
 		)
-		f := newFlusher(testSorter, testUploader, log.NewNopLogger(), reg)
+		testBuilder.flushCloser = &countingCloser{}
+		f := newFlusher(testUploader, log.NewNopLogger(), reg)
 		obj, objCloser, objPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.NoError(t, err)
 		require.NotNil(t, obj)
 		require.NotNil(t, objCloser)
 		require.Equal(t, "object_001", objPath)
-		// Check that the dataobj was flushed and uploaded.
 		require.Len(t, testUploader.uploaded, 1)
-		// The sorted object is the caller's to release, so the flusher must not
-		// have closed it.
-		require.Equal(t, 0, testSorter.closer.closed)
+		require.Equal(t, 0, testBuilder.flushCloser.closed)
 		require.NoError(t, objCloser.Close())
-		require.Equal(t, 1, testSorter.closer.closed)
+		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectSuccessMetrics), flushMetricNames...))
 	})
 
@@ -90,54 +87,47 @@ func TestFlusher_Flush(t *testing.T) {
 			testBuilder = newTestMockBuilder(t)
 		)
 		testBuilder.nextErr = errors.New("mock error")
-		f := newFlusher(&mockSorter{}, &mockUploader{}, log.NewNopLogger(), reg)
+		f := newFlusher(&mockUploader{}, log.NewNopLogger(), reg)
 		obj, objCloser, objPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.EqualError(t, err, "failed to flush data object builder: mock error")
-		// Nothing was built, so there is nothing for the caller to release.
 		require.Nil(t, obj)
 		require.Nil(t, objCloser)
 		require.Empty(t, objPath)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectFailureMetrics), flushMetricNames...))
 	})
 
-	t.Run("should release the sorted object when the upload fails", func(t *testing.T) {
+	t.Run("should release the object when the upload fails", func(t *testing.T) {
 		var (
 			reg         = prometheus.NewRegistry()
 			testCtx     = t.Context()
 			testBuilder = newTestMockBuilder(t)
-			testSorter  = &mockSorter{}
 		)
-		f := newFlusher(testSorter, &failureUploader{}, log.NewNopLogger(), reg)
+		testBuilder.flushCloser = &countingCloser{}
+		f := newFlusher(&failureUploader{}, log.NewNopLogger(), reg)
 		obj, objCloser, objPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.EqualError(t, err, "failed to upload object: mock error")
 		require.Nil(t, obj)
 		require.Nil(t, objCloser)
 		require.Empty(t, objPath)
-		// The caller gets nothing to close, so the flusher must release the
-		// sorted object itself rather than leaking its scratch storage.
-		require.Equal(t, 1, testSorter.closer.closed)
+		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectFailureMetrics), flushMetricNames...))
 	})
 
-	t.Run("should not fail the flush when releasing the unsorted object fails", func(t *testing.T) {
+	t.Run("should count a failure to release the uploaded object without failing the flush", func(t *testing.T) {
 		var (
 			reg         = prometheus.NewRegistry()
 			testCtx     = t.Context()
 			testBuilder = newTestMockBuilder(t)
-			testSorter  = &mockSorter{}
 		)
-		// The object is already uploaded by the time the unsorted object is
-		// released, so a failure to release it must be logged, not returned.
 		testBuilder.flushCloser = &countingCloser{err: errors.New("close error")}
-		f := newFlusher(testSorter, &mockUploader{}, log.NewNopLogger(), reg)
+		f := newFlusher(&mockUploader{}, log.NewNopLogger(), reg)
 		obj, objCloser, objPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.NoError(t, err)
 		require.NotNil(t, obj)
 		require.Equal(t, "object_001", objPath)
-		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, objCloser.Close())
+		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectSuccessMetrics), flushMetricNames...))
-		// The failure is counted so it can be alerted on, without failing the flush.
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP loki_dataobj_builder_release_failures_total Total number of failures to release a flushed data object's scratch storage. The object is already uploaded at that point, so these do not fail the flush.
 		# TYPE loki_dataobj_builder_release_failures_total counter
@@ -145,15 +135,15 @@ func TestFlusher_Flush(t *testing.T) {
 		`), "loki_dataobj_builder_release_failures_total"))
 	})
 
-	t.Run("should return the upload error when releasing the sorted object also fails", func(t *testing.T) {
+	t.Run("should return the upload error when releasing the object also fails", func(t *testing.T) {
 		var (
 			testCtx     = t.Context()
 			testBuilder = newTestMockBuilder(t)
-			testSorter  = &mockSorter{closer: countingCloser{err: errors.New("close error")}}
 		)
-		f := newFlusher(testSorter, &failureUploader{}, log.NewNopLogger(), prometheus.NewRegistry())
+		testBuilder.flushCloser = &countingCloser{err: errors.New("close error")}
+		f := newFlusher(&failureUploader{}, log.NewNopLogger(), prometheus.NewRegistry())
 		_, _, _, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.EqualError(t, err, "failed to upload object: mock error")
-		require.Equal(t, 1, testSorter.closer.closed)
+		require.Equal(t, 1, testBuilder.flushCloser.closed)
 	})
 }

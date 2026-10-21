@@ -19,11 +19,6 @@ const (
 	flushReasonMaxAge      = "max_age"
 )
 
-// A sorter allows mocking of [logsobj.Sorter] in tests.
-type sorter interface {
-	Sort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
-}
-
 // An uploader allows mocking of [uploader.Uploader] in tests.
 type uploader interface {
 	Upload(ctx context.Context, obj *dataobj.Object) (string, error)
@@ -31,7 +26,6 @@ type uploader interface {
 
 // A flusherImpl is responsible for flushing data object builders to data objects.
 type flusherImpl struct {
-	sorter   sorter
 	uploader uploader
 	logger   log.Logger
 
@@ -42,9 +36,8 @@ type flusherImpl struct {
 	releaseFailures prometheus.Counter
 }
 
-func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheus.Registerer) *flusherImpl {
+func newFlusher(uploader uploader, logger log.Logger, r prometheus.Registerer) *flusherImpl {
 	f := &flusherImpl{
-		sorter:   sorter,
 		uploader: uploader,
 		logger:   logger,
 		flushes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -89,21 +82,13 @@ func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string)
 	return obj, objCloser, objPath, err
 }
 
-// flush builds a complete data object from the builder, sorts and uploads it.
+// flush builds a sorted data object from the builder and uploads it.
 // On success the caller owns the returned [io.Closer]; reads of the object fail
 // once it is closed. If an error is returned the closer is always nil.
 func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Object, io.Closer, string, error) {
-	unsortedObj, unsortedObjCloser, err := builder.Flush()
+	sortedObj, sortedObjCloser, err := builder.FlushAndSort(ctx)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to flush data object builder: %w", err)
-	}
-	// Sort copies unsortedObj into a new object, so the unsorted object is no
-	// longer needed once flush returns, whatever the outcome.
-	defer f.release(unsortedObjCloser, "unsorted")
-
-	sortedObj, sortedObjCloser, err := f.sorter.Sort(ctx, unsortedObj)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to sort data object: %w", err)
 	}
 
 	objectPath, err := f.uploader.Upload(ctx, sortedObj)

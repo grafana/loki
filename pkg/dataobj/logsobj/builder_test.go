@@ -257,8 +257,9 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 }
 
-func TestBuilder_CopyAndSort(t *testing.T) {
+func TestBuilder_FlushAndSort(t *testing.T) {
 	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	sortBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 
 	type copiedRecord struct {
 		tenant    string
@@ -282,18 +283,20 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 				line:      line,
 				metadata:  metadata,
 			}
-			err := builder.Append(tenant, logproto.Stream{
-				Labels: `{cluster="test",app="foo"}`,
-				Entries: []push.Entry{{
-					Timestamp: timestamp,
-					Line:      line,
-					StructuredMetadata: []push.LabelAdapter{{
-						Name:  "sequence",
-						Value: metadata,
+			for _, b := range []*Builder{builder, sortBuilder} {
+				err := b.Append(tenant, logproto.Stream{
+					Labels: `{cluster="test",app="foo"}`,
+					Entries: []push.Entry{{
+						Timestamp: timestamp,
+						Line:      line,
+						StructuredMetadata: []push.LabelAdapter{{
+							Name:  "sequence",
+							Value: metadata,
+						}},
 					}},
-				}},
-			}, timestamp)
-			require.NoError(t, err)
+				}, timestamp)
+				require.NoError(t, err)
+			}
 			expectedRecords[record]++
 		}
 
@@ -310,12 +313,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.NoError(t, err)
 	defer closer1.Close()
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
-	resort, err := newBuilder.requiresResort(t.Context(), obj1)
-	require.NoError(t, err)
-	require.False(t, resort, "matching layouts should use the merge-only path")
-
-	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
+	obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	defer closer2.Close()
 
@@ -356,22 +354,24 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.Equal(t, expectedRecords, actualRecords)
 }
 
-// TestBuilder_CopyAndSort_ShardBuckets asserts a sorted copy stores the same bucket as the source
-// for every stream.
+// TestBuilder_FlushAndSort_ShardBuckets asserts that the sorted object stores
+// the bucket that the build gave every stream.
 //
-// The copy takes the bucket from the source section. It does not compute the bucket again. The
-// query side skips the stream-hash check when a shard maps exactly onto buckets. A wrong bucket
-// would then put the stream in the wrong shard.
-func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
+// The sort takes the bucket from the built streams section. It does not
+// compute the bucket again. The query side skips the stream-hash check when a
+// shard maps exactly onto buckets, so a wrong bucket would put the stream in
+// the wrong shard.
+func TestBuilder_FlushAndSort_ShardBuckets(t *testing.T) {
 	const (
 		tenant      = "t1"
 		streamCount = 16
 	)
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	overrides := tenantOverrides{tenant: {"label:app"}}
 
-	source := func(t *testing.T) *dataobj.Object {
+	newFilledBuilder := func(t *testing.T) *Builder {
 		t.Helper()
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), tenantOverrides{tenant: {"label:app"}})
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
 		for i := range streamCount {
 			require.NoError(t, builder.Append(tenant, logproto.Stream{
@@ -379,10 +379,7 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
 			}, now))
 		}
-		obj, closer, err := builder.Flush()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		return obj
+		return builder
 	}
 
 	bucketsByLabels := func(t *testing.T, obj *dataobj.Object) map[string]int64 {
@@ -400,144 +397,27 @@ func TestBuilder_CopyAndSort_ShardBuckets(t *testing.T) {
 		return buckets
 	}
 
-	tests := []struct {
-		name      string
-		overrides TenantOverrides
-		resort    bool
-	}{
-		{
-			name:      "the merge-only copy keeps the bucket of every stream",
-			overrides: tenantOverrides{tenant: {"label:app"}},
-			resort:    false,
-		},
-		{
-			name:      "the re-sorting copy keeps the bucket of every stream",
-			overrides: tenantOverrides{tenant: {"label:cluster"}},
-			resort:    true,
-		},
-	}
+	t.Run("the sorted object keeps the bucket of every stream", func(t *testing.T) {
+		built, builtCloser, err := newFilledBuilder(t).Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, builtCloser.Close()) })
+		sorted, sortedCloser, err := newFilledBuilder(t).FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, sortedCloser.Close()) })
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			src := source(t)
+		builtBuckets := bucketsByLabels(t, built)
+		require.Len(t, builtBuckets, streamCount)
+		require.Equal(t, builtBuckets, bucketsByLabels(t, sorted))
 
-			builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), test.overrides)
-			require.NoError(t, err)
-			resort, err := builder.requiresResort(t.Context(), src)
-			require.NoError(t, err)
-			require.Equal(t, test.resort, resort, "the case must take the copy path it names")
-
-			copied, closer, err := builder.CopyAndSort(t.Context(), src)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-			sourceBuckets := bucketsByLabels(t, src)
-			require.Len(t, sourceBuckets, streamCount)
-			require.Equal(t, sourceBuckets, bucketsByLabels(t, copied))
-
-			distinctBuckets := map[int64]struct{}{}
-			for _, bucket := range sourceBuckets {
-				distinctBuckets[bucket] = struct{}{}
-			}
-			require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
-		})
-	}
+		distinctBuckets := map[int64]struct{}{}
+		for _, bucket := range builtBuckets {
+			distinctBuckets[bucket] = struct{}{}
+		}
+		require.Greater(t, len(distinctBuckets), 1, "the streams must span several buckets, or a wrong bucket could go unseen")
+	})
 }
 
-func TestBuilder_CopyAndSort_SelectsStrategyFromLayout(t *testing.T) {
-	target := TargetSortLayout([]string{"label:app"}, streams.DefaultShardLayout())
-	tests := []struct {
-		name    string
-		layouts []logs.SortLayout
-		resort  bool
-	}{
-		{
-			name:    "all sections match",
-			layouts: []logs.SortLayout{target, target},
-		},
-		{
-			name: "schema labels mismatch",
-			layouts: []logs.SortLayout{{
-				SchemaLabels: []string{"label:cluster"},
-				StreamOrder:  target.StreamOrder,
-				ShardCount:   target.ShardCount,
-			}},
-			resort: true,
-		},
-		{
-			name: "stream order mismatch",
-			layouts: []logs.SortLayout{{
-				SchemaLabels: target.SchemaLabels,
-				StreamOrder:  logs.StreamOrderUnspecified,
-				ShardCount:   target.ShardCount,
-			}},
-			resort: true,
-		},
-		{
-			name: "shard count mismatch",
-			layouts: []logs.SortLayout{{
-				SchemaLabels: target.SchemaLabels,
-				StreamOrder:  target.StreamOrder,
-				ShardCount:   target.ShardCount / 2,
-			}},
-			resort: true,
-		},
-		{
-			name: "mixed layouts resort the whole object",
-			layouts: []logs.SortLayout{
-				target,
-				{
-					SchemaLabels: []string{"label:cluster"},
-					StreamOrder:  target.StreamOrder,
-					ShardCount:   target.ShardCount,
-				},
-			},
-			resort: true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			objectBuilder := dataobj.NewBuilder(scratch.NewMemory())
-			for i, layout := range test.layouts {
-				logsBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
-					PageSizeHint:     2048,
-					BufferSize:       2048,
-					StripeMergeLimit: 2,
-					AppendStrategy:   logs.AppendOrdered,
-					SortOrder:        logs.SortSchemaASC,
-					SchemaLabels:     layout.SchemaLabels,
-					StreamOrder:      layout.StreamOrder,
-					ShardCount:       layout.ShardCount,
-				})
-				logsBuilder.SetTenant("tenant")
-				logsBuilder.Append(logs.Record{
-					StreamID:  1,
-					Timestamp: time.Unix(int64(i), 0).UTC(),
-					Line:      []byte("line"),
-				})
-				require.NoError(t, objectBuilder.Append(logsBuilder))
-			}
-			object, closer, err := objectBuilder.Flush()
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, closer.Close()) })
-
-			builder, err := NewBuilder(
-				testBuilderConfig,
-				scratch.NewMemory(),
-				NewBuilderMetrics(),
-				log.NewNopLogger(),
-				tenantOverrides{"tenant": target.SchemaLabels},
-			)
-			require.NoError(t, err)
-			resort, err := builder.requiresResort(t.Context(), object)
-			require.NoError(t, err)
-			require.Equal(t, test.resort, resort)
-		})
-	}
-}
-
-func BenchmarkBuilder_CopyAndSort(b *testing.B) {
+func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 768 << 10 // 786432 rows per tenant
 	sizeOfRow := 1024
@@ -550,7 +430,7 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 	// while defeating columnar compression.
 	//
 	// This is done to avoid all lines from ending up in a single section.
-	// CopyAndSort is only tested when we are merging multiple input sections.
+	// The sort is only exercised when it merges multiple input sections.
 	const numLines = 256
 	rng := rand.New(rand.NewSource(42))
 	linePool := make([]string, numLines)
@@ -604,36 +484,31 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
 			builder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), bc.overrides)
-
-			for _, tenant := range tenants {
-				for i := range numRows {
-					err := builder.Append(tenant, logproto.Stream{
-						Labels: bc.labels(tenant, i),
-						Entries: []push.Entry{{
-							Timestamp: now.Add(time.Duration(i%8) * time.Second),
-							Line:      linePool[i%numLines],
-						}},
-					}, now.Add(time.Duration(i%8)*time.Second))
-					require.NoError(b, err)
+			fill := func() {
+				for _, tenant := range tenants {
+					for i := range numRows {
+						err := builder.Append(tenant, logproto.Stream{
+							Labels: bc.labels(tenant, i),
+							Entries: []push.Entry{{
+								Timestamp: now.Add(time.Duration(i%8) * time.Second),
+								Line:      linePool[i%numLines],
+							}},
+						}, now.Add(time.Duration(i%8)*time.Second))
+						require.NoError(b, err)
+					}
 				}
 			}
 
 			dataSize := numRows * sizeOfRow * len(tenants)
 			b.SetBytes(int64(dataSize))
 
-			obj1, closer1, err := builder.Flush()
-			require.NoError(b, err)
-			defer closer1.Close()
-
-			newBuilder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), bc.overrides)
-
-			b.Logf("sections=%d, size=%d", obj1.Sections().Count(logs.CheckSection), obj1.Size())
-			b.ResetTimer()
 			for b.Loop() {
-				newBuilder.Reset()
-				_, closer2, err := newBuilder.CopyAndSort(b.Context(), obj1)
+				b.StopTimer()
+				fill()
+				b.StartTimer()
+				_, closer, err := builder.FlushAndSort(b.Context())
 				require.NoError(b, err)
-				defer closer2.Close()
+				require.NoError(b, closer.Close())
 			}
 		})
 	}
@@ -651,7 +526,7 @@ type limitsByTenant map[string]*validation.Limits
 func (m limitsByTenant) TenantLimits(userID string) *validation.Limits { return m[userID] }
 func (m limitsByTenant) AllByUserID() map[string]*validation.Limits    { return m }
 
-func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
+func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 
 	makeCfg := func() BuilderBaseConfig {
@@ -664,7 +539,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	}
 
-	buildObj := func(t *testing.T, cfg BuilderBaseConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
+	build := func(t *testing.T, cfg BuilderBaseConfig, tenant string, appVals []string, overrides TenantOverrides, sorted bool) *dataobj.Object {
 		t.Helper()
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
@@ -679,20 +554,22 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}, now.Add(time.Duration(i)*time.Second)))
 			}
 		}
-		obj, closer, err := b.Flush()
+		flush := b.Flush
+		if sorted {
+			flush = func() (*dataobj.Object, io.Closer, error) { return b.FlushAndSort(t.Context()) }
+		}
+		obj, closer, err := flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { closer.Close() })
 		return obj
 	}
-
-	copyAndSort := func(t *testing.T, cfg BuilderBaseConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
+	buildObj := func(t *testing.T, cfg BuilderBaseConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
-		require.NoError(t, err)
-		obj, closer, err := b.CopyAndSort(t.Context(), src)
-		require.NoError(t, err)
-		t.Cleanup(func() { closer.Close() })
-		return obj
+		return build(t, cfg, tenant, appVals, overrides, false)
+	}
+	buildSorted := func(t *testing.T, cfg BuilderBaseConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
+		t.Helper()
+		return build(t, cfg, tenant, appVals, overrides, true)
 	}
 
 	appOrder := func(t *testing.T, obj *dataobj.Object, tenant string) []string {
@@ -782,11 +659,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}, ts))
 			}
 		}
-		obj1, closer1, err := b.Flush()
+		obj2, closer2, err := b.FlushAndSort(t.Context())
 		require.NoError(t, err)
-		defer closer1.Close()
-
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
+		defer closer2.Close()
 
 		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
@@ -826,8 +701,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	t.Run("schema labels persisted in section metadata", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
-		obj1 := buildObj(t, cfg, "t1", []string{"b", "a"}, overrides)
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
+		obj2 := buildSorted(t, cfg, "t1", []string{"b", "a"}, overrides)
 
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
 			return logs.CheckSection(s) && s.Tenant == "t1"
@@ -915,17 +789,6 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("idempotent: second CopyAndSort with the same schema preserves order", func(t *testing.T) {
-		cfg := makeCfg()
-		overrides := tenantOverrides{"t1": {"label:app"}}
-		obj1 := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
-		obj3 := copyAndSort(t, cfg, obj2, overrides)
-
-		require.Equal(t, expectedLabelOrder(t, []string{"zoo", "alpha", "middle"}, "app", []string{"label:app"}), appOrder(t, obj3, "t1"))
-		timestampsDescWithinGroups(t, obj3, "t1")
-	})
-
 	t.Run("multi-label compound key", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
@@ -939,11 +802,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				Entries: []push.Entry{{Timestamp: now, Line: e.ns + "/" + e.app}},
 			}, now))
 		}
-		obj1, closer1, err := b.Flush()
+		obj2, closer2, err := b.FlushAndSort(t.Context())
 		require.NoError(t, err)
-		defer closer1.Close()
-
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
+		defer closer2.Close()
 
 		streamToLabels := make(map[int64][2]string)
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
@@ -991,6 +852,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
+		sortBuilder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
 
 		streamsToAppend := []struct {
 			app      string
@@ -1016,17 +879,20 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 					},
 				})
 			}
-			require.NoError(t, b.Append("t1", logproto.Stream{
-				Labels:  fmt.Sprintf(`{app=%q,instance=%q}`, stream.app, stream.instance),
-				Entries: entries,
-			}, now))
+			for _, builder := range []*Builder{b, sortBuilder} {
+				require.NoError(t, builder.Append("t1", logproto.Stream{
+					Labels:  fmt.Sprintf(`{app=%q,instance=%q}`, stream.app, stream.instance),
+					Entries: entries,
+				}, now))
+			}
 		}
 
 		obj1, closer1, err := b.Flush()
 		require.NoError(t, err)
 		defer closer1.Close()
-
-		obj2 := copyAndSort(t, cfg, obj1, overrides)
+		obj2, closer2, err := sortBuilder.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		defer closer2.Close()
 
 		type streamSnapshot struct {
 			id     int64
@@ -1355,4 +1221,81 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			require.ErrorIs(t, err, ErrBuilderEmpty)
 		})
 	}
+}
+
+// mutableOverrides gives every tenant the same sort schema, which a test can
+// change between appends.
+type mutableOverrides struct {
+	schema []string
+}
+
+func (o *mutableOverrides) SortSchemaLabels(string) []string { return o.schema }
+
+func TestBuilder_LayoutPerObject(t *testing.T) {
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	appendStreams := func(t *testing.T, b *Builder, overrides *mutableOverrides, changeTo []string) {
+		t.Helper()
+		for i := range 4 {
+			require.NoError(t, b.Append("t1", logproto.Stream{
+				Labels:  fmt.Sprintf(`{app="app-%d",cluster="c-%d"}`, i, 3-i),
+				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
+			}, now))
+			if i == 1 {
+				overrides.schema = changeTo
+			}
+		}
+	}
+	requireSchema := func(t *testing.T, obj *dataobj.Object, want []string) {
+		t.Helper()
+		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+			opened, err := logs.Open(t.Context(), sec)
+			require.NoError(t, err)
+			got, err := opened.SchemaLabels()
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		}
+	}
+
+	t.Run("keeps the sort schema of the open object when the overrides change, and applies the change to the next object", func(t *testing.T) {
+		overrides := &mutableOverrides{schema: []string{"label:app"}}
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+
+		appendStreams(t, b, overrides, []string{"label:cluster"})
+		first, firstCloser, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, firstCloser.Close()) })
+		requireSchema(t, first, []string{"label:app"})
+
+		appendStreams(t, b, overrides, []string{"label:cluster"})
+		second, secondCloser, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, secondCloser.Close()) })
+		requireSchema(t, second, []string{"label:cluster"})
+	})
+
+	t.Run("sorts with the layout of the build when the overrides change before the flush", func(t *testing.T) {
+		overrides := &mutableOverrides{schema: []string{"label:app"}}
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+
+		appendStreams(t, b, overrides, []string{"label:app"})
+		overrides.schema = []string{"label:cluster"}
+		obj, closer, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+		requireSchema(t, obj, []string{"label:app"})
+	})
+
+	t.Run("returns an error when the context is cancelled before the sort", func(t *testing.T) {
+		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		require.NoError(t, err)
+		appendStreams(t, b, &mutableOverrides{}, nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, _, err = b.FlushAndSort(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, b.GetEstimatedSize())
+	})
 }

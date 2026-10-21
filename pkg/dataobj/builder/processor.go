@@ -33,10 +33,9 @@ type builder interface {
 	Append(tenant string, stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
 	IsFull() bool
-	Flush() (*dataobj.Object, io.Closer, error)
+	FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer, error)
 	TimeRanges() []dataobj.TimeRange
 	GetEarliestRecordTime() time.Time
-	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
 // A flushCommitter allows mocking of flushes in tests.
