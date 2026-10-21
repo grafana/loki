@@ -989,6 +989,8 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 		}
 	}
 
+	splitter := newMetricQuerySplitter(cfg, limits, iqo)
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 		retryNextHandler := next
@@ -1014,14 +1016,14 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(engineOpts, log, limits, statsHandler),
+			newSplitQuerySizeLimiterMiddleware(engineOpts, log, limits, splitter, statsHandler),
 		)
 
 		// Splitting, sharding, caching and retry middlwares are not added to v2 engine splits
 		// as they are expected to be handled by the new engine handler.
 		chunksEngineMWs := []base.Middleware{
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(cfg, limits, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
