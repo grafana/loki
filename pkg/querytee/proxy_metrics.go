@@ -27,10 +27,6 @@ type ProxyMetrics struct {
 	// Sampling metrics
 	queriesSampled    *prometheus.CounterVec
 	samplingDecisions *prometheus.CounterVec
-
-	// Race metrics
-	raceWins        *prometheus.CounterVec
-	raceModeEnabled prometheus.Gauge
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -78,18 +74,6 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "sampling_decisions_total",
 			Help:      "Total number of sampling decisions made.",
 		}, []string{"tenant", "route", "decision"}),
-
-		raceWins: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki_querytee",
-			Name:      "race_wins_total",
-			Help:      "Total number of times each backend won the race (when racing is enabled).",
-		}, []string{"backend", "backend_alias", "route", "issuer"}),
-
-		raceModeEnabled: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_querytee",
-			Name:      "race_mode_enabled",
-			Help:      "Set to 1 if race mode is enabled for this querytee instance, 0 otherwise.",
-		}),
 	}
 
 	return m

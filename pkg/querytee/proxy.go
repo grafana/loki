@@ -29,19 +29,9 @@ import (
 
 var errMinBackends = errors.New("at least 1 backend is required")
 
-type RoutingMode string
-
-const (
-	RoutingModeRace        RoutingMode = "race"
-	RoutingModeV1Preferred RoutingMode = "v1-preferred"
-	RoutingModeV2Preferred RoutingMode = "v2-preferred"
-)
-
 type RoutingConfig struct {
-	Mode          RoutingMode
-	V1Preferred   string
-	V2Preferred   string
-	RaceTolerance time.Duration
+	V1Preferred string
+	V2Preferred string
 
 	// SplitStart is the start date of data available in v2 (dataobjs) storage.
 	// Queries for data before this date will only go to the v1 backend.
@@ -72,10 +62,8 @@ type RoutingConfig struct {
 }
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar((*string)(&cfg.Mode), "routing.mode", string(RoutingModeV1Preferred), "Routing mode: race, v1-preferred, or v2-preferred")
 	f.StringVar(&cfg.V1Preferred, "routing.v1-preferred", "", "The hostname of the preferred v1 (chunks) backend")
-	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the preferred v2 (dataobjs) backend")
-	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
+	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the v2 (dataobjs) backend")
 	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
 	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
 	f.Int64Var(&cfg.SplitRetentionDays, "routing.split-retention-days", 0, "Lifecycle of data objects in days. If set, data outside of retention period will not be available in v2 storage. When both split-start and split-retention-days are set, the more restrictive of the two will apply.")
@@ -83,12 +71,6 @@ func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *RoutingConfig) Validate() error {
-	switch cfg.Mode {
-	case RoutingModeRace, RoutingModeV1Preferred, RoutingModeV2Preferred:
-	default:
-		return fmt.Errorf("invalid routing mode: %s", cfg.Mode)
-	}
-
 	if cfg.SplitLag < 0 {
 		return fmt.Errorf("split lag must be >= 0")
 	}
@@ -273,18 +255,6 @@ func NewProxy(
 		}
 	}
 
-	// Pre-initialize raceWins metric for all backend/route/issuer combinations
-	if cfg.Routing.Mode == RoutingModeRace {
-		p.metrics.raceModeEnabled.Set(1)
-		for _, backend := range p.backends {
-			for _, route := range p.readRoutes {
-				for _, issuer := range []string{unknownIssuer, canaryIssuer} {
-					p.metrics.raceWins.WithLabelValues(backend.name, backend.Alias(), route.RouteName, issuer)
-				}
-			}
-		}
-	}
-
 	return p, nil
 }
 
@@ -325,8 +295,6 @@ func (p *Proxy) Start() error {
 			Logger:                        p.logger,
 			Metrics:                       p.metrics,
 			InstrumentCompares:            p.cfg.InstrumentCompares,
-			RoutingMode:                   p.cfg.Routing.Mode,
-			RaceTolerance:                 p.cfg.Routing.RaceTolerance,
 			SplitStart:                    p.cfg.Routing.SplitStart,
 			SplitLag:                      p.cfg.Routing.SplitLag,
 			SplitRetentionDays:            p.cfg.Routing.SplitRetentionDays,

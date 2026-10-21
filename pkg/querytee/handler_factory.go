@@ -20,10 +20,8 @@ type HandlerFactory struct {
 	backends                      []*ProxyBackend
 	codec                         queryrangebase.Codec
 	instrumentCompares            bool
-	routingMode                   RoutingMode
 	logger                        log.Logger
 	metrics                       *ProxyMetrics
-	raceTolerance                 time.Duration
 	splitStart                    time.Time
 	splitLag                      time.Duration
 	splitRetentionDays            int64
@@ -35,10 +33,8 @@ type HandlerFactoryConfig struct {
 	Backends                      []*ProxyBackend
 	Codec                         queryrangebase.Codec
 	InstrumentCompares            bool
-	RoutingMode                   RoutingMode
 	Logger                        log.Logger
 	Metrics                       *ProxyMetrics
-	RaceTolerance                 time.Duration
 	SplitStart                    flagext.Time
 	SplitLag                      time.Duration
 	SplitRetentionDays            int64
@@ -51,10 +47,8 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		backends:                      cfg.Backends,
 		codec:                         cfg.Codec,
 		instrumentCompares:            cfg.InstrumentCompares,
-		routingMode:                   cfg.RoutingMode,
 		logger:                        cfg.Logger,
 		metrics:                       cfg.Metrics,
-		raceTolerance:                 cfg.RaceTolerance,
 		splitStart:                    time.Time(cfg.SplitStart),
 		splitLag:                      cfg.SplitLag,
 		splitRetentionDays:            cfg.SplitRetentionDays,
@@ -69,16 +63,14 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		Codec:                         f.codec,
 		Comparator:                    comp,
 		InstrumentCompares:            f.instrumentCompares,
-		RoutingMode:                   f.routingMode,
 		Logger:                        f.logger,
 		Metrics:                       f.metrics,
 		RouteName:                     routeName,
-		RaceTolerance:                 f.raceTolerance,
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	})
 
-	// all routing modes (v1Preferred, v2Preferred, and race) are capable of splitting the request so that only time
-	// ranges valid for dataobjs are sent to v2. splitting needs to know which backend is v1 for routing the following:
+	// the splitting handler splits the request so that only time ranges valid for dataobjs are sent to v2.
+	// splitting needs to know which backend is v1 for routing the following:
 	// * time ranges before we have dataobjs, or within the dataobj lag are sent to v1
 	// * unsupported queries are sent to v1
 	// * unimplemented metadata queries are sent to v1
@@ -94,7 +86,6 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		Codec:                         f.codec,
 		FanOutHandler:                 fanOutHandler,
 		V1Backend:                     v1Backend,
-		RoutingMode:                   f.routingMode,
 		SplitStart:                    f.splitStart,
 		SplitLag:                      f.splitLag,
 		SplitRetentionDays:            f.splitRetentionDays,
