@@ -170,9 +170,9 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 		labels.FromMap(streamLabels("b")).String(): 3,
 	}
 
-	// runQuery and valuesOf return plain errors, not require, so the Eventually loops below can
+	// runCountQuery and valuesOf return plain errors, not require, so the Eventually loops below can
 	// call them from their own goroutine.
-	runQuery := func() (*client.Response, error) {
+	runCountQuery := func() (*client.Response, error) {
 		return cliFrontend.RunQuery(ctx, countQuery)
 	}
 	valuesOf := func(resp *client.Response) (map[string]float64, error) {
@@ -215,7 +215,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 			t.Logf("sync trigger: %v", err)
 			return false
 		}
-		resp, err := runQuery()
+		resp, err := runCountQuery()
 		if err != nil {
 			t.Logf("baseline query: %v", err)
 			return false
@@ -229,7 +229,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	}, 60*time.Second, 500*time.Millisecond, "the chunk store should eventually serve the complete expected result")
 
 	t.Run("a count_over_time query served by the chunk store returns the complete expected result and reads chunks", func(t *testing.T) {
-		resp, err := runQuery()
+		resp, err := runCountQuery()
 		require.NoError(t, err)
 
 		counts, err := valuesOf(resp)
@@ -260,7 +260,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	// short above); there's no force-flush endpoint. The metastore does an uncached lookup per
 	// request, so poll the query itself rather than any builder-internal state.
 	require.Eventually(t, func() bool {
-		resp, err := runQuery()
+		resp, err := runCountQuery()
 		if err != nil {
 			t.Logf("data-object query: %v", err)
 			return false
@@ -274,7 +274,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	}, 60*time.Second, 500*time.Millisecond, "the data-object store should eventually serve the complete expected result")
 
 	t.Run("a query served by data objects returns the complete expected result, reports the rows, bytes and section resolution time, and reads no chunks and no second-stage rows", func(t *testing.T) {
-		resp, err := runQuery()
+		resp, err := runCountQuery()
 		require.NoError(t, err)
 
 		counts, err := valuesOf(resp)
@@ -290,7 +290,7 @@ func TestSampleQueryStreamDataObjEquivalence(t *testing.T) {
 	})
 
 	t.Run("a further query served by data objects hits the metadata cache because it opens the same object again", func(t *testing.T) {
-		_, err := runQuery()
+		_, err := runCountQuery()
 		require.NoError(t, err)
 
 		metrics, err := client.New("", "", tQuerier.HTTPURL()).Metrics()
