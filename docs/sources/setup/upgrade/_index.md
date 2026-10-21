@@ -87,9 +87,9 @@ The experimental `variants()` LogQL expression is no longer supported.
 
 The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-variant-queries`) that gated it has been removed. A leftover `enable_multi_variant_queries:` key in `limits_config` or in a runtime overrides file is ignored, so it does not block an upgrade, but you should remove it; the `deprecated-config-checker` tool will flag it. The `-limits.enable-multi-variant-queries` command line flag no longer exists and Loki fails to start if it is passed.
 
-### Chunk fetch errors are now always propagated
+### Breaking change: Removal of `chunk_store_config.propagate_chunk_fetch_errors`
 
-An object-storage chunk fetch error always fails the query (or bloom build, or migration) outright instead of returning incomplete results; this is no longer optional. The `chunk_store_config.propagate_chunk_fetch_errors` setting (`-chunk-store.propagate-chunk-fetch-errors`) that used to gate this is deprecated and has no effect; it is kept, and still accepted by config files, only for upgrade compatibility and will be removed in a future release. Remove it from your config once you've upgraded.
+An object-storage chunk fetch error always fails the query (or bloom build, or migration) outright instead of returning incomplete results. This was previously opt-in behavior through the experimental `chunk_store_config.propagate_chunk_fetch_errors` setting (`-chunk-store.propagate-chunk-fetch-errors`), which has been removed now that it is the only supported behavior. Because the main config file is parsed strictly, a leftover `propagate_chunk_fetch_errors:` key under `chunk_store_config` now fails config load. Remove the setting; the `deprecated-config-checker` tool will flag it.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 
