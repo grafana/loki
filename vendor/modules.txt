@@ -1701,6 +1701,12 @@ github.com/parquet-go/parquet-go/internal/debug
 github.com/parquet-go/parquet-go/internal/memory
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
+# github.com/pb33f/go-yaml v0.1.0
+## explicit; go 1.18
+github.com/pb33f/go-yaml
+github.com/pb33f/go-yaml/internal/libyaml
+github.com/pb33f/go-yaml/internal/plugin
+github.com/pb33f/go-yaml/plugin/limit
 # github.com/pb33f/jsonpath v0.8.2
 ## explicit; go 1.24
 github.com/pb33f/jsonpath/pkg/jsonpath
@@ -1720,7 +1726,7 @@ github.com/pb33f/libopenapi/index
 github.com/pb33f/libopenapi/json
 github.com/pb33f/libopenapi/orderedmap
 github.com/pb33f/libopenapi/utils
-# github.com/pb33f/ordered-map/v2 v2.3.1
+# github.com/pb33f/ordered-map/v2 v2.3.2
 ## explicit; go 1.24
 github.com/pb33f/ordered-map/v2
 # github.com/philhofer/fwd v1.2.0
