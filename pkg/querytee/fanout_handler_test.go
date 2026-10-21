@@ -206,3 +206,35 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	// Only backend-1 should have received a request (backend-2 filtered out)
 	require.Equal(t, 1, requestCount, "expected only 1 backend to receive request due to filter")
 }
+
+func TestTenantLabel(t *testing.T) {
+	newRequest := func(t *testing.T, orgID string) *http.Request {
+		t.Helper()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		if orgID != "" {
+			req.Header.Set(user.OrgIDHeaderName, orgID)
+		}
+		return req
+	}
+
+	t.Run("returns the tenant ID of a single-tenant request", func(t *testing.T) {
+		label, err := tenantLabel(newRequest(t, "tenant1"))
+
+		require.NoError(t, err)
+		require.Equal(t, "tenant1", label)
+	})
+
+	t.Run("returns the sorted tenant IDs without duplicates, joined by a pipe, for a multi-tenant request", func(t *testing.T) {
+		label, err := tenantLabel(newRequest(t, "tenant2|tenant1|tenant2"))
+
+		require.NoError(t, err)
+		require.Equal(t, "tenant1|tenant2", label)
+	})
+
+	t.Run("returns an error when the request has no tenant ID", func(t *testing.T) {
+		_, err := tenantLabel(newRequest(t, ""))
+
+		require.ErrorIs(t, err, user.ErrNoOrgID)
+	})
+}

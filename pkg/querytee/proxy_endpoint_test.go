@@ -25,6 +25,8 @@ import (
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
 func createTestEndpoint(t *testing.T, backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+	t.Helper()
+
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
@@ -36,14 +38,14 @@ func createTestEndpoint(t *testing.T, backends []*ProxyBackend, routeName string
 		Metrics:  metrics,
 	})
 
-	queryHandler, err := handlerFactory.CreateHandler(routeName, comparator)
-	require.NoError(t, err)
-	endpoint.WithQueryHandler(queryHandler)
+	endpoint.WithQueryHandler(handlerFactory.CreateHandler(routeName, comparator))
 	return endpoint
 }
 
 // createTestEndpointWithMetrics creates a ProxyEndpoint with custom metrics
 func createTestEndpointWithMetrics(t *testing.T, backends []*ProxyBackend, routeName string, comp comparator.ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
+	t.Helper()
+
 	logger := log.NewNopLogger()
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comp, instrumentCompares)
@@ -55,9 +57,7 @@ func createTestEndpointWithMetrics(t *testing.T, backends []*ProxyBackend, route
 		InstrumentCompares: instrumentCompares,
 	})
 
-	queryHandler, err := handlerFactory.CreateHandler(routeName, comp)
-	require.NoError(t, err)
-	endpoint.WithQueryHandler(queryHandler)
+	endpoint.WithQueryHandler(handlerFactory.CreateHandler(routeName, comp))
 	return endpoint
 }
 
