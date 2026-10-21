@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -441,4 +442,151 @@ func TestIndexSetMultiOutputCleanup(t *testing.T) {
 			}
 		})
 	}
+}
+
+type memIndexSet struct {
+	storage.IndexSet
+	files     map[string]struct{}
+	puts      int
+	putFailAt int
+	deleteErr error
+}
+
+func newMemIndexSet(names ...string) *memIndexSet {
+	m := &memIndexSet{files: map[string]struct{}{}}
+	for _, name := range names {
+		m.files[name] = struct{}{}
+	}
+	return m
+}
+
+func (m *memIndexSet) ListFiles(_ context.Context, _, _ string, _ bool) ([]storage.IndexFile, error) {
+	files := make([]storage.IndexFile, 0, len(m.files))
+	for name := range m.files {
+		files = append(files, storage.IndexFile{Name: name})
+	}
+	return files, nil
+}
+
+func (m *memIndexSet) PutFile(_ context.Context, _, _, name string, _ io.ReadSeeker) error {
+	m.puts++
+	if m.puts == m.putFailAt {
+		return errors.New("upload failed")
+	}
+	m.files[name] = struct{}{}
+	return nil
+}
+
+func (m *memIndexSet) DeleteFile(_ context.Context, _, _, name string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	delete(m.files, name)
+	return nil
+}
+
+func (m *memIndexSet) IsFileNotFoundErr(error) bool { return false }
+func (m *memIndexSet) IsRetryableErr(error) bool    { return false }
+
+func (m *memIndexSet) names() []string {
+	return slices.Sorted(maps.Keys(m.files))
+}
+
+type shardedOutputIndex struct {
+	CompactedIndex
+	dir string
+}
+
+func (s shardedOutputIndex) ToIndexFiles() ([]index.Index, error) {
+	return s.files("compacted")
+}
+
+func (s shardedOutputIndex) ToShardedIndexFiles() ([]index.Index, error) {
+	return s.files("shard-0", "shard-1")
+}
+
+func (s shardedOutputIndex) files(names ...string) ([]index.Index, error) {
+	files := make([]index.Index, 0, len(names))
+	for _, name := range names {
+		path := filepath.Join(s.dir, name)
+		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
+			return nil, err
+		}
+		files = append(files, &outputFile{path: path})
+	}
+	return files, nil
+}
+
+func newShardedCopyIndexSet(t *testing.T, base, sharded *memIndexSet) *indexSet {
+	sources, err := base.ListFiles(context.Background(), "", "", false)
+	require.NoError(t, err)
+	return &indexSet{
+		ctx:                 context.Background(),
+		tableName:           "table",
+		userID:              "user",
+		baseIndexSet:        base,
+		shardedIndexSet:     sharded,
+		compactedIndex:      shardedOutputIndex{dir: t.TempDir()},
+		sourceObjects:       sources,
+		uploadCompactedDB:   true,
+		removeSourceObjects: true,
+		logger:              log.NewNopLogger(),
+	}
+}
+
+func TestIndexSetDone_WritesShardedCopy(t *testing.T) {
+	base, sharded := newMemIndexSet("source.gz"), newMemIndexSet()
+
+	require.NoError(t, newShardedCopyIndexSet(t, base, sharded).done())
+
+	require.Equal(t, []string{"compacted.gz"}, base.names())
+	require.Equal(t, []string{"shard-0.gz", "shard-1.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ReplacesPreviousShardedCopy(t *testing.T) {
+	sharded := newMemIndexSet("old.gz")
+
+	require.NoError(t, newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), sharded).done())
+
+	require.Equal(t, []string{"shard-0.gz", "shard-1.gz"}, sharded.names())
+}
+
+func TestIndexSetDone_ShardedCopyUploadFailureKeepsSources(t *testing.T) {
+	base, sharded := newMemIndexSet("source.gz"), newMemIndexSet()
+	sharded.putFailAt = 2
+
+	err := newShardedCopyIndexSet(t, base, sharded).done()
+
+	require.ErrorIs(t, err, errShardedIndexCopy)
+	require.Equal(t, []string{"compacted.gz", "source.gz"}, base.names())
+}
+
+func TestIndexSetDone_ShardedCopyDeleteFailureKeepsSources(t *testing.T) {
+	base, sharded := newMemIndexSet("source.gz"), newMemIndexSet("old.gz")
+	sharded.deleteErr = errors.New("delete failed")
+
+	err := newShardedCopyIndexSet(t, base, sharded).done()
+
+	require.ErrorIs(t, err, errShardedIndexCopy)
+	require.Equal(t, []string{"compacted.gz", "source.gz"}, base.names())
+}
+
+func TestIndexSetDone_DroppedIndexRemovesShardedCopy(t *testing.T) {
+	sharded := newMemIndexSet("old.gz")
+	is := newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), sharded)
+	is.uploadCompactedDB = false
+
+	require.NoError(t, is.done())
+
+	require.Empty(t, sharded.names())
+}
+
+func TestIndexSetDone_UnchangedIndexLeavesShardedCopy(t *testing.T) {
+	sharded := newMemIndexSet("old.gz")
+	is := newShardedCopyIndexSet(t, newMemIndexSet("source.gz"), sharded)
+	is.uploadCompactedDB, is.removeSourceObjects = false, false
+
+	require.NoError(t, is.done())
+
+	require.Equal(t, []string{"old.gz"}, sharded.names())
 }
