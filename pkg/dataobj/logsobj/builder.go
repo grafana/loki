@@ -15,7 +15,6 @@ import (
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
@@ -486,23 +486,28 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 	if err != nil {
 		return nil, nil, err
 	}
-	// A failure to release the built object leaks scratch storage, but the
-	// sorted object is still valid, so it is logged and does not fail the
-	// flush.
-	defer func() {
-		if err := builtCloser.Close(); err != nil {
-			level.Warn(b.logger).Log("msg", "failed to release built data object", "err", err)
-		}
-	}()
 
-	timer := prometheus.NewTimer(b.metrics.sortTime)
-	defer timer.ObserveDuration()
-	sorted, sortedCloser, err := b.sort(ctx, built, layouts)
+	sorted, sortedCloser, err := b.sortAndRelease(ctx, built, builtCloser, layouts)
 	if err != nil {
 		b.metrics.flushFailures.Inc()
+		// The caller never closes an object returned with an error, so release
+		// it here.
+		if sortedCloser != nil {
+			util.CloseAndHandleError(sortedCloser, &err)
+		}
 		return nil, nil, fmt.Errorf("sorting object: %w", err)
 	}
 	return sorted, sortedCloser, nil
+}
+
+// sortAndRelease sorts built with layouts and then releases built. It returns
+// the release error if the sort succeeded.
+func (b *Builder) sortAndRelease(ctx context.Context, built *dataobj.Object, builtCloser io.Closer, layouts map[string]tenantLayout) (_ *dataobj.Object, _ io.Closer, returnErr error) {
+	defer util.CloseAndHandleError(builtCloser, &returnErr)
+
+	timer := prometheus.NewTimer(b.metrics.sortTime)
+	defer timer.ObserveDuration()
+	return b.sort(ctx, built, layouts)
 }
 
 // sort writes obj sorted object-wide to b.builder and flushes it. layouts must

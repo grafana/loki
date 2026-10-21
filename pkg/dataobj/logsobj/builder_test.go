@@ -1326,6 +1326,19 @@ func testFlushAndSortErrors(t *testing.T) {
 		require.ErrorIs(t, err, ErrBuilderEmpty)
 	})
 
+	t.Run("returns an error and no object when releasing the built object fails", func(t *testing.T) {
+		metrics := NewBuilderMetrics()
+		b, err := NewBuilder(testBuilderConfig, &failingRemoveStore{Store: scratch.NewMemory()}, metrics, log.NewNopLogger(), nil)
+		require.NoError(t, err)
+		require.NoError(t, b.Append("tenant", stream, time.Now()))
+
+		obj, closer, err := b.FlushAndSort(t.Context())
+		require.ErrorContains(t, err, "mock remove error")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.Equal(t, 1.0, testutil.ToFloat64(metrics.flushFailures))
+	})
+
 	t.Run("returns nothing and releases the buffered sections when the build fails", func(t *testing.T) {
 		store := &failingReadStore{inner: scratch.NewMemory()}
 		b, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
@@ -1348,4 +1361,14 @@ func TestBuilder_FlushAndSort(t *testing.T) {
 	t.Run("orders streams by the sort schema of each tenant", testFlushAndSortSchema)
 	t.Run("reads the layout once per object", testFlushAndSortLayoutPerObject)
 	t.Run("handles failures", testFlushAndSortErrors)
+}
+
+// failingRemoveStore is a scratch store whose removes always fail.
+type failingRemoveStore struct {
+	scratch.Store
+}
+
+func (s *failingRemoveStore) Remove(h scratch.Handle) error {
+	_ = s.Store.Remove(h)
+	return errors.New("mock remove error")
 }
