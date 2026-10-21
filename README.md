@@ -53,7 +53,7 @@ Commonly used sections:
 - [Labels](https://grafana.com/docs/loki/latest/getting-started/labels/)
 - [Operations](https://grafana.com/docs/loki/latest/operations/)
 - [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a Docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://grafana.com/docs/loki/latest/query/logcli/) provides a command-line interface for querying logs.
+- [LogCLI](https://grafana.com/docs/loki/latest/query/logcli/) provides a command-line interface for querying logs. LogCLI is deprecated, and [gcx](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/), the Grafana CLI, will replace it.
 - [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) monitors your Loki installation for missing logs.
 - [Troubleshooting](https://grafana.com/docs/loki/latest/operations/troubleshooting/) presents help dealing with error messages.
 - [Loki in Grafana](https://grafana.com/docs/loki/latest/operations/grafana/) describes how to set up a Loki datasource in Grafana.

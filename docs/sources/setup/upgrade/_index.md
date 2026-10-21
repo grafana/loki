@@ -37,6 +37,28 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### LogCLI is deprecated
+
+LogCLI is deprecated and will be removed in a future release.
+[gcx](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/), the Grafana CLI, replaces LogCLI.
+LogCLI remains available until gcx supports all LogCLI features.
+This release requires no action.
+
+gcx connects to Loki through a Loki data source in Grafana 12 or later.
+LogCLI connects to the Loki HTTP API directly.
+If you use LogCLI without Grafana, you need a Grafana instance with a Loki data source to use gcx.
+
+The following gcx commands replace the most common LogCLI commands:
+
+| LogCLI command | gcx command |
+| --- | --- |
+| `logcli query` with a log query | `gcx logs query` |
+| `logcli query` with a metric query, `logcli instant-query` | `gcx logs metrics` |
+| `logcli labels` | `gcx logs labels` |
+| `logcli series` | `gcx logs series` |
+
+Before you migrate a script, check that the [gcx CLI reference](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/cli-reference/#gcx-logs) lists the commands and flags the script uses.
+
 ### Stream limit delegation is configurable per tenant
 
 Delegating stream count limits to the ingest-limits service is now a per-tenant limit: `limits_config.delegate_stream_limits_enabled` (`-limits.delegate-stream-limits-enabled`). This is only applicable when running Loki ingestion with Kafka.

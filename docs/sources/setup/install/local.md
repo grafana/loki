@@ -45,7 +45,7 @@ Grafana Loki does not come with any included authentication layer. You must run 
 1. Download the Loki archive file that corresponds to your system.
 
    Don't download LogCLI or Loki Canary at this time.
-   LogCLI allows you to run Loki queries in a command line interface.
+   LogCLI is a deprecated command line interface to run Loki queries.
    [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/) is a tool to audit Loki performance.
 
 1. Extract the package contents into a directory. This is where Loki will run.

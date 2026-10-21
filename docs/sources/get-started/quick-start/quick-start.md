@@ -166,7 +166,7 @@ This quickstart assumes you are running Linux.
 ## View your logs in Grafana
 
 After you have collected logs, you will want to view them.
-You can view your logs using the command line interface, [LogCLI](/docs/loki/<LOKI_VERSION>/query/logcli/), but the easiest way to view your logs is with Grafana.
+You can view your logs using the deprecated command line interface [LogCLI](/docs/loki/<LOKI_VERSION>/query/logcli/), but the easiest way to view your logs is with Grafana.
 
 1. Use Grafana to query the Loki data source.
 

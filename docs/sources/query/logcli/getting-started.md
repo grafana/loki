@@ -9,6 +9,12 @@ weight: 150
 
 # LogCLI getting started
 
+{{< admonition type="caution" >}}
+Starting with Loki 4.0, LogCLI is deprecated.
+It will be removed in a future release, after [gcx](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/), the Grafana CLI, supports all LogCLI features.
+For the differences between LogCLI and gcx, refer to [Upgrade Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/#logcli-is-deprecated).
+{{< /admonition >}}
+
 logcli is a command-line client for Loki that lets you run [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query) queries against your Loki instance. The `query` command will output extra information about the query and its results, such as the API URL, set of common labels, and set of excluded labels.
 
 This is useful, for example, if you want to download a range of logs from Loki. Or want to perform analytical administration tasks, for example, discover the number of log streams to understand your label cardinality, or find out the estimated volume of data that a query will search over. You can also use logcli as part of shell scripts.

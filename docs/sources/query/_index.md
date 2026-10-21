@@ -20,6 +20,7 @@ Loki does not have a user interface, so most users [install Grafana](https://gra
 - [Grafana Explore](https://grafana.com/docs/grafana/latest/explore/) helps you examine your data ad-hoc or build and refine a LogQL query for inclusion within a dashboard.
 
 You can also run queries against Loki using [LogCLI](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/), the command-line interface to Grafana Loki.
+LogCLI is deprecated, and [gcx](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/), the Grafana CLI, will replace it.
 
 ## LogQL
 
