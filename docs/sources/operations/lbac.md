@@ -6,7 +6,6 @@ weight:
 ---
 
 # Use label-based access control with Loki
-<!-- TODO - Need to check if experimental? -->
 {{< admonition type="note" >}}
 This feature is generally available from v4.0. For the latest releases, refer to the [Release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/).
 {{< /admonition >}}
