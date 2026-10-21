@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Desolver stage: Removes inferable tags from YAML nodes.
-// This is the inverse of the Resolver - it walks a tagged node tree and
-// removes tags that can be inferred during parsing, producing cleaner YAML
-// output without unnecessary type annotations.
+// This is the inverse of the Resolver - it works out which tags of a tagged
+// node tree can be inferred during parsing, producing cleaner YAML output
+// without unnecessary type annotations.
+//
+// Unlike the Resolver, the Desolver never modifies nodes: the tree being
+// dumped may be owned by the caller (a *Node passed to Dump or Marshal).
+// The Serializer asks it for the tag and style of each node instead.
 
 package libyaml
 
@@ -20,9 +24,11 @@ func NewDesolver(opts *Options) *Desolver {
 	return &Desolver{opts: opts}
 }
 
-// Desolve walks the node tree and removes tags that can be inferred.
-// This is the inverse of Resolver - it takes a fully-tagged node tree
-// (from Representer) and removes unnecessary tags to produce clean output.
+// Desolve returns the tag and style that n should be serialized with, once
+// tags that can be inferred are removed.
+// This is the inverse of Resolver - it takes a node of a fully-tagged node
+// tree (from Representer) and removes unnecessary tags to produce clean
+// output.
 //
 // For scalar nodes: if the value would resolve to the same tag when parsed,
 // the tag is removed. For strings that would resolve differently, the tag is
@@ -30,38 +36,36 @@ func NewDesolver(opts *Options) *Desolver {
 //
 // For collection nodes (maps/sequences): default tags (!!map, !!seq) are
 // removed since they're implied by the structure.
-func (d *Desolver) Desolve(n *Node) {
-	if n == nil {
-		return
-	}
-
+//
+// Desolve does not modify n, which may be part of a tree owned by the caller.
+func (d *Desolver) Desolve(n *Node) (tag string, style Style) {
 	switch n.Kind {
 	case ScalarNode:
-		d.desolveScalar(n)
+		return d.desolveScalar(n)
 	case DocumentNode, SequenceNode, MappingNode:
-		d.desolveCollection(n)
-		// Recursively desolve children
-		for _, child := range n.Content {
-			d.Desolve(child)
-		}
+		return d.desolveCollection(n), n.Style
 	case AliasNode:
 		// Alias nodes don't have tags to remove
 	}
+	return n.Tag, n.Style
 }
 
-// desolveScalar removes tags from scalar nodes when they can be inferred.
-func (d *Desolver) desolveScalar(n *Node) {
+// desolveScalar returns the tag and style of a scalar node, removing the tag
+// when it can be inferred.
+func (d *Desolver) desolveScalar(n *Node) (tag string, style Style) {
+	tag, style = n.Tag, n.Style
+
 	// If explicitly tagged by user (TaggedStyle), keep it
-	if n.Style&TaggedStyle != 0 {
-		return
+	if style&TaggedStyle != 0 {
+		return tag, style
 	}
 
 	// Empty tag means it's already untagged - nothing to do
-	if n.Tag == "" {
-		return
+	if tag == "" {
+		return tag, style
 	}
 
-	stag := shortTag(n.Tag)
+	stag := shortTag(tag)
 
 	// Check if this is a standard scalar tag that we can potentially remove
 	isStandardTag := false
@@ -70,23 +74,23 @@ func (d *Desolver) desolveScalar(n *Node) {
 		isStandardTag = true
 	case binaryTag:
 		// Binary scalars are not implicitly resolvable - never remove.
-		return
+		return tag, style
 	case mergeTag:
 		// Elide the implicit !!merge tag when the value is the canonical
 		// merge key marker. The TaggedStyle early-return above already
 		// preserves !!merge when it was explicit in the source.
 		if n.Value == "<<" {
-			n.Tag = ""
+			tag = ""
 		}
-		return
+		return tag, style
 	default:
 		// Custom tag - preserve it
-		return
+		return tag, style
 	}
 
 	// Only process standard tags from here
 	if !isStandardTag {
-		return
+		return tag, style
 	}
 
 	// What tag would this value resolve to?
@@ -95,24 +99,24 @@ func (d *Desolver) desolveScalar(n *Node) {
 	// If resolved tag matches current tag, we can elide the tag
 	if rtag == stag {
 		// Tag can be inferred - remove it
-		n.Tag = ""
+		tag = ""
 	} else if stag == strTag {
 		// This is a string type, but would resolve to something else.
 		// Remove the tag and force quoting to preserve string type.
-		n.Tag = ""
+		tag = ""
 		// If not already quoted, set quote style based on content
-		if n.Style&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) == 0 {
+		if style&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) == 0 {
 			// Determine quote style based on options or default to single quotes
 			if d.opts != nil {
 				// Convert ScalarStyle to Style
 				switch d.opts.QuotePreference.ScalarStyle() {
 				case DOUBLE_QUOTED_SCALAR_STYLE:
-					n.Style |= DoubleQuotedStyle
+					style |= DoubleQuotedStyle
 				default:
-					n.Style |= SingleQuotedStyle
+					style |= SingleQuotedStyle
 				}
 			} else {
-				n.Style |= SingleQuotedStyle
+				style |= SingleQuotedStyle
 			}
 		}
 	} else if stag == floatTag || stag == intTag {
@@ -120,16 +124,18 @@ func (d *Desolver) desolveScalar(n *Node) {
 		// Elide the tag and let YAML resolve naturally.
 		// Without the tag, "1" resolves as !!int, which may change the type,
 		// but that's acceptable for cleaner output (and matches old behavior).
-		n.Tag = ""
+		tag = ""
 	}
 	// For other standard tags with mismatches, keep the tag to preserve type
+	return tag, style
 }
 
-// desolveCollection removes default tags from collection nodes.
-func (d *Desolver) desolveCollection(n *Node) {
+// desolveCollection returns the tag of a collection node, removing default
+// tags.
+func (d *Desolver) desolveCollection(n *Node) string {
 	// If explicitly tagged by user, keep it
 	if n.Style&TaggedStyle != 0 {
-		return
+		return n.Tag
 	}
 
 	stag := shortTag(n.Tag)
@@ -137,16 +143,17 @@ func (d *Desolver) desolveCollection(n *Node) {
 	case MappingNode:
 		// !!map is the default for mappings - remove it
 		if stag == mapTag {
-			n.Tag = ""
+			return ""
 		}
 	case SequenceNode:
 		// !!seq is the default for sequences - remove it
 		if stag == seqTag {
-			n.Tag = ""
+			return ""
 		}
 	case DocumentNode:
 		// Documents don't have tags in YAML output
-		n.Tag = ""
+		return ""
 	}
 	// For other tags, keep them - they're explicit type information
+	return n.Tag
 }

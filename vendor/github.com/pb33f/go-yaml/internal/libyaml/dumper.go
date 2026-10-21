@@ -20,9 +20,11 @@ import (
 //  1. Representer: Go values → Tagged Node tree
 //  2. Desolver: Remove inferable tags
 //  3. Serializer: Node tree → Events → YAML
+//
+// The Serializer applies the Desolver to each node as it serializes it, so
+// that the tree is never modified: it may contain nodes owned by the caller.
 type Dumper struct {
 	representer *Representer
-	desolver    *Desolver
 	serializer  *Serializer
 	options     *Options
 }
@@ -36,8 +38,7 @@ func NewDumper(w io.Writer, opts ...Option) (*Dumper, error) {
 		return nil, err
 	}
 	return &Dumper{
-		representer: NewRepresenter(o), // No writer - builds nodes
-		desolver:    NewDesolver(o),
+		representer: NewRepresenter(o),   // No writer - builds nodes
 		serializer:  NewSerializer(w, o), // Writer here - emits YAML
 		options:     o,
 	}, nil
@@ -115,10 +116,10 @@ func (d *Dumper) Dump(v any) (err error) {
 	// Stage 1: Represent - Go values → Tagged Node tree
 	node := d.representer.Represent("", reflect.ValueOf(v))
 
-	// Stage 2: Desolve - Remove inferable tags
-	d.desolver.Desolve(node)
-
-	// Stage 3: Serialize - Node tree → Events → YAML
+	// Stages 2 and 3: Desolve and Serialize - Node tree → Events → YAML
+	// The Serializer applies the Desolver to each node without writing back
+	// to it, as node is v itself (or contains nodes from v) when v holds a
+	// *Node.
 	d.serializer.Serialize(node)
 
 	return nil

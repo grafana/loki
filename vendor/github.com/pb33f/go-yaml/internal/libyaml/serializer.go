@@ -18,6 +18,7 @@ import (
 // Serializer handles serialization of YAML nodes to event stream.
 type Serializer struct {
 	Emitter               Emitter
+	desolver              *Desolver
 	out                   []byte
 	lineWidth             int
 	explicitStart         bool
@@ -53,6 +54,7 @@ func NewSerializer(w io.Writer, opts *Options) *Serializer {
 
 	return &Serializer{
 		Emitter:               emitter,
+		desolver:              NewDesolver(opts),
 		lineWidth:             opts.LineWidth,
 		explicitStart:         opts.ExplicitStart,
 		explicitEnd:           opts.ExplicitEnd,
@@ -63,6 +65,9 @@ func NewSerializer(w io.Writer, opts *Options) *Serializer {
 
 // Serialize walks a Node tree and emits events to produce YAML output.
 // This is the primary method for the Serializer stage.
+//
+// Inferable tags are removed from the emitted events by the Desolver, not
+// from the tree: Serialize only reads node and its descendants.
 func (s *Serializer) Serialize(node *Node) {
 	s.init()
 	s.node(node, "")
@@ -100,16 +105,18 @@ func (s *Serializer) node(node *Node, tail string) {
 		return
 	}
 
-	// Tags have been processed by Desolver:
+	// Tags are processed by Desolver:
 	// - Empty tag = can be inferred or style handles it
 	// - Non-empty tag = emit explicitly
-	// Style has also been set by Desolver for quoting needs
-	tag := node.Tag
+	// Style is also set by Desolver for quoting needs.
+	// Both are used from here on instead of node.Tag and node.Style, which
+	// are left as they are since the node may be owned by the caller.
+	tag, nodeStyle := s.desolver.Desolve(node)
 	var forceQuoting bool
 	if tag == "" && node.Kind == ScalarNode {
 		// Empty tag with quoting style means the string type needs to
 		// be preserved
-		if node.Style&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) != 0 {
+		if nodeStyle&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) != 0 {
 			forceQuoting = true
 		}
 	}
@@ -131,7 +138,7 @@ func (s *Serializer) node(node *Node, tail string) {
 		// Use flow style if explicitly requested or if it's a simple
 		// collection (scalar-only contents that fit within line width,
 		// enabled via WithFlowSimpleCollections)
-		if node.Style&FlowStyle != 0 || s.isSimpleCollection(node) {
+		if nodeStyle&FlowStyle != 0 || s.isSimpleCollection(node) {
 			style = FLOW_SEQUENCE_STYLE
 		}
 		event := NewSequenceStartEvent([]byte(node.Anchor), []byte(longTag(tag)), tag == "", style)
@@ -150,7 +157,7 @@ func (s *Serializer) node(node *Node, tail string) {
 		// Use flow style if explicitly requested or if it's a simple
 		// collection (scalar-only contents that fit within line width,
 		// enabled via WithFlowSimpleCollections)
-		if node.Style&FlowStyle != 0 || s.isSimpleCollection(node) {
+		if nodeStyle&FlowStyle != 0 || s.isSimpleCollection(node) {
 			style = FLOW_MAPPING_STYLE
 		}
 		event := NewMappingStartEvent([]byte(node.Anchor), []byte(longTag(tag)), tag == "", style)
@@ -210,13 +217,13 @@ func (s *Serializer) node(node *Node, tail string) {
 
 		style := PLAIN_SCALAR_STYLE
 		switch {
-		case node.Style&DoubleQuotedStyle != 0:
+		case nodeStyle&DoubleQuotedStyle != 0:
 			style = DOUBLE_QUOTED_SCALAR_STYLE
-		case node.Style&SingleQuotedStyle != 0:
+		case nodeStyle&SingleQuotedStyle != 0:
 			style = SINGLE_QUOTED_SCALAR_STYLE
-		case node.Style&LiteralStyle != 0:
+		case nodeStyle&LiteralStyle != 0:
 			style = LITERAL_SCALAR_STYLE
-		case node.Style&FoldedStyle != 0:
+		case nodeStyle&FoldedStyle != 0:
 			style = FOLDED_SCALAR_STYLE
 		case strings.Contains(value, "\n"):
 			style = LITERAL_SCALAR_STYLE
