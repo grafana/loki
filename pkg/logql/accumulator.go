@@ -56,8 +56,9 @@ func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
 }
 
 func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	// Record the scanned bytes before validating the result data so a rejected
-	// result still contributes to failed-query usage.
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
 	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
@@ -134,8 +135,9 @@ func newCountMinSketchAccumulator() *CountMinSketchAccumulator {
 }
 
 func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	// Record the scanned bytes before validating the result data so a rejected
-	// result still contributes to failed-query usage.
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
 	//
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
@@ -210,8 +212,9 @@ func newCountDistinctSketchAccumulator() *CountDistinctSketchAccumulator {
 }
 
 func (a *CountDistinctSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
-	// Record the scanned bytes before validating the result data so a rejected
-	// result still contributes to failed-query usage.
+	// Keep statistics in this accumulator even if validation or merging fails.
+	// DownstreamEvaluator moves them to the discarded-work context when
+	// Downstream returns an error; successful results use the normal stats path.
 	if res.Statistics.Summary.Shards == 0 {
 		res.Statistics.Summary.Shards = 1
 	}

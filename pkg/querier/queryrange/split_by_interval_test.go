@@ -2180,7 +2180,7 @@ func (m *responseMergerWithInjectedError) MergeResponse(responses ...queryrangeb
 func TestSplitByIntervalPreservesUsageOnMergeFailure(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprintf("fail=%t", fail), func(t *testing.T) {
-			partial, ctx := stats.NewPartialContext(user.InjectOrgID(context.Background(), "test"))
+			discardedWork, ctx := stats.NewDiscardedWorkContext(user.InjectOrgID(context.Background(), "test"))
 			merger := &responseMergerWithInjectedError{}
 			if fail {
 				merger.err = errors.New("cannot merge responses")
@@ -2197,11 +2197,11 @@ func TestSplitByIntervalPreservesUsageOnMergeFailure(t *testing.T) {
 			if fail {
 				require.ErrorIs(t, err, merger.err)
 				require.Nil(t, response)
-				require.Equal(t, int64(200), partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, int64(200), discardedWork.Result().Summary.TotalBytesProcessed)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, int64(200), response.(*LokiResponse).Statistics.Summary.TotalBytesProcessed)
-				require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 			}
 		})
 	}

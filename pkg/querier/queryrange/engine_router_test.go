@@ -392,7 +392,7 @@ func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
 func TestEngineRouterPreservesUsageOnMergeFailure(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprintf("fail=%t", fail), func(t *testing.T) {
-			partial, ctx := stats.NewPartialContext(context.Background())
+			discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 			merger := &responseMergerWithInjectedError{}
 			if fail {
 				merger.err = errors.New("cannot merge responses")
@@ -414,11 +414,11 @@ func TestEngineRouterPreservesUsageOnMergeFailure(t *testing.T) {
 			if fail {
 				require.ErrorIs(t, err, merger.err)
 				require.Nil(t, response)
-				require.Equal(t, int64(300), partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, int64(300), discardedWork.Result().Summary.TotalBytesProcessed)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, int64(300), response.(*LokiResponse).Statistics.Summary.TotalBytesProcessed)
-				require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 			}
 		})
 	}
@@ -430,7 +430,7 @@ func TestEngineRouterPreservesCompletedSplitUsage(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				start := time.Unix(0, 0)
 				releaseFirst := make(chan struct{})
-				partial, ctx := stats.NewPartialContext(context.Background())
+				discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 
 				// Simulate three intervals, each returning one entry and 100 scanned
 				// bytes. Hold the first so the later two finish before collection.
@@ -475,8 +475,8 @@ func TestEngineRouterPreservesCompletedSplitUsage(t *testing.T) {
 				require.Equal(t, int64(3), result.Statistics.Summary.Splits,
 					"the final merge must preserve the count of completed, discarded intervals")
 				require.Equal(t, int64(min(limit, 3)), result.Count())
-				require.Zero(t, partial.Result().Summary.TotalBytesProcessed,
-					"successful response statistics must not also be recorded as partial usage")
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed,
+					"response statistics must not also enter the discarded-work context")
 			})
 		})
 	}

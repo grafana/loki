@@ -1135,7 +1135,7 @@ func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
 				ctx = httpreq.InjectQueryTags(ctx, "Source="+constants.LogsDrilldownAppName)
 			}
 			_, ctx = metadata.NewContext(ctx)
-			partial, ctx := stats.NewPartialContext(ctx)
+			discardedWork, ctx := stats.NewDiscardedWorkContext(ctx)
 			calls := 0
 			limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 				calls++
@@ -1147,26 +1147,26 @@ func TestSeriesLimiterPreservesRejectedUsage(t *testing.T) {
 				// its usage must stay on that response to avoid counting it twice.
 				require.NoError(t, err)
 				require.NotNil(t, response)
-				require.Zero(t, partial.Result().Summary.TotalBytesProcessed, "successful response owns its usage")
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed, "successful response owns its usage")
 			} else {
 				require.ErrorContains(t, err, "maximum number of series")
 				require.Nil(t, response)
-				require.Equal(t, int64(50), partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
 				// Once rejected, further requests are rejected before execution.
 				response, err = limiter.Do(ctx, &LokiRequest{})
 				require.ErrorContains(t, err, "maximum number of series")
 				require.Nil(t, response)
 				require.Equal(t, 1, calls)
-				require.Equal(t, int64(50), partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, int64(50), discardedWork.Result().Summary.TotalBytesProcessed)
 			}
 		})
 	}
-	partial, ctx := stats.NewPartialContext(context.Background())
+	discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 	limiter := newSeriesLimiter(1).Wrap(queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 		return metricResponseWithScanUsage(100, "a"), nil
 	}))
 	response, err := limiter.Do(ctx, &LokiRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, response)
-	require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+	require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 }

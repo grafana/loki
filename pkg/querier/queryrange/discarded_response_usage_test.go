@@ -70,15 +70,15 @@ func TestProcessAccountsCompletedUnconsumedSplits(t *testing.T) {
 				return logResponseWithScanUsage(100), nil
 			})}
 
-			partial, ctx := stats.NewPartialContext(parent)
+			discardedWork, ctx := stats.NewDiscardedWorkContext(parent)
 			responses, err := h.Process(ctx, 2, 1, []*lokiResult{first, second}, 0)
 
 			// On failure, only the second split returned statistics: expect 200 bytes
-			// in partial stats. On line-limit success, expect 300 bytes but only the
+			// in discarded-work stats. On line-limit success, expect 300 bytes but only the
 			// first split's entry in the response.
 			if tc.queryErr != nil {
 				require.ErrorIs(t, err, tc.queryErr)
-				require.Equal(t, int64(200), partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, int64(200), discardedWork.Result().Summary.TotalBytesProcessed)
 			} else {
 				require.NoError(t, err)
 				require.Len(t, responses, 1)
@@ -88,7 +88,7 @@ func TestProcessAccountsCompletedUnconsumedSplits(t *testing.T) {
 				require.Equal(t, int64(1), response.Statistics.Summary.TotalEntriesReturned)
 
 				require.Equal(t, int64(2), response.Statistics.Summary.Splits)
-				require.Zero(t, partial.Result().Summary.TotalBytesProcessed, "successful usage must not also be partial usage")
+				require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed, "response statistics must not also enter the discarded-work context")
 			}
 		})
 	}
@@ -98,7 +98,7 @@ func TestDiscardedResponseUsageTrackerFinalizesAllErrorUsage(t *testing.T) {
 	for _, withUncollectedResponse := range []bool{false, true} {
 		for _, queryErr := range []error{errors.New("query failed"), context.Canceled} {
 			t.Run(fmt.Sprintf("uncollected=%t/error=%s", withUncollectedResponse, queryErr), func(t *testing.T) {
-				partial, ctx := stats.NewPartialContext(context.Background())
+				discardedWork, ctx := stats.NewDiscardedWorkContext(context.Background())
 				tracker := &discardedResponseUsageTracker{}
 				response := logResponseWithScanUsage(100)
 				collected := &lokiResult{}
@@ -111,7 +111,7 @@ func TestDiscardedResponseUsageTrackerFinalizesAllErrorUsage(t *testing.T) {
 				}
 				result := tracker.finalizeResponseUsage(ctx, []queryrangebase.Response{response}, queryErr)
 				require.Nil(t, result, "error returns must not expose successful sibling responses")
-				require.Equal(t, want, partial.Result().Summary.TotalBytesProcessed)
+				require.Equal(t, want, discardedWork.Result().Summary.TotalBytesProcessed)
 				require.Equal(t, int64(100), response.Statistics.Summary.TotalBytesProcessed)
 			})
 		}

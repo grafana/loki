@@ -174,11 +174,11 @@ func (in instance) For(
 	discardedUsage := &discardedResponseStats[int]{}
 	defer func() {
 		cancel()
-		uncollectedStats, hasUncollectedStats := discardedUsage.closeAndAggregate()
+		uncollectedStats, hasUncollectedStats := discardedUsage.finalize()
 		if hasUncollectedStats {
 			// DownstreamEvaluator records the statistics returned by acc.Result().
 			// Add only responses that were never passed to acc.Accumulate here.
-			stats.JoinPartial(ctx, uncollectedStats)
+			stats.JoinDiscardedWork(ctx, uncollectedStats)
 		}
 	}()
 
@@ -196,8 +196,9 @@ func (in instance) For(
 			// Retain usage before delivery: a sibling failure or cancellation can
 			// discard this completed result before it reaches the accumulator.
 			responseStats := res.Statistics
-			// Use the same default as the accumulator: zero means no shard count
-			// was supplied, so count this response as one shard. Preserve nonzero counts.
+			// Match the accumulators: default to one shard only if no count was
+			// supplied. Preserve existing counts so the number of accounted shards
+			// does not depend on whether this result reaches the accumulator.
 			if responseStats.Summary.Shards == 0 {
 				responseStats.Summary.Shards = 1
 			}

@@ -461,6 +461,8 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 
 		if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+			// Return the response with its full statistics. Recording them as
+			// discarded work as well would count the same scan twice.
 			metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
 			return res, nil
 		}
@@ -469,7 +471,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		if len(sl.hashes) > sl.maxSeries {
 			// The query already ran. Preserve its usage before discarding the
 			// successful response; the outer collector will see only the error.
-			querystats.JoinPartial(ctx, promResponse.Statistics)
+			querystats.JoinDiscardedWork(ctx, promResponse.Statistics)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 		}
 	}

@@ -723,6 +723,8 @@ func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
 		name                 string
 		queryCount           int
 		limit                uint32
+		responseShards       int64
+		wantShards           int64
 		workerErr            error
 		cancelQuery          bool
 		returnScalar         bool
@@ -730,33 +732,41 @@ func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
 		wantErr              error
 		wantErrorContains    string
 	}{
-		{name: "success", queryCount: 2, limit: 2},
+		{name: "success", queryCount: 2, limit: 2, wantShards: 2},
 		// Both shards reach the accumulator, but only one entry is returned.
-		{name: "line limit", queryCount: 2, limit: 1},
+		{name: "line limit", queryCount: 2, limit: 1, wantShards: 2},
 		{
 			name: "worker failure", queryCount: 3, limit: 2, workerErr: workerErr,
-			wantErr: workerErr,
+			wantErr: workerErr, wantShards: 2,
 		},
 		{
 			name: "cancellation", queryCount: 4, limit: 2, cancelQuery: true,
-			wantErr: context.Canceled,
+			wantErr: context.Canceled, wantShards: 2,
 		},
 		{
 			name: "stream rejection", queryCount: 2, limit: 2, returnScalar: true,
-			wantErrorContains: "unexpected",
+			wantErrorContains: "unexpected", wantShards: 2,
 		},
 		{
 			name: "sketch rejection", queryCount: 2, limit: 2, returnScalar: true, useSketchAccumulator: true,
-			wantErrorContains: "unexpected",
+			wantErrorContains: "unexpected", wantShards: 2,
+		},
+		{
+			name: "success with existing shard counts", queryCount: 2, limit: 2, responseShards: 4,
+			wantShards: 8,
+		},
+		{
+			name: "worker failure with existing shard counts", queryCount: 3, limit: 2, responseShards: 4,
+			workerErr: workerErr, wantErr: workerErr, wantShards: 8,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				// Check normal and partial statistics independently so bytes recorded
+				// Check normal and discarded-work statistics independently so bytes recorded
 				// in both contexts cannot pass the assertions.
 				parent, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				partial, ctx := stats.NewPartialContext(parent)
+				discardedWork, ctx := stats.NewDiscardedWorkContext(parent)
 				queryStats, ctx := stats.NewContext(ctx)
 
 				// Create downstream jobs representing shard queries; execution is simulated
@@ -811,6 +821,9 @@ func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
 					}
 
 					result, err := ResponseToResult(logResponseWithScanUsage(int64(100 * (index + 1))))
+					// Some results already represent multiple shards. The accumulator
+					// and discarded-result tracker must preserve the same supplied count.
+					result.Statistics.Summary.Shards = tc.responseShards
 					if index == 0 && tc.returnScalar {
 						// Neither accumulator accepts scalars. Reject shard 0 while
 						// preserving its usage and shard 1's pending usage separately.
@@ -854,15 +867,15 @@ func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
 				}
 				synctest.Wait()
 
-				// On success, expect 300 bytes in normal stats and zero in partial
+				// On success, expect 300 bytes in normal stats and zero in discarded-work
 				// stats. On failure, expect the reverse: each shard must be counted once.
 				if tc.wantErr == nil && tc.wantErrorContains == "" {
 					require.NoError(t, queryErr)
 					require.Len(t, results, 1)
 					require.Equal(t, int64(tc.limit), results[0].Data.(logqlmodel.Streams).Lines())
 					require.Equal(t, int64(300), queryStats.Result(time.Second, 0, 0).Summary.TotalBytesProcessed)
-					require.Equal(t, int64(2), queryStats.Result(time.Second, 0, 0).Summary.Shards)
-					require.Zero(t, partial.Result().Summary.TotalBytesProcessed)
+					require.Equal(t, tc.wantShards, queryStats.Result(time.Second, 0, 0).Summary.Shards)
+					require.Zero(t, discardedWork.Result().Summary.TotalBytesProcessed)
 				} else {
 					require.Error(t, queryErr)
 					if tc.wantErr != nil {
@@ -873,8 +886,8 @@ func TestDownstreamPreservesCompletedShardUsage(t *testing.T) {
 					}
 
 					require.Nil(t, results)
-					require.Equal(t, int64(300), partial.Result().Summary.TotalBytesProcessed, "100 accumulated + 200 completed but discarded; late work excluded")
-					require.Equal(t, int64(2), partial.Result().Summary.Shards)
+					require.Equal(t, int64(300), discardedWork.Result().Summary.TotalBytesProcessed, "100 accumulated + 200 completed but discarded; late work excluded")
+					require.Equal(t, tc.wantShards, discardedWork.Result().Summary.Shards)
 					require.Zero(t, queryStats.Result(time.Second, 0, 0).Summary.TotalBytesProcessed)
 				}
 			})

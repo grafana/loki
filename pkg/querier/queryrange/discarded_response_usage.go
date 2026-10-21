@@ -37,10 +37,11 @@ func (tracker *discardedResponseStats[Key]) markResponseCollected(key Key) {
 	delete(tracker.uncollectedStats, key)
 }
 
-// closeAndAggregate stops registration and sums statistics from responses
-// that were not collected, without waiting for requests still running.
+// finalize closes the tracker and returns the sum of statistics from responses
+// that were not collected, without waiting for requests still running. It clears
+// the stored statistics and ignores subsequent registrations, unlike a snapshot.
 // The boolean is true if any response was included, even if it scanned zero bytes.
-func (tracker *discardedResponseStats[Key]) closeAndAggregate() (stats.Result, bool) {
+func (tracker *discardedResponseStats[Key]) finalize() (stats.Result, bool) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	tracker.finalized = true
@@ -72,14 +73,17 @@ func (tracker *discardedResponseUsageTracker) recordResponse(split *lokiResult, 
 }
 
 // finalizeResponseUsage preserves statistics from collected and uncollected
-// responses. On error, callers must still pass their collected responses: this
-// function records their usage in the partial-stats context before returning nil.
+// responses. On success with completed responses still in the tracker, pass one
+// merged log response and return it without merging again. With no remaining
+// tracked responses, successful responses pass through unchanged and may still
+// need merging. On error, pass all collected responses so their statistics enter
+// the discarded-work context before this function returns nil.
 func (tracker *discardedResponseUsageTracker) finalizeResponseUsage(ctx context.Context, responses []queryrangebase.Response, err error) []queryrangebase.Response {
-	uncollectedStats, hasUncollectedStats := tracker.closeAndAggregate()
+	uncollectedStats, hasUncollectedStats := tracker.finalize()
 	if err != nil {
 		recordDiscardedResponseUsage(ctx, responses)
 		if hasUncollectedStats {
-			stats.JoinPartial(ctx, uncollectedStats)
+			stats.JoinDiscardedWork(ctx, uncollectedStats)
 		}
 		return nil
 	}
@@ -89,7 +93,8 @@ func (tracker *discardedResponseUsageTracker) finalizeResponseUsage(ctx context.
 	// Log queries can succeed at the line limit without collecting every
 	// interval response. Add usage from completed, uncollected intervals to
 	// the collected log response's statistics, without adding their entries.
-	// Process has already merged the collected log responses on this path.
+	// The interval splitter and engine router have already merged the collected
+	// log responses on this early-exit path.
 	// Successful metric queries collect every response and need no adjustment.
 	if len(responses) > 0 {
 		if response, ok := responses[0].(*LokiResponse); ok {
@@ -107,7 +112,7 @@ func (tracker *discardedResponseUsageTracker) finalizeResponseUsage(ctx context.
 func recordDiscardedResponseUsage(ctx context.Context, responses []queryrangebase.Response) {
 	for _, response := range responses {
 		if responseStats, hasStats := statisticsFromResponse(response); hasStats {
-			stats.JoinPartial(ctx, responseStats)
+			stats.JoinDiscardedWork(ctx, responseStats)
 		}
 	}
 }

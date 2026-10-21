@@ -36,8 +36,8 @@ type (
 )
 
 const (
-	statsKey        ctxKeyType = "stats"
-	partialStatsKey ctxKeyType = "partial-stats"
+	statsKey              ctxKeyType = "stats"
+	discardedWorkStatsKey ctxKeyType = "discarded-work-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -101,42 +101,49 @@ func FromContext(ctx context.Context) *Context {
 	return v
 }
 
-// PartialContext accumulates statistics from completed work discarded by failed
-// sub-queries. These statistics must not also be included in returned responses.
-// The root query can still succeed if another interval satisfies its line limit.
+// DiscardedWorkContext accumulates statistics for completed work whose results
+// will not contribute statistics through the normal response path. This includes
+// successful child queries whose parent query later fails.
+//
+// Producers must record each result either here or through the normal response
+// path, never both. The root query merges a snapshot into its response on success
+// or uses the snapshot for failed-query reporting on error.
 // Its own context key prevents nested stats Contexts from shadowing it.
-type PartialContext struct {
+type DiscardedWorkContext struct {
 	mtx    sync.Mutex
 	result Result
 }
 
-func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
-	pc := &PartialContext{}
-	ctx = context.WithValue(ctx, partialStatsKey, pc)
-	return pc, ctx
+// NewDiscardedWorkContext installs a new collector for discarded-work statistics.
+func NewDiscardedWorkContext(ctx context.Context) (*DiscardedWorkContext, context.Context) {
+	discardedWork := &DiscardedWorkContext{}
+	ctx = context.WithValue(ctx, discardedWorkStatsKey, discardedWork)
+	return discardedWork, ctx
 }
 
-func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
-	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+// DiscardedWorkFromContext returns the discarded-work collector, if installed.
+func DiscardedWorkFromContext(ctx context.Context) (*DiscardedWorkContext, bool) {
+	v, ok := ctx.Value(discardedWorkStatsKey).(*DiscardedWorkContext)
 	return v, ok
 }
 
-// JoinPartial merges res into the PartialContext installed in ctx, and is a
-// no-op if there is none, so fan-out sites can call it unconditionally.
-func JoinPartial(ctx context.Context, res Result) {
-	pc, ok := PartialFromContext(ctx)
+// JoinDiscardedWork merges res into the DiscardedWorkContext installed in ctx.
+// It is a no-op if no collector is installed.
+func JoinDiscardedWork(ctx context.Context, res Result) {
+	discardedWork, ok := DiscardedWorkFromContext(ctx)
 	if !ok {
 		return
 	}
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	pc.result.Merge(res)
+	discardedWork.mtx.Lock()
+	defer discardedWork.mtx.Unlock()
+	discardedWork.result.Merge(res)
 }
 
-func (pc *PartialContext) Result() Result {
-	pc.mtx.Lock()
-	defer pc.mtx.Unlock()
-	return pc.result
+// Result returns a snapshot without clearing statistics or stopping further writes.
+func (c *DiscardedWorkContext) Result() Result {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.result
 }
 
 // Ingester returns the ingester statistics accumulated so far.

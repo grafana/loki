@@ -266,7 +266,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			middlewareStats, statsCtx := stats.NewContext(ctx)
 
 			// Collect usage from discarded responses, even if the root query succeeds.
-			partialStats, statsCtx := stats.NewPartialContext(statsCtx)
+			discardedWork, statsCtx := stats.NewDiscardedWorkContext(statsCtx)
 
 			// execute the request
 			resp, err := next.Do(statsCtx, req)
@@ -277,7 +277,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// middleware, i.e. real user queries: internal users of the
 				// tripperware get no line.
 				if data != nil {
-					logFailedQueryUsage(ctx, req, err, partialStats, start)
+					logFailedQueryUsage(ctx, req, err, discardedWork, start)
 				}
 				return resp, err
 			}
@@ -360,11 +360,13 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
-				// A later interval can fail after some shards complete, while an
-				// earlier interval satisfies the root query's line limit. Include the
-				// failed interval's partial usage in the successful root response.
-				// Usage recorded after this snapshot remains outside the report.
-				discardedStats := partialStats.Result()
+				// A later interval can finish one shard and then fail on another.
+				// The completed shard's statistics survive in discardedWork even
+				// though the interval returns an error. Interval responses are processed
+				// in order, so an earlier interval can satisfy the line limit before
+				// that error is seen. Include the discarded work in the successful
+				// root response; writes after this snapshot remain outside the report.
+				discardedStats := discardedWork.Result()
 				// Failed shards or attempts can belong to the same time intervals
 				// as the successful response. This aggregate has no interval
 				// identities, so adding its split count could count those intervals
@@ -417,7 +419,7 @@ func logFailedQueryUsage(
 	ctx context.Context,
 	req queryrangebase.Request,
 	err error,
-	partialStats *stats.PartialContext,
+	discardedWork *stats.DiscardedWorkContext,
 	start time.Time,
 ) {
 	if !recordsQueryUsageBytes(queryTypeFromRequest(req)) {
@@ -428,10 +430,10 @@ func logFailedQueryUsage(
 		return
 	}
 
-	// Only partialStats is read here: middlewareStats may still have sub-queries
+	// Only discardedWork is read here: middlewareStats may still have sub-queries
 	// writing to it, so snapshotting it would be a data race.
-	partial := partialStats.Result()
-	partial.ComputeSummary(time.Since(start), 0, 0)
+	discardedStats := discardedWork.Result()
+	discardedStats.ComputeSummary(time.Since(start), 0, 0)
 
 	category, reason := server.ClassifyFailure(err)
 	// The canonical mapping, so the logged status is the one the client is served.
@@ -446,8 +448,8 @@ func logFailedQueryUsage(
 		"range_type", string(logql.GetRangeType(p)),
 		"length", p.End().Sub(p.Start()),
 		"status", strconv.Itoa(status),
-		"duration", stats.ConvertSecondsToNanoseconds(partial.Summary.ExecTime),
-		"total_bytes", util.HumanizeBytes(uint64(partial.Summary.TotalBytesProcessed)),
+		"duration", stats.ConvertSecondsToNanoseconds(discardedStats.Summary.ExecTime),
+		"total_bytes", util.HumanizeBytes(uint64(discardedStats.Summary.TotalBytesProcessed)),
 		"failure_category", category,
 		"failure_reason", reason,
 	)
@@ -465,7 +467,7 @@ func logFailedQueryUsageForRejection(ctx context.Context, req queryrangebase.Req
 	if data, _ := ctx.Value(ctxKey).(*queryData); data == nil {
 		return
 	}
-	logFailedQueryUsage(ctx, req, err, &stats.PartialContext{}, time.Now())
+	logFailedQueryUsage(ctx, req, err, &stats.DiscardedWorkContext{}, time.Now())
 }
 
 // loggedQueryType returns the query type in the taxonomy the regular stats line
