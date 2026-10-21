@@ -127,9 +127,36 @@ var queries = []benchQuery{
 	},
 	{
 		// The filter matches the lines whose number ends in 7, which is about 10% of them.
-		expr:                 fmt.Sprintf(`sum(count_over_time(%s |~ "line=[0-9]*7 " [24h]))`, selectorAll),
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |~ "value=[0-9]*7 " [24h]))`, selectorAll),
 		description:          "high input, low output, line filter",
 		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		// Every fixture line starts with "level=info", so the filter keeps all of them.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "level=info" [24h]))`, selectorAll),
+		description:          "high input, low output, line filter that keeps every line",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		// Only the last line of each stream holds "value=4999 ", which is about 0.02% of the lines.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s |= "value=4999 " [24h]))`, selectorAll),
+		description:          "high input, low output, line filter that keeps almost nothing",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		// Every fixture line starts with "level=info", so the negated filter keeps none of them.
+		expr:                 fmt.Sprintf(`sum(count_over_time(%s != "level=info" [24h]))`, selectorAll),
+		description:          "high input, low output, negated line filter that keeps nothing",
+		instant:              true,
+		streamFirstSupported: true,
+	},
+	{
+		expr:                 fmt.Sprintf("sum by(%s) (sum_over_time(%s | logfmt | unwrap value [5m]))", labelMediumCardName, selectorAll),
+		description:          "high input, medium output, unwrap",
+		instant:              false,
 		streamFirstSupported: true,
 	},
 	{

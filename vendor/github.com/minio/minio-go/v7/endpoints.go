@@ -17,69 +17,28 @@
 
 package minio
 
+import (
+	"regexp"
+)
+
 type awsS3Endpoint struct {
 	endpoint          string
 	dualstackEndpoint string
 }
 
-type awsS3ExpressEndpoint struct {
-	regionalEndpoint string
-	zonalEndpoints   []string
-}
-
-var awsS3ExpressEndpointMap = map[string]awsS3ExpressEndpoint{
-	"us-east-1": {
-		"s3express-control.us-east-1.amazonaws.com",
-		[]string{
-			"s3express-use1-az4.us-east-1.amazonaws.com",
-			"s3express-use1-az5.us-east-1.amazonaws.com",
-			"3express-use1-az6.us-east-1.amazonaws.com",
-		},
-	},
-	"us-east-2": {
-		"s3express-control.us-east-2.amazonaws.com",
-		[]string{
-			"s3express-use2-az1.us-east-2.amazonaws.com",
-			"s3express-use2-az2.us-east-2.amazonaws.com",
-		},
-	},
-	"us-west-2": {
-		"s3express-control.us-west-2.amazonaws.com",
-		[]string{
-			"s3express-usw2-az1.us-west-2.amazonaws.com",
-			"s3express-usw2-az3.us-west-2.amazonaws.com",
-			"s3express-usw2-az4.us-west-2.amazonaws.com",
-		},
-	},
-	"ap-south-1": {
-		"s3express-control.ap-south-1.amazonaws.com",
-		[]string{
-			"s3express-aps1-az1.ap-south-1.amazonaws.com",
-			"s3express-aps1-az3.ap-south-1.amazonaws.com",
-		},
-	},
-	"ap-northeast-1": {
-		"s3express-control.ap-northeast-1.amazonaws.com",
-		[]string{
-			"s3express-apne1-az1.ap-northeast-1.amazonaws.com",
-			"s3express-apne1-az4.ap-northeast-1.amazonaws.com",
-		},
-	},
-	"eu-west-1": {
-		"s3express-control.eu-west-1.amazonaws.com",
-		[]string{
-			"s3express-euw1-az1.eu-west-1.amazonaws.com",
-			"s3express-euw1-az3.eu-west-1.amazonaws.com",
-		},
-	},
-	"eu-north-1": {
-		"s3express-control.eu-north-1.amazonaws.com",
-		[]string{
-			"s3express-eun1-az1.eu-north-1.amazonaws.com",
-			"s3express-eun1-az2.eu-north-1.amazonaws.com",
-			"s3express-eun1-az3.eu-north-1.amazonaws.com",
-		},
-	},
+// awsS3ExpressEndpointMap Amazon S3 Express regional (control) endpoints per
+// region. Zonal endpoints are not listed: they follow the regular pattern
+// "s3express-<zone-id>.<region>.amazonaws.com" and are derived from the zone
+// ID encoded in the S3 Express (directory) bucket name.
+var awsS3ExpressEndpointMap = map[string]string{
+	"us-east-1":      "s3express-control.us-east-1.amazonaws.com",
+	"us-east-2":      "s3express-control.us-east-2.amazonaws.com",
+	"us-west-2":      "s3express-control.us-west-2.amazonaws.com",
+	"ap-south-1":     "s3express-control.ap-south-1.amazonaws.com",
+	"ap-northeast-1": "s3express-control.ap-northeast-1.amazonaws.com",
+	"eu-central-1":   "s3express-control.eu-central-1.amazonaws.com",
+	"eu-west-1":      "s3express-control.eu-west-1.amazonaws.com",
+	"eu-north-1":     "s3express-control.eu-north-1.amazonaws.com",
 }
 
 // awsS3EndpointMap Amazon S3 endpoint map.
@@ -250,17 +209,38 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 	},
 }
 
-// getS3ExpressEndpoint get Amazon S3 Express endpoing based on the region
-// optionally if zonal is set returns first zonal endpoint.
-func getS3ExpressEndpoint(region string, zonal bool) (endpoint string) {
-	s3ExpEndpoint, ok := awsS3ExpressEndpointMap[region]
+// s3ExpressBucketAZID extracts the zone ID from an S3 Express (directory)
+// bucket name. Directory buckets live in a single Availability Zone or Local
+// Zone, encoded in the trailing "--<zone-id>--x-s3" suffix, e.g. "use1-az4"
+// from "mybucket--use1-az4--x-s3" or "usw2-lax1-az1" from
+// "bucket--usw2-lax1-az1--x-s3". The zone ID is the last "-azN" segment
+// before the "--x-s3" suffix, so earlier "--" runs in the base name do not
+// confuse the match.
+var s3ExpressBucketAZID = regexp.MustCompile(`--([a-z0-9]+(?:-[a-z0-9]+)*-az[0-9]+)--x-s3$`)
+
+// getS3ExpressEndpoint returns the S3 Express endpoint for the region.
+// S3 Express buckets live in a single zone, encoded in the bucket name
+// suffix ("--<zone-id>--x-s3"); the zonal endpoint is derived from it via
+// the regular "s3express-<zone-id>.<region>.amazonaws.com" pattern.
+// Non-S3 Express buckets (or no bucket) use the regional endpoint.
+// Unknown regions return "". dualstack selects the dualstack variants
+// (s3express-<zone-id>.dualstack.<region>.amazonaws.com and
+// s3express-control-dualstack.<region>.amazonaws.com).
+func getS3ExpressEndpoint(region, bucketName string, dualstack bool) (endpoint string) {
+	regionalEndpoint, ok := awsS3ExpressEndpointMap[region]
 	if !ok {
 		return ""
 	}
-	if zonal {
-		return s3ExpEndpoint.zonalEndpoints[0]
+	if m := s3ExpressBucketAZID.FindStringSubmatch(bucketName); len(m) == 2 {
+		if dualstack {
+			return "s3express-" + m[1] + ".dualstack." + region + ".amazonaws.com"
+		}
+		return "s3express-" + m[1] + "." + region + ".amazonaws.com"
 	}
-	return s3ExpEndpoint.regionalEndpoint
+	if dualstack {
+		return "s3express-control-dualstack." + region + ".amazonaws.com"
+	}
+	return regionalEndpoint
 }
 
 // getS3Endpoint get Amazon S3 endpoint based on the bucket location.

@@ -115,349 +115,12 @@ lbac:
 # Configures the server of the launched module(s).
 [server: <server>]
 
-ui:
-  # Enable the experimental Loki UI.
-  # CLI flag: -ui.enabled
-  [enabled: <boolean> | default = false]
-
-  # Enable debug logging for the UI.
-  # CLI flag: -ui.debug
-  [debug: <boolean> | default = false]
-
-  goldfish:
-    # Enable the Goldfish query comparison feature.
-    # CLI flag: -ui.goldfish.enable
-    [enable: <boolean> | default = false]
-
-    storage:
-      # Storage backend type (cloudsql, rds, or empty for no storage)
-      # CLI flag: -ui.goldfish.storage.type
-      [type: <string> | default = ""]
-
-      # CloudSQL host for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.host
-      [cloudsql_host: <string> | default = "127.0.0.1"]
-
-      # CloudSQL port for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.port
-      [cloudsql_port: <int> | default = 3306]
-
-      # CloudSQL database name for Goldfish.
-      # CLI flag: -ui.goldfish.storage.cloudsql.database
-      [cloudsql_database: <string> | default = "goldfish"]
-
-      # CloudSQL username for Goldfish database.
-      # CLI flag: -ui.goldfish.storage.cloudsql.user
-      [cloudsql_user: <string> | default = ""]
-
-      # RDS endpoint (host:port)
-      # CLI flag: -ui.goldfish.storage.rds.endpoint
-      [rds_endpoint: <string> | default = ""]
-
-      # RDS database name
-      # CLI flag: -ui.goldfish.storage.rds.database
-      [rds_database: <string> | default = ""]
-
-      # RDS database user
-      # CLI flag: -ui.goldfish.storage.rds.user
-      [rds_user: <string> | default = ""]
-
-      # Maximum number of database connections for Goldfish.
-      # CLI flag: -ui.goldfish.max-connections
-      [max_connections: <int> | default = 10]
-
-      # Maximum idle time for database connections in seconds.
-      # CLI flag: -ui.goldfish.max-idle-time
-      [max_idle_time_seconds: <int> | default = 300]
-
-    # Base URL of Grafana instance for explore links.
-    # CLI flag: -ui.goldfish.grafana-url
-    [grafana_url: <string> | default = ""]
-
-    # UID of the traces datasource in Grafana.
-    # CLI flag: -ui.goldfish.traces-datasource-uid
-    [traces_datasource_uid: <string> | default = ""]
-
-    # UID of the Loki datasource in Grafana.
-    # CLI flag: -ui.goldfish.logs-datasource-uid
-    [logs_datasource_uid: <string> | default = ""]
-
-    # Namespace for Cell A logs.
-    # CLI flag: -ui.goldfish.cell-a-namespace
-    [cell_a_namespace: <string> | default = ""]
-
-    # Namespace for Cell B logs.
-    # CLI flag: -ui.goldfish.cell-b-namespace
-    [cell_b_namespace: <string> | default = ""]
-
-    # Results storage backend (gcs, s3) for fetching stored query results.
-    # CLI flag: -ui.goldfish.results-backend
-    [results_backend: <string> | default = ""]
-
-    # The thanos_object_store_config block configures the connection to object
-    # storage backend using thanos-io/objstore clients. This will become the
-    # default way of configuring object store clients in future releases.
-    # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
-    # is set to true.
-    # The CLI flags prefix for this block configuration is: ui.goldfish.results
-    [results_bucket: <thanos_object_store_config>]
-
-  ring:
-    kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
-      # CLI flag: -ui.ring.store
-      [store: <string> | default = "consul"]
-
-      # The prefix for the keys in the store. Should end with a /.
-      # CLI flag: -ui.ring.prefix
-      [prefix: <string> | default = "collectors/"]
-
-      # Configuration for a Consul client. Only applies if the selected kvstore
-      # is consul.
-      # The CLI flags prefix for this block configuration is: ui.ring
-      [consul: <consul>]
-
-      # Configuration for an ETCD v3 client. Only applies if the selected
-      # kvstore is etcd.
-      # The CLI flags prefix for this block configuration is: ui.ring
-      [etcd: <etcd>]
-
-      multi:
-        # Primary backend storage used by multi-client.
-        # CLI flag: -ui.ring.multi.primary
-        [primary: <string> | default = ""]
-
-        # Secondary backend storage used by multi-client.
-        # CLI flag: -ui.ring.multi.secondary
-        [secondary: <string> | default = ""]
-
-        # Mirror writes to the secondary store.
-        # CLI flag: -ui.ring.multi.mirror-enabled
-        [mirror_enabled: <boolean> | default = false]
-
-        # Timeout for storing a value to the secondary store.
-        # CLI flag: -ui.ring.multi.mirror-timeout
-        [mirror_timeout: <duration> | default = 2s]
-
-    # Period at which to heartbeat to the ring.
-    # CLI flag: -ui.ring.heartbeat-period
-    [heartbeat_period: <duration> | default = 15s]
-
-    # The heartbeat timeout after which compactors are considered unhealthy
-    # within the ring. 0 = never (timeout disabled).
-    # CLI flag: -ui.ring.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m]
-
-    # File path where tokens are stored. If empty, tokens are not stored at
-    # shutdown and restored at startup.
-    # CLI flag: -ui.ring.tokens-file-path
-    [tokens_file_path: <string> | default = ""]
-
-    # True to enable zone-awareness and replicate blocks across different
-    # availability zones.
-    # CLI flag: -ui.ring.zone-awareness-enabled
-    [zone_awareness_enabled: <boolean> | default = false]
-
-    # Number of tokens to own in the ring.
-    # CLI flag: -ui.ring.num-tokens
-    [num_tokens: <int> | default = 128]
-
-    # Factor for data replication.
-    # CLI flag: -ui.ring.replication-factor
-    [replication_factor: <int> | default = 3]
-
-    # Instance ID to register in the ring.
-    # CLI flag: -ui.ring.instance-id
-    [instance_id: <string> | default = "<hostname>"]
-
-    # Name of network interface to read address from.
-    # CLI flag: -ui.ring.instance-interface-names
-    [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-    # Port to advertise in the ring (defaults to server.grpc-listen-port).
-    # CLI flag: -ui.ring.instance-port
-    [instance_port: <int> | default = 0]
-
-    # IP address to advertise in the ring.
-    # CLI flag: -ui.ring.instance-addr
-    [instance_addr: <string> | default = ""]
-
-    # The availability zone where this instance is running. Required if
-    # zone-awareness is enabled.
-    # CLI flag: -ui.ring.instance-availability-zone
-    [instance_availability_zone: <string> | default = ""]
-
-    # Enable using a IPv6 instance address.
-    # CLI flag: -ui.ring.instance-enable-ipv6
-    [instance_enable_ipv6: <boolean> | default = false]
-
 # Configures the distributor.
 [distributor: <distributor>]
 
 # Configures the querier. Only appropriate when running all modules or just the
 # querier.
 [querier: <querier>]
-
-query_engine:
-  # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -query-engine.enable
-  [enable: <boolean> | default = false]
-
-  # Experimental: Enable distributed query execution.
-  # CLI flag: -query-engine.distributed
-  [distributed: <boolean> | default = false]
-
-  # Experimental: Name of network interface to read an advertise address from
-  # for accepting incoming traffic from query-engine-worker instances when
-  # distributed execution is enabled.
-  # CLI flag: -query-engine.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -query-engine.batch-size
-  [batch_size: <int> | default = 100]
-
-  # Experimental: Number of bytes to prefetch when opening a data object for
-  # decoding metadata and overlapping section reads. Clamps to at least 16KiB.
-  # CLI flag: -query-engine.prefetch-bytes
-  [prefetch_bytes: <int> | default = 16KiB]
-
-  # Experimental: The number of inputs that are prefetched simultaneously by any
-  # Merge node. A value of 0 means that only the currently processed input is
-  # prefetched, 1 means that only the next input is prefetched, and so on. A
-  # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -query-engine.merge-prefetch-count
-  [merge_prefetch_count: <int> | default = 0]
-
-  # Configures how to read byte ranges from object storage when using the V2
-  # engine.
-  range_reads:
-    # Experimental: maximum number of parallel reads
-    # CLI flag: -query-engine.range-reads.max-parallelism
-    [max_parallelism: <int> | default = 10]
-
-    # Experimental: maximum distance (in bytes) between ranges that causes them
-    # to be coalesced into a single range
-    # CLI flag: -query-engine.range-reads.coalesce-size
-    [coalesce_size: <int> | default = 1048576]
-
-    # Experimental: maximum size of a byte range
-    # CLI flag: -query-engine.range-reads.max-range-size
-    [max_range_size: <int> | default = 8388608]
-
-    # Experimental: minimum size of a byte range
-    # CLI flag: -query-engine.range-reads.min-range-size
-    [min_range_size: <int> | default = 1048576]
-
-  task_results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # query-engine.task-results-cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.task-results-cache.compression
-    [compression: <string> | default = ""]
-
-    # Experimental: Maximum size for a task result to be cacheable. 0 means only
-    # empty responses are cached.
-    # CLI flag: -query-engine.task-results-cache.task-result-max-cacheable-size
-    [task_result_max_cacheable_size: <int> | default = 0B]
-
-    # Experimental: Maximum size for a DataObjScan result to be cacheable. 0
-    # means only empty responses are cached.
-    # CLI flag: -query-engine.task-results-cache.dataobjscan-result-max-cacheable-size
-    [dataobjscan_result_max_cacheable_size: <int> | default = 0B]
-
-    # Experimental: When enabled, the scheduler checks cached results at plan
-    # time and prunes tasks whose cached result is known to be empty.
-    # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
-    [prune_empty_cached_tasks: <boolean> | default = false]
-
-    # Experimental: Maximum total size of non-empty cached task results embedded
-    # in task assignments. Results that would exceed the budget are skipped
-    # (smaller results that fit are still included). 0 disables non-empty task
-    # pruning.
-    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-max-size
-    [prune_cached_tasks_max_size: <int> | default = 0B]
-
-    # Experimental: Timeout for cache fetch operations during cached-task
-    # pruning at plan time. 0 disables the timeout.
-    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-fetch-timeout
-    [prune_cached_tasks_fetch_timeout: <duration> | default = 1s]
-
-  # Experimental: Number of worker threads to spawn. Each worker thread runs one
-  # task at a time. 0 means to use GOMAXPROCS value.
-  # CLI flag: -query-engine.worker-threads
-  [worker_threads: <int> | default = 0]
-
-  # Experimental: Address holding DNS SRV records of schedulers to connect to.
-  # CLI flag: -query-engine.scheduler-lookup-address
-  [scheduler_lookup_address: <string> | default = ""]
-
-  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
-  # CLI flag: -query-engine.scheduler-lookup-interval
-  [scheduler_lookup_interval: <duration> | default = 10s]
-
-  # Amount of time until data objects are available.
-  # CLI flag: -query-engine.storage-lag
-  [storage_lag: <duration> | default = 1h]
-
-  # Initial date when data objects became available. Format YYYY-MM-DD. If not
-  # set, assume data objects are always available no matter how far back.
-  # CLI flag: -query-engine.storage-start-date
-  [storage_start_date: <time> | default = 0]
-
-  # Lifecycle of data objects in days. If set, queries falling outside of the
-  # retention period will not be supported. When both storage-start-date and
-  # storage-retention-days are set, the more restrictive of the two will apply.
-  # CLI flag: -query-engine.storage-retention-days
-  [storage_retention_days: <int> | default = 0]
-
-  # Enable routing of query splits in the query frontend to the next generation
-  # engine when they fall within the configured time range.
-  # CLI flag: -query-engine.enable-engine-router
-  [enable_engine_router: <boolean> | default = false]
-
-  # Downstream address to send query splits to. This is the HTTP handler address
-  # of the query engine scheduler.
-  # CLI flag: -query-engine.downstream-address
-  [downstream_address: <string> | default = ""]
-
-  # When enabled, query results exclude log lines that match overlapping delete
-  # requests (not just pending requests). Disable to return all logs without
-  # considering delete requests.
-  # CLI flag: -query-engine.enable-delete-req-filtering
-  [enable_delete_req_filtering: <boolean> | default = true]
-
-  # Enforce tenant retention limits. Queries falling outside tenant's retention
-  # period are either adjusted or rejected.
-  # CLI flag: -query-engine.enforce-retention-period
-  [enforce_retention_period: <boolean> | default = false]
-
-  # Mutate incoming queries to align their start and end with their step.
-  # CLI flag: -query-engine.align-queries-with-step
-  [align_queries_with_step: <boolean> | default = false]
-
-  # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
-  # Otherwise, no limit is enforced.
-  # CLI flag: -query-engine.enforce-max-query-series-limit
-  [enforce_max_query_series_limit: <boolean> | default = false]
-
-  results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # query-engine.results-cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -query-engine.results-cache.compression
-    [compression: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -1380,6 +1043,14 @@ dataobj:
     # CLI flag: -dataobj.builder.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
+    # The maximum number of data objects that one flush builds, uploads and
+    # indexes at the same time. Each extra object in progress adds the memory to
+    # sort, upload and index it. If one object fails, the flush cancels the
+    # others. The builder commits the Kafka offset only after every object
+    # succeeds.
+    # CLI flag: -dataobj.builder.flush-concurrency
+    [flush_concurrency: <int> | default = 1]
+
     # The name of the Kafka topic.
     # CLI flag: -dataobj.builder.topic
     [topic: <string> | default = ""]
@@ -1388,6 +1059,11 @@ dataobj:
     # instance hostname instead.
     # CLI flag: -dataobj.builder.partition-id
     [partition_id: <int> | default = -1]
+
+    # How often the builder that consumes partition 0 reads the offsets of every
+    # partition to refresh the loki_dataobj_builder_required_replicas metric.
+    # CLI flag: -dataobj.builder.required-replicas-refresh-interval
+    [required_replicas_refresh_interval: <duration> | default = 30s]
 
   uploader:
     # The size of the SHA prefix to use for generating object storage keys for
@@ -2424,8 +2100,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
-- `query-engine.results-cache`
-- `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `tsdb.shipper.postings-cache`
@@ -3127,7 +2801,6 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
-- `ui.ring`
 
 &nbsp;
 
@@ -3414,7 +3087,6 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
-- `ui.ring`
 
 &nbsp;
 
@@ -3436,7 +3108,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is: ui.ring.etcd
+# The CLI flags prefix for this block configuration is: ruler.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -7020,7 +6692,6 @@ Currently this is opt-in and takes effect only when `-use-thanos-objstore` is se
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
-- `ui.goldfish.results`
 
 &nbsp;
 
@@ -7536,8 +7207,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
-- `query-engine.results-cache.memcached`
-- `query-engine.task-results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
 - `reporting.tls-config`
@@ -7549,7 +7218,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.chunks-cache.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `tsdb.shipper.postings-cache.memcached`
-- `ui.ring.etcd`
 
 &nbsp;
 

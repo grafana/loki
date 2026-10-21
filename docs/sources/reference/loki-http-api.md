@@ -88,7 +88,7 @@ These HTTP endpoints are exposed by their respective component that is part of t
 These HTTP endpoints are exposed by the `ingester`, `write`, and `all` components for flushing chunks and/or shutting down.
 
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
-- [`POST /flush/tenant`](#flush-in-memory-chunks-and-index-for-a-tenant)
+- [`POST /flush/tenant`](#flush-in-memory-chunks-for-a-tenant-experimental)
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
 
@@ -259,6 +259,10 @@ Alternatively, if the `Content-Type` header is set to `application/json`, a JSON
   ]
 }
 ```
+
+{{< admonition type="note" >}}
+Loki validates JSON push payloads strictly: a field name that doesn't belong to the schema shown above causes the request to fail with HTTP 400 and an error message that contains `found unknown field: <field>`. This also applies to the deprecated `/api/prom/push` endpoint, which uses a different JSON schema (`labels` and `entries` instead of `stream` and `values`). Each endpoint only accepts the fields in its own schema, so sending one endpoint's payload format to the other now returns an error instead of silently dropping data. This validation doesn't apply to the default Protocol Buffer encoding.
+{{< /admonition >}}
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
@@ -1297,36 +1301,48 @@ POST /flush
 ```
 
 `/flush` triggers a flush of all in-memory chunks held by the ingesters to the
-backing store. Mainly used for local testing.
+backing store. By default the flush is queued and the request returns without 
+waiting for it to complete.
+
+**URL query parameters:**
+
+- `flush_index` (experimental):
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  Waiting for the flush can take a long time, so set a generous client timeout.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
-## Flush in-memory chunks and index for a tenant
+## Flush in-memory chunks for a tenant (experimental)
 
 ```bash
 POST /flush/tenant
 ```
 
-`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
-a single tenant, and then forces that ingester's in-memory index (the TSDB head)
-to be built and uploaded to the backing store. This makes the flushed chunks
-immediately referenceable, rather than waiting for the next periodic index
-rotation.
+This endpoint is experimental and may change or be removed.
 
-Unlike `/flush`, this endpoint is tenant-scoped: the tenant is taken from the
-`X-Scope-OrgID` header (when running with multi-tenancy enabled). An optional
-`streams` parameter restricts the flush to the streams matching a log stream
-selector; when omitted, all of the tenant's in-memory streams are flushed.
+`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
+a single tenant to the backing store. By default the flush is queued and the
+request returns without waiting for it to complete.
 
 **URL query parameters:**
 
-- `streams=<selector>`:
+- `tenant=<tenant ID>`:
+  Required. The tenant to flush.
+- `matchers=<selector>`:
   Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
   If omitted, all in-memory streams for the tenant are flushed.
+- `flush_index`:
+  If set to `true`, the request waits for the chunks to be flushed, and then also forces the ingester's in-memory index to be built and shipped to the backing store.
+  The flushed chunks are then immediately referenceable, rather than waiting for the next periodic index rotation.
+  The index is shared by all tenants on the ingester, so the index flush is not tenant-scoped.
+  Waiting for the flush can take a long time, so set a generous client timeout.
+  A bare `flush_index` is treated as `true`.
+  If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
 
-The flush is handled synchronously: the index is shipped only after the matching
-chunks have been flushed, so the request can be long-running. Set a generous
-client timeout when calling it.
+For example, `POST /flush/tenant?tenant=foo&matchers={app="bar"}&flush_index`.
 
 In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
 
@@ -1343,7 +1359,7 @@ waiting for the periodic resync (which re-lists through a cache that can take up
 to a minute to expire). It is the second step of making a freshly flushed index
 queryable across read nodes:
 
-1. `POST /flush/tenant` on the ingester ships the new index to object storage.
+1. `POST /flush/tenant?tenant=<tenant>&flush_index` on the ingester ships the new index to object storage.
 1. `PUT /sync-indexes` on the index-gateway downloads it.
 1. `POST /loki/api/v1/cache/generation_numbers/increase` on the compactor
    invalidates any cached query results so the new data is reflected.

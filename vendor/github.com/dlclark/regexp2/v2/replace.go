@@ -180,9 +180,9 @@ func replaceRunnerLTR(regex *Regexp, data *syntax.ReplacerData, input string, st
 	}
 
 	runner := regex.getRunner()
-	d := decodeInput(input, startAt, 0, regex.optimizations.MaxCachedRuneBufferLength, false)
+	d := decodeInput(input, startAt, 0, regex.optimizations.MaxCachedRuneBufferLength)
 	text := d.runes
-	textInfo := newStringMatchText(input, text)
+	textInfo := runner.stringMatchText(input, text, 0, 0)
 	defer func() {
 		regex.putRunner(runner)
 		d.release()
@@ -244,9 +244,9 @@ func replaceRunnerRTL(regex *Regexp, data *syntax.ReplacerData, input string, st
 	}
 
 	runner := regex.getRunner()
-	d := decodeInput(input, startAt, 0, regex.optimizations.MaxCachedRuneBufferLength, false)
+	d := decodeInput(input, startAt, 0, regex.optimizations.MaxCachedRuneBufferLength)
 	text := d.runes
-	textInfo := newStringMatchText(input, text)
+	textInfo := runner.stringMatchText(input, text, 0, 0)
 	defer func() {
 		regex.putRunner(runner)
 		d.release()

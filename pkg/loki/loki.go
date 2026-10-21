@@ -42,7 +42,6 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -74,7 +73,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
-	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
@@ -90,17 +88,15 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
-	LBAC         labelaccess.Config     `yaml:"lbac,omitempty" category:"experimental"`
+	LBAC         labelaccess.Config     `yaml:"lbac,omitempty"`
 	NoAuthTenant string                 `yaml:"no_auth_tenant,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
-	UI                  ui.Config                  `yaml:"ui,omitempty"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
@@ -127,7 +123,8 @@ type Config struct {
 	// configuration is settled. Until then the section is flags-only and left
 	// out of the config reference. Every field is reachable through
 	// -logline-index.*, -logline-store.*, -logline-builder.*,
-	// -logline-query.* and -logline-correctness.*.
+	// -logline-query.*, -logline-correctness.*, -logline-compaction.* and
+	// -logline-retention.*.
 	Logline loglineconfig.Config `yaml:"-" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
@@ -215,7 +212,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.QueryEngine.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -244,7 +240,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimits.RegisterFlags(f)
 	c.IngestLimitsFrontend.RegisterFlags(f)
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
-	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
 }
@@ -382,6 +377,16 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
 		}
 	}
+	if c.isTarget(LoglineScheduler) {
+		if err := c.Logline.ValidateScheduler(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
+	if c.isTarget(LoglineCompactor) {
+		if err := c.Logline.ValidateCompactor(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+		}
+	}
 	// A no-op unless logline query narrowing is enabled.
 	if err := c.Logline.ValidateQueryConfig(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
@@ -437,8 +442,6 @@ type Loki struct {
 
 	Server                    *server.Server
 	InternalServer            *server.Server
-	UI                        *ui.Service
-	uiRingManager             *lokiring.RingManager
 	ring                      *ring.Ring
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
@@ -480,8 +483,6 @@ type Loki struct {
 	dataObjCompactionPlanner  *enginecompactor.Planner
 	dataObjCompactionWorker   *enginecompactor.Worker
 	scratchStore              scratch.Store
-	queryEngineV2             *engine.Engine
-	queryEngineV2Scheduler    *engine.Scheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -829,9 +830,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 
-	mm.RegisterModule(UI, t.initUI, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
-
 	// Thor related modules: keep targets invisible
 	mm.RegisterModule(DataObjBuilder, t.initDataObjBuilder, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner, modules.UserInvisibleTargetableModule)
@@ -842,10 +840,9 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(LoglineBuilderPartitionRing, t.initLoglineBuilderPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(LoglineCorrectness, t.initLoglineCorrectness, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(LoglineQueryFrontendTripperware, t.initLoglineQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(LoglineScheduler, t.initLoglineScheduler, modules.UserInvisibleTargetableModule)
+	mm.RegisterModule(LoglineCompactor, t.initLoglineCompactor, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleTargetableModule)
-	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
@@ -855,50 +852,47 @@ func (t *Loki) setupModuleManager() error {
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
-		OverridesExporter:        {Overrides, Server, UIRing},
+		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		UI:                       {UIRing},
-		UIRing:                   {Server, MemberlistKV},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UIRing},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
-		QueryEngine:              {QueryEngineScheduler},
-		QueryEngineWorker:        {Server, Overrides, TenantConfigs, Analytics},
-		QueryEngineScheduler:     {Server, Overrides, TenantConfigs, Analytics},
-		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
+		QueryFrontend:            {QueryFrontendTripperware, LoglineQueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
-		Compactor:                {Server, Overrides, MemberlistKV, Analytics, UIRing},
-		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UIRing},
-		BloomGateway:             {Server, BloomStore, Analytics, UIRing},
-		BloomPlanner:             {Server, BloomStore, Analytics, Store, UIRing},
-		BloomBuilder:             {Server, BloomStore, Analytics, Store, UIRing},
+		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		BloomGateway:             {Server, BloomStore, Analytics},
+		BloomPlanner:             {Server, BloomStore, Analytics, Store},
+		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		BloomStore:               {IndexGatewayRing, BloomGatewayClient},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, Overrides, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides, UIRing},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
-		DataObjExplorer:          {Server, UIRing},
-		DataObjBuilder:           {ScratchStore, Server, UIRing, Overrides},
-		DataObjCompactionPlanner: {Server, UIRing, Overrides},
-		DataObjCompactionWorker:  {ScratchStore, Server, UIRing},
+		DataObjExplorer:          {Server},
+		DataObjBuilder:           {ScratchStore, Server, Overrides},
+		DataObjCompactionPlanner: {Server, Overrides},
+		DataObjCompactionWorker:  {ScratchStore, Server},
 		ScratchStore:             {},
 
 		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},
 		LoglineBuilderPartitionRing:     {MemberlistKV, Server},
 		LoglineQueryFrontendTripperware: {QueryFrontendTripperware, Overrides},
 		LoglineCorrectness:              {Server},
+		LoglineScheduler:                {Server, Overrides},
+		LoglineCompactor:                {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

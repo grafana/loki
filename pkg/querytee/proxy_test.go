@@ -33,11 +33,7 @@ func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonS
 }
 
 func Test_NewProxy(t *testing.T) {
-	cfg := ProxyConfig{
-		Routing: RoutingConfig{
-			Mode: RoutingModeV1Preferred,
-		},
-	}
+	cfg := ProxyConfig{}
 
 	p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 	assert.Equal(t, errMinBackends, err)
@@ -170,7 +166,6 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
 				Routing: RoutingConfig{
-					Mode:        RoutingModeV1Preferred,
 					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
 				},
 			}
@@ -328,7 +323,6 @@ func TestProxy_Passthrough(t *testing.T) {
 				BackendReadTimeout:             time.Second,
 				PassThroughNonRegisteredRoutes: true,
 				Routing: RoutingConfig{
-					Mode:        RoutingModeV1Preferred,
 					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
 				},
 			}

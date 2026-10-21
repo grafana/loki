@@ -58,6 +58,17 @@ func NewQueue(
 	metrics *Metrics,
 	storeMetrics storage.ClientMetrics,
 ) (*Queue, error) {
+	return newQueue(logger, cfg, limits, metrics, storeMetrics, 5*time.Minute, 1*time.Hour)
+}
+
+func newQueue(
+	logger log.Logger,
+	cfg Config,
+	limits Limits,
+	metrics *Metrics,
+	storeMetrics storage.ClientMetrics,
+	activeUsersCleanupInterval, activeUsersInactiveTimeout time.Duration,
+) (*Queue, error) {
 	// Configure the filesystem client if we are storing tasks on disk.
 	var diskClient client.ObjectClient
 	if cfg.StoreTasksOnDisk {
@@ -73,8 +84,15 @@ func NewQueue(
 
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, limits, metrics)
 
-	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
-	activeUsers := util.NewActiveUsersCleanupService(5*time.Minute, 1*time.Hour, func(user string) {
+	// Re-register the user when the queue is non-empty: PurgeInactiveUsers has already
+	// removed it from its tracking map by the time this callback runs, so without this
+	// the metrics would never be cleaned up once the backlog drains.
+	var activeUsers *util.ActiveUsersCleanupService
+	activeUsers = util.NewActiveUsersCleanupService(activeUsersCleanupInterval, activeUsersInactiveTimeout, func(user string) {
+		if tasksQueue.GetUserQueueLength(user) > 0 {
+			activeUsers.UpdateUserTimestamp(user, time.Now())
+			return
+		}
 		metrics.Cleanup(user)
 	})
 
