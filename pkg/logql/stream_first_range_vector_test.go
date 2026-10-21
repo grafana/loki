@@ -288,7 +288,7 @@ func TestStreamFirstRangeVectorIterator(t *testing.T) {
 		require.EqualError(t, it.Error(), logqlmodel.NewPipelineErr(errored).Error())
 	})
 
-	t.Run("fails with the pipeline error at a series that carries an error label and joins an output series the iterator already has when the query has no series limit", func(t *testing.T) {
+	t.Run("fails with the pipeline error when the query has no series limit and the series that carries an error label falls in an existing output series", func(t *testing.T) {
 		const noSeriesLimit = 0
 
 		var (
