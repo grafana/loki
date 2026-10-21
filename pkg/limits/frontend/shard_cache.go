@@ -40,26 +40,34 @@ type shardCacheEntry struct {
 	inflight bool
 }
 
-type stripeLock struct {
-	sync.RWMutex
-	_ [40]byte // Padding to avoid multiple locks being on the same cache line.
+type stripe struct {
+	mtx       sync.RWMutex
+	entries   map[shardCacheKey]*shardCacheEntry
+	lastSwept map[string]time.Time
 }
 
-type keyedMutex []stripeLock
+type stripes []stripe
 
-func newStripedLock(n int) keyedMutex {
-	return make(keyedMutex, n)
+func newStripes(n int) stripes {
+	s := make(stripes, 0, n)
+	for range n {
+		s = append(s, stripe{
+			entries:   make(map[shardCacheKey]*shardCacheEntry),
+			lastSwept: make(map[string]time.Time),
+		})
+	}
+	return s
 }
 
-func (l keyedMutex) getStripe(tenant string) int {
+func (s stripes) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
-	return int(h.Sum32() % uint32(len(l)))
+	return int(h.Sum32() % uint32(len(s)))
 }
 
-func (l keyedMutex) getLock(tenant string) *stripeLock {
-	i := l.getStripe(tenant)
-	return &l[i]
+func (s stripes) getLock(tenant string) *sync.RWMutex {
+	i := s.getStripe(tenant)
+	return &s[i].mtx
 }
 
 // shardCacheLimitsClient caches CheckLimitsAndShard results per stream.
@@ -71,23 +79,17 @@ func (l keyedMutex) getLock(tenant string) *stripeLock {
 // The tradeoff is, that concurrent pushes for a stream without a result, such as
 // a new stream, are all forwarded.
 type shardCacheLimitsClient struct {
-	ttl  time.Duration
-	next limitsClient // the client invoked on cache miss
-
-	tenantMtx keyedMutex
-	entries   map[shardCacheKey]*shardCacheEntry
-	lastSwept map[string]time.Time
-
+	ttl            time.Duration
+	next           limitsClient // the client invoked on cache miss
+	stripes        stripes
 	combinedPushes prometheus.Histogram
 }
 
 func newShardCacheLimitsClient(ttl time.Duration, next limitsClient, reg prometheus.Registerer) *shardCacheLimitsClient {
 	return &shardCacheLimitsClient{
-		ttl:       ttl,
-		next:      next,
-		entries:   make(map[shardCacheKey]*shardCacheEntry),
-		tenantMtx: newStripedLock(128),
-		lastSwept: make(map[string]time.Time),
+		ttl:     ttl,
+		next:    next,
+		stripes: newStripes(128),
 		combinedPushes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_ingest_limits_frontend_shard_cache_combined_pushes",
 			Help:    "The number of pushes combined into a single CheckLimitsAndShard backend request.",
@@ -110,15 +112,18 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 		refreshes []streamShardPushCount
 	)
 
-	mtx := c.tenantMtx.getLock(req.Tenant)
+	mtx := c.stripes.getLock(req.Tenant)
 	mtx.Lock()
+
+	sIdx := c.stripes.getStripe(req.Tenant)
+
 	c.sweep(now, req.Tenant)
 	for _, m := range req.Streams {
 		key := shardCacheKey{req.Tenant, m.StreamHash}
-		entry, ok := c.entries[key]
+		entry, ok := c.stripes[sIdx].entries[key]
 		if !ok {
 			entry = &shardCacheEntry{}
-			c.entries[key] = entry
+			c.stripes[sIdx].entries[key] = entry
 		}
 		if entry.result != nil && (entry.inflight || now.Sub(entry.refreshedAt) < c.ttl) {
 			// The limits service does not record the size of a push it
@@ -184,16 +189,17 @@ func (c *shardCacheLimitsClient) CheckLimitsAndShard(ctx context.Context, req *p
 // idle stream accumulated since its last backend call is dropped with it.
 // It must be called with mtx held.
 func (c *shardCacheLimitsClient) sweep(now time.Time, tenant string) {
+	sIdx := c.stripes.getStripe(tenant)
 	maxAge := c.ttl * shardCacheMaxIdleFactor
-	lastSwept, _ := c.lastSwept[tenant]
+	lastSwept, _ := c.stripes[sIdx].lastSwept[tenant]
 	if now.Sub(lastSwept) < maxAge {
 		return
 	}
-	c.lastSwept[tenant] = now
+	c.stripes[sIdx].lastSwept[tenant] = now
 	cutoff := now.Add(-maxAge)
-	for k, e := range c.entries {
+	for k, e := range c.stripes[sIdx].entries {
 		if k.tenant == tenant && !e.inflight && e.refreshedAt.Before(cutoff) {
-			delete(c.entries, k)
+			delete(c.stripes[sIdx].entries, k)
 		}
 	}
 }

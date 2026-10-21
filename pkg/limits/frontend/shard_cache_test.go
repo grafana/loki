@@ -179,7 +179,7 @@ func TestShardCacheLimitsClient(t *testing.T) {
 			time.Sleep(11 * time.Minute)
 			_, err = c.CheckLimitsAndShard(t.Context(), newShardRequest(0x2, 10))
 			require.NoError(t, err)
-			require.NotContains(t, c.entries, shardCacheKey{"test", 0x1})
+			require.NotContains(t, c.stripes[c.stripes.getStripe("test")].entries, shardCacheKey{"test", 0x1})
 		})
 	})
 
@@ -208,7 +208,7 @@ func TestShardCacheLimitsClient(t *testing.T) {
 			require.NoError(t, got.err)
 			require.Equal(t, uint32(4), got.resp.Results[0].Shards)
 
-			entry := c.entries[shardCacheKey{"test", 0x1}]
+			entry := c.stripes[c.stripes.getStripe("test")].entries[shardCacheKey{"test", 0x1}]
 			require.Equal(t, uint32(4), entry.result.Shards)
 			require.Equal(t, uint64(5), entry.accumSize)
 			require.Equal(t, uint32(1), entry.accumPushes)
