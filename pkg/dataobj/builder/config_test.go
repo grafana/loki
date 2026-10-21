@@ -16,6 +16,7 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	require.Equal(t, 1, cfg.FlushConcurrency)
+	require.Equal(t, 1, cfg.SortConcurrency)
 
 	require.Equal(t, 1<<20, int(cfg.LogsobjBuilder.TargetPageSize))
 	require.Equal(t, 8, cfg.LogsobjBuilder.EstimatedCompressionRatio)
@@ -73,5 +74,16 @@ func TestConfig_Validate(t *testing.T) {
 	t.Run("rejects a zero required replicas refresh interval", func(t *testing.T) {
 		cfg := newConfig(t, "-dataobj.builder.required-replicas-refresh-interval=0s")
 		require.Error(t, cfg.Validate())
+	})
+
+	t.Run("accepts a sort concurrency above 1", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-concurrency=4")
+		require.NoError(t, cfg.Validate())
+		require.Equal(t, 4, cfg.SortConcurrency)
+	})
+
+	t.Run("rejects a sort concurrency of 0", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.sort-concurrency=0")
+		require.EqualError(t, cfg.Validate(), "sort concurrency must be at least 1")
 	})
 }
