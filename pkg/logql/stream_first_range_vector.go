@@ -41,8 +41,8 @@ type streamFirstRangeVectorIterator struct {
 	// output series and a warning instead of an error.
 	partialResultsAllowed bool
 
-	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__,
-	// so a kept errored sample does not pre-empt the series-limit error.
+	// keepsErroredLines reports whether the query asked to keep the samples that carry __error__.
+	// Otherwise, the first such series that has a sample in a step window fails the query.
 	keepsErroredLines bool
 
 	// grouping and sortedGroups are the grouping of the vector aggregation above the range
@@ -68,6 +68,9 @@ type streamFirstRangeVectorIterator struct {
 //
 // grouping is the grouping of the vector aggregation above expr. maxSeries limits the output
 // series of that aggregation, which can be fewer than the iterator's series.
+//
+// A series that carries __error__ and has a sample in a step window fails the query with its
+// pipeline error, unless keepsErroredLines is true. This check runs before the series limit.
 //
 // A series that adds an output series beyond maxSeries fails the query. A Logs Drilldown request
 // instead keeps the output series it has and gets a warning.
@@ -222,8 +225,16 @@ func (r *streamFirstRangeVectorIterator) windowRange(ts int64) (lo, hi int, ok b
 	return int(kLo), int(kHi), true
 }
 
-// accumulatedSeriesFor returns the accumulated series for the series labels lbs. It returns nil
-// when the series limit drops the series.
+// accumulatedSeriesFor returns the accumulated series for the series labels lbs.
+//
+// A nil series with no error means the request allows partial results and the series limit
+// dropped the series.
+//
+// It returns an error in these cases:
+//   - The labels do not parse.
+//   - The series carries __error__ and the query does not keep errored lines.
+//   - The series adds an output series beyond the series limit, and the request does not allow
+//     partial results.
 func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accumulatedSeries, error) {
 	if s, ok := r.series[lbs]; ok {
 		return s, nil
@@ -236,13 +247,18 @@ func (r *streamFirstRangeVectorIterator) accumulatedSeriesFor(lbs string) (*accu
 		return nil, fmt.Errorf("parsing series labels %q: %w", lbs, err)
 	}
 
+	// Fail at the first series that carries __error__. The evaluator fails on it too, but only
+	// after load drains the input.
+	//
+	// The series limit counts output series, so it does not bound such series that share one.
+	// Without this check, every one of them keeps an accumulator until load ends.
+	if !r.keepsErroredLines && metric.Has(logqlmodel.ErrorLabel) {
+		return nil, logqlmodel.NewPipelineErr(metric)
+	}
+
 	output := r.groupingKey(metric)
 	if _, ok := r.outputs[output]; !ok {
 		if r.maxSeries > 0 && len(r.outputs) >= r.maxSeries {
-			// Prefer the pipeline error to the limit error, because it tells the user what to fix.
-			if !r.keepsErroredLines && metric.Has(logqlmodel.ErrorLabel) {
-				return nil, logqlmodel.NewPipelineErr(metric)
-			}
 			if !r.partialResultsAllowed {
 				return nil, logqlmodel.NewSeriesLimitError(r.maxSeries)
 			}
