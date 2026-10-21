@@ -178,3 +178,17 @@ func planExpr(queryPlan *plan.QueryPlan, query string) (syntax.Expr, error) {
 	}
 	return syntax.ParseExpr(query)
 }
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
