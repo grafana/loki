@@ -97,9 +97,6 @@ type DataobjSectionDescriptors []*DataobjSectionDescriptor
 //
 // A stream ID means something only within one object, so a caller that reads streams has to
 // work one object at a time. [DataobjSectionDescriptors.StreamIDs] takes one of these groups.
-//
-// A batch of [Metastore.SectionsStream] can hold only some of the sections of an object. A group
-// from one batch can lack sections that another batch holds.
 func (d DataobjSectionDescriptors) ByObject() map[string]DataobjSectionDescriptors {
 	byObject := make(map[string]DataobjSectionDescriptors)
 	for _, descriptor := range d {
@@ -477,8 +474,6 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 	readCtx, cancelReads := context.WithCancel(ctx)
 	batches := make(chan batch, len(indexes.Indexes))
 
-	// g.Go blocks while m.parallelism reads run. The goroutine lets the caller receive the first
-	// batch without waiting for the last read to start.
 	go func() {
 		defer close(batches)
 
