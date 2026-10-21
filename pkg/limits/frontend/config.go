@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -72,7 +73,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(parent limits.Config) error {
 	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid gRPC client config: %w", err)
 	}
@@ -91,6 +92,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ShardCacheTTL < 0 {
 		return errors.New("shard cache ttl must not be negative")
+	}
+	if cfg.ShardCacheTTL >= parent.RateWindow {
+		return errors.New("shard cache ttl must not be longer or equal to rate window")
 	}
 	return nil
 }
