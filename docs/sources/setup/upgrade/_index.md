@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Experimental fingerprint-shard ownership rollout
+
+Per-index ownership uses `tsdb_index_shard_factor` to select files by fingerprint overlap. Gateways and clients must use the same tenant shard factors. Upgrade the complete query path before enabling factors greater than `1`; older table-only routing is insufficient when gateways keep partial indexes. Historical unsplit files remain readable and overlap every owned shard.
+
 ### Experimental per-index client routing
 
 The experimental `tsdb_shipper.index_gateway_client.sharding: per_index` mode routes each table of a request to its owners. It requires ring mode and is intended for per-index ownership. `per_index_max_concurrency` limits concurrent parts per request (default `8`); each part also counts toward the client's in-flight limit. The default sharding mode preserves existing routing.

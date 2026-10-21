@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type testInstance struct {
@@ -92,7 +94,7 @@ func ownersOf(t *testing.T, r ring.ReadRing, keys []indexKey, op ring.Operation)
 	o := NewIndexOwnership(r)
 	out := make(map[indexKey][]string, len(keys))
 	for _, k := range keys {
-		rs, err := o.Owners(k.tenant, k.table, op)
+		rs, err := o.Owners(k.tenant, k.table, WholeIndexShard, op)
 		require.NoError(t, err)
 		addrs := rs.GetAddresses()
 		slices.Sort(addrs)
@@ -102,9 +104,23 @@ func ownersOf(t *testing.T, r ring.ReadRing, keys []indexKey, op ring.Operation)
 }
 
 func TestIndexOwnershipKey(t *testing.T) {
-	require.Equal(t, IndexOwnershipKey("tenant-a", "index_19500"), IndexOwnershipKey("tenant-a", "index_19500"))
-	require.NotEqual(t, IndexOwnershipKey("tenant-a", "index_19500"), IndexOwnershipKey("tenant-a", "index_19501"))
-	require.NotEqual(t, IndexOwnershipKey("ab", "c"), IndexOwnershipKey("a", "bc"))
+	whole := WholeIndexShard
+	require.Equal(t, IndexOwnershipKey("tenant-a", "index_19500", whole), IndexOwnershipKey("tenant-a", "index_19500", whole))
+	require.NotEqual(t, IndexOwnershipKey("tenant-a", "index_19500", whole), IndexOwnershipKey("tenant-a", "index_19501", whole))
+	require.NotEqual(t, IndexOwnershipKey("ab", "c", whole), IndexOwnershipKey("a", "bc", whole))
+
+	// the zero shard and a factor of 1 are the whole index
+	require.Equal(t, IndexOwnershipKey("tenant-a", "index_19500", whole), IndexOwnershipKey("tenant-a", "index_19500", index.ShardAnnotation{}))
+	require.Equal(t, IndexOwnershipKey("tenant-a", "index_19500", whole), IndexOwnershipKey("tenant-a", "index_19500", index.NewShard(0, 1)))
+
+	// each shard of a split index has its own key
+	keys := map[uint32]struct{}{}
+	for _, shard := range IndexShards(8) {
+		keys[IndexOwnershipKey("tenant-a", "index_19500", shard)] = struct{}{}
+	}
+	require.Len(t, keys, 8)
+	require.NotEqual(t, IndexOwnershipKey("tenant-a", "index_19500", index.NewShard(0, 8)), IndexOwnershipKey("tenant-a", "index_19500", whole))
+	require.NotEqual(t, IndexOwnershipKey("tenant-a", "index_19500", index.NewShard(0, 8)), IndexOwnershipKey("tenant-a", "index_19500", index.NewShard(0, 4)))
 }
 
 func TestIndexOwnership_Spread(t *testing.T) {
@@ -217,7 +233,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	const table = "index_19510"
 	count := map[string]int{}
 	for _, inst := range instances {
-		got, err := NewIndexOwnershipFilter(r, inst.id).FilterTenants(table, tenants)
+		got, err := NewIndexOwnershipFilter(r, inst.id, nil).FilterTenants(table, tenants)
 		require.NoError(t, err)
 		for _, tenant := range got {
 			require.Contains(t, owners[indexKey{tenant: tenant, table: table}], inst.id)
@@ -230,7 +246,7 @@ func TestIndexOwnershipFilter(t *testing.T) {
 	}
 
 	t.Run("instance not in the ring", func(t *testing.T) {
-		_, err := NewIndexOwnershipFilter(r, "index-gateway-99").FilterTenants(table, tenants)
+		_, err := NewIndexOwnershipFilter(r, "index-gateway-99", nil).FilterTenants(table, tenants)
 		require.ErrorIs(t, err, errGatewayUnhealthy)
 	})
 }

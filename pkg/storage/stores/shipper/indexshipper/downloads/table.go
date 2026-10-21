@@ -42,6 +42,20 @@ type Table interface {
 
 // tableOptions are the table settings that come from the table manager's Config.
 type tableOptions struct {
+	// fileFilter limits the files of user index sets kept ready for queries
+	// (see Config.FileFilter).
+	fileFilter FileFilter
+}
+
+// userFileFilter binds the table's file filter to a user, for its index set.
+// It returns nil when there is no filter or for the common index set.
+func (t *table) userFileFilter(userID string) indexSetFileFilter {
+	if t.opts.fileFilter == nil || userID == "" {
+		return nil
+	}
+	return func(files []storage.IndexFile) ([]storage.IndexFile, error) {
+		return t.opts.fileFilter(t.name, userID, files)
+	}
 }
 
 // table is a collection of multiple files created for a same table by various ingesters.
@@ -125,11 +139,12 @@ func loadTable(name, cacheLocation string, storageClient storage.Client, openInd
 
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
-		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout)
+		userIndexSet, err := newIndexSet(name, userID, filepath.Join(cacheLocation, userID),
+			table.baseUserIndexSet, openIndexFileFunc, logger, table.downloadTimeout, false)
 		if err != nil {
 			return nil, err
 		}
+		userIndexSet.fileFilter = table.userFileFilter(userID)
 
 		err = userIndexSet.Init(false, logger)
 		if err != nil {
@@ -425,6 +440,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	if err != nil {
 		return nil, err
 	}
+	newSet.fileFilter = t.userFileFilter(id)
 	indexSet = newSet
 	t.indexSets[id] = indexSet
 
@@ -497,9 +513,18 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 	}
 	t.indexSetsMtx.RUnlock()
 
-	// Existing sets are now kept ready for queries.
+	// Existing partial index sets must refresh their files before preload
+	// succeeds. Ownership can change within a tenant that is already loaded.
 	for _, indexSet := range notQueryReady {
 		indexSet.MarkQueryReady()
+		if t.opts.fileFilter != nil && indexSet != commonIndexSet {
+			if err := indexSet.AwaitReady(ctx, "refresh owned index files"); err != nil {
+				return err
+			}
+			if err := indexSet.Sync(ctx); err != nil {
+				return err
+			}
+		}
 	}
 
 	return t.downloadUserIndexes(ctx, missingUserIDs)
