@@ -251,7 +251,7 @@ func requireEligibilityCounts(t *testing.T, reg prometheus.Gatherer, want map[st
 	fmt.Fprintf(&expected, "# HELP %s Query requests that the query-frontend sends to queriers, by data-object eligibility outcome. Sharding and range splitting turn one user query into many requests, and a retry sends a request again. Each request adds one count.\n", name)
 	fmt.Fprintf(&expected, "# TYPE %s counter\n", name)
 	for _, outcome := range dataObjOutcomes {
-		fmt.Fprintf(&expected, "%s{outcome=%q} %d\n", name, outcome, want[outcome])
+		fmt.Fprintf(&expected, "%s{outcome=%q} %d\n", name, outcome, want[string(outcome)])
 	}
 
 	require.NoError(t, promtestutil.GatherAndCompare(reg, strings.NewReader(expected.String()), name))

@@ -265,6 +265,35 @@ func (m *Cluster) validate(all bool) error {
 	// no validation rules for AltStatName
 
 	if all {
+		switch v := interface{}(m.GetStatsMatcher()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ClusterValidationError{
+					field:  "StatsMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ClusterValidationError{
+					field:  "StatsMatcher",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetStatsMatcher()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ClusterValidationError{
+				field:  "StatsMatcher",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
 		switch v := interface{}(m.GetEdsClusterConfig()).(type) {
 		case interface{ ValidateAll() error }:
 			if err := v.ValidateAll(); err != nil {
@@ -420,6 +449,17 @@ func (m *Cluster) validate(all bool) error {
 				cause:  err,
 			}
 		}
+	}
+
+	if len(m.GetHealthChecks()) > 8 {
+		err := ClusterValidationError{
+			field:  "HealthChecks",
+			reason: "value must contain no more than 8 item(s)",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetHealthChecks() {
@@ -1322,6 +1362,35 @@ func (m *Cluster) validate(all bool) error {
 	}
 
 	// no validation rules for ConnectionPoolPerDownstreamConnection
+
+	if all {
+		switch v := interface{}(m.GetQueuingPolicies()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ClusterValidationError{
+					field:  "QueuingPolicies",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ClusterValidationError{
+					field:  "QueuingPolicies",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetQueuingPolicies()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ClusterValidationError{
+				field:  "QueuingPolicies",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
 	switch v := m.ClusterDiscoveryType.(type) {
 	case *Cluster_Type:
@@ -4167,6 +4236,35 @@ func (m *Cluster_PreconnectPolicy) validate(all bool) error {
 
 	}
 
+	if all {
+		switch v := interface{}(m.GetPreconnectEnabledMetadata()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Cluster_PreconnectPolicyValidationError{
+					field:  "PreconnectEnabledMetadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Cluster_PreconnectPolicyValidationError{
+					field:  "PreconnectEnabledMetadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPreconnectEnabledMetadata()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Cluster_PreconnectPolicyValidationError{
+				field:  "PreconnectEnabledMetadata",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return Cluster_PreconnectPolicyMultiError(errors)
 	}
@@ -4246,6 +4344,137 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = Cluster_PreconnectPolicyValidationError{}
+
+// Validate checks the field values on Cluster_QueuingPolicies with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *Cluster_QueuingPolicies) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Cluster_QueuingPolicies with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Cluster_QueuingPoliciesMultiError, or nil if none found.
+func (m *Cluster_QueuingPolicies) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Cluster_QueuingPolicies) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetPendingRqPolicy()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Cluster_QueuingPoliciesValidationError{
+					field:  "PendingRqPolicy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Cluster_QueuingPoliciesValidationError{
+					field:  "PendingRqPolicy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPendingRqPolicy()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Cluster_QueuingPoliciesValidationError{
+				field:  "PendingRqPolicy",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return Cluster_QueuingPoliciesMultiError(errors)
+	}
+
+	return nil
+}
+
+// Cluster_QueuingPoliciesMultiError is an error wrapping multiple validation
+// errors returned by Cluster_QueuingPolicies.ValidateAll() if the designated
+// constraints aren't met.
+type Cluster_QueuingPoliciesMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Cluster_QueuingPoliciesMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Cluster_QueuingPoliciesMultiError) AllErrors() []error { return m }
+
+// Cluster_QueuingPoliciesValidationError is the validation error returned by
+// Cluster_QueuingPolicies.Validate if the designated constraints aren't met.
+type Cluster_QueuingPoliciesValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e Cluster_QueuingPoliciesValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e Cluster_QueuingPoliciesValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e Cluster_QueuingPoliciesValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e Cluster_QueuingPoliciesValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e Cluster_QueuingPoliciesValidationError) ErrorName() string {
+	return "Cluster_QueuingPoliciesValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e Cluster_QueuingPoliciesValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCluster_QueuingPolicies.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = Cluster_QueuingPoliciesValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = Cluster_QueuingPoliciesValidationError{}
 
 // Validate checks the field values on Cluster_LbSubsetConfig_LbSubsetSelector
 // with the rules defined in the proto definition for this message. If any

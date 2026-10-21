@@ -34,8 +34,10 @@
 package fwd
 
 import (
+	"errors"
 	"io"
 	"os"
+	"syscall"
 )
 
 const (
@@ -126,14 +128,17 @@ func (r *Reader) more() {
 	if a == 0 && r.state == nil {
 		r.state = io.ErrNoProgress
 		return
-	} else if a > 0 && r.state == io.EOF {
-		// discard the io.EOF if we read more than 0 bytes.
-		// the next call to Read should return io.EOF again.
-		r.state = nil
-	} else if r.state != nil {
-		return
 	}
-	r.data = r.data[:len(r.data)+a]
+	// io.Reader requires the caller to process n > 0 before the error.
+	// A non-EOF error used to return here and drop those bytes.
+	if a > 0 {
+		r.data = r.data[:len(r.data)+a]
+		if r.state == io.EOF {
+			// discard the io.EOF if we read more than 0 bytes.
+			// the next call to Read should return io.EOF again.
+			r.state = nil
+		}
+	}
 }
 
 // pop error
@@ -266,9 +271,18 @@ func (r *Reader) Skip(n int) (int, error) {
 
 	// if we can Seek() through the remaining bytes, do that
 	if n > skipped && r.rs != nil {
-		nn, err := r.rs.Seek(int64(n-skipped), 1)
-		r.inputOffset += nn
-		return int(nn) + skipped, err
+		offs, err := r.rs.Seek(int64(n-skipped), io.SeekCurrent)
+		if err == nil {
+			r.inputOffset = offs
+			return n, nil
+		}
+		// if the io.Seeker is not actually usable,
+		// just swallow the error and don't try
+		// seeking again
+		if !errors.Is(err, syscall.ESPIPE) {
+			return skipped, err
+		}
+		r.rs = nil
 	}
 	// otherwise, keep filling the buffer
 	// and discarding it up to 'n'
@@ -332,6 +346,11 @@ func (r *Reader) Read(b []byte) (int, error) {
 		r.inputOffset += int64(x)
 		return x, nil
 	}
+	// The buffer was already returned. Surface the error from that read
+	// before asking the underlying reader again.
+	if r.state != nil {
+		return 0, r.err()
+	}
 	var n int
 	// we have no buffered data; determine
 	// whether or not to buffer or call
@@ -363,19 +382,25 @@ func (r *Reader) ReadFull(b []byte) (int, error) {
 	// either read buffered data,
 	// or read directly for the underlying
 	// buffer, or fetch more buffered data.
-	for n < l && r.state == nil {
+	// Buffered bytes are copied even when the fill also returned an error.
+	for n < l {
 		if r.buffered() != 0 {
 			nn = copy(b[n:], r.data[r.n:])
 			n += nn
 			r.n += nn
 			r.inputOffset += int64(nn)
-		} else if l-n > cap(r.data) {
+			continue
+		}
+		if r.state != nil {
+			break
+		}
+		if l-n > cap(r.data) {
 			nn, r.state = r.r.Read(b[n:])
 			n += nn
 			r.inputOffset += int64(nn)
-		} else {
-			r.more()
+			continue
 		}
+		r.more()
 	}
 	if n < l {
 		return n, r.noEOF()

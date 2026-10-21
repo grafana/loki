@@ -57,8 +57,8 @@ func (c *Client) putObjectMultipartStream(ctx context.Context, bucketName, objec
 		// Verify if multipart functionality is not available, if not
 		// fall back to single PutObject operation.
 		if errResp.Code == AccessDenied && strings.Contains(errResp.Message, "Access Denied") {
-			// Verify if size of reader is greater than '5GiB'.
-			if size > maxSinglePutObjectSize {
+			// Verify if size of reader is greater than the single PUT limit.
+			if maxSinglePutObjectSize := c.limits.maxSinglePutObjectSize(); size > maxSinglePutObjectSize {
 				return UploadInfo{}, errEntityTooLarge(size, maxSinglePutObjectSize, bucketName, objectName)
 			}
 			// Fall back to uploading as single PutObject operation.
@@ -104,7 +104,7 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 	}
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(size, opts.PartSize)
+	totalPartsCount, partSize, lastPartSize, err := c.optimalPartInfo(size, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -123,7 +123,7 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 	// to relinquish storage space.
 	defer func() {
 		if err != nil {
-			c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+			c.abortFailedUpload(ctx, bucketName, objectName, uploadID)
 		}
 	}()
 
@@ -276,10 +276,7 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	opts = PutObjectOptions{
-		ServerSideEncryption: opts.ServerSideEncryption,
-		AutoChecksum:         opts.AutoChecksum,
-	}
+	opts = completeUploadOpts(opts)
 	if withChecksum {
 		applyAutoChecksum(&opts, allParts)
 	}
@@ -305,7 +302,7 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 	}
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, lastPartSize, err := OptimalPartInfo(size, opts.PartSize)
+	totalPartsCount, partSize, lastPartSize, err := c.optimalPartInfo(size, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -321,7 +318,7 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 	// storage space.
 	defer func() {
 		if err != nil {
-			c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+			c.abortFailedUpload(ctx, bucketName, objectName, uploadID)
 		}
 	}()
 
@@ -357,7 +354,7 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 			break
 		}
 
-		if rerr != nil && rerr != io.ErrUnexpectedEOF && err != io.EOF {
+		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 			return UploadInfo{}, rerr
 		}
 
@@ -434,10 +431,7 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	opts = PutObjectOptions{
-		ServerSideEncryption: opts.ServerSideEncryption,
-		AutoChecksum:         opts.AutoChecksum,
-	}
+	opts = completeUploadOpts(opts)
 	applyAutoChecksum(&opts, allParts)
 	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, opts)
 	if err != nil {
@@ -467,7 +461,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	defer cancel()
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, _, err := OptimalPartInfo(-1, opts.PartSize)
+	totalPartsCount, partSize, _, err := c.optimalPartInfo(-1, opts.PartSize)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -484,13 +478,9 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	// storage space.
 	defer func() {
 		if err != nil {
-			c.abortMultipartUpload(ctx, bucketName, objectName, uploadID)
+			c.abortFailedUpload(ctx, bucketName, objectName, uploadID)
 		}
 	}()
-
-	// Create checksums
-	// CRC32C is ~50% faster on AMD64 @ 30GB/s
-	crc := opts.AutoChecksum.Hasher()
 
 	// Total data read and written to server. should be equal to 'size' at the end of the call.
 	var totalUploadedSize int64
@@ -514,6 +504,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 
 	// Part number always starts with '1'.
 	var partNumber int
+	var lastErr error
 	for partNumber = 1; partNumber <= totalPartsCount; partNumber++ {
 		// Proceed to upload the part.
 		var buf []byte
@@ -530,6 +521,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 		}
 
 		length, rerr := readFull(reader, buf)
+		lastErr = rerr
 		if rerr == io.EOF && partNumber > 1 {
 			// Done
 			break
@@ -546,8 +538,9 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			// Calculate md5sum.
 			customHeader := make(http.Header)
 			if opts.AutoChecksum.IsSet() {
-				// Add Checksum instead.
-				crc.Reset()
+				// Add Checksum instead. Per-goroutine hasher:
+				// hash.Hash is not safe for concurrent use.
+				crc := opts.AutoChecksum.Hasher()
 				crc.Write(buf[:length])
 				cSum := crc.Sum(nil)
 				customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
@@ -607,6 +600,14 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	default:
 	}
 
+	// A nil read error on the last allowed part means the reader was never
+	// drained; completing here would store a truncated object.
+	if lastErr == nil {
+		if err = errIfMoreData(reader, totalUploadedSize, int64(totalPartsCount), bucketName, objectName); err != nil {
+			return UploadInfo{}, err
+		}
+	}
+
 	// Complete multipart upload.
 	var complMultipartUpload completeMultipartUpload
 
@@ -638,10 +639,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	opts = PutObjectOptions{
-		ServerSideEncryption: opts.ServerSideEncryption,
-		AutoChecksum:         opts.AutoChecksum,
-	}
+	opts = completeUploadOpts(opts)
 	applyAutoChecksum(&opts, allParts)
 
 	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, opts)

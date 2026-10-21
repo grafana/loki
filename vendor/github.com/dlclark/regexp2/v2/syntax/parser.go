@@ -1468,7 +1468,14 @@ func (p *parser) scanBackslash(scanOnly bool) (*RegexNode, error) {
 		}
 		return newRegexNode(NtGrapheme, p.options), nil
 
-	case 'b', 'B', 'A', 'G', 'Z', 'z':
+	case 'A', 'G', 'Z', 'z':
+		if p.useOptionE() && !p.useOptionU() {
+			return p.scanBasicBackslash(scanOnly)
+		}
+		p.moveRight(1)
+		return newRegexNode(p.typeFromCode(ch), p.options), nil
+
+	case 'b', 'B':
 		p.moveRight(1)
 		return newRegexNode(p.typeFromCode(ch), p.options), nil
 
@@ -1703,7 +1710,7 @@ func (p *parser) scanBasicBackslash(scanOnly bool) (*RegexNode, error) {
 	// Not backreference: must be char code
 
 	p.textto(backpos)
-	ch, err := p.scanCharEscape()
+	ch, err := p.scanCharEscape(false)
 	if err != nil {
 		return nil, err
 	}
@@ -2031,30 +2038,10 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 				continue
 
 			case 'p', 'P':
-				if p.useOptionE() && !p.useOptionU() && ch == 'P' && inRange {
-					return nil, p.getErr(ErrShorthandClassInCharRange, string(ch))
-				}
-				if p.useOptionE() && !p.useOptionU() && ch == 'p' {
-					if !scanOnly {
-						if inRange {
-							if chPrev > ch {
-								return nil, p.getErr(ErrReversedCharRange, chPrev, ch)
-							}
-							cc.addRange(chPrev, ch)
-							inRange = false
-						} else if p.charsRight() >= 2 && p.rightChar(0) == '-' && p.rightChar(1) != ']' {
-							cc.addChar('-')
-							p.moveRight(1)
-							chLast := p.moveRightGetChar()
-							if ch > chLast {
-								return nil, p.getErr(ErrReversedCharRange, ch, chLast)
-							}
-							cc.addRange(ch, chLast)
-						} else {
-							cc.addChar(ch)
-						}
-					}
-					continue
+				if p.useOptionE() && !p.useOptionU() {
+					// Identity escapes use ordinary class-member and range handling.
+					fTranslatedChar = true
+					break
 				}
 				if !scanOnly {
 					prop, err := p.parseProperty()
@@ -2087,7 +2074,7 @@ func (p *parser) scanCharSet(caseInsensitive, scanOnly bool) (*CharSet, error) {
 			default:
 				p.moveLeft()
 				var err error
-				ch, err = p.scanCharEscape() // non-literal character
+				ch, err = p.scanCharEscape(true) // non-literal character
 				if err != nil {
 					return nil, err
 				}
@@ -2244,7 +2231,7 @@ func (p *parser) scanOptions() {
 }
 
 // Scans \ code for escape codes that map to single unicode chars.
-func (p *parser) scanCharEscape() (r rune, err error) {
+func (p *parser) scanCharEscape(inClass bool) (r rune, err error) {
 
 	ch := p.moveRightGetChar()
 
@@ -2276,10 +2263,16 @@ func (p *parser) scanCharEscape() (r rune, err error) {
 			r, err = p.scanHex(4)
 		}
 	case 'a':
+		if p.useOptionE() && !p.useOptionU() {
+			return ch, nil
+		}
 		return '\u0007', nil
 	case 'b':
 		return '\b', nil
 	case 'e':
+		if p.useOptionE() && !p.useOptionU() {
+			return ch, nil
+		}
 		return '\u001B', nil
 	case 'f':
 		return '\f', nil
@@ -2292,8 +2285,14 @@ func (p *parser) scanCharEscape() (r rune, err error) {
 	case 'v':
 		return '\u000B', nil
 	case 'c':
+		if p.useOptionE() && !p.useOptionU() {
+			return p.scanECMAControl(inClass), nil
+		}
 		r, err = p.scanControl()
 	default:
+		if p.useOptionE() && !p.useOptionU() && ch == 'k' && len(p.namedCaptures) > 0 {
+			return 0, p.getErr(ErrUnrecognizedEscape, string(ch))
+		}
 		if !p.useOptionE() && !p.useRE2() && IsWordChar(ch) {
 			return 0, p.getErr(ErrUnrecognizedEscape, string(ch))
 		}
@@ -2304,6 +2303,22 @@ func (p *parser) scanCharEscape() (r rune, err error) {
 		return ch, nil
 	}
 	return
+}
+
+// scanECMAControl implements Annex B's non-Unicode control escapes.
+func (p *parser) scanECMAControl(inClass bool) rune {
+	if p.charsRight() > 0 {
+		ch := p.rightChar(0)
+		if ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' ||
+			inClass && (ch >= '0' && ch <= '9' || ch == '_') {
+			p.moveRight(1)
+			return ch % 32
+		}
+	}
+	// Only the backslash is an atom; c and its following syntax are scanned
+	// normally, including in the capture prescan.
+	p.moveLeft()
+	return '\\'
 }
 
 // Grabs and converts an ascii control character

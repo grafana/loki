@@ -176,21 +176,22 @@ func Uint32Slice(val, sep string) ([]uint32, error) {
 	return values, nil
 }
 
-// Bytes converts the given string representation of a byte sequence into a slice of bytes
-// A bytes sequence is encoded in URL-safe base64 without padding
+// Bytes converts the given string representation of a byte sequence into a slice of bytes.
+// Like the protobuf JSON mapping, it accepts standard or URL-safe base64, with or
+// without padding.
 func Bytes(val string) ([]byte, error) {
-	b, err := base64.StdEncoding.DecodeString(val)
-	if err != nil {
-		b, err = base64.URLEncoding.DecodeString(val)
-		if err != nil {
-			return nil, err
-		}
+	enc := base64.StdEncoding
+	if strings.ContainsAny(val, "-_") {
+		enc = base64.URLEncoding
 	}
-	return b, nil
+	if len(val)%4 != 0 {
+		enc = enc.WithPadding(base64.NoPadding)
+	}
+	return enc.DecodeString(val)
 }
 
-// BytesSlice converts 'val' where individual bytes sequences, encoded in URL-safe
-// base64 without padding, are separated by 'sep' into a slice of byte slices.
+// BytesSlice converts 'val' where individual bytes sequences, encoded in standard or
+// URL-safe base64, are separated by 'sep' into a slice of byte slices.
 func BytesSlice(val, sep string) ([][]byte, error) {
 	s := strings.Split(val, sep)
 	values := make([][]byte, len(s))

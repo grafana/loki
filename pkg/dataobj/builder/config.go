@@ -30,6 +30,11 @@ type Config struct {
 	// PartitionID overrides the Kafka partition this instance consumes. A negative value (the
 	// default) derives the partition from the hostname.
 	PartitionID int `yaml:"partition_id"`
+
+	// RequiredReplicasRefreshInterval is the time between two refreshes of
+	// loki_dataobj_builder_required_replicas. Only the builder that derives
+	// partition 0 from its hostname uses it.
+	RequiredReplicasRefreshInterval time.Duration `yaml:"required_replicas_refresh_interval"`
 }
 
 func (cfg *Config) Validate() error {
@@ -44,6 +49,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.FlushConcurrency < 1 {
 		return errors.New("flush concurrency must be at least 1")
+	}
+	if cfg.RequiredReplicasRefreshInterval <= 0 {
+		return errors.New("required replicas refresh interval must be positive")
 	}
 	return nil
 }
@@ -99,5 +107,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+"partition-id",
 		-1,
 		"The Kafka partition to consume. A negative value derives it from the instance hostname instead.",
+	)
+	f.DurationVar(
+		&cfg.RequiredReplicasRefreshInterval,
+		prefix+"required-replicas-refresh-interval",
+		30*time.Second,
+		"How often the builder that consumes partition 0 reads the offsets of every partition to refresh the loki_dataobj_builder_required_replicas metric.",
 	)
 }

@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"reflect"
@@ -9,18 +10,16 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-
-	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 const versionFlag = "version"
@@ -174,7 +173,6 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.QueryEngine.InterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -359,20 +357,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 		r.IndexGateway.Ring.EnableIPv6 = rc.EnableIPv6
 	}
-
-	// UI
-	if mergeWithExisting || reflect.DeepEqual(r.UI.Ring, defaults.UI.Ring) {
-		r.UI.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.UI.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.UI.Ring.InstancePort = rc.InstancePort
-		r.UI.Ring.InstanceAddr = rc.InstanceAddr
-		r.UI.Ring.InstanceID = rc.InstanceID
-		r.UI.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.UI.Ring.InstanceZone = rc.InstanceZone
-		r.UI.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.UI.Ring.KVStore = rc.KVStore
-		r.UI.Ring.EnableIPv6 = rc.EnableIPv6
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -424,13 +408,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
-
-	// UI
-	f, err = tokensFile(cfg, "ui.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.UI.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -530,10 +507,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.QueryEngine.InterfaceNames, defaults.QueryEngine.InterfaceNames) {
-		cfg.QueryEngine.InterfaceNames = append(cfg.QueryEngine.InterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -550,7 +523,6 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.UI.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

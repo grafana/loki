@@ -769,6 +769,10 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 			continue
 		}
 		if sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL {
+			// anything after .* is no longer adjacent to the base literal.
+			if baseLiteral != nil && sub != reg.Sub[len(reg.Sub)-1] {
+				return nil, false
+			}
 			continue
 		}
 		return nil, false

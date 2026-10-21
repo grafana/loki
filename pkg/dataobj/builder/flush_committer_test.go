@@ -416,6 +416,85 @@ func TestFlushCommitter_Concurrency(t *testing.T) {
 		require.Equal(t, []int64{7}, flush.offsets.offsets)
 		require.Len(t, flush.bucket.tocPaths(), len(tenants))
 	})
+
+	t.Run("should start the builders in the given order when the concurrency is 1", func(t *testing.T) {
+		var (
+			flusher        = &mockFlusher{obj: &dataobj.Object{}}
+			committer      = &mockCommitter{}
+			flushCommitter = newFlushCommitter(flusher, committer, &mockIndexer{}, &mockTOCWriter{}, 0, 1, log.NewNopLogger(), prometheus.NewRegistry())
+		)
+		given := fixedSizeBuilders(map[string]int{"small": 1, "large": 3, "medium": 2}, "small", "large", "medium")
+
+		require.NoError(t, flushCommitter.Flush(t.Context(), given, "test", 7))
+		require.Equal(t, []string{"small", "large", "medium"}, builderNames(flusher.builders))
+		require.Equal(t, []int64{7}, committer.offsets)
+	})
+
+	t.Run("should run the small builders beside the largest one when the concurrency is above 1", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				flusher        = sizeDelayFlusher{&mockFlusher{obj: &dataobj.Object{}}}
+				committer      = &mockCommitter{}
+				flushCommitter = newFlushCommitter(flusher, committer, &mockIndexer{}, &mockTOCWriter{}, 0, 2, log.NewNopLogger(), prometheus.NewRegistry())
+			)
+			sizes := map[string]int{"small-1": 1, "small-2": 1, "small-3": 1, "small-4": 1, "large": 4}
+			given := fixedSizeBuilders(sizes, "small-1", "small-2", "small-3", "small-4", "large")
+
+			start := time.Now()
+			require.NoError(t, flushCommitter.Flush(t.Context(), given, "test", 7))
+
+			// The large builder takes 4s and the small builders take 1s each.
+			// In the given order, the large builder starts after 2s and the
+			// flush takes 6s.
+			require.Equal(t, 4*time.Second, time.Since(start))
+			require.Equal(t, []int64{7}, committer.offsets)
+		})
+	})
+}
+
+// fixedSizeBuilder is a builder with a name, a fixed estimated size and no
+// records. It supports only the calls that the flush committer makes with a
+// [mockFlusher]. Any other call panics on the nil embedded builder.
+type fixedSizeBuilder struct {
+	builder
+	name string
+	size int
+}
+
+func (b *fixedSizeBuilder) GetEstimatedSize() int { return b.size }
+
+func (b *fixedSizeBuilder) GetEarliestRecordTime() time.Time { return time.Time{} }
+
+// fixedSizeBuilders returns one [fixedSizeBuilder] per name, in the given
+// order, with the size from sizes.
+func fixedSizeBuilders(sizes map[string]int, names ...string) []builder {
+	builders := make([]builder, len(names))
+	for i, name := range names {
+		builders[i] = &fixedSizeBuilder{name: name, size: sizes[name]}
+	}
+	return builders
+}
+
+// builderNames returns the names of builders, which must be of type
+// [fixedSizeBuilder]. Tests compare names, because require.Equal treats two
+// builders with the same size as equal.
+func builderNames(builders []builder) []string {
+	names := make([]string, len(builders))
+	for i, b := range builders {
+		names[i] = b.(*fixedSizeBuilder).name
+	}
+	return names
+}
+
+// sizeDelayFlusher sleeps one second per unit of estimated size of the
+// builder. Then it flushes with the embedded [mockFlusher].
+type sizeDelayFlusher struct {
+	*mockFlusher
+}
+
+func (f sizeDelayFlusher) Flush(ctx context.Context, b builder, reason string) (*dataobj.Object, io.Closer, string, error) {
+	time.Sleep(time.Duration(b.GetEstimatedSize()) * time.Second)
+	return f.mockFlusher.Flush(ctx, b, reason)
 }
 
 // blockingIndexer fails to index the object at failPath. Every other call

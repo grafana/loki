@@ -3,6 +3,7 @@ package builder
 import (
 	"flag"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -53,4 +54,24 @@ func TestConfig_Validate(t *testing.T) {
 			require.EqualError(t, err, tc.wantErr)
 		})
 	}
+
+	newConfig := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		f := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlags(f)
+		require.NoError(t, f.Parse(append([]string{"-dataobj.builder.topic=test"}, args...)))
+		return cfg
+	}
+
+	t.Run("accepts the default required replicas refresh interval", func(t *testing.T) {
+		cfg := newConfig(t)
+		require.NoError(t, cfg.Validate())
+		require.Equal(t, 30*time.Second, cfg.RequiredReplicasRefreshInterval)
+	})
+
+	t.Run("rejects a zero required replicas refresh interval", func(t *testing.T) {
+		cfg := newConfig(t, "-dataobj.builder.required-replicas-refresh-interval=0s")
+		require.Error(t, cfg.Validate())
+	})
 }
