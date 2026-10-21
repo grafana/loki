@@ -2045,3 +2045,67 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 		})
 	}
 }
+
+func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
+	exprs := []LabelExtractionExpr{
+		NewLabelExtractionExpr("foo", "foo"),
+		NewLabelExtractionExpr("foo_extracted", "foo_extracted"),
+		NewLabelExtractionExpr("bar", "bar"),
+	}
+	base := labels.FromStrings("foo", "l")
+
+	for _, tt := range []struct {
+		name string
+		line string
+		want labels.Labels
+	}{
+		{
+			// The renamed key finds the name taken by the literal key later in the line. It must not
+			// stop the parser: the key after the pair is still needed.
+			name: "renamed key before the literal key",
+			line: `foo=p foo_extracted=lit bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "lit", "bar", "b"),
+		},
+		{
+			name: "literal key before the renamed key",
+			line: `foo_extracted=lit foo=p bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "lit", "bar", "b"),
+		},
+		{
+			// The name `foo_extracted` is asked for, but the line has no literal key. The empty label
+			// that stands for a missing key must not take the place of the renamed value.
+			name: "renamed key only",
+			line: `foo=p bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "p", "bar", "b"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			parser, err := NewLogfmtExpressionParser(exprs, false)
+			require.NoError(t, err)
+
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			_, _ = parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
+	}
+}
+
+// With a grouping on every name of the expression, the parser stops once all of them are extracted.
+// The empty label that stands for a missing key must not count as extracted, or the parser stops
+// after the first name.
+func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("a", "a"),
+		NewLabelExtractionExpr("b", "b"),
+	}, false)
+	require.NoError(t, err)
+
+	base := labels.FromStrings("app", "x")
+	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+	b.parserKeyHints = NewParserHint([]string{"a", "b"}, []string{"a", "b"}, false, false, "")
+	b.Reset()
+	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
+	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
+}
