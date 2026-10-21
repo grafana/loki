@@ -92,6 +92,10 @@ type processor struct {
 	// The flush loop closes flushLoopDone when it stops.
 	flushLoopDone chan struct{}
 
+	// prefetchBytes is the most bytes of record values that Run reads ahead
+	// of the record it processes. It is [prefetchBytes] outside of tests.
+	prefetchBytes int
+
 	metrics *metrics
 	logger  log.Logger
 }
@@ -124,6 +128,7 @@ func newProcessor(
 		flushCommitter:   flushCommitter,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
+		prefetchBytes:    prefetchBytes,
 		metrics:          newMetrics(reg),
 		logger:           logger,
 	}
@@ -167,6 +172,24 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 		}
 	}()
 
+	// The consumer sends records to p.records. bufferRecords reads them ahead
+	// into records, so the consumer keeps polling while this goroutine is busy.
+	// Cancel it before waiting for it, because it can block on a send that
+	// this goroutine no longer receives.
+	var (
+		records         = make(chan *kgo.Record)
+		bufferCtx, stop = context.WithCancel(ctx)
+		bufferDone      = make(chan struct{})
+	)
+	go func() {
+		defer close(bufferDone)
+		bufferRecords(bufferCtx, p.records, records, p.prefetchBytes, p.metrics.prefetched)
+	}()
+	defer func() {
+		stop()
+		<-bufferDone
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -178,7 +201,7 @@ func (p *processor) Run(ctx context.Context) (returnErr error) {
 			// The processor stops now, not at the next flush, so it does not
 			// append records that it can never commit.
 			return nil
-		case rec, ok := <-p.records:
+		case rec, ok := <-records:
 			if !ok {
 				level.Info(p.logger).Log("msg", "channel closed")
 				return nil
