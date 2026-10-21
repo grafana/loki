@@ -50,7 +50,7 @@ func newFlusher(uploader uploader, logger log.Logger, r prometheus.Registerer) *
 		}),
 		releaseFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_builder_release_failures_total",
-			Help: "Total number of failures to release a flushed data object's scratch storage. The object is already uploaded at that point, so these do not fail the flush.",
+			Help: "Total number of failures to release a flushed data object's scratch storage. These do not fail the flush.",
 		}),
 		flushDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_dataobj_builder_flush_duration_seconds",
@@ -93,23 +93,23 @@ func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Obje
 
 	objectPath, err := f.uploader.Upload(ctx, sortedObj)
 	if err != nil {
-		f.release(sortedObjCloser, "sorted")
+		f.release(sortedObjCloser, "upload_failed")
 		return nil, nil, "", fmt.Errorf("failed to upload object: %w", err)
 	}
 
 	// Ownership of the sorted object transfers to the caller, but it is still
 	// released through f.release so failures are counted in one place wherever
 	// the object happens to be closed.
-	return sortedObj, closerFunc(func() { f.release(sortedObjCloser, "flushed") }), objectPath, nil
+	return sortedObj, closerFunc(func() { f.release(sortedObjCloser, "uploaded") }), objectPath, nil
 }
 
 // release closes a data object's backing scratch storage. Failures are counted
-// and logged rather than returned: by the time an object is released it has
-// already been uploaded, so a cleanup failure must not fail the flush.
-func (f *flusherImpl) release(closer io.Closer, which string) {
+// and logged rather than returned, so a cleanup failure never hides the flush
+// result. state tells whether the upload of the object failed or succeeded.
+func (f *flusherImpl) release(closer io.Closer, state string) {
 	if err := closer.Close(); err != nil {
 		f.releaseFailures.Inc()
-		level.Warn(f.logger).Log("msg", "failed to release data object", "object", which, "err", err)
+		level.Warn(f.logger).Log("msg", "failed to release data object", "state", state, "err", err)
 	}
 }
 

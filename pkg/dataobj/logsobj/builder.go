@@ -15,6 +15,7 @@ import (
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -133,8 +134,9 @@ type TenantOverrides interface {
 
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. Log data is appended by calling [Builder.Append] or
-// [Builder.AppendRecord]. [Builder.FlushAndSort] constructs a sorted data
-// object. [Builder.Flush] constructs the object as built.
+// [Builder.AppendRecord]. [Builder.FlushAndSort] constructs a data object
+// that is sorted object-wide. [Builder.Flush] constructs a data object whose
+// logs sections are sorted one by one, but not object-wide.
 //
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
@@ -151,8 +153,9 @@ type Builder struct {
 	// clears it, so a limits change applies from the next object.
 	layouts map[string]tenantLayout
 
-	// sortMetrics receives the section metrics of the sort in FlushAndSort.
-	// The build already observed the same data in metrics.
+	// sortMetrics is never registered. It absorbs the section metrics of the
+	// sort in FlushAndSort, which would otherwise count data that metrics
+	// already observed during the build.
 	sortMetrics *BuilderMetrics
 
 	currentSizeEstimate int
@@ -198,6 +201,8 @@ func NewBuilder(cfg BuilderBaseConfig, scratchStore scratch.Store, metrics *Buil
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 		layouts:    make(map[string]tenantLayout),
+
+		sortMetrics: NewBuilderMetrics(),
 	}, nil
 }
 
@@ -466,8 +471,8 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 // [ErrBuilderEmpty].
 //
 // For each tenant, the object holds the streams section first, then the logs
-// sections. Tenants are in natural order. Stream IDs follow stream key order,
-// and logs rows follow stream ID order.
+// sections. Tenants are in natural order. Stream IDs follow stream key order.
+// Logs rows are ordered by stream ID, then by timestamp descending.
 //
 // The sort uses the layout that the builder used for each tenant, so it never
 // reads the overrides. Every section already follows that layout, so the sort
@@ -481,23 +486,32 @@ func (b *Builder) FlushAndSort(ctx context.Context) (*dataobj.Object, io.Closer,
 	if err != nil {
 		return nil, nil, err
 	}
-	defer builtCloser.Close()
+	// A failure to release the built object leaks scratch storage, but the
+	// sorted object is still valid, so it is logged and does not fail the
+	// flush.
+	defer func() {
+		if err := builtCloser.Close(); err != nil {
+			level.Warn(b.logger).Log("msg", "failed to release built data object", "err", err)
+		}
+	}()
 
 	timer := prometheus.NewTimer(b.metrics.sortTime)
 	defer timer.ObserveDuration()
-	return b.sort(ctx, built, layouts)
+	sorted, sortedCloser, err := b.sort(ctx, built, layouts)
+	if err != nil {
+		b.metrics.flushFailures.Inc()
+		return nil, nil, fmt.Errorf("sorting object: %w", err)
+	}
+	return sorted, sortedCloser, nil
 }
 
 // sort writes obj sorted object-wide to b.builder and flushes it. layouts must
 // hold the layout of every tenant in obj, and every logs section of obj must
-// follow the layout of its tenant.
+// follow the layout of its tenant. obj must stay open until sort returns.
+//
+// sort always resets Builder.
 func (b *Builder) sort(ctx context.Context, obj *dataobj.Object, layouts map[string]tenantLayout) (*dataobj.Object, io.Closer, error) {
-	// Must reset builder when done.
 	defer b.Reset()
-
-	if b.sortMetrics == nil {
-		b.sortMetrics = NewBuilderMetrics()
-	}
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()

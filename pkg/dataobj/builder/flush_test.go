@@ -129,7 +129,7 @@ func TestFlusher_Flush(t *testing.T) {
 		require.Equal(t, 1, testBuilder.flushCloser.closed)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expectSuccessMetrics), flushMetricNames...))
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP loki_dataobj_builder_release_failures_total Total number of failures to release a flushed data object's scratch storage. The object is already uploaded at that point, so these do not fail the flush.
+		# HELP loki_dataobj_builder_release_failures_total Total number of failures to release a flushed data object's scratch storage. These do not fail the flush.
 		# TYPE loki_dataobj_builder_release_failures_total counter
 		loki_dataobj_builder_release_failures_total 1
 		`), "loki_dataobj_builder_release_failures_total"))

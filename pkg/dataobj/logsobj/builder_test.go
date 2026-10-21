@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -257,7 +258,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 }
 
-func TestBuilder_FlushAndSort(t *testing.T) {
+func testFlushAndSortOrder(t *testing.T) {
 	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 	sortBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 
@@ -354,14 +355,7 @@ func TestBuilder_FlushAndSort(t *testing.T) {
 	require.Equal(t, expectedRecords, actualRecords)
 }
 
-// TestBuilder_FlushAndSort_ShardBuckets asserts that the sorted object stores
-// the bucket that the build gave every stream.
-//
-// The sort takes the bucket from the built streams section. It does not
-// compute the bucket again. The query side skips the stream-hash check when a
-// shard maps exactly onto buckets, so a wrong bucket would put the stream in
-// the wrong shard.
-func TestBuilder_FlushAndSort_ShardBuckets(t *testing.T) {
+func testFlushAndSortShardBuckets(t *testing.T) {
 	const (
 		tenant      = "t1"
 		streamCount = 16
@@ -397,7 +391,7 @@ func TestBuilder_FlushAndSort_ShardBuckets(t *testing.T) {
 		return buckets
 	}
 
-	t.Run("the sorted object keeps the bucket of every stream", func(t *testing.T) {
+	t.Run("keeps the bucket that the build gave every stream, without computing it again", func(t *testing.T) {
 		built, builtCloser, err := newFilledBuilder(t).Flush()
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, builtCloser.Close()) })
@@ -502,6 +496,12 @@ func BenchmarkBuilder_FlushAndSort(b *testing.B) {
 			dataSize := numRows * sizeOfRow * len(tenants)
 			b.SetBytes(int64(dataSize))
 
+			fill()
+			obj, closer, err := builder.Flush()
+			require.NoError(b, err)
+			b.Logf("logs sections before the sort: %d", obj.Sections().Count(logs.CheckSection))
+			require.NoError(b, closer.Close())
+
 			for b.Loop() {
 				b.StopTimer()
 				fill()
@@ -526,7 +526,7 @@ type limitsByTenant map[string]*validation.Limits
 func (m limitsByTenant) TenantLimits(userID string) *validation.Limits { return m[userID] }
 func (m limitsByTenant) AllByUserID() map[string]*validation.Limits    { return m }
 
-func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
+func testFlushAndSortSchema(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 
 	makeCfg := func() BuilderBaseConfig {
@@ -635,7 +635,7 @@ func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 		}
 	}
 
-	t.Run("custom schema tenant sorted by app, default schema tenant by service_name", func(t *testing.T) {
+	t.Run("sorts a tenant with a custom schema by app and a tenant without one by service_name", func(t *testing.T) {
 		cfg := makeCfg()
 		var defaults validation.Limits
 		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
@@ -698,7 +698,7 @@ func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 		require.Equal(t, expectedLabelOrder(t, []string{"alpha", "middle", "zoo"}, "service_name", []string{"label:service_name"}), svcOrder)
 	})
 
-	t.Run("schema labels persisted in section metadata", func(t *testing.T) {
+	t.Run("records the schema labels in the logs section metadata", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj2 := buildSorted(t, cfg, "t1", []string{"b", "a"}, overrides)
@@ -722,7 +722,7 @@ func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 		timestampsDescWithinGroups(t, obj2, "t1")
 	})
 
-	t.Run("initial flush emits schema-ordered logs sections", func(t *testing.T) {
+	t.Run("flush without sort writes logs sections that are each in schema order", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		obj := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
@@ -789,7 +789,7 @@ func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("multi-label compound key", func(t *testing.T) {
+	t.Run("orders streams by every label of a compound schema in order", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
 		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
@@ -845,7 +845,7 @@ func TestBuilder_FlushAndSort_SortSchema(t *testing.T) {
 		require.Equal(t, want, gotPairs)
 	})
 
-	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {
+	t.Run("assigns stream IDs in sort key order and keeps every stream and record", func(t *testing.T) {
 		cfg := makeCfg()
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		schemaLabels := []string{"label:app"}
@@ -1160,8 +1160,6 @@ func (s *failingReadStore) Remove(h scratch.Handle) error {
 	return s.inner.Remove(h)
 }
 
-// A closer returned alongside an error is never closed by callers, since they
-// stop at the error, so Flush must hand back nothing when it fails.
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	store := &failingReadStore{inner: scratch.NewMemory()}
 	builder, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
@@ -1178,8 +1176,6 @@ func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	require.NotEmpty(t, store.removed, "the buffered sections must be released")
 }
 
-// Flush resets the builder whether it succeeds or fails, so a failed flush
-// leaves nothing behind for the next one to pick up.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	stream := logproto.Stream{
 		Labels:  `{cluster="test",app="foo"}`,
@@ -1192,11 +1188,11 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:  "when the object is built",
+			name:  "resets the builder after a successful flush",
 			store: scratch.NewMemory(),
 		},
 		{
-			name:    "when the object cannot be built",
+			name:    "resets the builder after a failed flush",
 			store:   &failingReadStore{inner: scratch.NewMemory()},
 			wantErr: "building object",
 		},
@@ -1227,11 +1223,15 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 // change between appends.
 type mutableOverrides struct {
 	schema []string
+	calls  int
 }
 
-func (o *mutableOverrides) SortSchemaLabels(string) []string { return o.schema }
+func (o *mutableOverrides) SortSchemaLabels(string) []string {
+	o.calls++
+	return o.schema
+}
 
-func TestBuilder_LayoutPerObject(t *testing.T) {
+func testFlushAndSortLayoutPerObject(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	appendStreams := func(t *testing.T, b *Builder, overrides *mutableOverrides, changeTo []string) {
 		t.Helper()
@@ -1240,7 +1240,7 @@ func TestBuilder_LayoutPerObject(t *testing.T) {
 				Labels:  fmt.Sprintf(`{app="app-%d",cluster="c-%d"}`, i, 3-i),
 				Entries: []push.Entry{{Timestamp: now, Line: "line"}},
 			}, now))
-			if i == 1 {
+			if i == 1 && changeTo != nil {
 				overrides.schema = changeTo
 			}
 		}
@@ -1262,10 +1262,12 @@ func TestBuilder_LayoutPerObject(t *testing.T) {
 		require.NoError(t, err)
 
 		appendStreams(t, b, overrides, []string{"label:cluster"})
+		require.Equal(t, 1, overrides.calls, "the builder must read the overrides once per tenant per object")
 		first, firstCloser, err := b.FlushAndSort(t.Context())
 		require.NoError(t, err)
 		t.Cleanup(func() { require.NoError(t, firstCloser.Close()) })
 		requireSchema(t, first, []string{"label:app"})
+		require.Equal(t, 1, overrides.calls, "the sort must not read the overrides")
 
 		appendStreams(t, b, overrides, []string{"label:cluster"})
 		second, secondCloser, err := b.FlushAndSort(t.Context())
@@ -1279,7 +1281,7 @@ func TestBuilder_LayoutPerObject(t *testing.T) {
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
 
-		appendStreams(t, b, overrides, []string{"label:app"})
+		appendStreams(t, b, overrides, nil)
 		overrides.schema = []string{"label:cluster"}
 		obj, closer, err := b.FlushAndSort(t.Context())
 		require.NoError(t, err)
@@ -1287,15 +1289,63 @@ func TestBuilder_LayoutPerObject(t *testing.T) {
 		requireSchema(t, obj, []string{"label:app"})
 	})
 
-	t.Run("returns an error when the context is cancelled before the sort", func(t *testing.T) {
+}
+
+func testFlushAndSortErrors(t *testing.T) {
+	stream := logproto.Stream{
+		Labels:  `{cluster="test",app="foo"}`,
+		Entries: []push.Entry{{Timestamp: time.Unix(10, 0).UTC(), Line: "hello"}},
+	}
+
+	t.Run("returns ErrBuilderEmpty when nothing was appended", func(t *testing.T) {
 		b, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
-		appendStreams(t, b, &mutableOverrides{}, nil)
+
+		obj, closer, err := b.FlushAndSort(t.Context())
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+	})
+
+	t.Run("returns nothing, counts the failure, and resets the builder when the sort fails", func(t *testing.T) {
+		metrics := NewBuilderMetrics()
+		b, err := NewBuilder(testBuilderConfig, nil, metrics, log.NewNopLogger(), tenantOverrides{"tenant": {"label:app"}})
+		require.NoError(t, err)
+		require.NoError(t, b.Append("tenant", stream, time.Now()))
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		_, _, err = b.FlushAndSort(ctx)
+		obj, closer, err := b.FlushAndSort(ctx)
 		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.Equal(t, 1.0, testutil.ToFloat64(metrics.flushFailures))
 		require.Zero(t, b.GetEstimatedSize())
+		require.Empty(t, b.layouts)
+		_, _, err = b.FlushAndSort(t.Context())
+		require.ErrorIs(t, err, ErrBuilderEmpty)
 	})
+
+	t.Run("returns nothing and releases the buffered sections when the build fails", func(t *testing.T) {
+		store := &failingReadStore{inner: scratch.NewMemory()}
+		b, err := NewBuilder(testBuilderConfig, store, NewBuilderMetrics(), log.NewNopLogger(), nil)
+		require.NoError(t, err)
+		require.NoError(t, b.Append("tenant", stream, time.Now()))
+
+		obj, closer, err := b.FlushAndSort(t.Context())
+		require.ErrorContains(t, err, "building object")
+		require.Nil(t, obj)
+		require.Nil(t, closer)
+		require.NotEmpty(t, store.removed)
+		_, _, err = b.FlushAndSort(t.Context())
+		require.ErrorIs(t, err, ErrBuilderEmpty)
+	})
+}
+
+func TestBuilder_FlushAndSort(t *testing.T) {
+	t.Run("sorts the records of every tenant object-wide and keeps every record", testFlushAndSortOrder)
+	t.Run("keeps the shard bucket of every stream", testFlushAndSortShardBuckets)
+	t.Run("orders streams by the sort schema of each tenant", testFlushAndSortSchema)
+	t.Run("reads the layout once per object", testFlushAndSortLayoutPerObject)
+	t.Run("handles failures", testFlushAndSortErrors)
 }

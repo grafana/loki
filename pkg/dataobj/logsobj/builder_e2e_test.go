@@ -21,8 +21,8 @@ import (
 )
 
 // TestBuilder_EndToEnd is a sanity check for the full builder pipeline:
-// Append -> Flush (intermediate object), and Append -> FlushAndSort (final
-// object) on a second builder with the same dataset.
+// Append -> Flush (object sorted per section), and Append -> FlushAndSort
+// (object sorted object-wide) on a second builder with the same dataset.
 //
 // The dataset is randomly generated with a fixed seed to broadly exercise:
 // - intermediate log sections are individually ordered.

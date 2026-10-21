@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 )
 
-// rankedSortKey is the CopyAndSort sidecar for one stream. rank is the rank in this object after sorting by
+// rankedSortKey is the sort sidecar of [Builder.FlushAndSort] for one stream. rank is the rank in this object after sorting by
 // SortKey; independently written objects do not share rank.
 type rankedSortKey struct {
 	rank int64

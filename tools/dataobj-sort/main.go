@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -60,10 +61,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	start := time.Now()
 	if err := appendObject(ctx, b, orig); err != nil {
 		log.Fatal(err)
 	}
+	start := time.Now()
 	sortedObj, closer, err := b.FlushAndSort(ctx)
 	duration := time.Since(start)
 	if err != nil {
@@ -106,7 +107,8 @@ func main() {
 	log.Printf("Written %d bytes to %s in %s\n", written, fw.Name(), duration)
 }
 
-// appendObject appends every log record of obj to b.
+// appendObject appends every log record of obj to b. The sorted output uses
+// the sort schema of b, not the schema of obj.
 func appendObject(ctx context.Context, b *logsobj.Builder, obj *dataobj.Object) error {
 	for _, tenant := range obj.Tenants() {
 		streamLabels := make(map[int64]labels.Labels)
@@ -133,7 +135,11 @@ func appendObject(ctx context.Context, b *logsobj.Builder, obj *dataobj.Object) 
 				if err != nil {
 					return err
 				}
-				if err := b.AppendRecord(tenant, streamLabels[record.StreamID], record.Copy(), record.Timestamp); err != nil {
+				ls, ok := streamLabels[record.StreamID]
+				if !ok {
+					return fmt.Errorf("tenant %s: record references unknown stream ID %d", tenant, record.StreamID)
+				}
+				if err := b.AppendRecord(tenant, ls, record.Copy(), record.Timestamp); err != nil {
 					return err
 				}
 			}
